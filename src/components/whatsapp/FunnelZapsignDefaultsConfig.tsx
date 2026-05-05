@@ -77,9 +77,30 @@ export function FunnelZapsignDefaultsConfig({ boardId, hideBoardSelector, sectio
   // Recipients data
   const [profiles, setProfiles] = useState<{ user_id: string; full_name: string | null }[]>([]);
   const [groups, setGroups] = useState<{ group_jid: string; group_name: string | null; instance_name: string }[]>([]);
+  const [instances, setInstances] = useState<{ instance_name: string; owner_name: string | null; owner_phone: string | null }[]>([]);
   const [memberSearch, setMemberSearch] = useState('');
   const [groupSearch, setGroupSearch] = useState('');
   const [phoneInput, setPhoneInput] = useState('');
+  const [hideUnnamedGroups, setHideUnnamedGroups] = useState(true);
+
+  // Map instance_name -> friendly display ("Owner Name" || instance_name)
+  const instanceDisplay = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const i of instances) {
+      m.set(i.instance_name, (i.owner_name && i.owner_name.trim()) || i.instance_name);
+    }
+    return m;
+  }, [instances]);
+  const friendlyInstance = (raw: string) => instanceDisplay.get(raw) || raw;
+  // Helper: a group has a "real" name if group_name is non-empty AND not equal to its JID-like code
+  const hasRealName = (g: { group_jid: string; group_name: string | null }) => {
+    const n = (g.group_name || '').trim();
+    if (!n) return false;
+    if (n === g.group_jid) return false;
+    if (/^\d{10,}@g\.us$/i.test(n)) return false;
+    if (/^\d{10,}$/.test(n)) return false;
+    return true;
+  };
 
   const showProc = section === 'all' || section === 'procuracao' || section === 'documentos';
   const showGroup = section === 'all' || section === 'grupo';
@@ -108,11 +129,13 @@ export function FunnelZapsignDefaultsConfig({ boardId, hideBoardSelector, sectio
   useEffect(() => {
     if (!showNotif) return;
     (async () => {
-      const [{ data: pf }, { data: gr }] = await Promise.all([
+      const [{ data: pf }, { data: gr }, { data: ins }] = await Promise.all([
         (supabase as any).from('profiles').select('user_id, full_name').order('full_name'),
         (supabase as any).from('whatsapp_groups_cache').select('group_jid, group_name, instance_name').order('group_name'),
+        (supabase as any).from('whatsapp_instances').select('instance_name, owner_name, owner_phone').eq('is_active', true).order('instance_name'),
       ]);
       setProfiles(pf || []);
+      setInstances(ins || []);
       // dedupe by group_jid (cache may repeat across instances)
       const seen = new Set<string>();
       const dedup: any[] = [];
@@ -364,22 +387,34 @@ export function FunnelZapsignDefaultsConfig({ boardId, hideBoardSelector, sectio
 
                   {/* Grupos WA */}
                   <div className="space-y-2">
-                    <Label className="text-sm">Grupos do WhatsApp</Label>
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm">Grupos do WhatsApp</Label>
+                      <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
+                        <Checkbox checked={hideUnnamedGroups} onCheckedChange={(v) => setHideUnnamedGroups(!!v)} />
+                        Ocultar grupos sem nome
+                      </label>
+                    </div>
                     <div className="relative">
                       <Search className="h-3.5 w-3.5 absolute left-2.5 top-2.5 text-muted-foreground" />
                       <Input className="pl-8 h-9" placeholder="Buscar grupo…" value={groupSearch} onChange={(e) => setGroupSearch(e.target.value)} />
                     </div>
                     <div className="max-h-48 overflow-y-auto border rounded-md divide-y">
                       {groups
-                        .filter((g) => !groupSearch || (g.group_name || '').toLowerCase().includes(groupSearch.toLowerCase()))
-                        .slice(0, 50)
+                        .filter((g) => {
+                          if (hideUnnamedGroups && !hasRealName(g) && !row.notify_group_jids.includes(g.group_jid)) return false;
+                          if (!groupSearch) return true;
+                          const q = groupSearch.toLowerCase();
+                          return (g.group_name || '').toLowerCase().includes(q) || g.group_jid.toLowerCase().includes(q);
+                        })
+                        .slice(0, 100)
                         .map((g) => {
                           const checked = row.notify_group_jids.includes(g.group_jid);
+                          const display = hasRealName(g) ? g.group_name! : `Grupo sem nome (${g.group_jid.split('@')[0].slice(-6)})`;
                           return (
                             <label key={g.group_jid} className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-muted/40">
                               <Checkbox checked={checked} onCheckedChange={() => update({ notify_group_jids: toggleArr(row.notify_group_jids, g.group_jid) })} />
-                              <span className="truncate">{g.group_name || g.group_jid}</span>
-                              <span className="ml-auto text-[10px] text-muted-foreground">{g.instance_name}</span>
+                              <span className="truncate flex-1" title={g.group_jid}>{display}</span>
+                              <span className="ml-auto text-[10px] text-muted-foreground shrink-0">{friendlyInstance(g.instance_name)}</span>
                             </label>
                           );
                         })}
@@ -390,9 +425,35 @@ export function FunnelZapsignDefaultsConfig({ boardId, hideBoardSelector, sectio
                     )}
                   </div>
 
+                  {/* Instâncias do WhatsApp (números próprios) */}
+                  <div className="space-y-2">
+                    <Label className="text-sm">Instâncias do WhatsApp (números da empresa)</Label>
+                    <p className="text-xs text-muted-foreground">Adicione o número de uma instância ativa para receber a notificação no privado dela.</p>
+                    <div className="max-h-40 overflow-y-auto border rounded-md divide-y">
+                      {instances.map((i) => {
+                        const phone = (i.owner_phone || '').replace(/\D/g, '');
+                        if (!phone) return null;
+                        const checked = row.notify_phone_numbers.includes(phone);
+                        return (
+                          <label key={i.instance_name} className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-muted/40">
+                            <Checkbox
+                              checked={checked}
+                              onCheckedChange={() =>
+                                update({ notify_phone_numbers: toggleArr(row.notify_phone_numbers, phone) })
+                              }
+                            />
+                            <span className="truncate flex-1">{(i.owner_name && i.owner_name.trim()) || i.instance_name}</span>
+                            <span className="text-[10px] text-muted-foreground">{phone}</span>
+                          </label>
+                        );
+                      })}
+                      {instances.length === 0 && <div className="px-3 py-2 text-xs text-muted-foreground">Nenhuma instância ativa.</div>}
+                    </div>
+                  </div>
+
                   {/* Telefones avulsos */}
                   <div className="space-y-2">
-                    <Label className="text-sm">Números de WhatsApp avulsos</Label>
+                    <Label className="text-sm">Outros números de WhatsApp</Label>
                     <div className="flex gap-2">
                       <Input
                         className="h-9"
