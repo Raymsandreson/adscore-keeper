@@ -185,7 +185,7 @@ export default function ZapsignSyncPage({ externalDateRange, externalPeriodLabel
         setDocCounts({ total, signed, pending: Math.max(0, total - signed) });
       } catch (e) { console.warn('docCounts', e); }
     })();
-  }, [dateRange.from, dateRange.to]);
+  }, [dateRange.from, dateRange.to, docsRefreshTick]);
 
   async function run() {
     setRunning(true); setResult(null);
