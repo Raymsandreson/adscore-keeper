@@ -47,7 +47,7 @@ export function LeadProcessesTab({ leadId, boards }: LeadProcessesTabProps) {
   const [workflowId, setWorkflowId] = useState('');
   const [startedAt, setStartedAt] = useState(new Date().toISOString().slice(0, 10));
   const [notes, setNotes] = useState('');
-  const [feePercentage, setFeePercentage] = useState('');
+  const [feePercentage, setFeePercentage] = useState('30');
 
   useEffect(() => {
     fetchProcesses();
@@ -61,7 +61,7 @@ export function LeadProcessesTab({ leadId, boards }: LeadProcessesTabProps) {
     setWorkflowId('');
     setStartedAt(new Date().toISOString().slice(0, 10));
     setNotes('');
-    setFeePercentage('');
+    setFeePercentage('30');
     setEditingProcess(null);
   };
 
