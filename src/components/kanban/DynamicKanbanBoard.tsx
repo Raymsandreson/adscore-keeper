@@ -51,6 +51,7 @@ import {
   XCircle,
   ClipboardPlus,
   Copy,
+  MapPin,
 } from 'lucide-react';
 import { CopyableText } from '@/components/ui/copyable-text';
 import { KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
