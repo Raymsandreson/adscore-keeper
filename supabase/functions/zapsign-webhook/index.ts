@@ -767,7 +767,7 @@ Deno.serve(async (req) => {
                 notes: extractedData.notes || null,
                 action_source: 'system',
                 action_source_detail: 'Criado automaticamente ao assinar documento (ZapSign)',
-                created_by: resolvedOwnerId,
+                created_by: extOwnerId,
               })
               .select('id')
               .single()
@@ -886,7 +886,7 @@ Deno.serve(async (req) => {
                 news_link: extractedData.news_link || null,
                 campaign_id: campaignId || null,
                 campaign_name: campaignName || null,
-                created_by: resolvedOwnerId,
+                created_by: extOwnerId,
                 action_source: 'system',
                 action_source_detail: campaignId 
                   ? `Lead criado automaticamente ao assinar documento (ZapSign) - Campanha: ${campaignName || campaignId}`
