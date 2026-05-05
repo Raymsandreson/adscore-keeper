@@ -104,7 +104,7 @@ export function OnboardingMeetingConfig({ boardId }: Props) {
   };
 
   const fetchMembers = async () => {
-    const { data } = await supabase.from('profiles').select('user_id, full_name');
+    const { data } = await externalSupabase.from('profiles').select('user_id, full_name');
     setMembers((data || []).filter(m => m.full_name));
   };
 
@@ -132,9 +132,9 @@ export function OnboardingMeetingConfig({ boardId }: Props) {
       };
 
       if (config.id) {
-        await (supabase as any).from('onboarding_meeting_configs').update(payload).eq('id', config.id);
+        await (externalSupabase as any).from('onboarding_meeting_configs').update(payload).eq('id', config.id);
       } else {
-        const { data } = await (supabase as any).from('onboarding_meeting_configs').insert(payload).select().single();
+        const { data } = await (externalSupabase as any).from('onboarding_meeting_configs').insert(payload).select().single();
         if (data) setConfig(prev => ({ ...prev, id: data.id }));
       }
       toast.success('Configuração de reunião salva!');
