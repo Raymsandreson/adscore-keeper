@@ -118,7 +118,7 @@ export function OnboardingConfig() {
           className="mt-4 flex overflow-x-auto no-scrollbar snap-x snap-mandatory scroll-smooth -mx-4 px-4 sm:mx-0 sm:px-0"
         >
           <div className="snap-center shrink-0 w-full pr-4 sm:pr-0">
-            <FunnelZapsignDefaultsConfig boardId={selectedBoardId} hideBoardSelector section="procuracao" />
+            <FunnelZapsignDefaultsConfig boardId={selectedBoardId} hideBoardSelector section="documentos" />
           </div>
           <div className="snap-center shrink-0 w-full pr-4 sm:pr-0 space-y-6">
             <FunnelZapsignDefaultsConfig boardId={selectedBoardId} hideBoardSelector section="grupo" hideSaveButton />
