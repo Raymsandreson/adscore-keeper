@@ -74,7 +74,7 @@ app.post('/functions/:name', async (req, res) => {
 // Rota pública para webhook ZapSign (sem x-api-key — segurança via doc_token validado no handler)
 app.post('/webhooks/zapsign', async (req, res) => {
   try {
-    await zapsignWebhook(req, res, () => {});
+    await (zapsignWebhook as any)(req, res);
   } catch (err) {
     console.error('[webhooks/zapsign] Error:', err);
     // ZapSign não deve receber 5xx pra não reenviar
