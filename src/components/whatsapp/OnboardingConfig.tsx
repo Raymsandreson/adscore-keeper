@@ -1,71 +1,62 @@
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { useState } from 'react';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { FileSignature, Users, Bell } from 'lucide-react';
 import { BoardGroupInstancesConfig } from './BoardGroupInstancesConfig';
 import { FunnelZapsignDefaultsConfig } from './FunnelZapsignDefaultsConfig';
 
 export function OnboardingConfig() {
+  const [tab, setTab] = useState('procuracao');
+
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
-        Configure tudo o que acontece automaticamente quando um lead vira caso: geração da procuração,
-        criação do grupo no WhatsApp e notificações pós-assinatura. As configurações são por funil.
+        Configure tudo o que acontece automaticamente quando um lead vira caso. As configurações são por funil.
       </p>
 
-      <Accordion type="multiple" defaultValue={['procuracao']} className="space-y-3">
-        <AccordionItem value="procuracao" className="border rounded-lg px-4 bg-card">
-          <AccordionTrigger className="hover:no-underline">
-            <div className="flex items-center gap-3 text-left">
-              <div className="h-9 w-9 rounded-lg bg-fuchsia-500/10 flex items-center justify-center">
-                <FileSignature className="h-5 w-5 text-fuchsia-500" />
-              </div>
-              <div>
-                <div className="font-semibold text-sm">Procuração</div>
-                <div className="text-xs text-muted-foreground">Modelo ZapSign, signatário, mensagem e anexos</div>
-              </div>
-            </div>
-          </AccordionTrigger>
-          <AccordionContent className="pt-2 pb-4">
-            <FunnelZapsignDefaultsConfig />
-          </AccordionContent>
-        </AccordionItem>
+      <Tabs value={tab} onValueChange={setTab} className="w-full">
+        <TabsList className="w-full grid grid-cols-3 h-auto p-1 bg-muted/50 sticky top-0 z-10">
+          <TabsTrigger
+            value="procuracao"
+            className="flex flex-col sm:flex-row items-center gap-1.5 sm:gap-2 py-2.5 px-2 data-[state=active]:bg-fuchsia-500/10 data-[state=active]:text-fuchsia-600 dark:data-[state=active]:text-fuchsia-400"
+          >
+            <FileSignature className="h-4 w-4 shrink-0" />
+            <span className="text-xs sm:text-sm font-medium">Procuração</span>
+          </TabsTrigger>
+          <TabsTrigger
+            value="grupo"
+            className="flex flex-col sm:flex-row items-center gap-1.5 sm:gap-2 py-2.5 px-2 data-[state=active]:bg-violet-500/10 data-[state=active]:text-violet-600 dark:data-[state=active]:text-violet-400"
+          >
+            <Users className="h-4 w-4 shrink-0" />
+            <span className="text-xs sm:text-sm font-medium">Grupo</span>
+          </TabsTrigger>
+          <TabsTrigger
+            value="notificacoes"
+            className="flex flex-col sm:flex-row items-center gap-1.5 sm:gap-2 py-2.5 px-2 data-[state=active]:bg-yellow-500/10 data-[state=active]:text-yellow-600 dark:data-[state=active]:text-yellow-400"
+          >
+            <Bell className="h-4 w-4 shrink-0" />
+            <span className="text-xs sm:text-sm font-medium">Notificações</span>
+          </TabsTrigger>
+        </TabsList>
 
-        <AccordionItem value="grupo" className="border rounded-lg px-4 bg-card">
-          <AccordionTrigger className="hover:no-underline">
-            <div className="flex items-center gap-3 text-left">
-              <div className="h-9 w-9 rounded-lg bg-violet-500/10 flex items-center justify-center">
-                <Users className="h-5 w-5 text-violet-500" />
-              </div>
-              <div>
-                <div className="font-semibold text-sm">Grupo do caso</div>
-                <div className="text-xs text-muted-foreground">Instâncias, prefixo, sequência e campos no nome</div>
-              </div>
-            </div>
-          </AccordionTrigger>
-          <AccordionContent className="pt-2 pb-4">
-            <BoardGroupInstancesConfig />
-          </AccordionContent>
-        </AccordionItem>
+        <TabsContent value="procuracao" className="mt-4">
+          <FunnelZapsignDefaultsConfig />
+        </TabsContent>
 
-        <AccordionItem value="notificacoes" className="border rounded-lg px-4 bg-card">
-          <AccordionTrigger className="hover:no-underline">
-            <div className="flex items-center gap-3 text-left">
-              <div className="h-9 w-9 rounded-lg bg-yellow-500/10 flex items-center justify-center">
-                <Bell className="h-5 w-5 text-yellow-500" />
-              </div>
-              <div>
-                <div className="font-semibold text-sm">Notificações pós-assinatura</div>
-                <div className="text-xs text-muted-foreground">Em breve — alertas e mensagens automáticas após o cliente assinar</div>
-              </div>
-            </div>
-          </AccordionTrigger>
-          <AccordionContent className="pt-2 pb-4">
-            <p className="text-sm text-muted-foreground py-6 text-center">
-              Configurações de notificação serão centralizadas aqui em breve. Por enquanto,
-              os alertas pós-assinatura usam os toggles dentro de <strong>Procuração</strong>.
+        <TabsContent value="grupo" className="mt-4">
+          <BoardGroupInstancesConfig />
+        </TabsContent>
+
+        <TabsContent value="notificacoes" className="mt-4">
+          <div className="border rounded-lg p-8 text-center bg-muted/20">
+            <Bell className="h-10 w-10 text-yellow-500 mx-auto mb-3 opacity-60" />
+            <p className="text-sm text-muted-foreground">
+              Em breve — alertas e mensagens automáticas pós-assinatura serão centralizados aqui.
+              <br />
+              Por enquanto, use os toggles dentro de <strong>Procuração</strong>.
             </p>
-          </AccordionContent>
-        </AccordionItem>
-      </Accordion>
+          </div>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
