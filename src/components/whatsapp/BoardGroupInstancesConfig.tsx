@@ -926,9 +926,6 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
             </p>
           </div>
 
-          {/* Onboarding Meeting */}
-          {selectedBoard && <OnboardingMeetingConfig boardId={selectedBoard} />}
-
           {/* Auto-Create Process */}
           <div className="space-y-3 p-3 rounded-lg border bg-muted/30">
             <div className="flex items-center gap-2">
