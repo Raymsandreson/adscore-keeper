@@ -124,10 +124,19 @@ const VOICE_OPTIONS = [
   { id: 'bIHbv24MWmeRgasZH58o', name: 'Will (Masculina)' },
 ];
 
-export function BoardGroupInstancesConfig() {
+interface BoardGroupInstancesConfigProps {
+  boardId?: string;
+  hideBoardSelector?: boolean;
+}
+
+export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardGroupInstancesConfigProps = {}) {
   const [boards, setBoards] = useState<Board[]>([]);
   const [instances, setInstances] = useState<Instance[]>([]);
-  const [selectedBoard, setSelectedBoard] = useState<string>('');
+  const [internalSelectedBoard, setInternalSelectedBoard] = useState<string>('');
+  const selectedBoard = boardId ?? internalSelectedBoard;
+  const setSelectedBoard = (v: string) => {
+    if (boardId === undefined) setInternalSelectedBoard(v);
+  };
   const [linkedInstances, setLinkedInstances] = useState<string[]>([]);
   const [instanceConfigs, setInstanceConfigs] = useState<Record<string, InstanceConfig>>({});
   const [loading, setLoading] = useState(true);
