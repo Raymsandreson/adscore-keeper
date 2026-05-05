@@ -190,7 +190,7 @@ export function FunnelZapsignDefaultsConfig({ boardId, hideBoardSelector, sectio
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
-              <FileSignature className="h-5 w-5 text-primary" /> Padrões de procuração por funil
+              <FileSignature className="h-5 w-5 text-primary" /> Padrões de documentos por funil
             </CardTitle>
             <CardDescription>Defina o modelo, comportamento e mensagem padrão usados ao gerar documentos a partir do chat.</CardDescription>
           </CardHeader>
@@ -216,7 +216,7 @@ export function FunnelZapsignDefaultsConfig({ boardId, hideBoardSelector, sectio
             <>
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-base">Modelo de procuração</CardTitle>
+                  <CardTitle className="text-base">Modelo de documento</CardTitle>
                   <CardDescription>Modelo do ZapSign usado por padrão neste funil.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
