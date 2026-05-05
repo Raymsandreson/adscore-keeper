@@ -1222,6 +1222,7 @@ export type Database = {
           id: string
           initial_message_template: string | null
           lead_fields: string[] | null
+          post_close_agent_id: string | null
           post_sign_mode: string
           process_auto_activities: Json | null
           process_nucleus_id: string | null
@@ -1252,6 +1253,7 @@ export type Database = {
           id?: string
           initial_message_template?: string | null
           lead_fields?: string[] | null
+          post_close_agent_id?: string | null
           post_sign_mode?: string
           process_auto_activities?: Json | null
           process_nucleus_id?: string | null
@@ -1282,6 +1284,7 @@ export type Database = {
           id?: string
           initial_message_template?: string | null
           lead_fields?: string[] | null
+          post_close_agent_id?: string | null
           post_sign_mode?: string
           process_auto_activities?: Json | null
           process_nucleus_id?: string | null

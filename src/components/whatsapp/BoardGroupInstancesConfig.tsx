@@ -1184,84 +1184,183 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
             Salvar Todas as Configurações
           </Button>
 
-          {/* Instances */}
-          <div className="space-y-2 mt-3">
-            <div className="flex items-center gap-2">
-              <Users className="h-4 w-4 text-primary" />
-              <h4 className="font-medium text-xs">Instâncias Participantes</h4>
-            </div>
-            <p className="text-[10px] text-muted-foreground">
-              Defina o cargo e a descrição de cada instância para identificar os responsáveis na mensagem do grupo.
-            </p>
-            {instances.length === 0 ? (
-              <p className="text-xs text-muted-foreground">Nenhuma instância ativa encontrada.</p>
-            ) : (
-              instances.map(inst => {
-                const isLinked = linkedInstances.includes(inst.id);
-                const config: InstanceConfig = instanceConfigs[inst.id] || { role_title: '', role_description: '', applies_to: 'both' };
-                return (
-                  <div key={inst.id} className="rounded-lg border hover:bg-muted/50 transition-colors">
-                    <label className="flex items-center gap-3 p-2.5 cursor-pointer">
-                      <Checkbox
-                        checked={isLinked}
-                        onCheckedChange={() => toggleInstance(inst.id)}
-                        disabled={saving}
-                      />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{inst.instance_name}</p>
-                        {inst.owner_phone && (
-                          <p className="text-[11px] text-muted-foreground">{inst.owner_phone}</p>
-                        )}
-                      </div>
-                      {isLinked && (
-                        <Badge variant="secondary" className="text-[10px] shrink-0">Incluída</Badge>
-                      )}
-                    </label>
-                    {isLinked && (
-                      <div className="px-2.5 pb-2.5 space-y-1.5 border-t pt-2 mx-2.5">
-                        <div className="space-y-1">
-                          <Label className="text-[10px] text-muted-foreground">Entra em quais grupos?</Label>
-                          <div className="flex gap-1">
-                            {([
-                              { value: 'both', label: 'Ambos' },
-                              { value: 'open', label: 'Aberto' },
-                              { value: 'closed', label: 'Fechado' },
-                            ] as { value: AppliesTo; label: string }[]).map(opt => (
-                              <button
-                                key={opt.value}
-                                type="button"
-                                onClick={() => updateInstanceAppliesTo(inst.id, opt.value)}
-                                className={`flex-1 h-6 text-[10px] rounded border transition-colors ${
-                                  config.applies_to === opt.value
-                                    ? 'bg-primary text-primary-foreground border-primary'
-                                    : 'bg-background hover:bg-muted border-border text-muted-foreground'
-                                }`}
-                              >
-                                {opt.label}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                        <Input
-                          value={config.role_title}
-                          onChange={e => updateInstanceConfig(inst.id, 'role_title', e.target.value)}
-                          placeholder="Cargo (ex: Advogado, Assistente, Perito)"
-                          className="h-7 text-[11px]"
-                        />
-                        <Input
-                          value={config.role_description}
-                          onChange={e => updateInstanceConfig(inst.id, 'role_description', e.target.value)}
-                          placeholder="Descrição (ex: Responsável pela análise processual)"
-                          className="h-7 text-[11px]"
-                        />
-                      </div>
-                    )}
-                  </div>
-                );
-              })
-            )}
-          </div>
+          {/* Instâncias — divididas em Antes / Depois / Ambos */}
+          <InstanceParticipantsSection
+            instances={instances}
+            linkedInstances={linkedInstances}
+            instanceConfigs={instanceConfigs}
+            saving={saving}
+            toggleInstance={toggleInstance}
+            updateInstanceConfig={updateInstanceConfig}
+            updateInstanceAppliesTo={updateInstanceAppliesTo}
+          />
         </>
+      )}
+    </div>
+  );
+}
+
+interface InstanceParticipantsSectionProps {
+  instances: Instance[];
+  linkedInstances: string[];
+  instanceConfigs: Record<string, InstanceConfig>;
+  saving: boolean;
+  toggleInstance: (id: string) => void;
+  updateInstanceConfig: (id: string, field: keyof InstanceConfig, value: string) => void;
+  updateInstanceAppliesTo: (id: string, value: AppliesTo) => void;
+}
+
+function InstanceParticipantsSection({
+  instances,
+  linkedInstances,
+  instanceConfigs,
+  saving,
+  toggleInstance,
+  updateInstanceConfig,
+  updateInstanceAppliesTo,
+}: InstanceParticipantsSectionProps) {
+  const [phase, setPhase] = useState<AppliesTo>('both');
+
+  const isInPhase = (instId: string): boolean => {
+    if (!linkedInstances.includes(instId)) return false;
+    const a = instanceConfigs[instId]?.applies_to || 'both';
+    if (phase === 'both') return a === 'both';
+    if (phase === 'open') return a === 'open' || a === 'both';
+    if (phase === 'closed') return a === 'closed' || a === 'both';
+    return false;
+  };
+
+  const togglePhase = (instId: string, checked: boolean) => {
+    const isLinked = linkedInstances.includes(instId);
+    const current: AppliesTo = instanceConfigs[instId]?.applies_to || 'both';
+
+    if (phase === 'both') {
+      if (checked) {
+        if (!isLinked) toggleInstance(instId);
+        if (current !== 'both') updateInstanceAppliesTo(instId, 'both');
+      } else if (isLinked) {
+        toggleInstance(instId);
+      }
+      return;
+    }
+
+    const otherPhase: 'open' | 'closed' = phase === 'open' ? 'closed' : 'open';
+    const wasInOther = current === otherPhase || current === 'both';
+
+    if (checked) {
+      if (!isLinked) {
+        toggleInstance(instId);
+        // toggleInstance insere com applies_to='both' por padrão; ajusta para a fase atual
+        setTimeout(() => updateInstanceAppliesTo(instId, phase), 0);
+      } else {
+        updateInstanceAppliesTo(instId, wasInOther ? 'both' : phase);
+      }
+    } else {
+      if (!isLinked) return;
+      if (current === 'both') {
+        updateInstanceAppliesTo(instId, otherPhase);
+      } else if (current === phase) {
+        toggleInstance(instId);
+      }
+    }
+  };
+
+  const phaseTabs: { value: AppliesTo; label: string; hint: string }[] = [
+    { value: 'open', label: 'Antes do fechamento', hint: 'Instâncias no grupo enquanto o lead está em captação.' },
+    { value: 'closed', label: 'Depois do fechamento', hint: 'Instâncias no grupo após assinatura/fechamento.' },
+    { value: 'both', label: 'Em ambos', hint: 'Instâncias que ficam o tempo todo, antes e depois.' },
+  ];
+
+  const currentTab = phaseTabs.find((t) => t.value === phase)!;
+
+  return (
+    <div className="space-y-3 mt-3">
+      <div className="flex items-center gap-2">
+        <Users className="h-4 w-4 text-primary" />
+        <h4 className="font-medium text-xs">Instâncias Participantes</h4>
+      </div>
+
+      <div className="grid grid-cols-3 gap-1 p-1 rounded-lg border bg-muted/30">
+        {phaseTabs.map((t) => {
+          const count = instances.filter((i) => {
+            if (!linkedInstances.includes(i.id)) return false;
+            const a = instanceConfigs[i.id]?.applies_to || 'both';
+            if (t.value === 'both') return a === 'both';
+            if (t.value === 'open') return a === 'open' || a === 'both';
+            if (t.value === 'closed') return a === 'closed' || a === 'both';
+            return false;
+          }).length;
+          return (
+            <button
+              key={t.value}
+              type="button"
+              onClick={() => setPhase(t.value)}
+              className={`text-[11px] px-2 py-1.5 rounded transition-colors flex items-center justify-center gap-1.5 ${
+                phase === t.value
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-background hover:bg-accent text-muted-foreground'
+              }`}
+            >
+              {t.label}
+              {count > 0 && (
+                <Badge variant={phase === t.value ? 'secondary' : 'outline'} className="h-4 text-[9px] px-1.5">
+                  {count}
+                </Badge>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      <p className="text-[10px] text-muted-foreground">{currentTab.hint}</p>
+
+      {instances.length === 0 ? (
+        <p className="text-xs text-muted-foreground">Nenhuma instância ativa encontrada.</p>
+      ) : (
+        instances.map((inst) => {
+          const checked = isInPhase(inst.id);
+          const isLinked = linkedInstances.includes(inst.id);
+          const config: InstanceConfig =
+            instanceConfigs[inst.id] || { role_title: '', role_description: '', applies_to: 'both' };
+          return (
+            <div key={inst.id} className="rounded-lg border hover:bg-muted/50 transition-colors">
+              <label className="flex items-center gap-3 p-2.5 cursor-pointer">
+                <Checkbox
+                  checked={checked}
+                  onCheckedChange={(v) => togglePhase(inst.id, !!v)}
+                  disabled={saving}
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{inst.instance_name}</p>
+                  {inst.owner_phone && (
+                    <p className="text-[11px] text-muted-foreground">{inst.owner_phone}</p>
+                  )}
+                </div>
+                {isLinked && (
+                  <Badge variant="secondary" className="text-[10px] shrink-0">
+                    {config.applies_to === 'both' ? 'Ambos' : config.applies_to === 'open' ? 'Antes' : 'Depois'}
+                  </Badge>
+                )}
+              </label>
+              {checked && (
+                <div className="px-2.5 pb-2.5 space-y-1.5 border-t pt-2 mx-2.5">
+                  <Input
+                    value={config.role_title}
+                    onChange={(e) => updateInstanceConfig(inst.id, 'role_title', e.target.value)}
+                    placeholder="Cargo (ex: Advogado, Assistente, Perito)"
+                    className="h-7 text-[11px]"
+                  />
+                  <Input
+                    value={config.role_description}
+                    onChange={(e) => updateInstanceConfig(inst.id, 'role_description', e.target.value)}
+                    placeholder="Descrição (ex: Responsável pela análise processual)"
+                    className="h-7 text-[11px]"
+                  />
+                </div>
+              )}
+            </div>
+          );
+        })
       )}
     </div>
   );
