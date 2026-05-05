@@ -214,7 +214,7 @@ export function useLegalCases(leadId?: string) {
     try {
       const { data, error } = await externalSupabase
         .from('legal_cases')
-        .update(updates as any)
+        .update(updates as never)
         .eq('id', id)
         .select('*, specialized_nuclei(name, prefix, color)')
         .single();
@@ -222,9 +222,9 @@ export function useLegalCases(leadId?: string) {
       
       const enriched = {
         ...data,
-        nucleus_name: (data as any).specialized_nuclei?.name,
-        nucleus_prefix: (data as any).specialized_nuclei?.prefix,
-        nucleus_color: (data as any).specialized_nuclei?.color,
+        nucleus_name: (data as EnrichedLegalCaseRow).specialized_nuclei?.name,
+        nucleus_prefix: (data as EnrichedLegalCaseRow).specialized_nuclei?.prefix,
+        nucleus_color: (data as EnrichedLegalCaseRow).specialized_nuclei?.color,
       } as LegalCase;
 
       setCases(prev => prev.map(c => c.id === id ? enriched : c));
