@@ -46,11 +46,20 @@ const emptyDefaults = (board_id: string): DefaultsRow => ({
   send_signed_pdf: true,
 });
 
-export function FunnelZapsignDefaultsConfig() {
+interface Props {
+  boardId?: string;
+  hideBoardSelector?: boolean;
+}
+
+export function FunnelZapsignDefaultsConfig({ boardId, hideBoardSelector }: Props = {}) {
   const { boards, loading: loadingBoards } = useKanbanBoards();
   const funnels = useMemo(() => boards.filter((b) => b.board_type === 'funnel'), [boards]);
 
-  const [selectedBoardId, setSelectedBoardId] = useState<string>('');
+  const [internalBoardId, setInternalBoardId] = useState<string>('');
+  const selectedBoardId = boardId ?? internalBoardId;
+  const setSelectedBoardId = (v: string) => {
+    if (boardId === undefined) setInternalBoardId(v);
+  };
   const [templates, setTemplates] = useState<ZapTemplate[]>([]);
   const [loadingTemplates, setLoadingTemplates] = useState(false);
   const [loadingRow, setLoadingRow] = useState(false);
@@ -62,7 +71,7 @@ export function FunnelZapsignDefaultsConfig() {
     (async () => {
       setLoadingTemplates(true);
       try {
-        const { data, error } = await supabase.functions.invoke('zapsign-action', {
+        const { data, error } = await supabase.functions.invoke('zapsign-api', {
           body: { action: 'list_templates' },
         });
         if (error) throw error;
@@ -133,35 +142,37 @@ export function FunnelZapsignDefaultsConfig() {
 
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <FileSignature className="h-5 w-5 text-primary" />
-            Padrões de procuração por funil
-          </CardTitle>
-          <CardDescription>
-            Defina o modelo, comportamento e mensagem padrão usados ao gerar documentos a partir do chat.
-            Estes valores são aplicados automaticamente quando alguém abrir o assistente de geração para um lead deste funil.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label>Funil</Label>
-            <Select value={selectedBoardId} onValueChange={setSelectedBoardId} disabled={loadingBoards}>
-              <SelectTrigger>
-                <SelectValue placeholder={loadingBoards ? 'Carregando funis…' : 'Escolha um funil'} />
-              </SelectTrigger>
-              <SelectContent>
-                {funnels.map((b) => (
-                  <SelectItem key={b.id} value={b.id}>
-                    {b.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
+      {!hideBoardSelector && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <FileSignature className="h-5 w-5 text-primary" />
+              Padrões de procuração por funil
+            </CardTitle>
+            <CardDescription>
+              Defina o modelo, comportamento e mensagem padrão usados ao gerar documentos a partir do chat.
+              Estes valores são aplicados automaticamente quando alguém abrir o assistente de geração para um lead deste funil.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label>Funil</Label>
+              <Select value={selectedBoardId} onValueChange={setSelectedBoardId} disabled={loadingBoards}>
+                <SelectTrigger>
+                  <SelectValue placeholder={loadingBoards ? 'Carregando funis…' : 'Escolha um funil'} />
+                </SelectTrigger>
+                <SelectContent>
+                  {funnels.map((b) => (
+                    <SelectItem key={b.id} value={b.id}>
+                      {b.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {loadingRow || !row ? (
         <div className="flex items-center justify-center py-12 text-muted-foreground">
@@ -217,7 +228,13 @@ export function FunnelZapsignDefaultsConfig() {
                       <SelectItem value="assinaturaTela">Assinatura na tela</SelectItem>
                       <SelectItem value="tokenSms">Token por SMS</SelectItem>
                       <SelectItem value="tokenEmail">Token por e-mail</SelectItem>
+                      <SelectItem value="tokenWhatsapp">Token por WhatsApp</SelectItem>
                       <SelectItem value="selfieDocFoto">Selfie + foto do documento</SelectItem>
+                      <SelectItem value="selfieFoto">Selfie</SelectItem>
+                      <SelectItem value="documentoFoto">Foto do documento</SelectItem>
+                      <SelectItem value="biometricoCertificado">Biometria facial + certificado</SelectItem>
+                      <SelectItem value="certificadoDigital">Certificado digital (e-CPF/e-CNPJ)</SelectItem>
+                      <SelectItem value="provaDeVida">Prova de vida</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

@@ -1,6 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { FileSignature, Users, Bell } from 'lucide-react';
+import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { BoardGroupInstancesConfig } from './BoardGroupInstancesConfig';
 import { FunnelZapsignDefaultsConfig } from './FunnelZapsignDefaultsConfig';
 
@@ -13,6 +16,14 @@ export function OnboardingConfig() {
   const contentRef = useRef<HTMLDivElement>(null);
   const isProgrammaticScroll = useRef(false);
   const scrollEndTimer = useRef<number | null>(null);
+
+  const { boards, loading: loadingBoards } = useKanbanBoards();
+  const funnels = useMemo(() => boards.filter((b) => b.board_type === 'funnel'), [boards]);
+  const [selectedBoardId, setSelectedBoardId] = useState<string>('');
+
+  useEffect(() => {
+    if (!selectedBoardId && funnels.length > 0) setSelectedBoardId(funnels[0].id);
+  }, [funnels, selectedBoardId]);
 
   // Center the active tab trigger in the TabsList
   useEffect(() => {
@@ -31,13 +42,11 @@ export function OnboardingConfig() {
     if (!target) return;
     isProgrammaticScroll.current = true;
     container.scrollTo({ left: target.offsetLeft, behavior: 'smooth' });
-    // Release the lock once the scroll likely settled
     window.setTimeout(() => {
       isProgrammaticScroll.current = false;
     }, 500);
   }, [tab]);
 
-  // When the user swipes the content, detect snap settle and update the tab
   const handleScroll = () => {
     if (isProgrammaticScroll.current) return;
     const container = contentRef.current;
@@ -57,6 +66,21 @@ export function OnboardingConfig() {
       <p className="text-sm text-muted-foreground">
         Configure tudo o que acontece automaticamente quando um lead vira caso. As configurações são por funil.
       </p>
+
+      {/* Seletor único de funil — compartilhado por todas as abas */}
+      <div className="space-y-2 p-3 rounded-lg border bg-muted/30">
+        <Label className="text-xs font-medium">Funil</Label>
+        <Select value={selectedBoardId} onValueChange={setSelectedBoardId} disabled={loadingBoards}>
+          <SelectTrigger>
+            <SelectValue placeholder={loadingBoards ? 'Carregando funis…' : 'Escolha um funil'} />
+          </SelectTrigger>
+          <SelectContent>
+            {funnels.map((b) => (
+              <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as TabKey)} className="w-full">
         <div className="sticky top-0 z-10 -mx-4 px-4 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 border-b">
@@ -88,17 +112,16 @@ export function OnboardingConfig() {
           </TabsList>
         </div>
 
-        {/* Swipeable content carousel — all panels rendered, snap-x to keep them aligned */}
         <div
           ref={contentRef}
           onScroll={handleScroll}
           className="mt-4 flex overflow-x-auto no-scrollbar snap-x snap-mandatory scroll-smooth -mx-4 px-4 sm:mx-0 sm:px-0"
         >
           <div className="snap-center shrink-0 w-full pr-4 sm:pr-0">
-            <FunnelZapsignDefaultsConfig />
+            <FunnelZapsignDefaultsConfig boardId={selectedBoardId} hideBoardSelector />
           </div>
           <div className="snap-center shrink-0 w-full pr-4 sm:pr-0">
-            <BoardGroupInstancesConfig />
+            <BoardGroupInstancesConfig boardId={selectedBoardId} hideBoardSelector />
           </div>
           <div className="snap-center shrink-0 w-full pr-4 sm:pr-0">
             <div className="border rounded-lg p-8 text-center bg-muted/20">
