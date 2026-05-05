@@ -3894,6 +3894,60 @@ export type Database = {
         }
         Relationships: []
       }
+      funnel_zapsign_defaults: {
+        Row: {
+          attach_chat_docs: boolean
+          auto_create_group: boolean
+          auto_create_lead: boolean
+          board_id: string
+          created_at: string
+          created_by: string | null
+          default_message_template: string | null
+          drive_folder_id: string | null
+          id: string
+          notify_on_signature: boolean
+          send_signed_pdf: boolean
+          signer_auth_mode: string | null
+          signer_role: string | null
+          updated_at: string
+          zapsign_template_token: string | null
+        }
+        Insert: {
+          attach_chat_docs?: boolean
+          auto_create_group?: boolean
+          auto_create_lead?: boolean
+          board_id: string
+          created_at?: string
+          created_by?: string | null
+          default_message_template?: string | null
+          drive_folder_id?: string | null
+          id?: string
+          notify_on_signature?: boolean
+          send_signed_pdf?: boolean
+          signer_auth_mode?: string | null
+          signer_role?: string | null
+          updated_at?: string
+          zapsign_template_token?: string | null
+        }
+        Update: {
+          attach_chat_docs?: boolean
+          auto_create_group?: boolean
+          auto_create_lead?: boolean
+          board_id?: string
+          created_at?: string
+          created_by?: string | null
+          default_message_template?: string | null
+          drive_folder_id?: string | null
+          id?: string
+          notify_on_signature?: boolean
+          send_signed_pdf?: boolean
+          signer_auth_mode?: string | null
+          signer_role?: string | null
+          updated_at?: string
+          zapsign_template_token?: string | null
+        }
+        Relationships: []
+      }
       goal_history: {
         Row: {
           achieved_value: number
@@ -9846,6 +9900,60 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      zapsign_generation_progress: {
+        Row: {
+          board_id: string | null
+          created_at: string
+          created_by: string | null
+          details: Json | null
+          doc_token: string | null
+          error_message: string | null
+          id: string
+          instance_name: string | null
+          lead_id: string | null
+          pct: number
+          phone: string | null
+          request_id: string
+          status: string
+          step_label: string | null
+          updated_at: string
+        }
+        Insert: {
+          board_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          details?: Json | null
+          doc_token?: string | null
+          error_message?: string | null
+          id?: string
+          instance_name?: string | null
+          lead_id?: string | null
+          pct?: number
+          phone?: string | null
+          request_id: string
+          status?: string
+          step_label?: string | null
+          updated_at?: string
+        }
+        Update: {
+          board_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          details?: Json | null
+          doc_token?: string | null
+          error_message?: string | null
+          id?: string
+          instance_name?: string | null
+          lead_id?: string | null
+          pct?: number
+          phone?: string | null
+          request_id?: string
+          status?: string
+          step_label?: string | null
+          updated_at?: string
+        }
+        Relationships: []
       }
     }
     Views: {

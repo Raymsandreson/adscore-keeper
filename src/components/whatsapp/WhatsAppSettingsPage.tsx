@@ -4,8 +4,10 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { 
   Webhook, BarChart3, Megaphone, ArrowLeft, 
-  ChevronRight, Shield, Zap, ScrollText, Sparkles, Smartphone, Bell, Volume2, Users, Network, Brain
+  ChevronRight, Shield, Zap, ScrollText, Sparkles, Smartphone, Bell, Volume2, Users, Network, Brain, FileSignature
 } from 'lucide-react';
+
+import { FunnelZapsignDefaultsConfig } from './FunnelZapsignDefaultsConfig';
 
 import { WhatsAppSetupGuide } from './WhatsAppSetupGuide';
 import { WhatsAppReportSettings } from './WhatsAppReportSettings';
@@ -91,6 +93,15 @@ const tabs: Tab[] = [
     badge: '🆕 Novo',
     badgeVariant: 'default',
     accentColor: 'text-violet-500',
+  },
+  {
+    id: 'zapsign-defaults',
+    label: 'Procuração',
+    icon: <FileSignature className="h-5 w-5" />,
+    description: 'Padrões de geração de procuração por funil',
+    badge: '🆕 Novo',
+    badgeVariant: 'default',
+    accentColor: 'text-fuchsia-500',
   },
   {
     id: 'automations',
@@ -263,6 +274,7 @@ export function WhatsAppSettingsPage({ onBack, initialTab = 'instances' }: Props
             {activeTab === 'ads' && <WhatsAppAdLinkSettings />}
             
             {activeTab === 'groups' && <BoardGroupInstancesConfig />}
+            {activeTab === 'zapsign-defaults' && <FunnelZapsignDefaultsConfig />}
             {activeTab === 'automations' && <AgentAutomationsTab />}
             {activeTab === 'nuclei' && <NucleiSettings />}
             {activeTab === 'enrichment' && <EnrichmentSettings />}
