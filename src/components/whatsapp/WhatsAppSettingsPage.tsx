@@ -274,6 +274,7 @@ export function WhatsAppSettingsPage({ onBack, initialTab = 'instances' }: Props
             {activeTab === 'ads' && <WhatsAppAdLinkSettings />}
             
             {activeTab === 'groups' && <BoardGroupInstancesConfig />}
+            {activeTab === 'zapsign-defaults' && <FunnelZapsignDefaultsConfig />}
             {activeTab === 'automations' && <AgentAutomationsTab />}
             {activeTab === 'nuclei' && <NucleiSettings />}
             {activeTab === 'enrichment' && <EnrichmentSettings />}
