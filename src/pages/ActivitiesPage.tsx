@@ -350,9 +350,9 @@ const ActivitiesPage = () => {
   useEffect(() => {
     const loadSupport = async () => {
       const [leadsRes, membersRes, contactsRes, casesRes] = await Promise.all([
-        supabase.from('leads').select('id, lead_name').order('lead_name').limit(500),
+        externalSupabase.from('leads').select('id, lead_name').order('lead_name').limit(500),
         supabase.from('profiles').select('user_id, full_name'),
-        supabase.from('contacts').select('id, full_name').order('full_name').limit(500),
+        externalSupabase.from('contacts').select('id, full_name').order('full_name').limit(500),
         externalSupabase.from('legal_cases').select('id, case_number, title, lead_id').order('created_at', { ascending: false }).limit(500),
       ]);
       setLeads(leadsRes.data || []);
@@ -367,12 +367,12 @@ const ActivitiesPage = () => {
   // Load workflow step activity types: for each lead, find the activityType from workflow checklist items
   useEffect(() => {
     const loadWorkflowStepTypes = async () => {
-      const { data: leadsData } = await supabase.from('leads').select('id, status, board_id');
+      const { data: leadsData } = await externalSupabase.from('leads').select('id, status, board_id');
       if (!leadsData || leadsData.length === 0) return;
-      const { data: linksData } = await supabase.from('checklist_stage_links').select('stage_id, checklist_template_id');
+      const { data: linksData } = await externalSupabase.from('checklist_stage_links').select('stage_id, checklist_template_id');
       if (!linksData || linksData.length === 0) return;
       const templateIds = [...new Set(linksData.map(l => l.checklist_template_id))];
-      const { data: templatesData } = await supabase.from('checklist_templates').select('id, items').in('id', templateIds);
+      const { data: templatesData } = await externalSupabase.from('checklist_templates').select('id, items').in('id', templateIds);
       if (!templatesData) return;
       // Build map: stage_id -> first activityType found in any step
       const stageTypeMap: Record<string, string> = {};
@@ -580,14 +580,14 @@ const ActivitiesPage = () => {
         Promise.all([
           externalSupabase.from('legal_cases').select('id, case_number, title').eq('lead_id', activity.lead_id),
           externalSupabase.from('contact_leads').select('contact_id').eq('lead_id', activity.lead_id),
-          supabase.from('leads').select('case_type, damage_description, accident_date, updated_at, board_id, lead_status').eq('id', activity.lead_id).maybeSingle(),
+          externalSupabase.from('leads').select('case_type, damage_description, accident_date, updated_at, board_id, lead_status').eq('id', activity.lead_id).maybeSingle(),
         ]).then(async ([casesRes, linkedRes, leadPreviewRes]) => {
           setLeadCases(casesRes.data || []);
 
           // Board name
           let boardName: string | null = null;
           if (leadPreviewRes.data?.board_id) {
-            const { data: boardData } = await supabase.from('kanban_boards').select('name').eq('id', leadPreviewRes.data.board_id).maybeSingle();
+            const { data: boardData } = await externalSupabase.from('kanban_boards').select('name').eq('id', leadPreviewRes.data.board_id).maybeSingle();
             boardName = boardData?.name || null;
           }
           setLeadPreview(leadPreviewRes.data ? { ...leadPreviewRes.data, board_name: boardName } : null);
@@ -595,10 +595,10 @@ const ActivitiesPage = () => {
           // Contacts
           if (linkedRes.data && linkedRes.data.length > 0) {
             const contactIds = linkedRes.data.map(cl => cl.contact_id);
-            const { data: contactsData } = await supabase.from('contacts').select('id, full_name').in('id', contactIds).order('full_name');
+            const { data: contactsData } = await externalSupabase.from('contacts').select('id, full_name').in('id', contactIds).order('full_name');
             setAvailableContacts(contactsData || []);
           } else {
-            const { data: allContacts } = await supabase.from('contacts').select('id, full_name').order('full_name').limit(500);
+            const { data: allContacts } = await externalSupabase.from('contacts').select('id, full_name').order('full_name').limit(500);
             setAvailableContacts(allContacts || []);
           }
         }).catch(() => {})
@@ -892,11 +892,11 @@ const ActivitiesPage = () => {
       try {
         const [linkedData, leadPreviewRes] = await Promise.all([
           externalSupabase.from('contact_leads').select('contact_id').eq('lead_id', activity.lead_id),
-          supabase.from('leads').select('case_type, damage_description, accident_date, updated_at, board_id, lead_status').eq('id', activity.lead_id).maybeSingle(),
+          externalSupabase.from('leads').select('case_type, damage_description, accident_date, updated_at, board_id, lead_status').eq('id', activity.lead_id).maybeSingle(),
         ]);
         let boardName: string | null = null;
         if (leadPreviewRes.data?.board_id) {
-          const { data: boardData } = await supabase.from('kanban_boards').select('name').eq('id', leadPreviewRes.data.board_id).maybeSingle();
+          const { data: boardData } = await externalSupabase.from('kanban_boards').select('name').eq('id', leadPreviewRes.data.board_id).maybeSingle();
           boardName = boardData?.name || null;
         }
         setLeadPreview(leadPreviewRes.data ? { ...leadPreviewRes.data, board_name: boardName } : null);
@@ -1057,7 +1057,7 @@ const ActivitiesPage = () => {
     setLeadCases([]);
     setCaseProcesses([]);
     // Load all contacts
-    const { data } = await supabase.from('contacts').select('id, full_name').order('full_name').limit(500);
+    const { data } = await externalSupabase.from('contacts').select('id, full_name').order('full_name').limit(500);
     setAvailableContacts(data || []);
   };
 
@@ -3279,7 +3279,7 @@ const ActivitiesPage = () => {
           onOpenChange={setShowLeadSheet}
           lead={{ id: formLeadId, lead_name: formLeadName } as any}
           onSave={async (leadId, updates) => {
-            const { error } = await supabase.from('leads').update(updates as any).eq('id', leadId);
+            const { error } = await externalSupabase.from('leads').update(updates as any).eq('id', leadId);
             if (error) throw error;
             setShowLeadSheet(false);
           }}
