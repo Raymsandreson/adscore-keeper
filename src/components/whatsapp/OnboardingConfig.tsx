@@ -118,20 +118,14 @@ export function OnboardingConfig() {
           className="mt-4 flex overflow-x-auto no-scrollbar snap-x snap-mandatory scroll-smooth -mx-4 px-4 sm:mx-0 sm:px-0"
         >
           <div className="snap-center shrink-0 w-full pr-4 sm:pr-0">
-            <FunnelZapsignDefaultsConfig boardId={selectedBoardId} hideBoardSelector />
+            <FunnelZapsignDefaultsConfig boardId={selectedBoardId} hideBoardSelector section="procuracao" />
           </div>
-          <div className="snap-center shrink-0 w-full pr-4 sm:pr-0">
+          <div className="snap-center shrink-0 w-full pr-4 sm:pr-0 space-y-6">
+            <FunnelZapsignDefaultsConfig boardId={selectedBoardId} hideBoardSelector section="grupo" hideSaveButton />
             <BoardGroupInstancesConfig boardId={selectedBoardId} hideBoardSelector />
           </div>
           <div className="snap-center shrink-0 w-full pr-4 sm:pr-0">
-            <div className="border rounded-lg p-8 text-center bg-muted/20">
-              <Bell className="h-10 w-10 text-yellow-500 mx-auto mb-3 opacity-60" />
-              <p className="text-sm text-muted-foreground">
-                Em breve — alertas e mensagens automáticas pós-assinatura serão centralizados aqui.
-                <br />
-                Por enquanto, use os toggles dentro de <strong>Procuração</strong>.
-              </p>
-            </div>
+            <FunnelZapsignDefaultsConfig boardId={selectedBoardId} hideBoardSelector section="notificacoes" />
           </div>
         </div>
       </Tabs>
