@@ -46,11 +46,20 @@ const emptyDefaults = (board_id: string): DefaultsRow => ({
   send_signed_pdf: true,
 });
 
-export function FunnelZapsignDefaultsConfig() {
+interface Props {
+  boardId?: string;
+  hideBoardSelector?: boolean;
+}
+
+export function FunnelZapsignDefaultsConfig({ boardId, hideBoardSelector }: Props = {}) {
   const { boards, loading: loadingBoards } = useKanbanBoards();
   const funnels = useMemo(() => boards.filter((b) => b.board_type === 'funnel'), [boards]);
 
-  const [selectedBoardId, setSelectedBoardId] = useState<string>('');
+  const [internalBoardId, setInternalBoardId] = useState<string>('');
+  const selectedBoardId = boardId ?? internalBoardId;
+  const setSelectedBoardId = (v: string) => {
+    if (boardId === undefined) setInternalBoardId(v);
+  };
   const [templates, setTemplates] = useState<ZapTemplate[]>([]);
   const [loadingTemplates, setLoadingTemplates] = useState(false);
   const [loadingRow, setLoadingRow] = useState(false);
