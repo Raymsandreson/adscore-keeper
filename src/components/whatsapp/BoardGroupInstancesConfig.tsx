@@ -540,16 +540,18 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
         Configure quais instâncias do WhatsApp serão automaticamente adicionadas aos grupos criados para leads de cada funil.
       </p>
 
-      <Select value={selectedBoard} onValueChange={setSelectedBoard}>
-        <SelectTrigger className="w-full">
-          <SelectValue placeholder="Selecione um funil" />
-        </SelectTrigger>
-        <SelectContent>
-          {boards.map(b => (
-            <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      {!hideBoardSelector && (
+        <Select value={selectedBoard} onValueChange={setSelectedBoard}>
+          <SelectTrigger className="w-full">
+            <SelectValue placeholder="Selecione um funil" />
+          </SelectTrigger>
+          <SelectContent>
+            {boards.filter(b => b.board_type === 'funnel').map(b => (
+              <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
 
       {selectedBoard && (
         <>
