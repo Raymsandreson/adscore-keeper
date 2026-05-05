@@ -909,8 +909,17 @@ export const useContacts = () => {
       }, 600);
     };
 
-    const channel = supabase
-      .channel('contacts-realtime')
+    const channelCloud = supabase
+      .channel('contacts-realtime-cloud')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'contacts' },
+        () => scheduleRefresh()
+      )
+      .subscribe();
+
+    const channelExternal = externalSupabase
+      .channel('contacts-realtime-external')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'contacts' },
@@ -920,7 +929,8 @@ export const useContacts = () => {
 
     return () => {
       if (debounceTimer) clearTimeout(debounceTimer);
-      supabase.removeChannel(channel);
+      supabase.removeChannel(channelCloud);
+      externalSupabase.removeChannel(channelExternal);
     };
   }, [fetchContacts]);
 
