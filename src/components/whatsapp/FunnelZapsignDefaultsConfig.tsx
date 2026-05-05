@@ -71,7 +71,7 @@ export function FunnelZapsignDefaultsConfig({ boardId, hideBoardSelector }: Prop
     (async () => {
       setLoadingTemplates(true);
       try {
-        const { data, error } = await supabase.functions.invoke('zapsign-action', {
+        const { data, error } = await supabase.functions.invoke('zapsign-api', {
           body: { action: 'list_templates' },
         });
         if (error) throw error;
