@@ -2,14 +2,15 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { FileText, Users, Bell, Video, Bot } from 'lucide-react';
+import { FileText, Users, Bell, Video, Bot, Scale } from 'lucide-react';
 import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { BoardGroupInstancesConfig } from './BoardGroupInstancesConfig';
 import { FunnelZapsignDefaultsConfig } from './FunnelZapsignDefaultsConfig';
 import { OnboardingMeetingConfig } from './OnboardingMeetingConfig';
 import { OnboardingPostCloseConfig } from './OnboardingPostCloseConfig';
+import { OnboardingCaseConfig } from './OnboardingCaseConfig';
 
-const TABS = ['documentos', 'grupo', 'atendimento', 'reuniao', 'notificacoes'] as const;
+const TABS = ['documentos', 'grupo', 'atendimento', 'caso', 'reuniao', 'notificacoes'] as const;
 type TabKey = (typeof TABS)[number];
 
 interface OnboardingConfigProps {
