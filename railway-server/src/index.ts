@@ -73,8 +73,8 @@ app.post('/functions/:name', async (req, res) => {
 
 // Rota pública para webhook ZapSign — encaminha pro edge function que tem a lógica completa
 // (notificações, envio de PDF assinado, enrich-lead, anexo no lead, etc.)
-const CLOUD_FUNCTIONS_URL = process.env.SUPABASE_URL || 'https://gliigkupoebmlbwyvijp.supabase.co';
-const CLOUD_ANON_KEY = process.env.SUPABASE_ANON_KEY || '';
+const CLOUD_FUNCTIONS_URL = process.env.CLOUD_FUNCTIONS_URL || process.env.SUPABASE_URL || 'https://gliigkupoebmlbwyvijp.supabase.co';
+const CLOUD_ANON_KEY = process.env.CLOUD_ANON_KEY || process.env.SUPABASE_ANON_KEY || '';
 
 app.post('/webhooks/zapsign', async (req, res) => {
   // Responde rápido pra ZapSign não reenviar; processa em background
