@@ -64,7 +64,7 @@ export default function BookingPage() {
 
     // Fetch host name
     if (data.host_user_id) {
-      const { data: profile } = await supabase.from('profiles').select('full_name').eq('user_id', data.host_user_id).maybeSingle();
+      const { data: profile } = await externalSupabase.from('profiles').select('full_name').eq('user_id', data.host_user_id).maybeSingle();
       if (profile) setHostName(profile.full_name || '');
     }
 
