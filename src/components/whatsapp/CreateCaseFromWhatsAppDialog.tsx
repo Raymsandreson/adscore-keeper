@@ -510,11 +510,17 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
       const conversationMessages = await resolveConversationMessages();
       const transcript = buildConversationTranscript(conversationMessages, contactName);
 
+      // Remap Cloud auth uid -> External uid (FK em contacts/leads/lead_processes
+      // aponta pra users do Externo via auth_uuid_mapping). Sem remap = 23503.
+      const extCreatedBy = await remapToExternal(user?.id);
+
       // Auto-create contact if none exists
       let finalContactId = contactId;
       if (!finalContactId && contactPhone) {
         const normalizedPhone = contactPhone.replace(/\D/g, '');
-        const { data: existingContact } = await supabase
+        // Buscar no Externo (onde o contato realmente vive). Cloud não tem mais
+        // os contatos sincronizados.
+        const { data: existingContact } = await externalSupabase
           .from('contacts')
           .select('id, full_name')
           .or(`phone.eq.${contactPhone},phone.eq.${normalizedPhone},phone.ilike.%${normalizedPhone.slice(-8)}%`)
@@ -524,15 +530,13 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
         if (existingContact) {
           finalContactId = existingContact.id;
         } else {
-          // FIX: contact deve ser criado no Externo. legal_cases (no Externo) tem
-          // FK para contacts; criar no Cloud causaria FK violation downstream.
           const { data: newContact, error: cErr } = await externalSupabase
             .from('contacts')
             .insert([{
               full_name: contactName || 'Contato WhatsApp',
               phone: contactPhone,
               action_source: 'whatsapp',
-              created_by: user?.id || null,
+              created_by: extCreatedBy,
             }] as any)
             .select('id')
             .single();
@@ -565,14 +569,11 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
           lead_name: title.trim(),
           lead_phone: contactPhone || null,
           source: 'whatsapp',
-          created_by: user?.id || null,
+          created_by: extCreatedBy,
           became_client_date: closingDateStr,
           board_id: selectedBoardId,
           status: closedStageId || 'closed',
         };
-        // FIX: lead deve ser criado no Externo. A FK legal_cases.lead_id (no Externo)
-        // procura o lead no Externo; criar no Cloud causa erro 23503 ("Key is not
-        // present in table 'leads'") pois não existe trigger de bridge para `leads`.
         const { data: newLead, error: leadErr } = await externalSupabase
           .from('leads')
           .insert(leadInsert)
