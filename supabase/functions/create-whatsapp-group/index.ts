@@ -556,7 +556,7 @@ Deno.serve(async (req) => {
         .from('board_group_instances')
         .select('instance_id, role_title, role_description, applies_to')
         .eq('board_id', board_id)
-        .in('applies_to', ['both', 'open'])
+        .in('applies_to', appliesFilter)
 
       if (bgi && bgi.length > 0) {
         const instanceIds = bgi.map((b: any) => b.instance_id)
