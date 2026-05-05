@@ -2,14 +2,15 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { FileText, Users, Bell, Video, Bot } from 'lucide-react';
+import { FileText, Users, Bell, Video, Bot, Scale } from 'lucide-react';
 import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { BoardGroupInstancesConfig } from './BoardGroupInstancesConfig';
 import { FunnelZapsignDefaultsConfig } from './FunnelZapsignDefaultsConfig';
 import { OnboardingMeetingConfig } from './OnboardingMeetingConfig';
 import { OnboardingPostCloseConfig } from './OnboardingPostCloseConfig';
+import { OnboardingCaseConfig } from './OnboardingCaseConfig';
 
-const TABS = ['documentos', 'grupo', 'atendimento', 'reuniao', 'notificacoes'] as const;
+const TABS = ['documentos', 'grupo', 'atendimento', 'caso', 'reuniao', 'notificacoes'] as const;
 type TabKey = (typeof TABS)[number];
 
 interface OnboardingConfigProps {
@@ -60,7 +61,7 @@ export function OnboardingConfig({ onOpenAgents }: OnboardingConfigProps = {}) {
         <div className="sticky top-0 z-10 -mx-4 px-4 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 border-b">
           <TabsList
             ref={listRef as any}
-            className="w-full sm:w-auto inline-flex sm:grid sm:grid-cols-5 h-auto p-1 bg-muted/50 overflow-x-auto no-scrollbar snap-x snap-mandatory scroll-px-4 sm:snap-none scroll-smooth"
+            className="w-full sm:w-auto inline-flex sm:grid sm:grid-cols-6 h-auto p-1 bg-muted/50 overflow-x-auto no-scrollbar snap-x snap-mandatory scroll-px-4 sm:snap-none scroll-smooth"
           >
             <TabsTrigger value="documentos" className="snap-center sm:snap-align-none flex items-center gap-2 py-2 px-3 whitespace-nowrap data-[state=active]:bg-fuchsia-500/10 data-[state=active]:text-fuchsia-600 dark:data-[state=active]:text-fuchsia-400">
               <FileText className="h-4 w-4 shrink-0" />
@@ -73,6 +74,10 @@ export function OnboardingConfig({ onOpenAgents }: OnboardingConfigProps = {}) {
             <TabsTrigger value="atendimento" className="snap-center sm:snap-align-none flex items-center gap-2 py-2 px-3 whitespace-nowrap data-[state=active]:bg-emerald-500/10 data-[state=active]:text-emerald-600 dark:data-[state=active]:text-emerald-400">
               <Bot className="h-4 w-4 shrink-0" />
               <span className="text-sm font-medium">Atendimento</span>
+            </TabsTrigger>
+            <TabsTrigger value="caso" className="snap-center sm:snap-align-none flex items-center gap-2 py-2 px-3 whitespace-nowrap data-[state=active]:bg-orange-500/10 data-[state=active]:text-orange-600 dark:data-[state=active]:text-orange-400">
+              <Scale className="h-4 w-4 shrink-0" />
+              <span className="text-sm font-medium">Caso</span>
             </TabsTrigger>
             <TabsTrigger value="reuniao" className="snap-center sm:snap-align-none flex items-center gap-2 py-2 px-3 whitespace-nowrap data-[state=active]:bg-sky-500/10 data-[state=active]:text-sky-600 dark:data-[state=active]:text-sky-400">
               <Video className="h-4 w-4 shrink-0" />
@@ -97,6 +102,9 @@ export function OnboardingConfig({ onOpenAgents }: OnboardingConfigProps = {}) {
           )}
           {tab === 'atendimento' && selectedBoardId && (
             <OnboardingPostCloseConfig boardId={selectedBoardId} onOpenAgents={onOpenAgents} />
+          )}
+          {tab === 'caso' && selectedBoardId && (
+            <OnboardingCaseConfig boardId={selectedBoardId} />
           )}
           {tab === 'reuniao' && selectedBoardId && (
             <OnboardingMeetingConfig boardId={selectedBoardId} />
