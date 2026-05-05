@@ -15,6 +15,7 @@ import { toast } from 'sonner';
 import { format, subDays, subHours, startOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
+import { StateCombobox, CityCombobox, CepInput, detectLocationFieldType } from '@/components/shared/BrazilianLocationInput';
 
 interface ZapSignTemplate {
   token: string;
