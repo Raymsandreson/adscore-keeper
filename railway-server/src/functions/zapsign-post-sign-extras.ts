@@ -8,11 +8,12 @@
 import { supabase } from '../lib/supabase';
 
 const ZAPSIGN_TOKEN = process.env.ZAPSIGN_API_TOKEN || '';
-const LOVABLE_API_KEY = process.env.LOVABLE_API_KEY || '';
+const GOOGLE_AI_API_KEY = process.env.GOOGLE_AI_API_KEY || '';
 const CLOUD_FUNCTIONS_URL = process.env.CLOUD_FUNCTIONS_URL || 'https://gliigkupoebmlbwyvijp.supabase.co';
 const CLOUD_ANON_KEY = process.env.CLOUD_ANON_KEY || process.env.SUPABASE_ANON_KEY || '';
 
-const AI_GATEWAY = 'https://ai.gateway.lovable.dev/v1/chat/completions';
+const GEMINI_MODEL = 'gemini-2.5-flash-lite';
+const GEMINI_API = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
 interface PostSignInput {
   doc_token: string;
@@ -33,71 +34,71 @@ const DOC_TYPES = [
   'Outro',
 ] as const;
 
+async function fetchAsBase64(url: string): Promise<{ data: string; mimeType: string } | null> {
+  try {
+    const r = await fetch(url);
+    if (!r.ok) return null;
+    const mimeType = r.headers.get('content-type')?.split(';')[0]?.trim() || 'application/octet-stream';
+    const buf = Buffer.from(await r.arrayBuffer());
+    return { data: buf.toString('base64'), mimeType };
+  } catch {
+    return null;
+  }
+}
+
 async function classifyDocument(
   fileUrl: string,
   fileName: string,
 ): Promise<{ type: string; title: string }> {
-  if (!LOVABLE_API_KEY) return { type: 'Outro', title: fileName };
+  if (!GOOGLE_AI_API_KEY) {
+    console.warn('[post-sign-extras] GOOGLE_AI_API_KEY missing, cannot classify');
+    return { type: 'Outro', title: fileName };
+  }
+
+  const file = await fetchAsBase64(fileUrl);
+  if (!file) {
+    console.warn('[post-sign-extras] failed to fetch file for classification:', fileName);
+    return { type: 'Outro', title: fileName };
+  }
+
+  const prompt = `Você classifica documentos brasileiros enviados em processos jurídicos.
+Tipos permitidos: ${DOC_TYPES.join(', ')}.
+Nome do arquivo: "${fileName}".
+Responda EXCLUSIVAMENTE um JSON no formato:
+{"document_type":"<um dos tipos>","title":"<título descritivo curto, ex: RG do titular>"}`;
 
   try {
-    const body = {
-      model: 'google/gemini-2.5-flash-lite',
-      messages: [
-        {
-          role: 'system',
-          content:
-            'Você classifica documentos brasileiros enviados em processos jurídicos. Use apenas os tipos da lista. Devolva via tool call.',
-        },
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'text',
-              text: `Classifique este arquivo "${fileName}". URL: ${fileUrl}`,
-            },
-            { type: 'image_url', image_url: { url: fileUrl } },
-          ],
-        },
-      ],
-      tools: [
-        {
-          type: 'function',
-          function: {
-            name: 'save_classification',
-            parameters: {
-              type: 'object',
-              properties: {
-                document_type: { type: 'string', enum: [...DOC_TYPES] },
-                title: { type: 'string', description: 'Título descritivo curto, ex: RG do titular' },
-              },
-              required: ['document_type', 'title'],
-              additionalProperties: false,
-            },
-          },
-        },
-      ],
-      tool_choice: { type: 'function', function: { name: 'save_classification' } },
-    };
-    const resp = await fetch(AI_GATEWAY, {
+    const resp = await fetch(`${GEMINI_API}?key=${GOOGLE_AI_API_KEY}`, {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              { text: prompt },
+              { inlineData: { mimeType: file.mimeType, data: file.data } },
+            ],
+          },
+        ],
+        generationConfig: {
+          responseMimeType: 'application/json',
+          temperature: 0.1,
+        },
+      }),
     });
     if (!resp.ok) {
-      console.warn('[post-sign-extras] AI classify status', resp.status);
+      console.warn('[post-sign-extras] Gemini classify status', resp.status, await resp.text().catch(() => ''));
       return { type: 'Outro', title: fileName };
     }
     const data: any = await resp.json();
-    const args = data?.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments;
-    if (!args) return { type: 'Outro', title: fileName };
-    const parsed = JSON.parse(args);
-    return {
-      type: parsed.document_type || 'Outro',
-      title: parsed.title || fileName,
-    };
+    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!text) return { type: 'Outro', title: fileName };
+    const parsed = JSON.parse(text);
+    const type = (DOC_TYPES as readonly string[]).includes(parsed.document_type)
+      ? parsed.document_type
+      : 'Outro';
+    return { type, title: parsed.title || fileName };
   } catch (e) {
     console.warn('[post-sign-extras] classify error:', e);
     return { type: 'Outro', title: fileName };
