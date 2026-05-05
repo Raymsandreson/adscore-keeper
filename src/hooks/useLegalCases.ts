@@ -115,10 +115,15 @@ export function useLegalCases(leadId?: string) {
       }
 
       const extCreatedByCase = await remapToExternal(user?.id);
+      const { leadId: externalLeadId, leadData: externalLeadData } = await ensureExternalLeadForCase(
+        caseData.lead_id,
+        caseData.title,
+        user?.id,
+      );
       const { data, error } = await externalSupabase
         .from('legal_cases')
         .insert({
-          lead_id: caseData.lead_id || null,
+          lead_id: externalLeadId,
           nucleus_id: caseData.nucleus_id || null,
           case_number: caseNumber,
           title: caseData.title,
@@ -144,19 +149,11 @@ export function useLegalCases(leadId?: string) {
       // Auto-create process tracking record
       try {
         // Fetch lead data for auto-fill
-        let leadData: any = null;
-        if (caseData.lead_id) {
-          const { data: ld } = await supabase
-            .from('leads')
-            .select('lead_name, acolhedor, case_type')
-            .eq('id', caseData.lead_id)
-            .maybeSingle();
-          leadData = ld;
-        }
+        const leadData: any = externalLeadData;
 
         await externalSupabase.from('case_process_tracking').insert({
           case_id: enriched.id,
-          lead_id: caseData.lead_id || null,
+          lead_id: externalLeadId,
           cliente: leadData?.lead_name || caseData.title,
           caso: caseData.title,
           tipo: leadData?.case_type || (enriched as any).benefit_type || null,
@@ -176,7 +173,7 @@ export function useLegalCases(leadId?: string) {
           const extAssignedTo = await remapToExternal(WANESSA_USER_ID);
           const extCreatedBy = await remapToExternal(user?.id);
           await externalSupabase.from('lead_activities').insert({
-            lead_id: caseData.lead_id || null,
+            lead_id: externalLeadId,
             lead_name: caseData.title,
             title: 'ONBOARDING CLIENTE',
             description: `Atividade de onboarding criada automaticamente para o caso ${caseNumber}`,
