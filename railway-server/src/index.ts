@@ -10,11 +10,13 @@ dotenv.config();
 import { handler as whatsappWebhook } from './functions/whatsapp-webhook';
 import { handler as callQueueProcessor } from './functions/call-queue-processor';
 import { handler as repairWhatsappGroup } from './functions/repair-whatsapp-group';
+import { handler as zapsignWebhook } from './functions/zapsign-webhook';
 
 const functionHandlers: Record<string, express.RequestHandler> = {
   'whatsapp-webhook': whatsappWebhook,
   'call-queue-processor': callQueueProcessor,
   'repair-whatsapp-group': repairWhatsappGroup,
+  'zapsign-webhook': zapsignWebhook,
 };
 
 const app = express();
