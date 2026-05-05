@@ -81,7 +81,7 @@ export function FunnelZapsignDefaultsConfig({ boardId, hideBoardSelector, sectio
   const [groupSearch, setGroupSearch] = useState('');
   const [phoneInput, setPhoneInput] = useState('');
 
-  const showProc = section === 'all' || section === 'procuracao';
+  const showProc = section === 'all' || section === 'procuracao' || section === 'documentos';
   const showGroup = section === 'all' || section === 'grupo';
   const showNotif = section === 'all' || section === 'notificacoes';
 
