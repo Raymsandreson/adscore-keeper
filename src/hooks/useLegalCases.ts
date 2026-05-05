@@ -160,18 +160,18 @@ export function useLegalCases(leadId?: string) {
       // Auto-create process tracking record
       try {
         // Fetch lead data for auto-fill
-        const leadData: any = externalLeadData;
+        const leadData = externalLeadData;
 
         await externalSupabase.from('case_process_tracking').insert({
           case_id: enriched.id,
           lead_id: externalLeadId,
           cliente: leadData?.lead_name || caseData.title,
           caso: caseData.title,
-          tipo: leadData?.case_type || (enriched as any).benefit_type || null,
-          acolhedor: leadData?.acolhedor || (enriched as any).acolhedor || null,
+          tipo: leadData?.case_type || enriched.benefit_type || null,
+          acolhedor: leadData?.acolhedor || enriched.acolhedor || null,
           data_criacao: new Date().toISOString().split('T')[0],
           import_source: 'auto_lead_close',
-        } as any);
+        } as never);
       } catch (trackingError) {
         console.warn('Could not auto-create tracking record:', trackingError);
       }
@@ -195,7 +195,7 @@ export function useLegalCases(leadId?: string) {
             assigned_to_name: WANESSA_NAME,
             created_by: extCreatedBy,
             deadline: new Date().toISOString().split('T')[0],
-          } as any);
+          } as never);
         } catch (onboardingError) {
           console.warn('Could not auto-create onboarding activity:', onboardingError);
         }
