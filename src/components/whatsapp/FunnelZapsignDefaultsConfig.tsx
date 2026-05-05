@@ -228,7 +228,13 @@ export function FunnelZapsignDefaultsConfig({ boardId, hideBoardSelector }: Prop
                       <SelectItem value="assinaturaTela">Assinatura na tela</SelectItem>
                       <SelectItem value="tokenSms">Token por SMS</SelectItem>
                       <SelectItem value="tokenEmail">Token por e-mail</SelectItem>
+                      <SelectItem value="tokenWhatsapp">Token por WhatsApp</SelectItem>
                       <SelectItem value="selfieDocFoto">Selfie + foto do documento</SelectItem>
+                      <SelectItem value="selfieFoto">Selfie</SelectItem>
+                      <SelectItem value="documentoFoto">Foto do documento</SelectItem>
+                      <SelectItem value="biometricoCertificado">Biometria facial + certificado</SelectItem>
+                      <SelectItem value="certificadoDigital">Certificado digital (e-CPF/e-CNPJ)</SelectItem>
+                      <SelectItem value="provaDeVida">Prova de vida</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
