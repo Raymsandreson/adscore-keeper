@@ -1376,7 +1376,10 @@ const ActivitiesPage = () => {
     const clientFirstName = extractClientFirstName(formClientNameOverride || formLeadName || '');
     const hourFb = new Date().getHours();
     const saudacaoFb = hourFb < 12 ? 'Bom dia' : hourFb < 18 ? 'Boa tarde' : 'Boa noite';
-    return `*${saudacaoFb} Sr(a). ${clientFirstName}*\n\n*Assunto da atividade:* ${formTitle.toUpperCase()}\n\n${fieldLines}\n\n${responsavelDrFb ? `*${responsavelDrFb} voltará com mais informações no dia ${notifDate || '—'}, até o final do dia.*` : ''}\n${tempoStr}\n\nEstamos à disposição para quaisquer dúvidas.\n\n🚀Avante!\n\nTem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se tudo está claro, digite 2.`;
+    const greetingLine = clientFirstName
+      ? `*${saudacaoFb} Sr(a). ${clientFirstName}*`
+      : `*${saudacaoFb}*`;
+    return `${greetingLine}\n\n*Assunto da atividade:* ${formTitle.toUpperCase()}\n\n${fieldLines}\n\n${responsavelDrFb ? `*${responsavelDrFb} voltará com mais informações no dia ${notifDate || '—'}, até o final do dia.*` : ''}\n${tempoStr}\n\nEstamos à disposição para quaisquer dúvidas.\n\n🚀Avante!\n\nTem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se tudo está claro, digite 2.`;
   };
 
   const activityFormContent = (
