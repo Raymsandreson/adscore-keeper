@@ -896,6 +896,34 @@ export const useContacts = () => {
     fetchTagStats();
   }, [fetchContacts]);
 
+  // Realtime: refresh contact list automatically when webhooks/edge functions
+  // insert/update/delete rows (e.g. ZapSign signed contracts auto-creating contacts).
+  useEffect(() => {
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleRefresh = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        fetchContacts();
+        fetchStats();
+        fetchTagStats();
+      }, 600);
+    };
+
+    const channel = supabase
+      .channel('contacts-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'contacts' },
+        () => scheduleRefresh()
+      )
+      .subscribe();
+
+    return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      supabase.removeChannel(channel);
+    };
+  }, [fetchContacts]);
+
   return {
     contacts,
     totalCount,
