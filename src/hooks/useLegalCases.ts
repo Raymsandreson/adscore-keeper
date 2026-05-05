@@ -4,8 +4,19 @@ import { externalSupabase } from '@/integrations/supabase/external-client';
 import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { toast } from 'sonner';
 
-async function ensureExternalLeadForCase(leadId: string | null | undefined, title: string, cloudUserId: string | null | undefined) {
-  if (!leadId) return { leadId: null, leadData: null as any };
+type ExternalLeadCaseData = {
+  id: string;
+  lead_name: string | null;
+  acolhedor: string | null;
+  case_type: string | null;
+};
+
+type EnrichedLegalCaseRow = LegalCase & {
+  specialized_nuclei?: { name?: string | null; prefix?: string | null; color?: string | null } | null;
+};
+
+async function ensureExternalLeadForCase(leadId: string | null | undefined, title: string, cloudUserId: string | null | undefined): Promise<{ leadId: string | null; leadData: ExternalLeadCaseData | null }> {
+  if (!leadId) return { leadId: null, leadData: null };
 
   const { data: existingLead, error: lookupError } = await externalSupabase
     .from('leads')
@@ -27,7 +38,7 @@ async function ensureExternalLeadForCase(leadId: string | null | undefined, titl
       became_client_date: new Date().toISOString().split('T')[0],
       created_by: extCreatedBy,
       notes: 'Lead espelhado automaticamente no banco externo para vincular caso jurídico.',
-    } as any)
+    } as never)
     .select('id, lead_name, acolhedor, case_type')
     .single();
 
