@@ -280,6 +280,13 @@ Deno.serve(async (req) => {
 
     const body = await req.json()
     const { phone, lead_name, board_id, contact_phone, creator_instance_id, lead_id } = body
+    // phase: 'open' (antes do fechamento) | 'closed' (depois do fechamento)
+    // Fallback: deriva de creation_origin — auto_sign/zapsign => closed, default => open
+    const explicitPhase: 'open' | 'closed' | undefined = body?.phase
+    const phase: 'open' | 'closed' = explicitPhase
+      || (['auto_sign', 'zapsign', 'post_sign'].includes(body?.creation_origin) ? 'closed' : 'open')
+    const appliesFilter = phase === 'closed' ? ['both', 'closed'] : ['both', 'open']
+    console.log(`[create-group] phase=${phase} applies_to filter=${JSON.stringify(appliesFilter)}`)
 
     if (!lead_name) {
       return new Response(JSON.stringify({ success: false, error: 'lead_name is required' }), {
@@ -549,7 +556,7 @@ Deno.serve(async (req) => {
         .from('board_group_instances')
         .select('instance_id, role_title, role_description, applies_to')
         .eq('board_id', board_id)
-        .in('applies_to', ['both', 'open'])
+        .in('applies_to', appliesFilter)
 
       if (bgi && bgi.length > 0) {
         const instanceIds = bgi.map((b: any) => b.instance_id)
