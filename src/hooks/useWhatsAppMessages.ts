@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { db, authClient } from '@/integrations/authClient';
-import { ensureExternalSession } from '@/integrations/authClient/external-client';
+import { db, authClient } from '@/integrations/supabase';
+import { ensureExternalSession } from '@/integrations/supabase/external-client';
 import {
   getConversationSummaries,
   getConversationMessages,
@@ -8,7 +8,7 @@ import {
   linkMessagesToLead,
   linkConversationContactToLead,
   linkMessagesToContact,
-} from '@/integrations/authClient/external-rpc';
+} from '@/integrations/supabase/external-rpc';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useUserRole } from '@/hooks/useUserRole';
 import { toast } from 'sonner';

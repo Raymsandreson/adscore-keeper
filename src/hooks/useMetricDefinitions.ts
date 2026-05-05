@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { db, authClient } from '@/integrations/authClient';
+import { db, authClient } from '@/integrations/supabase';
 import { useAuthContext } from '@/contexts/AuthContext';
 
 export interface CompanyArea {

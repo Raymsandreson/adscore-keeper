@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { db, authClient } from '@/integrations/authClient';
-import { ensureRemapCache, remapToCloudSync } from '@/integrations/authClient/uuid-remap';
+import { db, authClient } from '@/integrations/supabase';
+import { ensureRemapCache, remapToCloudSync } from '@/integrations/supabase/uuid-remap';
 import { useUserRole } from './useUserRole';
 import { startOfDay, endOfDay, format } from 'date-fns';
 
