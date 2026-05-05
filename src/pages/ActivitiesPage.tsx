@@ -1024,7 +1024,7 @@ const ActivitiesPage = () => {
         .eq('lead_id', leadId);
       if (linkedData && linkedData.length > 0) {
         const contactIds = linkedData.map(cl => cl.contact_id);
-        const { data: contactsData } = await supabase
+        const { data: contactsData } = await externalSupabase
           .from('contacts')
           .select('id, full_name')
           .in('id', contactIds)
@@ -1032,7 +1032,7 @@ const ActivitiesPage = () => {
         setAvailableContacts(contactsData || []);
       } else {
         // No linked contacts, load all
-        const { data: allContacts } = await supabase
+        const { data: allContacts } = await externalSupabase
           .from('contacts')
           .select('id, full_name')
           .order('full_name')
