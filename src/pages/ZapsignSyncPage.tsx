@@ -147,7 +147,7 @@ export default function ZapsignSyncPage({ externalDateRange, externalPeriodLabel
       debounceTimer = setTimeout(() => {
         loadState();
         // Trigger doc counts refresh by nudging dateRange dependency
-        setDocCounts((prev) => ({ ...prev }));
+        setDocsRefreshTick((n) => n + 1);
       }, 800);
     };
 
