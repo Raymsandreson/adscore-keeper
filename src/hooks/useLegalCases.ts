@@ -83,6 +83,7 @@ export function useLegalCases(leadId?: string) {
         caseNumber = generated;
       }
 
+      const extCreatedByCase = await remapToExternal(user?.id);
       const { data, error } = await externalSupabase
         .from('legal_cases')
         .insert({
@@ -94,7 +95,7 @@ export function useLegalCases(leadId?: string) {
           notes: caseData.notes || null,
           acolhedor: caseData.acolhedor || null,
           closed_at: caseData.closed_at || null,
-          created_by: user?.id,
+          created_by: extCreatedByCase,
         } as any)
         .select('*, specialized_nuclei(name, prefix, color)')
         .single();
