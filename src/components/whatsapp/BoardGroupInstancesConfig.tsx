@@ -205,8 +205,9 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
     setNuclei((nucleiRes.data || []).map((n: any) => ({ id: n.id, name: n.name, prefix: n.prefix })));
     setTeamMembers((profilesRes.data || []).filter((p: any) => p.full_name));
     setProducts((productsRes.data || []).map((p: any) => ({ id: p.id, name: p.name, nucleus_id: p.nucleus_id })));
-    if (boardsRes.data && boardsRes.data.length > 0) {
-      setSelectedBoard(boardsRes.data[0].id);
+    const funnelBoards = ((boardsRes.data as any[]) || []).filter(b => b.board_type === 'funnel');
+    if (boardId === undefined && funnelBoards.length > 0) {
+      setInternalSelectedBoard(funnelBoards[0].id);
     }
     setLoading(false);
   };
