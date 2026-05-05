@@ -4,6 +4,37 @@ import { externalSupabase } from '@/integrations/supabase/external-client';
 import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { toast } from 'sonner';
 
+async function ensureExternalLeadForCase(leadId: string | null | undefined, title: string, cloudUserId: string | null | undefined) {
+  if (!leadId) return { leadId: null, leadData: null as any };
+
+  const { data: existingLead, error: lookupError } = await externalSupabase
+    .from('leads')
+    .select('id, lead_name, acolhedor, case_type')
+    .eq('id', leadId)
+    .maybeSingle();
+
+  if (lookupError) throw lookupError;
+  if (existingLead) return { leadId, leadData: existingLead };
+
+  const extCreatedBy = await remapToExternal(cloudUserId);
+  const { data: createdLead, error: createLeadError } = await externalSupabase
+    .from('leads')
+    .insert({
+      id: leadId,
+      lead_name: title,
+      source: 'whatsapp',
+      lead_status: 'closed',
+      became_client_date: new Date().toISOString().split('T')[0],
+      created_by: extCreatedBy,
+      notes: 'Lead espelhado automaticamente no banco externo para vincular caso jurídico.',
+    } as any)
+    .select('id, lead_name, acolhedor, case_type')
+    .single();
+
+  if (createLeadError) throw createLeadError;
+  return { leadId: createdLead.id, leadData: createdLead };
+}
+
 export interface LegalCase {
   id: string;
   lead_id: string | null;
