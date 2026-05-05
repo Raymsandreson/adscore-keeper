@@ -86,7 +86,7 @@ export function useLegalCases(leadId?: string) {
         .order('created_at', { ascending: false });
       if (error) throw error;
       
-      const enriched = (data || []).map((c: any) => ({
+      const enriched = ((data || []) as EnrichedLegalCaseRow[]).map((c) => ({
         ...c,
         nucleus_name: c.specialized_nuclei?.name,
         nucleus_prefix: c.specialized_nuclei?.prefix,
@@ -143,16 +143,16 @@ export function useLegalCases(leadId?: string) {
           acolhedor: caseData.acolhedor || null,
           closed_at: caseData.closed_at || null,
           created_by: extCreatedByCase,
-        } as any)
+        } as never)
         .select('*, specialized_nuclei(name, prefix, color)')
         .single();
       if (error) throw error;
 
       const enriched = {
         ...data,
-        nucleus_name: (data as any).specialized_nuclei?.name,
-        nucleus_prefix: (data as any).specialized_nuclei?.prefix,
-        nucleus_color: (data as any).specialized_nuclei?.color,
+        nucleus_name: (data as EnrichedLegalCaseRow).specialized_nuclei?.name,
+        nucleus_prefix: (data as EnrichedLegalCaseRow).specialized_nuclei?.prefix,
+        nucleus_color: (data as EnrichedLegalCaseRow).specialized_nuclei?.color,
       } as LegalCase;
 
       setCases(prev => [enriched, ...prev]);
