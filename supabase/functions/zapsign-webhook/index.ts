@@ -685,6 +685,28 @@ Deno.serve(async (req) => {
         try {
           console.log(`[zapsign-webhook] No lead linked, auto-creating contact+lead for phone: ${cleanPhone}`)
 
+          // Remap Cloud UUID -> External UUID for FK to auth.users on External DB
+          let extOwnerId: string | null = resolvedOwnerId
+          if (resolvedOwnerId) {
+            const { data: mapRow } = await supabase
+              .from('auth_uuid_mapping')
+              .select('ext_uuid')
+              .eq('cloud_uuid', resolvedOwnerId)
+              .maybeSingle()
+            if (mapRow?.ext_uuid) {
+              extOwnerId = mapRow.ext_uuid
+              console.log(`[zapsign-webhook] Remapped owner ${resolvedOwnerId} -> ext ${extOwnerId}`)
+            } else {
+              // Try the other direction (already external)
+              const { data: revRow } = await supabase
+                .from('auth_uuid_mapping')
+                .select('ext_uuid')
+                .eq('ext_uuid', resolvedOwnerId)
+                .maybeSingle()
+              if (revRow?.ext_uuid) extOwnerId = revRow.ext_uuid
+            }
+          }
+
           // 1. Fetch conversation messages for AI extraction (also grab campaign_id)
           const { data: convMessages } = await supabase
             .from('whatsapp_messages')
