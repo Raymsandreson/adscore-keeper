@@ -902,7 +902,7 @@ const ActivitiesPage = () => {
         setLeadPreview(leadPreviewRes.data ? { ...leadPreviewRes.data, board_name: boardName } : null);
         if (linkedData.data && linkedData.data.length > 0) {
           const contactIds = linkedData.data.map(cl => cl.contact_id);
-          const { data: contactsData } = await supabase
+          const { data: contactsData } = await externalSupabase
             .from('contacts')
             .select('id, full_name')
             .in('id', contactIds)
