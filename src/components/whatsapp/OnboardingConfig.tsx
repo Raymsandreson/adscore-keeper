@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { FileSignature, Users, Bell } from 'lucide-react';
+import { FileText, Users, Bell } from 'lucide-react';
 import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { BoardGroupInstancesConfig } from './BoardGroupInstancesConfig';
 import { FunnelZapsignDefaultsConfig } from './FunnelZapsignDefaultsConfig';
