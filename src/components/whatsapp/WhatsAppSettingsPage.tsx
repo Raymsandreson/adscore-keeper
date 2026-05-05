@@ -264,7 +264,7 @@ export function WhatsAppSettingsPage({ onBack, initialTab = 'instances' }: Props
             {activeTab === 'reports' && <WhatsAppReportSettings />}
             {activeTab === 'ads' && <WhatsAppAdLinkSettings />}
             
-            {activeTab === 'onboarding' && <OnboardingConfig />}
+            {activeTab === 'onboarding' && <OnboardingConfig onOpenAgents={() => setActiveTab('commands')} />}
             {activeTab === 'automations' && <AgentAutomationsTab />}
             {activeTab === 'nuclei' && <NucleiSettings />}
             {activeTab === 'enrichment' && <EnrichmentSettings />}
