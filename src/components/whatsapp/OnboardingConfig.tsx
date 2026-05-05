@@ -18,21 +18,21 @@ export function OnboardingConfig() {
           <TabsList className="w-full sm:w-auto inline-flex sm:grid sm:grid-cols-3 h-auto p-1 bg-muted/50 overflow-x-auto no-scrollbar snap-x snap-mandatory scroll-px-4 sm:snap-none">
             <TabsTrigger
               value="procuracao"
-              className="flex items-center gap-2 py-2 px-3 whitespace-nowrap data-[state=active]:bg-fuchsia-500/10 data-[state=active]:text-fuchsia-600 dark:data-[state=active]:text-fuchsia-400"
+              className="snap-center sm:snap-align-none flex items-center gap-2 py-2 px-3 whitespace-nowrap data-[state=active]:bg-fuchsia-500/10 data-[state=active]:text-fuchsia-600 dark:data-[state=active]:text-fuchsia-400"
             >
               <FileSignature className="h-4 w-4 shrink-0" />
               <span className="text-sm font-medium">Procuração</span>
             </TabsTrigger>
             <TabsTrigger
               value="grupo"
-              className="flex items-center gap-2 py-2 px-3 whitespace-nowrap data-[state=active]:bg-violet-500/10 data-[state=active]:text-violet-600 dark:data-[state=active]:text-violet-400"
+              className="snap-center sm:snap-align-none flex items-center gap-2 py-2 px-3 whitespace-nowrap data-[state=active]:bg-violet-500/10 data-[state=active]:text-violet-600 dark:data-[state=active]:text-violet-400"
             >
               <Users className="h-4 w-4 shrink-0" />
               <span className="text-sm font-medium">Grupo</span>
             </TabsTrigger>
             <TabsTrigger
               value="notificacoes"
-              className="flex items-center gap-2 py-2 px-3 whitespace-nowrap data-[state=active]:bg-yellow-500/10 data-[state=active]:text-yellow-600 dark:data-[state=active]:text-yellow-400"
+              className="snap-center sm:snap-align-none flex items-center gap-2 py-2 px-3 whitespace-nowrap data-[state=active]:bg-yellow-500/10 data-[state=active]:text-yellow-600 dark:data-[state=active]:text-yellow-400"
             >
               <Bell className="h-4 w-4 shrink-0" />
               <span className="text-sm font-medium">Notificações</span>
