@@ -10,11 +10,13 @@ dotenv.config();
 import { handler as whatsappWebhook } from './functions/whatsapp-webhook';
 import { handler as callQueueProcessor } from './functions/call-queue-processor';
 import { handler as repairWhatsappGroup } from './functions/repair-whatsapp-group';
+import { handler as zapsignWebhook } from './functions/zapsign-webhook';
 
 const functionHandlers: Record<string, express.RequestHandler> = {
   'whatsapp-webhook': whatsappWebhook,
   'call-queue-processor': callQueueProcessor,
   'repair-whatsapp-group': repairWhatsappGroup,
+  'zapsign-webhook': zapsignWebhook,
 };
 
 const app = express();
@@ -66,6 +68,17 @@ app.post('/functions/:name', async (req, res) => {
       error: 'Internal server error',
       message: err instanceof Error ? err.message : 'Unknown error',
     });
+  }
+});
+
+// Rota pública para webhook ZapSign (sem x-api-key — segurança via doc_token validado no handler)
+app.post('/webhooks/zapsign', async (req, res) => {
+  try {
+    await zapsignWebhook(req, res, () => {});
+  } catch (err) {
+    console.error('[webhooks/zapsign] Error:', err);
+    // ZapSign não deve receber 5xx pra não reenviar
+    res.status(200).json({ success: false, error: 'internal_error' });
   }
 });
 

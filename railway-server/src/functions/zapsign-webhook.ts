@@ -1,21 +1,8 @@
-// zapsign-webhook-v2
-// Recebe eventos do ZapSign, grava payload bruto em zapsign_document_events
-// e atualiza zapsign_documents. Escreve direto no Externo (kmedldlepwiityjsdahz).
-//
-// Eventos cobertos (ZapSign):
-//   doc_created, doc_signed, doc_refused, doc_deleted,
-//   signer_signed, signer_viewed, signer_refused, signer_new_attempt,
-//   created_signer, deleted_signer
-//
-// Política: nunca devolver erro pra ZapSign — sempre HTTP 200, payload é
-// gravado primeiro (raw insert) pra não perder evento mesmo se update falhar.
+import type { Request, Response } from 'express';
+import { supabase } from '../lib/supabase';
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
-
-const cors = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+// ZapSign webhook → grava raw em zapsign_document_events e atualiza zapsign_documents.
+// Sempre retorna 200 (ZapSign não deve reenviar). Raw insert primeiro, update best-effort.
 
 function normPhone(s?: string | null): string {
   return (s || '').replace(/\D/g, '');
@@ -27,7 +14,6 @@ function pickFirstSigner(signers: any[]): any {
 }
 
 function mapEventType(body: any): string {
-  // ZapSign envia o tipo em "event_type" ou inferimos pelo status do doc
   const t = body?.event_type || body?.event || body?.type;
   if (typeof t === 'string' && t.trim()) return t.trim();
   if (body?.status === 'signed') return 'doc_signed';
@@ -35,27 +21,12 @@ function mapEventType(body: any): string {
   return 'unknown';
 }
 
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response(null, { headers: cors });
+export const handler = async (req: Request, res: Response) => {
+  const raw = req.body;
 
-  const url = Deno.env.get('EXTERNAL_SUPABASE_URL') || 'https://kmedldlepwiityjsdahz.supabase.co';
-  const key = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY') || '';
-
-  // Sempre tenta ler corpo
-  let raw: any = null;
-  try { raw = await req.json(); } catch { raw = null; }
-
-  if (!key) {
-    console.error('[zapsign-webhook-v2] missing EXTERNAL_SUPABASE_SERVICE_ROLE_KEY');
-    return new Response(JSON.stringify({ success: false, error: 'env_missing' }),
-      { status: 200, headers: { ...cors, 'Content-Type': 'application/json' } });
-  }
   if (!raw || typeof raw !== 'object') {
-    return new Response(JSON.stringify({ success: false, error: 'invalid_payload' }),
-      { status: 200, headers: { ...cors, 'Content-Type': 'application/json' } });
+    return res.status(200).json({ success: false, error: 'invalid_payload' });
   }
-
-  const sb = createClient(url, key, { auth: { persistSession: false } });
 
   const eventType = mapEventType(raw);
   const docToken: string | null =
@@ -64,10 +35,10 @@ Deno.serve(async (req) => {
   const signer = raw.signer || pickFirstSigner(signers);
   const signerPhone = normPhone((signer?.phone_country || '') + (signer?.phone_number || ''));
 
-  // 1) INSERT cru — nunca falha o webhook por isso
+  // 1) lookup document_id (best effort) + INSERT cru
   let documentId: string | null = null;
   if (docToken) {
-    const { data: doc } = await sb
+    const { data: doc } = await supabase
       .from('zapsign_documents')
       .select('id')
       .eq('doc_token', docToken)
@@ -91,31 +62,26 @@ Deno.serve(async (req) => {
     processed_at: new Date().toISOString(),
   };
 
-  const { error: insErr } = await sb.from('zapsign_document_events').insert(eventInsert);
-  if (insErr) console.error('[zapsign-webhook-v2] event insert error:', insErr.message);
+  const { error: insErr } = await supabase.from('zapsign_document_events').insert(eventInsert);
+  if (insErr) console.error('[zapsign-webhook] event insert error:', insErr.message);
 
-  // 2) UPDATE em zapsign_documents conforme o evento
+  // 2) UPDATE em zapsign_documents
   if (docToken) {
     const update: any = { updated_at: new Date().toISOString() };
 
-    // Status do documento
     if (raw.status) update.status = raw.status;
     else if (raw?.doc?.status) update.status = raw.doc.status;
 
-    // Arquivos
     if (raw.signed_file || raw?.doc?.signed_file) {
       update.signed_file_url = raw.signed_file || raw.doc.signed_file;
     }
     if (raw.original_file || raw?.doc?.original_file) {
       update.original_file_url = raw.original_file || raw.doc.original_file;
     }
-
-    // Nome
     if (raw.name || raw?.doc?.name) {
       update.document_name = raw.name || raw.doc.name;
     }
 
-    // Por evento
     switch (eventType) {
       case 'doc_signed':
         update.status = 'signed';
@@ -144,11 +110,9 @@ Deno.serve(async (req) => {
         update.signer_status = 'refused';
         break;
       default:
-        // mantém só o que veio acima
         break;
     }
 
-    // Atualiza signers se vier lista completa
     if (Array.isArray(signers) && signers.length > 0) {
       const first = pickFirstSigner(signers);
       if (first?.name && !update.signer_name) update.signer_name = first.name;
@@ -159,20 +123,16 @@ Deno.serve(async (req) => {
       if (!update.signer_status) update.signer_status = first?.status || null;
     }
 
-    // Strip null/undefined que não deve sobrescrever
-    Object.keys(update).forEach((k) => (update[k] === undefined) && delete update[k]);
+    Object.keys(update).forEach((k) => update[k] === undefined && delete update[k]);
 
     if (Object.keys(update).length > 1) {
-      const { error: updErr } = await sb
+      const { error: updErr } = await supabase
         .from('zapsign_documents')
         .update(update)
         .eq('doc_token', docToken);
-      if (updErr) console.error('[zapsign-webhook-v2] update error:', updErr.message);
+      if (updErr) console.error('[zapsign-webhook] update error:', updErr.message);
     }
   }
 
-  return new Response(
-    JSON.stringify({ success: true, event_type: eventType, doc_token: docToken }),
-    { status: 200, headers: { ...cors, 'Content-Type': 'application/json' } },
-  );
-});
+  return res.status(200).json({ success: true, event_type: eventType, doc_token: docToken });
+};
