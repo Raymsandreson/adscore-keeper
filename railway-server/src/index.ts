@@ -81,6 +81,7 @@ app.post('/webhooks/zapsign', async (req, res) => {
   // Responde rápido pra ZapSign não reenviar; processa em background
   res.status(200).json({ success: true, forwarded: true });
 
+  // 1) Forward pro Cloud zapsign-webhook (notif + PDF assinado + enrich-lead + attachments)
   try {
     const upstream = await fetch(`${CLOUD_FUNCTIONS_URL}/functions/v1/zapsign-webhook`, {
       method: 'POST',
@@ -95,6 +96,20 @@ app.post('/webhooks/zapsign', async (req, res) => {
     console.log(`[webhooks/zapsign] forwarded → ${upstream.status} ${text.slice(0, 200)}`);
   } catch (err) {
     console.error('[webhooks/zapsign] forward error:', err);
+  }
+
+  // 2) Pós-assinatura: cria grupo + importa docs originais (Externo, sem Cloud novo)
+  try {
+    const docToken: string | null =
+      req.body?.token || req.body?.doc_token || req.body?.open_id_token || req.body?.doc?.token || null;
+    const status = req.body?.status || req.body?.event_type;
+    if (docToken && (status === 'signed' || status === 'doc_signed')) {
+      // Pequeno delay pra garantir que o forward acima já marcou zapsign_documents.status='signed'
+      await new Promise((r) => setTimeout(r, 2500));
+      await runPostSignExtras({ doc_token: docToken });
+    }
+  } catch (err) {
+    console.error('[webhooks/zapsign] post-sign extras error:', err);
   }
 });
 
