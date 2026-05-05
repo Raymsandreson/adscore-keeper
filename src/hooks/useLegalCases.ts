@@ -4,6 +4,48 @@ import { externalSupabase } from '@/integrations/supabase/external-client';
 import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { toast } from 'sonner';
 
+type ExternalLeadCaseData = {
+  id: string;
+  lead_name: string | null;
+  acolhedor: string | null;
+  case_type: string | null;
+};
+
+type EnrichedLegalCaseRow = LegalCase & {
+  specialized_nuclei?: { name?: string | null; prefix?: string | null; color?: string | null } | null;
+};
+
+async function ensureExternalLeadForCase(leadId: string | null | undefined, title: string, cloudUserId: string | null | undefined): Promise<{ leadId: string | null; leadData: ExternalLeadCaseData | null }> {
+  if (!leadId) return { leadId: null, leadData: null };
+
+  const { data: existingLead, error: lookupError } = await externalSupabase
+    .from('leads')
+    .select('id, lead_name, acolhedor, case_type')
+    .eq('id', leadId)
+    .maybeSingle();
+
+  if (lookupError) throw lookupError;
+  if (existingLead) return { leadId, leadData: existingLead };
+
+  const extCreatedBy = await remapToExternal(cloudUserId);
+  const { data: createdLead, error: createLeadError } = await externalSupabase
+    .from('leads')
+    .insert({
+      id: leadId,
+      lead_name: title,
+      source: 'whatsapp',
+      lead_status: 'closed',
+      became_client_date: new Date().toISOString().split('T')[0],
+      created_by: extCreatedBy,
+      notes: 'Lead espelhado automaticamente no banco externo para vincular caso jurídico.',
+    } as never)
+    .select('id, lead_name, acolhedor, case_type')
+    .single();
+
+  if (createLeadError) throw createLeadError;
+  return { leadId: createdLead.id, leadData: createdLead };
+}
+
 export interface LegalCase {
   id: string;
   lead_id: string | null;
@@ -44,7 +86,7 @@ export function useLegalCases(leadId?: string) {
         .order('created_at', { ascending: false });
       if (error) throw error;
       
-      const enriched = (data || []).map((c: any) => ({
+      const enriched = ((data || []) as EnrichedLegalCaseRow[]).map((c) => ({
         ...c,
         nucleus_name: c.specialized_nuclei?.name,
         nucleus_prefix: c.specialized_nuclei?.prefix,
@@ -84,10 +126,15 @@ export function useLegalCases(leadId?: string) {
       }
 
       const extCreatedByCase = await remapToExternal(user?.id);
+      const { leadId: externalLeadId, leadData: externalLeadData } = await ensureExternalLeadForCase(
+        caseData.lead_id,
+        caseData.title,
+        user?.id,
+      );
       const { data, error } = await externalSupabase
         .from('legal_cases')
         .insert({
-          lead_id: caseData.lead_id || null,
+          lead_id: externalLeadId,
           nucleus_id: caseData.nucleus_id || null,
           case_number: caseNumber,
           title: caseData.title,
@@ -96,16 +143,16 @@ export function useLegalCases(leadId?: string) {
           acolhedor: caseData.acolhedor || null,
           closed_at: caseData.closed_at || null,
           created_by: extCreatedByCase,
-        } as any)
+        } as never)
         .select('*, specialized_nuclei(name, prefix, color)')
         .single();
       if (error) throw error;
 
       const enriched = {
         ...data,
-        nucleus_name: (data as any).specialized_nuclei?.name,
-        nucleus_prefix: (data as any).specialized_nuclei?.prefix,
-        nucleus_color: (data as any).specialized_nuclei?.color,
+        nucleus_name: (data as EnrichedLegalCaseRow).specialized_nuclei?.name,
+        nucleus_prefix: (data as EnrichedLegalCaseRow).specialized_nuclei?.prefix,
+        nucleus_color: (data as EnrichedLegalCaseRow).specialized_nuclei?.color,
       } as LegalCase;
 
       setCases(prev => [enriched, ...prev]);
@@ -113,26 +160,18 @@ export function useLegalCases(leadId?: string) {
       // Auto-create process tracking record
       try {
         // Fetch lead data for auto-fill
-        let leadData: any = null;
-        if (caseData.lead_id) {
-          const { data: ld } = await supabase
-            .from('leads')
-            .select('lead_name, acolhedor, case_type')
-            .eq('id', caseData.lead_id)
-            .maybeSingle();
-          leadData = ld;
-        }
+        const leadData = externalLeadData;
 
         await externalSupabase.from('case_process_tracking').insert({
           case_id: enriched.id,
-          lead_id: caseData.lead_id || null,
+          lead_id: externalLeadId,
           cliente: leadData?.lead_name || caseData.title,
           caso: caseData.title,
-          tipo: leadData?.case_type || (enriched as any).benefit_type || null,
-          acolhedor: leadData?.acolhedor || (enriched as any).acolhedor || null,
+          tipo: leadData?.case_type || enriched.benefit_type || null,
+          acolhedor: leadData?.acolhedor || enriched.acolhedor || null,
           data_criacao: new Date().toISOString().split('T')[0],
           import_source: 'auto_lead_close',
-        } as any);
+        } as never);
       } catch (trackingError) {
         console.warn('Could not auto-create tracking record:', trackingError);
       }
@@ -145,7 +184,7 @@ export function useLegalCases(leadId?: string) {
           const extAssignedTo = await remapToExternal(WANESSA_USER_ID);
           const extCreatedBy = await remapToExternal(user?.id);
           await externalSupabase.from('lead_activities').insert({
-            lead_id: caseData.lead_id || null,
+            lead_id: externalLeadId,
             lead_name: caseData.title,
             title: 'ONBOARDING CLIENTE',
             description: `Atividade de onboarding criada automaticamente para o caso ${caseNumber}`,
@@ -156,7 +195,7 @@ export function useLegalCases(leadId?: string) {
             assigned_to_name: WANESSA_NAME,
             created_by: extCreatedBy,
             deadline: new Date().toISOString().split('T')[0],
-          } as any);
+          } as never);
         } catch (onboardingError) {
           console.warn('Could not auto-create onboarding activity:', onboardingError);
         }
@@ -175,7 +214,7 @@ export function useLegalCases(leadId?: string) {
     try {
       const { data, error } = await externalSupabase
         .from('legal_cases')
-        .update(updates as any)
+        .update(updates as never)
         .eq('id', id)
         .select('*, specialized_nuclei(name, prefix, color)')
         .single();
@@ -183,9 +222,9 @@ export function useLegalCases(leadId?: string) {
       
       const enriched = {
         ...data,
-        nucleus_name: (data as any).specialized_nuclei?.name,
-        nucleus_prefix: (data as any).specialized_nuclei?.prefix,
-        nucleus_color: (data as any).specialized_nuclei?.color,
+        nucleus_name: (data as EnrichedLegalCaseRow).specialized_nuclei?.name,
+        nucleus_prefix: (data as EnrichedLegalCaseRow).specialized_nuclei?.prefix,
+        nucleus_color: (data as EnrichedLegalCaseRow).specialized_nuclei?.color,
       } as LegalCase;
 
       setCases(prev => prev.map(c => c.id === id ? enriched : c));
