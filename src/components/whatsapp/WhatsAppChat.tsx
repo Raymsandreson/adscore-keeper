@@ -185,11 +185,12 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
 
   const handleOpenLeadEdit = async () => {
     if (!conversation.lead_id) return;
-    const { data } = await supabase.from('leads').select('*').eq('id', conversation.lead_id).maybeSingle();
+    const { data, error } = await externalSupabase.from('leads').select('*').eq('id', conversation.lead_id).maybeSingle();
     if (data) {
       setEditingLeadData(data);
       setShowLeadEdit(true);
     } else {
+      console.error('Lead não encontrado no banco externo', { lead_id: conversation.lead_id, error });
       toast.error('Lead não encontrado');
     }
   };
