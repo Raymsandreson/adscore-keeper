@@ -1199,6 +1199,91 @@ Deno.serve(async (req) => {
     }
 
     // ====================================================
+    // FALLBACK UNIVERSAL: garantir GRUPO de WhatsApp para qualquer
+    // procuração assinada com telefone + lead. Roda mesmo quando o board
+    // não tem `board_group_settings` (post_sign_mode null).
+    // O bloco anterior já cobriu o caso `post_sign_mode = 'group'`; aqui
+    // tratamos somente leads que ficaram sem grupo após aquele bloco.
+    // ====================================================
+    if (isDocFullySigned && localDoc.lead_id && localDoc.whatsapp_phone) {
+      try {
+        const { data: leadForGroup } = await supabase
+          .from('leads')
+          .select('id, board_id, lead_phone, lead_name, whatsapp_group_id')
+          .eq('id', localDoc.lead_id)
+          .maybeSingle()
+
+        if (leadForGroup && !leadForGroup.whatsapp_group_id) {
+          const fallbackPhone = (leadForGroup.lead_phone || localDoc.whatsapp_phone || '').replace(/\D/g, '')
+
+          // Resolve uma instância: doc → criador → primeira ativa
+          let fbInstanceId: string | null = null
+          let fbInstanceName: string | null = localDoc.instance_name || null
+          if (fbInstanceName) {
+            const { data: i } = await supabase
+              .from('whatsapp_instances')
+              .select('id, instance_name')
+              .ilike('instance_name', fbInstanceName)
+              .eq('is_active', true)
+              .maybeSingle()
+            if (i) { fbInstanceId = i.id; fbInstanceName = i.instance_name }
+          }
+          if (!fbInstanceId && localDoc.created_by) {
+            const { data: prof } = await supabase
+              .from('profiles')
+              .select('default_instance_id')
+              .eq('user_id', localDoc.created_by)
+              .maybeSingle()
+            if (prof?.default_instance_id) fbInstanceId = prof.default_instance_id
+          }
+          if (!fbInstanceId) {
+            const { data: anyInst } = await supabase
+              .from('whatsapp_instances')
+              .select('id, instance_name')
+              .eq('is_active', true)
+              .limit(1)
+              .maybeSingle()
+            if (anyInst) { fbInstanceId = anyInst.id; fbInstanceName = anyInst.instance_name }
+          }
+
+          if (fallbackPhone && fbInstanceId) {
+            console.log(`[zapsign-webhook] FALLBACK: criando grupo para lead ${localDoc.lead_id} (sem board settings)`)
+            const groupRes = await fetch(`${cloudFunctionsUrl}/functions/v1/create-whatsapp-group`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${cloudAnonKey}`,
+              },
+              body: JSON.stringify({
+                phone: fallbackPhone,
+                lead_name: leadForGroup.lead_name || 'Lead',
+                board_id: leadForGroup.board_id || null,
+                contact_phone: fallbackPhone,
+                creator_instance_id: fbInstanceId,
+                lead_id: localDoc.lead_id,
+                creation_origin: 'auto_sign_fallback',
+              }),
+            })
+            const groupData = await groupRes.json().catch(() => ({}))
+            if (groupData?.success && groupData?.group_id) {
+              await supabase
+                .from('leads')
+                .update({ whatsapp_group_id: groupData.group_id } as any)
+                .eq('id', localDoc.lead_id)
+              console.log(`[zapsign-webhook] FALLBACK group created: ${groupData.group_id}`)
+            } else {
+              console.error(`[zapsign-webhook] FALLBACK group creation failed:`, groupData?.error || groupRes.status)
+            }
+          } else {
+            console.log(`[zapsign-webhook] FALLBACK skipped — phone=${fallbackPhone || 'NONE'} instance=${fbInstanceId || 'NONE'}`)
+          }
+        }
+      } catch (fbErr) {
+        console.error('[zapsign-webhook] FALLBACK group creation error:', fbErr)
+      }
+    }
+
+    // ====================================================
     // TRIGGER AGENT AUTOMATIONS (on_document_signed)
     // ====================================================
     if (isDocFullySigned && localDoc.whatsapp_phone) {
