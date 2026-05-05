@@ -1304,6 +1304,7 @@ Deno.serve(async (req) => {
                 creator_instance_id: fbInstanceId,
                 lead_id: localDoc.lead_id,
                 creation_origin: 'auto_sign_fallback',
+                phase: 'closed',
               }),
             })
             const groupData = await groupRes.json().catch(() => ({}))
