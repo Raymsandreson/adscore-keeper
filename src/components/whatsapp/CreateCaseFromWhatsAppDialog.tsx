@@ -652,7 +652,7 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
               description: proc.description || null,
               status: 'em_andamento',
               started_at: new Date().toISOString().slice(0, 10),
-              created_by: user?.id || null,
+              created_by: extCreatedBy,
             } as any).select('id').single();
 
             if (processError) throw processError;
