@@ -142,35 +142,37 @@ export function FunnelZapsignDefaultsConfig({ boardId, hideBoardSelector }: Prop
 
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <FileSignature className="h-5 w-5 text-primary" />
-            Padrões de procuração por funil
-          </CardTitle>
-          <CardDescription>
-            Defina o modelo, comportamento e mensagem padrão usados ao gerar documentos a partir do chat.
-            Estes valores são aplicados automaticamente quando alguém abrir o assistente de geração para um lead deste funil.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label>Funil</Label>
-            <Select value={selectedBoardId} onValueChange={setSelectedBoardId} disabled={loadingBoards}>
-              <SelectTrigger>
-                <SelectValue placeholder={loadingBoards ? 'Carregando funis…' : 'Escolha um funil'} />
-              </SelectTrigger>
-              <SelectContent>
-                {funnels.map((b) => (
-                  <SelectItem key={b.id} value={b.id}>
-                    {b.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
+      {!hideBoardSelector && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <FileSignature className="h-5 w-5 text-primary" />
+              Padrões de procuração por funil
+            </CardTitle>
+            <CardDescription>
+              Defina o modelo, comportamento e mensagem padrão usados ao gerar documentos a partir do chat.
+              Estes valores são aplicados automaticamente quando alguém abrir o assistente de geração para um lead deste funil.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label>Funil</Label>
+              <Select value={selectedBoardId} onValueChange={setSelectedBoardId} disabled={loadingBoards}>
+                <SelectTrigger>
+                  <SelectValue placeholder={loadingBoards ? 'Carregando funis…' : 'Escolha um funil'} />
+                </SelectTrigger>
+                <SelectContent>
+                  {funnels.map((b) => (
+                    <SelectItem key={b.id} value={b.id}>
+                      {b.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {loadingRow || !row ? (
         <div className="flex items-center justify-center py-12 text-muted-foreground">
