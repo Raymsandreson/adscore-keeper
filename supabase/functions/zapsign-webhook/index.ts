@@ -76,8 +76,10 @@ Deno.serve(async (req) => {
     const cloudFunctionsUrl = Deno.env.get('SUPABASE_URL') || 'https://gliigkupoebmlbwyvijp.supabase.co'
     const cloudAnonKey = RESOLVED_ANON_KEY
     const zapsignToken = Deno.env.get('ZAPSIGN_API_TOKEN')!
-    const supabase = createClient(supabaseUrl, supabaseKey)
     const extClient = getExternalClient()
+    // Business data must always use the External DB. Keep `supabase` as the
+    // existing variable name to avoid a risky full-file rewrite.
+    const supabase = extClient
 
     const body = await req.json()
     console.log('ZapSign webhook received:', JSON.stringify(body))
@@ -146,7 +148,7 @@ Deno.serve(async (req) => {
 
     // Update local database
     const firstSigner = allSigners[0]
-    const { data: localDoc } = await supabase
+    let { data: localDoc } = await supabase
       .from('zapsign_documents')
       .update({
         status: docData.status,
@@ -156,13 +158,65 @@ Deno.serve(async (req) => {
       })
       .eq('doc_token', docToken)
       .select('*')
-      .single()
+      .maybeSingle()
 
     console.log('Updated local doc:', localDoc?.id, 'status:', docData.status, 'whatsapp_phone:', localDoc?.whatsapp_phone || 'NONE', 'lead_id:', localDoc?.lead_id || 'NONE')
 
     if (!localDoc) {
-      console.log('No local doc found for token:', docToken)
-      return new Response(JSON.stringify({ ok: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+      const signerForCreate = triggeringSigner || firstSigner || body.signer_who_signed || body.signer || {}
+      const signerPhoneForCreate = `${signerForCreate?.phone_country || ''}${signerForCreate?.phone_number || signerForCreate?.phone || ''}`.replace(/\D/g, '')
+      const last8 = signerPhoneForCreate.slice(-8)
+
+      let contactIdForCreate: string | null = null
+      let leadIdForCreate: string | null = null
+      if (signerPhoneForCreate) {
+        const { data: matchedContact } = await supabase
+          .from('contacts')
+          .select('id, lead_id')
+          .or(`phone.eq.${signerPhoneForCreate},phone.ilike.%${last8}%`)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+        contactIdForCreate = matchedContact?.id || null
+        leadIdForCreate = matchedContact?.lead_id || null
+      }
+
+      const { data: createdDoc, error: createDocErr } = await supabase
+        .from('zapsign_documents')
+        .insert({
+          doc_token: docToken,
+          document_name: docData.name || body.name || 'Documento ZapSign',
+          status: docData.status || body.status || 'signed',
+          original_file_url: docData.original_file || body.original_file || null,
+          signed_file_url: signedFileUrl,
+          sign_url: signerForCreate?.sign_url || signerForCreate?.signing_link || null,
+          lead_id: leadIdForCreate,
+          contact_id: contactIdForCreate,
+          signer_name: signerForCreate?.name || null,
+          signer_token: signerForCreate?.token || signerToken || null,
+          signer_email: signerForCreate?.email || null,
+          signer_phone: signerPhoneForCreate || null,
+          signer_status: signerForCreate?.status || null,
+          signed_at: signerForCreate?.signed_at || (isDocFullySigned ? new Date().toISOString() : null),
+          template_data: {
+            source: 'zapsign_webhook_auto_upsert',
+            open_id: body.open_id || null,
+            created_by_email: body.created_by?.email || null,
+          },
+          whatsapp_phone: signerPhoneForCreate || null,
+          notify_on_signature: true,
+          send_signed_pdf: true,
+        })
+        .select('*')
+        .single()
+
+      if (createDocErr || !createdDoc) {
+        console.error('[zapsign-webhook] Could not auto-create local doc:', createDocErr)
+        return new Response(JSON.stringify({ ok: true, error: 'local_doc_missing' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+      }
+
+      localDoc = createdDoc
+      console.log('[zapsign-webhook] Local doc auto-created from webhook:', localDoc.id)
     }
 
     // ====================================================
