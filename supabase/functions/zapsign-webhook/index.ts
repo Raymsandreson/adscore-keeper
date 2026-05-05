@@ -65,6 +65,18 @@ async function resolveOwnerByInstance(supabase: any, instanceName?: string | nul
   return ownerProfile?.user_id || null
 }
 
+async function resolveFirstBoardStageId(supabase: any, boardId: string | null): Promise<string | null> {
+  if (!boardId) return null
+  const { data: board } = await supabase
+    .from('kanban_boards')
+    .select('stages')
+    .eq('id', boardId)
+    .maybeSingle()
+
+  const stages = Array.isArray(board?.stages) ? board.stages : []
+  return stages.find((stage: any) => stage?.id)?.id || null
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
@@ -847,18 +859,12 @@ Deno.serve(async (req) => {
 
           // Get first stage if not set
           if (boardId && !stageId) {
-            const { data: firstStage } = await supabase
-              .from('kanban_stages')
-              .select('id')
-              .eq('board_id', boardId)
-              .order('display_order', { ascending: true })
-              .limit(1)
-              .single()
-            stageId = firstStage?.id || null
+            stageId = await resolveFirstBoardStageId(supabase, boardId)
           }
 
           // 5. Create lead
           if (boardId) {
+            const leadStatus = stageId || 'new'
             const leadName = extractedData.lead_name || extractedData.victim_name || localDoc.signer_name || cleanPhone
             const { data: newLead, error: leadErr } = await supabase
               .from('leads')
@@ -867,8 +873,8 @@ Deno.serve(async (req) => {
                 lead_phone: cleanPhone,
                 lead_email: extractedData.lead_email || null,
                 board_id: boardId,
-                stage: stageId,
-                status: 'new',
+                status: leadStatus,
+                lead_status: 'active',
                 source: 'zapsign',
                 city: extractedData.city || null,
                 state: extractedData.state || null,
