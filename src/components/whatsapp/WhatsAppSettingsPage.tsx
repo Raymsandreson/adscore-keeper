@@ -4,10 +4,10 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { 
   Webhook, BarChart3, Megaphone, ArrowLeft, 
-  ChevronRight, Shield, Zap, ScrollText, Sparkles, Smartphone, Bell, Volume2, Users, Network, Brain, FileSignature
+  ChevronRight, Shield, Zap, ScrollText, Sparkles, Smartphone, Bell, Volume2, Users, Network, Brain, ClipboardCheck
 } from 'lucide-react';
 
-import { FunnelZapsignDefaultsConfig } from './FunnelZapsignDefaultsConfig';
+import { OnboardingConfig } from './OnboardingConfig';
 
 import { WhatsAppSetupGuide } from './WhatsAppSetupGuide';
 import { WhatsAppReportSettings } from './WhatsAppReportSettings';
@@ -86,22 +86,13 @@ const tabs: Tab[] = [
     accentColor: 'text-orange-500',
   },
   {
-    id: 'groups',
-    label: 'Grupos',
-    icon: <Users className="h-5 w-5" />,
-    description: 'Instâncias para criação automática de grupos',
+    id: 'onboarding',
+    label: 'Onboarding',
+    icon: <ClipboardCheck className="h-5 w-5" />,
+    description: 'Procuração, grupo e notificações pós-assinatura',
     badge: '🆕 Novo',
     badgeVariant: 'default',
     accentColor: 'text-violet-500',
-  },
-  {
-    id: 'zapsign-defaults',
-    label: 'Procuração',
-    icon: <FileSignature className="h-5 w-5" />,
-    description: 'Padrões de geração de procuração por funil',
-    badge: '🆕 Novo',
-    badgeVariant: 'default',
-    accentColor: 'text-fuchsia-500',
   },
   {
     id: 'automations',
@@ -273,8 +264,7 @@ export function WhatsAppSettingsPage({ onBack, initialTab = 'instances' }: Props
             {activeTab === 'reports' && <WhatsAppReportSettings />}
             {activeTab === 'ads' && <WhatsAppAdLinkSettings />}
             
-            {activeTab === 'groups' && <BoardGroupInstancesConfig />}
-            {activeTab === 'zapsign-defaults' && <FunnelZapsignDefaultsConfig />}
+            {activeTab === 'onboarding' && <OnboardingConfig />}
             {activeTab === 'automations' && <AgentAutomationsTab />}
             {activeTab === 'nuclei' && <NucleiSettings />}
             {activeTab === 'enrichment' && <EnrichmentSettings />}
