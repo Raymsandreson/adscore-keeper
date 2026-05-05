@@ -14,29 +14,31 @@ export function OnboardingConfig() {
       </p>
 
       <Tabs value={tab} onValueChange={setTab} className="w-full">
-        <TabsList className="w-full grid grid-cols-3 h-auto p-1 bg-muted/50 sticky top-0 z-10">
-          <TabsTrigger
-            value="procuracao"
-            className="flex flex-col sm:flex-row items-center gap-1.5 sm:gap-2 py-2.5 px-2 data-[state=active]:bg-fuchsia-500/10 data-[state=active]:text-fuchsia-600 dark:data-[state=active]:text-fuchsia-400"
-          >
-            <FileSignature className="h-4 w-4 shrink-0" />
-            <span className="text-xs sm:text-sm font-medium">Procuração</span>
-          </TabsTrigger>
-          <TabsTrigger
-            value="grupo"
-            className="flex flex-col sm:flex-row items-center gap-1.5 sm:gap-2 py-2.5 px-2 data-[state=active]:bg-violet-500/10 data-[state=active]:text-violet-600 dark:data-[state=active]:text-violet-400"
-          >
-            <Users className="h-4 w-4 shrink-0" />
-            <span className="text-xs sm:text-sm font-medium">Grupo</span>
-          </TabsTrigger>
-          <TabsTrigger
-            value="notificacoes"
-            className="flex flex-col sm:flex-row items-center gap-1.5 sm:gap-2 py-2.5 px-2 data-[state=active]:bg-yellow-500/10 data-[state=active]:text-yellow-600 dark:data-[state=active]:text-yellow-400"
-          >
-            <Bell className="h-4 w-4 shrink-0" />
-            <span className="text-xs sm:text-sm font-medium">Notificações</span>
-          </TabsTrigger>
-        </TabsList>
+        <div className="sticky top-0 z-10 -mx-4 px-4 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 border-b">
+          <TabsList className="w-full sm:w-auto inline-flex sm:grid sm:grid-cols-3 h-auto p-1 bg-muted/50 overflow-x-auto no-scrollbar">
+            <TabsTrigger
+              value="procuracao"
+              className="flex items-center gap-2 py-2 px-3 whitespace-nowrap data-[state=active]:bg-fuchsia-500/10 data-[state=active]:text-fuchsia-600 dark:data-[state=active]:text-fuchsia-400"
+            >
+              <FileSignature className="h-4 w-4 shrink-0" />
+              <span className="text-sm font-medium">Procuração</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="grupo"
+              className="flex items-center gap-2 py-2 px-3 whitespace-nowrap data-[state=active]:bg-violet-500/10 data-[state=active]:text-violet-600 dark:data-[state=active]:text-violet-400"
+            >
+              <Users className="h-4 w-4 shrink-0" />
+              <span className="text-sm font-medium">Grupo</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="notificacoes"
+              className="flex items-center gap-2 py-2 px-3 whitespace-nowrap data-[state=active]:bg-yellow-500/10 data-[state=active]:text-yellow-600 dark:data-[state=active]:text-yellow-400"
+            >
+              <Bell className="h-4 w-4 shrink-0" />
+              <span className="text-sm font-medium">Notificações</span>
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
         <TabsContent value="procuracao" className="mt-4">
           <FunnelZapsignDefaultsConfig />
