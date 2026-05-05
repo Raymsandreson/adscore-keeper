@@ -51,7 +51,7 @@ const emptyDefaults = (board_id: string): DefaultsRow => ({
   notify_phone_numbers: [],
 });
 
-type Section = 'all' | 'procuracao' | 'grupo' | 'notificacoes';
+type Section = 'all' | 'documentos' | 'procuracao' | 'grupo' | 'notificacoes';
 
 interface Props {
   boardId?: string;
