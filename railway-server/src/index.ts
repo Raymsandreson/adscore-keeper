@@ -71,14 +71,29 @@ app.post('/functions/:name', async (req, res) => {
   }
 });
 
-// Rota pública para webhook ZapSign (sem x-api-key — segurança via doc_token validado no handler)
+// Rota pública para webhook ZapSign — encaminha pro edge function que tem a lógica completa
+// (notificações, envio de PDF assinado, enrich-lead, anexo no lead, etc.)
+const CLOUD_FUNCTIONS_URL = process.env.SUPABASE_URL || 'https://gliigkupoebmlbwyvijp.supabase.co';
+const CLOUD_ANON_KEY = process.env.SUPABASE_ANON_KEY || '';
+
 app.post('/webhooks/zapsign', async (req, res) => {
+  // Responde rápido pra ZapSign não reenviar; processa em background
+  res.status(200).json({ success: true, forwarded: true });
+
   try {
-    await (zapsignWebhook as any)(req, res);
+    const upstream = await fetch(`${CLOUD_FUNCTIONS_URL}/functions/v1/zapsign-webhook`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${CLOUD_ANON_KEY}`,
+        'apikey': CLOUD_ANON_KEY,
+      },
+      body: JSON.stringify(req.body),
+    });
+    const text = await upstream.text();
+    console.log(`[webhooks/zapsign] forwarded → ${upstream.status} ${text.slice(0, 200)}`);
   } catch (err) {
-    console.error('[webhooks/zapsign] Error:', err);
-    // ZapSign não deve receber 5xx pra não reenviar
-    res.status(200).json({ success: false, error: 'internal_error' });
+    console.error('[webhooks/zapsign] forward error:', err);
   }
 });
 
