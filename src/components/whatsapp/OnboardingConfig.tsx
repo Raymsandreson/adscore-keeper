@@ -61,7 +61,7 @@ export function OnboardingConfig({ onOpenAgents }: OnboardingConfigProps = {}) {
         <div className="sticky top-0 z-10 -mx-4 px-4 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 border-b">
           <TabsList
             ref={listRef as any}
-            className="w-full sm:w-auto inline-flex sm:grid sm:grid-cols-5 h-auto p-1 bg-muted/50 overflow-x-auto no-scrollbar snap-x snap-mandatory scroll-px-4 sm:snap-none scroll-smooth"
+            className="w-full sm:w-auto inline-flex sm:grid sm:grid-cols-6 h-auto p-1 bg-muted/50 overflow-x-auto no-scrollbar snap-x snap-mandatory scroll-px-4 sm:snap-none scroll-smooth"
           >
             <TabsTrigger value="documentos" className="snap-center sm:snap-align-none flex items-center gap-2 py-2 px-3 whitespace-nowrap data-[state=active]:bg-fuchsia-500/10 data-[state=active]:text-fuchsia-600 dark:data-[state=active]:text-fuchsia-400">
               <FileText className="h-4 w-4 shrink-0" />
