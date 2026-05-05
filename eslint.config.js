@@ -67,17 +67,50 @@ export default tseslint.config(
             "Tabela de negócio: use externalSupabase (Supabase Externo), não o client Cloud. Lista em src/integrations/supabase/db-routing.ts.",
         },
       ],
+      // Força código NOVO a importar via barrel `@/integrations/supabase`
+      // usando os nomes `db` (Externo) e `authClient` (Cloud).
+      // Importar `supabase` / `externalSupabase` direto é proibido — os nomes
+      // genéricos eram a causa raiz dos FK errors no banco errado.
+      // Severidade "warn" durante migração dos ~46 arquivos legados; vire
+      // para "error" quando o backlog zerar.
+      "no-restricted-imports": [
+        "warn",
+        {
+          paths: [
+            {
+              name: "@/integrations/supabase/client",
+              message:
+                "Não importe direto. Use `import { authClient } from '@/integrations/supabase'`.",
+            },
+            {
+              name: "@/integrations/supabase/external-client",
+              importNames: ["externalSupabase"],
+              message:
+                "Não importe `externalSupabase` direto. Use `import { db } from '@/integrations/supabase'`.",
+            },
+            {
+              name: "@/integrations/supabase",
+              importNames: ["supabase", "externalSupabase"],
+              message:
+                "Use os nomes oficiais: `db` (dados/Externo) e `authClient` (auth/Cloud). `supabase`/`externalSupabase` só existem para compatibilidade com legado.",
+            },
+          ],
+        },
+      ],
     },
   },
-  // O próprio client Cloud e o guard precisam referenciar `supabase` livremente.
+  // Arquivos internos da camada Supabase precisam acessar os clients crus.
   {
     files: [
       "src/integrations/supabase/client.ts",
+      "src/integrations/supabase/external-client.ts",
+      "src/integrations/supabase/index.ts",
       "src/integrations/supabase/install-db-routing-guard.ts",
       "src/integrations/supabase/db-routing.ts",
     ],
     rules: {
       "no-restricted-syntax": "off",
+      "no-restricted-imports": "off",
     },
   },
 );
