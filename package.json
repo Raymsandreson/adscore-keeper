@@ -9,7 +9,9 @@
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test:lead-form": "node scripts/validate-lead-form-unification.mjs"
+    "test:lead-form": "node scripts/validate-lead-form-unification.mjs",
+    "test:db-routing": "node scripts/validate-db-routing.mjs",
+    "test:db-routing:strict": "node scripts/validate-db-routing.mjs --strict"
   },
   "dependencies": {
     "@capacitor/android": "^7.4.3",
