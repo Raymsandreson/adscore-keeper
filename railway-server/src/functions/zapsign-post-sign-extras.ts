@@ -8,11 +8,12 @@
 import { supabase } from '../lib/supabase';
 
 const ZAPSIGN_TOKEN = process.env.ZAPSIGN_API_TOKEN || '';
-const LOVABLE_API_KEY = process.env.LOVABLE_API_KEY || '';
+const GOOGLE_AI_API_KEY = process.env.GOOGLE_AI_API_KEY || '';
 const CLOUD_FUNCTIONS_URL = process.env.CLOUD_FUNCTIONS_URL || 'https://gliigkupoebmlbwyvijp.supabase.co';
 const CLOUD_ANON_KEY = process.env.CLOUD_ANON_KEY || process.env.SUPABASE_ANON_KEY || '';
 
-const AI_GATEWAY = 'https://ai.gateway.lovable.dev/v1/chat/completions';
+const GEMINI_MODEL = 'gemini-2.5-flash-lite';
+const GEMINI_API = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
 interface PostSignInput {
   doc_token: string;
