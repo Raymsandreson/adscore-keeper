@@ -79,6 +79,7 @@ export default function ZapsignSyncPage({ externalDateRange, externalPeriodLabel
   const [kpiSheet, setKpiSheet] = useState<OperationalMetricType | null>(null);
   const [errorsSheetOpen, setErrorsSheetOpen] = useState(false);
   const [docCounts, setDocCounts] = useState<{ total: number; signed: number; pending: number }>({ total: 0, signed: 0, pending: 0 });
+  const [docsRefreshTick, setDocsRefreshTick] = useState(0);
   const dateRange = useMemo(() => {
     if (externalDateRange?.from && externalDateRange?.to) return externalDateRange;
     const to = new Date();
