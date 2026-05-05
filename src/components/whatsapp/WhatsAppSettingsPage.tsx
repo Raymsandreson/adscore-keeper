@@ -95,6 +95,15 @@ const tabs: Tab[] = [
     accentColor: 'text-violet-500',
   },
   {
+    id: 'zapsign-defaults',
+    label: 'Procuração',
+    icon: <FileSignature className="h-5 w-5" />,
+    description: 'Padrões de geração de procuração por funil',
+    badge: '🆕 Novo',
+    badgeVariant: 'default',
+    accentColor: 'text-fuchsia-500',
+  },
+  {
     id: 'automations',
     label: 'Automações',
     icon: <Zap className="h-5 w-5" />,
