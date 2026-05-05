@@ -1011,21 +1011,21 @@ Deno.serve(async (req) => {
 
                 console.log(`[zapsign-webhook] Legal case created: ${caseNumber}`)
 
-                // Auto-create process tracking record
+                // Auto-create initial lead_processes record (visível na aba Processos)
                 if (createdCase?.id) {
                   try {
-                    await extClient.from('case_process_tracking').insert({
+                    await extClient.from('lead_processes').insert({
                       case_id: createdCase.id,
                       lead_id: localDoc.lead_id,
-                      cliente: leadForBoard.lead_name || '',
-                      caso: `Caso - ${leadForBoard.lead_name || 'Novo'}`,
-                      tipo: (leadForBoard as any).case_type || null,
-                      acolhedor: (leadForBoard as any).acolhedor || null,
-                      data_criacao: new Date().toISOString().split('T')[0],
-                      import_source: 'auto_zapsign',
+                      title: `Processo - ${leadForBoard.lead_name || 'Novo'}`,
+                      process_type: 'administrativo',
+                      status: 'em_andamento',
+                      polo_ativo: leadForBoard.lead_name || null,
+                      started_at: new Date().toISOString().split('T')[0],
+                      created_by: localDoc.created_by || null,
                     })
                   } catch (trackErr) {
-                    console.warn('[zapsign-webhook] Could not auto-create tracking:', trackErr)
+                    console.warn('[zapsign-webhook] Could not auto-create lead_process:', trackErr)
                   }
                 }
 
