@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { db, authClient } from '@/integrations/authClient';
 import { useAuthContext } from '@/contexts/AuthContext';
 
 export interface CompanyArea {
@@ -52,7 +52,7 @@ export function useCompanyAreas() {
 
   const fetchAreas = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase
+    const { data } = await authClient
       .from('company_areas')
       .select('*')
       .eq('is_active', true)
@@ -72,7 +72,7 @@ export function useMetricDefinitions(areaId?: string, category?: string) {
 
   const fetchMetrics = useCallback(async () => {
     setLoading(true);
-    let query = supabase
+    let query = authClient
       .from('metric_definitions')
       .select('*')
       .eq('is_active', true)
@@ -90,17 +90,17 @@ export function useMetricDefinitions(areaId?: string, category?: string) {
 
   const saveMetric = async (metric: Partial<MetricDefinition> & { name: string; area_id: string; category: string; periodicity: string }) => {
     if (metric.id) {
-      const { error } = await supabase.from('metric_definitions').update(metric as any).eq('id', metric.id);
+      const { error } = await authClient.from('metric_definitions').update(metric as any).eq('id', metric.id);
       if (error) throw error;
     } else {
-      const { error } = await supabase.from('metric_definitions').insert(metric as any);
+      const { error } = await authClient.from('metric_definitions').insert(metric as any);
       if (error) throw error;
     }
     await fetchMetrics();
   };
 
   const deleteMetric = async (id: string) => {
-    await supabase.from('metric_definitions').update({ is_active: false } as any).eq('id', id);
+    await authClient.from('metric_definitions').update({ is_active: false } as any).eq('id', id);
     await fetchMetrics();
   };
 
@@ -113,7 +113,7 @@ export function useMemberAreaAssignments(userId?: string) {
 
   const fetchAssignments = useCallback(async () => {
     setLoading(true);
-    let query = supabase.from('member_area_assignments').select('*');
+    let query = authClient.from('member_area_assignments').select('*');
     if (userId) query = query.eq('user_id', userId);
     const { data } = await query;
     setAssignments((data as MemberAreaAssignment[]) || []);
@@ -123,13 +123,13 @@ export function useMemberAreaAssignments(userId?: string) {
   useEffect(() => { fetchAssignments(); }, [fetchAssignments]);
 
   const assignArea = async (uid: string, areaId: string) => {
-    const { error } = await supabase.from('member_area_assignments').insert({ user_id: uid, area_id: areaId } as any);
+    const { error } = await authClient.from('member_area_assignments').insert({ user_id: uid, area_id: areaId } as any);
     if (error) throw error;
     await fetchAssignments();
   };
 
   const removeArea = async (id: string) => {
-    await supabase.from('member_area_assignments').delete().eq('id', id);
+    await authClient.from('member_area_assignments').delete().eq('id', id);
     await fetchAssignments();
   };
 
@@ -142,7 +142,7 @@ export function useMemberMetricGoals(userId?: string) {
 
   const fetchGoals = useCallback(async () => {
     setLoading(true);
-    let query = supabase.from('member_metric_goals').select('*').eq('is_active', true);
+    let query = authClient.from('member_metric_goals').select('*').eq('is_active', true);
     if (userId) query = query.eq('user_id', userId);
     const { data } = await query;
     setGoals((data as MemberMetricGoal[]) || []);
@@ -153,17 +153,17 @@ export function useMemberMetricGoals(userId?: string) {
 
   const saveGoal = async (goal: Partial<MemberMetricGoal> & { user_id: string; metric_id: string; target_value: number; period_type: string }) => {
     if (goal.id) {
-      const { error } = await supabase.from('member_metric_goals').update(goal as any).eq('id', goal.id);
+      const { error } = await authClient.from('member_metric_goals').update(goal as any).eq('id', goal.id);
       if (error) throw error;
     } else {
-      const { error } = await supabase.from('member_metric_goals').insert(goal as any);
+      const { error } = await authClient.from('member_metric_goals').insert(goal as any);
       if (error) throw error;
     }
     await fetchGoals();
   };
 
   const deleteGoal = async (id: string) => {
-    await supabase.from('member_metric_goals').update({ is_active: false } as any).eq('id', id);
+    await authClient.from('member_metric_goals').update({ is_active: false } as any).eq('id', id);
     await fetchGoals();
   };
 

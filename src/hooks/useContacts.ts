@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
-import { externalSupabase } from '@/integrations/supabase/external-client';
+import { db, authClient } from '@/integrations/authClient';
 import { toast } from 'sonner';
 import { logAudit } from '@/hooks/useAuditLog';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
@@ -78,7 +77,7 @@ export const useContacts = () => {
     try {
       // Helper to build a query with filters (without pagination)
       const buildQuery = () => {
-        let query = supabase
+        let query = authClient
           .from('contacts')
           .select('*', { count: 'exact' })
           .is('deleted_at', null)
@@ -137,7 +136,7 @@ export const useContacts = () => {
       let linkedIds: string[] | null = null;
       let notLinkedIds: string[] | null = null;
       if (filters?.leadLinked === 'linked') {
-        const { data: linkedData } = await externalSupabase.from('contact_leads').select('contact_id');
+        const { data: linkedData } = await db.from('contact_leads').select('contact_id');
         linkedIds = [...new Set((linkedData || []).map((d: any) => d.contact_id))];
         if (linkedIds.length === 0) {
           setContacts([]);
@@ -146,7 +145,7 @@ export const useContacts = () => {
           return;
         }
       } else if (filters?.leadLinked === 'not_linked') {
-        const { data: linkedData } = await externalSupabase.from('contact_leads').select('contact_id');
+        const { data: linkedData } = await db.from('contact_leads').select('contact_id');
         notLinkedIds = [...new Set((linkedData || []).map((d: any) => d.contact_id))];
       }
 
@@ -181,14 +180,14 @@ export const useContacts = () => {
     try {
       // Use individual count queries to bypass the 1000 row limit
       const [totalRes, clientsRes, nonClientsRes, prospectsRes, partnersRes, suppliersRes, withInstagramRes, leadsRes] = await Promise.all([
-        supabase.from('contacts').select('*', { count: 'exact', head: true }).is('deleted_at', null).is('whatsapp_group_id', null),
-        supabase.from('contacts').select('*', { count: 'exact', head: true }).eq('classification', 'client'),
-        supabase.from('contacts').select('*', { count: 'exact', head: true }).eq('classification', 'non_client'),
-        supabase.from('contacts').select('*', { count: 'exact', head: true }).eq('classification', 'prospect'),
-        supabase.from('contacts').select('*', { count: 'exact', head: true }).eq('classification', 'partner'),
-        supabase.from('contacts').select('*', { count: 'exact', head: true }).eq('classification', 'supplier'),
-        supabase.from('contacts').select('*', { count: 'exact', head: true }).not('instagram_username', 'is', null),
-        supabase.from('contacts').select('*', { count: 'exact', head: true }).not('lead_id', 'is', null),
+        authClient.from('contacts').select('*', { count: 'exact', head: true }).is('deleted_at', null).is('whatsapp_group_id', null),
+        authClient.from('contacts').select('*', { count: 'exact', head: true }).eq('classification', 'client'),
+        authClient.from('contacts').select('*', { count: 'exact', head: true }).eq('classification', 'non_client'),
+        authClient.from('contacts').select('*', { count: 'exact', head: true }).eq('classification', 'prospect'),
+        authClient.from('contacts').select('*', { count: 'exact', head: true }).eq('classification', 'partner'),
+        authClient.from('contacts').select('*', { count: 'exact', head: true }).eq('classification', 'supplier'),
+        authClient.from('contacts').select('*', { count: 'exact', head: true }).not('instagram_username', 'is', null),
+        authClient.from('contacts').select('*', { count: 'exact', head: true }).not('lead_id', 'is', null),
       ]);
 
       setStats({
@@ -217,9 +216,9 @@ export const useContacts = () => {
     try {
       // Use count queries to bypass the 1000 row limit
       const [followersRes, followingRes, mutualRes] = await Promise.all([
-        supabase.from('contacts').select('*', { count: 'exact', head: true }).in('follower_status', ['follower', 'mutual']),
-        supabase.from('contacts').select('*', { count: 'exact', head: true }).in('follower_status', ['following', 'mutual']),
-        supabase.from('contacts').select('*', { count: 'exact', head: true }).eq('follower_status', 'mutual'),
+        authClient.from('contacts').select('*', { count: 'exact', head: true }).in('follower_status', ['follower', 'mutual']),
+        authClient.from('contacts').select('*', { count: 'exact', head: true }).in('follower_status', ['following', 'mutual']),
+        authClient.from('contacts').select('*', { count: 'exact', head: true }).eq('follower_status', 'mutual'),
       ]);
 
       setTagStats({
@@ -258,9 +257,9 @@ export const useContacts = () => {
       const followerStatus = contact.follower_status || getFollowerStatusFromTags(contact.tags);
 
       // Get current user for created_by attribution
-      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      const { data: { user: currentUser } } = await authClient.auth.getUser();
 
-      const { data, error } = await supabase
+      const { data, error } = await authClient
         .from('contacts')
         .insert([{
           full_name: contact.full_name,
@@ -287,7 +286,7 @@ export const useContacts = () => {
 
       // Auto-save to Google Contacts (silent, best-effort)
       try {
-        const { data: { session } } = await supabase.auth.getSession();
+        const { data: { session } } = await authClient.auth.getSession();
         if (session) {
           cloudFunctions.invoke('google-save-contact', {
             body: {
@@ -322,7 +321,7 @@ export const useContacts = () => {
         }
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await authClient
         .from('contacts')
         .update({
           ...updates,
@@ -347,7 +346,7 @@ export const useContacts = () => {
   const deleteContact = async (id: string) => {
     try {
       // Fetch full snapshot before archiving
-      const { data: snapshot } = await supabase
+      const { data: snapshot } = await authClient
         .from('contacts')
         .select('*')
         .eq('id', id)
@@ -365,7 +364,7 @@ export const useContacts = () => {
       }
 
       // Soft delete
-      const { error } = await supabase
+      const { error } = await authClient
         .from('contacts')
         .update({ deleted_at: new Date().toISOString() } as any)
         .eq('id', id);
@@ -391,7 +390,7 @@ export const useContacts = () => {
       if (!contact) throw new Error('Contato não encontrado');
 
       // Create lead from contact data
-      const { data: leadResult, error: leadError } = await supabase
+      const { data: leadResult, error: leadError } = await authClient
         .from('leads')
         .insert({
           lead_name: contact.full_name,
@@ -413,7 +412,7 @@ export const useContacts = () => {
       if (leadError) throw leadError;
 
       // Create link in contact_leads junction table
-      const { error: linkError } = await externalSupabase
+      const { error: linkError } = await db
         .from('contact_leads')
         .insert({
           contact_id: contactId,
@@ -423,7 +422,7 @@ export const useContacts = () => {
       if (linkError) throw linkError;
 
       // Update contact with lead reference (legacy support)
-      const { error: updateError } = await supabase
+      const { error: updateError } = await authClient
         .from('contacts')
         .update({
           lead_id: leadResult.id,
@@ -449,13 +448,13 @@ export const useContacts = () => {
     let duplicates = 0;
 
     // Get current user for created_by attribution
-    const { data: { user: currentUser } } = await supabase.auth.getUser();
+    const { data: { user: currentUser } } = await authClient.auth.getUser();
     const currentUserId = currentUser?.id || null;
 
     for (const contact of csvData) {
       try {
         // Check for duplicates by phone or email or instagram
-        let duplicateQuery = supabase.from('contacts').select('id');
+        let duplicateQuery = authClient.from('contacts').select('id');
         
         if (contact.phone) {
           duplicateQuery = duplicateQuery.eq('phone', contact.phone);
@@ -481,7 +480,7 @@ export const useContacts = () => {
           }
         }
 
-        const { error } = await supabase
+        const { error } = await authClient
           .from('contacts')
           .insert({
             full_name: contact.full_name || 'Sem nome',
@@ -528,7 +527,7 @@ export const useContacts = () => {
     const total = data.length;
 
     // Get current user for created_by attribution
-    const { data: { user: currentUser } } = await supabase.auth.getUser();
+    const { data: { user: currentUser } } = await authClient.auth.getUser();
     const currentUserId = currentUser?.id || null;
 
     for (let i = 0; i < data.length; i++) {
@@ -569,7 +568,7 @@ export const useContacts = () => {
 
         // Check for existing contact with this username (check both with and without @)
         const normalizedUsername = username.toLowerCase().replace('@', '');
-        const { data: existing } = await supabase
+        const { data: existing } = await authClient
           .from('contacts')
           .select('id, follower_status, tags')
           .or(`instagram_username.eq.${normalizedUsername},instagram_username.eq.@${normalizedUsername}`)
@@ -592,7 +591,7 @@ export const useContacts = () => {
             const newTag = importType === 'followers' ? 'seguidor' : 'seguindo';
             const updatedTags = currentTags.includes(newTag) ? currentTags : [...currentTags, newTag];
             
-            const { error: updateError } = await supabase
+            const { error: updateError } = await authClient
               .from('contacts')
               .update({ 
                 follower_status: 'mutual',
@@ -622,7 +621,7 @@ export const useContacts = () => {
         const tags = [importType === 'followers' ? 'seguidor' : importType === 'following' ? 'seguindo' : 'instagram'];
         const followerStatus: FollowerStatus = importType === 'followers' ? 'follower' : importType === 'following' ? 'following' : 'none';
 
-        const { error } = await supabase
+        const { error } = await authClient
           .from('contacts')
           .insert({
             full_name: displayName || `@${username}`,
@@ -665,7 +664,7 @@ export const useContacts = () => {
       let hasMore = true;
       
       while (hasMore) {
-        const { data, error } = await supabase
+        const { data, error } = await authClient
           .from('contacts')
           .select('*')
           .not('instagram_username', 'is', null)
@@ -836,7 +835,7 @@ export const useContacts = () => {
 
           // Update primary contact if there are changes
           if (Object.keys(mergedData).length > 0) {
-            await supabase
+            await authClient
               .from('contacts')
               .update(mergedData)
               .eq('id', primary.id);
@@ -844,24 +843,24 @@ export const useContacts = () => {
 
           // Move contact_leads from duplicates to primary
           const duplicateIds = duplicatesToMerge.map(d => d.id);
-          await externalSupabase
+          await db
             .from('contact_leads')
             .update({ contact_id: primary.id })
             .in('contact_id', duplicateIds);
 
           // Move contact_relationships from duplicates to primary
-          await supabase
+          await authClient
             .from('contact_relationships')
             .update({ contact_id: primary.id })
             .in('contact_id', duplicateIds);
           
-          await supabase
+          await authClient
             .from('contact_relationships')
             .update({ related_contact_id: primary.id })
             .in('related_contact_id', duplicateIds);
 
           // Delete duplicate contacts
-          const { error: deleteError } = await supabase
+          const { error: deleteError } = await authClient
             .from('contacts')
             .delete()
             .in('id', duplicateIds);
@@ -909,7 +908,7 @@ export const useContacts = () => {
       }, 600);
     };
 
-    const channelCloud = supabase
+    const channelCloud = authClient
       .channel('contacts-realtime-cloud')
       .on(
         'postgres_changes',
@@ -918,7 +917,7 @@ export const useContacts = () => {
       )
       .subscribe();
 
-    const channelExternal = externalSupabase
+    const channelExternal = db
       .channel('contacts-realtime-external')
       .on(
         'postgres_changes',
@@ -929,8 +928,8 @@ export const useContacts = () => {
 
     return () => {
       if (debounceTimer) clearTimeout(debounceTimer);
-      supabase.removeChannel(channelCloud);
-      externalSupabase.removeChannel(channelExternal);
+      authClient.removeChannel(channelCloud);
+      db.removeChannel(channelExternal);
     };
   }, [fetchContacts]);
 
