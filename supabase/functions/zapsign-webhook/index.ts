@@ -65,6 +65,18 @@ async function resolveOwnerByInstance(supabase: any, instanceName?: string | nul
   return ownerProfile?.user_id || null
 }
 
+async function resolveFirstBoardStageId(supabase: any, boardId: string | null): Promise<string | null> {
+  if (!boardId) return null
+  const { data: board } = await supabase
+    .from('kanban_boards')
+    .select('stages')
+    .eq('id', boardId)
+    .maybeSingle()
+
+  const stages = Array.isArray(board?.stages) ? board.stages : []
+  return stages.find((stage: any) => stage?.id)?.id || null
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
