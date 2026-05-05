@@ -79,7 +79,7 @@ export function OnboardingMeetingConfig({ boardId }: Props) {
 
   const fetchConfig = async () => {
     setLoading(true);
-    const { data } = await (supabase as any)
+    const { data } = await (externalSupabase as any)
       .from('onboarding_meeting_configs')
       .select('*')
       .eq('board_id', boardId)
