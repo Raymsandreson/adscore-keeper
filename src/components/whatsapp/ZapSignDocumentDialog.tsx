@@ -503,7 +503,18 @@ export function ZapSignDocumentDialog({
   const filledFields = templateFields.filter(f => f.para.trim() && !f.editing);
   const emptyFields = templateFields.filter(f => f.de && (!f.para.trim() || f.editing));
 
-  const renderFieldCard = (field: ExtractedField, globalIndex: number) => (
+  const findStateValue = () => {
+    const f = templateFields.find(tf => detectLocationFieldType(tf.de) === 'state');
+    return f?.para || '';
+  };
+
+  const setFieldByType = (type: 'state' | 'city' | 'cep', value: string) => {
+    setTemplateFields(prev => prev.map(f => detectLocationFieldType(f.de) === type ? { ...f, para: value } : f));
+  };
+
+  const renderFieldCard = (field: ExtractedField, globalIndex: number) => {
+    const locType = detectLocationFieldType(field.de);
+    return (
     <div key={globalIndex} className="rounded-lg border p-3 space-y-1.5 bg-card">
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
@@ -515,12 +526,39 @@ export function ZapSignDocumentDialog({
               <Sparkles className="h-2.5 w-2.5" /> IA
             </Badge>
           )}
-          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => toggleEditField(globalIndex)}>
-            {field.editing ? <Check className="h-3 w-3 text-primary" /> : <Pencil className="h-3 w-3" />}
-          </Button>
+          {!locType && (
+            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => toggleEditField(globalIndex)}>
+              {field.editing ? <Check className="h-3 w-3 text-primary" /> : <Pencil className="h-3 w-3" />}
+            </Button>
+          )}
         </div>
       </div>
-      {field.editing ? (
+      {locType === 'state' ? (
+        <StateCombobox
+          value={field.para}
+          onChange={v => {
+            updateFieldValue(globalIndex, v);
+            // limpa cidade se UF mudar
+            setTemplateFields(prev => prev.map(f => detectLocationFieldType(f.de) === 'city' ? { ...f, para: '' } : f));
+          }}
+        />
+      ) : locType === 'city' ? (
+        <CityCombobox
+          value={field.para}
+          onChange={v => updateFieldValue(globalIndex, v)}
+          stateUf={findStateValue()}
+        />
+      ) : locType === 'cep' ? (
+        <CepInput
+          value={field.para}
+          onChange={v => updateFieldValue(globalIndex, v)}
+          onAddressFound={addr => {
+            setFieldByType('state', addr.state);
+            // pequeno delay para o fetch de cidades carregar antes
+            setTimeout(() => setFieldByType('city', addr.city), 50);
+          }}
+        />
+      ) : field.editing ? (
         <Input
           className="text-sm"
           value={field.para}
@@ -534,7 +572,8 @@ export function ZapSignDocumentDialog({
         </p>
       )}
     </div>
-  );
+    );
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
