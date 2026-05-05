@@ -137,6 +137,36 @@ export default function ZapsignSyncPage({ externalDateRange, externalPeriodLabel
 
   useEffect(() => { loadState(); loadRules(); }, []);
 
+  // Realtime: refresh sync state and runs automatically when the webhook
+  // creates/updates documents or sync runs in the external DB.
+  useEffect(() => {
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleReload = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        loadState();
+        // Trigger doc counts refresh by nudging dateRange dependency
+        setDocCounts((prev) => ({ ...prev }));
+      }, 800);
+    };
+
+    const docsChannel = externalSupabase
+      .channel('zapsign-docs-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'zapsign_documents' }, scheduleReload)
+      .subscribe();
+
+    const runsChannel = externalSupabase
+      .channel('zapsign-runs-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'zapsign_sync_runs' }, scheduleReload)
+      .subscribe();
+
+    return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      externalSupabase.removeChannel(docsChannel);
+      externalSupabase.removeChannel(runsChannel);
+    };
+  }, []);
+
   // Contagens reais de documentos no período (fonte: zapsign_documents — mesma do sheet)
   useEffect(() => {
     (async () => {
