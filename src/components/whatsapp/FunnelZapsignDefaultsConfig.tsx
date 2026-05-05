@@ -77,9 +77,30 @@ export function FunnelZapsignDefaultsConfig({ boardId, hideBoardSelector, sectio
   // Recipients data
   const [profiles, setProfiles] = useState<{ user_id: string; full_name: string | null }[]>([]);
   const [groups, setGroups] = useState<{ group_jid: string; group_name: string | null; instance_name: string }[]>([]);
+  const [instances, setInstances] = useState<{ instance_name: string; owner_name: string | null; owner_phone: string | null }[]>([]);
   const [memberSearch, setMemberSearch] = useState('');
   const [groupSearch, setGroupSearch] = useState('');
   const [phoneInput, setPhoneInput] = useState('');
+  const [hideUnnamedGroups, setHideUnnamedGroups] = useState(true);
+
+  // Map instance_name -> friendly display ("Owner Name" || instance_name)
+  const instanceDisplay = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const i of instances) {
+      m.set(i.instance_name, (i.owner_name && i.owner_name.trim()) || i.instance_name);
+    }
+    return m;
+  }, [instances]);
+  const friendlyInstance = (raw: string) => instanceDisplay.get(raw) || raw;
+  // Helper: a group has a "real" name if group_name is non-empty AND not equal to its JID-like code
+  const hasRealName = (g: { group_jid: string; group_name: string | null }) => {
+    const n = (g.group_name || '').trim();
+    if (!n) return false;
+    if (n === g.group_jid) return false;
+    if (/^\d{10,}@g\.us$/i.test(n)) return false;
+    if (/^\d{10,}$/.test(n)) return false;
+    return true;
+  };
 
   const showProc = section === 'all' || section === 'procuracao' || section === 'documentos';
   const showGroup = section === 'all' || section === 'grupo';
