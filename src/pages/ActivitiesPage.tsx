@@ -1143,7 +1143,7 @@ const ActivitiesPage = () => {
     }
     const timer = setTimeout(async () => {
       const term = leadSearch.trim();
-      const { data } = await supabase
+      const { data } = await externalSupabase
         .from('leads')
         .select('id, lead_name')
         .ilike('lead_name', `%${term}%`)
