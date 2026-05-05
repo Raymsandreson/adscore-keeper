@@ -2199,12 +2199,7 @@ ${scrapeData.content || ''}
                       </div>
                     </>
                   )}
-                  {leadOutcome === 'closed' && (
-                    <div>
-                      <Label className="text-xs">Nº do Caso</Label>
-                      <Input value={caseNumber} onChange={(e) => setCaseNumber(e.target.value)} placeholder="Número do caso..." className="mt-1" />
-                    </div>
-                  )}
+                  {/* Nº do Caso removido — gerenciado na aba Casos */}
                 </div>
 
                 <div className="col-span-2">

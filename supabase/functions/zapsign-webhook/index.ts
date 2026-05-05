@@ -958,7 +958,7 @@ Deno.serve(async (req) => {
           // Check board_group_settings for post-signature automations
           const { data: boardSettings } = await supabase
             .from('board_group_settings')
-            .select('auto_close_lead_on_sign, auto_create_group_on_sign, initial_message_template, use_ai_message, ai_generated_message, send_audio_message, audio_voice_id, lead_fields')
+            .select('auto_close_lead_on_sign, auto_create_group_on_sign, initial_message_template, use_ai_message, ai_generated_message, send_audio_message, audio_voice_id, lead_fields, process_workflows, process_workflow_board_id')
             .eq('board_id', leadForBoard.board_id)
             .maybeSingle()
 
@@ -1014,16 +1014,38 @@ Deno.serve(async (req) => {
                 // Auto-create initial lead_processes record (visível na aba Processos)
                 if (createdCase?.id) {
                   try {
-                    await extClient.from('lead_processes').insert({
-                      case_id: createdCase.id,
-                      lead_id: localDoc.lead_id,
-                      title: `Processo - ${leadForBoard.lead_name || 'Novo'}`,
-                      process_type: 'administrativo',
-                      status: 'em_andamento',
-                      polo_ativo: leadForBoard.lead_name || null,
-                      started_at: new Date().toISOString().split('T')[0],
-                      created_by: localDoc.created_by || null,
-                    })
+                    // Pull workflows configurados no board (process_workflows ou fallback process_workflow_board_id)
+                    const cfgWorkflows: any[] = Array.isArray((boardSettings as any).process_workflows) && (boardSettings as any).process_workflows.length > 0
+                      ? (boardSettings as any).process_workflows
+                      : ((boardSettings as any).process_workflow_board_id
+                          ? [{ workflow_board_id: (boardSettings as any).process_workflow_board_id }]
+                          : [{ workflow_board_id: null }])
+
+                    for (const wf of cfgWorkflows) {
+                      const wfBoardId = wf?.workflow_board_id || null
+                      let wfName: string | null = null
+                      if (wfBoardId) {
+                        const { data: wfBoard } = await supabase
+                          .from('kanban_boards')
+                          .select('name')
+                          .eq('id', wfBoardId)
+                          .maybeSingle()
+                        wfName = wfBoard?.name || null
+                      }
+                      await extClient.from('lead_processes').insert({
+                        case_id: createdCase.id,
+                        lead_id: localDoc.lead_id,
+                        title: wfName ? `Processo - ${leadForBoard.lead_name || 'Novo'} (${wfName})` : `Processo - ${leadForBoard.lead_name || 'Novo'}`,
+                        process_type: 'administrativo',
+                        status: 'em_andamento',
+                        polo_ativo: leadForBoard.lead_name || null,
+                        started_at: new Date().toISOString().split('T')[0],
+                        fee_percentage: 30,
+                        workflow_id: wfBoardId,
+                        workflow_name: wfName,
+                        created_by: localDoc.created_by || null,
+                      })
+                    }
                   } catch (trackErr) {
                     console.warn('[zapsign-webhook] Could not auto-create lead_process:', trackErr)
                   }
