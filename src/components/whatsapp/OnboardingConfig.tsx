@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { FileSignature, Users, Bell } from 'lucide-react';
 import { BoardGroupInstancesConfig } from './BoardGroupInstancesConfig';
@@ -6,6 +6,16 @@ import { FunnelZapsignDefaultsConfig } from './FunnelZapsignDefaultsConfig';
 
 export function OnboardingConfig() {
   const [tab, setTab] = useState('procuracao');
+  const listRef = useRef<HTMLDivElement>(null);
+
+  // Center the active tab in the scroll container when it changes
+  useEffect(() => {
+    const list = listRef.current;
+    if (!list) return;
+    const active = list.querySelector<HTMLElement>(`[data-state="active"]`);
+    if (!active) return;
+    active.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+  }, [tab]);
 
   return (
     <div className="space-y-4">
@@ -15,7 +25,10 @@ export function OnboardingConfig() {
 
       <Tabs value={tab} onValueChange={setTab} className="w-full">
         <div className="sticky top-0 z-10 -mx-4 px-4 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 border-b">
-          <TabsList className="w-full sm:w-auto inline-flex sm:grid sm:grid-cols-3 h-auto p-1 bg-muted/50 overflow-x-auto no-scrollbar snap-x snap-mandatory scroll-px-4 sm:snap-none">
+          <TabsList
+            ref={listRef as any}
+            className="w-full sm:w-auto inline-flex sm:grid sm:grid-cols-3 h-auto p-1 bg-muted/50 overflow-x-auto no-scrollbar snap-x snap-mandatory scroll-px-4 sm:snap-none scroll-smooth"
+          >
             <TabsTrigger
               value="procuracao"
               className="snap-center sm:snap-align-none flex items-center gap-2 py-2 px-3 whitespace-nowrap data-[state=active]:bg-fuchsia-500/10 data-[state=active]:text-fuchsia-600 dark:data-[state=active]:text-fuchsia-400"
