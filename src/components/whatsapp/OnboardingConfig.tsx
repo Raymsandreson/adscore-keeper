@@ -7,11 +7,11 @@ import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { BoardGroupInstancesConfig } from './BoardGroupInstancesConfig';
 import { FunnelZapsignDefaultsConfig } from './FunnelZapsignDefaultsConfig';
 
-const TABS = ['procuracao', 'grupo', 'notificacoes'] as const;
+const TABS = ['documentos', 'grupo', 'notificacoes'] as const;
 type TabKey = (typeof TABS)[number];
 
 export function OnboardingConfig() {
-  const [tab, setTab] = useState<TabKey>('procuracao');
+  const [tab, setTab] = useState<TabKey>('documentos');
   const listRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const isProgrammaticScroll = useRef(false);
