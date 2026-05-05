@@ -75,6 +75,10 @@ export function OnboardingConfig({ onOpenAgents }: OnboardingConfigProps = {}) {
               <Bot className="h-4 w-4 shrink-0" />
               <span className="text-sm font-medium">Atendimento</span>
             </TabsTrigger>
+            <TabsTrigger value="caso" className="snap-center sm:snap-align-none flex items-center gap-2 py-2 px-3 whitespace-nowrap data-[state=active]:bg-orange-500/10 data-[state=active]:text-orange-600 dark:data-[state=active]:text-orange-400">
+              <Scale className="h-4 w-4 shrink-0" />
+              <span className="text-sm font-medium">Caso</span>
+            </TabsTrigger>
             <TabsTrigger value="reuniao" className="snap-center sm:snap-align-none flex items-center gap-2 py-2 px-3 whitespace-nowrap data-[state=active]:bg-sky-500/10 data-[state=active]:text-sky-600 dark:data-[state=active]:text-sky-400">
               <Video className="h-4 w-4 shrink-0" />
               <span className="text-sm font-medium">Reunião</span>
