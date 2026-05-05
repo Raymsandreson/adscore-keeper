@@ -851,6 +851,18 @@ export function DynamicKanbanBoard({
                                         </CopyableText>
                                       </div>
                                     )}
+                                    {((lead as any).visit_city || (lead as any).city || (lead as any).visit_state || (lead as any).state) && (
+                                      <div className="flex items-center gap-1 text-xs text-muted-foreground" onClick={e => e.stopPropagation()} draggable={false} onDragStart={e => e.preventDefault()}>
+                                        <MapPin className="h-3 w-3 flex-shrink-0" />
+                                        <CopyableText
+                                          copyValue={[(lead as any).visit_city || (lead as any).city, (lead as any).visit_state || (lead as any).state].filter(Boolean).join('/')}
+                                          label="Localização"
+                                          className="truncate"
+                                        >
+                                          {[(lead as any).visit_city || (lead as any).city, (lead as any).visit_state || (lead as any).state].filter(Boolean).join('/')}
+                                        </CopyableText>
+                                      </div>
+                                    )}
                                   </div>
 
                                   {/* Acolhedor vinculado ao lead */}
