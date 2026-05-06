@@ -125,8 +125,14 @@ export function OnboardingMeetingConfig({ boardId }: Props) {
   };
 
   const fetchMembers = async () => {
-    const { data } = await externalSupabase.from('profiles').select('user_id, full_name');
-    setMembers((data || []).filter(m => m.full_name));
+    const { data } = await externalSupabase.from('profiles').select('user_id, full_name, email');
+    const list = (data || []).map(m => ({
+      user_id: m.user_id,
+      full_name: m.full_name || (m.email ? m.email.split('@')[0] : 'Usuário'),
+      email: m.email,
+    }));
+    list.sort((a, b) => (a.full_name || '').localeCompare(b.full_name || ''));
+    setMembers(list);
   };
 
   const fetchActivityTypes = async () => {
