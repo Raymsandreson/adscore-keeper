@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/integrations/supabase';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -77,6 +77,7 @@ interface ProcessActivity {
 }
 
 const LEAD_FIELD_OPTIONS = [
+  { value: 'board_name', label: 'Nome do Funil' },
   { value: 'lead_name', label: 'Nome do Lead' },
   { value: 'victim_name', label: 'Nome da Vítima' },
   { value: 'lead_phone', label: 'Telefone' },
@@ -192,12 +193,12 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
   const fetchData = async () => {
     setLoading(true);
     const [boardsRes, instancesRes, voicesRes, nucleiRes, profilesRes, productsRes] = await Promise.all([
-      (supabase as any).from('kanban_boards').select('id, name, board_type, product_service_id').order('display_order'),
-      (supabase as any).from('whatsapp_instances').select('id, instance_name, owner_phone').eq('is_active', true),
-      (supabase as any).from('custom_voices').select('id, name, elevenlabs_voice_id').eq('status', 'ready'),
-      (supabase as any).from('specialized_nuclei').select('id, name, prefix').eq('is_active', true).order('name'),
-      (supabase as any).from('profiles').select('user_id, full_name').order('full_name'),
-      (supabase as any).from('products_services').select('id, name, nucleus_id'),
+      (db as any).from('kanban_boards').select('id, name, board_type, product_service_id').order('display_order'),
+      (db as any).from('whatsapp_instances').select('id, instance_name, owner_phone').eq('is_active', true),
+      (db as any).from('custom_voices').select('id, name, elevenlabs_voice_id').eq('status', 'ready'),
+      (db as any).from('specialized_nuclei').select('id, name, prefix').eq('is_active', true).order('name'),
+      (db as any).from('profiles').select('user_id, full_name').order('full_name'),
+      (db as any).from('products_services').select('id, name, nucleus_id'),
     ]);
     setBoards((boardsRes.data as any[]) || []);
     setInstances((instancesRes.data as any[]) || []);
