@@ -6,6 +6,9 @@ import { toast } from 'sonner';
 import { logAudit } from '@/hooks/useAuditLog';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
+// Lock global em memória para impedir cliques duplos / StrictMode duplicar criação
+const inflightCreates = new Set<string>();
+
 export interface LeadActivity {
   id: string;
   lead_id: string | null;
@@ -121,6 +124,13 @@ export function useLeadActivities() {
   }, []);
 
   const createActivity = async (activity: Partial<LeadActivity>) => {
+    const dedupKey = `${activity.lead_id || activity.case_id || activity.process_id || 'sys'}|${(activity.title || '').trim().toLowerCase()}|${activity.activity_type || 'tarefa'}`;
+    if (inflightCreates.has(dedupKey)) {
+      console.warn('[createActivity] Duplicado ignorado (em voo):', dedupKey);
+      return null;
+    }
+    inflightCreates.add(dedupKey);
+    setTimeout(() => inflightCreates.delete(dedupKey), 5000);
     try {
       const hasLink = !!(activity.lead_id || activity.case_id || activity.process_id);
       if (!hasLink && !activity.is_system) {
@@ -217,9 +227,17 @@ export function useLeadActivities() {
       return data;
     } catch (error: any) {
       if (error?.message === 'LINK_REQUIRED') throw error;
+      // Postgres unique_violation: já existe atividade pendente idêntica
+      if (error?.code === '23505') {
+        console.warn('[createActivity] Duplicado bloqueado pelo índice único:', dedupKey);
+        toast.info('Já existe uma atividade pendente igual para este lead.');
+        return null;
+      }
       console.error('Error creating activity:', error);
       toast.error('Erro ao criar atividade');
       throw error;
+    } finally {
+      inflightCreates.delete(dedupKey);
     }
   };
 
