@@ -1149,8 +1149,22 @@ Deno.serve(async (req) => {
                 // Auto-create ONBOARDING activity for CASO-prefixed cases
                 if (caseNumber && caseNumber.startsWith('CASO')) {
                   try {
+                    // Determine assignee: prefer processual_acolhedor_id from board settings,
+                    // fallback to Wanessa (legacy hardcoded default)
                     const wanessaCloudUuid = '1f788b8d-e30e-484a-9460-39a881d25128'
-                    const wanessaExtUuid = await remapToExternal(extClient, wanessaCloudUuid)
+                    const assigneeCloudUuid = boardSettings.processual_acolhedor_id || wanessaCloudUuid
+
+                    let assigneeName = 'Wanessa Vitória Rodrigues de Sousa'
+                    if (boardSettings.processual_acolhedor_id) {
+                      const { data: acolhedorProfile } = await supabase
+                        .from('profiles')
+                        .select('full_name')
+                        .eq('user_id', boardSettings.processual_acolhedor_id)
+                        .maybeSingle()
+                      if (acolhedorProfile?.full_name) assigneeName = acolhedorProfile.full_name
+                    }
+
+                    const assigneeExtUuid = await remapToExternal(extClient, assigneeCloudUuid)
                     await extClient.from('lead_activities').insert({
                       lead_id: localDoc.lead_id,
                       lead_name: leadForBoard.lead_name || 'Novo',
@@ -1159,11 +1173,11 @@ Deno.serve(async (req) => {
                       activity_type: 'tarefa',
                       status: 'pendente',
                       priority: 'alta',
-                      assigned_to: wanessaExtUuid,
-                      assigned_to_name: 'Wanessa Vitória Rodrigues de Sousa',
+                      assigned_to: assigneeExtUuid,
+                      assigned_to_name: assigneeName,
                       deadline: new Date().toISOString().split('T')[0],
                     })
-                    console.log(`[zapsign-webhook] Onboarding activity created for ${caseNumber}`)
+                    console.log(`[zapsign-webhook] Onboarding activity created for ${caseNumber} assigned to ${assigneeName}`)
                   } catch (onbErr) {
                     console.warn('[zapsign-webhook] Onboarding activity error:', onbErr)
                   }
