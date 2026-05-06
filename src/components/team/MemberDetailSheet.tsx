@@ -146,7 +146,7 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
     if (member) {
       setFullName(member.full_name || '');
       setEmail(member.email || '');
-      setSelectedProfileId('');
+      setSelectedProfileId((member as any).access_profile_id || '');
       fetchProfileExtras();
       fetchMemberData();
     }
