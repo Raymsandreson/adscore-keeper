@@ -785,9 +785,9 @@ export function WhatsAppInbox() {
 
   return (
     <div
-      className="flex flex-col relative overflow-hidden"
+      className="flex flex-col relative overflow-hidden h-screen md:h-screen"
       style={{
-        height: 'calc(100dvh - var(--mobile-header-h, 0px) - env(safe-area-inset-top))',
+        height: 'calc(100dvh - var(--app-header-offset, 0px))',
       }}
     >
       {/* Header */}
