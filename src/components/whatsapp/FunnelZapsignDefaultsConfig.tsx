@@ -250,14 +250,43 @@ export function FunnelZapsignDefaultsConfig({ boardId, hideBoardSelector, sectio
 
   const filteredGroups = useMemo(() => {
     const q = normalizeSearch(groupSearch);
-    return groups.filter((g) => {
-      if (hideUnnamedGroups && !hasRealName(g) && !row?.notify_group_jids.includes(g.group_jid)) return false;
+    const selected = new Set(row?.notify_group_jids || []);
+    const list = groups.filter((g) => {
+      if (hideUnnamedGroups && !hasRealName(g) && !selected.has(g.group_jid)) return false;
       if (!q) return true;
       return normalizeSearch(g.group_name).includes(q)
         || normalizeSearch(g.group_jid).includes(q)
         || normalizeSearch(g.instance_name).includes(q);
     });
+    return list.sort((a, b) => {
+      const sa = selected.has(a.group_jid) ? 0 : 1;
+      const sb = selected.has(b.group_jid) ? 0 : 1;
+      if (sa !== sb) return sa - sb;
+      return normalizeSearch(a.group_name).localeCompare(normalizeSearch(b.group_name));
+    });
   }, [groups, groupSearch, hideUnnamedGroups, row?.notify_group_jids]);
+
+  const sortedProfiles = useMemo(() => {
+    const selected = new Set(row?.notify_team_user_ids || []);
+    return [...profiles].sort((a, b) => {
+      const sa = selected.has(a.user_id) ? 0 : 1;
+      const sb = selected.has(b.user_id) ? 0 : 1;
+      if (sa !== sb) return sa - sb;
+      return (a.full_name || '').localeCompare(b.full_name || '');
+    });
+  }, [profiles, row?.notify_team_user_ids]);
+
+  const sortedInstances = useMemo(() => {
+    const selected = new Set(row?.notify_phone_numbers || []);
+    return [...instances].sort((a, b) => {
+      const pa = (a.owner_phone || '').replace(/\D/g, '');
+      const pb = (b.owner_phone || '').replace(/\D/g, '');
+      const sa = selected.has(pa) ? 0 : 1;
+      const sb = selected.has(pb) ? 0 : 1;
+      if (sa !== sb) return sa - sb;
+      return ((a.owner_name || a.instance_name) || '').localeCompare((b.owner_name || b.instance_name) || '');
+    });
+  }, [instances, row?.notify_phone_numbers]);
 
   const addPhone = () => {
     if (!row) return;
@@ -427,7 +456,7 @@ export function FunnelZapsignDefaultsConfig({ boardId, hideBoardSelector, sectio
                       <Input className="pl-8 h-9" placeholder="Buscar membro…" value={memberSearch} onChange={(e) => setMemberSearch(e.target.value)} />
                     </div>
                     <div className="max-h-48 overflow-y-auto border rounded-md divide-y">
-                      {profiles
+                      {sortedProfiles
                         .filter((p) => !memberSearch || (p.full_name || '').toLowerCase().includes(memberSearch.toLowerCase()))
                         .slice(0, 50)
                         .map((p) => {
@@ -490,7 +519,7 @@ export function FunnelZapsignDefaultsConfig({ boardId, hideBoardSelector, sectio
                     <Label className="text-sm">Instâncias do WhatsApp (números da empresa)</Label>
                     <p className="text-xs text-muted-foreground">Adicione o número de uma instância ativa para receber a notificação no privado dela.</p>
                     <div className="max-h-40 overflow-y-auto border rounded-md divide-y">
-                      {instances.map((i) => {
+                      {sortedInstances.map((i) => {
                         const phone = (i.owner_phone || '').replace(/\D/g, '');
                         if (!phone) return null;
                         const checked = row.notify_phone_numbers.includes(phone);
