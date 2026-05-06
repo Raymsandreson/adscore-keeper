@@ -227,9 +227,17 @@ export function useLeadActivities() {
       return data;
     } catch (error: any) {
       if (error?.message === 'LINK_REQUIRED') throw error;
+      // Postgres unique_violation: já existe atividade pendente idêntica
+      if (error?.code === '23505') {
+        console.warn('[createActivity] Duplicado bloqueado pelo índice único:', dedupKey);
+        toast.info('Já existe uma atividade pendente igual para este lead.');
+        return null;
+      }
       console.error('Error creating activity:', error);
       toast.error('Erro ao criar atividade');
       throw error;
+    } finally {
+      inflightCreates.delete(dedupKey);
     }
   };
 
