@@ -287,6 +287,34 @@ Deno.serve(async (req) => {
         });
       }
 
+      // Apply auth_mode of MAIN signer (signers[0]) — ZapSign create-doc ignores it,
+      // so we need a follow-up POST /signers/{token}/ with auth_mode.
+      const mainAuthMode = additionalSigners?.[0]?.auth_mode;
+      if (signer?.token && mainAuthMode && mainAuthMode !== "assinaturaTela") {
+        try {
+          const authRes = await fetch(
+            `${ZAPSIGN_API_URL}/signers/${signer.token}/`,
+            {
+              method: "POST",
+              headers: zapsignHeaders,
+              body: JSON.stringify({ auth_mode: mainAuthMode }),
+            },
+          );
+          if (!authRes.ok) {
+            console.error(
+              `Failed to set main signer auth_mode (${mainAuthMode}):`,
+              await authRes.text(),
+            );
+          } else {
+            console.log(
+              `Main signer auth_mode set to ${mainAuthMode} (${signer.token})`,
+            );
+          }
+        } catch (authErr) {
+          console.error("Error setting main signer auth_mode:", authErr);
+        }
+      }
+
       // Build all sign URLs
       const allSignUrls = (docData.signers || []).map((
         s: any,
