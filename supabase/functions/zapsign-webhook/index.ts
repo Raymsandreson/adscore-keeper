@@ -1129,8 +1129,9 @@ Deno.serve(async (req) => {
             // ====================================================
             // MODE: GROUP — original behavior
             // ====================================================
-            if (postSignMode === 'group' && !leadForBoard.whatsapp_group_id) {
-              console.log(`[zapsign-webhook] Auto-creating group for lead ${localDoc.lead_id}`)
+            if (postSignMode === 'group') {
+              const action = leadForBoard.whatsapp_group_id ? 'reusing/renaming' : 'creating'
+              console.log(`[zapsign-webhook] ${action} group for lead ${localDoc.lead_id}`)
 
               const groupRes = await fetch(`${cloudFunctionsUrl}/functions/v1/create-whatsapp-group`, {
                 method: 'POST',
@@ -1147,6 +1148,7 @@ Deno.serve(async (req) => {
                   lead_id: localDoc.lead_id,
                   creation_origin: 'auto_sign',
                   phase: 'closed',
+                  allow_rename: true,
                 }),
               })
 

@@ -218,9 +218,11 @@ Deno.serve(async (req) => {
     // Mirror visit_* if blank (used em visitas/perícia)
     setIf("visit_city", extracted.city);
     setIf("visit_state", extracted.state?.toUpperCase()?.slice(0, 2));
-    setIf("visit_address", [extracted.street, extracted.street_number, extracted.complement]
-      .filter(Boolean)
-      .join(", ") || null);
+    setIf("visit_address", [
+      [extracted.street, extracted.street_number].filter(Boolean).join(", "),
+      extracted.complement,
+      extracted.neighborhood,
+    ].filter(Boolean).join(" - ") || null);
 
     update.ocr_enriched_at = new Date().toISOString();
     update.ocr_source = "zapsign_procuracao";

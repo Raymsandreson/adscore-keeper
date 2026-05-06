@@ -294,8 +294,9 @@ Deno.serve(async (req) => {
       })
     }
 
-    // DEDUP GUARD: If lead_id is provided, check if it already has a group
-    if (lead_id) {
+    // DEDUP GUARD: If lead_id is provided, check if it already has a group.
+    // Skip when caller passes allow_rename so we can rename existing group.
+    if (lead_id && !body.allow_rename) {
       const { data: existingLead } = await supabase
         .from('leads')
         .select('whatsapp_group_id')
@@ -600,12 +601,47 @@ Deno.serve(async (req) => {
       const existingParticipantsTotal = existingGroupInfo?.participants?.length || 0
 
       if (existingGroupInfo && (existingMatchedParticipants > 0 || existingParticipantsTotal > 1)) {
+        // Rename existing group to follow configured naming pattern when needed
+        const currentName = (existingGroupInfo.groupName || '').trim()
+        let finalName = currentName
+        const expectedPrefix = (settings?.group_name_prefix || '').trim()
+        const needsRename = settings && groupName && groupName !== currentName &&
+          (!currentName || (expectedPrefix && !currentName.toUpperCase().startsWith(expectedPrefix.toUpperCase())))
+        if (needsRename) {
+          try {
+            const renameRes = await fetch(`${baseUrl}/group/updateName`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', token: creatorInstance.instance_token },
+              body: JSON.stringify({ groupjid: leadData.whatsapp_group_id, name: groupName }),
+            })
+            if (renameRes.ok) {
+              finalName = groupName
+              console.log(`[create-whatsapp-group] Renamed existing group from "${currentName}" to "${groupName}"`)
+              if (shouldPersistSequence && settings && nextSeq) {
+                await supabase.from('board_group_settings').update({ current_sequence: nextSeq }).eq('board_id', board_id)
+              }
+            } else {
+              console.warn(`[create-whatsapp-group] Rename failed (${renameRes.status})`)
+            }
+          } catch (e) {
+            console.warn('[create-whatsapp-group] Rename error:', e)
+          }
+        }
+        // Persist group name to lead_whatsapp_groups
+        try {
+          await supabase
+            .from('lead_whatsapp_groups')
+            .update({ group_name: finalName })
+            .eq('group_jid', leadData.whatsapp_group_id)
+            .eq('lead_id', lead_id || leadData.id)
+        } catch {}
         return new Response(JSON.stringify({
           success: true,
           existing: true,
           group_id: leadData.whatsapp_group_id,
-          group_name: existingGroupInfo.groupName || groupName,
+          group_name: finalName,
           participants_count: existingMatchedParticipants || existingParticipantsTotal,
+          renamed: needsRename && finalName === groupName,
         }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         })
