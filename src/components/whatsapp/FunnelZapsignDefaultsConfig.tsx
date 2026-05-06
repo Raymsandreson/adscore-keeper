@@ -250,14 +250,43 @@ export function FunnelZapsignDefaultsConfig({ boardId, hideBoardSelector, sectio
 
   const filteredGroups = useMemo(() => {
     const q = normalizeSearch(groupSearch);
-    return groups.filter((g) => {
-      if (hideUnnamedGroups && !hasRealName(g) && !row?.notify_group_jids.includes(g.group_jid)) return false;
+    const selected = new Set(row?.notify_group_jids || []);
+    const list = groups.filter((g) => {
+      if (hideUnnamedGroups && !hasRealName(g) && !selected.has(g.group_jid)) return false;
       if (!q) return true;
       return normalizeSearch(g.group_name).includes(q)
         || normalizeSearch(g.group_jid).includes(q)
         || normalizeSearch(g.instance_name).includes(q);
     });
+    return list.sort((a, b) => {
+      const sa = selected.has(a.group_jid) ? 0 : 1;
+      const sb = selected.has(b.group_jid) ? 0 : 1;
+      if (sa !== sb) return sa - sb;
+      return normalizeSearch(a.group_name).localeCompare(normalizeSearch(b.group_name));
+    });
   }, [groups, groupSearch, hideUnnamedGroups, row?.notify_group_jids]);
+
+  const sortedProfiles = useMemo(() => {
+    const selected = new Set(row?.notify_team_user_ids || []);
+    return [...profiles].sort((a, b) => {
+      const sa = selected.has(a.user_id) ? 0 : 1;
+      const sb = selected.has(b.user_id) ? 0 : 1;
+      if (sa !== sb) return sa - sb;
+      return (a.full_name || '').localeCompare(b.full_name || '');
+    });
+  }, [profiles, row?.notify_team_user_ids]);
+
+  const sortedInstances = useMemo(() => {
+    const selected = new Set(row?.notify_phone_numbers || []);
+    return [...instances].sort((a, b) => {
+      const pa = (a.owner_phone || '').replace(/\D/g, '');
+      const pb = (b.owner_phone || '').replace(/\D/g, '');
+      const sa = selected.has(pa) ? 0 : 1;
+      const sb = selected.has(pb) ? 0 : 1;
+      if (sa !== sb) return sa - sb;
+      return ((a.owner_name || a.instance_name) || '').localeCompare((b.owner_name || b.instance_name) || '');
+    });
+  }, [instances, row?.notify_phone_numbers]);
 
   const addPhone = () => {
     if (!row) return;
