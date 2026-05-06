@@ -881,6 +881,9 @@ export function ZapSignDocumentDialog({
             ) : (
               <>
                 <div className="flex items-center gap-2 flex-wrap">
+                  <Button variant="ghost" size="sm" onClick={handleViewPrompt} className="gap-1 h-7 text-xs">
+                    <Eye className="h-3 w-3" /> Ver prompt da IA
+                  </Button>
                   <Button variant="ghost" size="sm" onClick={() => { setExtracting(true); extractDataWithAI().finally(() => setExtracting(false)); }} className="ml-auto gap-1 h-7 text-xs">
                     <Sparkles className="h-3 w-3" /> Re-extrair com IA
                   </Button>
