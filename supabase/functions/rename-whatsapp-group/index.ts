@@ -148,10 +148,10 @@ Deno.serve(async (req) => {
     // Rename group
     let renamed = false
     try {
-      const renameRes = await fetch(`${baseUrl}/group/updateSubject`, {
+      const renameRes = await fetch(`${baseUrl}/group/updateName`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', token: instance.instance_token },
-        body: JSON.stringify({ groupjid: fullJid, subject: newName }),
+        body: JSON.stringify({ groupjid: fullJid, name: newName }),
       })
       if (renameRes.ok) renamed = true
       else {
