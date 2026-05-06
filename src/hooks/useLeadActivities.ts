@@ -121,6 +121,13 @@ export function useLeadActivities() {
   }, []);
 
   const createActivity = async (activity: Partial<LeadActivity>) => {
+    const dedupKey = `${activity.lead_id || activity.case_id || activity.process_id || 'sys'}|${(activity.title || '').trim().toLowerCase()}|${activity.activity_type || 'tarefa'}`;
+    if (inflightCreates.has(dedupKey)) {
+      console.warn('[createActivity] Duplicado ignorado (em voo):', dedupKey);
+      return null;
+    }
+    inflightCreates.add(dedupKey);
+    setTimeout(() => inflightCreates.delete(dedupKey), 5000);
     try {
       const hasLink = !!(activity.lead_id || activity.case_id || activity.process_id);
       if (!hasLink && !activity.is_system) {
