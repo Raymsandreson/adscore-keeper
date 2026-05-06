@@ -50,6 +50,17 @@ Parabéns por assinar o documento! Agora vamos agendar sua reunião de onboardin
 ⏱ Duração: {{duration}} minutos
 📹 Via chamada de vídeo no WhatsApp`;
 
+const DEFAULT_AUTO_TEMPLATE = `✅ *Reunião de Onboarding agendada!*
+
+Olá {{contact_name}}, sua reunião de boas-vindas foi agendada automaticamente:
+
+📅 {{meeting_date}}
+🕐 {{meeting_time}}
+⏱ Duração: {{duration}} minutos
+📹 Via chamada de vídeo no WhatsApp
+
+Caso precise reagendar, é só nos avisar por aqui.`;
+
 const DEFAULT_CONFIG: MeetingConfig = {
   is_active: false,
   activity_type: 'reuniao',
@@ -62,6 +73,8 @@ const DEFAULT_CONFIG: MeetingConfig = {
   meeting_type: 'video_whatsapp',
   auto_send_after_signature: true,
   message_template: DEFAULT_TEMPLATE,
+  auto_schedule_mode: false,
+  auto_schedule_message_template: DEFAULT_AUTO_TEMPLATE,
 };
 
 export function OnboardingMeetingConfig({ boardId }: Props) {
