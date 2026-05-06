@@ -81,8 +81,16 @@ export function FunnelZapsignDefaultsConfig({ boardId, hideBoardSelector, sectio
   const [instances, setInstances] = useState<{ instance_name: string; owner_name: string | null; owner_phone: string | null }[]>([]);
   const [memberSearch, setMemberSearch] = useState('');
   const [groupSearch, setGroupSearch] = useState('');
+  const [loadingGroups, setLoadingGroups] = useState(false);
   const [phoneInput, setPhoneInput] = useState('');
   const [hideUnnamedGroups, setHideUnnamedGroups] = useState(true);
+
+  const normalizeSearch = (value: string | null | undefined) =>
+    (value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim();
 
   // Map instance_name -> friendly display ("Owner Name" || instance_name)
   const instanceDisplay = useMemo(() => {
@@ -130,6 +138,7 @@ export function FunnelZapsignDefaultsConfig({ boardId, hideBoardSelector, sectio
   useEffect(() => {
     if (!showNotif) return;
     (async () => {
+      setLoadingGroups(true);
       const [{ data: pf }, { data: gr }, { data: ins }] = await Promise.all([
         (supabase as any).from('profiles').select('user_id, full_name').order('full_name'),
         (db as any)
@@ -150,8 +159,44 @@ export function FunnelZapsignDefaultsConfig({ boardId, hideBoardSelector, sectio
         dedup.push({ group_jid: g.group_jid, group_name: g.contact_name, instance_name: g.instance_name });
       }
       setGroups(dedup);
+      setLoadingGroups(false);
     })();
   }, [showNotif]);
+
+  useEffect(() => {
+    if (!showNotif) return;
+    const q = normalizeSearch(groupSearch);
+    if (q.length < 2) return;
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      setLoadingGroups(true);
+      const { data, error } = await (db as any)
+        .from('whatsapp_groups_index')
+        .select('group_jid, contact_name, instance_name')
+        .ilike('contact_name', `%${q}%`)
+        .order('contact_name')
+        .limit(100);
+      if (cancelled) return;
+      if (!error && data) {
+        setGroups((current) => {
+          const byJid = new Map(current.map((g) => [g.group_jid, g]));
+          for (const g of data) {
+            byJid.set(g.group_jid, {
+              group_jid: g.group_jid,
+              group_name: g.contact_name,
+              instance_name: g.instance_name,
+            });
+          }
+          return Array.from(byJid.values());
+        });
+      }
+      setLoadingGroups(false);
+    }, 250);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [groupSearch, showNotif]);
 
   useEffect(() => {
     if (!selectedBoardId && funnels.length > 0) setSelectedBoardId(funnels[0].id);
@@ -202,6 +247,17 @@ export function FunnelZapsignDefaultsConfig({ boardId, hideBoardSelector, sectio
 
   const toggleArr = (arr: string[], v: string) =>
     arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v];
+
+  const filteredGroups = useMemo(() => {
+    const q = normalizeSearch(groupSearch);
+    return groups.filter((g) => {
+      if (hideUnnamedGroups && !hasRealName(g) && !row?.notify_group_jids.includes(g.group_jid)) return false;
+      if (!q) return true;
+      return normalizeSearch(g.group_name).includes(q)
+        || normalizeSearch(g.group_jid).includes(q)
+        || normalizeSearch(g.instance_name).includes(q);
+    });
+  }, [groups, groupSearch, hideUnnamedGroups, row?.notify_group_jids]);
 
   const addPhone = () => {
     if (!row) return;
@@ -404,13 +460,7 @@ export function FunnelZapsignDefaultsConfig({ boardId, hideBoardSelector, sectio
                       <Input className="pl-8 h-9" placeholder="Buscar grupo…" value={groupSearch} onChange={(e) => setGroupSearch(e.target.value)} />
                     </div>
                     <div className="max-h-48 overflow-y-auto border rounded-md divide-y">
-                      {groups
-                        .filter((g) => {
-                          if (hideUnnamedGroups && !hasRealName(g) && !row.notify_group_jids.includes(g.group_jid)) return false;
-                          if (!groupSearch) return true;
-                          const q = groupSearch.toLowerCase();
-                          return (g.group_name || '').toLowerCase().includes(q) || g.group_jid.toLowerCase().includes(q);
-                        })
+                      {filteredGroups
                         .slice(0, 100)
                         .map((g) => {
                           const checked = row.notify_group_jids.includes(g.group_jid);
@@ -424,6 +474,11 @@ export function FunnelZapsignDefaultsConfig({ boardId, hideBoardSelector, sectio
                           );
                         })}
                       {groups.length === 0 && <div className="px-3 py-2 text-xs text-muted-foreground">Nenhum grupo em cache. Sincronize uma instância primeiro.</div>}
+                      {groups.length > 0 && filteredGroups.length === 0 && (
+                        <div className="px-3 py-2 text-xs text-muted-foreground">
+                          {loadingGroups ? 'Buscando grupos…' : 'Nenhum grupo encontrado para esta busca.'}
+                        </div>
+                      )}
                     </div>
                     {row.notify_group_jids.length > 0 && (
                       <p className="text-xs text-muted-foreground">{row.notify_group_jids.length} grupo(s) selecionado(s)</p>
@@ -440,7 +495,7 @@ export function FunnelZapsignDefaultsConfig({ boardId, hideBoardSelector, sectio
                         if (!phone) return null;
                         const checked = row.notify_phone_numbers.includes(phone);
                         return (
-                          <label key={i.instance_name} className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-muted/40">
+                          <label key={`${i.instance_name}-${phone}`} className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-muted/40">
                             <Checkbox
                               checked={checked}
                               onCheckedChange={() =>
