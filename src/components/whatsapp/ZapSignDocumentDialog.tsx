@@ -72,6 +72,39 @@ export function ZapSignDocumentDialog({
   const [selectedTemplate, setSelectedTemplate] = useState('');
   const [templateFields, setTemplateFields] = useState<Array<ExtractedField>>([]);
   const [extracting, setExtracting] = useState(false);
+  const [showPromptDialog, setShowPromptDialog] = useState(false);
+  const [previewPrompt, setPreviewPrompt] = useState('');
+  const [previewAttachments, setPreviewAttachments] = useState<any>(null);
+  const [loadingPrompt, setLoadingPrompt] = useState(false);
+
+  const handleViewPrompt = async () => {
+    setShowPromptDialog(true);
+    setLoadingPrompt(true);
+    try {
+      const vars = templateFields.map(f => f.de).filter(Boolean);
+      const { data } = await cloudFunctions.invoke('zapsign-api', {
+        body: {
+          action: 'preview_extract_prompt',
+          messages: extractionSource === 'upload_only' ? (pastedText ? [{ direction: 'inbound', message_text: pastedText }] : []) : [...filteredMessages.slice(-50), ...(pastedText ? [{ direction: 'inbound', message_text: pastedText }] : [])],
+          template_fields: vars,
+          lead_data: leadData || fetchedLeadData || {},
+          contact_data: contactData || fetchedContactData || {},
+          uploaded_documents: uploadedDocs.map(d => ({ name: d.name, type: d.type, dataUrl: d.dataUrl })),
+        },
+      });
+      if (data?.success) {
+        setPreviewPrompt(data.prompt || '');
+        setPreviewAttachments(data.attachments || null);
+      } else {
+        toast.error('Erro ao gerar prévia do prompt');
+      }
+    } catch (err) {
+      console.error('Preview prompt error:', err);
+      toast.error('Erro ao carregar prompt');
+    } finally {
+      setLoadingPrompt(false);
+    }
+  };
   const [creating, setCreating] = useState(false);
   const [uploadedDocs, setUploadedDocs] = useState<UploadedDoc[]>([]);
   const [pastedText, setPastedText] = useState('');
