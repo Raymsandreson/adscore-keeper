@@ -332,30 +332,7 @@ export function OnboardingMeetingConfig({ boardId }: Props) {
             </div>
           </div>
 
-          {/* Auto send */}
-          <div className="flex items-center justify-between">
-            <div>
-              <Label className="text-xs font-medium">📲 Enviar automaticamente após assinatura</Label>
-              <p className="text-[10px] text-muted-foreground">Envia mensagem via WhatsApp assim que o documento é assinado</p>
-            </div>
-            <Switch
-              checked={config.auto_send_after_signature}
-              onCheckedChange={v => setConfig(prev => ({ ...prev, auto_send_after_signature: v }))}
-            />
-          </div>
-
-          {/* Auto schedule mode */}
-          <div className="flex items-center justify-between p-2 rounded-md bg-primary/5 border border-primary/20">
-            <div>
-              <Label className="text-xs font-medium">⚡ Agendar automaticamente por ordem de assinatura</Label>
-              <p className="text-[10px] text-muted-foreground">
-                Em vez do cliente escolher horário, o sistema reserva o próximo slot livre (respeitando duração + intervalo, dias e horário) e já envia a confirmação.
-              </p>
-            </div>
-            <Switch
-              checked={config.auto_schedule_mode}
-              onCheckedChange={v => setConfig(prev => ({ ...prev, auto_schedule_mode: v }))}
-            />
+          {/* (mode selector moved to top; auto-send below for manual mode) */}
           {/* Auto send (only for manual mode) */}
           {!config.auto_schedule_mode && (
             <div className="flex items-center justify-between">
