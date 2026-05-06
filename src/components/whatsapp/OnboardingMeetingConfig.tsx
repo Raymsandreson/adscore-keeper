@@ -113,6 +113,8 @@ export function OnboardingMeetingConfig({ boardId }: Props) {
         meeting_type: data.meeting_type,
         auto_send_after_signature: data.auto_send_after_signature,
         message_template: data.message_template || DEFAULT_TEMPLATE,
+        auto_schedule_mode: data.auto_schedule_mode ?? false,
+        auto_schedule_message_template: data.auto_schedule_message_template || DEFAULT_AUTO_TEMPLATE,
       });
     }
     setLoading(false);
