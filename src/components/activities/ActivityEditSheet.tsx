@@ -166,7 +166,7 @@ export function ActivityEditSheet({ open, onOpenChange, activityId, onUpdated }:
 
   const handleComplete = async () => {
     if (!activityId) return;
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await cloudSupabase.auth.getUser();
     const { error } = await supabase
       .from('lead_activities')
       .update({
