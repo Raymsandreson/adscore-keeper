@@ -356,10 +356,24 @@ export function OnboardingMeetingConfig({ boardId }: Props) {
               checked={config.auto_schedule_mode}
               onCheckedChange={v => setConfig(prev => ({ ...prev, auto_schedule_mode: v }))}
             />
-          </div>
-
-          {/* Message template - manual booking */}
+          {/* Auto send (only for manual mode) */}
           {!config.auto_schedule_mode && (
+            <div className="flex items-center justify-between">
+              <div>
+                <Label className="text-xs font-medium">📲 Enviar link automaticamente após assinatura</Label>
+                <p className="text-[10px] text-muted-foreground">Envia mensagem com link de agendamento via WhatsApp ao assinar</p>
+              </div>
+              <Switch
+                checked={config.auto_send_after_signature}
+                onCheckedChange={v => setConfig(prev => ({ ...prev, auto_send_after_signature: v }))}
+              />
+            </div>
+          )}
+
+          <div className="border-t pt-1" />
+
+          {/* Message template */}
+          {!config.auto_schedule_mode ? (
             <div className="space-y-1.5">
               <Label className="text-xs">💬 Mensagem de convite (cliente escolhe horário)</Label>
               <Textarea
@@ -372,10 +386,7 @@ export function OnboardingMeetingConfig({ boardId }: Props) {
                 Variáveis: <code className="bg-muted px-1 rounded">{'{{booking_link}}'}</code> <code className="bg-muted px-1 rounded">{'{{duration}}'}</code> <code className="bg-muted px-1 rounded">{'{{contact_name}}'}</code>
               </p>
             </div>
-          )}
-
-          {/* Message template - auto schedule */}
-          {config.auto_schedule_mode && (
+          ) : (
             <div className="space-y-1.5">
               <Label className="text-xs">💬 Mensagem de confirmação (agendamento automático)</Label>
               <Textarea
