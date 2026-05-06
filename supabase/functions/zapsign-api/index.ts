@@ -415,34 +415,45 @@ Deno.serve(async (req) => {
         );
       }
 
-      // Build multimodal content - include images from conversation and uploaded docs
+      // Build multimodal content - include images, PDFs and audio transcriptions
       const imageUrls: string[] = [];
+      const pdfUrls: string[] = [];
       const textMessages: string[] = [];
 
       for (const m of (messages || []).slice(-50)) {
         if (m.message_text) {
           textMessages.push(`[${m.direction}] ${m.message_text}`);
         }
-        if (
-          m.media_url &&
-          (m.media_type?.startsWith("image") || m.message_type === "image")
-        ) {
-          imageUrls.push(m.media_url);
+        // Transcrição de áudio (campo comum: transcription / transcript)
+        const transcription = (m as any).transcription || (m as any).transcript || (m as any).audio_transcription;
+        if (transcription) {
+          textMessages.push(`[${m.direction} 🎤 áudio transcrito] ${transcription}`);
         }
-      }
-
-      // Add uploaded documents (base64 data URLs)
-      const uploadedImageUrls: string[] = [];
-      if (Array.isArray(uploaded_documents)) {
-        for (const doc of uploaded_documents) {
-          if (
-            doc.dataUrl &&
-            (doc.type?.startsWith("image") || doc.type === "application/pdf")
-          ) {
-            uploadedImageUrls.push(doc.dataUrl);
+        if (m.media_url) {
+          const mt = (m.media_type || '').toLowerCase();
+          const msgType = ((m as any).message_type || '').toLowerCase();
+          if (mt.startsWith('image') || msgType === 'image') {
+            imageUrls.push(m.media_url);
+          } else if (mt.includes('pdf') || mt === 'application/pdf' || msgType === 'document' || /\.pdf(\?|$)/i.test(m.media_url)) {
+            pdfUrls.push(m.media_url);
           }
         }
       }
+
+      // Add uploaded documents (base64 data URLs) - both images and PDFs
+      const uploadedImageUrls: string[] = [];
+      const uploadedPdfUrls: string[] = [];
+      if (Array.isArray(uploaded_documents)) {
+        for (const doc of uploaded_documents) {
+          if (!doc.dataUrl) continue;
+          if (doc.type?.startsWith("image")) {
+            uploadedImageUrls.push(doc.dataUrl);
+          } else if (doc.type === "application/pdf" || /\.pdf$/i.test(doc.name || '')) {
+            uploadedPdfUrls.push(doc.dataUrl);
+          }
+        }
+      }
+
 
       // Build address from CRM data
       const contactAddr = contact_data || {};
