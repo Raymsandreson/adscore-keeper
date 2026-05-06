@@ -214,7 +214,7 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
   };
 
   const fetchLinked = async () => {
-    const { data } = await (supabase as any)
+    const { data } = await (db as any)
       .from('board_group_instances')
       .select('instance_id, role_title, role_description, applies_to')
       .eq('board_id', selectedBoard);
@@ -231,7 +231,7 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
   };
 
   const fetchSettings = async () => {
-    const { data } = await (supabase as any)
+    const { data } = await (db as any)
       .from('board_group_settings')
       .select('*')
       .eq('board_id', selectedBoard)
@@ -289,7 +289,7 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
     setSaving(true);
     try {
       if (linkedInstances.includes(instanceId)) {
-        await (supabase as any)
+        await (db as any)
           .from('board_group_instances')
           .delete()
           .eq('board_id', selectedBoard)
@@ -301,7 +301,7 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
           return next;
         });
       } else {
-        await (supabase as any)
+        await (db as any)
           .from('board_group_instances')
           .insert({ board_id: selectedBoard, instance_id: instanceId, applies_to: 'both' });
         setLinkedInstances(prev => [...prev, instanceId]);
@@ -337,7 +337,7 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
       },
     }));
     try {
-      await (supabase as any)
+      await (db as any)
         .from('board_group_instances')
         .update({ applies_to: value })
         .eq('board_id', selectedBoard)
@@ -351,7 +351,7 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
     setSavingSettings(true);
     try {
       // Save group settings
-      const { data: existing } = await (supabase as any)
+      const { data: existing } = await (db as any)
         .from('board_group_settings')
         .select('id')
         .eq('board_id', selectedBoard)
@@ -384,12 +384,12 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
       };
 
       if (existing) {
-        await (supabase as any)
+        await (db as any)
           .from('board_group_settings')
           .update(payload)
           .eq('board_id', selectedBoard);
       } else {
-        await (supabase as any)
+        await (db as any)
           .from('board_group_settings')
           .insert({
             board_id: selectedBoard,
@@ -402,7 +402,7 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
       for (const instanceId of linkedInstances) {
         const config = instanceConfigs[instanceId];
         if (config) {
-          await (supabase as any)
+          await (db as any)
             .from('board_group_instances')
             .update({
               role_title: config.role_title || null,
