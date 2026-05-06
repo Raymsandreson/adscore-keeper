@@ -8,13 +8,25 @@ export function MobileHeader() {
 
   if (!user) return null;
 
-  // Mobile: always show header with trigger
+  // Mobile: sticky header with prominent trigger + safe-area for iPhone notch
   if (isMobile) {
     return (
-      <div className="h-12 flex items-center border-b bg-background px-2 shrink-0 md:hidden">
-        <SidebarTrigger className="h-9 w-9">
-          <Menu className="h-5 w-5" />
+      <div
+        className="sticky top-0 z-40 flex items-center gap-2 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 px-3 shrink-0 md:hidden"
+        style={{
+          paddingTop: 'env(safe-area-inset-top)',
+          paddingLeft: 'max(0.75rem, env(safe-area-inset-left))',
+          paddingRight: 'max(0.75rem, env(safe-area-inset-right))',
+          minHeight: 'calc(56px + env(safe-area-inset-top))',
+        }}
+      >
+        <SidebarTrigger
+          aria-label="Abrir menu"
+          className="h-11 w-11 rounded-lg border bg-card shadow-sm hover:bg-accent active:scale-95 transition-transform"
+        >
+          <Menu className="!h-6 !w-6" />
         </SidebarTrigger>
+        <span className="text-sm font-semibold tracking-tight">WhatsJUD</span>
       </div>
     );
   }
