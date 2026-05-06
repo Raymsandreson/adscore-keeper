@@ -19,6 +19,7 @@ import { CallFieldSuggestionsBanner } from "@/components/CallFieldSuggestionsBan
 import { FloatingWhatsAppCall } from "@/components/FloatingWhatsAppCall";
 import { PWAInstallBanner } from "@/components/PWAInstallBanner";
 import { MobileHeader } from "@/components/MobileHeader";
+import { MobileSwipeHandler } from "@/components/MobileSwipeHandler";
 
 // Helper: retry dynamic import once per module on failure (stale chunk after deploy)
 function lazyRetry<T extends ComponentType<any>>(
@@ -213,6 +214,7 @@ function SidebarLayout() {
     <SidebarProvider>
       <div className="min-h-screen flex w-full">
         <AppSidebar />
+        <MobileSwipeHandler />
         <div className="flex-1 flex flex-col min-w-0">
           <MobileHeader />
           <main className="flex-1">
