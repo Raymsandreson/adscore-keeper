@@ -151,6 +151,7 @@ export function AppSidebar() {
 
   const handleNavigate = (path: string) => {
     navigate(path);
+    if (isMobile) setOpenMobile(false);
   };
 
   const openCommandPalette = () => {
