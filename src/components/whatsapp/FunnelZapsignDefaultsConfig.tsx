@@ -207,7 +207,7 @@ export function FunnelZapsignDefaultsConfig({ boardId, hideBoardSelector, sectio
     (async () => {
       setLoadingRow(true);
       try {
-        const { data, error } = await (supabase as any)
+        const { data, error } = await (db as any)
           .from('funnel_zapsign_defaults').select('*').eq('board_id', selectedBoardId).maybeSingle();
         if (error) throw error;
         const base = emptyDefaults(selectedBoardId);
