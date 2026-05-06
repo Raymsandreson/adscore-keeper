@@ -142,7 +142,7 @@ export function ZapSignDocumentDialog({
     try {
       const { data, error } = await supabase
         .from('whatsapp_messages')
-        .select('direction, message_text, media_url, media_type, created_at')
+        .select('direction, message_text, media_url, media_type, message_type, created_at')
         .eq('phone', phone)
         .order('created_at', { ascending: false })
         .limit(200);
