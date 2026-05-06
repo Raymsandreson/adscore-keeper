@@ -971,6 +971,54 @@ export function ZapSignDocumentDialog({
           )}
         </DialogFooter>
       </DialogContent>
+
+      <Dialog open={showPromptDialog} onOpenChange={setShowPromptDialog}>
+        <DialogContent className="max-w-3xl max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <Eye className="h-4 w-4 text-primary" /> Prompt enviado para a IA
+            </DialogTitle>
+          </DialogHeader>
+          {loadingPrompt ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-6 w-6 animate-spin text-primary" />
+            </div>
+          ) : (
+            <div className="flex-1 overflow-hidden flex flex-col gap-3">
+              {previewAttachments && (
+                <div className="flex flex-wrap gap-2 text-xs">
+                  <Badge variant="secondary">📝 {previewAttachments.text_messages} msgs</Badge>
+                  <Badge variant="secondary">🖼️ {previewAttachments.chat_images} imgs chat</Badge>
+                  <Badge variant="secondary">📄 {previewAttachments.chat_pdfs} PDFs chat</Badge>
+                  <Badge variant="secondary">⬆️ {previewAttachments.uploaded_images} imgs upload</Badge>
+                  <Badge variant="secondary">⬆️ {previewAttachments.uploaded_pdfs} PDFs upload</Badge>
+                </div>
+              )}
+              <Textarea
+                value={previewPrompt}
+                readOnly
+                className="flex-1 min-h-[400px] text-xs font-mono leading-relaxed"
+              />
+              <div className="flex justify-between items-center">
+                <p className="text-[10px] text-muted-foreground">
+                  Mídias são anexadas em paralelo ao texto acima.
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    navigator.clipboard.writeText(previewPrompt);
+                    toast.success('Prompt copiado!');
+                  }}
+                  className="gap-1 h-7 text-xs"
+                >
+                  <Copy className="h-3 w-3" /> Copiar
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 }
