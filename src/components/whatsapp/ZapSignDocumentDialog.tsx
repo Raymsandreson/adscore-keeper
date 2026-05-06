@@ -122,8 +122,20 @@ export function ZapSignDocumentDialog({
   // Signers state
   const [signers, setSigners] = useState<SignerInfo[]>([]);
   const [messagePeriod, setMessagePeriod] = useState<string>('7d');
-  const [notifyOnSignature, setNotifyOnSignature] = useState(true);
-  const [sendSignedPdf, setSendSignedPdf] = useState(true);
+
+  // Funnel defaults (source of truth — configured in Onboarding > Grupo)
+  const [funnelDefaults, setFunnelDefaults] = useState<{
+    signer_auth_mode: string;
+    notify_on_signature: boolean;
+    send_signed_pdf: boolean;
+  }>({ signer_auth_mode: 'assinaturaTela', notify_on_signature: true, send_signed_pdf: true });
+
+  const authModeLabels: Record<string, string> = {
+    assinaturaTela: '✍️ Assinatura em tela',
+    tokenEmail: '📧 Token por e-mail',
+    tokenSms: '📱 Token por SMS',
+    assinaturaImagem: '🖼️ Assinatura por imagem',
+  };
 
   // Filter messages by period
   const filteredMessages = useMemo(() => {
@@ -208,6 +220,7 @@ export function ZapSignDocumentDialog({
       loadTemplates();
       fetchCrmData();
       fetchDbMessages();
+      fetchFunnelDefaults();
       setStep('select');
       setTemplateFields([]);
       setSelectedTemplate('');
@@ -228,6 +241,35 @@ export function ZapSignDocumentDialog({
       setSigners([{ name: defaultName, email: defaultEmail, phone: defaultPhone, role: 'sign', auth_mode: 'assinaturaTela' }]);
     }
   }, [open]);
+
+  // Load funnel defaults (configured in Onboarding > Grupo) — source of truth
+  const fetchFunnelDefaults = async () => {
+    try {
+      let boardId: string | null = null;
+      if (leadId) {
+        const { data: lead } = await supabase.from('leads').select('board_id').eq('id', leadId).maybeSingle();
+        boardId = (lead as any)?.board_id || null;
+      }
+      if (!boardId) return;
+      const { data } = await (supabase as any)
+        .from('funnel_zapsign_defaults')
+        .select('signer_auth_mode, notify_on_signature, send_signed_pdf')
+        .eq('board_id', boardId)
+        .maybeSingle();
+      if (data) {
+        const auth = data.signer_auth_mode || 'assinaturaTela';
+        setFunnelDefaults({
+          signer_auth_mode: auth,
+          notify_on_signature: data.notify_on_signature !== false,
+          send_signed_pdf: data.send_signed_pdf !== false,
+        });
+        // apply auth_mode to all signers
+        setSigners(prev => prev.map(s => ({ ...s, auth_mode: auth })));
+      }
+    } catch (err) {
+      console.error('Error fetching funnel defaults:', err);
+    }
+  };
 
   const loadTemplates = async () => {
     setLoading(true);
@@ -483,8 +525,8 @@ export function ZapSignDocumentDialog({
           created_by: user?.id || null,
           send_via_whatsapp: false,
            whatsapp_phone: phone,
-           notify_on_signature: notifyOnSignature,
-           send_signed_pdf: sendSignedPdf,
+           notify_on_signature: funnelDefaults.notify_on_signature,
+           send_signed_pdf: funnelDefaults.send_signed_pdf,
            instance_name: instanceName || null,
         },
       });
@@ -788,18 +830,6 @@ export function ZapSignDocumentDialog({
                           </Select>
                         </div>
                       )}
-                      <div>
-                        <Label className="text-xs">Modo de autenticação</Label>
-                        <Select value={signer.auth_mode} onValueChange={(v) => updateSigner(idx, 'auth_mode', v)}>
-                          <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="assinaturaTela">✍️ Assinatura em tela</SelectItem>
-                            <SelectItem value="tokenEmail">📧 Token por e-mail</SelectItem>
-                            <SelectItem value="tokenSms">📱 Token por SMS</SelectItem>
-                            <SelectItem value="assinaturaImagem">🖼️ Assinatura por imagem</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
                     </div>
                   </div>
                 ))}
@@ -811,28 +841,27 @@ export function ZapSignDocumentDialog({
               Adicionar testemunha / signatário
             </Button>
 
-            {/* Opções pós-assinatura */}
+            {/* Configuração herdada do Onboarding (somente leitura) */}
             <div className="border rounded-lg p-3 space-y-2 bg-muted/20 mt-2">
-              <Label className="text-xs font-semibold">📋 Após assinatura</Label>
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id="dialog_notify_on_signature"
-                  checked={notifyOnSignature}
-                  onCheckedChange={(checked) => setNotifyOnSignature(!!checked)}
-                />
-                <Label htmlFor="dialog_notify_on_signature" className="text-xs cursor-pointer">
-                  Avisar quando o documento for assinado
-                </Label>
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-semibold">⚙️ Configuração do funil</Label>
+                <span className="text-[10px] text-muted-foreground italic">Definido no Onboarding › Grupo</span>
               </div>
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id="dialog_send_signed_pdf"
-                  checked={sendSignedPdf}
-                  onCheckedChange={(checked) => setSendSignedPdf(!!checked)}
-                />
-                <Label htmlFor="dialog_send_signed_pdf" className="text-xs cursor-pointer">
-                  Enviar o PDF assinado via WhatsApp
-                </Label>
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-muted-foreground">Modo de assinatura:</span>
+                <Badge variant="secondary" className="text-[10px]">
+                  {authModeLabels[funnelDefaults.signer_auth_mode] || funnelDefaults.signer_auth_mode}
+                </Badge>
+              </div>
+              <div className="flex items-center gap-2 text-xs">
+                <span className={funnelDefaults.notify_on_signature ? 'text-foreground' : 'text-muted-foreground line-through'}>
+                  {funnelDefaults.notify_on_signature ? '✅' : '⛔'} Avisar quando o documento for assinado
+                </span>
+              </div>
+              <div className="flex items-center gap-2 text-xs">
+                <span className={funnelDefaults.send_signed_pdf ? 'text-foreground' : 'text-muted-foreground line-through'}>
+                  {funnelDefaults.send_signed_pdf ? '✅' : '⛔'} Enviar o PDF assinado via WhatsApp
+                </span>
               </div>
             </div>
             </>
