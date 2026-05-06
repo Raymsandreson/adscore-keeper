@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase as cloudSupabase } from '@/integrations/supabase/client';
+import { externalSupabase as supabase } from '@/integrations/supabase/external-client';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -165,7 +166,7 @@ export function ActivityEditSheet({ open, onOpenChange, activityId, onUpdated }:
 
   const handleComplete = async () => {
     if (!activityId) return;
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await cloudSupabase.auth.getUser();
     const { error } = await supabase
       .from('lead_activities')
       .update({
