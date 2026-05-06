@@ -122,8 +122,20 @@ export function ZapSignDocumentDialog({
   // Signers state
   const [signers, setSigners] = useState<SignerInfo[]>([]);
   const [messagePeriod, setMessagePeriod] = useState<string>('7d');
-  const [notifyOnSignature, setNotifyOnSignature] = useState(true);
-  const [sendSignedPdf, setSendSignedPdf] = useState(true);
+
+  // Funnel defaults (source of truth — configured in Onboarding > Grupo)
+  const [funnelDefaults, setFunnelDefaults] = useState<{
+    signer_auth_mode: string;
+    notify_on_signature: boolean;
+    send_signed_pdf: boolean;
+  }>({ signer_auth_mode: 'assinaturaTela', notify_on_signature: true, send_signed_pdf: true });
+
+  const authModeLabels: Record<string, string> = {
+    assinaturaTela: '✍️ Assinatura em tela',
+    tokenEmail: '📧 Token por e-mail',
+    tokenSms: '📱 Token por SMS',
+    assinaturaImagem: '🖼️ Assinatura por imagem',
+  };
 
   // Filter messages by period
   const filteredMessages = useMemo(() => {
