@@ -460,13 +460,7 @@ export function FunnelZapsignDefaultsConfig({ boardId, hideBoardSelector, sectio
                       <Input className="pl-8 h-9" placeholder="Buscar grupo…" value={groupSearch} onChange={(e) => setGroupSearch(e.target.value)} />
                     </div>
                     <div className="max-h-48 overflow-y-auto border rounded-md divide-y">
-                      {groups
-                        .filter((g) => {
-                          if (hideUnnamedGroups && !hasRealName(g) && !row.notify_group_jids.includes(g.group_jid)) return false;
-                          if (!groupSearch) return true;
-                          const q = groupSearch.toLowerCase();
-                          return (g.group_name || '').toLowerCase().includes(q) || g.group_jid.toLowerCase().includes(q);
-                        })
+                      {filteredGroups
                         .slice(0, 100)
                         .map((g) => {
                           const checked = row.notify_group_jids.includes(g.group_jid);
@@ -480,6 +474,11 @@ export function FunnelZapsignDefaultsConfig({ boardId, hideBoardSelector, sectio
                           );
                         })}
                       {groups.length === 0 && <div className="px-3 py-2 text-xs text-muted-foreground">Nenhum grupo em cache. Sincronize uma instância primeiro.</div>}
+                      {groups.length > 0 && filteredGroups.length === 0 && (
+                        <div className="px-3 py-2 text-xs text-muted-foreground">
+                          {loadingGroups ? 'Buscando grupos…' : 'Nenhum grupo encontrado para esta busca.'}
+                        </div>
+                      )}
                     </div>
                     {row.notify_group_jids.length > 0 && (
                       <p className="text-xs text-muted-foreground">{row.notify_group_jids.length} grupo(s) selecionado(s)</p>
