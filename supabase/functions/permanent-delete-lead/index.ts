@@ -120,7 +120,7 @@ Deno.serve(async (req) => {
       await runDelete(table);
     }
 
-    for (const table of ["ad_briefings", "ambassador_referrals", "call_records", "card_assignments", "contacts", "external_posts", "lead_enrichment_log", "lead_financials", "legal_cases", "process_documents", "promoted_posts", "transaction_category_overrides", "whatsapp_messages", "whatsapp_call_queue", "wjia_collection_sessions", "zapsign_documents", "activity_chat_messages", "case_process_tracking", "cat_leads", "group_creation_queue", "onboarding_meeting_bookings"]) {
+    for (const table of ["ad_briefings", "ambassador_referrals", "call_records", "card_assignments", "contacts", "conversations", "external_posts", "lead_enrichment_log", "lead_financials", "legal_cases", "process_documents", "promoted_posts", "transaction_category_overrides", "whatsapp_messages", "whatsapp_call_queue", "wjia_collection_sessions", "zapsign_documents", "activity_chat_messages", "case_process_tracking", "cat_leads", "group_creation_queue", "onboarding_meeting_bookings"]) {
       await runUpdateNull(table, { lead_id: null });
     }
 
