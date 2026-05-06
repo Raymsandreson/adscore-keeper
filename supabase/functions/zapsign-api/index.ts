@@ -517,31 +517,48 @@ Retorne um JSON no formato:
 
 Responda APENAS o JSON, sem markdown.`;
 
+      // Helper: convert remote URL to base64 data URI (needed for PDFs via Gemini)
+      const toDataUri = async (url: string, fallbackMime = 'application/pdf'): Promise<string | null> => {
+        if (url.startsWith('data:')) return url;
+        try {
+          const r = await fetch(url, { signal: AbortSignal.timeout(15000) });
+          if (!r.ok) return null;
+          const buf = new Uint8Array(await r.arrayBuffer());
+          let bin = '';
+          for (let i = 0; i < buf.length; i += 8192) bin += String.fromCharCode(...buf.subarray(i, i + 8192));
+          const ct = r.headers.get('content-type') || fallbackMime;
+          return `data:${ct};base64,${btoa(bin)}`;
+        } catch { return null; }
+      };
+
       // Build multimodal user content
       const userContent: any[] = [{ type: "text", text: prompt }];
 
-      // Add uploaded documents first (higher priority)
+      // Add uploaded PDFs (highest priority - signer brought them explicitly)
+      for (const u of uploadedPdfUrls.slice(0, 3)) {
+        userContent.push({ type: "image_url", image_url: { url: u } });
+      }
+      // Add uploaded images
       for (const docUrl of uploadedImageUrls.slice(0, 5)) {
-        userContent.push({
-          type: "image_url",
-          image_url: { url: docUrl },
-        });
+        userContent.push({ type: "image_url", image_url: { url: docUrl } });
+      }
+
+      // Add conversation PDFs (convert to base64 data URI)
+      for (const pdfUrl of pdfUrls.slice(-3)) {
+        const dataUri = await toDataUri(pdfUrl, 'application/pdf');
+        if (dataUri) userContent.push({ type: "image_url", image_url: { url: dataUri } });
       }
 
       // Add conversation images (remaining slots)
       const remainingSlots = Math.max(0, 5 - uploadedImageUrls.length);
       for (const imgUrl of imageUrls.slice(-remainingSlots)) {
-        userContent.push({
-          type: "image_url",
-          image_url: { url: imgUrl },
-        });
+        userContent.push({ type: "image_url", image_url: { url: imgUrl } });
       }
 
-      const totalImages = Math.min(uploadedImageUrls.length, 5) +
-        Math.min(imageUrls.length, remainingSlots);
       console.log(
-        `Extracting data with ${totalImages} images (${uploadedImageUrls.length} uploaded, ${imageUrls.length} from chat) and ${textMessages.length} text messages`,
+        `Extracting data: ${uploadedImageUrls.length} uploaded imgs, ${uploadedPdfUrls.length} uploaded PDFs, ${imageUrls.length} chat imgs, ${pdfUrls.length} chat PDFs, ${textMessages.length} text msgs`,
       );
+
 
       try {
         const aiData = await geminiChat({
