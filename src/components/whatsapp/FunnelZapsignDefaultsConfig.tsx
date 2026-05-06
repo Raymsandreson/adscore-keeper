@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/integrations/supabase';
 import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -131,18 +132,22 @@ export function FunnelZapsignDefaultsConfig({ boardId, hideBoardSelector, sectio
     (async () => {
       const [{ data: pf }, { data: gr }, { data: ins }] = await Promise.all([
         (supabase as any).from('profiles').select('user_id, full_name').order('full_name'),
-        (supabase as any).from('whatsapp_groups_cache').select('group_jid, group_name, instance_name').order('group_name'),
-        (supabase as any).from('whatsapp_instances').select('instance_name, owner_name, owner_phone').eq('is_active', true).order('instance_name'),
+        (db as any)
+          .from('whatsapp_groups_index')
+          .select('group_jid, contact_name, instance_name')
+          .order('contact_name')
+          .limit(20000),
+        (db as any).from('whatsapp_instances').select('instance_name, owner_name, owner_phone').eq('is_active', true).order('instance_name'),
       ]);
       setProfiles(pf || []);
       setInstances(ins || []);
-      // dedupe by group_jid (cache may repeat across instances)
+      // dedupe by group_jid (index may repeat across instances)
       const seen = new Set<string>();
       const dedup: any[] = [];
       for (const g of gr || []) {
         if (seen.has(g.group_jid)) continue;
         seen.add(g.group_jid);
-        dedup.push(g);
+        dedup.push({ group_jid: g.group_jid, group_name: g.contact_name, instance_name: g.instance_name });
       }
       setGroups(dedup);
     })();
