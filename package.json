@@ -11,7 +11,8 @@
     "preview": "vite preview",
     "test:lead-form": "node scripts/validate-lead-form-unification.mjs",
     "test:db-routing": "node scripts/validate-db-routing.mjs",
-    "test:db-routing:strict": "node scripts/validate-db-routing.mjs --strict"
+    "test:db-routing:strict": "node scripts/validate-db-routing.mjs --strict",
+    "test:board-group-schema": "node scripts/validate-board-group-settings-schema.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^7.4.3",
