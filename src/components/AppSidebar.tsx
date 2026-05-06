@@ -53,7 +53,7 @@ export function AppSidebar() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, profile, signOut } = useAuthContext();
-  const { state } = useSidebar();
+  const { state, isMobile, setOpenMobile } = useSidebar();
   const collapsed = state === "collapsed";
   const unreadMentions = useUnreadMentionsCount();
   const { unseenCount, isFeatureAcked, acknowledgeFeature, acknowledgeAll } = useChangelogAcknowledgments();
