@@ -642,67 +642,172 @@ Deno.serve(async (req) => {
               .maybeSingle()
 
             if (meetingConfig) {
-              // Create a booking record with token for the client
-              const { data: bookingRecord } = await supabase
-                .from('onboarding_meeting_bookings')
-                .insert({
-                  config_id: meetingConfig.id,
-                  lead_id: localDoc.lead_id,
-                  contact_phone: localDoc.whatsapp_phone,
-                  contact_name: localDoc.signer_name || 'Cliente',
-                  status: 'pending',
-                })
-                .select('booking_token')
-                .single()
+              const docName = localDoc.document_name || 'documento'
+              const contactName = localDoc.signer_name || 'Cliente'
+              const instanceName = localDoc.instance_name
+              const { data: instForMeeting } = await supabase
+                .from('whatsapp_instances')
+                .select('*')
+                .eq('instance_name', instanceName)
+                .eq('is_active', true)
+                .maybeSingle()
 
-              if (bookingRecord?.booking_token) {
-                const appUrl = Deno.env.get('SUPABASE_URL')?.replace('.supabase.co', '') || ''
-                // Use the published app URL
-                const bookingLink = `https://adscore-keeper.lovable.app/booking/${meetingConfig.id}/${bookingRecord.booking_token}`
+              let meetingMessage = ''
+              let meetingSent = false
 
-                const docName = localDoc.document_name || 'documento'
-                const contactName = localDoc.signer_name || 'Cliente'
-                let meetingMessage = (meetingConfig.message_template || '')
-                  .replace(/\{\{booking_link\}\}/g, bookingLink)
-                  .replace(/\{\{duration\}\}/g, String(meetingConfig.meeting_duration_minutes))
-                  .replace(/\{\{contact_name\}\}/g, contactName)
+              if (meetingConfig.auto_schedule_mode) {
+                // ============ AUTO-SCHEDULE MODE ============
+                // Reserve next available slot based on duration + buffer + working days/hours
+                const duration = Number(meetingConfig.meeting_duration_minutes) || 30
+                const buffer = Number(meetingConfig.buffer_minutes) || 0
+                const slotSize = duration + buffer
+                const availableDays: number[] = Array.isArray(meetingConfig.available_days) && meetingConfig.available_days.length > 0
+                  ? meetingConfig.available_days
+                  : [1, 2, 3, 4, 5]
+                const startHour = Number(meetingConfig.start_hour) || 8
+                const endHour = Number(meetingConfig.end_hour) || 18
 
-                // Use the same instance that sent the document
-                const instanceName = localDoc.instance_name
-                const { data: instForMeeting } = await supabase
-                  .from('whatsapp_instances')
-                  .select('*')
-                  .eq('instance_name', instanceName)
-                  .eq('is_active', true)
-                  .maybeSingle()
+                // Fetch existing slots from now to 60 days ahead
+                const horizonStart = new Date()
+                const horizonEnd = new Date()
+                horizonEnd.setDate(horizonEnd.getDate() + 60)
 
-                if (instForMeeting) {
-                  const meetBaseUrl = instForMeeting.base_url || 'https://abraci.uazapi.com'
-                  await fetch(`${meetBaseUrl}/send/text`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'token': instForMeeting.instance_token },
-                    body: JSON.stringify({
-                      number: localDoc.whatsapp_phone,
-                      text: meetingMessage,
-                    }),
-                  })
+                const { data: existingSlots } = await supabase
+                  .from('onboarding_meeting_slots')
+                  .select('start_time, end_time')
+                  .eq('config_id', meetingConfig.id)
+                  .gte('start_time', horizonStart.toISOString())
+                  .lte('start_time', horizonEnd.toISOString())
 
-                  await supabase.from('whatsapp_messages').insert({
-                    phone: localDoc.whatsapp_phone,
-                    message_text: meetingMessage,
-                    message_type: 'text',
-                    direction: 'outbound',
-                    status: 'sent',
-                    contact_id: localDoc.contact_id || null,
-                    lead_id: localDoc.lead_id || null,
-                    instance_name: instForMeeting.instance_name,
-                    instance_token: instForMeeting.instance_token,
-                  })
+                const taken = (existingSlots || []).map((s: any) => ({
+                  start: new Date(s.start_time).getTime(),
+                  end: new Date(s.end_time).getTime(),
+                }))
 
-                  console.log('Onboarding booking link sent to:', localDoc.whatsapp_phone, 'link:', bookingLink)
-                } else {
-                  console.log('No matching WhatsApp instance found for meeting message, instance:', instanceName)
+                // Find next available slot
+                let nextSlot: { start: Date; end: Date } | null = null
+                const cursor = new Date(horizonStart)
+                // Round up to next 5 minutes
+                cursor.setSeconds(0, 0)
+                cursor.setMinutes(cursor.getMinutes() + (5 - (cursor.getMinutes() % 5)) % 5)
+
+                for (let dayOffset = 0; dayOffset < 60 && !nextSlot; dayOffset++) {
+                  const dayStart = new Date(horizonStart)
+                  dayStart.setDate(dayStart.getDate() + dayOffset)
+                  if (!availableDays.includes(dayStart.getDay())) continue
+
+                  // Build candidate times for this day
+                  let candidate = new Date(dayStart)
+                  candidate.setHours(startHour, 0, 0, 0)
+                  if (dayOffset === 0 && cursor > candidate) candidate = new Date(cursor)
+
+                  const dayEnd = new Date(dayStart)
+                  dayEnd.setHours(endHour, 0, 0, 0)
+
+                  while (candidate < dayEnd) {
+                    const slotEnd = new Date(candidate.getTime() + duration * 60_000)
+                    if (slotEnd > dayEnd) break
+                    const startMs = candidate.getTime()
+                    const endMs = slotEnd.getTime()
+                    const conflict = taken.some(t => startMs < t.end && endMs > t.start)
+                    if (!conflict) {
+                      nextSlot = { start: new Date(candidate), end: new Date(slotEnd) }
+                      break
+                    }
+                    candidate = new Date(candidate.getTime() + slotSize * 60_000)
+                  }
                 }
+
+                if (nextSlot && instForMeeting) {
+                  const { data: slot } = await supabase
+                    .from('onboarding_meeting_slots')
+                    .insert({
+                      config_id: meetingConfig.id,
+                      start_time: nextSlot.start.toISOString(),
+                      end_time: nextSlot.end.toISOString(),
+                      is_available: false,
+                    })
+                    .select()
+                    .single()
+
+                  if (slot) {
+                    await supabase
+                      .from('onboarding_meeting_bookings')
+                      .insert({
+                        slot_id: slot.id,
+                        config_id: meetingConfig.id,
+                        lead_id: localDoc.lead_id,
+                        contact_phone: localDoc.whatsapp_phone,
+                        contact_name: contactName,
+                        status: 'confirmed',
+                      })
+
+                    const dateStr = nextSlot.start.toLocaleDateString('pt-BR', {
+                      weekday: 'long', day: '2-digit', month: 'long', timeZone: 'America/Sao_Paulo',
+                    })
+                    const timeStr = nextSlot.start.toLocaleTimeString('pt-BR', {
+                      hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo',
+                    })
+
+                    meetingMessage = (meetingConfig.auto_schedule_message_template || '')
+                      .replace(/\{\{meeting_date\}\}/g, dateStr)
+                      .replace(/\{\{meeting_time\}\}/g, timeStr)
+                      .replace(/\{\{duration\}\}/g, String(duration))
+                      .replace(/\{\{contact_name\}\}/g, contactName)
+                  }
+                } else {
+                  console.log('Auto-schedule: no available slot found in next 60 days for config', meetingConfig.id)
+                }
+              } else {
+                // ============ MANUAL BOOKING LINK MODE ============
+                const { data: bookingRecord } = await supabase
+                  .from('onboarding_meeting_bookings')
+                  .insert({
+                    config_id: meetingConfig.id,
+                    lead_id: localDoc.lead_id,
+                    contact_phone: localDoc.whatsapp_phone,
+                    contact_name: contactName,
+                    status: 'pending',
+                  })
+                  .select('booking_token')
+                  .single()
+
+                if (bookingRecord?.booking_token) {
+                  const bookingLink = `https://adscore-keeper.lovable.app/booking/${meetingConfig.id}/${bookingRecord.booking_token}`
+                  meetingMessage = (meetingConfig.message_template || '')
+                    .replace(/\{\{booking_link\}\}/g, bookingLink)
+                    .replace(/\{\{duration\}\}/g, String(meetingConfig.meeting_duration_minutes))
+                    .replace(/\{\{contact_name\}\}/g, contactName)
+                }
+              }
+
+              if (meetingMessage && instForMeeting) {
+                const meetBaseUrl = instForMeeting.base_url || 'https://abraci.uazapi.com'
+                await fetch(`${meetBaseUrl}/send/text`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', 'token': instForMeeting.instance_token },
+                  body: JSON.stringify({
+                    number: localDoc.whatsapp_phone,
+                    text: meetingMessage,
+                  }),
+                })
+
+                await supabase.from('whatsapp_messages').insert({
+                  phone: localDoc.whatsapp_phone,
+                  message_text: meetingMessage,
+                  message_type: 'text',
+                  direction: 'outbound',
+                  status: 'sent',
+                  contact_id: localDoc.contact_id || null,
+                  lead_id: localDoc.lead_id || null,
+                  instance_name: instForMeeting.instance_name,
+                  instance_token: instForMeeting.instance_token,
+                })
+
+                meetingSent = true
+                console.log('Onboarding meeting message sent to:', localDoc.whatsapp_phone, 'mode:', meetingConfig.auto_schedule_mode ? 'auto' : 'manual')
+              } else if (!instForMeeting) {
+                console.log('No matching WhatsApp instance found for meeting message, instance:', instanceName)
               }
             } else {
               console.log('No active meeting config for board:', meetingBoardId)
