@@ -28,6 +28,8 @@ interface MeetingConfig {
   meeting_type: string;
   auto_send_after_signature: boolean;
   message_template: string;
+  auto_schedule_mode: boolean;
+  auto_schedule_message_template: string;
 }
 
 interface TeamMember {
