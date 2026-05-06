@@ -220,6 +220,7 @@ export function ZapSignDocumentDialog({
       loadTemplates();
       fetchCrmData();
       fetchDbMessages();
+      fetchFunnelDefaults();
       setStep('select');
       setTemplateFields([]);
       setSelectedTemplate('');
@@ -240,6 +241,35 @@ export function ZapSignDocumentDialog({
       setSigners([{ name: defaultName, email: defaultEmail, phone: defaultPhone, role: 'sign', auth_mode: 'assinaturaTela' }]);
     }
   }, [open]);
+
+  // Load funnel defaults (configured in Onboarding > Grupo) — source of truth
+  const fetchFunnelDefaults = async () => {
+    try {
+      let boardId: string | null = null;
+      if (leadId) {
+        const { data: lead } = await supabase.from('leads').select('board_id').eq('id', leadId).maybeSingle();
+        boardId = (lead as any)?.board_id || null;
+      }
+      if (!boardId) return;
+      const { data } = await (supabase as any)
+        .from('funnel_zapsign_defaults')
+        .select('signer_auth_mode, notify_on_signature, send_signed_pdf')
+        .eq('board_id', boardId)
+        .maybeSingle();
+      if (data) {
+        const auth = data.signer_auth_mode || 'assinaturaTela';
+        setFunnelDefaults({
+          signer_auth_mode: auth,
+          notify_on_signature: data.notify_on_signature !== false,
+          send_signed_pdf: data.send_signed_pdf !== false,
+        });
+        // apply auth_mode to all signers
+        setSigners(prev => prev.map(s => ({ ...s, auth_mode: auth })));
+      }
+    } catch (err) {
+      console.error('Error fetching funnel defaults:', err);
+    }
+  };
 
   const loadTemplates = async () => {
     setLoading(true);
