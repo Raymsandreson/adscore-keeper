@@ -366,7 +366,7 @@ export function OnboardingMeetingConfig({ boardId }: Props) {
           )}
 
           {/* Booking URL preview */}
-          {bookingUrl && (
+          {bookingUrl && !config.auto_schedule_mode && (
             <div className="flex items-center gap-2 p-2 bg-muted rounded-md">
               <ExternalLink className="h-3 w-3 text-muted-foreground shrink-0" />
               <span className="text-[10px] text-muted-foreground truncate">{bookingUrl}</span>
