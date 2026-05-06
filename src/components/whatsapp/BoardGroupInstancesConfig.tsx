@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/integrations/supabase';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -77,6 +77,7 @@ interface ProcessActivity {
 }
 
 const LEAD_FIELD_OPTIONS = [
+  { value: 'board_name', label: 'Nome do Funil' },
   { value: 'lead_name', label: 'Nome do Lead' },
   { value: 'victim_name', label: 'Nome da Vítima' },
   { value: 'lead_phone', label: 'Telefone' },
@@ -192,12 +193,12 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
   const fetchData = async () => {
     setLoading(true);
     const [boardsRes, instancesRes, voicesRes, nucleiRes, profilesRes, productsRes] = await Promise.all([
-      (supabase as any).from('kanban_boards').select('id, name, board_type, product_service_id').order('display_order'),
-      (supabase as any).from('whatsapp_instances').select('id, instance_name, owner_phone').eq('is_active', true),
-      (supabase as any).from('custom_voices').select('id, name, elevenlabs_voice_id').eq('status', 'ready'),
-      (supabase as any).from('specialized_nuclei').select('id, name, prefix').eq('is_active', true).order('name'),
-      (supabase as any).from('profiles').select('user_id, full_name').order('full_name'),
-      (supabase as any).from('products_services').select('id, name, nucleus_id'),
+      (db as any).from('kanban_boards').select('id, name, board_type, product_service_id').order('display_order'),
+      (db as any).from('whatsapp_instances').select('id, instance_name, owner_phone').eq('is_active', true),
+      (db as any).from('custom_voices').select('id, name, elevenlabs_voice_id').eq('status', 'ready'),
+      (db as any).from('specialized_nuclei').select('id, name, prefix').eq('is_active', true).order('name'),
+      (db as any).from('profiles').select('user_id, full_name').order('full_name'),
+      (db as any).from('products_services').select('id, name, nucleus_id'),
     ]);
     setBoards((boardsRes.data as any[]) || []);
     setInstances((instancesRes.data as any[]) || []);
@@ -213,7 +214,7 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
   };
 
   const fetchLinked = async () => {
-    const { data } = await (supabase as any)
+    const { data } = await (db as any)
       .from('board_group_instances')
       .select('instance_id, role_title, role_description, applies_to')
       .eq('board_id', selectedBoard);
@@ -230,7 +231,7 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
   };
 
   const fetchSettings = async () => {
-    const { data } = await (supabase as any)
+    const { data } = await (db as any)
       .from('board_group_settings')
       .select('*')
       .eq('board_id', selectedBoard)
@@ -288,7 +289,7 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
     setSaving(true);
     try {
       if (linkedInstances.includes(instanceId)) {
-        await (supabase as any)
+        await (db as any)
           .from('board_group_instances')
           .delete()
           .eq('board_id', selectedBoard)
@@ -300,7 +301,7 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
           return next;
         });
       } else {
-        await (supabase as any)
+        await (db as any)
           .from('board_group_instances')
           .insert({ board_id: selectedBoard, instance_id: instanceId, applies_to: 'both' });
         setLinkedInstances(prev => [...prev, instanceId]);
@@ -336,7 +337,7 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
       },
     }));
     try {
-      await (supabase as any)
+      await (db as any)
         .from('board_group_instances')
         .update({ applies_to: value })
         .eq('board_id', selectedBoard)
@@ -350,11 +351,12 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
     setSavingSettings(true);
     try {
       // Save group settings
-      const { data: existing } = await (supabase as any)
+      const { data: existing, error: existingError } = await (db as any)
         .from('board_group_settings')
         .select('id')
         .eq('board_id', selectedBoard)
         .maybeSingle();
+      if (existingError) throw existingError;
 
       const payload = {
         group_name_prefix: settings.group_name_prefix,
@@ -383,25 +385,27 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
       };
 
       if (existing) {
-        await (supabase as any)
+        const { error } = await (db as any)
           .from('board_group_settings')
           .update(payload)
           .eq('board_id', selectedBoard);
+        if (error) throw error;
       } else {
-        await (supabase as any)
+        const { error } = await (db as any)
           .from('board_group_settings')
           .insert({
             board_id: selectedBoard,
             ...payload,
             current_sequence: settings.sequence_start > 1 ? settings.sequence_start - 1 : 0,
           });
+        if (error) throw error;
       }
 
       // Save instance configs (role_title, role_description)
       for (const instanceId of linkedInstances) {
         const config = instanceConfigs[instanceId];
         if (config) {
-          await (supabase as any)
+          await (db as any)
             .from('board_group_instances')
             .update({
               role_title: config.role_title || null,
@@ -414,6 +418,7 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
 
       toast.success('Configuração salva!');
     } catch (e: any) {
+      console.error('Erro ao salvar configuração de grupo:', e);
       toast.error('Erro ao salvar configuração');
     } finally {
       setSavingSettings(false);

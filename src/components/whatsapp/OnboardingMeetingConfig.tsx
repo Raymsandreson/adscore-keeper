@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
-import { externalSupabase } from '@/integrations/supabase/external-client';
+import { db } from '@/integrations/supabase';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -98,11 +97,17 @@ export function OnboardingMeetingConfig({ boardId }: Props) {
 
   const fetchConfig = async () => {
     setLoading(true);
-    const { data } = await (externalSupabase as any)
+    const { data, error } = await (db as any)
       .from('onboarding_meeting_configs')
       .select('*')
       .eq('board_id', boardId)
       .maybeSingle();
+    if (error) {
+      console.error('Erro ao carregar configuração de reunião:', error);
+      toast.error('Erro ao carregar configuração de reunião');
+      setLoading(false);
+      return;
+    }
     if (data) {
       setConfig({
         id: data.id,
@@ -125,7 +130,7 @@ export function OnboardingMeetingConfig({ boardId }: Props) {
   };
 
   const fetchMembers = async () => {
-    const { data } = await externalSupabase.from('profiles').select('user_id, full_name, email');
+    const { data } = await db.from('profiles').select('user_id, full_name, email');
     const list = (data || []).map(m => ({
       user_id: m.user_id,
       full_name: m.full_name || (m.email ? m.email.split('@')[0] : 'Usuário'),
@@ -136,7 +141,7 @@ export function OnboardingMeetingConfig({ boardId }: Props) {
   };
 
   const fetchActivityTypes = async () => {
-    const { data } = await (externalSupabase as any).from('activity_types').select('key, label').eq('is_active', true);
+    const { data } = await (db as any).from('activity_types').select('key, label').eq('is_active', true);
     setActivityTypes(data || []);
   };
 
@@ -160,14 +165,33 @@ export function OnboardingMeetingConfig({ boardId }: Props) {
         auto_schedule_message_template: config.auto_schedule_message_template,
       };
 
-      if (config.id) {
-        await (externalSupabase as any).from('onboarding_meeting_configs').update(payload).eq('id', config.id);
-      } else {
-        const { data } = await (externalSupabase as any).from('onboarding_meeting_configs').insert(payload).select().single();
-        if (data) setConfig(prev => ({ ...prev, id: data.id }));
+      const query = config.id
+        ? (db as any).from('onboarding_meeting_configs').update(payload).eq('id', config.id).select().single()
+        : (db as any).from('onboarding_meeting_configs').insert(payload).select().single();
+      const { data, error } = await query;
+      if (error) throw error;
+      if (data) {
+        setConfig(prev => ({
+          ...prev,
+          id: data.id,
+          is_active: data.is_active,
+          activity_type: data.activity_type,
+          host_user_id: data.host_user_id || '',
+          meeting_duration_minutes: data.meeting_duration_minutes,
+          buffer_minutes: data.buffer_minutes,
+          available_days: data.available_days || [1, 2, 3, 4, 5],
+          start_hour: data.start_hour,
+          end_hour: data.end_hour,
+          meeting_type: data.meeting_type,
+          auto_send_after_signature: data.auto_send_after_signature,
+          message_template: data.message_template || DEFAULT_TEMPLATE,
+          auto_schedule_mode: data.auto_schedule_mode ?? false,
+          auto_schedule_message_template: data.auto_schedule_message_template || DEFAULT_AUTO_TEMPLATE,
+        }));
       }
       toast.success('Configuração de reunião salva!');
     } catch (err) {
+      console.error('Erro ao salvar configuração de reunião:', err);
       toast.error('Erro ao salvar configuração');
     }
     setSaving(false);

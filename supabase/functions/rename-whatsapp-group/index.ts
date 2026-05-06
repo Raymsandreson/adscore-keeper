@@ -134,11 +134,17 @@ Deno.serve(async (req) => {
     // Build new name
     const closedPrefix = settings.closed_group_name_prefix
     const leadFields = settings.lead_fields || ['lead_name']
+    const { data: board } = await supabase
+      .from('kanban_boards')
+      .select('name')
+      .eq('id', lead.board_id)
+      .maybeSingle()
     const parts: string[] = []
     if (closedPrefix) parts.push(closedPrefix)
     parts.push(String(closedSeq).padStart(4, '0'))
     for (const field of leadFields) {
-      if (lead[field]) parts.push(String(lead[field]))
+      if (field === 'board_name' && board?.name) parts.push(board.name)
+      else if (lead[field]) parts.push(String(lead[field]))
     }
     let newName = parts.join(' ')
     if (newName.length > 100) newName = newName.slice(0, 100).trim()

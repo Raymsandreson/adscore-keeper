@@ -491,6 +491,16 @@ Deno.serve(async (req) => {
       settings = s
     }
 
+    let boardName = ''
+    if (board_id) {
+      const { data: boardData } = await supabase
+        .from('kanban_boards')
+        .select('name')
+        .eq('id', board_id)
+        .maybeSingle()
+      boardName = boardData?.name || ''
+    }
+
     // Get lead data
     const normalizedPhone = normalizePhone(contact_phone || phone || '')
     if (lead_id) {
@@ -530,7 +540,9 @@ Deno.serve(async (req) => {
 
       const leadFields = settings.lead_fields || ['lead_name']
       for (const field of leadFields) {
-        if (leadData && leadData[field]) {
+        if (field === 'board_name' && boardName) {
+          parts.push(boardName)
+        } else if (leadData && leadData[field]) {
           parts.push(field === 'lead_name' ? stripExistingSequenceFromName(leadData[field], settings.group_name_prefix) : String(leadData[field]))
         } else if (field === 'lead_name') {
           parts.push(stripExistingSequenceFromName(lead_name, settings.group_name_prefix))
