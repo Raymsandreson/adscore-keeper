@@ -238,18 +238,46 @@ export function OnboardingMeetingConfig({ boardId }: Props) {
           {/* Host */}
           <div className="space-y-1.5">
             <Label className="text-xs">👤 Responsável pela reunião</Label>
-            <Select value={config.host_user_id} onValueChange={v => setConfig(prev => ({ ...prev, host_user_id: v }))}>
-              <SelectTrigger className="h-8 text-xs">
-                <SelectValue placeholder="Selecione..." />
-              </SelectTrigger>
-              <SelectContent>
-                {members.map(m => (
-                  <SelectItem key={m.user_id} value={m.user_id}>
-                    {m.full_name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {(() => {
+              const selected = members.find(m => m.user_id === config.host_user_id);
+              return (
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      className="h-8 w-full justify-between text-xs font-normal"
+                    >
+                      <span className="truncate">
+                        {selected ? selected.full_name : 'Selecione...'}
+                      </span>
+                      <ChevronsUpDown className="ml-2 h-3 w-3 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                    <Command>
+                      <CommandInput placeholder="Buscar membro..." className="h-8 text-xs" />
+                      <CommandList>
+                        <CommandEmpty>Nenhum encontrado.</CommandEmpty>
+                        <CommandGroup>
+                          {members.map(m => (
+                            <CommandItem
+                              key={m.user_id}
+                              value={`${m.full_name} ${m.email || ''}`}
+                              onSelect={() => setConfig(prev => ({ ...prev, host_user_id: m.user_id }))}
+                              className="text-xs"
+                            >
+                              <Check className={cn('mr-2 h-3 w-3', config.host_user_id === m.user_id ? 'opacity-100' : 'opacity-0')} />
+                              <span className="truncate">{m.full_name}</span>
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+              );
+            })()}
           </div>
 
           {/* Activity type */}
