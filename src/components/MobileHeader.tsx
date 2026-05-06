@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { Menu, PanelLeftOpen } from "lucide-react";
 import { useAuthContext } from "@/contexts/AuthContext";
@@ -6,12 +7,29 @@ export function MobileHeader() {
   const { user } = useAuthContext();
   const { state, isMobile } = useSidebar();
 
+  const headerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isMobile) {
+      document.documentElement.style.setProperty('--app-header-offset', '0px');
+      return;
+    }
+    const update = () => {
+      const h = headerRef.current?.offsetHeight ?? 0;
+      document.documentElement.style.setProperty('--app-header-offset', `${h}px`);
+    };
+    update();
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, [isMobile, user]);
+
   if (!user) return null;
 
   // Mobile: sticky header with prominent trigger + safe-area for iPhone notch
   if (isMobile) {
     return (
       <div
+        ref={headerRef}
         className="sticky top-0 z-40 flex items-center gap-2 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 px-3 shrink-0 md:hidden"
         style={{
           paddingTop: 'env(safe-area-inset-top)',

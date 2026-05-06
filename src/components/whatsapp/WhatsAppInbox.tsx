@@ -784,7 +784,12 @@ export function WhatsAppInbox() {
   }
 
   return (
-    <div className="h-screen h-[100dvh] flex flex-col relative overflow-hidden">
+    <div
+      className="flex flex-col relative overflow-hidden h-screen md:h-screen"
+      style={{
+        height: 'calc(100dvh - var(--app-header-offset, 0px))',
+      }}
+    >
       {/* Header */}
       <div className={`flex items-center gap-2 md:gap-3 p-3 md:p-4 border-b bg-card shrink-0 flex-wrap md:flex-nowrap ${selectedPhone ? 'hidden md:flex' : 'flex'}`}>
         <MessageSquare className="h-6 w-6 text-green-600" />
