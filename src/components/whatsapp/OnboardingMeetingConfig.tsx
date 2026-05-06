@@ -28,6 +28,8 @@ interface MeetingConfig {
   meeting_type: string;
   auto_send_after_signature: boolean;
   message_template: string;
+  auto_schedule_mode: boolean;
+  auto_schedule_message_template: string;
 }
 
 interface TeamMember {
@@ -48,6 +50,17 @@ Parabéns por assinar o documento! Agora vamos agendar sua reunião de onboardin
 ⏱ Duração: {{duration}} minutos
 📹 Via chamada de vídeo no WhatsApp`;
 
+const DEFAULT_AUTO_TEMPLATE = `✅ *Reunião de Onboarding agendada!*
+
+Olá {{contact_name}}, sua reunião de boas-vindas foi agendada automaticamente:
+
+📅 {{meeting_date}}
+🕐 {{meeting_time}}
+⏱ Duração: {{duration}} minutos
+📹 Via chamada de vídeo no WhatsApp
+
+Caso precise reagendar, é só nos avisar por aqui.`;
+
 const DEFAULT_CONFIG: MeetingConfig = {
   is_active: false,
   activity_type: 'reuniao',
@@ -60,6 +73,8 @@ const DEFAULT_CONFIG: MeetingConfig = {
   meeting_type: 'video_whatsapp',
   auto_send_after_signature: true,
   message_template: DEFAULT_TEMPLATE,
+  auto_schedule_mode: false,
+  auto_schedule_message_template: DEFAULT_AUTO_TEMPLATE,
 };
 
 export function OnboardingMeetingConfig({ boardId }: Props) {
@@ -98,6 +113,8 @@ export function OnboardingMeetingConfig({ boardId }: Props) {
         meeting_type: data.meeting_type,
         auto_send_after_signature: data.auto_send_after_signature,
         message_template: data.message_template || DEFAULT_TEMPLATE,
+        auto_schedule_mode: data.auto_schedule_mode ?? false,
+        auto_schedule_message_template: data.auto_schedule_message_template || DEFAULT_AUTO_TEMPLATE,
       });
     }
     setLoading(false);
@@ -129,6 +146,8 @@ export function OnboardingMeetingConfig({ boardId }: Props) {
         meeting_type: config.meeting_type,
         auto_send_after_signature: config.auto_send_after_signature,
         message_template: config.message_template,
+        auto_schedule_mode: config.auto_schedule_mode,
+        auto_schedule_message_template: config.auto_schedule_message_template,
       };
 
       if (config.id) {
@@ -292,7 +311,7 @@ export function OnboardingMeetingConfig({ boardId }: Props) {
           <div className="flex items-center justify-between">
             <div>
               <Label className="text-xs font-medium">📲 Enviar automaticamente após assinatura</Label>
-              <p className="text-[10px] text-muted-foreground">Envia o link de agendamento via WhatsApp assim que o documento é assinado</p>
+              <p className="text-[10px] text-muted-foreground">Envia mensagem via WhatsApp assim que o documento é assinado</p>
             </div>
             <Switch
               checked={config.auto_send_after_signature}
@@ -300,22 +319,54 @@ export function OnboardingMeetingConfig({ boardId }: Props) {
             />
           </div>
 
-          {/* Message template */}
-          <div className="space-y-1.5">
-            <Label className="text-xs">💬 Mensagem de convite</Label>
-            <Textarea
-              value={config.message_template}
-              onChange={e => setConfig(prev => ({ ...prev, message_template: e.target.value }))}
-              className="text-xs min-h-[120px] resize-none"
-              placeholder="Use {{booking_link}} e {{duration}} como variáveis"
+          {/* Auto schedule mode */}
+          <div className="flex items-center justify-between p-2 rounded-md bg-primary/5 border border-primary/20">
+            <div>
+              <Label className="text-xs font-medium">⚡ Agendar automaticamente por ordem de assinatura</Label>
+              <p className="text-[10px] text-muted-foreground">
+                Em vez do cliente escolher horário, o sistema reserva o próximo slot livre (respeitando duração + intervalo, dias e horário) e já envia a confirmação.
+              </p>
+            </div>
+            <Switch
+              checked={config.auto_schedule_mode}
+              onCheckedChange={v => setConfig(prev => ({ ...prev, auto_schedule_mode: v }))}
             />
-            <p className="text-[10px] text-muted-foreground">
-              Variáveis: <code className="bg-muted px-1 rounded">{'{{booking_link}}'}</code> <code className="bg-muted px-1 rounded">{'{{duration}}'}</code> <code className="bg-muted px-1 rounded">{'{{contact_name}}'}</code>
-            </p>
           </div>
 
+          {/* Message template - manual booking */}
+          {!config.auto_schedule_mode && (
+            <div className="space-y-1.5">
+              <Label className="text-xs">💬 Mensagem de convite (cliente escolhe horário)</Label>
+              <Textarea
+                value={config.message_template}
+                onChange={e => setConfig(prev => ({ ...prev, message_template: e.target.value }))}
+                className="text-xs min-h-[120px] resize-none"
+                placeholder="Use {{booking_link}} e {{duration}} como variáveis"
+              />
+              <p className="text-[10px] text-muted-foreground">
+                Variáveis: <code className="bg-muted px-1 rounded">{'{{booking_link}}'}</code> <code className="bg-muted px-1 rounded">{'{{duration}}'}</code> <code className="bg-muted px-1 rounded">{'{{contact_name}}'}</code>
+              </p>
+            </div>
+          )}
+
+          {/* Message template - auto schedule */}
+          {config.auto_schedule_mode && (
+            <div className="space-y-1.5">
+              <Label className="text-xs">💬 Mensagem de confirmação (agendamento automático)</Label>
+              <Textarea
+                value={config.auto_schedule_message_template}
+                onChange={e => setConfig(prev => ({ ...prev, auto_schedule_message_template: e.target.value }))}
+                className="text-xs min-h-[140px] resize-none"
+                placeholder="Use {{meeting_date}}, {{meeting_time}}, {{duration}}, {{contact_name}} como variáveis"
+              />
+              <p className="text-[10px] text-muted-foreground">
+                Variáveis: <code className="bg-muted px-1 rounded">{'{{meeting_date}}'}</code> <code className="bg-muted px-1 rounded">{'{{meeting_time}}'}</code> <code className="bg-muted px-1 rounded">{'{{duration}}'}</code> <code className="bg-muted px-1 rounded">{'{{contact_name}}'}</code>
+              </p>
+            </div>
+          )}
+
           {/* Booking URL preview */}
-          {bookingUrl && (
+          {bookingUrl && !config.auto_schedule_mode && (
             <div className="flex items-center gap-2 p-2 bg-muted rounded-md">
               <ExternalLink className="h-3 w-3 text-muted-foreground shrink-0" />
               <span className="text-[10px] text-muted-foreground truncate">{bookingUrl}</span>
