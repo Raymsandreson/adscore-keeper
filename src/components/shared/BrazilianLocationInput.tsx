@@ -153,7 +153,9 @@ export function CepInput({
 /** Detecta o tipo de campo a partir do nome (ex: "uf", "estado", "cidade", "cep"). */
 export function detectLocationFieldType(fieldName: string): 'state' | 'city' | 'cep' | null {
   const n = fieldName.toLowerCase().replace(/[{}_\s]/g, '');
-  if (n === 'uf' || n.includes('estado') || n.endsWith('uf')) return 'state';
+  // Excluir campos que apenas CONTÊM "estado" mas não são UF (ex: estado_civil)
+  if (n.includes('civil') || n.includes('saude') || n.includes('saúde')) return null;
+  if (n === 'uf' || n === 'estado' || n === 'estadouf' || n.endsWith('uf') || n.startsWith('estadod') || n.startsWith('estadode')) return 'state';
   if (n.includes('cidade') || n.includes('municipio') || n.includes('município')) return 'city';
   if (n === 'cep' || n.includes('cep') || n.includes('codigopostal')) return 'cep';
   return null;
