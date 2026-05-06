@@ -3,7 +3,7 @@ import { useSidebar } from "@/components/ui/sidebar";
 
 /**
  * Detecta swipe da borda esquerda para a direita no mobile e abre o sidebar.
- * Swipe da direita para esquerda fecha.
+ * Abre durante o touchmove (não espera touchend) para ficar orgânico.
  */
 export function MobileSwipeHandler() {
   const { isMobile, openMobile, setOpenMobile } = useSidebar();
@@ -15,18 +15,20 @@ export function MobileSwipeHandler() {
     let startY = 0;
     let startTime = 0;
     let tracking = false;
+    let triggered = false;
+    let wasOpen = false;
 
-    const EDGE_ZONE = 24; // px da borda esquerda para iniciar swipe-open
-    const MIN_DISTANCE = 60;
-    const MAX_OFF_AXIS = 50;
-    const MAX_DURATION = 600;
+    const EDGE_ZONE = 28;
+    const OPEN_TRIGGER = 36; // dispara cedo durante o movimento
+    const CLOSE_TRIGGER = 60;
+    const MAX_OFF_AXIS = 40;
+    const MAX_DURATION = 700;
 
     const onTouchStart = (e: TouchEvent) => {
       const t = e.touches[0];
       if (!t) return;
-      // Para abrir: precisa começar bem na borda esquerda
-      // Para fechar: pode começar em qualquer lugar (sidebar aberto)
-      if (!openMobile && t.clientX > EDGE_ZONE) {
+      wasOpen = openMobile;
+      if (!wasOpen && t.clientX > EDGE_ZONE) {
         tracking = false;
         return;
       }
@@ -34,34 +36,51 @@ export function MobileSwipeHandler() {
       startY = t.clientY;
       startTime = Date.now();
       tracking = true;
+      triggered = false;
     };
 
-    const onTouchEnd = (e: TouchEvent) => {
-      if (!tracking) return;
-      tracking = false;
-      const t = e.changedTouches[0];
+    const onTouchMove = (e: TouchEvent) => {
+      if (!tracking || triggered) return;
+      const t = e.touches[0];
       if (!t) return;
-
       const dx = t.clientX - startX;
       const dy = Math.abs(t.clientY - startY);
       const dt = Date.now() - startTime;
 
-      if (dt > MAX_DURATION) return;
-      if (dy > MAX_OFF_AXIS) return;
+      if (dy > MAX_OFF_AXIS) {
+        tracking = false;
+        return;
+      }
+      if (dt > MAX_DURATION) {
+        tracking = false;
+        return;
+      }
 
-      if (!openMobile && dx > MIN_DISTANCE) {
+      // Abre cedo durante o movimento — sensação orgânica
+      if (!wasOpen && dx > OPEN_TRIGGER) {
+        triggered = true;
         setOpenMobile(true);
-      } else if (openMobile && dx < -MIN_DISTANCE) {
+      } else if (wasOpen && dx < -CLOSE_TRIGGER) {
+        triggered = true;
         setOpenMobile(false);
       }
     };
 
+    const onTouchEnd = () => {
+      tracking = false;
+      triggered = false;
+    };
+
     document.addEventListener("touchstart", onTouchStart, { passive: true });
+    document.addEventListener("touchmove", onTouchMove, { passive: true });
     document.addEventListener("touchend", onTouchEnd, { passive: true });
+    document.addEventListener("touchcancel", onTouchEnd, { passive: true });
 
     return () => {
       document.removeEventListener("touchstart", onTouchStart);
+      document.removeEventListener("touchmove", onTouchMove);
       document.removeEventListener("touchend", onTouchEnd);
+      document.removeEventListener("touchcancel", onTouchEnd);
     };
   }, [isMobile, openMobile, setOpenMobile]);
 
