@@ -415,34 +415,45 @@ Deno.serve(async (req) => {
         );
       }
 
-      // Build multimodal content - include images from conversation and uploaded docs
+      // Build multimodal content - include images, PDFs and audio transcriptions
       const imageUrls: string[] = [];
+      const pdfUrls: string[] = [];
       const textMessages: string[] = [];
 
       for (const m of (messages || []).slice(-50)) {
         if (m.message_text) {
           textMessages.push(`[${m.direction}] ${m.message_text}`);
         }
-        if (
-          m.media_url &&
-          (m.media_type?.startsWith("image") || m.message_type === "image")
-        ) {
-          imageUrls.push(m.media_url);
+        // Transcrição de áudio (campo comum: transcription / transcript)
+        const transcription = (m as any).transcription || (m as any).transcript || (m as any).audio_transcription;
+        if (transcription) {
+          textMessages.push(`[${m.direction} 🎤 áudio transcrito] ${transcription}`);
         }
-      }
-
-      // Add uploaded documents (base64 data URLs)
-      const uploadedImageUrls: string[] = [];
-      if (Array.isArray(uploaded_documents)) {
-        for (const doc of uploaded_documents) {
-          if (
-            doc.dataUrl &&
-            (doc.type?.startsWith("image") || doc.type === "application/pdf")
-          ) {
-            uploadedImageUrls.push(doc.dataUrl);
+        if (m.media_url) {
+          const mt = (m.media_type || '').toLowerCase();
+          const msgType = ((m as any).message_type || '').toLowerCase();
+          if (mt.startsWith('image') || msgType === 'image') {
+            imageUrls.push(m.media_url);
+          } else if (mt.includes('pdf') || mt === 'application/pdf' || msgType === 'document' || /\.pdf(\?|$)/i.test(m.media_url)) {
+            pdfUrls.push(m.media_url);
           }
         }
       }
+
+      // Add uploaded documents (base64 data URLs) - both images and PDFs
+      const uploadedImageUrls: string[] = [];
+      const uploadedPdfUrls: string[] = [];
+      if (Array.isArray(uploaded_documents)) {
+        for (const doc of uploaded_documents) {
+          if (!doc.dataUrl) continue;
+          if (doc.type?.startsWith("image")) {
+            uploadedImageUrls.push(doc.dataUrl);
+          } else if (doc.type === "application/pdf" || /\.pdf$/i.test(doc.name || '')) {
+            uploadedPdfUrls.push(doc.dataUrl);
+          }
+        }
+      }
+
 
       // Build address from CRM data
       const contactAddr = contact_data || {};
@@ -506,31 +517,48 @@ Retorne um JSON no formato:
 
 Responda APENAS o JSON, sem markdown.`;
 
+      // Helper: convert remote URL to base64 data URI (needed for PDFs via Gemini)
+      const toDataUri = async (url: string, fallbackMime = 'application/pdf'): Promise<string | null> => {
+        if (url.startsWith('data:')) return url;
+        try {
+          const r = await fetch(url, { signal: AbortSignal.timeout(15000) });
+          if (!r.ok) return null;
+          const buf = new Uint8Array(await r.arrayBuffer());
+          let bin = '';
+          for (let i = 0; i < buf.length; i += 8192) bin += String.fromCharCode(...buf.subarray(i, i + 8192));
+          const ct = r.headers.get('content-type') || fallbackMime;
+          return `data:${ct};base64,${btoa(bin)}`;
+        } catch { return null; }
+      };
+
       // Build multimodal user content
       const userContent: any[] = [{ type: "text", text: prompt }];
 
-      // Add uploaded documents first (higher priority)
+      // Add uploaded PDFs (highest priority - signer brought them explicitly)
+      for (const u of uploadedPdfUrls.slice(0, 3)) {
+        userContent.push({ type: "image_url", image_url: { url: u } });
+      }
+      // Add uploaded images
       for (const docUrl of uploadedImageUrls.slice(0, 5)) {
-        userContent.push({
-          type: "image_url",
-          image_url: { url: docUrl },
-        });
+        userContent.push({ type: "image_url", image_url: { url: docUrl } });
+      }
+
+      // Add conversation PDFs (convert to base64 data URI)
+      for (const pdfUrl of pdfUrls.slice(-3)) {
+        const dataUri = await toDataUri(pdfUrl, 'application/pdf');
+        if (dataUri) userContent.push({ type: "image_url", image_url: { url: dataUri } });
       }
 
       // Add conversation images (remaining slots)
       const remainingSlots = Math.max(0, 5 - uploadedImageUrls.length);
       for (const imgUrl of imageUrls.slice(-remainingSlots)) {
-        userContent.push({
-          type: "image_url",
-          image_url: { url: imgUrl },
-        });
+        userContent.push({ type: "image_url", image_url: { url: imgUrl } });
       }
 
-      const totalImages = Math.min(uploadedImageUrls.length, 5) +
-        Math.min(imageUrls.length, remainingSlots);
       console.log(
-        `Extracting data with ${totalImages} images (${uploadedImageUrls.length} uploaded, ${imageUrls.length} from chat) and ${textMessages.length} text messages`,
+        `Extracting data: ${uploadedImageUrls.length} uploaded imgs, ${uploadedPdfUrls.length} uploaded PDFs, ${imageUrls.length} chat imgs, ${pdfUrls.length} chat PDFs, ${textMessages.length} text msgs`,
       );
+
 
       try {
         const aiData = await geminiChat({
