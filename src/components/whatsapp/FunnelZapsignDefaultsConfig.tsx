@@ -519,7 +519,7 @@ export function FunnelZapsignDefaultsConfig({ boardId, hideBoardSelector, sectio
                     <Label className="text-sm">Instâncias do WhatsApp (números da empresa)</Label>
                     <p className="text-xs text-muted-foreground">Adicione o número de uma instância ativa para receber a notificação no privado dela.</p>
                     <div className="max-h-40 overflow-y-auto border rounded-md divide-y">
-                      {instances.map((i) => {
+                      {sortedInstances.map((i) => {
                         const phone = (i.owner_phone || '').replace(/\D/g, '');
                         if (!phone) return null;
                         const checked = row.notify_phone_numbers.includes(phone);
