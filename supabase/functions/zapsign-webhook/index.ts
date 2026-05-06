@@ -1445,6 +1445,57 @@ Deno.serve(async (req) => {
     }
 
     // ====================================================
+    // SEND SIGNED PDF TO WHATSAPP GROUP (executed AFTER group creation)
+    // Reads the freshly-created/linked group_jid from leads/contacts.
+    // ====================================================
+    if (isDocFullySigned && signedFileUrl) {
+      try {
+        let groupId: string | null = null
+        if (localDoc.lead_id) {
+          const { data: leadG } = await supabase.from('leads').select('whatsapp_group_id').eq('id', localDoc.lead_id).maybeSingle()
+          groupId = leadG?.whatsapp_group_id || null
+        }
+        if (!groupId && localDoc.contact_id) {
+          const { data: contactG } = await supabase.from('contacts').select('whatsapp_group_id').eq('id', localDoc.contact_id).maybeSingle()
+          groupId = contactG?.whatsapp_group_id || null
+        }
+
+        if (groupId) {
+          const instance = await resolveInstance()
+          if (instance) {
+            const baseUrl = instance.base_url || 'https://abraci.uazapi.com'
+            const docName = localDoc.document_name || 'Documento'
+            console.log(`[zapsign-webhook] Sending signed PDF to group: ${groupId}`)
+
+            await fetch(`${baseUrl}/send/media`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'token': instance.instance_token },
+              body: JSON.stringify({
+                number: groupId,
+                file: signedFileUrl,
+                type: 'document',
+                caption: `✅ ${docName} - Assinado por todos os signatários`,
+              }),
+            })
+
+            const signerName = localDoc.signer_name || 'Cliente'
+            const summaryMsg = `✅ *Documento Assinado!*\n\n📄 *${docName}*\n👤 *Signatário:* ${signerName}\n📊 *Assinaturas:* ${signedCount}/${totalSigners} ✅\n📅 *Data:* ${new Date().toLocaleDateString('pt-BR')}\n\n🎉 Todas as assinaturas foram coletadas com sucesso!`
+            await fetch(`${baseUrl}/send/text`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'token': instance.instance_token },
+              body: JSON.stringify({ number: groupId, text: summaryMsg }),
+            })
+            console.log(`[zapsign-webhook] Signed PDF + summary sent to group ${groupId}`)
+          }
+        } else {
+          console.log(`[zapsign-webhook] No group_jid available to send signed PDF`)
+        }
+      } catch (groupSendErr) {
+        console.error('[zapsign-webhook] Error sending signed PDF to group (post-create):', groupSendErr)
+      }
+    }
+
+    // ====================================================
     // TRIGGER AGENT AUTOMATIONS (on_document_signed)
     // ====================================================
     if (isDocFullySigned && localDoc.whatsapp_phone) {
