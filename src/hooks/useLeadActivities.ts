@@ -6,6 +6,9 @@ import { toast } from 'sonner';
 import { logAudit } from '@/hooks/useAuditLog';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
+// Lock global em memória para impedir cliques duplos / StrictMode duplicar criação
+const inflightCreates = new Set<string>();
+
 export interface LeadActivity {
   id: string;
   lead_id: string | null;
