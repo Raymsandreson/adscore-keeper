@@ -253,11 +253,14 @@ export function WhatsAppInstanceManager() {
   const handleDelete = async () => {
     if (!deleteTarget) return;
     try {
-      const { error } = await ext
-        .from('whatsapp_instances')
-        .delete()
-        .eq('id', deleteTarget.id);
+      const { data, error } = await supabase.functions.invoke('admin-whatsapp-instance', {
+        body: { action: 'delete', instance_id: deleteTarget.id },
+      });
       if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Falha ao remover');
+      if ((data?.affected ?? 0) === 0) {
+        throw new Error('Nenhuma linha afetada (verifique permissão de admin)');
+      }
       toast.success(`"${deleteTarget.instance_name}" removida`);
       setDeleteTarget(null);
       await fetchInstances();
@@ -269,13 +272,13 @@ export function WhatsAppInstanceManager() {
   const toggleActive = async (inst: Instance) => {
     const newActive = !inst.is_active;
     setInstances(prev => prev.map(i => i.id === inst.id ? { ...i, is_active: newActive } : i));
-    const { error } = await ext
-      .from('whatsapp_instances')
-      .update({ is_active: newActive } as any)
-      .eq('id', inst.id);
-    if (error) {
+    const { data, error } = await supabase.functions.invoke('admin-whatsapp-instance', {
+      body: { action: 'set_active', instance_id: inst.id, is_active: newActive },
+    });
+    const ok = !error && data?.success && (data?.affected ?? 0) > 0;
+    if (!ok) {
       setInstances(prev => prev.map(i => i.id === inst.id ? { ...i, is_active: !newActive } : i));
-      toast.error('Erro ao alterar status');
+      toast.error(data?.error || error?.message || 'Erro ao alterar status');
     } else {
       toast.success(newActive ? 'Instância ativada' : 'Instância desativada');
     }
