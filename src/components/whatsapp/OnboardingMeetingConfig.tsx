@@ -200,6 +200,31 @@ export function OnboardingMeetingConfig({ boardId }: Props) {
 
       {config.is_active && (
         <div className="space-y-4 pt-2">
+          {/* Mode selector */}
+          <div className="space-y-2">
+            <Label className="text-xs font-semibold">🎯 Modo de agendamento</Label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setConfig(prev => ({ ...prev, auto_schedule_mode: false }))}
+                className={`text-left p-3 rounded-md border-2 transition ${!config.auto_schedule_mode ? 'border-primary bg-primary/5' : 'border-border bg-background hover:border-muted-foreground/30'}`}
+              >
+                <div className="text-xs font-semibold mb-1">📅 Cliente escolhe</div>
+                <div className="text-[10px] text-muted-foreground leading-tight">Envia link, cliente seleciona o horário disponível.</div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfig(prev => ({ ...prev, auto_schedule_mode: true }))}
+                className={`text-left p-3 rounded-md border-2 transition ${config.auto_schedule_mode ? 'border-primary bg-primary/5' : 'border-border bg-background hover:border-muted-foreground/30'}`}
+              >
+                <div className="text-xs font-semibold mb-1">⚡ Automático</div>
+                <div className="text-[10px] text-muted-foreground leading-tight">Sistema reserva o próximo slot livre por ordem de assinatura.</div>
+              </button>
+            </div>
+          </div>
+
+          <div className="border-t pt-3" />
+
           {/* Host */}
           <div className="space-y-1.5">
             <Label className="text-xs">👤 Responsável pela reunião</Label>
