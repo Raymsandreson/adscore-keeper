@@ -111,7 +111,8 @@ Deno.serve(async (req) => {
     // DEDUP GUARD: Prevent duplicate processing of the same webhook event
     // ZapSign may fire the same event multiple times
     // ====================================================
-    if (eventType === 'doc_signed' || eventType === 'signer_signed') {
+    const forceReprocess = body?.force === true || body?.force_reprocess === true
+    if (!forceReprocess && (eventType === 'doc_signed' || eventType === 'signer_signed')) {
       const { data: existingDoc } = await supabase
         .from('zapsign_documents')
         .select('id, status, signed_at')
