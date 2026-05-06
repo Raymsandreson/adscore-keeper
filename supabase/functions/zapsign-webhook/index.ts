@@ -111,7 +111,8 @@ Deno.serve(async (req) => {
     // DEDUP GUARD: Prevent duplicate processing of the same webhook event
     // ZapSign may fire the same event multiple times
     // ====================================================
-    if (eventType === 'doc_signed' || eventType === 'signer_signed') {
+    const forceReprocess = body?.force === true || body?.force_reprocess === true
+    if (!forceReprocess && (eventType === 'doc_signed' || eventType === 'signer_signed')) {
       const { data: existingDoc } = await supabase
         .from('zapsign_documents')
         .select('id, status, signed_at')
@@ -562,51 +563,8 @@ Deno.serve(async (req) => {
               } else {
                 console.error('Failed to send signed PDF via WhatsApp:', uazResponseText)
               }
-
-              // ====================================================
-              // SEND SIGNED PDF TO WHATSAPP GROUP
-              // ====================================================
-              try {
-                let groupId: string | null = null
-                if (localDoc.lead_id) {
-                  const { data: leadG } = await supabase.from('leads').select('whatsapp_group_id').eq('id', localDoc.lead_id).maybeSingle()
-                  groupId = leadG?.whatsapp_group_id || null
-                }
-                if (!groupId && localDoc.contact_id) {
-                  const { data: contactG } = await supabase.from('contacts').select('whatsapp_group_id').eq('id', localDoc.contact_id).maybeSingle()
-                  groupId = contactG?.whatsapp_group_id || null
-                }
-
-                if (groupId) {
-                  console.log(`Sending signed PDF to group: ${groupId}`)
-                  
-                  // Send signed PDF to group
-                  await fetch(`${baseUrl}/send/media`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'token': instance.instance_token },
-                    body: JSON.stringify({
-                      number: groupId,
-                      file: signedFileUrl,
-                      type: 'document',
-                      caption: `✅ ${docName} - Assinado por todos os signatários`,
-                    }),
-                  })
-
-                  // Send summary message to group
-                  const signerName = localDoc.signer_name || 'Cliente'
-                  const summaryMsg = `✅ *Documento Assinado!*\n\n📄 *${docName}*\n👤 *Signatário:* ${signerName}\n📊 *Assinaturas:* ${signedCount}/${totalSigners} ✅\n📅 *Data:* ${new Date().toLocaleDateString('pt-BR')}\n\n🎉 Todas as assinaturas foram coletadas com sucesso!`
-                  
-                  await fetch(`${baseUrl}/send/text`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'token': instance.instance_token },
-                    body: JSON.stringify({ number: groupId, text: summaryMsg }),
-                  })
-                  
-                  console.log(`Signed PDF and summary sent to group ${groupId}`)
-                }
-              } catch (groupErr) {
-                console.error('Error sending signed PDF to group:', groupErr)
-              }
+              // NOTE: Send-PDF-to-group moved to AFTER lead/group auto-creation block
+              // (was here, but ran before whatsapp_group_id existed on the lead).
             } else {
               console.error('No active WhatsApp instance found to send signed PDF')
             }
@@ -1484,6 +1442,57 @@ Deno.serve(async (req) => {
         }
       } catch (fbErr) {
         console.error('[zapsign-webhook] FALLBACK group creation error:', fbErr)
+      }
+    }
+
+    // ====================================================
+    // SEND SIGNED PDF TO WHATSAPP GROUP (executed AFTER group creation)
+    // Reads the freshly-created/linked group_jid from leads/contacts.
+    // ====================================================
+    if (isDocFullySigned && signedFileUrl) {
+      try {
+        let groupId: string | null = null
+        if (localDoc.lead_id) {
+          const { data: leadG } = await supabase.from('leads').select('whatsapp_group_id').eq('id', localDoc.lead_id).maybeSingle()
+          groupId = leadG?.whatsapp_group_id || null
+        }
+        if (!groupId && localDoc.contact_id) {
+          const { data: contactG } = await supabase.from('contacts').select('whatsapp_group_id').eq('id', localDoc.contact_id).maybeSingle()
+          groupId = contactG?.whatsapp_group_id || null
+        }
+
+        if (groupId) {
+          const instance = await resolveInstance()
+          if (instance) {
+            const baseUrl = instance.base_url || 'https://abraci.uazapi.com'
+            const docName = localDoc.document_name || 'Documento'
+            console.log(`[zapsign-webhook] Sending signed PDF to group: ${groupId}`)
+
+            await fetch(`${baseUrl}/send/media`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'token': instance.instance_token },
+              body: JSON.stringify({
+                number: groupId,
+                file: signedFileUrl,
+                type: 'document',
+                caption: `✅ ${docName} - Assinado por todos os signatários`,
+              }),
+            })
+
+            const signerName = localDoc.signer_name || 'Cliente'
+            const summaryMsg = `✅ *Documento Assinado!*\n\n📄 *${docName}*\n👤 *Signatário:* ${signerName}\n📊 *Assinaturas:* ${signedCount}/${totalSigners} ✅\n📅 *Data:* ${new Date().toLocaleDateString('pt-BR')}\n\n🎉 Todas as assinaturas foram coletadas com sucesso!`
+            await fetch(`${baseUrl}/send/text`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'token': instance.instance_token },
+              body: JSON.stringify({ number: groupId, text: summaryMsg }),
+            })
+            console.log(`[zapsign-webhook] Signed PDF + summary sent to group ${groupId}`)
+          }
+        } else {
+          console.log(`[zapsign-webhook] No group_jid available to send signed PDF`)
+        }
+      } catch (groupSendErr) {
+        console.error('[zapsign-webhook] Error sending signed PDF to group (post-create):', groupSendErr)
       }
     }
 
