@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { Menu, PanelLeftOpen } from "lucide-react";
 import { useAuthContext } from "@/contexts/AuthContext";
