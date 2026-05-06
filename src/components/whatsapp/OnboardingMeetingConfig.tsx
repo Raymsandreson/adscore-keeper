@@ -146,6 +146,8 @@ export function OnboardingMeetingConfig({ boardId }: Props) {
         meeting_type: config.meeting_type,
         auto_send_after_signature: config.auto_send_after_signature,
         message_template: config.message_template,
+        auto_schedule_mode: config.auto_schedule_mode,
+        auto_schedule_message_template: config.auto_schedule_message_template,
       };
 
       if (config.id) {
