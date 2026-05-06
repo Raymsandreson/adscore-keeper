@@ -391,6 +391,105 @@ Deno.serve(async (req) => {
     }
 
     // ========================
+    // PREVIEW EXTRACTION PROMPT (no AI call)
+    // ========================
+    if (action === "preview_extract_prompt") {
+      const {
+        messages,
+        template_fields,
+        lead_data,
+        contact_data,
+        uploaded_documents,
+      } = body;
+
+      const imageUrls: string[] = [];
+      const pdfUrls: string[] = [];
+      const textMessages: string[] = [];
+      for (const m of (messages || []).slice(-50)) {
+        if (m.message_text) textMessages.push(`[${m.direction}] ${m.message_text}`);
+        const transcription = (m as any).transcription || (m as any).transcript || (m as any).audio_transcription;
+        if (transcription) textMessages.push(`[${m.direction} 🎤 áudio transcrito] ${transcription}`);
+        if (m.media_url) {
+          const mt = (m.media_type || '').toLowerCase();
+          const msgType = ((m as any).message_type || '').toLowerCase();
+          if (mt.startsWith('image') || msgType === 'image') imageUrls.push(m.media_url);
+          else if (mt.includes('pdf') || mt === 'application/pdf' || msgType === 'document' || /\.pdf(\?|$)/i.test(m.media_url)) pdfUrls.push(m.media_url);
+        }
+      }
+      const uploadedImageUrls: string[] = [];
+      const uploadedPdfUrls: string[] = [];
+      if (Array.isArray(uploaded_documents)) {
+        for (const doc of uploaded_documents) {
+          if (!doc.dataUrl) continue;
+          if (doc.type?.startsWith("image")) uploadedImageUrls.push(doc.dataUrl);
+          else if (doc.type === "application/pdf" || /\.pdf$/i.test(doc.name || '')) uploadedPdfUrls.push(doc.dataUrl);
+        }
+      }
+
+      const contactAddr = contact_data || {};
+      const leadAddr = lead_data || {};
+      const fullAddress = [contactAddr.street, contactAddr.neighborhood, contactAddr.city, contactAddr.state].filter(Boolean).join(", ");
+      const crmMappingHints = `
+MAPEAMENTO DE DADOS DO CRM PARA CAMPOS COMUNS:
+- Nome completo: "${contactAddr.full_name || leadAddr.lead_name || ""}"
+- Telefone/WhatsApp: "${contactAddr.phone || leadAddr.phone || ""}"
+- Email: "${contactAddr.email || leadAddr.email || ""}"
+- Endereço completo: "${fullAddress}"
+- Rua: "${contactAddr.street || ""}"
+- Bairro: "${contactAddr.neighborhood || ""}"
+- Cidade: "${contactAddr.city || ""}"
+- Estado/UF: "${contactAddr.state || ""}"
+- CEP: "${contactAddr.cep || ""}"
+- Profissão: "${contactAddr.profession || ""}"
+- CPF: "${leadAddr.cpf || contactAddr.cpf || ""}"
+`;
+
+      const prompt = `Você é um assistente jurídico especializado em extrair dados para preencher documentos. Analise TODAS as fontes disponíveis: dados do CRM, conversa do WhatsApp e IMAGENS de documentos.
+
+CAMPOS DO TEMPLATE A PREENCHER:
+${JSON.stringify(template_fields || [], null, 2)}
+
+${crmMappingHints}
+
+DADOS COMPLETOS DO CRM:
+Lead: ${JSON.stringify(lead_data || {}, null, 2)}
+Contato: ${JSON.stringify(contact_data || {}, null, 2)}
+
+CONVERSA DO WHATSAPP (últimas mensagens):
+${textMessages.length > 0 ? textMessages.join("\n") : "(nenhuma mensagem disponível)"}
+
+INSTRUÇÕES CRÍTICAS:
+1. PRIORIDADE MÁXIMA: Extraia dados da CONVERSA DO WHATSAPP. O cliente frequentemente envia nome completo, CPF, RG, endereço, cidade, UF, CEP, data de nascimento, estado civil, profissão, email e outros dados diretamente nas mensagens de texto. LEIA CADA MENSAGEM com atenção.
+2. Analise TODAS as imagens anexadas minuciosamente. Elas podem conter RG, CPF, comprovante de endereço, procurações, certidões, etc.
+3. Use os dados do CRM (lead e contato) para complementar.
+4. Para NACIONALIDADE: se a pessoa tem CPF brasileiro, use "brasileiro(a)".
+5. Para ESTADO_CIVIL: solteiro(a), casado(a), divorciado(a), viúvo(a), união estável.
+6. Para campos de ENDEREÇO: verifique CRM e conversa.
+7. WHATSAPP: telefone do contato/lead. EMAIL: email do contato/lead.
+8. Datas no formato DD/MM/AAAA.
+9. Se não encontrar, "para" = "".
+10. Retorne TODOS os campos do template.
+11. Campo "de" deve manter o formato exato (ex: "{{NOME_COMPLETO}}").
+
+Retorne JSON: [{"de": "{{CAMPO}}", "para": "valor"}] — apenas o JSON, sem markdown.`;
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          prompt,
+          attachments: {
+            uploaded_images: uploadedImageUrls.length,
+            uploaded_pdfs: uploadedPdfUrls.length,
+            chat_images: imageUrls.length,
+            chat_pdfs: pdfUrls.length,
+            text_messages: textMessages.length,
+          },
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    // ========================
     // EXTRACT DATA FROM CONVERSATION (AI)
     // ========================
     if (action === "extract_data") {

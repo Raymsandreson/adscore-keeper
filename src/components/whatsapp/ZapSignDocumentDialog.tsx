@@ -8,7 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Loader2, FileSignature, Sparkles, Send, Pencil, Check, CheckCircle2, AlertCircle, Upload, FileText, X, Plus, Trash2, UserPlus, MessageSquare } from 'lucide-react';
+import { Loader2, FileSignature, Sparkles, Send, Pencil, Check, CheckCircle2, AlertCircle, Upload, FileText, X, Plus, Trash2, UserPlus, MessageSquare, Eye, Copy } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
@@ -71,6 +72,39 @@ export function ZapSignDocumentDialog({
   const [selectedTemplate, setSelectedTemplate] = useState('');
   const [templateFields, setTemplateFields] = useState<Array<ExtractedField>>([]);
   const [extracting, setExtracting] = useState(false);
+  const [showPromptDialog, setShowPromptDialog] = useState(false);
+  const [previewPrompt, setPreviewPrompt] = useState('');
+  const [previewAttachments, setPreviewAttachments] = useState<any>(null);
+  const [loadingPrompt, setLoadingPrompt] = useState(false);
+
+  const handleViewPrompt = async () => {
+    setShowPromptDialog(true);
+    setLoadingPrompt(true);
+    try {
+      const vars = templateFields.map(f => f.de).filter(Boolean);
+      const { data } = await cloudFunctions.invoke('zapsign-api', {
+        body: {
+          action: 'preview_extract_prompt',
+          messages: extractionSource === 'upload_only' ? (pastedText ? [{ direction: 'inbound', message_text: pastedText }] : []) : [...filteredMessages.slice(-50), ...(pastedText ? [{ direction: 'inbound', message_text: pastedText }] : [])],
+          template_fields: vars,
+          lead_data: leadData || fetchedLeadData || {},
+          contact_data: contactData || fetchedContactData || {},
+          uploaded_documents: uploadedDocs.map(d => ({ name: d.name, type: d.type, dataUrl: d.dataUrl })),
+        },
+      });
+      if (data?.success) {
+        setPreviewPrompt(data.prompt || '');
+        setPreviewAttachments(data.attachments || null);
+      } else {
+        toast.error('Erro ao gerar prévia do prompt');
+      }
+    } catch (err) {
+      console.error('Preview prompt error:', err);
+      toast.error('Erro ao carregar prompt');
+    } finally {
+      setLoadingPrompt(false);
+    }
+  };
   const [creating, setCreating] = useState(false);
   const [uploadedDocs, setUploadedDocs] = useState<UploadedDoc[]>([]);
   const [pastedText, setPastedText] = useState('');
@@ -847,6 +881,9 @@ export function ZapSignDocumentDialog({
             ) : (
               <>
                 <div className="flex items-center gap-2 flex-wrap">
+                  <Button variant="ghost" size="sm" onClick={handleViewPrompt} className="gap-1 h-7 text-xs">
+                    <Eye className="h-3 w-3" /> Ver prompt da IA
+                  </Button>
                   <Button variant="ghost" size="sm" onClick={() => { setExtracting(true); extractDataWithAI().finally(() => setExtracting(false)); }} className="ml-auto gap-1 h-7 text-xs">
                     <Sparkles className="h-3 w-3" /> Re-extrair com IA
                   </Button>
@@ -934,6 +971,54 @@ export function ZapSignDocumentDialog({
           )}
         </DialogFooter>
       </DialogContent>
+
+      <Dialog open={showPromptDialog} onOpenChange={setShowPromptDialog}>
+        <DialogContent className="max-w-3xl max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <Eye className="h-4 w-4 text-primary" /> Prompt enviado para a IA
+            </DialogTitle>
+          </DialogHeader>
+          {loadingPrompt ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-6 w-6 animate-spin text-primary" />
+            </div>
+          ) : (
+            <div className="flex-1 overflow-hidden flex flex-col gap-3">
+              {previewAttachments && (
+                <div className="flex flex-wrap gap-2 text-xs">
+                  <Badge variant="secondary">📝 {previewAttachments.text_messages} msgs</Badge>
+                  <Badge variant="secondary">🖼️ {previewAttachments.chat_images} imgs chat</Badge>
+                  <Badge variant="secondary">📄 {previewAttachments.chat_pdfs} PDFs chat</Badge>
+                  <Badge variant="secondary">⬆️ {previewAttachments.uploaded_images} imgs upload</Badge>
+                  <Badge variant="secondary">⬆️ {previewAttachments.uploaded_pdfs} PDFs upload</Badge>
+                </div>
+              )}
+              <Textarea
+                value={previewPrompt}
+                readOnly
+                className="flex-1 min-h-[400px] text-xs font-mono leading-relaxed"
+              />
+              <div className="flex justify-between items-center">
+                <p className="text-[10px] text-muted-foreground">
+                  Mídias são anexadas em paralelo ao texto acima.
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    navigator.clipboard.writeText(previewPrompt);
+                    toast.success('Prompt copiado!');
+                  }}
+                  className="gap-1 h-7 text-xs"
+                >
+                  <Copy className="h-3 w-3" /> Copiar
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 }
