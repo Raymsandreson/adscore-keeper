@@ -609,10 +609,10 @@ Deno.serve(async (req) => {
           (!currentName || (expectedPrefix && !currentName.toUpperCase().startsWith(expectedPrefix.toUpperCase())))
         if (needsRename) {
           try {
-            const renameRes = await fetch(`${baseUrl}/group/updateSubject`, {
+            const renameRes = await fetch(`${baseUrl}/group/updateName`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', token: creatorInstance.instance_token },
-              body: JSON.stringify({ groupjid: leadData.whatsapp_group_id, subject: groupName }),
+              body: JSON.stringify({ groupjid: leadData.whatsapp_group_id, name: groupName }),
             })
             if (renameRes.ok) {
               finalName = groupName
