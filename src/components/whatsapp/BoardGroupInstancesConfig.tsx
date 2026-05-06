@@ -351,11 +351,12 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
     setSavingSettings(true);
     try {
       // Save group settings
-      const { data: existing } = await (db as any)
+      const { data: existing, error: existingError } = await (db as any)
         .from('board_group_settings')
         .select('id')
         .eq('board_id', selectedBoard)
         .maybeSingle();
+      if (existingError) throw existingError;
 
       const payload = {
         group_name_prefix: settings.group_name_prefix,
@@ -384,18 +385,20 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
       };
 
       if (existing) {
-        await (db as any)
+        const { error } = await (db as any)
           .from('board_group_settings')
           .update(payload)
           .eq('board_id', selectedBoard);
+        if (error) throw error;
       } else {
-        await (db as any)
+        const { error } = await (db as any)
           .from('board_group_settings')
           .insert({
             board_id: selectedBoard,
             ...payload,
             current_sequence: settings.sequence_start > 1 ? settings.sequence_start - 1 : 0,
           });
+        if (error) throw error;
       }
 
       // Save instance configs (role_title, role_description)
@@ -415,6 +418,7 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
 
       toast.success('Configuração salva!');
     } catch (e: any) {
+      console.error('Erro ao salvar configuração de grupo:', e);
       toast.error('Erro ao salvar configuração');
     } finally {
       setSavingSettings(false);
