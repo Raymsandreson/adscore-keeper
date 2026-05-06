@@ -207,7 +207,7 @@ export function FunnelZapsignDefaultsConfig({ boardId, hideBoardSelector, sectio
     (async () => {
       setLoadingRow(true);
       try {
-        const { data, error } = await (supabase as any)
+        const { data, error } = await (db as any)
           .from('funnel_zapsign_defaults').select('*').eq('board_id', selectedBoardId).maybeSingle();
         if (error) throw error;
         const base = emptyDefaults(selectedBoardId);
@@ -235,7 +235,7 @@ export function FunnelZapsignDefaultsConfig({ boardId, hideBoardSelector, sectio
     try {
       const { data: userRes } = await supabase.auth.getUser();
       const payload = { ...row, created_by: row.id ? undefined : userRes.user?.id };
-      const { error } = await (supabase as any)
+      const { error } = await (db as any)
         .from('funnel_zapsign_defaults').upsert(payload, { onConflict: 'board_id' });
       if (error) throw error;
       toast.success('Configurações salvas como padrão deste funil');
