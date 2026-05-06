@@ -456,7 +456,7 @@ export function FunnelZapsignDefaultsConfig({ boardId, hideBoardSelector, sectio
                       <Input className="pl-8 h-9" placeholder="Buscar membro…" value={memberSearch} onChange={(e) => setMemberSearch(e.target.value)} />
                     </div>
                     <div className="max-h-48 overflow-y-auto border rounded-md divide-y">
-                      {profiles
+                      {sortedProfiles
                         .filter((p) => !memberSearch || (p.full_name || '').toLowerCase().includes(memberSearch.toLowerCase()))
                         .slice(0, 50)
                         .map((p) => {
