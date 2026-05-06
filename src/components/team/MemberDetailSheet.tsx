@@ -196,7 +196,6 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
       }
 
       toast.success(`Perfil "${profile.name}" aplicado com sucesso!`);
-      setSelectedProfileId('');
       onUpdate();
     } catch (error: any) {
       toast.error(error.message || 'Erro ao aplicar perfil');
