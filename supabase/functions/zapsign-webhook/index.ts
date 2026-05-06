@@ -236,13 +236,45 @@ Deno.serve(async (req) => {
     // ====================================================
     if (!localDoc.lead_id && localDoc.whatsapp_phone) {
       const cleanPhone = localDoc.whatsapp_phone.replace(/\D/g, '')
-      console.log(`[zapsign-webhook] lead_id is NULL, trying to resolve by phone: ${cleanPhone}`)
-      
-      const { data: matchedLead } = await supabase
+      // Brazilian 9th-digit normalization: try with AND without the leading 9 on mobile (DDD + 8/9 digits)
+      const candidates = new Set<string>([cleanPhone])
+      // strip country code prefix to inspect DDD+local
+      const local = cleanPhone.startsWith('55') ? cleanPhone.slice(2) : cleanPhone
+      if (local.length === 11 && local[2] === '9') {
+        // remove the 9
+        const stripped = local.slice(0, 2) + local.slice(3)
+        candidates.add(stripped)
+        candidates.add('55' + stripped)
+      } else if (local.length === 10) {
+        // add the 9
+        const added = local.slice(0, 2) + '9' + local.slice(2)
+        candidates.add(added)
+        candidates.add('55' + added)
+      }
+      // also last-8 fuzzy match as fallback
+      const last8 = cleanPhone.slice(-8)
+      console.log(`[zapsign-webhook] lead_id NULL, trying phone candidates:`, Array.from(candidates), 'last8:', last8)
+
+      let matchedLead: { id: string } | null = null
+      const { data: exactMatches } = await supabase
         .from('leads')
-        .select('id')
-        .eq('lead_phone', cleanPhone)
-        .maybeSingle()
+        .select('id, lead_phone')
+        .in('lead_phone', Array.from(candidates))
+        .limit(1)
+      if (exactMatches && exactMatches.length > 0) {
+        matchedLead = { id: exactMatches[0].id }
+      } else {
+        const { data: fuzzy } = await supabase
+          .from('leads')
+          .select('id, lead_phone')
+          .ilike('lead_phone', `%${last8}`)
+          .limit(2)
+        if (fuzzy && fuzzy.length === 1) {
+          matchedLead = { id: fuzzy[0].id }
+        } else if (fuzzy && fuzzy.length > 1) {
+          console.log('[zapsign-webhook] Ambiguous fuzzy match (>1), skipping:', fuzzy)
+        }
+      }
 
       if (matchedLead) {
         localDoc.lead_id = matchedLead.id
