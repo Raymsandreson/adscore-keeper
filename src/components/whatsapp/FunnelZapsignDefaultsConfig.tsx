@@ -495,7 +495,7 @@ export function FunnelZapsignDefaultsConfig({ boardId, hideBoardSelector, sectio
                         if (!phone) return null;
                         const checked = row.notify_phone_numbers.includes(phone);
                         return (
-                          <label key={i.instance_name} className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-muted/40">
+                          <label key={`${i.instance_name}-${phone}`} className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-muted/40">
                             <Checkbox
                               checked={checked}
                               onCheckedChange={() =>
