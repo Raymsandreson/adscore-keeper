@@ -6682,6 +6682,8 @@ export type Database = {
       onboarding_meeting_configs: {
         Row: {
           activity_type: string
+          auto_schedule_message_template: string | null
+          auto_schedule_mode: boolean
           auto_send_after_signature: boolean
           available_days: number[]
           board_id: string
@@ -6699,6 +6701,8 @@ export type Database = {
         }
         Insert: {
           activity_type?: string
+          auto_schedule_message_template?: string | null
+          auto_schedule_mode?: boolean
           auto_send_after_signature?: boolean
           available_days?: number[]
           board_id: string
@@ -6716,6 +6720,8 @@ export type Database = {
         }
         Update: {
           activity_type?: string
+          auto_schedule_message_template?: string | null
+          auto_schedule_mode?: boolean
           auto_send_after_signature?: boolean
           available_days?: number[]
           board_id?: string
