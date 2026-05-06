@@ -105,7 +105,7 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
           .select('lead_id, checklist_template_id, is_completed, items')
           .in('lead_id', leadIds),
         supabase.from('checklist_templates').select('id, name, items').order('name'),
-        supabase.from('zapsign_documents')
+        externalSupabase.from('zapsign_documents')
           .select('lead_id, status, signed_at')
           .in('lead_id', leadIds),
       ]);
