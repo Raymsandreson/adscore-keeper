@@ -8,7 +8,10 @@ import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Video, Calendar, Clock, Users, Copy, ExternalLink } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { Loader2, Video, Calendar, Clock, Users, Copy, ExternalLink, Check, ChevronsUpDown } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
 interface Props {
@@ -34,7 +37,8 @@ interface MeetingConfig {
 
 interface TeamMember {
   user_id: string;
-  full_name: string;
+  full_name: string | null;
+  email?: string | null;
 }
 
 const DAY_LABELS: Record<number, string> = {
@@ -121,8 +125,14 @@ export function OnboardingMeetingConfig({ boardId }: Props) {
   };
 
   const fetchMembers = async () => {
-    const { data } = await externalSupabase.from('profiles').select('user_id, full_name');
-    setMembers((data || []).filter(m => m.full_name));
+    const { data } = await externalSupabase.from('profiles').select('user_id, full_name, email');
+    const list = (data || []).map(m => ({
+      user_id: m.user_id,
+      full_name: m.full_name || (m.email ? m.email.split('@')[0] : 'Usuário'),
+      email: m.email,
+    }));
+    list.sort((a, b) => (a.full_name || '').localeCompare(b.full_name || ''));
+    setMembers(list);
   };
 
   const fetchActivityTypes = async () => {
@@ -228,18 +238,46 @@ export function OnboardingMeetingConfig({ boardId }: Props) {
           {/* Host */}
           <div className="space-y-1.5">
             <Label className="text-xs">👤 Responsável pela reunião</Label>
-            <Select value={config.host_user_id} onValueChange={v => setConfig(prev => ({ ...prev, host_user_id: v }))}>
-              <SelectTrigger className="h-8 text-xs">
-                <SelectValue placeholder="Selecione..." />
-              </SelectTrigger>
-              <SelectContent>
-                {members.map(m => (
-                  <SelectItem key={m.user_id} value={m.user_id}>
-                    {m.full_name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {(() => {
+              const selected = members.find(m => m.user_id === config.host_user_id);
+              return (
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      className="h-8 w-full justify-between text-xs font-normal"
+                    >
+                      <span className="truncate">
+                        {selected ? selected.full_name : 'Selecione...'}
+                      </span>
+                      <ChevronsUpDown className="ml-2 h-3 w-3 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                    <Command>
+                      <CommandInput placeholder="Buscar membro..." className="h-8 text-xs" />
+                      <CommandList>
+                        <CommandEmpty>Nenhum encontrado.</CommandEmpty>
+                        <CommandGroup>
+                          {members.map(m => (
+                            <CommandItem
+                              key={m.user_id}
+                              value={`${m.full_name} ${m.email || ''}`}
+                              onSelect={() => setConfig(prev => ({ ...prev, host_user_id: m.user_id }))}
+                              className="text-xs"
+                            >
+                              <Check className={cn('mr-2 h-3 w-3', config.host_user_id === m.user_id ? 'opacity-100' : 'opacity-0')} />
+                              <span className="truncate">{m.full_name}</span>
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+              );
+            })()}
           </div>
 
           {/* Activity type */}
