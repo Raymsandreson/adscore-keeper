@@ -37,7 +37,8 @@ interface MeetingConfig {
 
 interface TeamMember {
   user_id: string;
-  full_name: string;
+  full_name: string | null;
+  email?: string | null;
 }
 
 const DAY_LABELS: Record<number, string> = {
