@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { usePageState } from '@/hooks/usePageState';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
-import { remapToCloud, ensureRemapCache } from '@/integrations/supabase/uuid-remap';
+import { remapToCloud, remapToCloudSync, ensureRemapCache } from '@/integrations/supabase/uuid-remap';
 import { useLeadActivities, LeadActivity } from '@/hooks/useLeadActivities';
 import { useConfirmDelete } from '@/hooks/useConfirmDelete';
 import { useAuthContext } from '@/contexts/AuthContext';
@@ -1133,7 +1133,15 @@ const ActivitiesPage = () => {
 
   const resolveUserName = (userId: string | null) => {
     if (!userId) return null;
-    return teamMembers.find(m => m.user_id === userId)?.full_name || null;
+    // Tenta direto (cloud_uuid) e via remap (ext_uuid → cloud_uuid)
+    const direct = teamMembers.find(m => m.user_id === userId)?.full_name;
+    if (direct) return direct;
+    const cloudId = remapToCloudSync(userId);
+    if (cloudId && cloudId !== userId) {
+      const viaRemap = teamMembers.find(m => m.user_id === cloudId)?.full_name;
+      if (viaRemap) return viaRemap;
+    }
+    return null;
   };
 
   useEffect(() => {
