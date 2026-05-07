@@ -250,13 +250,14 @@ export function LeadLinkedContacts({ leadId }: LeadLinkedContactsProps) {
     try {
       const { data: { user: currentUser } } = await supabase.auth.getUser();
       await ensureExternalSession().catch(() => {});
+      const externalUserId = await remapToExternal(currentUser?.id).catch(() => null);
       const { data: newContact, error: createError } = await externalSupabase
         .from('contacts')
         .insert({
           full_name: newName.trim(),
           phone: newPhone || null,
           instagram_username: newInstagram ? (newInstagram.startsWith('@') ? newInstagram : `@${newInstagram}`) : null,
-          created_by: currentUser?.id || null,
+          created_by: externalUserId,
         })
         .select('id')
         .single();
