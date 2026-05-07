@@ -1358,7 +1358,22 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                 {isPrivate ? <LockOpen className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
                 {isPrivate ? 'Tornar pública' : 'Trancar conversa'}
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setShowZapSign(true)} className="gap-2">
+              <DropdownMenuItem onClick={() => {
+                openZapSignDialog({
+                  phone: conversation.phone,
+                  contactName: conversation.contact_name || undefined,
+                  contactId: conversation.contact_id || undefined,
+                  leadId: conversation.lead_id || undefined,
+                  instanceName: conversation.instance_name || undefined,
+                  messages: conversation.messages.map(m => ({
+                    direction: m.direction,
+                    message_text: m.message_text,
+                    media_url: m.media_url,
+                    media_type: m.media_type,
+                    created_at: (m as any).created_at || (m as any).timestamp,
+                  })),
+                });
+              }} className="gap-2">
                 <FileSignature className="h-4 w-4" /> Gerar Documento para Assinatura
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setShowSessionEditor(true)} className="gap-2">
