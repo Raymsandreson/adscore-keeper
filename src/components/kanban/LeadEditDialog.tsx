@@ -313,6 +313,12 @@ export function LeadEditDialog({
   const isTabVisible = (tabKey: string) => !isManagedLayoutTab(tabKey) || !layoutBoardId || visibleTabKeys.size === 0 || visibleTabKeys.has(tabKey);
   const isFieldVisible = (fieldKey: string) => !layoutBoardId || visibleFieldKeys.size === 0 || visibleFieldKeys.has(fieldKey);
 
+  useEffect(() => {
+    if (!isManagedLayoutTab(activeTab)) return;
+    if (isTabVisible(activeTab)) return;
+    setActiveTab(visibleLayoutTabs[0]?.key || 'contacts');
+  }, [activeTab, visibleLayoutTabs, visibleTabKeys, layoutBoardId]);
+
   // Track previous lead id to only reset tab on lead change, not hydration
   const prevLeadIdRef = useRef<string | null>(null);
 
