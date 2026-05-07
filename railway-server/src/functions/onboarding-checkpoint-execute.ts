@@ -42,16 +42,22 @@ type AuthResult =
   | { ok: false; reason: 'missing_header' | 'malformed_bearer' | 'empty_token' | 'anon_key_used' | 'user_endpoint_failed' | 'no_user_id' | 'fetch_exception'; status?: number; tokenSuffix?: string; detail?: string };
 
 function logAuth(rid: string, phase: 'pre' | 'post', result: AuthResult, extra: Record<string, unknown> = {}) {
-  const payload = {
+  const payload: Record<string, unknown> = {
     fn: 'onboarding-checkpoint-execute',
     event: `auth.${phase}`,
     rid,
     ok: result.ok,
-    ...(result.ok
-      ? { user_id: result.userId, token_suffix: result.tokenSuffix }
-      : { reason: result.reason, status: result.status, token_suffix: result.tokenSuffix, detail: result.detail }),
     ...extra,
   };
+  if (result.ok === true) {
+    payload.user_id = result.userId;
+    payload.token_suffix = result.tokenSuffix;
+  } else {
+    payload.reason = result.reason;
+    payload.status = result.status;
+    payload.token_suffix = result.tokenSuffix;
+    payload.detail = result.detail;
+  }
   console.log(JSON.stringify(payload));
 }
 
@@ -90,7 +96,7 @@ export const handler: RequestHandler = async (req, res) => {
     const authHeader = req.headers['authorization'] as string | undefined;
     const auth = await verifyCloudJwt(authHeader);
     logAuth(rid, 'pre', auth, { path: req.path, ip: req.ip });
-    if (!auth.ok) {
+    if (auth.ok !== true) {
       logAuth(rid, 'post', auth, { blocked: true });
       return res.status(401).json({ success: false, error: 'unauthorized', reason: auth.reason, rid });
     }
