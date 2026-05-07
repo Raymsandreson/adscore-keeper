@@ -9,6 +9,23 @@ const cors = {
   'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
 };
 
+const summarizePayload = (raw?: string) => {
+  if (!raw) return null;
+  try {
+    const body = JSON.parse(raw);
+    return {
+      phoneLast4: typeof body.phone === 'string' ? body.phone.replace(/\D/g, '').slice(-4) : null,
+      chatIdSuffix: typeof body.chat_id === 'string' ? body.chat_id.slice(-12) : null,
+      messageLength: typeof body.message === 'string' ? body.message.length : null,
+      hasContactId: Boolean(body.contact_id),
+      hasLeadId: Boolean(body.lead_id),
+      instanceId: body.instance_id || null,
+    };
+  } catch {
+    return { unparseableBodyLength: raw.length };
+  }
+};
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: cors });
@@ -29,6 +46,7 @@ Deno.serve(async (req) => {
     // Lê body apenas em métodos que podem tê-lo
     const body =
       req.method === 'GET' || req.method === 'HEAD' ? undefined : await req.text();
+    console.log(`[send-whatsapp ${requestId}] PAYLOAD SUMMARY → ${JSON.stringify(summarizePayload(body))}`);
 
     // Encaminha headers úteis (Authorization + apikey + content-type + request-id)
     const fwdHeaders: Record<string, string> = {
@@ -53,6 +71,7 @@ Deno.serve(async (req) => {
 
     // Log do status retornado para diagnóstico rápido
     console.log(`[send-whatsapp ${requestId}] RESPONSE ← status=${resp.status}, statusText="${resp.statusText}", duration=${duration}ms, bodyLength=${text.length}`);
+    console.log(`[send-whatsapp ${requestId}] RESPONSE BODY SUMMARY ← ${text.substring(0, 350)}${text.length > 350 ? '...(truncated)' : ''}`);
 
     // Se for erro 5xx ou 4xx, loga o corpo da resposta para debug
     if (resp.status >= 400) {
