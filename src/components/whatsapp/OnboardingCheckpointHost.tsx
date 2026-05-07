@@ -199,6 +199,7 @@ export function OnboardingCheckpointHost({ selectedPhone }: Props = {}) {
   const handleConfirm = () => {
     if (!currentStep) return;
     switch (currentStep.step) {
+      case 'setup_lead_close':
       case 'create_group':
       case 'create_onboarding_activity':
         return execute();
