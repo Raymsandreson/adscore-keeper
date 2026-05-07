@@ -1469,6 +1469,7 @@ export function WhatsAppInbox() {
         </Dialog>
       )}
       <ZapSignLeadCreationListener />
+      <ZapSignDialogHost />
     </div>
   );
 }
