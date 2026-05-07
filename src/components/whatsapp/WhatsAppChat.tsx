@@ -17,7 +17,7 @@ import { Send, User, Users, Link2, UserPlus, ExternalLink, Plus, Loader2, Phone,
 import { FastForward } from 'lucide-react';
 import { DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger } from '@/components/ui/dropdown-menu';
 import { useWhatsAppInternalNotes } from '@/hooks/useWhatsAppInternalNotes';
-import { ZapSignDocumentDialog } from './ZapSignDocumentDialog';
+import { openZapSignDialog } from '@/lib/zapsignDialogEvent';
 import { SessionFieldEditor } from './SessionFieldEditor';
 import { GroupMembersDialog } from './GroupMembersDialog';
 import { WhatsAppConversationShareDialog } from './WhatsAppConversationShareDialog';
@@ -121,7 +121,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const [isPrivate, setIsPrivate] = useState(false);
   const [togglingPrivate, setTogglingPrivate] = useState(false);
   const [showGroupMembers, setShowGroupMembers] = useState(false);
-  const [showZapSign, setShowZapSign] = useState(false);
+  
   const [showSessionEditor, setShowSessionEditor] = useState(false);
   const [creatingGroup, setCreatingGroup] = useState(false);
   const [linkedGroupId, setLinkedGroupId] = useState<string | null>(null);
@@ -1358,7 +1358,39 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                 {isPrivate ? <LockOpen className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
                 {isPrivate ? 'Tornar pública' : 'Trancar conversa'}
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setShowZapSign(true)} className="gap-2">
+              <DropdownMenuItem onClick={() => {
+                openZapSignDialog({
+                  phone: conversation.phone,
+                  contactName: conversation.contact_name || undefined,
+                  contactId: conversation.contact_id || undefined,
+                  leadId: conversation.lead_id || undefined,
+                  instanceName: conversation.instance_name || undefined,
+                  messages: conversation.messages.map(m => ({
+                    direction: m.direction,
+                    message_text: m.message_text,
+                    media_url: m.media_url,
+                    media_type: m.media_type,
+                    created_at: (m as any).created_at || (m as any).timestamp,
+                  })),
+                  onSendMessage: async (msg: string) => {
+                    const rawChatId =
+                      conversation.messages.find((message) => typeof message.metadata?.chat?.wa_chatid === 'string')?.metadata?.chat?.wa_chatid ||
+                      conversation.messages.find((message) => typeof message.metadata?.message?.chatid === 'string')?.metadata?.message?.chatid;
+                    const conversationChatId = canonicalizeChatTarget(rawChatId);
+                    return await onSendMessage(
+                      conversation.phone, msg,
+                      conversation.contact_id || undefined,
+                      conversation.lead_id || undefined,
+                      conversation.instance_name,
+                      identifySender,
+                      conversationChatId,
+                      nameFormat === 'nickname' ? null : (treatmentTitle || null),
+                      nameFormat,
+                      nameFormat === 'nickname' ? (selectedNickname || null) : null
+                    );
+                  },
+                });
+              }} className="gap-2">
                 <FileSignature className="h-4 w-4" /> Gerar Documento para Assinatura
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setShowSessionEditor(true)} className="gap-2">
@@ -2273,33 +2305,6 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
           </DialogContent>
         </Dialog>
       </div>
-      <ZapSignDocumentDialog
-        open={showZapSign}
-        onOpenChange={setShowZapSign}
-        phone={conversation.phone}
-        contactName={conversation.contact_name || undefined}
-        contactId={conversation.contact_id || undefined}
-        leadId={conversation.lead_id || undefined}
-        instanceName={conversation.instance_name || undefined}
-        messages={conversation.messages.map(m => ({ direction: m.direction, message_text: m.message_text, media_url: m.media_url, media_type: m.media_type, created_at: (m as any).created_at || (m as any).timestamp }))}
-        onSendMessage={async (msg) => {
-          const rawChatId =
-            conversation.messages.find((message) => typeof message.metadata?.chat?.wa_chatid === 'string')?.metadata?.chat?.wa_chatid ||
-            conversation.messages.find((message) => typeof message.metadata?.message?.chatid === 'string')?.metadata?.message?.chatid;
-          const conversationChatId = canonicalizeChatTarget(rawChatId);
-          return await onSendMessage(
-            conversation.phone, msg,
-            conversation.contact_id || undefined,
-            conversation.lead_id || undefined,
-            conversation.instance_name,
-            identifySender,
-            conversationChatId,
-            nameFormat === 'nickname' ? null : (treatmentTitle || null),
-            nameFormat,
-            nameFormat === 'nickname' ? (selectedNickname || null) : null
-          );
-        }}
-      />
       <SessionFieldEditor
         open={showSessionEditor}
         onOpenChange={setShowSessionEditor}
