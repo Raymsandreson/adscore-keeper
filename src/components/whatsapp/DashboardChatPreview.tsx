@@ -732,6 +732,31 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
         boardId = lead.board_id || undefined;
       }
 
+      // If sync is OFF, ask user for custom lead name
+      let customLeadName: string | null = null;
+      if (boardId) {
+        const { data: bgs } = await (supabase as any)
+          .from('board_group_settings')
+          .select('sync_lead_name_with_group')
+          .eq('board_id', boardId)
+          .maybeSingle();
+        if (bgs && bgs.sync_lead_name_with_group === false) {
+          const input = window.prompt(
+            'Sincronização do nome do lead com o grupo está desligada.\nDefina o nome do lead (deixe vazio para manter o atual):',
+            leadName
+          );
+          if (input === null) {
+            setCreatingGroup(false);
+            return;
+          }
+          const trimmed = input.trim();
+          if (trimmed && trimmed !== leadName) {
+            customLeadName = trimmed;
+            leadName = trimmed;
+          }
+        }
+      }
+
       let instanceId: string | undefined;
       const msgInstanceName = instanceName || messages.find(m => m.instance_name)?.instance_name;
       if (msgInstanceName) {
@@ -759,9 +784,11 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
       if (!data?.success) throw new Error(data?.error || 'Erro ao criar grupo');
 
       if (lead?.id && data.group_id) {
+        const updates: any = { whatsapp_group_id: data.group_id };
+        if (customLeadName) updates.lead_name = customLeadName;
         await supabase
           .from('leads')
-          .update({ whatsapp_group_id: data.group_id } as any)
+          .update(updates)
           .eq('id', lead.id);
       }
 
