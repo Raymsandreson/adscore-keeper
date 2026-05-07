@@ -23,6 +23,7 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
 
   // --- Funções já portadas pro Railway ---
   'onboarding-checkpoint-execute': 'railway',
+  'regenerate-lead-name': 'railway',
 
   // --- Todas as demais ficam no Cloud por padrão ---
 };
