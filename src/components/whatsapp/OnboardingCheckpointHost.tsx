@@ -405,3 +405,61 @@ export function OnboardingCheckpointHost({ selectedPhone }: Props = {}) {
     </Dialog>
   );
 }
+
+function DoneResultSummary({ step, result, leadId }: { step: StepKey; result: any; leadId: string }) {
+  if (step === 'setup_lead_close') {
+    return (
+      <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
+        <div>✅ Lead marcado como <b>fechado</b></div>
+        {result.signer_name && <div>Contato: <b>{result.signer_name}</b></div>}
+        {result.contact_id && (
+          <a href={`/contacts?id=${result.contact_id}`} target="_blank" rel="noreferrer" className="text-primary underline">
+            Ver contato
+          </a>
+        )}
+      </div>
+    );
+  }
+  if (step === 'create_group') {
+    const participants: Array<{ id: string; name: string; phone?: string }> = result.participants || [];
+    return (
+      <div className="text-xs text-muted-foreground mt-1 space-y-1">
+        {result.group_name && <div>📱 Grupo: <b>{result.group_name}</b></div>}
+        {result.group_jid && <div className="font-mono text-[10px] truncate">{result.group_jid}</div>}
+        {result.reused && <div className="italic">Reaproveitado de grupo existente</div>}
+        {participants.length > 0 && (
+          <div>
+            <div className="font-medium">Vinculados ao lead ({participants.length}):</div>
+            <ul className="list-disc list-inside max-h-24 overflow-auto">
+              {participants.map((p) => (
+                <li key={p.id} className="truncate">
+                  {p.name}{p.phone ? ` · ${p.phone}` : ''}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        <div className="flex gap-2 pt-0.5">
+          <a href={`/?leadId=${leadId}`} className="text-primary underline">Ver lead</a>
+          {result.group_link && (
+            <a href={result.group_link} target="_blank" rel="noreferrer" className="text-primary underline">
+              Abrir grupo
+            </a>
+          )}
+        </div>
+      </div>
+    );
+  }
+  if (step === 'create_case_process') {
+    return (
+      <div className="text-xs text-muted-foreground mt-1">
+        {result.case_number && <span>Caso <b>{result.case_number}</b></span>}
+      </div>
+    );
+  }
+  return (
+    <div className="text-xs text-muted-foreground mt-1 truncate">
+      {typeof result === 'object' ? JSON.stringify(result) : String(result)}
+    </div>
+  );
+}
