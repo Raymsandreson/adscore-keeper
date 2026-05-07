@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Loader2, FileSignature, Sparkles, Send, Pencil, Check, CheckCircle2, AlertCircle, Upload, FileText, X, Plus, Trash2, UserPlus, MessageSquare, Eye, Copy } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { format, subDays, subHours, startOfDay } from 'date-fns';
@@ -122,6 +123,9 @@ export function ZapSignDocumentDialog({
   // Signers state
   const [signers, setSigners] = useState<SignerInfo[]>([]);
   const [messagePeriod, setMessagePeriod] = useState<string>('7d');
+  const [nextLeadNumber, setNextLeadNumber] = useState<string | null>(null);
+  const [lastLeadNumber, setLastLeadNumber] = useState<string | null>(null);
+  const [showNumberConfirm, setShowNumberConfirm] = useState(false);
 
   // Funnel defaults (source of truth — configured in Onboarding > Grupo)
   const [funnelDefaults, setFunnelDefaults] = useState<{
@@ -135,6 +139,8 @@ export function ZapSignDocumentDialog({
     tokenEmail: '📧 Token por e-mail',
     tokenSms: '📱 Token por SMS',
     assinaturaImagem: '🖼️ Assinatura por imagem',
+    selfieFoto: '🤳 Selfie',
+    selfieDocFoto: '🪪 Selfie + foto do documento',
   };
 
   // Filter messages by period
@@ -186,7 +192,7 @@ export function ZapSignDocumentDialog({
   const fetchDbMessages = async () => {
     if (!phone) return;
     try {
-      const { data, error } = await supabase
+      const { data, error } = await externalSupabase
         .from('whatsapp_messages')
         .select('direction, message_text, media_url, media_type, message_type, created_at')
         .eq('phone', phone)
@@ -203,13 +209,13 @@ export function ZapSignDocumentDialog({
   const fetchCrmData = async () => {
     if (contactId) {
       try {
-        const { data } = await supabase.from('contacts').select('*').eq('id', contactId).single();
+        const { data } = await externalSupabase.from('contacts').select('*').eq('id', contactId).single();
         if (data) setFetchedContactData(data);
       } catch {}
     }
     if (leadId) {
       try {
-        const { data } = await supabase.from('leads').select('*').eq('id', leadId).single();
+        const { data } = await externalSupabase.from('leads').select('*').eq('id', leadId).single();
         if (data) setFetchedLeadData(data);
       } catch {}
     }
@@ -247,11 +253,11 @@ export function ZapSignDocumentDialog({
     try {
       let boardId: string | null = null;
       if (leadId) {
-        const { data: lead } = await supabase.from('leads').select('board_id').eq('id', leadId).maybeSingle();
+        const { data: lead } = await externalSupabase.from('leads').select('board_id').eq('id', leadId).maybeSingle();
         boardId = (lead as any)?.board_id || null;
       }
       if (!boardId) return;
-      const { data } = await (supabase as any)
+      const { data } = await (externalSupabase as any)
         .from('funnel_zapsign_defaults')
         .select('signer_auth_mode, notify_on_signature, send_signed_pdf')
         .eq('board_id', boardId)
@@ -265,6 +271,21 @@ export function ZapSignDocumentDialog({
         });
         // apply auth_mode to all signers
         setSigners(prev => prev.map(s => ({ ...s, auth_mode: auth })));
+      }
+
+      // Fetch next/last lead numbering for confirmation step
+      const { data: settings } = await (externalSupabase as any)
+        .from('board_group_settings')
+        .select('closed_group_name_prefix, closed_current_sequence, group_name_prefix, current_sequence')
+        .eq('board_id', boardId)
+        .maybeSingle();
+      if (settings) {
+        const prefix = settings.closed_group_name_prefix || settings.group_name_prefix || '';
+        const currentSeq = settings.closed_current_sequence ?? settings.current_sequence ?? 0;
+        const next = currentSeq + 1;
+        const pad = (n: number) => String(n).padStart(4, '0');
+        setNextLeadNumber(prefix ? `${prefix} ${pad(next)}` : pad(next));
+        setLastLeadNumber(currentSeq > 0 ? (prefix ? `${prefix} ${pad(currentSeq)}` : pad(currentSeq)) : null);
       }
     } catch (err) {
       console.error('Error fetching funnel defaults:', err);
@@ -494,6 +515,11 @@ export function ZapSignDocumentDialog({
 
   const handleCreateDocument = async () => {
     if (!selectedTemplate) return;
+    if (nextLeadNumber && !showNumberConfirm) {
+      const msg = `Confirme o número do novo lead/caso:\n\n➡️ Próximo: ${nextLeadNumber}${lastLeadNumber ? `\n📌 Último fechado: ${lastLeadNumber}` : ''}\n\nEstá correto? Clique OK para continuar.`;
+      if (!window.confirm(msg)) return;
+      setShowNumberConfirm(true);
+    }
     setCreating(true);
     try {
       const template = templates.find(t => t.token === selectedTemplate);
