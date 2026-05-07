@@ -288,6 +288,9 @@ export const handler: RequestHandler = async (req, res) => {
               board_id: p.board_id,
               creator_instance_id,
               creation_origin: 'onboarding_checkpoint',
+              // Pós-assinatura: usa configuração de grupo "fechado" (closed_group_name_prefix
+              // + closed_sequence) e sincroniza lead_name com o nome final do grupo (ex: MAT 0001).
+              phase: 'closed',
             });
             if (r.ok && r.data?.group_id) {
               groupJid = r.data.group_id;
