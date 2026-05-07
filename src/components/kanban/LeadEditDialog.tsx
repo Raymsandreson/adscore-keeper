@@ -307,7 +307,9 @@ export function LeadEditDialog({
     () => new Set(resolvedFieldLayout.filter(field => !field.hidden).map(field => field.field_key)),
     [resolvedFieldLayout]
   );
-  const isTabVisible = (tabKey: string) => !layoutBoardId || visibleTabKeys.size === 0 || visibleTabKeys.has(tabKey);
+  const managedLayoutTabKeys = useMemo(() => new Set(['basic', 'accident', 'location', 'companies', 'legal']), []);
+  const isManagedLayoutTab = (tabKey: string) => managedLayoutTabKeys.has(tabKey);
+  const isTabVisible = (tabKey: string) => !isManagedLayoutTab(tabKey) || !layoutBoardId || visibleTabKeys.size === 0 || visibleTabKeys.has(tabKey);
   const isFieldVisible = (fieldKey: string) => !layoutBoardId || visibleFieldKeys.size === 0 || visibleFieldKeys.has(fieldKey);
 
   // Track previous lead id to only reset tab on lead change, not hydration
