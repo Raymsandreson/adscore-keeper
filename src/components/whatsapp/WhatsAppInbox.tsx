@@ -5,6 +5,7 @@ import { useWhatsAppInstanceStatus } from '@/hooks/useWhatsAppInstanceStatus';
 import { WhatsAppConversationList } from './WhatsAppConversationList';
 import { WhatsAppChat } from './WhatsAppChat';
 import { ZapSignDialogHost } from './ZapSignDialogHost';
+import { OnboardingCheckpointHost } from './OnboardingCheckpointHost';
 import { WhatsAppSetupGuide } from './WhatsAppSetupGuide';
 import { WhatsAppSettingsPage } from './WhatsAppSettingsPage';
 import { WhatsAppReconnectDialog } from './WhatsAppReconnectDialog';
@@ -1470,6 +1471,7 @@ export function WhatsAppInbox() {
       )}
       <ZapSignLeadCreationListener />
       <ZapSignDialogHost />
+      <OnboardingCheckpointHost />
     </div>
   );
 }
