@@ -2416,16 +2416,16 @@ ${scrapeData.content || ''}
                   </Select>
                 </div>)}
 
-                <div className="col-span-2">
+                {isFieldVisible('accident_address') && (<div className="col-span-2">
                   <Label>Endereço do Acidente</Label>
                   <Input
                     value={accidentAddress}
                     onChange={(e) => setAccidentAddress(e.target.value)}
                     placeholder="Local onde ocorreu o acidente"
                   />
-                </div>
+                </div>)}
 
-                <div className="col-span-2">
+                {isFieldVisible('damage_description') && (<div className="col-span-2">
                   <Label>Descrição do Dano</Label>
                   <Textarea
                     value={damageDescription}
@@ -2433,7 +2433,7 @@ ${scrapeData.content || ''}
                     placeholder="Descreva as lesões ou danos sofridos..."
                     rows={3}
                   />
-                </div>
+                </div>)}
               </div>
               </>)}
             </TabsContent>
