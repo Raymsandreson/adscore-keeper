@@ -1508,14 +1508,16 @@ ${scrapeData.content || ''}
               })()}
 
               <div className="grid grid-cols-2 gap-4">
-                <div className="col-span-2">
-                  <Label>Nome do Lead *</Label>
-                  <Input
-                    value={leadName}
-                    onChange={(e) => setLeadName(e.target.value)}
-                    placeholder="Nome do lead"
-                  />
-                </div>
+                {isFieldVisible('lead_name') && (
+                  <div className="col-span-2">
+                    <Label>Nome do Lead *</Label>
+                    <Input
+                      value={leadName}
+                      onChange={(e) => setLeadName(e.target.value)}
+                      placeholder="Nome do lead"
+                    />
+                  </div>
+                )}
 
                 <div>
                   <Label className="flex items-center gap-1">
@@ -1541,7 +1543,7 @@ ${scrapeData.content || ''}
                   />
                 </div>
 
-                <div>
+                {isFieldVisible('source') && (<div>
                   <div className="flex items-center justify-between">
                     <Label>Origem</Label>
                     <Popover open={showSourceManager} onOpenChange={setShowSourceManager}>
@@ -1643,9 +1645,9 @@ ${scrapeData.content || ''}
                       )}
                     </div>
                   )}
-                </div>
+                </div>)}
 
-                <div>
+                {isFieldVisible('acolhedor') && (<div>
                   <Label>Acolhedor</Label>
                   <Select value={acolhedor || '__none__'} onValueChange={(v) => setAcolhedor(v === '__none__' ? '' : v)}>
                     <SelectTrigger>
@@ -1660,7 +1662,7 @@ ${scrapeData.content || ''}
                       ))}
                     </SelectContent>
                   </Select>
-                </div>
+                </div>)}
 
                 <div className="col-span-2">
                   <div className="flex items-center justify-between">
