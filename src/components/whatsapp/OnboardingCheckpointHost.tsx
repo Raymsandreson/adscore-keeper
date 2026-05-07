@@ -17,6 +17,11 @@ import { CheckCircle2, Circle, Loader2, AlertCircle } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from '@/hooks/use-toast';
 import { setOnboardingPending } from '@/lib/onboardingGuard';
+import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
+import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
+import { DashboardChatPreview } from '@/components/whatsapp/DashboardChatPreview';
+import { useLeads } from '@/hooks/useLeads';
+import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 
 const STEP_ORDER = [
   'setup_lead_close',
