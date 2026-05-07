@@ -492,7 +492,9 @@ export function OnboardingCheckpointHost({ selectedPhone }: Props = {}) {
                       onRefresh={refresh}
                     />
                   )}
-                  <RegenerateLeadNameButton leadId={c.lead_id} onRefresh={refresh} />
+                  {c.status === 'done' && (
+                    <ReprocessStepButton checkpointId={c.id} onRefresh={refresh} />
+                  )}
                 </div>
                 <Badge variant={c.status === 'done' ? 'default' : 'outline'} className="text-[10px] shrink-0">
                   {c.status}
