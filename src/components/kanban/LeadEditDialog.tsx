@@ -1404,10 +1404,6 @@ ${scrapeData.content || ''}
                 <DollarSign className="h-3 w-3 mr-1" />
                 Financeiro
               </TabsTrigger>
-              <TabsTrigger value="config" className="text-xs py-1.5 px-2.5">
-                <Settings className="h-3 w-3 mr-1" />
-                Config
-              </TabsTrigger>
               <TabsTrigger value="ai_chat" className="text-xs py-1.5 px-2.5">
                 <Sparkles className="h-3 w-3 mr-1" />
                 Chat IA
