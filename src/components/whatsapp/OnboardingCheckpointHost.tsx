@@ -454,6 +454,11 @@ export function OnboardingCheckpointHost({ selectedPhone }: Props = {}) {
               )}
             </div>
           </div>
+
+          {/* Sequência de fechados — determinística por confirmed_at */}
+          {leadId && (
+            <CloseSequencePanel leadId={leadId} onRefresh={refresh} />
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2 min-h-0">
