@@ -351,6 +351,19 @@ export function OnboardingCheckpointHost({ selectedPhone }: Props = {}) {
               </div>
             )}
 
+            {currentStep.step === 'setup_lead_close' && (
+              <div className="text-xs text-muted-foreground space-y-1">
+                <div>Marca o lead como <b>fechado</b> e cria/atualiza o contato do signatário.</div>
+                <div>Lead: <b>{currentStep.payload?.lead_name}</b></div>
+                {currentStep.payload?.signer_name && (
+                  <div>Signatário: <b>{currentStep.payload?.signer_name}</b></div>
+                )}
+                {currentStep.payload?.lead_phone && (
+                  <div>Telefone: {currentStep.payload?.lead_phone}</div>
+                )}
+              </div>
+            )}
+
             {currentStep.step === 'create_group' && (
               <div className="text-xs text-muted-foreground">
                 Lead: <b>{currentStep.payload?.lead_name}</b> · {currentStep.payload?.lead_phone}
