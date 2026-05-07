@@ -29,6 +29,8 @@ interface CustomFieldsConfigPanelProps {
   currentBoardId?: string | null;
   boards?: KanbanBoard[];
   adAccountId?: string;
+  hideHeader?: boolean;
+  hideEmptyStateButton?: boolean;
 }
 
 export function CustomFieldsConfigPanel({
@@ -36,6 +38,8 @@ export function CustomFieldsConfigPanel({
   currentBoardId,
   boards: externalBoards,
   adAccountId,
+  hideHeader = false,
+  hideEmptyStateButton = false,
 }: CustomFieldsConfigPanelProps) {
   const { boards: hookBoards } = useKanbanBoards();
   const boards = externalBoards || hookBoards;
