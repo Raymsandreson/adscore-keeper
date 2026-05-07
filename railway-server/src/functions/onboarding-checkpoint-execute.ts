@@ -23,7 +23,7 @@ const CLOUD_FUNCTIONS_URL =
   'https://gliigkupoebmlbwyvijp.supabase.co';
 const CLOUD_ANON_KEY = process.env.CLOUD_ANON_KEY || process.env.SUPABASE_ANON_KEY || '';
 
-async function callCloudFn(name: string, body: unknown) {
+async function callCloudFn(name: string, body: unknown): Promise<{ ok: boolean; data: any }> {
   const r = await fetch(`${CLOUD_FUNCTIONS_URL}/functions/v1/${name}`, {
     method: 'POST',
     headers: {
