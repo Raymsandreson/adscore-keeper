@@ -16,6 +16,7 @@ import { Badge } from '@/components/ui/badge';
 import { CheckCircle2, Circle, Loader2, AlertCircle } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from '@/hooks/use-toast';
+import { setOnboardingPending } from '@/lib/onboardingGuard';
 
 const STEP_ORDER = [
   'create_group',
@@ -47,7 +48,12 @@ interface Checkpoint {
 
 // Função roda no Railway (Railway-first). O routing vive em src/lib/functionRouter.ts.
 
-export function OnboardingCheckpointHost() {
+interface Props {
+  /** Telefone (somente dígitos) da conversa atualmente aberta. */
+  selectedPhone?: string | null;
+}
+
+export function OnboardingCheckpointHost({ selectedPhone }: Props = {}) {
   const { user } = useAuth();
   const [leadId, setLeadId] = useState<string | null>(null);
   const [checkpoints, setCheckpoints] = useState<Checkpoint[]>([]);
@@ -58,22 +64,45 @@ export function OnboardingCheckpointHost() {
   const [processType, setProcessType] = useState<string>('');
   const [feePct, setFeePct] = useState<string>('');
 
-  // Descobre lead com checkpoints pendentes
+  const normPhone = (selectedPhone || '').replace(/\D/g, '').slice(-8);
+
+  // Descobre todos os leads com checkpoints pendentes e expõe ao guard.
+  // Só abre o modal se o telefone do lead pendente bater com a conversa aberta.
   const refresh = async () => {
     const dbAny = db as any;
     const { data: pendings } = await dbAny
       .from('onboarding_checkpoints')
-      .select('lead_id')
+      .select('lead_id, payload')
       .in('status', ['pending', 'running', 'failed'])
-      .order('created_at', { ascending: true })
-      .limit(1);
-    const lid = (pendings?.[0]?.lead_id as string) || null;
-    setLeadId(lid);
-    if (lid) {
+      .order('created_at', { ascending: true });
+
+    const seen = new Map<string, string>(); // lead_id -> phone
+    for (const row of (pendings || []) as Array<{ lead_id: string; payload: any }>) {
+      if (!row.lead_id || seen.has(row.lead_id)) continue;
+      const ph = (row.payload?.lead_phone || '').toString();
+      seen.set(row.lead_id, ph);
+    }
+    setOnboardingPending(
+      Array.from(seen.entries()).map(([lead_id, phone]) => ({ lead_id, phone })),
+    );
+
+    // Match: lead pendente cujo telefone bate com a conversa aberta
+    let match: string | null = null;
+    if (normPhone) {
+      for (const [lid, ph] of seen.entries()) {
+        if ((ph || '').replace(/\D/g, '').slice(-8) === normPhone) {
+          match = lid;
+          break;
+        }
+      }
+    }
+    setLeadId(match);
+
+    if (match) {
       const { data } = await dbAny
         .from('onboarding_checkpoints')
         .select('*')
-        .eq('lead_id', lid);
+        .eq('lead_id', match);
       const sorted = ([...(data || [])] as Checkpoint[]).sort(
         (a, b) => STEP_ORDER.indexOf(a.step) - STEP_ORDER.indexOf(b.step),
       );
@@ -94,7 +123,8 @@ export function OnboardingCheckpointHost() {
       )
       .subscribe();
     return () => { db.removeChannel(ch); };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [normPhone]);
 
   const currentStep = useMemo(() => {
     return checkpoints.find((c) => c.status !== 'done');
