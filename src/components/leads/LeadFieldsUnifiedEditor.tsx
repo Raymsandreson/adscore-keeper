@@ -18,6 +18,8 @@ interface Props {
   boardId: string;
   boardName?: string;
   adAccountId?: string;
+  /** When true, renders inline (no Dialog wrapper). */
+  inline?: boolean;
 }
 
 type UnifiedItem = {
