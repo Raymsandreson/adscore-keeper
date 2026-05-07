@@ -66,6 +66,7 @@ interface GroupSettings {
   process_auto_activities: ProcessActivity[];
   process_workflows: ProcessWorkflow[];
   bridge_approach_prompt: string;
+  sync_lead_name_with_group: boolean;
 }
 
 interface ProcessActivity {
