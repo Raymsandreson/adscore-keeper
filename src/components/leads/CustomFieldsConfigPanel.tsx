@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, Pencil, Trash2, GripVertical, Settings2, ShieldCheck } from 'lucide-react';
+import { Plus, Pencil, Trash2, Settings2, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -327,7 +327,7 @@ export function CustomFieldsConfigPanel({
         </Button>
       </div>
       <p className="text-[11px] text-muted-foreground -mt-2">
-        💡 Para mover campos entre abas, ocultar ou reordenar, use o botão <b>Personalizar</b> no topo do formulário.
+        💡 Use <b>Personalizar campos</b> para mover campos entre abas, ocultar, reordenar e editar campos personalizados.
       </p>
 
       {(
