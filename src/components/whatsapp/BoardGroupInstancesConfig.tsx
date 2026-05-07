@@ -1127,7 +1127,14 @@ function InstanceParticipantsSection({
       {instances.length === 0 ? (
         <p className="text-xs text-muted-foreground">Nenhuma instância ativa encontrada.</p>
       ) : (
-        instances.map((inst) => {
+        [...instances]
+          .sort((a, b) => {
+            const aSel = isInPhase(a.id) ? 0 : linkedInstances.includes(a.id) ? 1 : 2;
+            const bSel = isInPhase(b.id) ? 0 : linkedInstances.includes(b.id) ? 1 : 2;
+            if (aSel !== bSel) return aSel - bSel;
+            return a.instance_name.localeCompare(b.instance_name);
+          })
+          .map((inst) => {
           const checked = isInPhase(inst.id);
           const isLinked = linkedInstances.includes(inst.id);
           const config: InstanceConfig =
