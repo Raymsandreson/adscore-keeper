@@ -308,25 +308,55 @@ export function OnboardingCheckpointHost({ selectedPhone }: Props = {}) {
     }
   };
 
+  const leadHeaderName = currentStep?.payload?.lead_name || checkpoints[0]?.payload?.lead_name || 'Lead';
+  const leadHeaderPhone = currentStep?.payload?.lead_phone || checkpoints[0]?.payload?.lead_phone || '';
+  const setupResult = checkpoints.find((c) => c.step === 'setup_lead_close')?.result;
+  const headerContactId = setupResult?.contact_id;
+
   return (
     <>
-    <Dialog open={open} onOpenChange={(o) => { if (!o && hasFailed) closeAll(); }}>
-      <DialogContent
-        className="w-[95vw] max-w-lg"
+    <Sheet open={open} onOpenChange={(o) => { if (!o && hasFailed) closeAll(); }}>
+      <SheetContent
+        side="right"
+        className="w-full sm:max-w-md p-0 flex flex-col gap-0"
         onPointerDownOutside={(e) => { if (!hasFailed) e.preventDefault(); }}
         onEscapeKeyDown={(e) => { if (!hasFailed) e.preventDefault(); }}
+        onInteractOutside={(e) => { if (!hasFailed) e.preventDefault(); }}
       >
-        <DialogHeader>
-          <DialogTitle>Onboarding pós-assinatura</DialogTitle>
-          <DialogDescription>
-            Confirme cada etapa para liberar a próxima.
+        <SheetHeader className="px-4 pt-4 pb-3 border-b shrink-0">
+          <SheetTitle className="text-base">Onboarding pós-assinatura</SheetTitle>
+          <SheetDescription className="text-xs">
             {hasFailed
-              ? ' Uma etapa falhou — você pode pular ou fechar para resolver depois.'
-              : ' Esta janela não pode ser fechada até concluir.'}
-          </DialogDescription>
-        </DialogHeader>
+              ? 'Uma etapa falhou — você pode pular ou fechar para resolver depois.'
+              : 'Confirme cada etapa para liberar a próxima.'}
+          </SheetDescription>
 
-        <div className="space-y-2">
+          {/* Lead context bar */}
+          <div className="mt-2 rounded-md border bg-muted/30 p-2 space-y-1">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-semibold truncate">{leadHeaderName}</div>
+                {leadHeaderPhone && (
+                  <div className="text-[11px] text-muted-foreground font-mono">{leadHeaderPhone}</div>
+                )}
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px]">
+              {leadId && (
+                <button type="button" onClick={() => openLeadById(leadId)} className="text-primary underline">
+                  Abrir lead
+                </button>
+              )}
+              {headerContactId && (
+                <button type="button" onClick={() => openContactById(headerContactId)} className="text-primary underline">
+                  Abrir contato
+                </button>
+              )}
+            </div>
+          </div>
+        </SheetHeader>
+
+        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2 min-h-0">
           {checkpoints.map((c) => {
             const isCurrent = currentStep?.id === c.id;
             return (
@@ -336,14 +366,14 @@ export function OnboardingCheckpointHost({ selectedPhone }: Props = {}) {
                   isCurrent ? 'border-primary bg-primary/5' : 'opacity-70'
                 }`}
               >
-                {c.status === 'done' && <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5" />}
-                {c.status === 'pending' && <Circle className="h-4 w-4 text-muted-foreground mt-0.5" />}
-                {c.status === 'running' && <Loader2 className="h-4 w-4 animate-spin mt-0.5" />}
-                {c.status === 'failed' && <AlertCircle className="h-4 w-4 text-destructive mt-0.5" />}
-                <div className="flex-1">
-                  <div className="font-medium">{STEP_LABEL[c.step]}</div>
+                {c.status === 'done' && <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />}
+                {c.status === 'pending' && <Circle className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />}
+                {c.status === 'running' && <Loader2 className="h-4 w-4 animate-spin mt-0.5 shrink-0" />}
+                {c.status === 'failed' && <AlertCircle className="h-4 w-4 text-destructive mt-0.5 shrink-0" />}
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium text-sm">{STEP_LABEL[c.step]}</div>
                   {c.error_message && (
-                    <div className="text-xs text-destructive mt-1">{c.error_message}</div>
+                    <div className="text-xs text-destructive mt-1 break-words">{c.error_message}</div>
                   )}
                   {c.status === 'done' && c.result && (
                     <DoneResultSummary
@@ -363,106 +393,97 @@ export function OnboardingCheckpointHost({ selectedPhone }: Props = {}) {
                     />
                   )}
                 </div>
-                <Badge variant={c.status === 'done' ? 'default' : 'outline'} className="text-[10px]">
+                <Badge variant={c.status === 'done' ? 'default' : 'outline'} className="text-[10px] shrink-0">
                   {c.status}
                 </Badge>
               </div>
             );
           })}
+
+          {currentStep && (
+            <div className="space-y-3 border-t pt-3 mt-3">
+              <div className="text-sm font-medium">{STEP_LABEL[currentStep.step]}</div>
+
+              {currentStep.step === 'confirm_funnel' && (
+                <div className="space-y-2">
+                  <Label className="text-xs">Funil (board) deste lead</Label>
+                  <Select value={selectedBoardId} onValueChange={setSelectedBoardId}>
+                    <SelectTrigger><SelectValue placeholder="Escolha o funil correto" /></SelectTrigger>
+                    <SelectContent className="max-h-72">
+                      {boards.map((b: any) => (
+                        <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {selectedBoardId && currentStep.payload?.board_id && selectedBoardId !== currentStep.payload?.board_id && (
+                    <div className="text-[11px] text-amber-600">
+                      ⚠️ Lead será movido para outro funil. As próximas etapas usarão a configuração do novo funil (nome do grupo, mensagens, etc.).
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {currentStep.step === 'send_initial_message' && (
+                <Textarea
+                  value={msgText}
+                  onChange={(e) => setMsgText(e.target.value)}
+                  rows={4}
+                  placeholder="Mensagem inicial..."
+                />
+              )}
+
+              {currentStep.step === 'create_case_process' && (
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <Label className="text-xs">Tipo do processo</Label>
+                    <Select value={processType} onValueChange={setProcessType}>
+                      <SelectTrigger><SelectValue placeholder="Escolher" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="judicial">Judicial</SelectItem>
+                        <SelectItem value="administrativo">Administrativo</SelectItem>
+                        <SelectItem value="extrajudicial">Extrajudicial</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-xs">Honorários (%)</Label>
+                    <Input
+                      type="number"
+                      value={feePct}
+                      onChange={(e) => setFeePct(e.target.value)}
+                      placeholder="Ex: 30"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {currentStep.step === 'setup_lead_close' && (
+                <div className="text-xs text-muted-foreground space-y-1">
+                  <div>Marca o lead como <b>fechado</b> e cria/atualiza o contato do signatário.</div>
+                  {currentStep.payload?.signer_name && (
+                    <div>Signatário: <b>{currentStep.payload?.signer_name}</b></div>
+                  )}
+                </div>
+              )}
+
+              {currentStep.step === 'import_docs' && (
+                <div className="text-xs text-muted-foreground">
+                  Importa anexos do envelope ZapSign + mídias dos últimos 7 dias.
+                  <br />Para customizar a lista, use a tela do caso depois. Aqui apenas confirme.
+                </div>
+              )}
+
+              {currentStep.step === 'create_onboarding_activity' && (
+                <div className="text-xs text-muted-foreground">
+                  Cria atividade <b>ONBOARDING CLIENTE</b> atribuída ao acolhedor.
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {currentStep && (
-          <div className="space-y-3 border-t pt-3">
-            <div className="text-sm font-medium">{STEP_LABEL[currentStep.step]}</div>
-
-            {currentStep.step === 'confirm_funnel' && (
-              <div className="space-y-2">
-                <div className="text-xs text-muted-foreground">
-                  Lead: <b>{currentStep.payload?.lead_name}</b>
-                </div>
-                <Label className="text-xs">Funil (board) deste lead</Label>
-                <Select value={selectedBoardId} onValueChange={setSelectedBoardId}>
-                  <SelectTrigger><SelectValue placeholder="Escolha o funil correto" /></SelectTrigger>
-                  <SelectContent className="max-h-72">
-                    {boards.map((b: any) => (
-                      <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {selectedBoardId && currentStep.payload?.board_id && selectedBoardId !== currentStep.payload?.board_id && (
-                  <div className="text-[11px] text-amber-600">
-                    ⚠️ Lead será movido para outro funil. As próximas etapas usarão a configuração do novo funil (nome do grupo, mensagens, etc.).
-                  </div>
-                )}
-              </div>
-            )}
-
-            {currentStep.step === 'send_initial_message' && (
-              <Textarea
-                value={msgText}
-                onChange={(e) => setMsgText(e.target.value)}
-                rows={4}
-                placeholder="Mensagem inicial..."
-              />
-            )}
-
-            {currentStep.step === 'create_case_process' && (
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <Label className="text-xs">Tipo do processo</Label>
-                  <Select value={processType} onValueChange={setProcessType}>
-                    <SelectTrigger><SelectValue placeholder="Escolher" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="judicial">Judicial</SelectItem>
-                      <SelectItem value="administrativo">Administrativo</SelectItem>
-                      <SelectItem value="extrajudicial">Extrajudicial</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label className="text-xs">Honorários (%)</Label>
-                  <Input
-                    type="number"
-                    value={feePct}
-                    onChange={(e) => setFeePct(e.target.value)}
-                    placeholder="Ex: 30"
-                  />
-                </div>
-              </div>
-            )}
-
-            {currentStep.step === 'setup_lead_close' && (
-              <div className="text-xs text-muted-foreground space-y-1">
-                <div>Marca o lead como <b>fechado</b> e cria/atualiza o contato do signatário.</div>
-                <div>Lead: <b>{currentStep.payload?.lead_name}</b></div>
-                {currentStep.payload?.signer_name && (
-                  <div>Signatário: <b>{currentStep.payload?.signer_name}</b></div>
-                )}
-                {currentStep.payload?.lead_phone && (
-                  <div>Telefone: {currentStep.payload?.lead_phone}</div>
-                )}
-              </div>
-            )}
-
-            {currentStep.step === 'create_group' && (
-              <div className="text-xs text-muted-foreground">
-                Lead: <b>{currentStep.payload?.lead_name}</b> · {currentStep.payload?.lead_phone}
-              </div>
-            )}
-
-            {currentStep.step === 'import_docs' && (
-              <div className="text-xs text-muted-foreground">
-                Importa anexos do envelope ZapSign + mídias dos últimos 7 dias.
-                <br />Para customizar a lista, use a tela do caso depois. Aqui apenas confirme.
-              </div>
-            )}
-
-            {currentStep.step === 'create_onboarding_activity' && (
-              <div className="text-xs text-muted-foreground">
-                Cria atividade <b>ONBOARDING CLIENTE</b> atribuída ao acolhedor.
-              </div>
-            )}
-
+          <div className="border-t px-4 py-3 shrink-0 space-y-2 bg-background">
             <div className="flex gap-2">
               <Button onClick={handleConfirm} disabled={busy} className="flex-1">
                 {busy ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
@@ -481,8 +502,8 @@ export function OnboardingCheckpointHost({ selectedPhone }: Props = {}) {
             )}
           </div>
         )}
-      </DialogContent>
-    </Dialog>
+      </SheetContent>
+    </Sheet>
 
     {/* Painel lateral: Lead */}
     {leadSheetData && (
