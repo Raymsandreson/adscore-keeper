@@ -359,8 +359,8 @@ export function LeadFieldsUnifiedEditor({ open, onOpenChange, boardId, boardName
       </div>
 
       <div className="flex justify-end gap-2 mt-4">
-        <Button variant="outline" onClick={() => onOpenChange(false)}>{inline ? 'Concluir' : 'Cancelar'}</Button>
-        <Button onClick={handleSaveAll}>Salvar</Button>
+        <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>{inline ? 'Concluir' : 'Cancelar'}</Button>
+        <Button onClick={handleSaveAll} disabled={saving}>{saving ? 'Salvando...' : 'Salvar'}</Button>
       </div>
     </>
   );
