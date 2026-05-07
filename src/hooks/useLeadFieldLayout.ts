@@ -63,7 +63,7 @@ export function useLeadFieldLayout(boardId?: string | null) {
       .sort((a, b) => a.display_order - b.display_order);
   }, [resolved]);
 
-  const saveLayout = useCallback(async (next: ResolvedField[]) => {
+  const saveLayout = useCallback(async (next: ResolvedField[], options?: { silent?: boolean; refetch?: boolean }) => {
     if (!boardId) return;
     try {
       // Upsert all (overwrite full layout for this board)
@@ -78,8 +78,8 @@ export function useLeadFieldLayout(boardId?: string | null) {
         .from('lead_field_layouts')
         .upsert(payload, { onConflict: 'board_id,field_key' });
       if (error) throw error;
-      toast.success('Layout salvo!');
-      await fetchLayout();
+      if (!options?.silent) toast.success('Layout salvo!');
+      if (options?.refetch !== false) await fetchLayout();
     } catch (e: any) {
       console.error('saveLayout error', e);
       toast.error('Erro ao salvar layout: ' + (e?.message || 'desconhecido'));

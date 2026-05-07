@@ -50,6 +50,7 @@ export function LeadFieldsUnifiedEditor({ open, onOpenChange, boardId, boardName
   const [items, setItems] = useState<UnifiedItem[]>([]);
   const [tabs, setTabs] = useState<ResolvedTab[]>([]);
   const [dragKey, setDragKey] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   // inline rename state
   const [renamingTab, setRenamingTab] = useState<string | null>(null);
@@ -209,6 +210,8 @@ export function LeadFieldsUnifiedEditor({ open, onOpenChange, boardId, boardName
   };
 
   const handleSaveAll = async () => {
+    if (saving) return;
+    setSaving(true);
     try {
       // 1) save tabs first
       await saveTabs(tabs);
@@ -218,7 +221,7 @@ export function LeadFieldsUnifiedEditor({ open, onOpenChange, boardId, boardName
       const fixedPayload: ResolvedField[] = items
         .filter(i => i.kind === 'fixed')
         .map(i => ({ field_key: i.refKey, tab: i.tab as LeadFieldTab, display_order: i.display_order, hidden: i.hidden }));
-      await saveLayout(fixedPayload);
+      await saveLayout(fixedPayload, { silent: true, refetch: false });
 
       // 3) save custom field tabs/order
       const customItems = items.filter(i => i.kind === 'custom');
@@ -227,7 +230,7 @@ export function LeadFieldsUnifiedEditor({ open, onOpenChange, boardId, boardName
         const needs = (((cf as any).tab as string) || 'basic') !== it.tab
           || (cf.display_order ?? 0) !== it.display_order;
         if (needs) {
-          await updateCustomField(cf.id, { tab: it.tab as any, display_order: it.display_order } as any);
+          await updateCustomField(cf.id, { tab: it.tab as any, display_order: it.display_order } as any, { silent: true, refetch: false });
         }
       }
       await refetchLayout();
@@ -237,6 +240,8 @@ export function LeadFieldsUnifiedEditor({ open, onOpenChange, boardId, boardName
       onOpenChange(false);
     } catch (e: any) {
       toast.error('Erro ao salvar: ' + (e?.message || 'desconhecido'));
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -354,8 +359,8 @@ export function LeadFieldsUnifiedEditor({ open, onOpenChange, boardId, boardName
       </div>
 
       <div className="flex justify-end gap-2 mt-4">
-        <Button variant="outline" onClick={() => onOpenChange(false)}>{inline ? 'Concluir' : 'Cancelar'}</Button>
-        <Button onClick={handleSaveAll}>Salvar</Button>
+        <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>{inline ? 'Concluir' : 'Cancelar'}</Button>
+        <Button onClick={handleSaveAll} disabled={saving}>{saving ? 'Salvando...' : 'Salvar'}</Button>
       </div>
     </>
   );
