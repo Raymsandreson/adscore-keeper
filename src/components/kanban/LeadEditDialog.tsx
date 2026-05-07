@@ -1664,7 +1664,7 @@ ${scrapeData.content || ''}
                   </Select>
                 </div>)}
 
-                <div className="col-span-2">
+                {isFieldVisible('group_link') && (<div className="col-span-2">
                   <div className="flex items-center justify-between">
                     <Label>Grupos WhatsApp</Label>
                     <Button
@@ -2012,7 +2012,7 @@ ${scrapeData.content || ''}
                       <Plus className="h-3 w-3" /> Adicionar grupo
                     </Button>
                   </div>
-                </div>
+                </div>)}
 
                 <div>
                   <Label className="flex items-center gap-1">
@@ -2026,7 +2026,7 @@ ${scrapeData.content || ''}
                   />
                 </div>
 
-                <div className="space-y-2">
+                {isFieldVisible('client_classification') && (<div className="space-y-2">
                   <Label>Classificação</Label>
                   {!isAddingClassification ? (
                     <div className="flex gap-2">
@@ -2102,9 +2102,9 @@ ${scrapeData.content || ''}
                       </div>
                     </div>
                   )}
-                </div>
+                </div>)}
 
-                {clientClassification?.toLowerCase().includes('parto') && (
+                {isFieldVisible('expected_birth_date') && clientClassification?.toLowerCase().includes('parto') && (
                   <div>
                     <Label>Previsão do Parto</Label>
                     <Input
