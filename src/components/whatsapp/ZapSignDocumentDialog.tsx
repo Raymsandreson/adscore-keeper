@@ -515,6 +515,11 @@ export function ZapSignDocumentDialog({
 
   const handleCreateDocument = async () => {
     if (!selectedTemplate) return;
+    if (nextLeadNumber && !showNumberConfirm) {
+      const msg = `Confirme o número do novo lead/caso:\n\n➡️ Próximo: ${nextLeadNumber}${lastLeadNumber ? `\n📌 Último fechado: ${lastLeadNumber}` : ''}\n\nEstá correto? Clique OK para continuar.`;
+      if (!window.confirm(msg)) return;
+      setShowNumberConfirm(true);
+    }
     setCreating(true);
     try {
       const template = templates.find(t => t.token === selectedTemplate);
