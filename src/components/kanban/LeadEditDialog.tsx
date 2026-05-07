@@ -299,6 +299,16 @@ export function LeadEditDialog({
   const [selectedBoardId, setSelectedBoardId] = useState('');
 
   const currentLead = lead;
+  const layoutBoardId = selectedBoardId || (currentLead as any)?.board_id || null;
+  const { resolved: resolvedFieldLayout } = useLeadFieldLayout(layoutBoardId);
+  const { visibleTabs: visibleLayoutTabs } = useLeadTabLayout(layoutBoardId);
+  const visibleTabKeys = useMemo(() => new Set(visibleLayoutTabs.map(tab => tab.key)), [visibleLayoutTabs]);
+  const visibleFieldKeys = useMemo(
+    () => new Set(resolvedFieldLayout.filter(field => !field.hidden).map(field => field.field_key)),
+    [resolvedFieldLayout]
+  );
+  const isTabVisible = (tabKey: string) => !layoutBoardId || visibleTabKeys.size === 0 || visibleTabKeys.has(tabKey);
+  const isFieldVisible = (fieldKey: string) => !layoutBoardId || visibleFieldKeys.size === 0 || visibleFieldKeys.has(fieldKey);
 
   // Track previous lead id to only reset tab on lead change, not hydration
   const prevLeadIdRef = useRef<string | null>(null);
