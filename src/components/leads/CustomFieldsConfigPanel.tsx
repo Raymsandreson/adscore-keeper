@@ -29,6 +29,8 @@ interface CustomFieldsConfigPanelProps {
   currentBoardId?: string | null;
   boards?: KanbanBoard[];
   adAccountId?: string;
+  hideHeader?: boolean;
+  hideEmptyStateButton?: boolean;
 }
 
 export function CustomFieldsConfigPanel({
@@ -36,6 +38,8 @@ export function CustomFieldsConfigPanel({
   currentBoardId,
   boards: externalBoards,
   adAccountId,
+  hideHeader = false,
+  hideEmptyStateButton = false,
 }: CustomFieldsConfigPanelProps) {
   const { boards: hookBoards } = useKanbanBoards();
   const boards = externalBoards || hookBoards;
@@ -303,45 +307,49 @@ export function CustomFieldsConfigPanel({
 
   return (
     <div className="space-y-4">
-      {/* Header with config toggle */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h4 className="font-medium flex min-w-0 flex-wrap items-center gap-2">
-          <Settings2 className="h-4 w-4" />
-          Campos Personalizados
-          {currentBoard && (
-            <Badge variant="outline" className="text-xs font-normal">
-              {currentBoard.name}
-            </Badge>
-          )}
-        </h4>
-        <div className="flex shrink-0 items-center gap-2">
-          <Button
-            variant="default"
-            size="sm"
-            onClick={() => setUnifiedOpen(true)}
-            className="gap-1"
-            disabled={!currentBoardId}
-            title={!currentBoardId ? 'Selecione um funil primeiro' : 'Mover, ocultar, reordenar e editar campos'}
-          >
-            <Wand2 className="h-3.5 w-3.5" />
-            Personalizar
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={openNewField}
-            className="gap-1"
-            disabled={!currentBoardId}
-            title={!currentBoardId ? 'Selecione um funil primeiro' : 'Adicionar novo campo personalizado'}
-          >
-            <Plus className="h-3.5 w-3.5" />
-            Novo campo
-          </Button>
-        </div>
-      </div>
-      <p className="text-[11px] text-muted-foreground -mt-2">
-        💡 Use <b>Personalizar campos</b> para mover campos entre abas, ocultar, reordenar e editar campos personalizados.
-      </p>
+      {!hideHeader && (
+        <>
+          {/* Header with config toggle */}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h4 className="font-medium flex min-w-0 flex-wrap items-center gap-2">
+              <Settings2 className="h-4 w-4" />
+              Campos Personalizados
+              {currentBoard && (
+                <Badge variant="outline" className="text-xs font-normal">
+                  {currentBoard.name}
+                </Badge>
+              )}
+            </h4>
+            <div className="flex shrink-0 items-center gap-2">
+              <Button
+                variant="default"
+                size="sm"
+                onClick={() => setUnifiedOpen(true)}
+                className="gap-1"
+                disabled={!currentBoardId}
+                title={!currentBoardId ? 'Selecione um funil primeiro' : 'Mover, ocultar, reordenar e editar campos'}
+              >
+                <Wand2 className="h-3.5 w-3.5" />
+                Personalizar
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={openNewField}
+                className="gap-1"
+                disabled={!currentBoardId}
+                title={!currentBoardId ? 'Selecione um funil primeiro' : 'Adicionar novo campo personalizado'}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Novo campo
+              </Button>
+            </div>
+          </div>
+          <p className="text-[11px] text-muted-foreground -mt-2">
+            💡 Use <b>Personalizar campos</b> para mover campos entre abas, ocultar, reordenar e editar campos personalizados.
+          </p>
+        </>
+      )}
 
       {(
         /* Normal mode - show field values for filling */
@@ -353,10 +361,12 @@ export function CustomFieldsConfigPanel({
           ) : relevantFields.length === 0 ? (
             <div className="text-center text-muted-foreground py-6 space-y-2">
               <p className="text-sm">Nenhum campo personalizado configurado</p>
-              <Button variant="outline" size="sm" onClick={() => setUnifiedOpen(true)} className="gap-1" disabled={!currentBoardId}>
-                <Plus className="h-3.5 w-3.5" />
-                Personalizar campos
-              </Button>
+              {!hideEmptyStateButton && (
+                <Button variant="outline" size="sm" onClick={() => setUnifiedOpen(true)} className="gap-1" disabled={!currentBoardId}>
+                  <Plus className="h-3.5 w-3.5" />
+                  Personalizar campos
+                </Button>
+              )}
             </div>
           ) : (
             <div className="space-y-3">

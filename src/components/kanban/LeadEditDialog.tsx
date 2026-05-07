@@ -56,6 +56,7 @@ import { useProfileNames } from '@/hooks/useProfileNames';
 import { useBrazilianLocations } from '@/hooks/useBrazilianLocations';
 import { CustomFieldInput } from '@/components/leads/CustomFieldsForm';
 const CustomFieldsConfigPanel = lazy(() => import('@/components/leads/CustomFieldsConfigPanel').then(m => ({ default: m.CustomFieldsConfigPanel })));
+const LeadFieldsUnifiedEditor = lazy(() => import('@/components/leads/LeadFieldsUnifiedEditor').then(m => ({ default: m.LeadFieldsUnifiedEditor })));
 const LeadStageHistoryPanel = lazy(() => import('@/components/kanban/LeadStageHistoryPanel').then(m => ({ default: m.LeadStageHistoryPanel })));
 
 const LeadFunnelOverview = lazy(() => import('@/components/kanban/LeadFunnelOverview').then(m => ({ default: m.LeadFunnelOverview })));
@@ -102,6 +103,7 @@ import {
   Send,
   ShieldCheck,
   Ban,
+  Wand2,
 } from 'lucide-react';
 import { classificationColors } from '@/hooks/useContactClassifications';
 import { ShareMenu } from '@/components/ShareMenu';
@@ -236,6 +238,7 @@ export function LeadEditDialog({
   const [leadOutcomeReason, setLeadOutcomeReason] = useState('');
   const [isGeneratingReason, setIsGeneratingReason] = useState(false);
   const [caseNumber, setCaseNumber] = useState('');
+  const [unifiedEditorOpen, setUnifiedEditorOpen] = useState(false);
   
   // Accident fields
   const [victimName, setVictimName] = useState('');
@@ -1263,6 +1266,17 @@ ${scrapeData.content || ''}
             </Title>
             {currentLead && (
               <div className="flex items-center gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1 h-7 text-xs"
+                  onClick={() => setUnifiedEditorOpen(true)}
+                  disabled={!currentLead.board_id}
+                  title={!currentLead.board_id ? 'Selecione um funil primeiro' : 'Personalizar campos'}
+                >
+                  <Wand2 className="h-3 w-3" />
+                  Personalizar
+                </Button>
                 <ShareMenu entityType="lead" entityId={currentLead.id} entityName={currentLead.lead_name || 'Lead'} />
               </div>
             )}
@@ -1389,10 +1403,6 @@ ${scrapeData.content || ''}
               <TabsTrigger value="financeiro" className="text-xs py-1.5 px-2.5">
                 <DollarSign className="h-3 w-3 mr-1" />
                 Financeiro
-              </TabsTrigger>
-              <TabsTrigger value="config" className="text-xs py-1.5 px-2.5">
-                <Settings className="h-3 w-3 mr-1" />
-                Config
               </TabsTrigger>
               <TabsTrigger value="ai_chat" className="text-xs py-1.5 px-2.5">
                 <Sparkles className="h-3 w-3 mr-1" />
@@ -2287,6 +2297,18 @@ ${scrapeData.content || ''}
                   </div>
                 )}
               </div>
+              <div className="pt-4 border-t">
+                <Suspense fallback={<div className="flex items-center justify-center p-8"><Loader2 className="h-5 w-5 animate-spin" /></div>}>
+                  <CustomFieldsConfigPanel
+                    leadId={lead.id}
+                    currentBoardId={lead.board_id || selectedBoardId || null}
+                    boards={boards}
+                    adAccountId={adAccountId}
+                    hideHeader
+                    hideEmptyStateButton
+                  />
+                </Suspense>
+              </div>
               </>)}
             </TabsContent>
 
@@ -2691,20 +2713,6 @@ ${scrapeData.content || ''}
               )}
             </TabsContent>
 
-            {/* Configurações Tab */}
-            <TabsContent value="config" className="mt-0">
-              {activeTab === 'config' && (
-                <Suspense fallback={<div className="flex items-center justify-center p-8"><Loader2 className="h-5 w-5 animate-spin" /></div>}>
-                  <CustomFieldsConfigPanel
-                    leadId={lead.id}
-                    currentBoardId={lead.board_id || selectedBoardId || null}
-                    boards={boards}
-                    adAccountId={adAccountId}
-                  />
-                </Suspense>
-              )}
-            </TabsContent>
-
             {/* Chat IA Tab */}
             <TabsContent value="ai_chat" className="mt-0" style={{ height: 'calc(90vh - 320px)', minHeight: '300px' }}>
               {activeTab === 'ai_chat' && (
@@ -2850,6 +2858,18 @@ ${scrapeData.content || ''}
             toast.success('Grupo vinculado ao lead. Lembre de salvar.');
           }}
         />
+      )}
+
+      {currentLead && (
+        <Suspense fallback={null}>
+          <LeadFieldsUnifiedEditor
+            open={unifiedEditorOpen}
+            onOpenChange={setUnifiedEditorOpen}
+            boardId={currentLead.board_id || selectedBoardId || ''}
+            boardName={boards.find(b => b.id === (currentLead.board_id || selectedBoardId))?.name}
+            adAccountId={adAccountId}
+          />
+        </Suspense>
       )}
     </>
   );
