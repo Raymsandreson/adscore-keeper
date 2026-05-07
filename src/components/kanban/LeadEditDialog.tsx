@@ -2655,7 +2655,7 @@ ${scrapeData.content || ''}
               </div>
 
               <div className="grid grid-cols-2 gap-4">
-                <div>
+                {isFieldVisible('liability_type') && (<div>
                   <Label>Tipo de Responsabilidade</Label>
                   <Select value={safeSelectValue(liabilityType)} onValueChange={setLiabilityType}>
                     <SelectTrigger>
@@ -2667,7 +2667,7 @@ ${scrapeData.content || ''}
                       ))}
                     </SelectContent>
                   </Select>
-                </div>
+                </div>)}
 
                 <div>
                   <Label>Link da Notícia</Label>
@@ -2683,7 +2683,7 @@ ${scrapeData.content || ''}
                   )}
                 </div>
 
-                <div className="col-span-2">
+                {isFieldVisible('legal_viability') && (<div className="col-span-2">
                   <Label>Viabilidade Jurídica</Label>
                   <Textarea
                     value={legalViability}
@@ -2691,7 +2691,7 @@ ${scrapeData.content || ''}
                     placeholder="Análise de viabilidade jurídica do caso..."
                     rows={5}
                   />
-                </div>
+                </div>)}
               </div>
               </>)}
             </TabsContent>
