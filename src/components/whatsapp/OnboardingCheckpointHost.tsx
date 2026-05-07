@@ -267,6 +267,17 @@ export function OnboardingCheckpointHost({ selectedPhone }: Props = {}) {
   const open = !!leadId && !allDone;
   const hasFailed = checkpoints.some((c) => c.status === 'failed');
 
+  // Empurra o conteúdo do app pra esquerda enquanto o painel está aberto,
+  // pra que chat e onboarding fiquem lado a lado e ambos clicáveis.
+  useEffect(() => {
+    if (!open) return;
+    const isMobileNarrow = window.matchMedia('(max-width: 640px)').matches;
+    const widthPx = isMobileNarrow ? Math.round(window.innerWidth * 0.5) : 480;
+    const prev = document.body.style.paddingRight;
+    document.body.style.paddingRight = `${widthPx}px`;
+    return () => { document.body.style.paddingRight = prev; };
+  }, [open]);
+
   const skipCurrent = async () => {
     if (!currentStep) return;
     setBusy(true);
