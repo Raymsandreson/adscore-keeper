@@ -928,6 +928,23 @@ Deno.serve(async (req) => {
             }
           }
 
+          // 4a-ter. Fallback: match document_name against funnel_zapsign_defaults.document_name_patterns
+          // Used when ZapSign payload arrives without template_id (e.g. legacy/manual docs).
+          if (!boardId && localDoc.document_name) {
+            const { data: allDefaults } = await supabase
+              .from('funnel_zapsign_defaults')
+              .select('board_id, document_name_patterns')
+            const docNameUpper = String(localDoc.document_name).toUpperCase()
+            const match = (allDefaults || []).find((d: any) =>
+              Array.isArray(d.document_name_patterns) &&
+              d.document_name_patterns.some((p: string) => p && docNameUpper.includes(String(p).toUpperCase()))
+            )
+            if (match?.board_id) {
+              boardId = match.board_id
+              console.log(`[zapsign-webhook] Board resolved from document_name_patterns (doc ${localDoc.document_name}): ${boardId}`)
+            }
+          }
+
           // 4b. Fallback: try from shortcut automation rules
           if (!boardId && localDoc.shortcut_name) {
             const { data: shortcut } = await supabase
