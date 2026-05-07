@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/integrations/supabase';
 import { toast } from 'sonner';
+import type { LeadFieldTab } from '@/components/leads/leadFormFields';
 
 export type FieldType = 'text' | 'number' | 'date' | 'select' | 'checkbox';
 
@@ -13,6 +14,7 @@ export interface CustomField {
   field_options: string[];
   is_required: boolean;
   display_order: number;
+  tab: LeadFieldTab;
   created_at: string;
   updated_at: string;
 }
@@ -36,7 +38,7 @@ export function useLeadCustomFields(adAccountId?: string, boardId?: string) {
   const fetchCustomFields = useCallback(async () => {
     setLoading(true);
     try {
-      let query = supabase
+      let query = (db as any)
         .from('lead_custom_fields')
         .select('*')
         .order('display_order', { ascending: true });
@@ -62,7 +64,7 @@ export function useLeadCustomFields(adAccountId?: string, boardId?: string) {
 
   const addCustomField = async (field: Partial<CustomField>) => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await (db as any)
         .from('lead_custom_fields')
         .insert({
           ad_account_id: field.ad_account_id || null,
@@ -72,6 +74,7 @@ export function useLeadCustomFields(adAccountId?: string, boardId?: string) {
           field_options: field.field_options || [],
           is_required: field.is_required || false,
           display_order: field.display_order || customFields.length,
+          tab: field.tab || 'basic',
         })
         .select()
         .single();
@@ -90,7 +93,7 @@ export function useLeadCustomFields(adAccountId?: string, boardId?: string) {
 
   const updateCustomField = async (id: string, updates: Partial<CustomField>) => {
     try {
-      const { error } = await supabase
+      const { error } = await (db as any)
         .from('lead_custom_fields')
         .update(updates)
         .eq('id', id);
@@ -108,7 +111,7 @@ export function useLeadCustomFields(adAccountId?: string, boardId?: string) {
 
   const deleteCustomField = async (id: string) => {
     try {
-      const { error } = await supabase
+      const { error } = await (db as any)
         .from('lead_custom_fields')
         .delete()
         .eq('id', id);
@@ -127,7 +130,7 @@ export function useLeadCustomFields(adAccountId?: string, boardId?: string) {
   // Get field values for a specific lead
   const getFieldValues = async (leadId: string): Promise<Record<string, CustomFieldValue>> => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await (db as any)
         .from('lead_custom_field_values')
         .select('*')
         .eq('lead_id', leadId);
@@ -180,7 +183,7 @@ export function useLeadCustomFields(adAccountId?: string, boardId?: string) {
       }
 
       // Check if value exists
-      const { data: existing } = await supabase
+      const { data: existing } = await (db as any)
         .from('lead_custom_field_values')
         .select('id')
         .eq('lead_id', leadId)
@@ -188,7 +191,7 @@ export function useLeadCustomFields(adAccountId?: string, boardId?: string) {
         .maybeSingle();
 
       if (existing) {
-        const { error } = await supabase
+        const { error } = await (db as any)
           .from('lead_custom_field_values')
           .update({
             value_text: valueData.value_text,
@@ -199,7 +202,7 @@ export function useLeadCustomFields(adAccountId?: string, boardId?: string) {
           .eq('id', existing.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase
+        const { error } = await (db as any)
           .from('lead_custom_field_values')
           .insert({
             lead_id: leadId,
