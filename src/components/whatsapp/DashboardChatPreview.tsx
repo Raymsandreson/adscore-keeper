@@ -784,9 +784,11 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
       if (!data?.success) throw new Error(data?.error || 'Erro ao criar grupo');
 
       if (lead?.id && data.group_id) {
+        const updates: any = { whatsapp_group_id: data.group_id };
+        if (customLeadName) updates.lead_name = customLeadName;
         await supabase
           .from('leads')
-          .update({ whatsapp_group_id: data.group_id } as any)
+          .update(updates)
           .eq('id', lead.id);
       }
 
