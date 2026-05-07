@@ -236,6 +236,12 @@ export function OnboardingCheckpointHost({ selectedPhone }: Props = {}) {
   const handleConfirm = () => {
     if (!currentStep) return;
     switch (currentStep.step) {
+      case 'confirm_funnel':
+        if (!selectedBoardId) {
+          toast({ title: 'Selecione um funil', variant: 'destructive' });
+          return;
+        }
+        return execute({ board_id: selectedBoardId });
       case 'setup_lead_close':
       case 'create_group':
       case 'create_onboarding_activity':
