@@ -519,33 +519,39 @@ Deno.serve(async (req) => {
 
     let nextSeq: number | null = null
     let shouldPersistSequence = false
+    let shouldPersistClosedSequence = false
 
     if (settings) {
-      const existingLeadSequence = extractExistingSequenceFromName(leadData?.lead_name || lead_name, settings.group_name_prefix)
-      if (existingLeadSequence !== null) {
+      // When phase=closed, prefer closed_group_name_prefix + closed_sequence (MAT 0001 padrão)
+      const useClosed = phase === 'closed' && !!settings.closed_group_name_prefix
+      const activePrefix = useClosed ? settings.closed_group_name_prefix : settings.group_name_prefix
+      const activeSeqStart = useClosed ? (settings.closed_sequence_start || 1) : (settings.sequence_start || 1)
+      const activeCurrentSeq = useClosed ? (settings.closed_current_sequence || 0) : (settings.current_sequence || 0)
+
+      const existingLeadSequence = extractExistingSequenceFromName(leadData?.lead_name || lead_name, activePrefix)
+      if (existingLeadSequence !== null && !useClosed) {
+        // Mantém sequência detectada apenas para phase open (caso fechado precisa de nova numeração MAT)
         nextSeq = existingLeadSequence
         shouldPersistSequence = false
       } else {
-        nextSeq = Math.max(
-          (settings.current_sequence || 0) + 1,
-          settings.sequence_start || 1
-        )
-        shouldPersistSequence = true
+        nextSeq = Math.max(activeCurrentSeq + 1, activeSeqStart)
+        if (useClosed) shouldPersistClosedSequence = true
+        else shouldPersistSequence = true
       }
 
       // Build name parts
       const parts: string[] = []
-      if (settings.group_name_prefix) parts.push(settings.group_name_prefix)
-      parts.push(String(nextSeq).padStart(existingLeadSequence !== null ? String(existingLeadSequence).length : 4, '0'))
+      if (activePrefix) parts.push(activePrefix)
+      parts.push(String(nextSeq).padStart(existingLeadSequence !== null && !useClosed ? String(existingLeadSequence).length : 4, '0'))
 
       const leadFields = settings.lead_fields || ['lead_name']
       for (const field of leadFields) {
         if (field === 'board_name' && boardName) {
           parts.push(boardName)
         } else if (leadData && leadData[field]) {
-          parts.push(field === 'lead_name' ? stripExistingSequenceFromName(leadData[field], settings.group_name_prefix) : String(leadData[field]))
+          parts.push(field === 'lead_name' ? stripExistingSequenceFromName(leadData[field], activePrefix) : String(leadData[field]))
         } else if (field === 'lead_name') {
-          parts.push(stripExistingSequenceFromName(lead_name, settings.group_name_prefix))
+          parts.push(stripExistingSequenceFromName(lead_name, activePrefix))
         }
       }
 
