@@ -1368,10 +1368,12 @@ ${scrapeData.content || ''}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 min-h-0 flex flex-col">
           <div className="w-full flex-shrink-0">
             <TabsList className="flex flex-wrap h-auto gap-1 p-1 bg-muted">
-              <TabsTrigger value="basic" className="text-xs py-1.5 px-2.5">
-                <User className="h-3 w-3 mr-1" />
-                Básico
-              </TabsTrigger>
+              {isTabVisible('basic') && (
+                <TabsTrigger value="basic" className="text-xs py-1.5 px-2.5">
+                  <User className="h-3 w-3 mr-1" />
+                  Básico
+                </TabsTrigger>
+              )}
               <TabsTrigger value="contacts" className="text-xs py-1.5 px-2.5">
                 <Users className="h-3 w-3 mr-1" />
                 Contatos
@@ -1384,22 +1386,30 @@ ${scrapeData.content || ''}
                 <Calendar className="h-3 w-3 mr-1" />
                 Atividades
               </TabsTrigger>
-              <TabsTrigger value="accident" className="text-xs py-1.5 px-2.5">
-                <FileText className="h-3 w-3 mr-1" />
-                Acidente
-              </TabsTrigger>
-              <TabsTrigger value="location" className="text-xs py-1.5 px-2.5">
-                <MapPin className="h-3 w-3 mr-1" />
-                Local
-              </TabsTrigger>
-              <TabsTrigger value="companies" className="text-xs py-1.5 px-2.5">
-                <Building className="h-3 w-3 mr-1" />
-                Empresas
-              </TabsTrigger>
-              <TabsTrigger value="legal" className="text-xs py-1.5 px-2.5">
-                <Briefcase className="h-3 w-3 mr-1" />
-                Jurídico
-              </TabsTrigger>
+              {isTabVisible('accident') && (
+                <TabsTrigger value="accident" className="text-xs py-1.5 px-2.5">
+                  <FileText className="h-3 w-3 mr-1" />
+                  Acidente
+                </TabsTrigger>
+              )}
+              {isTabVisible('location') && (
+                <TabsTrigger value="location" className="text-xs py-1.5 px-2.5">
+                  <MapPin className="h-3 w-3 mr-1" />
+                  Local
+                </TabsTrigger>
+              )}
+              {isTabVisible('companies') && (
+                <TabsTrigger value="companies" className="text-xs py-1.5 px-2.5">
+                  <Building className="h-3 w-3 mr-1" />
+                  Empresas
+                </TabsTrigger>
+              )}
+              {isTabVisible('legal') && (
+                <TabsTrigger value="legal" className="text-xs py-1.5 px-2.5">
+                  <Briefcase className="h-3 w-3 mr-1" />
+                  Jurídico
+                </TabsTrigger>
+              )}
               <TabsTrigger value="documents" className="text-xs py-1.5 px-2.5">
                 <FileText className="h-3 w-3 mr-1" />
                 Documentos
