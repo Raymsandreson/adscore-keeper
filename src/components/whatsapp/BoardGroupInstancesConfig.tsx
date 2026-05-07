@@ -169,6 +169,7 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
     process_auto_activities: [],
     process_workflows: [],
     bridge_approach_prompt: '',
+    sync_lead_name_with_group: false,
   });
   const [savingSettings, setSavingSettings] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -263,6 +264,7 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
         process_auto_activities: data.process_auto_activities || [],
         process_workflows: data.process_workflows || [],
         bridge_approach_prompt: data.bridge_approach_prompt || '',
+        sync_lead_name_with_group: data.sync_lead_name_with_group ?? false,
       });
       if (data.ai_generated_message) {
         setPreviewMessage(data.ai_generated_message);
@@ -281,6 +283,7 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
         auto_create_process: false, process_nucleus_id: '', process_workflow_board_id: '',
         process_auto_activities: [], process_workflows: [],
         bridge_approach_prompt: '',
+        sync_lead_name_with_group: false,
       });
       setPreviewMessage(null);
     }
@@ -382,6 +385,7 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
         process_auto_activities: settings.process_auto_activities,
         process_workflows: settings.process_workflows,
         bridge_approach_prompt: settings.bridge_approach_prompt || null,
+        sync_lead_name_with_group: settings.sync_lead_name_with_group,
         updated_at: new Date().toISOString(),
       };
 
