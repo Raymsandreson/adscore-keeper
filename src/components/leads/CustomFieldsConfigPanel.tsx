@@ -701,6 +701,16 @@ export function CustomFieldsConfigPanel({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {currentBoardId && (
+        <LeadFieldsUnifiedEditor
+          open={unifiedOpen}
+          onOpenChange={setUnifiedOpen}
+          boardId={currentBoardId}
+          boardName={currentBoard?.name}
+          adAccountId={adAccountId}
+        />
+      )}
     </div>
   );
 }
