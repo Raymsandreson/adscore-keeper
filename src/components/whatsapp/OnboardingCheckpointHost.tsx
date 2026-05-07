@@ -442,6 +442,44 @@ export function OnboardingCheckpointHost({ selectedPhone }: Props = {}) {
         )}
       </DialogContent>
     </Dialog>
+
+    {/* Painel lateral: Lead */}
+    {leadSheetData && (
+      <LeadEditDialog
+        open={leadSheetOpen}
+        onOpenChange={(v) => { setLeadSheetOpen(v); if (!v) setLeadSheetData(null); }}
+        lead={leadSheetData}
+        onSave={async (id, updates) => { await updateLead(id, updates); }}
+        boards={boards}
+        mode="sheet"
+      />
+    )}
+
+    {/* Painel lateral: Contato */}
+    {contactSheetData && (
+      <ContactDetailSheet
+        open={contactSheetOpen}
+        onOpenChange={(v) => { setContactSheetOpen(v); if (!v) setContactSheetData(null); }}
+        contact={contactSheetData}
+        mode="sheet"
+      />
+    )}
+
+    {/* Drawer (de baixo pra cima): Conversa do grupo do WhatsApp */}
+    {groupDrawer && (
+      <DashboardChatPreview
+        open={!!groupDrawer}
+        onOpenChange={(v) => { if (!v) setGroupDrawer(null); }}
+        phone={groupDrawer.jid}
+        contactName={groupDrawer.name}
+        instanceName={groupDrawer.instance}
+        hasLead={true}
+        hasContact={false}
+        wasResponded={false}
+        responseTimeMinutes={null}
+      />
+    )}
+    </>
   );
 }
 
