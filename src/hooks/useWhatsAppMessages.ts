@@ -639,23 +639,31 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         }
       }
 
-      const { data, error } = await cloudFunctions.invoke('send-whatsapp', {
-        body: {
-          phone,
-          chat_id: chatId,
-          message: finalMessage,
-          contact_id: contactId,
-          lead_id: leadId,
-          instance_id: targetInstanceId,
-        },
+      const invokePayload = {
+        phone,
+        chat_id: chatId,
+        message: finalMessage,
+        contact_id: contactId,
+        lead_id: leadId,
+        instance_id: targetInstanceId,
+      };
+      console.log(`[sendMessage ${debugId}] invoking send-whatsapp`, {
+        ...invokePayload,
+        message: `<${finalMessage?.length} chars>`,
       });
+
+      const { data, error } = await cloudFunctions.invoke('send-whatsapp', { body: invokePayload });
+
+      console.log(`[sendMessage ${debugId}] response`, { data, error });
+
       if (error) throw error;
-      if (!data.success) {
-        if (data.error_code === 'INSTANCE_DISCONNECTED') {
+      if (!data?.success) {
+        console.error(`[sendMessage ${debugId}] returning false — server reported failure`, data);
+        if (data?.error_code === 'INSTANCE_DISCONNECTED') {
           toast.error(`Instância ${data.instance_name || ''} desconectada. Reconecte o WhatsApp e tente novamente.`.trim());
           return false;
         }
-        throw new Error(data.error);
+        throw new Error(data?.error || 'Resposta inesperada do servidor');
       }
       toast.success('Mensagem enviada!');
 
@@ -687,9 +695,10 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
           : c
       ));
 
+      console.log(`[sendMessage ${debugId}] SUCCESS`);
       return true;
     } catch (error: any) {
-      console.error('Error sending message:', error);
+      console.error(`[sendMessage ${debugId}] EXCEPTION`, error);
       toast.error('Erro ao enviar mensagem: ' + (error.message || 'Erro desconhecido'));
       return false;
     }
