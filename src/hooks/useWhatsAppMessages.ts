@@ -674,7 +674,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       if (!data?.success) {
         console.error(`[sendMessage ${debugId}] returning false — server reported failure`, data);
         if (data?.error_code === 'INSTANCE_DISCONNECTED') {
-          toast.error(`Instância ${data.instance_name || ''} desconectada. Reconecte o WhatsApp e tente novamente.`.trim());
+          showDisconnectedToast(targetInstanceId, data.instance_name);
           return false;
         }
         throw new Error(data?.error || 'Resposta inesperada do servidor');
