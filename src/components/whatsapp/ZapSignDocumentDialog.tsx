@@ -136,6 +136,8 @@ export function ZapSignDocumentDialog({
     tokenEmail: '📧 Token por e-mail',
     tokenSms: '📱 Token por SMS',
     assinaturaImagem: '🖼️ Assinatura por imagem',
+    selfieFoto: '🤳 Selfie',
+    selfieDocFoto: '🪪 Selfie + foto do documento',
   };
 
   // Filter messages by period
