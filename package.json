@@ -12,6 +12,7 @@
     "test:lead-form": "node scripts/validate-lead-form-unification.mjs",
     "test:db-routing": "node scripts/validate-db-routing.mjs",
     "test:db-routing:strict": "node scripts/validate-db-routing.mjs --strict",
+    "test:edge-db-routing": "node scripts/validate-edge-db-routing.mjs",
     "test:board-group-schema": "node scripts/validate-board-group-settings-schema.mjs"
   },
   "dependencies": {
