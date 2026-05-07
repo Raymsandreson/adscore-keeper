@@ -16,6 +16,7 @@ import { Badge } from '@/components/ui/badge';
 import { CheckCircle2, Circle, Loader2, AlertCircle } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from '@/hooks/use-toast';
+import { setOnboardingPending } from '@/lib/onboardingGuard';
 
 const STEP_ORDER = [
   'create_group',
