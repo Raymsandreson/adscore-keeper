@@ -151,6 +151,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const [isMuted, setIsMuted] = useState(false);
   const [muteType, setMuteType] = useState<string | null>(null);
   const [muteLoading, setMuteLoading] = useState(false);
+  const [adOrigin, setAdOrigin] = useState<{ adset_name: string | null; ad_name: string | null; campaign_name: string | null } | null>(null);
   const { notes, addNote, deleteNote } = useWhatsAppInternalNotes(conversation.phone);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -194,6 +195,33 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
       toast.error('Lead não encontrado');
     }
   };
+
+  // Fetch ad origin (adset/campaign) for header display
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!conversation.lead_id) {
+        setAdOrigin(null);
+        return;
+      }
+      const { data } = await externalSupabase
+        .from('leads')
+        .select('adset_name, ad_name, campaign_name')
+        .eq('id', conversation.lead_id)
+        .maybeSingle();
+      if (cancelled) return;
+      if (data && (data.adset_name || data.ad_name || data.campaign_name)) {
+        setAdOrigin({
+          adset_name: (data as any).adset_name || null,
+          ad_name: (data as any).ad_name || null,
+          campaign_name: (data as any).campaign_name || null,
+        });
+      } else {
+        setAdOrigin(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [conversation.lead_id]);
 
   // Fetch agent state for this conversation
   useEffect(() => {
@@ -1240,6 +1268,14 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
               📋 Copiar
             </CopyableText>
           </div>
+          {adOrigin && (
+            <div
+              className="mt-1 text-[10px] text-muted-foreground truncate"
+              title={[adOrigin.campaign_name, adOrigin.adset_name, adOrigin.ad_name].filter(Boolean).join(' › ')}
+            >
+              📢 {adOrigin.adset_name || adOrigin.ad_name || adOrigin.campaign_name}
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-1 shrink-0">
           {isPrivate && <Lock className="h-4 w-4 text-amber-500" />}
