@@ -316,17 +316,20 @@ export function CustomFieldsConfigPanel({
           )}
         </h4>
         <Button
-          variant={configMode ? 'default' : 'outline'}
+          variant="outline"
           size="sm"
-          onClick={() => setConfigMode(!configMode)}
+          onClick={openNewField}
           className="gap-1"
-          disabled={!currentBoardId && !configMode}
-          title={!currentBoardId ? 'Selecione um funil primeiro' : 'Editar campos e abas'}
+          disabled={!currentBoardId}
+          title={!currentBoardId ? 'Selecione um funil primeiro' : 'Adicionar novo campo personalizado'}
         >
-          <Settings2 className="h-3.5 w-3.5" />
-          {configMode ? 'Concluir' : 'Configurar'}
+          <Plus className="h-3.5 w-3.5" />
+          Novo campo
         </Button>
       </div>
+      <p className="text-[11px] text-muted-foreground -mt-2">
+        💡 Para mover campos entre abas, ocultar ou reordenar, use o botão <b>Personalizar</b> no topo do formulário.
+      </p>
 
       {/* Config Mode */}
       {configMode && currentBoardId ? (
