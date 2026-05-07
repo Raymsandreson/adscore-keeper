@@ -1,10 +1,7 @@
 // Regera o lead_name de um lead seguindo a configuração atual de board_group_settings.
-// - Calcula prefixo (open ou closed conforme phase) + sequência (sempre nova: current_sequence+1)
-// - Concatena lead_fields (lead_name, victim_name, city, state, etc.) a partir da row de leads
-// - Atualiza leads.lead_name
-// - Persiste a nova sequência em board_group_settings (current_sequence ou closed_current_sequence)
-// - Se houver whatsapp_group_id e sync_lead_name_with_group estiver ligado, tenta renomear o grupo
-//   chamando a edge create-whatsapp-group com allow_rename:true (que já trata UazAPI + persistência)
+// Sequência DETERMINÍSTICA: posição do lead na fila de fechados do funil, ordenada
+// por confirmed_at do checkpoint setup_lead_close (ASC). Sem contador, sem clique-incrementa.
+// Se o lead ainda não está fechado, usa total_closed+1 como projeção.
 import type { RequestHandler } from 'express';
 import { supabase as ext } from '../lib/supabase';
 
@@ -28,55 +25,76 @@ function stripExistingSequence(name: string, prefix: string): string {
   return trimmed.replace(re, '').trim();
 }
 
+async function computeClosedPosition(boardId: string, leadId: string): Promise<{ position: number; total: number }> {
+  const { data: closedSteps } = await ext
+    .from('onboarding_checkpoints')
+    .select('lead_id, confirmed_at, updated_at')
+    .eq('step', 'setup_lead_close')
+    .eq('status', 'done');
+  const candidateIds = (closedSteps || []).map((c: any) => c.lead_id);
+  if (candidateIds.length === 0) return { position: 1, total: 0 };
+
+  const { data: leadsRows } = await ext
+    .from('leads')
+    .select('id')
+    .in('id', candidateIds)
+    .eq('board_id', boardId);
+  const inBoard = new Set((leadsRows || []).map((l: any) => l.id));
+
+  const sequence = (closedSteps || [])
+    .filter((c: any) => inBoard.has(c.lead_id))
+    .map((c: any) => ({ lead_id: c.lead_id as string, when: (c.confirmed_at || c.updated_at) as string }))
+    .sort((a, b) => (a.when || '').localeCompare(b.when || ''));
+
+  const idx = sequence.findIndex((s) => s.lead_id === leadId);
+  if (idx >= 0) return { position: idx + 1, total: sequence.length };
+  // Lead ainda não fechado: projeção = próximo da fila
+  return { position: sequence.length + 1, total: sequence.length };
+}
+
 export const handler: RequestHandler = async (req, res) => {
   const ok = (b: Record<string, unknown>) => res.status(200).json(b);
   try {
-    const { lead_id, phase: phaseIn } = (req.body || {}) as {
+    const { lead_id, phase: phaseIn, dry_run } = (req.body || {}) as {
       lead_id?: string;
       phase?: 'open' | 'closed';
+      dry_run?: boolean;
     };
     if (!lead_id) return ok({ success: false, error: 'lead_id required' });
 
-    // Carrega lead
     const { data: lead, error: leadErr } = await ext
       .from('leads')
       .select('*')
       .eq('id', lead_id)
       .maybeSingle();
     if (leadErr || !lead) return ok({ success: false, error: 'lead not found' });
-
-    const boardId = lead.board_id;
-    if (!boardId) return ok({ success: false, error: 'lead sem board_id' });
+    if (!lead.board_id) return ok({ success: false, error: 'lead sem board_id' });
 
     const { data: settings } = await ext
       .from('board_group_settings')
       .select('*')
-      .eq('board_id', boardId)
+      .eq('board_id', lead.board_id)
       .maybeSingle();
-    if (!settings) return ok({ success: false, error: 'board_group_settings não configurado para este funil' });
+    if (!settings) return ok({ success: false, error: 'board_group_settings não configurado' });
 
-    // Decide phase
     const phase: 'open' | 'closed' =
       phaseIn || (lead.lead_status === 'closed' ? 'closed' : 'open');
 
     const useClosed = phase === 'closed' && !!settings.closed_group_name_prefix;
     const activePrefix = (useClosed ? settings.closed_group_name_prefix : settings.group_name_prefix) || '';
     const activeSeqStart = useClosed ? (settings.closed_sequence_start || 1) : (settings.sequence_start || 1);
-    const activeCurrentSeq = useClosed ? (settings.closed_current_sequence || 0) : (settings.current_sequence || 0);
 
-    // Sempre atribui nova sequência (conforme decisão do usuário)
-    const nextSeq = Math.max(activeCurrentSeq + 1, activeSeqStart);
+    // Sequência determinística por posição
+    const { position, total } = await computeClosedPosition(lead.board_id, lead_id);
+    const nextSeq = Math.max(position, activeSeqStart);
 
-    // Board name (caso lead_fields inclua 'board_name')
-    let boardName = '';
     const { data: boardData } = await ext
       .from('kanban_boards')
       .select('name')
-      .eq('id', boardId)
+      .eq('id', lead.board_id)
       .maybeSingle();
-    boardName = boardData?.name || '';
+    const boardName = boardData?.name || '';
 
-    // Monta partes
     const parts: string[] = [];
     if (activePrefix) parts.push(activePrefix);
     parts.push(String(nextSeq).padStart(4, '0'));
@@ -96,21 +114,24 @@ export const handler: RequestHandler = async (req, res) => {
     const newName = normalizeName(parts.join(' '));
     if (!newName) return ok({ success: false, error: 'nome resultante vazio' });
 
-    // Atualiza lead
+    if (dry_run) {
+      return ok({
+        success: true,
+        dry_run: true,
+        lead_name: newName,
+        sequence: nextSeq,
+        position,
+        total_closed: total,
+        phase,
+      });
+    }
+
     const { error: updErr } = await ext
       .from('leads')
       .update({ lead_name: newName, updated_at: new Date().toISOString() })
       .eq('id', lead_id);
     if (updErr) return ok({ success: false, error: `falha ao atualizar lead: ${updErr.message}` });
 
-    // Persiste sequência
-    if (useClosed) {
-      await ext.from('board_group_settings').update({ closed_current_sequence: nextSeq }).eq('board_id', boardId);
-    } else {
-      await ext.from('board_group_settings').update({ current_sequence: nextSeq }).eq('board_id', boardId);
-    }
-
-    // Se sync ativo e há grupo, dispara renomeação
     let groupRenamed = false;
     let groupName: string | null = null;
     if (settings.sync_lead_name_with_group && lead.whatsapp_group_id) {
@@ -127,7 +148,7 @@ export const handler: RequestHandler = async (req, res) => {
             lead_name: newName,
             phone: lead.lead_phone,
             contact_phone: lead.lead_phone,
-            board_id: boardId,
+            board_id: lead.board_id,
             creation_origin: 'regenerate_lead_name',
             phase,
             allow_rename: true,
@@ -147,6 +168,8 @@ export const handler: RequestHandler = async (req, res) => {
       success: true,
       lead_name: newName,
       sequence: nextSeq,
+      position,
+      total_closed: total,
       phase,
       group_renamed: groupRenamed,
       group_name: groupName,
