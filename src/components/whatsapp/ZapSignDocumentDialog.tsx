@@ -250,11 +250,11 @@ export function ZapSignDocumentDialog({
     try {
       let boardId: string | null = null;
       if (leadId) {
-        const { data: lead } = await supabase.from('leads').select('board_id').eq('id', leadId).maybeSingle();
+        const { data: lead } = await externalSupabase.from('leads').select('board_id').eq('id', leadId).maybeSingle();
         boardId = (lead as any)?.board_id || null;
       }
       if (!boardId) return;
-      const { data } = await (supabase as any)
+      const { data } = await (externalSupabase as any)
         .from('funnel_zapsign_defaults')
         .select('signer_auth_mode, notify_on_signature, send_signed_pdf')
         .eq('board_id', boardId)
@@ -268,6 +268,21 @@ export function ZapSignDocumentDialog({
         });
         // apply auth_mode to all signers
         setSigners(prev => prev.map(s => ({ ...s, auth_mode: auth })));
+      }
+
+      // Fetch next/last lead numbering for confirmation step
+      const { data: settings } = await (externalSupabase as any)
+        .from('board_group_settings')
+        .select('closed_group_name_prefix, closed_current_sequence, group_name_prefix, current_sequence')
+        .eq('board_id', boardId)
+        .maybeSingle();
+      if (settings) {
+        const prefix = settings.closed_group_name_prefix || settings.group_name_prefix || '';
+        const currentSeq = settings.closed_current_sequence ?? settings.current_sequence ?? 0;
+        const next = currentSeq + 1;
+        const pad = (n: number) => String(n).padStart(4, '0');
+        setNextLeadNumber(prefix ? `${prefix} ${pad(next)}` : pad(next));
+        setLastLeadNumber(currentSeq > 0 ? (prefix ? `${prefix} ${pad(currentSeq)}` : pad(currentSeq)) : null);
       }
     } catch (err) {
       console.error('Error fetching funnel defaults:', err);
