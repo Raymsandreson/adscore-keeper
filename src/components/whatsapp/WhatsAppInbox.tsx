@@ -72,6 +72,34 @@ export function WhatsAppInbox() {
   const { statuses, disconnectedInstances, loading: statusLoading, refetchStatus } = useWhatsAppInstanceStatus(instances.length > 0);
   const [dismissedAlert, setDismissedAlert] = useState(false);
   const [reconnectInstance, setReconnectInstance] = useState<{ id: string; name: string } | null>(null);
+
+  // Listener global: qualquer toast/erro de "instância desconectada" pode pedir abrir este dialog.
+  useEffect(() => {
+    const handler = async (e: Event) => {
+      const detail = (e as CustomEvent).detail || {};
+      let id: string | undefined = detail.instanceId;
+      let name: string | undefined = detail.instanceName;
+      if (!id && name) {
+        const { data } = await supabase
+          .from('whatsapp_instances')
+          .select('id, instance_name')
+          .ilike('instance_name', name)
+          .eq('is_active', true)
+          .maybeSingle();
+        if (data) { id = data.id; name = data.instance_name; }
+      } else if (id && !name) {
+        const { data } = await supabase
+          .from('whatsapp_instances')
+          .select('instance_name')
+          .eq('id', id)
+          .maybeSingle();
+        if (data) name = data.instance_name;
+      }
+      if (id && name) setReconnectInstance({ id, name });
+    };
+    window.addEventListener('whatsapp:open-reconnect', handler as EventListener);
+    return () => window.removeEventListener('whatsapp:open-reconnect', handler as EventListener);
+  }, []);
   const { boards } = useKanbanBoards();
   const { canView } = useModulePermissions();
   const { user } = useAuthContext();
