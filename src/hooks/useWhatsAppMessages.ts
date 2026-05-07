@@ -14,6 +14,20 @@ import { useUserRole } from '@/hooks/useUserRole';
 import { toast } from 'sonner';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { traceHook } from '@/utils/hookTracer';
+import { requestWhatsAppReconnect } from '@/lib/whatsappReconnectEvent';
+
+const showDisconnectedToast = (instanceId: string | undefined, instanceName: string | undefined) => {
+  toast.error(
+    `Instância ${instanceName || ''} desconectada. Reconecte o WhatsApp para enviar.`.trim(),
+    {
+      duration: 10000,
+      action: {
+        label: 'Reconectar',
+        onClick: () => requestWhatsAppReconnect({ instanceId, instanceName }),
+      },
+    },
+  );
+};
 
 export interface WhatsAppMessage {
   id: string;
