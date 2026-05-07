@@ -602,6 +602,8 @@ export function OnboardingCheckpointHost({ selectedPhone }: Props = {}) {
             )}
           </div>
         )}
+        </>
+        )}
       </div>
     )}
 
