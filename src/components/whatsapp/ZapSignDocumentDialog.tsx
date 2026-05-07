@@ -531,12 +531,11 @@ export function ZapSignDocumentDialog({
     }
   };
 
-  const handleCreateDocument = async () => {
+  const handleCreateDocument = async (skipConfirm = false) => {
     if (!selectedTemplate) return;
-    if (nextLeadNumber && !showNumberConfirm) {
-      const msg = `Confirme o número do novo lead/caso:\n\n➡️ Próximo: ${nextLeadNumber}${lastLeadNumber ? `\n📌 Último fechado: ${lastLeadNumber}` : ''}\n\nEstá correto? Clique OK para continuar.`;
-      if (!window.confirm(msg)) return;
-      setShowNumberConfirm(true);
+    if (!skipConfirm) {
+      setConfirmStep('pre-create');
+      return;
     }
     setCreating(true);
     try {
