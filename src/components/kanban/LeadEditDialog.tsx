@@ -2741,6 +2741,22 @@ ${scrapeData.content || ''}
               </>)}
             </TabsContent>
 
+            {customLayoutTabs.map((tab) => (
+              <TabsContent key={tab.key} value={tab.key} className="space-y-4 mt-0">
+                {activeTab === tab.key && lead && (
+                  <CustomFieldsConfigPanel
+                    leadId={lead.id}
+                    currentBoardId={layoutBoardId}
+                    boards={boards}
+                    adAccountId={adAccountId}
+                    tabKey={tab.key}
+                    hideHeader
+                    hideEmptyStateButton
+                  />
+                )}
+              </TabsContent>
+            ))}
+
             {/* Funnel/Workflow Tab */}
             <TabsContent value="checklist" className="mt-0">
               {activeTab === 'checklist' && lead && (
