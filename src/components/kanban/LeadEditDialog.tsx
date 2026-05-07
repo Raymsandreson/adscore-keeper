@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, lazy, Suspense } from 'react';
+import { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
 import { safeSelectValue } from '@/utils/selectValue';
 import { sendLeadConversionEvent } from '@/utils/metaConversionTracking';
 import { supabase } from '@/integrations/supabase/client';
@@ -115,6 +115,8 @@ import { Contact as ContactType } from '@/hooks/useContacts';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useLeadSources } from '@/hooks/useLeadSources';
+import { useLeadFieldLayout } from '@/hooks/useLeadFieldLayout';
+import { useLeadTabLayout } from '@/hooks/useLeadTabLayout';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { Pencil, Trash2, Search } from 'lucide-react';
