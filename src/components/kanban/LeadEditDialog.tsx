@@ -2442,7 +2442,7 @@ ${scrapeData.content || ''}
             <TabsContent value="location" className="space-y-4 mt-0">
               {activeTab === 'location' && (<>
               <div className="grid grid-cols-2 gap-4">
-                <div>
+                {isFieldVisible('visit_state') && (<div>
                   <Label>Estado da Visita</Label>
                   <Select 
                     value={safeSelectValue(visitState)} 
@@ -2464,9 +2464,9 @@ ${scrapeData.content || ''}
                       ))}
                     </SelectContent>
                   </Select>
-                </div>
+                </div>)}
 
-                <div>
+                {isFieldVisible('visit_city') && (<div>
                   <Label>Cidade da Visita</Label>
                   <Select 
                     value={safeSelectValue(visitCity)} 
@@ -2491,9 +2491,9 @@ ${scrapeData.content || ''}
                       ))}
                     </SelectContent>
                   </Select>
-                </div>
+                </div>)}
 
-                <div>
+                {isFieldVisible('visit_region') && (<div>
                   <Label>Região da Visita</Label>
                   <Select value={safeSelectValue(visitRegion)} onValueChange={setVisitRegion}>
                     <SelectTrigger>
@@ -2505,16 +2505,16 @@ ${scrapeData.content || ''}
                       ))}
                     </SelectContent>
                   </Select>
-                </div>
+                </div>)}
 
-                <div className="col-span-2">
+                {isFieldVisible('visit_address') && (<div className="col-span-2">
                   <Label>Endereço da Visita</Label>
                   <Input
                     value={visitAddress}
                     onChange={(e) => setVisitAddress(e.target.value)}
                     placeholder="Endereço completo para visita"
                   />
-                </div>
+                </div>)}
               </div>
               </>)}
             </TabsContent>
