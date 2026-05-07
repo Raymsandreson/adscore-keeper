@@ -575,6 +575,12 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     nameFormatOverride?: string,
     nicknameOverride?: string | null
   ) => {
+    const debugId = Math.random().toString(36).slice(2, 8);
+    console.log(`[sendMessage ${debugId}] START`, {
+      phone, messageLength: message?.length, contactId, leadId,
+      conversationInstanceName, identifySender, chatId,
+      selectedInstanceId,
+    });
     try {
       let finalMessage = message;
       let targetInstanceId = selectedInstanceId && selectedInstanceId !== 'all' ? selectedInstanceId : undefined;
@@ -590,10 +596,18 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
 
       const [instanceResult, profileResult] = await Promise.all([instancePromise, profilePromise]);
 
+      console.log(`[sendMessage ${debugId}] instance lookup`, {
+        conversationInstanceName,
+        instanceData: instanceResult?.data,
+        instanceError: instanceResult?.error,
+        targetInstanceIdBefore: targetInstanceId,
+      });
+
       if (instanceResult?.data?.id) {
         targetInstanceId = instanceResult.data.id;
       }
       if (!targetInstanceId) {
+        console.error(`[sendMessage ${debugId}] ABORT: no instance identified`);
         toast.error('Erro: instância não identificada. Selecione uma instância antes de enviar.');
         return false;
       }
