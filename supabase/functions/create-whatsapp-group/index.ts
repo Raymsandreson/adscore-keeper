@@ -812,6 +812,20 @@ Deno.serve(async (req) => {
         console.error('Error updating board sequence after group creation:', sequenceError)
       }
     }
+    if (settings && board_id && nextSeq !== null && shouldPersistClosedSequence) {
+      const { error: closedSeqError } = await supabase
+        .from('board_group_settings')
+        .update({ closed_current_sequence: nextSeq, updated_at: new Date().toISOString() })
+        .eq('board_id', board_id)
+        .or(`closed_current_sequence.is.null,closed_current_sequence.lte.${nextSeq}`)
+      if (closedSeqError) {
+        console.error('Error updating closed sequence after group creation:', closedSeqError)
+      }
+    }
+    // Bug 5: lead_name passa a refletir o nome do grupo
+    if (lead_id && groupName) {
+      await supabase.from('leads').update({ lead_name: groupName }).eq('id', lead_id).catch(() => {})
+    }
 
     const groupJid = groupId.includes('@g.us') ? groupId : `${groupId}@g.us`
 
