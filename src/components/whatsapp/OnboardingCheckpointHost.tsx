@@ -269,13 +269,24 @@ export function OnboardingCheckpointHost({ selectedPhone }: Props = {}) {
 
   // Empurra o conteúdo do app pra esquerda enquanto o painel está aberto,
   // pra que chat e onboarding fiquem lado a lado e ambos clicáveis.
+  // Recalcula a largura no resize/orientationchange pra não sobrar espaço.
   useEffect(() => {
     if (!open) return;
-    const isMobileNarrow = window.matchMedia('(max-width: 640px)').matches;
-    const widthPx = isMobileNarrow ? Math.round(window.innerWidth * 0.5) : 480;
-    const prev = document.body.style.paddingRight;
-    document.body.style.paddingRight = `${widthPx}px`;
-    return () => { document.body.style.paddingRight = prev; };
+    const compute = () => {
+      const vw = document.documentElement.clientWidth;
+      const widthPx = vw < 640 ? Math.round(vw * 0.5) : Math.min(480, Math.round(vw * 0.5));
+      document.documentElement.style.setProperty('--onboarding-panel-w', `${widthPx}px`);
+      document.body.style.paddingRight = `${widthPx}px`;
+    };
+    compute();
+    window.addEventListener('resize', compute);
+    window.addEventListener('orientationchange', compute);
+    return () => {
+      window.removeEventListener('resize', compute);
+      window.removeEventListener('orientationchange', compute);
+      document.body.style.paddingRight = '';
+      document.documentElement.style.removeProperty('--onboarding-panel-w');
+    };
   }, [open]);
 
   const skipCurrent = async () => {
