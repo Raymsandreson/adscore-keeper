@@ -36,7 +36,7 @@ const STEP_ORDER = [
 type StepKey = typeof STEP_ORDER[number];
 
 const STEP_LABEL: Record<StepKey, string> = {
-  confirm_funnel: '1. Confirmar funil do lead',
+  confirm_funnel: '1. Lead criado — confirme o funil',
   setup_lead_close: '2. Criar lead/contato e marcar como fechado',
   create_group: '3. Criar grupo no WhatsApp',
   send_initial_message: '4. Enviar mensagem inicial',
