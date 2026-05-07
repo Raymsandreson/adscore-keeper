@@ -125,12 +125,11 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
     });
   };
 
-  // Mapping of process title → default assigned user for CASO-type cases
+  // Mapping of process title → default assigned user for CASO-type cases.
+  // 'Benefício INSS' intencionalmente fora: atribui ao próprio criador do caso.
   const CASO_PROCESS_ASSIGNMENTS: Record<string, { userId: string; userName: string }> = {
     'Seguro de Vida': { userId: '807018be-a633-4d2c-8f89-30d1399e4df7', userName: 'Natasha' },
-    'Benefício INSS': { userId: '4dba2de0-5357-49ab-8bf9-4c248a1440de', userName: 'Gisele' },
     'Inquérito Policial': { userId: '1f788b8d-e30e-484a-9460-39a881d25128', userName: 'Wanessa' },
-    // 'Organizar docs' removido: estava atribuindo a um ID órfão (Abderaman antigo). Atividades nascem sem responsável.
     'Onboarding': { userId: '1f788b8d-e30e-484a-9460-39a881d25128', userName: 'Wanessa' },
     'Indenização': { userId: '1f788b8d-e30e-484a-9460-39a881d25128', userName: 'Wanessa' },
     'Relatório de Acidente': { userId: '807018be-a633-4d2c-8f89-30d1399e4df7', userName: 'Natasha' },
