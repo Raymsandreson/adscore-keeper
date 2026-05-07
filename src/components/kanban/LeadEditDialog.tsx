@@ -2705,7 +2705,7 @@ ${scrapeData.content || ''}
                   </Select>
                 </div>)}
 
-                <div>
+                {isFieldVisible('news_link') && (<div>
                   <Label>Link da Notícia</Label>
                   <p className="text-xs text-muted-foreground mt-1">
                     Gerencie os links na aba "Dados do Caso" acima
@@ -2717,7 +2717,7 @@ ${scrapeData.content || ''}
                       ))}
                     </div>
                   )}
-                </div>
+                </div>)}
 
                 {isFieldVisible('legal_viability') && (<div className="col-span-2">
                   <Label>Viabilidade Jurídica</Label>
@@ -2729,6 +2729,15 @@ ${scrapeData.content || ''}
                   />
                 </div>)}
               </div>
+              <CustomFieldsConfigPanel
+                leadId={lead.id}
+                currentBoardId={layoutBoardId}
+                boards={boards}
+                adAccountId={adAccountId}
+                tabKey="legal"
+                hideHeader
+                hideEmptyStateButton
+              />
               </>)}
             </TabsContent>
 
