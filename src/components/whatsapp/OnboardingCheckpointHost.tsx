@@ -59,23 +59,24 @@ export function OnboardingCheckpointHost() {
 
   // Descobre lead com checkpoints pendentes
   const refresh = async () => {
-    const { data: pendings } = await db
+    const dbAny = db as any;
+    const { data: pendings } = await dbAny
       .from('onboarding_checkpoints')
       .select('lead_id')
       .in('status', ['pending', 'running', 'failed'])
       .order('created_at', { ascending: true })
       .limit(1);
-    const lid = pendings?.[0]?.lead_id || null;
+    const lid = (pendings?.[0]?.lead_id as string) || null;
     setLeadId(lid);
     if (lid) {
-      const { data } = await db
+      const { data } = await dbAny
         .from('onboarding_checkpoints')
         .select('*')
         .eq('lead_id', lid);
-      const sorted = [...(data || [])].sort(
+      const sorted = ([...(data || [])] as Checkpoint[]).sort(
         (a, b) => STEP_ORDER.indexOf(a.step) - STEP_ORDER.indexOf(b.step),
       );
-      setCheckpoints(sorted as Checkpoint[]);
+      setCheckpoints(sorted);
     } else {
       setCheckpoints([]);
     }
