@@ -522,45 +522,7 @@ function DoneResultSummary({
     );
   }
   if (step === 'create_group') {
-    const participants: Array<{ id: string; name: string; phone?: string }> = result.participants || [];
-    return (
-      <div className="text-xs text-muted-foreground mt-1 space-y-1">
-        {result.group_name && <div>📱 Grupo: <b>{result.group_name}</b></div>}
-        {result.group_jid && <div className="font-mono text-[10px] truncate">{result.group_jid}</div>}
-        {result.reused && <div className="italic">Reaproveitado de grupo existente</div>}
-        {participants.length > 0 && (
-          <div>
-            <div className="font-medium">Vinculados ao lead ({participants.length}):</div>
-            <ul className="list-disc list-inside max-h-24 overflow-auto">
-              {participants.map((p) => (
-                <li key={p.id} className="truncate">
-                  {p.name}{p.phone ? ` · ${p.phone}` : ''}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-        <div className="flex gap-2 pt-0.5 flex-wrap">
-          <button type="button" onClick={() => onOpenLead?.(leadId)} className="text-primary underline">
-            Ver lead
-          </button>
-          {result.group_jid && (
-            <button
-              type="button"
-              onClick={() => onOpenGroup?.(result.group_jid, result.group_name || 'Grupo')}
-              className="text-primary underline"
-            >
-              Abrir conversa do grupo
-            </button>
-          )}
-          {result.group_link && (
-            <a href={result.group_link} target="_blank" rel="noreferrer" className="text-primary underline">
-              Link do grupo
-            </a>
-          )}
-        </div>
-      </div>
-    );
+    return <CreateGroupSummary result={result} leadId={leadId} onOpenLead={onOpenLead} onOpenGroup={onOpenGroup} />;
   }
   if (step === 'create_case_process') {
     return (
