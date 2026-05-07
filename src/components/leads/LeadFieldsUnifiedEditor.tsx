@@ -221,7 +221,7 @@ export function LeadFieldsUnifiedEditor({ open, onOpenChange, boardId, boardName
       const fixedPayload: ResolvedField[] = items
         .filter(i => i.kind === 'fixed')
         .map(i => ({ field_key: i.refKey, tab: i.tab as LeadFieldTab, display_order: i.display_order, hidden: i.hidden }));
-      await saveLayout(fixedPayload, { silent: true });
+      await saveLayout(fixedPayload, { silent: true, refetch: false });
 
       // 3) save custom field tabs/order
       const customItems = items.filter(i => i.kind === 'custom');
@@ -230,7 +230,7 @@ export function LeadFieldsUnifiedEditor({ open, onOpenChange, boardId, boardName
         const needs = (((cf as any).tab as string) || 'basic') !== it.tab
           || (cf.display_order ?? 0) !== it.display_order;
         if (needs) {
-          await updateCustomField(cf.id, { tab: it.tab as any, display_order: it.display_order } as any, { silent: true });
+          await updateCustomField(cf.id, { tab: it.tab as any, display_order: it.display_order } as any, { silent: true, refetch: false });
         }
       }
       await refetchLayout();
