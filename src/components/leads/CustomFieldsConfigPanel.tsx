@@ -64,6 +64,7 @@ export function CustomFieldsConfigPanel({
 
   // Config mode
   const [configMode, setConfigMode] = useState(false);
+  const [unifiedOpen, setUnifiedOpen] = useState(false);
 
   // Field creation/edit dialog
   const [fieldDialogOpen, setFieldDialogOpen] = useState(false);
