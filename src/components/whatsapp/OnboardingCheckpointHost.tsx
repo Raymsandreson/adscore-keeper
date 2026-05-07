@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { db } from '@/integrations/supabase';
 import { cloudFunctions } from '@/lib/functionRouter';
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
+import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
@@ -267,6 +267,17 @@ export function OnboardingCheckpointHost({ selectedPhone }: Props = {}) {
   const open = !!leadId && !allDone;
   const hasFailed = checkpoints.some((c) => c.status === 'failed');
 
+  // Empurra o conteúdo do app pra esquerda enquanto o painel está aberto,
+  // pra que chat e onboarding fiquem lado a lado e ambos clicáveis.
+  useEffect(() => {
+    if (!open) return;
+    const isMobileNarrow = window.matchMedia('(max-width: 640px)').matches;
+    const widthPx = isMobileNarrow ? Math.round(window.innerWidth * 0.5) : 480;
+    const prev = document.body.style.paddingRight;
+    document.body.style.paddingRight = `${widthPx}px`;
+    return () => { document.body.style.paddingRight = prev; };
+  }, [open]);
+
   const skipCurrent = async () => {
     if (!currentStep) return;
     setBusy(true);
@@ -315,21 +326,28 @@ export function OnboardingCheckpointHost({ selectedPhone }: Props = {}) {
 
   return (
     <>
-    <Sheet open={open} onOpenChange={(o) => { if (!o && hasFailed) closeAll(); }}>
-      <SheetContent
-        side="right"
-        className="w-full sm:max-w-md p-0 flex flex-col gap-0"
-        onPointerDownOutside={(e) => { if (!hasFailed) e.preventDefault(); }}
-        onEscapeKeyDown={(e) => { if (!hasFailed) e.preventDefault(); }}
-        onInteractOutside={(e) => { if (!hasFailed) e.preventDefault(); }}
+    {open && (
+      <div
+        className="fixed top-0 right-0 h-[100dvh] w-1/2 sm:w-[480px] z-40 bg-background border-l shadow-2xl flex flex-col"
+        role="dialog"
+        aria-label="Onboarding pós-assinatura"
       >
-        <SheetHeader className="px-4 pt-4 pb-3 border-b shrink-0">
-          <SheetTitle className="text-base">Onboarding pós-assinatura</SheetTitle>
-          <SheetDescription className="text-xs">
+        <div className="px-4 pt-4 pb-3 border-b shrink-0 relative">
+          <button
+            type="button"
+            onClick={() => { if (hasFailed) closeAll(); }}
+            disabled={!hasFailed}
+            title={hasFailed ? 'Fechar' : 'Conclua ou pule as etapas para fechar'}
+            className="absolute right-2 top-2 h-8 w-8 rounded-full border bg-background/80 flex items-center justify-center disabled:opacity-40"
+          >
+            <X className="h-4 w-4" />
+          </button>
+          <div className="text-base font-semibold pr-10">Onboarding pós-assinatura</div>
+          <div className="text-xs text-muted-foreground mt-1">
             {hasFailed
               ? 'Uma etapa falhou — você pode pular ou fechar para resolver depois.'
               : 'Confirme cada etapa para liberar a próxima.'}
-          </SheetDescription>
+          </div>
 
           {/* Lead context bar */}
           <div className="mt-2 rounded-md border bg-muted/30 p-2 space-y-1">
@@ -354,7 +372,7 @@ export function OnboardingCheckpointHost({ selectedPhone }: Props = {}) {
               )}
             </div>
           </div>
-        </SheetHeader>
+        </div>
 
         <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2 min-h-0">
           {checkpoints.map((c) => {
@@ -502,8 +520,8 @@ export function OnboardingCheckpointHost({ selectedPhone }: Props = {}) {
             )}
           </div>
         )}
-      </SheetContent>
-    </Sheet>
+      </div>
+    )}
 
     {/* Painel lateral: Lead */}
     {leadSheetData && (
