@@ -10,6 +10,7 @@ import type { RequestHandler } from 'express';
 import { supabase as ext } from '../lib/supabase';
 
 const STEP_ORDER = [
+  'setup_lead_close',
   'create_group',
   'send_initial_message',
   'import_docs',
