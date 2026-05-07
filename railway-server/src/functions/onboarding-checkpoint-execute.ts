@@ -37,26 +37,48 @@ async function callCloudFn(name: string, body: unknown): Promise<{ ok: boolean; 
   return { ok: r.ok && (data?.success !== false), data };
 }
 
+type AuthResult =
+  | { ok: true; userId: string; tokenSuffix: string }
+  | { ok: false; reason: 'missing_header' | 'malformed_bearer' | 'empty_token' | 'anon_key_used' | 'user_endpoint_failed' | 'no_user_id' | 'fetch_exception'; status?: number; tokenSuffix?: string; detail?: string };
+
+function logAuth(rid: string, phase: 'pre' | 'post', result: AuthResult, extra: Record<string, unknown> = {}) {
+  const payload = {
+    fn: 'onboarding-checkpoint-execute',
+    event: `auth.${phase}`,
+    rid,
+    ok: result.ok,
+    ...(result.ok
+      ? { user_id: result.userId, token_suffix: result.tokenSuffix }
+      : { reason: result.reason, status: result.status, token_suffix: result.tokenSuffix, detail: result.detail }),
+    ...extra,
+  };
+  console.log(JSON.stringify(payload));
+}
+
 /**
  * Valida o JWT do Lovable Cloud chamando /auth/v1/user.
- * Retorna o user_id (sub) se válido, null caso contrário.
+ * Retorna detalhes estruturados para permitir logging do motivo da falha.
  */
-async function verifyCloudJwt(authHeader: string | undefined): Promise<string | null> {
-  if (!authHeader || !authHeader.toLowerCase().startsWith('bearer ')) return null;
+async function verifyCloudJwt(authHeader: string | undefined): Promise<AuthResult> {
+  if (!authHeader) return { ok: false, reason: 'missing_header' };
+  if (!authHeader.toLowerCase().startsWith('bearer ')) return { ok: false, reason: 'malformed_bearer' };
   const token = authHeader.slice(7).trim();
-  if (!token || token === CLOUD_ANON_KEY) return null; // anon key não é usuário
+  const tokenSuffix = token ? `…${token.slice(-6)}` : '';
+  if (!token) return { ok: false, reason: 'empty_token' };
+  if (token === CLOUD_ANON_KEY) return { ok: false, reason: 'anon_key_used', tokenSuffix };
   try {
     const r = await fetch(`${CLOUD_FUNCTIONS_URL}/auth/v1/user`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        apikey: CLOUD_ANON_KEY,
-      },
+      headers: { Authorization: `Bearer ${token}`, apikey: CLOUD_ANON_KEY },
     });
-    if (!r.ok) return null;
+    if (!r.ok) {
+      const detail = await r.text().catch(() => '');
+      return { ok: false, reason: 'user_endpoint_failed', status: r.status, tokenSuffix, detail: detail.slice(0, 200) };
+    }
     const u: any = await r.json().catch(() => null);
-    return u?.id || null;
-  } catch {
-    return null;
+    if (!u?.id) return { ok: false, reason: 'no_user_id', status: r.status, tokenSuffix };
+    return { ok: true, userId: u.id, tokenSuffix };
+  } catch (e) {
+    return { ok: false, reason: 'fetch_exception', tokenSuffix, detail: e instanceof Error ? e.message : String(e) };
   }
 }
 
