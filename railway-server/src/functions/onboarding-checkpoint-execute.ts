@@ -42,22 +42,23 @@ type AuthResult =
   | { ok: false; reason: 'missing_header' | 'malformed_bearer' | 'empty_token' | 'anon_key_used' | 'user_endpoint_failed' | 'no_user_id' | 'fetch_exception'; status?: number; tokenSuffix?: string; detail?: string };
 
 function logAuth(rid: string, phase: 'pre' | 'post', result: AuthResult, extra: Record<string, unknown> = {}) {
-  const base: Record<string, unknown> = {
+  const payload: Record<string, unknown> = {
     fn: 'onboarding-checkpoint-execute',
     event: `auth.${phase}`,
     rid,
     ok: result.ok,
+    ...extra,
   };
-  if (result.ok) {
-    base.user_id = result.userId;
-    base.token_suffix = result.tokenSuffix;
+  if (result.ok === true) {
+    payload.user_id = result.userId;
+    payload.token_suffix = result.tokenSuffix;
   } else {
-    base.reason = result.reason;
-    base.status = result.status;
-    base.token_suffix = result.tokenSuffix;
-    base.detail = result.detail;
+    payload.reason = result.reason;
+    payload.status = result.status;
+    payload.token_suffix = result.tokenSuffix;
+    payload.detail = result.detail;
   }
-  console.log(JSON.stringify({ ...base, ...extra }));
+  console.log(JSON.stringify(payload));
 }
 
 /**
