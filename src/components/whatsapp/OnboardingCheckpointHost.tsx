@@ -66,6 +66,28 @@ export function OnboardingCheckpointHost({ selectedPhone }: Props = {}) {
   const [checkpoints, setCheckpoints] = useState<Checkpoint[]>([]);
   const [busy, setBusy] = useState(false);
 
+  // Painel lateral / drawer
+  const { updateLead } = useLeads();
+  const { boards } = useKanbanBoards();
+  const [leadSheetOpen, setLeadSheetOpen] = useState(false);
+  const [leadSheetData, setLeadSheetData] = useState<any>(null);
+  const [contactSheetOpen, setContactSheetOpen] = useState(false);
+  const [contactSheetData, setContactSheetData] = useState<any>(null);
+  const [groupDrawer, setGroupDrawer] = useState<{ jid: string; name: string; instance: string } | null>(null);
+
+  const openLeadById = async (id: string) => {
+    const dbAny = db as any;
+    const { data } = await dbAny.from('leads').select('*').eq('id', id).maybeSingle();
+    if (data) { setLeadSheetData(data); setLeadSheetOpen(true); }
+    else toast({ title: 'Lead não encontrado', variant: 'destructive' });
+  };
+  const openContactById = async (id: string) => {
+    const dbAny = db as any;
+    const { data } = await dbAny.from('contacts').select('*').eq('id', id).maybeSingle();
+    if (data) { setContactSheetData(data); setContactSheetOpen(true); }
+    else toast({ title: 'Contato não encontrado', variant: 'destructive' });
+  };
+
   // Form fields per-step
   const [msgText, setMsgText] = useState('');
   const [processType, setProcessType] = useState<string>('');
