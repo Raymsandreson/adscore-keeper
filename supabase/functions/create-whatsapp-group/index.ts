@@ -674,10 +674,18 @@ Deno.serve(async (req) => {
         let addedParticipants: string[] = []
         let failedParticipants: string[] = []
         if (body.sync_participants) {
-          const actualPhones = extractParticipantPhones(existingGroupInfo?.participants || [])
-          const missing = participants.filter((expected) =>
-            !actualPhones.some((actual) => phoneMatches(actual, expected))
-          )
+          let missing: string[]
+          if (existingGroupInfo) {
+            const actualPhones = extractParticipantPhones(existingGroupInfo?.participants || [])
+            missing = participants.filter((expected) =>
+              !actualPhones.some((actual) => phoneMatches(actual, expected))
+            )
+          } else {
+            // fetchGroupInfo falhou (instância desconectada/transient). Tenta adicionar
+            // todos os esperados exceto o próprio criador — UazAPI ignora quem já está dentro.
+            missing = participants.filter((p) => p !== normalizePhone(creatorInstance.owner_phone || ''))
+            console.log(`[create-group] sync_participants: groupInfo indisponível, tentando adicionar ${missing.length} esperados (best-effort)`)
+          }
           console.log(`[create-group] sync_participants: ${missing.length} faltando de ${participants.length} esperados`)
           if (missing.length > 0) {
             const baseUrlForAdd = creatorInstance.base_url || 'https://abraci.uazapi.com'
