@@ -411,7 +411,12 @@ function DoneResultSummary({ step, result, leadId }: { step: StepKey; result: an
     return (
       <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
         <div>✅ Lead marcado como <b>fechado</b></div>
-        {result.signer_name && <div>Contato: <b>{result.signer_name}</b></div>}
+        {result.signer_name && (
+          <div>
+            Contato: <b>{result.signer_name}</b>
+            {result.contact_reused && <span className="ml-1 italic">(existente)</span>}
+          </div>
+        )}
         {result.contact_id && (
           <a href={`/contacts?id=${result.contact_id}`} target="_blank" rel="noreferrer" className="text-primary underline">
             Ver contato
