@@ -128,7 +128,10 @@ export const handler: RequestHandler = async (req, res) => {
         .eq('lead_id', ckpt.lead_id)
         .eq('step', prev)
         .maybeSingle();
-      if (!prevCk || prevCk.status !== 'done') {
+      // Se o checkpoint anterior NÃO EXISTE, trata como legado (lead criado antes
+      // do passo ser adicionado ao fluxo) e libera o avanço.
+      // Só bloqueia quando existe e ainda não está 'done'.
+      if (prevCk && prevCk.status !== 'done') {
         return ok({ success: false, error: `passo anterior (${prev}) não concluído` });
       }
     }
