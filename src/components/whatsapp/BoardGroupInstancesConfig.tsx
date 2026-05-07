@@ -1039,9 +1039,9 @@ interface InstanceParticipantsSectionProps {
   linkedInstances: string[];
   instanceConfigs: Record<string, InstanceConfig>;
   saving: boolean;
-  toggleInstance: (id: string) => void;
+  toggleInstance: (id: string) => Promise<void>;
   updateInstanceConfig: (id: string, field: keyof InstanceConfig, value: string) => void;
-  updateInstanceAppliesTo: (id: string, value: AppliesTo) => void;
+  updateInstanceAppliesTo: (id: string, value: AppliesTo) => Promise<void>;
 }
 
 function InstanceParticipantsSection({
