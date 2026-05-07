@@ -594,14 +594,19 @@ export function ZapSignDocumentDialog({
     }
   };
 
-  const handleSendSigningLink = async () => {
+  const handleSendSigningLink = async (skipConfirm = false) => {
     console.log('[ZapSignDialog] handleSendSigningLink', {
       hasPendingUrl: !!pendingSignUrl,
       hasOnSendMessage: !!onSendMessage,
       pendingSignUrl,
+      skipConfirm,
     });
     if (!pendingSignUrl || !onSendMessage) {
       console.warn('[ZapSignDialog] aborted: missing url or sender');
+      return;
+    }
+    if (!skipConfirm) {
+      setConfirmStep('pre-send');
       return;
     }
     setSendingLink(true);
