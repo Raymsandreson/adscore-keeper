@@ -238,6 +238,7 @@ export function LeadEditDialog({
   const [leadOutcomeReason, setLeadOutcomeReason] = useState('');
   const [isGeneratingReason, setIsGeneratingReason] = useState(false);
   const [caseNumber, setCaseNumber] = useState('');
+  const [unifiedEditorOpen, setUnifiedEditorOpen] = useState(false);
   
   // Accident fields
   const [victimName, setVictimName] = useState('');
