@@ -483,7 +483,21 @@ export function OnboardingCheckpointHost({ selectedPhone }: Props = {}) {
   );
 }
 
-function DoneResultSummary({ step, result, leadId }: { step: StepKey; result: any; leadId: string }) {
+function DoneResultSummary({
+  step,
+  result,
+  leadId,
+  onOpenLead,
+  onOpenContact,
+  onOpenGroup,
+}: {
+  step: StepKey;
+  result: any;
+  leadId: string;
+  onOpenLead?: (id: string) => void;
+  onOpenContact?: (id: string) => void;
+  onOpenGroup?: (jid: string, name: string) => void;
+}) {
   if (step === 'setup_lead_close') {
     return (
       <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
@@ -494,11 +508,16 @@ function DoneResultSummary({ step, result, leadId }: { step: StepKey; result: an
             {result.contact_reused && <span className="ml-1 italic">(existente)</span>}
           </div>
         )}
-        {result.contact_id && (
-          <a href={`/contacts?id=${result.contact_id}`} target="_blank" rel="noreferrer" className="text-primary underline">
-            Ver contato
-          </a>
-        )}
+        <div className="flex gap-2 pt-0.5">
+          <button type="button" onClick={() => onOpenLead?.(leadId)} className="text-primary underline">
+            Ver lead
+          </button>
+          {result.contact_id && (
+            <button type="button" onClick={() => onOpenContact?.(result.contact_id)} className="text-primary underline">
+              Ver contato
+            </button>
+          )}
+        </div>
       </div>
     );
   }
@@ -521,11 +540,22 @@ function DoneResultSummary({ step, result, leadId }: { step: StepKey; result: an
             </ul>
           </div>
         )}
-        <div className="flex gap-2 pt-0.5">
-          <a href={`/?leadId=${leadId}`} className="text-primary underline">Ver lead</a>
+        <div className="flex gap-2 pt-0.5 flex-wrap">
+          <button type="button" onClick={() => onOpenLead?.(leadId)} className="text-primary underline">
+            Ver lead
+          </button>
+          {result.group_jid && (
+            <button
+              type="button"
+              onClick={() => onOpenGroup?.(result.group_jid, result.group_name || 'Grupo')}
+              className="text-primary underline"
+            >
+              Abrir conversa do grupo
+            </button>
+          )}
           {result.group_link && (
             <a href={result.group_link} target="_blank" rel="noreferrer" className="text-primary underline">
-              Abrir grupo
+              Link do grupo
             </a>
           )}
         </div>
