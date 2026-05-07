@@ -537,3 +537,85 @@ function DoneResultSummary({
     </div>
   );
 }
+
+function CreateGroupSummary({
+  result,
+  leadId,
+  onOpenLead,
+  onOpenGroup,
+}: {
+  result: any;
+  leadId: string;
+  onOpenLead?: (id: string) => void;
+  onOpenGroup?: (jid: string, name: string) => void;
+}) {
+  const participants: Array<{ id: string; name: string; phone?: string }> = result.participants || [];
+  const [groupName, setGroupName] = useState<string>(result?.group_name || '');
+  const [groupLink, setGroupLink] = useState<string>(result?.group_link || '');
+
+  useEffect(() => {
+    if (groupName && groupLink) return;
+    if (!result?.group_jid) return;
+    (async () => {
+      const dbAny = db as any;
+      const { data } = await dbAny
+        .from('lead_whatsapp_groups')
+        .select('group_name, group_link')
+        .eq('lead_id', leadId)
+        .eq('group_jid', result.group_jid)
+        .maybeSingle();
+      if (data?.group_name && !groupName) setGroupName(data.group_name);
+      if (data?.group_link && !groupLink) setGroupLink(data.group_link);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [result?.group_jid, leadId]);
+
+  // Atalho universal pra abrir o app do WhatsApp no grupo (mesmo sem invite link)
+  const waJid = result?.group_jid ? String(result.group_jid).replace('@g.us', '') : '';
+  const waAppLink = waJid ? `https://wa.me/${waJid}` : '';
+  const displayName = groupName || 'Grupo';
+
+  return (
+    <div className="text-xs text-muted-foreground mt-1 space-y-1">
+      <div>📱 Grupo: <b>{displayName}</b></div>
+      {result.group_jid && <div className="font-mono text-[10px] truncate">{result.group_jid}</div>}
+      {result.reused && <div className="italic">Reaproveitado de grupo existente</div>}
+      {participants.length > 0 && (
+        <div>
+          <div className="font-medium">Vinculados ao lead ({participants.length}):</div>
+          <ul className="list-disc list-inside max-h-24 overflow-auto">
+            {participants.map((p) => (
+              <li key={p.id} className="truncate">
+                {p.name}{p.phone ? ` · ${p.phone}` : ''}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      <div className="flex gap-2 pt-0.5 flex-wrap">
+        <button type="button" onClick={() => onOpenLead?.(leadId)} className="text-primary underline">
+          Ver lead
+        </button>
+        {result.group_jid && (
+          <button
+            type="button"
+            onClick={() => onOpenGroup?.(result.group_jid, displayName)}
+            className="text-primary underline"
+          >
+            Abrir conversa do grupo
+          </button>
+        )}
+        {groupLink && (
+          <a href={groupLink} target="_blank" rel="noreferrer" className="text-primary underline">
+            Link de convite
+          </a>
+        )}
+        {waAppLink && (
+          <a href={waAppLink} target="_blank" rel="noreferrer" className="text-primary underline">
+            Abrir no app do WhatsApp
+          </a>
+        )}
+      </div>
+    </div>
+  );
+}
