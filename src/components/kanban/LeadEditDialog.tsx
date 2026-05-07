@@ -1411,6 +1411,12 @@ ${scrapeData.content || ''}
                   Jurídico
                 </TabsTrigger>
               )}
+              {customLayoutTabs.map((tab) => (
+                <TabsTrigger key={tab.key} value={tab.key} className="text-xs py-1.5 px-2.5">
+                  <FileText className="h-3 w-3 mr-1" />
+                  {tab.label}
+                </TabsTrigger>
+              ))}
               <TabsTrigger value="documents" className="text-xs py-1.5 px-2.5">
                 <FileText className="h-3 w-3 mr-1" />
                 Documentos
