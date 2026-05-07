@@ -36,7 +36,7 @@ const STEP_ORDER = [
 type StepKey = typeof STEP_ORDER[number];
 
 const STEP_LABEL: Record<StepKey, string> = {
-  confirm_funnel: '1. Confirmar funil do lead',
+  confirm_funnel: '1. Lead criado — confirme o funil',
   setup_lead_close: '2. Criar lead/contato e marcar como fechado',
   create_group: '3. Criar grupo no WhatsApp',
   send_initial_message: '4. Enviar mensagem inicial',
@@ -506,7 +506,26 @@ export function OnboardingCheckpointHost({ selectedPhone }: Props = {}) {
 
               {currentStep.step === 'confirm_funnel' && (
                 <div className="space-y-2">
-                  <Label className="text-xs">Funil (board) deste lead</Label>
+                  <div className="rounded-md border bg-muted/30 p-2 text-xs space-y-1">
+                    <div>✅ Lead <b>criado</b> a partir da assinatura.</div>
+                    <div>Nome: <b className="break-words">{currentStep.payload?.lead_name || '—'}</b></div>
+                    <div>
+                      Funil atual:{' '}
+                      <b>
+                        {boards.find((b: any) => b.id === currentStep.payload?.board_id)?.name || '—'}
+                      </b>
+                    </div>
+                    {leadId && (
+                      <button
+                        type="button"
+                        onClick={() => openLeadById(leadId)}
+                        className="text-primary underline"
+                      >
+                        Abrir formulário completo do lead →
+                      </button>
+                    )}
+                  </div>
+                  <Label className="text-xs">Confirme o funil (board) deste lead</Label>
                   <Select value={selectedBoardId} onValueChange={setSelectedBoardId}>
                     <SelectTrigger><SelectValue placeholder="Escolha o funil correto" /></SelectTrigger>
                     <SelectContent className="max-h-72">
