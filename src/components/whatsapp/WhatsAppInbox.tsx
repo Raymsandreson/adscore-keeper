@@ -495,7 +495,7 @@ export function WhatsAppInbox() {
   const finalizeOnboardingForCurrent = useCallback(async () => {
     const lid = getPendingLeadId(selectedPhone);
     if (!lid) return;
-    const dbAny = externalDb as any;
+    const dbAny = externalSupabase as any;
     await dbAny
       .from('onboarding_checkpoints')
       .update({ status: 'done', result: { cancelled_by_user: true, at: new Date().toISOString() } })
