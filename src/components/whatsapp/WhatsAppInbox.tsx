@@ -466,14 +466,42 @@ export function WhatsAppInbox() {
 
   const totalUnread = visibleConversations.reduce((sum, c) => sum + c.unread_count, 0);
 
-  const handleSelectConversation = (conv: WhatsAppConversation) => {
-    setSelectedPhone(conv.phone);
-    setSelectedInstance(conv.instance_name);
-    fetchFullConversation(conv.phone, conv.instance_name);
-    if (conv.unread_count > 0) {
-      markAsRead(conv.phone, conv.instance_name);
+  // Guard: se a conversa atual tem onboarding pendente, perguntar antes de sair.
+  const [pendingNav, setPendingNav] = useState<null | (() => void)>(null);
+
+  const guardLeaveCurrent = useCallback((after: () => void) => {
+    if (selectedPhone && hasOnboardingPending(selectedPhone)) {
+      setPendingNav(() => after);
+    } else {
+      after();
     }
+  }, [selectedPhone]);
+
+  const handleSelectConversation = (conv: WhatsAppConversation) => {
+    const apply = () => {
+      setSelectedPhone(conv.phone);
+      setSelectedInstance(conv.instance_name);
+      fetchFullConversation(conv.phone, conv.instance_name);
+      if (conv.unread_count > 0) {
+        markAsRead(conv.phone, conv.instance_name);
+      }
+    };
+    // Se for a mesma conversa, não pergunta
+    if (conv.phone === selectedPhone) { apply(); return; }
+    guardLeaveCurrent(apply);
   };
+
+  // Finaliza (cancela) os checkpoints pendentes do lead da conversa atual.
+  const finalizeOnboardingForCurrent = useCallback(async () => {
+    const lid = getPendingLeadId(selectedPhone);
+    if (!lid) return;
+    const dbAny = externalDb as any;
+    await dbAny
+      .from('onboarding_checkpoints')
+      .update({ status: 'done', result: { cancelled_by_user: true, at: new Date().toISOString() } })
+      .eq('lead_id', lid)
+      .in('status', ['pending', 'running', 'failed']);
+  }, [selectedPhone]);
 
   const [extracting, setExtracting] = useState(false);
   const [extractionStep, setExtractionStep] = useState('');
