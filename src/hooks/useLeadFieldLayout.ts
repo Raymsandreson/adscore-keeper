@@ -63,7 +63,7 @@ export function useLeadFieldLayout(boardId?: string | null) {
       .sort((a, b) => a.display_order - b.display_order);
   }, [resolved]);
 
-  const saveLayout = useCallback(async (next: ResolvedField[]) => {
+  const saveLayout = useCallback(async (next: ResolvedField[], options?: { silent?: boolean }) => {
     if (!boardId) return;
     try {
       // Upsert all (overwrite full layout for this board)
@@ -78,7 +78,7 @@ export function useLeadFieldLayout(boardId?: string | null) {
         .from('lead_field_layouts')
         .upsert(payload, { onConflict: 'board_id,field_key' });
       if (error) throw error;
-      toast.success('Layout salvo!');
+      if (!options?.silent) toast.success('Layout salvo!');
       await fetchLayout();
     } catch (e: any) {
       console.error('saveLayout error', e);
