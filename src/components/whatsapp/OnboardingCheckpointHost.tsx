@@ -489,17 +489,23 @@ export function OnboardingCheckpointHost({ selectedPhone }: Props = {}) {
 function DoneResultSummary({
   step,
   result,
+  payload,
+  checkpointId,
   leadId,
   onOpenLead,
   onOpenContact,
   onOpenGroup,
+  onRefresh,
 }: {
   step: StepKey;
   result: any;
+  payload?: any;
+  checkpointId?: string;
   leadId: string;
   onOpenLead?: (id: string) => void;
   onOpenContact?: (id: string) => void;
   onOpenGroup?: (jid: string, name: string) => void;
+  onRefresh?: () => void | Promise<void>;
 }) {
   if (step === 'setup_lead_close') {
     return (
@@ -525,7 +531,17 @@ function DoneResultSummary({
     );
   }
   if (step === 'create_group') {
-    return <CreateGroupSummary result={result} leadId={leadId} onOpenLead={onOpenLead} onOpenGroup={onOpenGroup} />;
+    return (
+      <CreateGroupSummary
+        result={result}
+        payload={payload}
+        checkpointId={checkpointId}
+        leadId={leadId}
+        onOpenLead={onOpenLead}
+        onOpenGroup={onOpenGroup}
+        onRefresh={onRefresh}
+      />
+    );
   }
   if (step === 'create_case_process') {
     return (
@@ -543,18 +559,25 @@ function DoneResultSummary({
 
 function CreateGroupSummary({
   result,
+  payload,
+  checkpointId,
   leadId,
   onOpenLead,
   onOpenGroup,
+  onRefresh,
 }: {
   result: any;
+  payload?: any;
+  checkpointId?: string;
   leadId: string;
   onOpenLead?: (id: string) => void;
   onOpenGroup?: (jid: string, name: string) => void;
+  onRefresh?: () => void | Promise<void>;
 }) {
   const participants: Array<{ id: string; name: string; phone?: string }> = result.participants || [];
   const [groupName, setGroupName] = useState<string>(result?.group_name || '');
   const [groupLink, setGroupLink] = useState<string>(result?.group_link || '');
+  const [renaming, setRenaming] = useState(false);
 
   useEffect(() => {
     if (groupName && groupLink) return;
@@ -573,7 +596,53 @@ function CreateGroupSummary({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [result?.group_jid, leadId]);
 
-  // Atalho universal pra abrir o app do WhatsApp no grupo (apenas via invite link)
+  const handleRename = async () => {
+    if (!result?.group_jid) return;
+    setRenaming(true);
+    try {
+      // Chama create-whatsapp-group com allow_rename: pula o DEDUP guard,
+      // recalcula nome via board_group_settings (closed_group_name_prefix + closed_sequence)
+      // e renomeia o grupo na UazAPI + atualiza leads.lead_name + lead_whatsapp_groups.group_name.
+      const { data, error } = await cloudFunctions.invoke<any>('create-whatsapp-group', {
+        body: {
+          lead_id: leadId,
+          lead_name: payload?.lead_name,
+          phone: payload?.lead_phone,
+          contact_phone: payload?.lead_phone,
+          board_id: payload?.board_id,
+          creation_origin: 'onboarding_checkpoint_rename',
+          phase: 'closed',
+          allow_rename: true,
+        },
+      });
+      if (error || data?.success === false) {
+        toast({
+          title: 'Não foi possível renomear',
+          description: data?.error || error?.message || 'Erro desconhecido',
+          variant: 'destructive',
+        });
+        return;
+      }
+      const newName = data?.group_name || groupName;
+      setGroupName(newName);
+      // Atualiza o result do checkpoint pra refletir o novo nome
+      if (checkpointId) {
+        const dbAny = db as any;
+        await dbAny
+          .from('onboarding_checkpoints')
+          .update({
+            result: { ...result, group_name: newName },
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', checkpointId);
+      }
+      toast({ title: 'Grupo renomeado', description: newName });
+      await onRefresh?.();
+    } finally {
+      setRenaming(false);
+    }
+  };
+
   const displayName = groupName || 'Grupo';
 
   return (
@@ -593,7 +662,7 @@ function CreateGroupSummary({
           </ul>
         </div>
       )}
-      <div className="flex gap-2 pt-0.5 flex-wrap">
+      <div className="flex gap-2 pt-0.5 flex-wrap items-center">
         <button type="button" onClick={() => onOpenLead?.(leadId)} className="text-primary underline">
           Ver lead
         </button>
@@ -611,6 +680,14 @@ function CreateGroupSummary({
             Abrir no app do WhatsApp
           </a>
         )}
+        <button
+          type="button"
+          onClick={handleRename}
+          disabled={renaming}
+          className="text-primary underline disabled:opacity-50"
+        >
+          {renaming ? 'Renomeando…' : 'Reprocessar nome do grupo'}
+        </button>
       </div>
     </div>
   );
