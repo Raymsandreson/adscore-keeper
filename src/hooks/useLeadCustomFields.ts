@@ -91,7 +91,7 @@ export function useLeadCustomFields(adAccountId?: string, boardId?: string) {
     }
   };
 
-  const updateCustomField = async (id: string, updates: Partial<CustomField>) => {
+  const updateCustomField = async (id: string, updates: Partial<CustomField>, options?: { silent?: boolean }) => {
     try {
       const { error } = await (db as any)
         .from('lead_custom_fields')
@@ -101,7 +101,7 @@ export function useLeadCustomFields(adAccountId?: string, boardId?: string) {
       if (error) throw error;
       
       await fetchCustomFields();
-      toast.success('Campo atualizado!');
+      if (!options?.silent) toast.success('Campo atualizado!');
     } catch (error) {
       console.error('Error updating custom field:', error);
       toast.error('Erro ao atualizar campo');
