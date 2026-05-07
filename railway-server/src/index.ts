@@ -13,6 +13,7 @@ import { handler as repairWhatsappGroup } from './functions/repair-whatsapp-grou
 import { handler as zapsignWebhook } from './functions/zapsign-webhook';
 import { runPostSignExtras } from './functions/zapsign-post-sign-extras';
 import { handler as onboardingCheckpointExecute } from './functions/onboarding-checkpoint-execute';
+import { handler as regenerateLeadName } from './functions/regenerate-lead-name';
 
 const functionHandlers: Record<string, express.RequestHandler> = {
   'whatsapp-webhook': whatsappWebhook,
@@ -20,6 +21,7 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'repair-whatsapp-group': repairWhatsappGroup,
   'zapsign-webhook': zapsignWebhook,
   'onboarding-checkpoint-execute': onboardingCheckpointExecute,
+  'regenerate-lead-name': regenerateLeadName,
 };
 
 const app = express();
