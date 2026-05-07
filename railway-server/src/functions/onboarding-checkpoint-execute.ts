@@ -37,9 +37,38 @@ async function callCloudFn(name: string, body: unknown): Promise<{ ok: boolean; 
   return { ok: r.ok && (data?.success !== false), data };
 }
 
+/**
+ * Valida o JWT do Lovable Cloud chamando /auth/v1/user.
+ * Retorna o user_id (sub) se válido, null caso contrário.
+ */
+async function verifyCloudJwt(authHeader: string | undefined): Promise<string | null> {
+  if (!authHeader || !authHeader.toLowerCase().startsWith('bearer ')) return null;
+  const token = authHeader.slice(7).trim();
+  if (!token || token === CLOUD_ANON_KEY) return null; // anon key não é usuário
+  try {
+    const r = await fetch(`${CLOUD_FUNCTIONS_URL}/auth/v1/user`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        apikey: CLOUD_ANON_KEY,
+      },
+    });
+    if (!r.ok) return null;
+    const u: any = await r.json().catch(() => null);
+    return u?.id || null;
+  } catch {
+    return null;
+  }
+}
+
 export const handler: RequestHandler = async (req, res) => {
   const ok = (b: Record<string, unknown>) => res.status(200).json(b);
   try {
+    // 🔒 Bloqueia acesso anônimo: exige JWT válido do Lovable Cloud.
+    const authedUserId = await verifyCloudJwt(req.headers['authorization'] as string | undefined);
+    if (!authedUserId) {
+      return res.status(401).json({ success: false, error: 'unauthorized' });
+    }
+
     const { checkpoint_id, user_id, extra } = (req.body || {}) as {
       checkpoint_id?: string;
       user_id?: string;
