@@ -13,6 +13,7 @@ import { useLeadCustomFields, CustomField, CustomFieldValue, FieldType } from '@
 import { useKanbanBoards, KanbanBoard } from '@/hooks/useKanbanBoards';
 import { useFieldStageRequirements } from '@/hooks/useFieldStageRequirements';
 import { CustomFieldInput } from '@/components/leads/CustomFieldsForm';
+import { LeadFieldsUnifiedEditor } from '@/components/leads/LeadFieldsUnifiedEditor';
 import { toast } from 'sonner';
 
 const fieldTypeLabels: Record<FieldType, string> = {
