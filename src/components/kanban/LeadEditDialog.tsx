@@ -2251,7 +2251,7 @@ ${scrapeData.content || ''}
                   {/* Nº do Caso removido — gerenciado na aba Casos */}
                 </div>
 
-                <div className="col-span-2">
+                {isFieldVisible('news_link') && (<div className="col-span-2">
                   <LeadNewsLinksManager
                     newsLinks={newsLinks}
                     onChange={(links) => {
@@ -2291,9 +2291,9 @@ ${scrapeData.content || ''}
                       if (u.notes) setNotes(u.notes);
                     }}
                   />
-                </div>
+                </div>)}
 
-                <div className="col-span-2">
+                {isFieldVisible('notes') && (<div className="col-span-2">
                   <Label>Observações</Label>
                   <Textarea
                     value={notes}
@@ -2301,7 +2301,7 @@ ${scrapeData.content || ''}
                     placeholder="Notas sobre o lead..."
                     rows={2}
                   />
-                </div>
+                </div>)}
 
                 {boards.length > 0 && (
                   <div className="col-span-2">
