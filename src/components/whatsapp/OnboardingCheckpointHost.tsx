@@ -384,10 +384,36 @@ export function OnboardingCheckpointHost({ selectedPhone }: Props = {}) {
     {open && (
       <div
         className="fixed top-0 right-0 h-[100dvh] z-40 bg-background border-l shadow-2xl flex flex-col"
-        style={{ width: 'var(--onboarding-panel-w, 480px)' }}
+        style={{ width: 'var(--onboarding-panel-w, 420px)' }}
         role="dialog"
         aria-label="Onboarding pós-assinatura"
       >
+        {/* Drag handle (somente quando expandido) */}
+        {!collapsed && (
+          <div
+            onPointerDown={startDrag}
+            className="absolute top-0 left-0 h-full w-1.5 -ml-0.5 cursor-col-resize hover:bg-primary/30 z-10"
+            title="Arraste para redimensionar"
+          />
+        )}
+        {/* Botão colapsar/expandir, sempre visível na borda esquerda */}
+        <button
+          type="button"
+          onClick={toggleCollapsed}
+          title={collapsed ? 'Expandir painel' : 'Colapsar painel'}
+          className="absolute top-1/2 -left-3 -translate-y-1/2 h-8 w-6 rounded-l-md border border-r-0 bg-background shadow flex items-center justify-center z-20"
+        >
+          {collapsed ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+        </button>
+
+        {collapsed ? (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-[10px] text-muted-foreground rotate-180" style={{ writingMode: 'vertical-rl' }}>
+              Onboarding ({checkpoints.filter(c => c.status === 'done').length}/{checkpoints.length})
+            </div>
+          </div>
+        ) : (
+        <>
         <div className="px-4 pt-4 pb-3 border-b shrink-0 relative">
           <button
             type="button"
