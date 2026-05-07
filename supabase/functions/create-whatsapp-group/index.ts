@@ -618,7 +618,11 @@ Deno.serve(async (req) => {
       const existingMatchedParticipants = countMatchedParticipants(existingGroupInfo?.participants || [], participants)
       const existingParticipantsTotal = existingGroupInfo?.participants?.length || 0
 
-      if (existingGroupInfo && (existingMatchedParticipants > 0 || existingParticipantsTotal > 1)) {
+      // Quando sync_participants=true, NUNCA tratar como stale: o usuário quer adicionar
+      // os faltantes ao grupo existente. Se fetchGroupInfo falhou (instância desconectada
+      // momentaneamente), tentamos adicionar todos os esperados — UazAPI ignora duplicados.
+      const forceSyncBranch = !!body.sync_participants
+      if (forceSyncBranch || (existingGroupInfo && (existingMatchedParticipants > 0 || existingParticipantsTotal > 1))) {
         // Rename existing group to follow configured naming pattern when needed
         const currentName = (existingGroupInfo.groupName || '').trim()
         let finalName = currentName
