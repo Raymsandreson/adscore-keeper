@@ -427,16 +427,23 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
       for (const instanceId of linkedInstances) {
         const config = instanceConfigs[instanceId];
         if (config) {
-          await (db as any)
+          const { error } = await (db as any)
             .from('board_group_instances')
-            .update({
-              role_title: config.role_title || null,
-              role_description: config.role_description || null,
-            })
-            .eq('board_id', selectedBoard)
-            .eq('instance_id', instanceId);
+            .upsert(
+              {
+                board_id: selectedBoard,
+                instance_id: instanceId,
+                applies_to: config.applies_to || 'both',
+                role_title: config.role_title || null,
+                role_description: config.role_description || null,
+              },
+              { onConflict: 'board_id,instance_id' }
+            );
+          if (error) throw error;
         }
       }
+
+      await fetchLinked();
 
       toast.success('Configuração salva!');
     } catch (e: any) {
