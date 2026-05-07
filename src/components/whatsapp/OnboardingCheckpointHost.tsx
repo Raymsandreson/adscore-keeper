@@ -293,6 +293,7 @@ export function OnboardingCheckpointHost({ selectedPhone }: Props = {}) {
   };
 
   return (
+    <>
     <Dialog open={open} onOpenChange={(o) => { if (!o && hasFailed) closeAll(); }}>
       <DialogContent
         className="w-[95vw] max-w-lg"
