@@ -18,6 +18,7 @@ export interface ZapSignOpenPayload {
   }>;
   leadData?: any;
   contactData?: any;
+  onSendMessage?: (msg: string) => Promise<any>;
 }
 
 const EVENT_NAME = 'zapsign:open';
