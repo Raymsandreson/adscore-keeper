@@ -2523,25 +2523,25 @@ ${scrapeData.content || ''}
             <TabsContent value="companies" className="space-y-4 mt-0">
               {activeTab === 'companies' && (<>
               <div className="grid grid-cols-2 gap-4">
-                <div>
+                {isFieldVisible('contractor_company') && (<div>
                   <Label>Empresa Terceirizada</Label>
                   <Input
                     value={contractorCompany}
                     onChange={(e) => setContractorCompany(e.target.value)}
                     placeholder="Nome da empresa terceirizada"
                   />
-                </div>
+                </div>)}
 
-                <div>
+                {isFieldVisible('main_company') && (<div>
                   <Label>Empresa Tomadora</Label>
                   <Input
                     value={mainCompany}
                     onChange={(e) => setMainCompany(e.target.value)}
                     placeholder="Nome da empresa tomadora"
                   />
-                </div>
+                </div>)}
 
-                <div>
+                {isFieldVisible('sector') && (<div>
                   <Label>Setor</Label>
                   <Select value={safeSelectValue(sector)} onValueChange={setSector}>
                     <SelectTrigger>
@@ -2553,9 +2553,9 @@ ${scrapeData.content || ''}
                       ))}
                     </SelectContent>
                   </Select>
-                </div>
+                </div>)}
 
-                <div className="col-span-2">
+                {isFieldVisible('company_size_justification') && (<div className="col-span-2">
                   <Label>Justificativa do Porte da Empresa</Label>
                   <Textarea
                     value={companySizeJustification}
@@ -2563,7 +2563,7 @@ ${scrapeData.content || ''}
                     placeholder="Justificativa sobre o porte da empresa..."
                     rows={2}
                   />
-                </div>
+                </div>)}
               </div>
               </>)}
             </TabsContent>
