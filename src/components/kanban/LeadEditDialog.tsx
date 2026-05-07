@@ -2859,6 +2859,18 @@ ${scrapeData.content || ''}
           }}
         />
       )}
+
+      {currentLead && (
+        <Suspense fallback={null}>
+          <LeadFieldsUnifiedEditor
+            open={unifiedEditorOpen}
+            onOpenChange={setUnifiedEditorOpen}
+            boardId={currentLead.board_id || selectedBoardId || ''}
+            boardName={boards.find(b => b.id === (currentLead.board_id || selectedBoardId))?.name}
+            adAccountId={adAccountId}
+          />
+        </Suspense>
+      )}
     </>
   );
 }
