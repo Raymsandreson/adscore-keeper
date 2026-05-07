@@ -19,6 +19,7 @@ import { toast } from '@/hooks/use-toast';
 import { setOnboardingPending } from '@/lib/onboardingGuard';
 
 const STEP_ORDER = [
+  'setup_lead_close',
   'create_group',
   'send_initial_message',
   'import_docs',
@@ -29,11 +30,12 @@ const STEP_ORDER = [
 type StepKey = typeof STEP_ORDER[number];
 
 const STEP_LABEL: Record<StepKey, string> = {
-  create_group: '1. Criar grupo no WhatsApp',
-  send_initial_message: '2. Enviar mensagem inicial',
-  import_docs: '3. Importar documentos',
-  create_case_process: '4. Criar Caso + Processo',
-  create_onboarding_activity: '5. Atividade de Onboarding',
+  setup_lead_close: '1. Criar lead/contato e marcar como fechado',
+  create_group: '2. Criar grupo no WhatsApp',
+  send_initial_message: '3. Enviar mensagem inicial',
+  import_docs: '4. Importar documentos',
+  create_case_process: '5. Criar Caso + Processo',
+  create_onboarding_activity: '6. Atividade de Onboarding',
 };
 
 interface Checkpoint {
