@@ -54,7 +54,6 @@ import { useLeadCustomFields, FieldType, CustomFieldValue } from '@/hooks/useLea
 import { useContactClassifications } from '@/hooks/useContactClassifications';
 import { useProfileNames } from '@/hooks/useProfileNames';
 import { useBrazilianLocations } from '@/hooks/useBrazilianLocations';
-import { CustomFieldInput } from '@/components/leads/CustomFieldsForm';
 const CustomFieldsConfigPanel = lazy(() => import('@/components/leads/CustomFieldsConfigPanel').then(m => ({ default: m.CustomFieldsConfigPanel })));
 const LeadFieldsUnifiedEditor = lazy(() => import('@/components/leads/LeadFieldsUnifiedEditor').then(m => ({ default: m.LeadFieldsUnifiedEditor })));
 const LeadStageHistoryPanel = lazy(() => import('@/components/kanban/LeadStageHistoryPanel').then(m => ({ default: m.LeadStageHistoryPanel })));
@@ -269,12 +268,11 @@ export function LeadEditDialog({
   const [legalViability, setLegalViability] = useState('');
   
   // Custom fields
-  const { customFields, getFieldValues, saveAllFieldValues, loading: fieldsLoading } = useLeadCustomFields(adAccountId);
+  const { customFields, getFieldValues, saveAllFieldValues } = useLeadCustomFields(adAccountId);
   const { classifications, classificationConfig, addClassification } = useContactClassifications();
   const { fetchProfileNames, getDisplayName, loading: profilesLoading } = useProfileNames();
   const { states, cities, loadingCities, fetchCities } = useBrazilianLocations();
   const { fetchLeadInstances, createLeadInstances } = useChecklists();
-  const [fieldValues, setFieldValues] = useState<Record<string, CustomFieldValue>>({});
   const [localFieldValues, setLocalFieldValues] = useState<Record<string, { type: FieldType; value: string | number | boolean | null }>>({});
   const [saving, setSaving] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -500,13 +498,6 @@ export function LeadEditDialog({
 
     leadGroupsCache.set(leadId, mappedGroups);
     setWhatsappGroups(mappedGroups);
-  };
-
-  const handleFieldChange = (fieldId: string, type: FieldType, value: string | number | boolean | null) => {
-    setLocalFieldValues(prev => ({
-      ...prev,
-      [fieldId]: { type, value },
-    }));
   };
 
   const handleAddClassification = async () => {
