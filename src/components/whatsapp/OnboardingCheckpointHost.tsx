@@ -196,18 +196,63 @@ export function OnboardingCheckpointHost({ selectedPhone }: Props = {}) {
   };
 
   const open = !!leadId && !allDone;
+  const hasFailed = checkpoints.some((c) => c.status === 'failed');
+
+  const skipCurrent = async () => {
+    if (!currentStep) return;
+    setBusy(true);
+    try {
+      const dbAny = db as any;
+      await dbAny
+        .from('onboarding_checkpoints')
+        .update({
+          status: 'done',
+          result: { skipped_by_user: true, previous_status: currentStep.status },
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', currentStep.id);
+      toast({ title: 'Etapa pulada', description: STEP_LABEL[currentStep.step] });
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const closeAll = async () => {
+    setBusy(true);
+    try {
+      const dbAny = db as any;
+      const ids = checkpoints.filter((c) => c.status !== 'done').map((c) => c.id);
+      if (ids.length) {
+        await dbAny
+          .from('onboarding_checkpoints')
+          .update({
+            status: 'done',
+            result: { cancelled_by_user: true },
+            updated_at: new Date().toISOString(),
+          })
+          .in('id', ids);
+      }
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
-    <Dialog open={open} onOpenChange={() => { /* bloqueante: não fecha */ }}>
+    <Dialog open={open} onOpenChange={(o) => { if (!o && hasFailed) closeAll(); }}>
       <DialogContent
         className="w-[95vw] max-w-lg"
-        onPointerDownOutside={(e) => e.preventDefault()}
-        onEscapeKeyDown={(e) => e.preventDefault()}
+        onPointerDownOutside={(e) => { if (!hasFailed) e.preventDefault(); }}
+        onEscapeKeyDown={(e) => { if (!hasFailed) e.preventDefault(); }}
       >
         <DialogHeader>
           <DialogTitle>Onboarding pós-assinatura</DialogTitle>
           <DialogDescription>
-            Confirme cada etapa para liberar a próxima. Esta janela não pode ser fechada até concluir.
+            Confirme cada etapa para liberar a próxima.
+            {hasFailed
+              ? ' Uma etapa falhou — você pode pular ou fechar para resolver depois.'
+              : ' Esta janela não pode ser fechada até concluir.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -301,10 +346,22 @@ export function OnboardingCheckpointHost({ selectedPhone }: Props = {}) {
               </div>
             )}
 
-            <Button onClick={handleConfirm} disabled={busy} className="w-full">
-              {busy ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-              Confirmar e avançar
-            </Button>
+            <div className="flex gap-2">
+              <Button onClick={handleConfirm} disabled={busy} className="flex-1">
+                {busy ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                {currentStep.status === 'failed' ? 'Tentar novamente' : 'Confirmar e avançar'}
+              </Button>
+              {currentStep.status === 'failed' && (
+                <Button onClick={skipCurrent} disabled={busy} variant="outline">
+                  Pular
+                </Button>
+              )}
+            </div>
+            {hasFailed && (
+              <Button onClick={closeAll} disabled={busy} variant="ghost" className="w-full text-xs">
+                Cancelar onboarding (marcar tudo como feito)
+              </Button>
+            )}
           </div>
         )}
       </DialogContent>
