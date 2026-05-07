@@ -988,12 +988,6 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
             )}
           </div>
 
-          {/* Save Button */}
-          <Button size="sm" onClick={saveSettings} disabled={savingSettings} className="w-full h-8 text-xs">
-            {savingSettings ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
-            Salvar Todas as Configurações
-          </Button>
-
           {/* Instâncias — divididas em Antes / Depois / Ambos */}
           <InstanceParticipantsSection
             instances={instances}
@@ -1004,6 +998,12 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
             updateInstanceConfig={updateInstanceConfig}
             updateInstanceAppliesTo={updateInstanceAppliesTo}
           />
+
+          {/* Save Button — final */}
+          <Button size="sm" onClick={saveSettings} disabled={savingSettings} className="w-full h-9 text-xs sticky bottom-2 shadow-md">
+            {savingSettings ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
+            Salvar Todas as Configurações
+          </Button>
         </>
       )}
     </div>
