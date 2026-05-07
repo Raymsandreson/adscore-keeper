@@ -77,8 +77,64 @@ export const handler: RequestHandler = async (req, res) => {
       .maybeSingle();
     if (!settings) return ok({ success: false, error: 'board_group_settings não configurado' });
 
-    const phase: 'open' | 'closed' =
-      phaseIn || (lead.lead_status === 'closed' ? 'closed' : 'open');
+    // Phase: prioriza phaseIn; senão checkpoint setup_lead_close=done; senão lead_status
+    let phase: 'open' | 'closed' = phaseIn || (lead.lead_status === 'closed' ? 'closed' : 'open');
+    if (!phaseIn && phase === 'open') {
+      const { data: closeCk } = await ext
+        .from('onboarding_checkpoints')
+        .select('status')
+        .eq('lead_id', lead_id)
+        .eq('step', 'setup_lead_close')
+        .maybeSingle();
+      if (closeCk?.status === 'done') phase = 'closed';
+    }
+
+    // Enriquecimento on-demand: se algum lead_field configurado está vazio
+    // e existe procuração assinada, chama zapsign-enrich-lead antes
+    const leadFieldsCfg: string[] = settings.lead_fields || ['lead_name'];
+    const enrichableFields = ['victim_name','city','state','neighborhood','street','cpf','rg','birth_date','cep'];
+    const needsEnrich = leadFieldsCfg.some((f) => enrichableFields.includes(f) && !lead[f]);
+    let enriched = false;
+    if (needsEnrich) {
+      const { data: doc } = await ext
+        .from('zapsign_documents')
+        .select('signed_file_url, instance_name, doc_token, document_name')
+        .eq('lead_id', lead_id)
+        .not('signed_file_url', 'is', null)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (doc?.signed_file_url) {
+        try {
+          const r = await fetch(`${CLOUD_FUNCTIONS_URL}/functions/v1/zapsign-enrich-lead`, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${CLOUD_ANON_KEY}`,
+              apikey: CLOUD_ANON_KEY,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              lead_id,
+              signed_file_url: doc.signed_file_url,
+              instance_name: doc.instance_name || undefined,
+              doc_token: doc.doc_token || undefined,
+              document_name: doc.document_name || undefined,
+            }),
+          });
+          await r.text().catch(() => '');
+          enriched = true;
+          // Recarrega lead com os campos atualizados
+          const { data: refreshed } = await ext
+            .from('leads')
+            .select('*')
+            .eq('id', lead_id)
+            .maybeSingle();
+          if (refreshed) Object.assign(lead, refreshed);
+        } catch (e) {
+          console.warn('[regenerate-lead-name] enrich failed:', e);
+        }
+      }
+    }
 
     const useClosed = phase === 'closed' && !!settings.closed_group_name_prefix;
     const activePrefix = (useClosed ? settings.closed_group_name_prefix : settings.group_name_prefix) || '';
