@@ -37,7 +37,7 @@ const fieldTypeLabels: Record<FieldType, string> = {
   text: 'Texto', number: 'Número', date: 'Data', select: 'Seleção', checkbox: 'Sim/Não',
 };
 
-export function LeadFieldsUnifiedEditor({ open, onOpenChange, boardId, boardName, adAccountId }: Props) {
+export function LeadFieldsUnifiedEditor({ open, onOpenChange, boardId, boardName, adAccountId, inline }: Props) {
   const { resolved, saveLayout, refetch: refetchLayout } = useLeadFieldLayout(boardId);
   const { customFields, addCustomField, updateCustomField, deleteCustomField, fetchCustomFields } =
     useLeadCustomFields(adAccountId);
