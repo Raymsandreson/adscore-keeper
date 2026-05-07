@@ -328,8 +328,17 @@ export function CustomFieldsConfigPanel({
         </Button>
       </div>
 
-      {/* Config Mode - Kommo style field list */}
-      {configMode ? (
+      {/* Config Mode */}
+      {configMode && currentBoardId ? (
+        <LeadFieldsUnifiedEditor
+          open={true}
+          onOpenChange={(v) => { if (!v) setConfigMode(false); }}
+          boardId={currentBoardId}
+          boardName={currentBoard?.name}
+          adAccountId={adAccountId}
+          inline
+        />
+      ) : configMode ? (
         <div className="space-y-1 border rounded-lg overflow-hidden">
           {relevantFields.length === 0 ? (
             <div className="p-6 text-center text-muted-foreground text-sm">
