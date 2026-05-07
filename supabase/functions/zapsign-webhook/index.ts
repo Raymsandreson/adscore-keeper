@@ -1053,7 +1053,7 @@ Deno.serve(async (req) => {
           // Check board_group_settings for post-signature automations
           const { data: boardSettings } = await supabase
             .from('board_group_settings')
-            .select('auto_close_lead_on_sign, auto_create_group_on_sign, initial_message_template, use_ai_message, ai_generated_message, send_audio_message, audio_voice_id, lead_fields, process_workflows, process_workflow_board_id')
+            .select('auto_close_lead_on_sign, auto_create_group_on_sign, initial_message_template, use_ai_message, ai_generated_message, send_audio_message, audio_voice_id, lead_fields, process_workflows, process_workflow_board_id, processual_acolhedor_id')
             .eq('board_id', leadForBoard.board_id)
             .maybeSingle()
 
