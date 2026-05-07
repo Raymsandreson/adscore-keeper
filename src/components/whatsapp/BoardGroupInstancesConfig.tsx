@@ -66,6 +66,7 @@ interface GroupSettings {
   process_auto_activities: ProcessActivity[];
   process_workflows: ProcessWorkflow[];
   bridge_approach_prompt: string;
+  sync_lead_name_with_group: boolean;
 }
 
 interface ProcessActivity {
@@ -168,6 +169,7 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
     process_auto_activities: [],
     process_workflows: [],
     bridge_approach_prompt: '',
+    sync_lead_name_with_group: false,
   });
   const [savingSettings, setSavingSettings] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -262,6 +264,7 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
         process_auto_activities: data.process_auto_activities || [],
         process_workflows: data.process_workflows || [],
         bridge_approach_prompt: data.bridge_approach_prompt || '',
+        sync_lead_name_with_group: data.sync_lead_name_with_group ?? false,
       });
       if (data.ai_generated_message) {
         setPreviewMessage(data.ai_generated_message);
@@ -280,6 +283,7 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
         auto_create_process: false, process_nucleus_id: '', process_workflow_board_id: '',
         process_auto_activities: [], process_workflows: [],
         bridge_approach_prompt: '',
+        sync_lead_name_with_group: false,
       });
       setPreviewMessage(null);
     }
@@ -381,6 +385,7 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
         process_auto_activities: settings.process_auto_activities,
         process_workflows: settings.process_workflows,
         bridge_approach_prompt: settings.bridge_approach_prompt || null,
+        sync_lead_name_with_group: settings.sync_lead_name_with_group,
         updated_at: new Date().toISOString(),
       };
 
@@ -645,6 +650,21 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
                   <span className="text-[11px] font-medium truncate">{getPreviewName(true)}</span>
                 </div>
               )}
+            </div>
+
+            <div className="flex items-start gap-2 p-2 rounded-md border bg-background">
+              <Checkbox
+                id="sync_lead_name_with_group"
+                checked={settings.sync_lead_name_with_group}
+                onCheckedChange={(checked) => setSettings(prev => ({ ...prev, sync_lead_name_with_group: !!checked }))}
+                className="mt-0.5"
+              />
+              <Label htmlFor="sync_lead_name_with_group" className="text-xs cursor-pointer flex-1">
+                <div className="font-medium">Sincronizar nome do lead com o nome do grupo</div>
+                <div className="text-[10px] text-muted-foreground mt-0.5">
+                  Quando ativo, ao criar/renomear o grupo o nome do lead será atualizado para ficar igual. Desligue para manter o nome do lead independente.
+                </div>
+              </Label>
             </div>
           </div>
 
