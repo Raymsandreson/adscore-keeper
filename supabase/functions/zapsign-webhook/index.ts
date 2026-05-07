@@ -1045,7 +1045,7 @@ Deno.serve(async (req) => {
         // Get lead's board_id
         const { data: leadForBoard } = await supabase
           .from('leads')
-          .select('board_id, lead_phone, lead_name, whatsapp_group_id')
+          .select('board_id, lead_phone, lead_name, whatsapp_group_id, created_by')
           .eq('id', localDoc.lead_id)
           .single()
 
