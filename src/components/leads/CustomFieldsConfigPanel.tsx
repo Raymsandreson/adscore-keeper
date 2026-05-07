@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, Pencil, Trash2, Settings2, ShieldCheck } from 'lucide-react';
+import { Plus, Pencil, Trash2, Settings2, ShieldCheck, Wand2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -304,8 +304,8 @@ export function CustomFieldsConfigPanel({
   return (
     <div className="space-y-4">
       {/* Header with config toggle */}
-      <div className="flex items-center justify-between">
-        <h4 className="font-medium flex items-center gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h4 className="font-medium flex min-w-0 flex-wrap items-center gap-2">
           <Settings2 className="h-4 w-4" />
           Campos Personalizados
           {currentBoard && (
@@ -314,17 +314,30 @@ export function CustomFieldsConfigPanel({
             </Badge>
           )}
         </h4>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={openNewField}
-          className="gap-1"
-          disabled={!currentBoardId}
-          title={!currentBoardId ? 'Selecione um funil primeiro' : 'Adicionar novo campo personalizado'}
-        >
-          <Plus className="h-3.5 w-3.5" />
-          Novo campo
-        </Button>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button
+            variant="default"
+            size="sm"
+            onClick={() => setUnifiedOpen(true)}
+            className="gap-1"
+            disabled={!currentBoardId}
+            title={!currentBoardId ? 'Selecione um funil primeiro' : 'Mover, ocultar, reordenar e editar campos'}
+          >
+            <Wand2 className="h-3.5 w-3.5" />
+            Personalizar
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={openNewField}
+            className="gap-1"
+            disabled={!currentBoardId}
+            title={!currentBoardId ? 'Selecione um funil primeiro' : 'Adicionar novo campo personalizado'}
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Novo campo
+          </Button>
+        </div>
       </div>
       <p className="text-[11px] text-muted-foreground -mt-2">
         💡 Use <b>Personalizar campos</b> para mover campos entre abas, ocultar, reordenar e editar campos personalizados.
