@@ -197,6 +197,13 @@ export function OnboardingCheckpointHost({ selectedPhone }: Props = {}) {
     })();
   }, [currentStep?.id]);
 
+  // Pré-seleciona board atual no passo confirm_funnel
+  useEffect(() => {
+    if (currentStep?.step !== 'confirm_funnel') return;
+    const cur = currentStep.payload?.board_id || '';
+    if (cur && !selectedBoardId) setSelectedBoardId(cur);
+  }, [currentStep?.id]);
+
   const execute = async (extra: Record<string, unknown> = {}) => {
     if (!currentStep) return;
     setBusy(true);
