@@ -127,6 +127,7 @@ export function ZapSignDocumentDialog({
   const [nextLeadNumber, setNextLeadNumber] = useState<string | null>(null);
   const [lastLeadNumber, setLastLeadNumber] = useState<string | null>(null);
   const [showNumberConfirm, setShowNumberConfirm] = useState(false);
+  const [confirmStep, setConfirmStep] = useState<null | 'pre-create' | 'pre-send'>(null);
 
   // Funnel defaults (source of truth — configured in Onboarding > Grupo)
   const [funnelDefaults, setFunnelDefaults] = useState<{
