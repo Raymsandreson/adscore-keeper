@@ -2283,11 +2283,20 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         instanceName={conversation.instance_name || undefined}
         messages={conversation.messages.map(m => ({ direction: m.direction, message_text: m.message_text, media_url: m.media_url, media_type: m.media_type, created_at: (m as any).created_at || (m as any).timestamp }))}
         onSendMessage={async (msg) => {
+          const rawChatId =
+            conversation.messages.find((message) => typeof message.metadata?.chat?.wa_chatid === 'string')?.metadata?.chat?.wa_chatid ||
+            conversation.messages.find((message) => typeof message.metadata?.message?.chatid === 'string')?.metadata?.message?.chatid;
+          const conversationChatId = canonicalizeChatTarget(rawChatId);
           return await onSendMessage(
             conversation.phone, msg,
             conversation.contact_id || undefined,
             conversation.lead_id || undefined,
-            conversation.instance_name
+            conversation.instance_name,
+            identifySender,
+            conversationChatId,
+            nameFormat === 'nickname' ? null : (treatmentTitle || null),
+            nameFormat,
+            nameFormat === 'nickname' ? (selectedNickname || null) : null
           );
         }}
       />
