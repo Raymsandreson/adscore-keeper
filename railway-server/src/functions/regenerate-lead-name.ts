@@ -234,6 +234,8 @@ export const handler: RequestHandler = async (req, res) => {
       position,
       total_closed: total,
       phase,
+      enriched,
+      missing_fields: missingFields,
       group_renamed: groupRenamed,
       group_name: groupName,
     });
