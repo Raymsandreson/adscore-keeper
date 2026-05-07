@@ -14,6 +14,20 @@ import { useUserRole } from '@/hooks/useUserRole';
 import { toast } from 'sonner';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { traceHook } from '@/utils/hookTracer';
+import { requestWhatsAppReconnect } from '@/lib/whatsappReconnectEvent';
+
+const showDisconnectedToast = (instanceId: string | undefined, instanceName: string | undefined) => {
+  toast.error(
+    `Instância ${instanceName || ''} desconectada. Reconecte o WhatsApp para enviar.`.trim(),
+    {
+      duration: 10000,
+      action: {
+        label: 'Reconectar',
+        onClick: () => requestWhatsAppReconnect({ instanceId, instanceName }),
+      },
+    },
+  );
+};
 
 export interface WhatsAppMessage {
   id: string;
@@ -660,7 +674,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       if (!data?.success) {
         console.error(`[sendMessage ${debugId}] returning false — server reported failure`, data);
         if (data?.error_code === 'INSTANCE_DISCONNECTED') {
-          toast.error(`Instância ${data.instance_name || ''} desconectada. Reconecte o WhatsApp e tente novamente.`.trim());
+          showDisconnectedToast(targetInstanceId, data.instance_name);
           return false;
         }
         throw new Error(data?.error || 'Resposta inesperada do servidor');
@@ -743,7 +757,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       if (error) throw error;
       if (!data.success) {
         if (data.error_code === 'INSTANCE_DISCONNECTED') {
-          toast.error(`Instância ${data.instance_name || ''} desconectada. Reconecte o WhatsApp e tente novamente.`.trim());
+          showDisconnectedToast(targetInstanceId, data.instance_name);
           return false;
         }
         throw new Error(data.error);
@@ -808,7 +822,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       if (error) throw error;
       if (!data.success) {
         if (data.error_code === 'INSTANCE_DISCONNECTED') {
-          toast.error(`Instância ${data.instance_name || ''} desconectada. Reconecte o WhatsApp e tente novamente.`.trim());
+          showDisconnectedToast(targetInstanceId, data.instance_name);
           return false;
         }
         throw new Error(data.error);
