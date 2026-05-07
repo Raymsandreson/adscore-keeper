@@ -211,6 +211,8 @@ Deno.serve(async (req) => {
           signer_phone: signerPhoneForCreate || null,
           signer_status: signerForCreate?.status || null,
           signed_at: signerForCreate?.signed_at || (isDocFullySigned ? new Date().toISOString() : null),
+          template_id: docData.template_id || docData.template?.id || body.template_id || body.template?.id || body.original_id || null,
+          template_name: docData.template_name || docData.template?.name || body.template_name || body.template?.name || null,
           template_data: {
             source: 'zapsign_webhook_auto_upsert',
             open_id: body.open_id || null,
