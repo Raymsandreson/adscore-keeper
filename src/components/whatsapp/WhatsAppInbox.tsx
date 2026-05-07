@@ -6,7 +6,7 @@ import { WhatsAppConversationList } from './WhatsAppConversationList';
 import { WhatsAppChat } from './WhatsAppChat';
 import { ZapSignDialogHost } from './ZapSignDialogHost';
 import { OnboardingCheckpointHost } from './OnboardingCheckpointHost';
-import { hasOnboardingPending, getPendingLeadId, subscribeOnboardingPending } from '@/lib/onboardingGuard';
+import { hasOnboardingPending, getPendingLeadId } from '@/lib/onboardingGuard';
 import {
   AlertDialog,
   AlertDialogAction,
