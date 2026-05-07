@@ -156,14 +156,19 @@ export const handler: RequestHandler = async (req, res) => {
     parts.push(String(nextSeq).padStart(4, '0'));
 
     const leadFields: string[] = settings.lead_fields || ['lead_name'];
+    const missingFields: string[] = [];
     for (const field of leadFields) {
-      if (field === 'board_name' && boardName) {
-        parts.push(boardName);
+      if (field === 'board_name') {
+        if (boardName) parts.push(boardName);
+        else missingFields.push(field);
       } else if (lead[field]) {
         const val = field === 'lead_name'
           ? stripExistingSequence(String(lead[field]), activePrefix)
           : String(lead[field]);
         if (val) parts.push(val);
+        else missingFields.push(field);
+      } else {
+        missingFields.push(field);
       }
     }
 
@@ -179,6 +184,8 @@ export const handler: RequestHandler = async (req, res) => {
         position,
         total_closed: total,
         phase,
+        enriched,
+        missing_fields: missingFields,
       });
     }
 
