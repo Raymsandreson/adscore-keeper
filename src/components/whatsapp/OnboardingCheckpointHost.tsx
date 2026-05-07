@@ -44,7 +44,8 @@ interface Checkpoint {
   error_message: string | null;
 }
 
-const FN_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/onboarding-checkpoint-execute`;
+// Edge function vive no Supabase EXTERNO (kmedldlepwiityjsdahz), não no Cloud.
+const FN_URL = 'https://kmedldlepwiityjsdahz.supabase.co/functions/v1/onboarding-checkpoint-execute';
 
 export function OnboardingCheckpointHost() {
   const { user } = useAuth();
@@ -119,7 +120,8 @@ export function OnboardingCheckpointHost() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+          // Anon key do Externo (kmedldlepwiityjsdahz)
+          Authorization: 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImttZWRsZGxlcHdpaXR5anNkYWh6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTExOTAsImV4cCI6MjA5MDQ2NzE5MH0.s51bWtABFjJGfGyuPFWr5Tp8CzbxPD5eieFUqUVuQTs',
         },
         body: JSON.stringify({
           checkpoint_id: currentStep.id,
