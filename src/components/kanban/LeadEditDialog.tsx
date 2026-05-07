@@ -308,6 +308,7 @@ export function LeadEditDialog({
     [resolvedFieldLayout]
   );
   const managedLayoutTabKeys = useMemo(() => new Set(['basic', 'accident', 'location', 'companies', 'legal']), []);
+  const customLayoutTabs = useMemo(() => visibleLayoutTabs.filter(tab => tab.is_custom), [visibleLayoutTabs]);
   const isManagedLayoutTab = (tabKey: string) => managedLayoutTabKeys.has(tabKey);
   const isTabVisible = (tabKey: string) => !isManagedLayoutTab(tabKey) || !layoutBoardId || visibleTabKeys.size === 0 || visibleTabKeys.has(tabKey);
   const isFieldVisible = (fieldKey: string) => !layoutBoardId || visibleFieldKeys.size === 0 || visibleFieldKeys.has(fieldKey);
