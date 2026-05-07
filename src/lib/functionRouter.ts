@@ -20,7 +20,10 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
   'whatsapp-call-queue-processor': 'cloud',  // TODO: migrar para 'railway'
   'wjia-followup-processor': 'cloud',        // TODO: migrar para 'railway'
   'send-whatsapp': 'cloud',                  // TODO: migrar para 'railway'
-  
+
+  // --- Funções já portadas pro Railway ---
+  'onboarding-checkpoint-execute': 'railway',
+
   // --- Todas as demais ficam no Cloud por padrão ---
 };
 
