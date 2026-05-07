@@ -17,6 +17,11 @@ import { CheckCircle2, Circle, Loader2, AlertCircle } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from '@/hooks/use-toast';
 import { setOnboardingPending } from '@/lib/onboardingGuard';
+import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
+import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
+import { DashboardChatPreview } from '@/components/whatsapp/DashboardChatPreview';
+import { useLeads } from '@/hooks/useLeads';
+import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 
 const STEP_ORDER = [
   'setup_lead_close',
@@ -60,6 +65,28 @@ export function OnboardingCheckpointHost({ selectedPhone }: Props = {}) {
   const [leadId, setLeadId] = useState<string | null>(null);
   const [checkpoints, setCheckpoints] = useState<Checkpoint[]>([]);
   const [busy, setBusy] = useState(false);
+
+  // Painel lateral / drawer
+  const { updateLead } = useLeads();
+  const { boards } = useKanbanBoards();
+  const [leadSheetOpen, setLeadSheetOpen] = useState(false);
+  const [leadSheetData, setLeadSheetData] = useState<any>(null);
+  const [contactSheetOpen, setContactSheetOpen] = useState(false);
+  const [contactSheetData, setContactSheetData] = useState<any>(null);
+  const [groupDrawer, setGroupDrawer] = useState<{ jid: string; name: string; instance: string } | null>(null);
+
+  const openLeadById = async (id: string) => {
+    const dbAny = db as any;
+    const { data } = await dbAny.from('leads').select('*').eq('id', id).maybeSingle();
+    if (data) { setLeadSheetData(data); setLeadSheetOpen(true); }
+    else toast({ title: 'Lead não encontrado', variant: 'destructive' });
+  };
+  const openContactById = async (id: string) => {
+    const dbAny = db as any;
+    const { data } = await dbAny.from('contacts').select('*').eq('id', id).maybeSingle();
+    if (data) { setContactSheetData(data); setContactSheetOpen(true); }
+    else toast({ title: 'Contato não encontrado', variant: 'destructive' });
+  };
 
   // Form fields per-step
   const [msgText, setMsgText] = useState('');
@@ -266,6 +293,7 @@ export function OnboardingCheckpointHost({ selectedPhone }: Props = {}) {
   };
 
   return (
+    <>
     <Dialog open={open} onOpenChange={(o) => { if (!o && hasFailed) closeAll(); }}>
       <DialogContent
         className="w-[95vw] max-w-lg"
@@ -302,7 +330,18 @@ export function OnboardingCheckpointHost({ selectedPhone }: Props = {}) {
                     <div className="text-xs text-destructive mt-1">{c.error_message}</div>
                   )}
                   {c.status === 'done' && c.result && (
-                    <DoneResultSummary step={c.step} result={c.result} leadId={c.lead_id} />
+                    <DoneResultSummary
+                      step={c.step}
+                      result={c.result}
+                      leadId={c.lead_id}
+                      onOpenLead={(id) => openLeadById(id)}
+                      onOpenContact={(id) => openContactById(id)}
+                      onOpenGroup={(jid, name) => setGroupDrawer({
+                        jid,
+                        name,
+                        instance: (c.payload?.instance_name || '') as string,
+                      })}
+                    />
                   )}
                 </div>
                 <Badge variant={c.status === 'done' ? 'default' : 'outline'} className="text-[10px]">
@@ -403,10 +442,62 @@ export function OnboardingCheckpointHost({ selectedPhone }: Props = {}) {
         )}
       </DialogContent>
     </Dialog>
+
+    {/* Painel lateral: Lead */}
+    {leadSheetData && (
+      <LeadEditDialog
+        open={leadSheetOpen}
+        onOpenChange={(v) => { setLeadSheetOpen(v); if (!v) setLeadSheetData(null); }}
+        lead={leadSheetData}
+        onSave={async (id, updates) => { await updateLead(id, updates); }}
+        boards={boards}
+        mode="sheet"
+      />
+    )}
+
+    {/* Painel lateral: Contato */}
+    {contactSheetData && (
+      <ContactDetailSheet
+        open={contactSheetOpen}
+        onOpenChange={(v) => { setContactSheetOpen(v); if (!v) setContactSheetData(null); }}
+        contact={contactSheetData}
+        mode="sheet"
+      />
+    )}
+
+    {/* Drawer (de baixo pra cima): Conversa do grupo do WhatsApp */}
+    {groupDrawer && (
+      <DashboardChatPreview
+        open={!!groupDrawer}
+        onOpenChange={(v) => { if (!v) setGroupDrawer(null); }}
+        phone={groupDrawer.jid}
+        contactName={groupDrawer.name}
+        instanceName={groupDrawer.instance}
+        hasLead={true}
+        hasContact={false}
+        wasResponded={false}
+        responseTimeMinutes={null}
+      />
+    )}
+    </>
   );
 }
 
-function DoneResultSummary({ step, result, leadId }: { step: StepKey; result: any; leadId: string }) {
+function DoneResultSummary({
+  step,
+  result,
+  leadId,
+  onOpenLead,
+  onOpenContact,
+  onOpenGroup,
+}: {
+  step: StepKey;
+  result: any;
+  leadId: string;
+  onOpenLead?: (id: string) => void;
+  onOpenContact?: (id: string) => void;
+  onOpenGroup?: (jid: string, name: string) => void;
+}) {
   if (step === 'setup_lead_close') {
     return (
       <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
@@ -417,11 +508,16 @@ function DoneResultSummary({ step, result, leadId }: { step: StepKey; result: an
             {result.contact_reused && <span className="ml-1 italic">(existente)</span>}
           </div>
         )}
-        {result.contact_id && (
-          <a href={`/contacts?id=${result.contact_id}`} target="_blank" rel="noreferrer" className="text-primary underline">
-            Ver contato
-          </a>
-        )}
+        <div className="flex gap-2 pt-0.5">
+          <button type="button" onClick={() => onOpenLead?.(leadId)} className="text-primary underline">
+            Ver lead
+          </button>
+          {result.contact_id && (
+            <button type="button" onClick={() => onOpenContact?.(result.contact_id)} className="text-primary underline">
+              Ver contato
+            </button>
+          )}
+        </div>
       </div>
     );
   }
@@ -444,11 +540,22 @@ function DoneResultSummary({ step, result, leadId }: { step: StepKey; result: an
             </ul>
           </div>
         )}
-        <div className="flex gap-2 pt-0.5">
-          <a href={`/?leadId=${leadId}`} className="text-primary underline">Ver lead</a>
+        <div className="flex gap-2 pt-0.5 flex-wrap">
+          <button type="button" onClick={() => onOpenLead?.(leadId)} className="text-primary underline">
+            Ver lead
+          </button>
+          {result.group_jid && (
+            <button
+              type="button"
+              onClick={() => onOpenGroup?.(result.group_jid, result.group_name || 'Grupo')}
+              className="text-primary underline"
+            >
+              Abrir conversa do grupo
+            </button>
+          )}
           {result.group_link && (
             <a href={result.group_link} target="_blank" rel="noreferrer" className="text-primary underline">
-              Abrir grupo
+              Link do grupo
             </a>
           )}
         </div>
