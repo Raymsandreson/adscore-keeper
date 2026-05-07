@@ -375,6 +375,28 @@ export function OnboardingCheckpointHost({ selectedPhone }: Props = {}) {
           <div className="space-y-3 border-t pt-3">
             <div className="text-sm font-medium">{STEP_LABEL[currentStep.step]}</div>
 
+            {currentStep.step === 'confirm_funnel' && (
+              <div className="space-y-2">
+                <div className="text-xs text-muted-foreground">
+                  Lead: <b>{currentStep.payload?.lead_name}</b>
+                </div>
+                <Label className="text-xs">Funil (board) deste lead</Label>
+                <Select value={selectedBoardId} onValueChange={setSelectedBoardId}>
+                  <SelectTrigger><SelectValue placeholder="Escolha o funil correto" /></SelectTrigger>
+                  <SelectContent className="max-h-72">
+                    {boards.map((b: any) => (
+                      <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {selectedBoardId && currentStep.payload?.board_id && selectedBoardId !== currentStep.payload?.board_id && (
+                  <div className="text-[11px] text-amber-600">
+                    ⚠️ Lead será movido para outro funil. As próximas etapas usarão a configuração do novo funil (nome do grupo, mensagens, etc.).
+                  </div>
+                )}
+              </div>
+            )}
+
             {currentStep.step === 'send_initial_message' && (
               <Textarea
                 value={msgText}
