@@ -196,6 +196,33 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     }
   };
 
+  // Fetch ad origin (adset/campaign) for header display
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!conversation.lead_id) {
+        setAdOrigin(null);
+        return;
+      }
+      const { data } = await externalSupabase
+        .from('leads')
+        .select('adset_name, ad_name, campaign_name')
+        .eq('id', conversation.lead_id)
+        .maybeSingle();
+      if (cancelled) return;
+      if (data && (data.adset_name || data.ad_name || data.campaign_name)) {
+        setAdOrigin({
+          adset_name: (data as any).adset_name || null,
+          ad_name: (data as any).ad_name || null,
+          campaign_name: (data as any).campaign_name || null,
+        });
+      } else {
+        setAdOrigin(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [conversation.lead_id]);
+
   // Fetch agent state for this conversation
   useEffect(() => {
     const fetchAgentState = async () => {
