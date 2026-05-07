@@ -1,14 +1,18 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useRef } from 'react';
 import { useLeadSources } from '@/hooks/useLeadSources';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
-import { Sparkles, User, MapPin, Building, FileText, Briefcase, Settings2 } from 'lucide-react';
+import { Sparkles, User, MapPin, Building, FileText, Briefcase, Wand2, Check } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { useBrazilianLocations } from '@/hooks/useBrazilianLocations';
 import { useGeolocation } from '@/hooks/useGeolocation';
 import { toast } from 'sonner';
 import { LEAD_FIELD_REGISTRY, TAB_DEFS, type LeadFieldRenderCtx, type LeadFieldTab } from './leadFormFields';
-import { useLeadFieldLayout } from '@/hooks/useLeadFieldLayout';
-import { LeadFormLayoutEditor } from './LeadFormLayoutEditor';
+import { useLeadFieldLayout, type ResolvedField } from '@/hooks/useLeadFieldLayout';
+import { FieldCustomizeOverlay } from './FieldCustomizeOverlay';
+import { cn } from '@/lib/utils';
 import type { AccidentLeadFormData } from './leadFormTypes';
 
 export type { AccidentLeadFormData } from './leadFormTypes';
@@ -19,7 +23,6 @@ interface AccidentLeadFormProps {
   onOpenExtractor: () => void;
   teamMembers?: { id: string; full_name: string | null; email: string | null }[];
   classifications?: { id: string; name: string; color: string }[];
-  /** Funil corrente — habilita personalização de layout por funil */
   boardId?: string | null;
   boardName?: string;
 }
@@ -41,7 +44,11 @@ export function AccidentLeadForm({ formData, onChange, onOpenExtractor, teamMemb
   const { sources: leadSources } = useLeadSources();
   const { loading: geoLoading, fetchLocation } = useGeolocation();
   const { resolved, fieldsByTab, saveLayout } = useLeadFieldLayout(boardId);
-  const [layoutOpen, setLayoutOpen] = useState(false);
+  const [personalizeMode, setPersonalizeMode] = useState(false);
+  const [activeTab, setActiveTab] = useState<LeadFieldTab>('basic');
+  const [editingKey, setEditingKey] = useState<string | null>(null);
+  const [draggingKey, setDraggingKey] = useState<string | null>(null);
+  const tabSwitchTimer = useRef<number | null>(null);
 
   const handleAutoLocation = async () => {
     const loc = await fetchLocation();
@@ -103,6 +110,49 @@ export function AccidentLeadForm({ formData, onChange, onOpenExtractor, teamMemb
     return m;
   }, []);
 
+  // ===== Personalization handlers =====
+  const moveField = (key: string, targetTab: LeadFieldTab, targetOrder?: number) => {
+    if (!boardId) { toast.error('Selecione um funil'); return; }
+    const next: ResolvedField[] = resolved.map(f => ({ ...f }));
+    const moving = next.find(f => f.field_key === key);
+    if (!moving) return;
+    const oldTab = moving.tab;
+    moving.tab = targetTab;
+    moving.display_order = targetOrder ?? 9999;
+    // Renumber both tabs
+    const renum = (tab: LeadFieldTab) => {
+      next.filter(f => f.tab === tab).sort((a, b) => a.display_order - b.display_order)
+        .forEach((f, i) => { f.display_order = i + 1; });
+    };
+    renum(oldTab);
+    if (oldTab !== targetTab) renum(targetTab);
+    saveLayout(next);
+  };
+
+  const toggleHide = (key: string) => {
+    if (!boardId) return;
+    const next: ResolvedField[] = resolved.map(f =>
+      f.field_key === key ? { ...f, hidden: !f.hidden } : { ...f }
+    );
+    saveLayout(next);
+  };
+
+  const onTabDragOver = (tab: LeadFieldTab) => (e: React.DragEvent) => {
+    if (!personalizeMode || !draggingKey) return;
+    e.preventDefault();
+    if (activeTab !== tab) {
+      if (tabSwitchTimer.current) window.clearTimeout(tabSwitchTimer.current);
+      tabSwitchTimer.current = window.setTimeout(() => setActiveTab(tab), 250);
+    }
+  };
+
+  const onTabDrop = (tab: LeadFieldTab) => (e: React.DragEvent) => {
+    if (!personalizeMode || !draggingKey) return;
+    e.preventDefault();
+    moveField(draggingKey, tab);
+    setDraggingKey(null);
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row gap-2">
@@ -114,19 +164,40 @@ export function AccidentLeadForm({ formData, onChange, onOpenExtractor, teamMemb
           Extrair dados de notícia ou documento com IA
         </Button>
         {boardId && (
-          <Button type="button" variant="outline" onClick={() => setLayoutOpen(true)} className="gap-2" title="Personalizar layout">
-            <Settings2 className="h-4 w-4" />
-            Personalizar layout
+          <Button
+            type="button"
+            variant={personalizeMode ? 'default' : 'outline'}
+            onClick={() => setPersonalizeMode(p => !p)}
+            className="gap-2"
+            title="Personalizar campos deste funil"
+          >
+            {personalizeMode ? <Check className="h-4 w-4" /> : <Wand2 className="h-4 w-4" />}
+            {personalizeMode ? 'Concluir' : 'Personalizar'}
           </Button>
         )}
       </div>
 
-      <Tabs defaultValue="basic" className="w-full">
+      {personalizeMode && (
+        <div className="text-xs text-muted-foreground bg-primary/5 border border-primary/20 rounded-md px-3 py-2">
+          Modo personalização ativo · arraste pela <b>alça</b> para mover entre abas, clique no <b>olho</b> para ocultar deste funil ou no <b>lápis</b> para editar.
+        </div>
+      )}
+
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as LeadFieldTab)} className="w-full">
         <TabsList className="grid w-full grid-cols-5 h-auto">
           {TAB_DEFS.map(t => {
             const Icon = TAB_ICONS[t.key];
             return (
-              <TabsTrigger key={t.key} value={t.key} className="text-xs py-2">
+              <TabsTrigger
+                key={t.key}
+                value={t.key}
+                className={cn(
+                  'text-xs py-2',
+                  personalizeMode && draggingKey && 'ring-2 ring-primary/40 ring-offset-1'
+                )}
+                onDragOver={onTabDragOver(t.key)}
+                onDrop={onTabDrop(t.key)}
+              >
                 <Icon className="h-3 w-3 mr-1" />
                 {t.label}
               </TabsTrigger>
@@ -135,24 +206,62 @@ export function AccidentLeadForm({ formData, onChange, onOpenExtractor, teamMemb
         </TabsList>
 
         {TAB_DEFS.map(t => {
-          const items = fieldsByTab(t.key);
+          // In personalize mode, also show hidden fields (with reduced opacity)
+          const items = personalizeMode
+            ? resolved.filter(f => f.tab === t.key).sort((a, b) => a.display_order - b.display_order)
+            : fieldsByTab(t.key);
           return (
-            <TabsContent key={t.key} value={t.key} className="space-y-4 mt-4">
+            <TabsContent
+              key={t.key}
+              value={t.key}
+              className="space-y-4 mt-4"
+              onDragOver={(e) => personalizeMode && draggingKey && e.preventDefault()}
+              onDrop={(e) => { if (personalizeMode && draggingKey) { e.preventDefault(); moveField(draggingKey, t.key); setDraggingKey(null); } }}
+            >
               <div className="grid grid-cols-2 gap-4">
-                {items.map(f => {
+                {items.map((f, idx) => {
                   const def = registryByKey.get(f.field_key);
                   if (!def) return null;
                   const node = def.render(ctx);
-                  if (node === null) return null;
+                  if (node === null && !personalizeMode) return null;
+                  const content = node ?? (
+                    <div className="text-xs text-muted-foreground italic border border-dashed rounded p-2">
+                      {def.label} <span className="opacity-60">(condicional)</span>
+                    </div>
+                  );
+                  const wrapperClass = def.fullWidth ? 'col-span-2' : '';
+                  if (!personalizeMode) {
+                    return <div key={f.field_key} className={wrapperClass}>{content}</div>;
+                  }
                   return (
-                    <div key={f.field_key} className={def.fullWidth ? 'col-span-2' : ''}>
-                      {node}
+                    <div key={f.field_key} className={wrapperClass}>
+                      <FieldCustomizeOverlay
+                        fieldKey={f.field_key}
+                        hidden={f.hidden}
+                        isDragging={draggingKey === f.field_key}
+                        onEdit={() => setEditingKey(f.field_key)}
+                        onToggleHide={() => toggleHide(f.field_key)}
+                        onDragStart={(e) => {
+                          setDraggingKey(f.field_key);
+                          e.dataTransfer.effectAllowed = 'move';
+                          e.dataTransfer.setData('text/plain', f.field_key);
+                        }}
+                        onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
+                        onDrop={(e) => {
+                          e.preventDefault(); e.stopPropagation();
+                          if (!draggingKey || draggingKey === f.field_key) return;
+                          moveField(draggingKey, t.key, f.display_order);
+                          setDraggingKey(null);
+                        }}
+                      >
+                        {content}
+                      </FieldCustomizeOverlay>
                     </div>
                   );
                 })}
                 {items.length === 0 && (
                   <div className="col-span-2 text-center text-xs text-muted-foreground italic py-6">
-                    Nenhum campo nesta aba. Use "Personalizar layout" para adicionar.
+                    Nenhum campo nesta aba. {personalizeMode && 'Arraste um campo de outra aba para cá.'}
                   </div>
                 )}
               </div>
@@ -161,15 +270,62 @@ export function AccidentLeadForm({ formData, onChange, onOpenExtractor, teamMemb
         })}
       </Tabs>
 
-      {boardId && (
-        <LeadFormLayoutEditor
-          open={layoutOpen}
-          onOpenChange={setLayoutOpen}
-          resolved={resolved}
-          onSave={saveLayout}
-          boardName={boardName}
-        />
-      )}
+      {/* Edit dialog (light, info-only for fixed fields) */}
+      <Dialog open={!!editingKey} onOpenChange={(v) => !v && setEditingKey(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Editar campo</DialogTitle>
+          </DialogHeader>
+          {editingKey && (() => {
+            const def = registryByKey.get(editingKey);
+            const r = resolved.find(f => f.field_key === editingKey);
+            if (!def || !r) return null;
+            return (
+              <div className="space-y-3">
+                <div>
+                  <Label className="text-xs">Rótulo</Label>
+                  <Input value={def.label} disabled className="mt-1" />
+                  <p className="text-[10px] text-muted-foreground mt-1">Campo fixo do sistema — rótulo não editável.</p>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs">Aba</Label>
+                    <select
+                      className="mt-1 w-full h-9 text-sm border rounded-md px-2 bg-background"
+                      value={r.tab}
+                      onChange={(e) => moveField(editingKey, e.target.value as LeadFieldTab)}
+                    >
+                      {TAB_DEFS.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <Label className="text-xs">Ordem</Label>
+                    <Input
+                      type="number" min={1}
+                      value={r.display_order}
+                      onChange={(e) => {
+                        const v = parseInt(e.target.value || '1', 10);
+                        const next = resolved.map(f => f.field_key === editingKey ? { ...f, display_order: v } : { ...f });
+                        saveLayout(next);
+                      }}
+                      className="mt-1"
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center justify-between pt-2 border-t">
+                  <span className="text-xs text-muted-foreground">Visível neste funil</span>
+                  <Button size="sm" variant={r.hidden ? 'outline' : 'default'} onClick={() => toggleHide(editingKey)}>
+                    {r.hidden ? 'Ocultado' : 'Visível'}
+                  </Button>
+                </div>
+              </div>
+            );
+          })()}
+          <DialogFooter>
+            <Button onClick={() => setEditingKey(null)}>Fechar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
