@@ -153,19 +153,53 @@ export const handler: RequestHandler = async (req, res) => {
             .maybeSingle();
           if (leadErr || !leadRow) { errMsg = leadErr?.message || 'lead não encontrado'; break; }
 
-          // 2) Cria/atualiza contato do signatário (com nome do signer + telefone do lead)
+          // 2) Localiza contato existente — só cria se realmente não existir
           const signerName = (p.signer_name as string) || leadRow.lead_name || '';
           const phoneDigits = (leadRow.lead_phone || p.lead_phone || '').replace(/\D/g, '');
           let contactId: string | null = (p.contact_id as string) || null;
+          let contactReused = false;
+
+          // 2a) Por payload.contact_id (já vinculado no fluxo ZapSign)
+          if (contactId) contactReused = true;
+
+          // 2b) Por contact_leads (junção já existe pra esse lead)
+          if (!contactId) {
+            const { data: linked } = await ext
+              .from('contact_leads')
+              .select('contact_id')
+              .eq('lead_id', ckpt.lead_id)
+              .limit(1)
+              .maybeSingle();
+            if (linked?.contact_id) { contactId = linked.contact_id; contactReused = true; }
+          }
+
+          // 2c) Por contacts.lead_id direto
+          if (!contactId) {
+            const { data: direct } = await ext
+              .from('contacts')
+              .select('id')
+              .eq('lead_id', ckpt.lead_id)
+              .is('whatsapp_group_id', null)
+              .is('deleted_at', null)
+              .limit(1)
+              .maybeSingle();
+            if (direct?.id) { contactId = direct.id; contactReused = true; }
+          }
+
+          // 2d) Por telefone (qualquer contato, exceto contatos-de-grupo)
           if (!contactId && phoneDigits) {
-            const { data: existingContact } = await ext
+            const { data: byPhone } = await ext
               .from('contacts')
               .select('id')
               .eq('phone', phoneDigits)
               .is('whatsapp_group_id', null)
+              .is('deleted_at', null)
+              .limit(1)
               .maybeSingle();
-            contactId = existingContact?.id || null;
+            if (byPhone?.id) { contactId = byPhone.id; contactReused = true; }
           }
+
+          // 2e) Só cria se realmente não achou nada
           if (!contactId && signerName) {
             const { data: newC } = await ext
               .from('contacts')
@@ -180,10 +214,20 @@ export const handler: RequestHandler = async (req, res) => {
               .maybeSingle();
             contactId = newC?.id || null;
           } else if (contactId) {
-            await ext.from('contacts').update({
-              full_name: signerName || undefined,
-              lead_id: ckpt.lead_id,
-            }).eq('id', contactId);
+            // Atualiza apenas o que vale a pena (não sobrescreve nome existente sem necessidade)
+            const updates: Record<string, unknown> = {};
+            const { data: existing } = await ext
+              .from('contacts')
+              .select('full_name, lead_id')
+              .eq('id', contactId)
+              .maybeSingle();
+            if (signerName && (!existing?.full_name || existing.full_name.trim() === '')) {
+              updates.full_name = signerName;
+            }
+            if (!existing?.lead_id) updates.lead_id = ckpt.lead_id;
+            if (Object.keys(updates).length > 0) {
+              await ext.from('contacts').update(updates).eq('id', contactId);
+            }
           }
 
           // 3) Garante junction contact_leads
@@ -208,6 +252,7 @@ export const handler: RequestHandler = async (req, res) => {
             lead_id: ckpt.lead_id,
             lead_name: leadRow.lead_name,
             contact_id: contactId,
+            contact_reused: contactReused,
             signer_name: signerName,
             lead_status: 'closed',
           };
