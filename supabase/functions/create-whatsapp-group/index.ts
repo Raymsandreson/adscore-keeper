@@ -295,8 +295,8 @@ Deno.serve(async (req) => {
     }
 
     // DEDUP GUARD: If lead_id is provided, check if it already has a group.
-    // Skip when caller passes allow_rename so we can rename existing group.
-    if (lead_id && !body.allow_rename) {
+    // Skip when caller passes allow_rename or sync_participants so we can mutate existing group.
+    if (lead_id && !body.allow_rename && !body.sync_participants) {
       const { data: existingLead } = await supabase
         .from('leads')
         .select('whatsapp_group_id')
