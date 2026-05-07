@@ -638,6 +638,18 @@ Deno.serve(async (req) => {
               if (shouldPersistSequence && settings && nextSeq) {
                 await supabase.from('board_group_settings').update({ current_sequence: nextSeq }).eq('board_id', board_id)
               }
+              if (shouldPersistClosedSequence && settings && nextSeq) {
+                await supabase.from('board_group_settings').update({ closed_current_sequence: nextSeq }).eq('board_id', board_id)
+              }
+              // Bug 5: lead_name = nome do grupo
+              if (lead_id || leadData?.id) {
+                await supabase.from('leads').update({ lead_name: finalName }).eq('id', lead_id || leadData.id)
+              }
+              await supabase
+                .from('lead_whatsapp_groups')
+                .update({ group_name: finalName })
+                .eq('group_jid', leadData.whatsapp_group_id)
+                .catch(() => {})
             } else {
               console.warn(`[create-whatsapp-group] Rename failed (${renameRes.status})`)
             }
