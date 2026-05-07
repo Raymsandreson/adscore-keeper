@@ -329,7 +329,18 @@ export function OnboardingCheckpointHost({ selectedPhone }: Props = {}) {
                     <div className="text-xs text-destructive mt-1">{c.error_message}</div>
                   )}
                   {c.status === 'done' && c.result && (
-                    <DoneResultSummary step={c.step} result={c.result} leadId={c.lead_id} />
+                    <DoneResultSummary
+                      step={c.step}
+                      result={c.result}
+                      leadId={c.lead_id}
+                      onOpenLead={(id) => openLeadById(id)}
+                      onOpenContact={(id) => openContactById(id)}
+                      onOpenGroup={(jid, name) => setGroupDrawer({
+                        jid,
+                        name,
+                        instance: (c.payload?.instance_name || '') as string,
+                      })}
+                    />
                   )}
                 </div>
                 <Badge variant={c.status === 'done' ? 'default' : 'outline'} className="text-[10px]">
