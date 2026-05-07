@@ -651,6 +651,21 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
                 </div>
               )}
             </div>
+
+            <div className="flex items-start gap-2 p-2 rounded-md border bg-background">
+              <Checkbox
+                id="sync_lead_name_with_group"
+                checked={settings.sync_lead_name_with_group}
+                onCheckedChange={(checked) => setSettings(prev => ({ ...prev, sync_lead_name_with_group: !!checked }))}
+                className="mt-0.5"
+              />
+              <Label htmlFor="sync_lead_name_with_group" className="text-xs cursor-pointer flex-1">
+                <div className="font-medium">Sincronizar nome do lead com o nome do grupo</div>
+                <div className="text-[10px] text-muted-foreground mt-0.5">
+                  Quando ativo, ao criar/renomear o grupo o nome do lead será atualizado para ficar igual. Desligue para manter o nome do lead independente.
+                </div>
+              </Label>
+            </div>
           </div>
 
           {/* Initial Message Configuration */}
