@@ -123,6 +123,9 @@ export function ZapSignDocumentDialog({
   // Signers state
   const [signers, setSigners] = useState<SignerInfo[]>([]);
   const [messagePeriod, setMessagePeriod] = useState<string>('7d');
+  const [nextLeadNumber, setNextLeadNumber] = useState<string | null>(null);
+  const [lastLeadNumber, setLastLeadNumber] = useState<string | null>(null);
+  const [showNumberConfirm, setShowNumberConfirm] = useState(false);
 
   // Funnel defaults (source of truth — configured in Onboarding > Grupo)
   const [funnelDefaults, setFunnelDefaults] = useState<{
