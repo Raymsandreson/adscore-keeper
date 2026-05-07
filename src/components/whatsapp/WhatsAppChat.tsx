@@ -17,7 +17,6 @@ import { Send, User, Users, Link2, UserPlus, ExternalLink, Plus, Loader2, Phone,
 import { FastForward } from 'lucide-react';
 import { DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger } from '@/components/ui/dropdown-menu';
 import { useWhatsAppInternalNotes } from '@/hooks/useWhatsAppInternalNotes';
-import { ZapSignDocumentDialog } from './ZapSignDocumentDialog';
 import { openZapSignDialog } from '@/lib/zapsignDialogEvent';
 import { SessionFieldEditor } from './SessionFieldEditor';
 import { GroupMembersDialog } from './GroupMembersDialog';
