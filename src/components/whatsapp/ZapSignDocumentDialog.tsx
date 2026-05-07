@@ -189,7 +189,7 @@ export function ZapSignDocumentDialog({
   const fetchDbMessages = async () => {
     if (!phone) return;
     try {
-      const { data, error } = await supabase
+      const { data, error } = await externalSupabase
         .from('whatsapp_messages')
         .select('direction, message_text, media_url, media_type, message_type, created_at')
         .eq('phone', phone)
