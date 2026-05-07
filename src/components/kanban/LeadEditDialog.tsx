@@ -2374,16 +2374,16 @@ ${scrapeData.content || ''}
             <TabsContent value="accident" className="space-y-4 mt-0">
               {activeTab === 'accident' && (<>
               <div className="grid grid-cols-2 gap-4">
-                <div>
+                {isFieldVisible('victim_name') && (<div>
                   <Label>Nome da Vítima</Label>
                   <Input
                     value={victimName}
                     onChange={(e) => setVictimName(e.target.value)}
                     placeholder="Nome completo da vítima"
                   />
-                </div>
+                </div>)}
 
-                <div>
+                {isFieldVisible('victim_age') && (<div>
                   <Label>Idade da Vítima</Label>
                   <Input
                     type="number"
@@ -2391,18 +2391,18 @@ ${scrapeData.content || ''}
                     onChange={(e) => setVictimAge(e.target.value)}
                     placeholder="Idade"
                   />
-                </div>
+                </div>)}
 
-                <div>
+                {isFieldVisible('accident_date') && (<div>
                   <Label>Data do Acidente</Label>
                   <Input
                     type="date"
                     value={accidentDate}
                     onChange={(e) => setAccidentDate(e.target.value)}
                   />
-                </div>
+                </div>)}
 
-                <div>
+                {isFieldVisible('case_type') && (<div>
                   <Label>Tipo de Caso</Label>
                   <Select value={safeSelectValue(caseType)} onValueChange={setCaseType}>
                     <SelectTrigger>
@@ -2414,7 +2414,7 @@ ${scrapeData.content || ''}
                       ))}
                     </SelectContent>
                   </Select>
-                </div>
+                </div>)}
 
                 <div className="col-span-2">
                   <Label>Endereço do Acidente</Label>
