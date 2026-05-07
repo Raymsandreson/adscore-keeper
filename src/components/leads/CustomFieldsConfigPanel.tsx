@@ -315,13 +315,15 @@ export function CustomFieldsConfigPanel({
           )}
         </h4>
         <Button
-          variant={configMode ? 'default' : 'outline'}
+          variant="outline"
           size="sm"
-          onClick={() => setConfigMode(!configMode)}
+          onClick={() => currentBoardId ? setUnifiedOpen(true) : setConfigMode(!configMode)}
           className="gap-1"
+          disabled={!currentBoardId}
+          title={!currentBoardId ? 'Selecione um funil primeiro' : 'Personalizar campos e abas'}
         >
           <Settings2 className="h-3.5 w-3.5" />
-          {configMode ? 'Concluir' : 'Configurar'}
+          Configurar
         </Button>
       </div>
 
