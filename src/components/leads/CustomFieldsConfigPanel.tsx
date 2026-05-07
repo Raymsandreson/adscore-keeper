@@ -15,6 +15,7 @@ import { useFieldStageRequirements } from '@/hooks/useFieldStageRequirements';
 import { CustomFieldInput } from '@/components/leads/CustomFieldsForm';
 import { LeadFieldsUnifiedEditor } from '@/components/leads/LeadFieldsUnifiedEditor';
 import { toast } from 'sonner';
+import { useLeadTabLayout } from '@/hooks/useLeadTabLayout';
 
 const fieldTypeLabels: Record<FieldType, string> = {
   text: 'Texto',
@@ -31,6 +32,7 @@ interface CustomFieldsConfigPanelProps {
   adAccountId?: string;
   hideHeader?: boolean;
   hideEmptyStateButton?: boolean;
+  tabKey?: string;
 }
 
 export function CustomFieldsConfigPanel({
@@ -40,11 +42,14 @@ export function CustomFieldsConfigPanel({
   adAccountId,
   hideHeader = false,
   hideEmptyStateButton = false,
+  tabKey,
 }: CustomFieldsConfigPanelProps) {
   const { boards: hookBoards } = useKanbanBoards();
   const boards = externalBoards || hookBoards;
   const currentBoard = boards.find(b => b.id === currentBoardId);
   const { getStagesForField, setFieldStages, fetchRequirements } = useFieldStageRequirements(currentBoardId || undefined);
+  const { visibleTabs } = useLeadTabLayout(currentBoardId || undefined);
+  const visibleTabKeys = new Set(visibleTabs.map(tab => tab.key));
 
   // Stage requirements dialog
   const [stageReqDialogOpen, setStageReqDialogOpen] = useState(false);
@@ -113,9 +118,12 @@ export function CustomFieldsConfigPanel({
   };
 
   // Filter fields relevant to this lead's board
-  const relevantFields = customFields.filter(f =>
-    !f.board_id || f.board_id === currentBoardId
-  );
+  const relevantFields = customFields.filter(f => {
+    if (f.board_id && f.board_id !== currentBoardId) return false;
+    const fieldTab = ((f as any).tab as string) || 'basic';
+    if (tabKey && fieldTab !== tabKey) return false;
+    return visibleTabKeys.size === 0 || visibleTabKeys.has(fieldTab);
+  });
 
   const resetFieldForm = () => {
     setFieldName('');

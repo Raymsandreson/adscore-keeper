@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, lazy, Suspense } from 'react';
+import { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
 import { safeSelectValue } from '@/utils/selectValue';
 import { sendLeadConversionEvent } from '@/utils/metaConversionTracking';
 import { supabase } from '@/integrations/supabase/client';
@@ -54,7 +54,6 @@ import { useLeadCustomFields, FieldType, CustomFieldValue } from '@/hooks/useLea
 import { useContactClassifications } from '@/hooks/useContactClassifications';
 import { useProfileNames } from '@/hooks/useProfileNames';
 import { useBrazilianLocations } from '@/hooks/useBrazilianLocations';
-import { CustomFieldInput } from '@/components/leads/CustomFieldsForm';
 const CustomFieldsConfigPanel = lazy(() => import('@/components/leads/CustomFieldsConfigPanel').then(m => ({ default: m.CustomFieldsConfigPanel })));
 const LeadFieldsUnifiedEditor = lazy(() => import('@/components/leads/LeadFieldsUnifiedEditor').then(m => ({ default: m.LeadFieldsUnifiedEditor })));
 const LeadStageHistoryPanel = lazy(() => import('@/components/kanban/LeadStageHistoryPanel').then(m => ({ default: m.LeadStageHistoryPanel })));
@@ -115,6 +114,8 @@ import { Contact as ContactType } from '@/hooks/useContacts';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useLeadSources } from '@/hooks/useLeadSources';
+import { useLeadFieldLayout } from '@/hooks/useLeadFieldLayout';
+import { useLeadTabLayout } from '@/hooks/useLeadTabLayout';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { Pencil, Trash2, Search } from 'lucide-react';
@@ -267,12 +268,11 @@ export function LeadEditDialog({
   const [legalViability, setLegalViability] = useState('');
   
   // Custom fields
-  const { customFields, getFieldValues, saveAllFieldValues, loading: fieldsLoading } = useLeadCustomFields(adAccountId);
+  const { customFields, getFieldValues, saveAllFieldValues } = useLeadCustomFields(adAccountId);
   const { classifications, classificationConfig, addClassification } = useContactClassifications();
   const { fetchProfileNames, getDisplayName, loading: profilesLoading } = useProfileNames();
   const { states, cities, loadingCities, fetchCities } = useBrazilianLocations();
   const { fetchLeadInstances, createLeadInstances } = useChecklists();
-  const [fieldValues, setFieldValues] = useState<Record<string, CustomFieldValue>>({});
   const [localFieldValues, setLocalFieldValues] = useState<Record<string, { type: FieldType; value: string | number | boolean | null }>>({});
   const [saving, setSaving] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -297,6 +297,25 @@ export function LeadEditDialog({
   const [selectedBoardId, setSelectedBoardId] = useState('');
 
   const currentLead = lead;
+  const layoutBoardId = selectedBoardId || (currentLead as any)?.board_id || null;
+  const { resolved: resolvedFieldLayout } = useLeadFieldLayout(layoutBoardId);
+  const { visibleTabs: visibleLayoutTabs } = useLeadTabLayout(layoutBoardId);
+  const visibleTabKeys = useMemo(() => new Set(visibleLayoutTabs.map(tab => tab.key)), [visibleLayoutTabs]);
+  const visibleFieldKeys = useMemo(
+    () => new Set(resolvedFieldLayout.filter(field => !field.hidden).map(field => field.field_key)),
+    [resolvedFieldLayout]
+  );
+  const managedLayoutTabKeys = useMemo(() => new Set(['basic', 'accident', 'location', 'companies', 'legal']), []);
+  const customLayoutTabs = useMemo(() => visibleLayoutTabs.filter(tab => tab.is_custom), [visibleLayoutTabs]);
+  const isManagedLayoutTab = (tabKey: string) => managedLayoutTabKeys.has(tabKey);
+  const isTabVisible = (tabKey: string) => !isManagedLayoutTab(tabKey) || !layoutBoardId || visibleTabKeys.has(tabKey);
+  const isFieldVisible = (fieldKey: string) => !layoutBoardId || visibleFieldKeys.has(fieldKey);
+
+  useEffect(() => {
+    if (!isManagedLayoutTab(activeTab)) return;
+    if (isTabVisible(activeTab)) return;
+    setActiveTab(visibleLayoutTabs[0]?.key || 'contacts');
+  }, [activeTab, visibleLayoutTabs, visibleTabKeys, layoutBoardId]);
 
   // Track previous lead id to only reset tab on lead change, not hydration
   const prevLeadIdRef = useRef<string | null>(null);
@@ -422,7 +441,6 @@ export function LeadEditDialog({
   const loadCustomFieldValues = async (leadId: string) => {
     const values = leadFieldValuesCache.get(leadId) || await getFieldValues(leadId);
     leadFieldValuesCache.set(leadId, values);
-    setFieldValues(values);
     
     // Initialize local values from loaded values
     const initial: Record<string, { type: FieldType; value: string | number | boolean | null }> = {};
@@ -479,13 +497,6 @@ export function LeadEditDialog({
 
     leadGroupsCache.set(leadId, mappedGroups);
     setWhatsappGroups(mappedGroups);
-  };
-
-  const handleFieldChange = (fieldId: string, type: FieldType, value: string | number | boolean | null) => {
-    setLocalFieldValues(prev => ({
-      ...prev,
-      [fieldId]: { type, value },
-    }));
   };
 
   const handleAddClassification = async () => {
@@ -1354,10 +1365,12 @@ ${scrapeData.content || ''}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 min-h-0 flex flex-col">
           <div className="w-full flex-shrink-0">
             <TabsList className="flex flex-wrap h-auto gap-1 p-1 bg-muted">
-              <TabsTrigger value="basic" className="text-xs py-1.5 px-2.5">
-                <User className="h-3 w-3 mr-1" />
-                Básico
-              </TabsTrigger>
+              {isTabVisible('basic') && (
+                <TabsTrigger value="basic" className="text-xs py-1.5 px-2.5">
+                  <User className="h-3 w-3 mr-1" />
+                  Básico
+                </TabsTrigger>
+              )}
               <TabsTrigger value="contacts" className="text-xs py-1.5 px-2.5">
                 <Users className="h-3 w-3 mr-1" />
                 Contatos
@@ -1370,22 +1383,36 @@ ${scrapeData.content || ''}
                 <Calendar className="h-3 w-3 mr-1" />
                 Atividades
               </TabsTrigger>
-              <TabsTrigger value="accident" className="text-xs py-1.5 px-2.5">
-                <FileText className="h-3 w-3 mr-1" />
-                Acidente
-              </TabsTrigger>
-              <TabsTrigger value="location" className="text-xs py-1.5 px-2.5">
-                <MapPin className="h-3 w-3 mr-1" />
-                Local
-              </TabsTrigger>
-              <TabsTrigger value="companies" className="text-xs py-1.5 px-2.5">
-                <Building className="h-3 w-3 mr-1" />
-                Empresas
-              </TabsTrigger>
-              <TabsTrigger value="legal" className="text-xs py-1.5 px-2.5">
-                <Briefcase className="h-3 w-3 mr-1" />
-                Jurídico
-              </TabsTrigger>
+              {isTabVisible('accident') && (
+                <TabsTrigger value="accident" className="text-xs py-1.5 px-2.5">
+                  <FileText className="h-3 w-3 mr-1" />
+                  Acidente
+                </TabsTrigger>
+              )}
+              {isTabVisible('location') && (
+                <TabsTrigger value="location" className="text-xs py-1.5 px-2.5">
+                  <MapPin className="h-3 w-3 mr-1" />
+                  Local
+                </TabsTrigger>
+              )}
+              {isTabVisible('companies') && (
+                <TabsTrigger value="companies" className="text-xs py-1.5 px-2.5">
+                  <Building className="h-3 w-3 mr-1" />
+                  Empresas
+                </TabsTrigger>
+              )}
+              {isTabVisible('legal') && (
+                <TabsTrigger value="legal" className="text-xs py-1.5 px-2.5">
+                  <Briefcase className="h-3 w-3 mr-1" />
+                  Jurídico
+                </TabsTrigger>
+              )}
+              {customLayoutTabs.map((tab) => (
+                <TabsTrigger key={tab.key} value={tab.key} className="text-xs py-1.5 px-2.5">
+                  <FileText className="h-3 w-3 mr-1" />
+                  {tab.label}
+                </TabsTrigger>
+              ))}
               <TabsTrigger value="documents" className="text-xs py-1.5 px-2.5">
                 <FileText className="h-3 w-3 mr-1" />
                 Documentos
@@ -1471,14 +1498,16 @@ ${scrapeData.content || ''}
               })()}
 
               <div className="grid grid-cols-2 gap-4">
-                <div className="col-span-2">
-                  <Label>Nome do Lead *</Label>
-                  <Input
-                    value={leadName}
-                    onChange={(e) => setLeadName(e.target.value)}
-                    placeholder="Nome do lead"
-                  />
-                </div>
+                {isFieldVisible('lead_name') && (
+                  <div className="col-span-2">
+                    <Label>Nome do Lead *</Label>
+                    <Input
+                      value={leadName}
+                      onChange={(e) => setLeadName(e.target.value)}
+                      placeholder="Nome do lead"
+                    />
+                  </div>
+                )}
 
                 <div>
                   <Label className="flex items-center gap-1">
@@ -1504,7 +1533,7 @@ ${scrapeData.content || ''}
                   />
                 </div>
 
-                <div>
+                {isFieldVisible('source') && (<div>
                   <div className="flex items-center justify-between">
                     <Label>Origem</Label>
                     <Popover open={showSourceManager} onOpenChange={setShowSourceManager}>
@@ -1606,9 +1635,9 @@ ${scrapeData.content || ''}
                       )}
                     </div>
                   )}
-                </div>
+                </div>)}
 
-                <div>
+                {isFieldVisible('acolhedor') && (<div>
                   <Label>Acolhedor</Label>
                   <Select value={acolhedor || '__none__'} onValueChange={(v) => setAcolhedor(v === '__none__' ? '' : v)}>
                     <SelectTrigger>
@@ -1623,9 +1652,9 @@ ${scrapeData.content || ''}
                       ))}
                     </SelectContent>
                   </Select>
-                </div>
+                </div>)}
 
-                <div className="col-span-2">
+                {isFieldVisible('group_link') && (<div className="col-span-2">
                   <div className="flex items-center justify-between">
                     <Label>Grupos WhatsApp</Label>
                     <Button
@@ -1973,7 +2002,7 @@ ${scrapeData.content || ''}
                       <Plus className="h-3 w-3" /> Adicionar grupo
                     </Button>
                   </div>
-                </div>
+                </div>)}
 
                 <div>
                   <Label className="flex items-center gap-1">
@@ -1987,7 +2016,7 @@ ${scrapeData.content || ''}
                   />
                 </div>
 
-                <div className="space-y-2">
+                {isFieldVisible('client_classification') && (<div className="space-y-2">
                   <Label>Classificação</Label>
                   {!isAddingClassification ? (
                     <div className="flex gap-2">
@@ -2063,9 +2092,9 @@ ${scrapeData.content || ''}
                       </div>
                     </div>
                   )}
-                </div>
+                </div>)}
 
-                {clientClassification?.toLowerCase().includes('parto') && (
+                {isFieldVisible('expected_birth_date') && clientClassification?.toLowerCase().includes('parto') && (
                   <div>
                     <Label>Previsão do Parto</Label>
                     <Input
@@ -2212,7 +2241,7 @@ ${scrapeData.content || ''}
                   {/* Nº do Caso removido — gerenciado na aba Casos */}
                 </div>
 
-                <div className="col-span-2">
+                {isFieldVisible('news_link') && (<div className="col-span-2">
                   <LeadNewsLinksManager
                     newsLinks={newsLinks}
                     onChange={(links) => {
@@ -2252,9 +2281,9 @@ ${scrapeData.content || ''}
                       if (u.notes) setNotes(u.notes);
                     }}
                   />
-                </div>
+                </div>)}
 
-                <div className="col-span-2">
+                {isFieldVisible('notes') && (<div className="col-span-2">
                   <Label>Observações</Label>
                   <Textarea
                     value={notes}
@@ -2262,7 +2291,7 @@ ${scrapeData.content || ''}
                     placeholder="Notas sobre o lead..."
                     rows={2}
                   />
-                </div>
+                </div>)}
 
                 {boards.length > 0 && (
                   <div className="col-span-2">
@@ -2301,9 +2330,10 @@ ${scrapeData.content || ''}
                 <Suspense fallback={<div className="flex items-center justify-center p-8"><Loader2 className="h-5 w-5 animate-spin" /></div>}>
                   <CustomFieldsConfigPanel
                     leadId={lead.id}
-                    currentBoardId={lead.board_id || selectedBoardId || null}
+                    currentBoardId={layoutBoardId}
                     boards={boards}
                     adAccountId={adAccountId}
+                    tabKey="basic"
                     hideHeader
                     hideEmptyStateButton
                   />
@@ -2334,16 +2364,16 @@ ${scrapeData.content || ''}
             <TabsContent value="accident" className="space-y-4 mt-0">
               {activeTab === 'accident' && (<>
               <div className="grid grid-cols-2 gap-4">
-                <div>
+                {isFieldVisible('victim_name') && (<div>
                   <Label>Nome da Vítima</Label>
                   <Input
                     value={victimName}
                     onChange={(e) => setVictimName(e.target.value)}
                     placeholder="Nome completo da vítima"
                   />
-                </div>
+                </div>)}
 
-                <div>
+                {isFieldVisible('victim_age') && (<div>
                   <Label>Idade da Vítima</Label>
                   <Input
                     type="number"
@@ -2351,18 +2381,18 @@ ${scrapeData.content || ''}
                     onChange={(e) => setVictimAge(e.target.value)}
                     placeholder="Idade"
                   />
-                </div>
+                </div>)}
 
-                <div>
+                {isFieldVisible('accident_date') && (<div>
                   <Label>Data do Acidente</Label>
                   <Input
                     type="date"
                     value={accidentDate}
                     onChange={(e) => setAccidentDate(e.target.value)}
                   />
-                </div>
+                </div>)}
 
-                <div>
+                {isFieldVisible('case_type') && (<div>
                   <Label>Tipo de Caso</Label>
                   <Select value={safeSelectValue(caseType)} onValueChange={setCaseType}>
                     <SelectTrigger>
@@ -2374,18 +2404,18 @@ ${scrapeData.content || ''}
                       ))}
                     </SelectContent>
                   </Select>
-                </div>
+                </div>)}
 
-                <div className="col-span-2">
+                {isFieldVisible('accident_address') && (<div className="col-span-2">
                   <Label>Endereço do Acidente</Label>
                   <Input
                     value={accidentAddress}
                     onChange={(e) => setAccidentAddress(e.target.value)}
                     placeholder="Local onde ocorreu o acidente"
                   />
-                </div>
+                </div>)}
 
-                <div className="col-span-2">
+                {isFieldVisible('damage_description') && (<div className="col-span-2">
                   <Label>Descrição do Dano</Label>
                   <Textarea
                     value={damageDescription}
@@ -2393,8 +2423,17 @@ ${scrapeData.content || ''}
                     placeholder="Descreva as lesões ou danos sofridos..."
                     rows={3}
                   />
-                </div>
+                </div>)}
               </div>
+              <CustomFieldsConfigPanel
+                leadId={lead.id}
+                currentBoardId={layoutBoardId}
+                boards={boards}
+                adAccountId={adAccountId}
+                tabKey="accident"
+                hideHeader
+                hideEmptyStateButton
+              />
               </>)}
             </TabsContent>
 
@@ -2402,7 +2441,7 @@ ${scrapeData.content || ''}
             <TabsContent value="location" className="space-y-4 mt-0">
               {activeTab === 'location' && (<>
               <div className="grid grid-cols-2 gap-4">
-                <div>
+                {isFieldVisible('visit_state') && (<div>
                   <Label>Estado da Visita</Label>
                   <Select 
                     value={safeSelectValue(visitState)} 
@@ -2424,9 +2463,9 @@ ${scrapeData.content || ''}
                       ))}
                     </SelectContent>
                   </Select>
-                </div>
+                </div>)}
 
-                <div>
+                {isFieldVisible('visit_city') && (<div>
                   <Label>Cidade da Visita</Label>
                   <Select 
                     value={safeSelectValue(visitCity)} 
@@ -2451,9 +2490,9 @@ ${scrapeData.content || ''}
                       ))}
                     </SelectContent>
                   </Select>
-                </div>
+                </div>)}
 
-                <div>
+                {isFieldVisible('visit_region') && (<div>
                   <Label>Região da Visita</Label>
                   <Select value={safeSelectValue(visitRegion)} onValueChange={setVisitRegion}>
                     <SelectTrigger>
@@ -2465,17 +2504,26 @@ ${scrapeData.content || ''}
                       ))}
                     </SelectContent>
                   </Select>
-                </div>
+                </div>)}
 
-                <div className="col-span-2">
+                {isFieldVisible('visit_address') && (<div className="col-span-2">
                   <Label>Endereço da Visita</Label>
                   <Input
                     value={visitAddress}
                     onChange={(e) => setVisitAddress(e.target.value)}
                     placeholder="Endereço completo para visita"
                   />
-                </div>
+                </div>)}
               </div>
+              <CustomFieldsConfigPanel
+                leadId={lead.id}
+                currentBoardId={layoutBoardId}
+                boards={boards}
+                adAccountId={adAccountId}
+                tabKey="location"
+                hideHeader
+                hideEmptyStateButton
+              />
               </>)}
             </TabsContent>
 
@@ -2483,25 +2531,25 @@ ${scrapeData.content || ''}
             <TabsContent value="companies" className="space-y-4 mt-0">
               {activeTab === 'companies' && (<>
               <div className="grid grid-cols-2 gap-4">
-                <div>
+                {isFieldVisible('contractor_company') && (<div>
                   <Label>Empresa Terceirizada</Label>
                   <Input
                     value={contractorCompany}
                     onChange={(e) => setContractorCompany(e.target.value)}
                     placeholder="Nome da empresa terceirizada"
                   />
-                </div>
+                </div>)}
 
-                <div>
+                {isFieldVisible('main_company') && (<div>
                   <Label>Empresa Tomadora</Label>
                   <Input
                     value={mainCompany}
                     onChange={(e) => setMainCompany(e.target.value)}
                     placeholder="Nome da empresa tomadora"
                   />
-                </div>
+                </div>)}
 
-                <div>
+                {isFieldVisible('sector') && (<div>
                   <Label>Setor</Label>
                   <Select value={safeSelectValue(sector)} onValueChange={setSector}>
                     <SelectTrigger>
@@ -2513,9 +2561,9 @@ ${scrapeData.content || ''}
                       ))}
                     </SelectContent>
                   </Select>
-                </div>
+                </div>)}
 
-                <div className="col-span-2">
+                {isFieldVisible('company_size_justification') && (<div className="col-span-2">
                   <Label>Justificativa do Porte da Empresa</Label>
                   <Textarea
                     value={companySizeJustification}
@@ -2523,8 +2571,17 @@ ${scrapeData.content || ''}
                     placeholder="Justificativa sobre o porte da empresa..."
                     rows={2}
                   />
-                </div>
+                </div>)}
               </div>
+              <CustomFieldsConfigPanel
+                leadId={lead.id}
+                currentBoardId={layoutBoardId}
+                boards={boards}
+                adAccountId={adAccountId}
+                tabKey="companies"
+                hideHeader
+                hideEmptyStateButton
+              />
               </>)}
             </TabsContent>
 
@@ -2615,7 +2672,7 @@ ${scrapeData.content || ''}
               </div>
 
               <div className="grid grid-cols-2 gap-4">
-                <div>
+                {isFieldVisible('liability_type') && (<div>
                   <Label>Tipo de Responsabilidade</Label>
                   <Select value={safeSelectValue(liabilityType)} onValueChange={setLiabilityType}>
                     <SelectTrigger>
@@ -2627,9 +2684,9 @@ ${scrapeData.content || ''}
                       ))}
                     </SelectContent>
                   </Select>
-                </div>
+                </div>)}
 
-                <div>
+                {isFieldVisible('news_link') && (<div>
                   <Label>Link da Notícia</Label>
                   <p className="text-xs text-muted-foreground mt-1">
                     Gerencie os links na aba "Dados do Caso" acima
@@ -2641,9 +2698,9 @@ ${scrapeData.content || ''}
                       ))}
                     </div>
                   )}
-                </div>
+                </div>)}
 
-                <div className="col-span-2">
+                {isFieldVisible('legal_viability') && (<div className="col-span-2">
                   <Label>Viabilidade Jurídica</Label>
                   <Textarea
                     value={legalViability}
@@ -2651,10 +2708,35 @@ ${scrapeData.content || ''}
                     placeholder="Análise de viabilidade jurídica do caso..."
                     rows={5}
                   />
-                </div>
+                </div>)}
               </div>
+              <CustomFieldsConfigPanel
+                leadId={lead.id}
+                currentBoardId={layoutBoardId}
+                boards={boards}
+                adAccountId={adAccountId}
+                tabKey="legal"
+                hideHeader
+                hideEmptyStateButton
+              />
               </>)}
             </TabsContent>
+
+            {customLayoutTabs.map((tab) => (
+              <TabsContent key={tab.key} value={tab.key} className="space-y-4 mt-0">
+                {activeTab === tab.key && lead && (
+                  <CustomFieldsConfigPanel
+                    leadId={lead.id}
+                    currentBoardId={layoutBoardId}
+                    boards={boards}
+                    adAccountId={adAccountId}
+                    tabKey={tab.key}
+                    hideHeader
+                    hideEmptyStateButton
+                  />
+                )}
+              </TabsContent>
+            ))}
 
             {/* Funnel/Workflow Tab */}
             <TabsContent value="checklist" className="mt-0">
