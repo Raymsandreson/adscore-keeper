@@ -2349,15 +2349,6 @@ ${scrapeData.content || ''}
                   />
                 </Suspense>
               </div>
-              <CustomFieldsConfigPanel
-                leadId={lead.id}
-                currentBoardId={layoutBoardId}
-                boards={boards}
-                adAccountId={adAccountId}
-                tabKey="accident"
-                hideHeader
-                hideEmptyStateButton
-              />
               </>)}
             </TabsContent>
 
