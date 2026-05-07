@@ -309,12 +309,11 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
     'Benefício INSS', 'Inquérito Policial', 'Organizar docs', 'Onboarding',
   ];
 
-  // Mapping of process title → default assigned user for CASO-type cases
+  // Mapping of process title → default assigned user for CASO-type cases.
+  // 'Benefício INSS' intencionalmente fora: atribui ao próprio criador do caso (ver lógica abaixo).
   const CASO_PROCESS_ASSIGNMENTS: Record<string, { userId: string; userName: string }> = {
     'Seguro de Vida': { userId: '807018be-a633-4d2c-8f89-30d1399e4df7', userName: 'Natasha' },
-    'Benefício INSS': { userId: '4dba2de0-5357-49ab-8bf9-4c248a1440de', userName: 'Gisele' },
     'Inquérito Policial': { userId: '1f788b8d-e30e-484a-9460-39a881d25128', userName: 'Wanessa' },
-    // 'Organizar docs' removido: estava atribuindo a um ID órfão (Abderaman antigo). Atividades nascem sem responsável.
     'Onboarding': { userId: '1f788b8d-e30e-484a-9460-39a881d25128', userName: 'Wanessa' },
     'Indenização': { userId: '1f788b8d-e30e-484a-9460-39a881d25128', userName: 'Wanessa' },
     'Relatório de Acidente': { userId: '807018be-a633-4d2c-8f89-30d1399e4df7', userName: 'Natasha' },
@@ -405,11 +404,18 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
               created_by: user?.id,
             } as any).select('id').single();
 
-            // Auto-create activity for all cases with predefined assignments
-            if (CASO_PROCESS_ASSIGNMENTS[title]) {
-              const assignment = CASO_PROCESS_ASSIGNMENTS[title];
+            // Auto-create activity. INSS sempre vai pro criador do caso.
+            const isInss = title === 'Benefício INSS';
+            const assignment = isInss ? null : CASO_PROCESS_ASSIGNMENTS[title];
+            if (isInss || assignment) {
               try {
-                const extAssignedTo = await remapToExternal(assignment.userId);
+                let assignedCloudId: string | null | undefined = assignment?.userId ?? user?.id;
+                let assignedName: string | null | undefined = assignment?.userName ?? null;
+                if (isInss && user?.id) {
+                  const { data: prof } = await supabase.from('profiles').select('full_name').eq('user_id', user.id).maybeSingle();
+                  assignedName = prof?.full_name || null;
+                }
+                const extAssignedTo = await remapToExternal(assignedCloudId);
                 const extCreatedBy = await remapToExternal(user?.id);
                 await externalSupabase.from('lead_activities').insert({
                   lead_id: legalCase.lead_id,
@@ -419,7 +425,7 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
                   status: 'pendente',
                   priority: 'normal',
                   assigned_to: extAssignedTo,
-                  assigned_to_name: assignment.userName,
+                  assigned_to_name: assignedName,
                   created_by: extCreatedBy,
                   deadline: new Date().toISOString().slice(0, 10),
                   process_id: savedProcess?.id || null,
@@ -433,7 +439,7 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
           }
         }
         toast.success(`${selectedProcesses.size} processo(s) criado(s)`);
-        if (Array.from(selectedProcesses).some(t => CASO_PROCESS_ASSIGNMENTS[t])) {
+        if (Array.from(selectedProcesses).some(t => CASO_PROCESS_ASSIGNMENTS[t] || t === 'Benefício INSS')) {
           toast.success('Atividades atribuídas automaticamente');
         }
       }
