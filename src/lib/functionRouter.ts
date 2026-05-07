@@ -35,9 +35,16 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
 const CLOUD_URL = 'https://gliigkupoebmlbwyvijp.supabase.co';
 const CLOUD_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdsaWlna3Vwb2VibWxid3l2aWpwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYwMDAxNDcsImV4cCI6MjA4MTU3NjE0N30.HnhqYYFjW9DjFUsUkrZDuCShCOU2P73o_DqvkVyVr38';
 
-// Railway URL — será configurada quando o servidor estiver pronto
-// Formato: https://seu-app.up.railway.app
-const RAILWAY_URL = import.meta.env.VITE_RAILWAY_URL || '';
+// Railway URL — endpoint público, não é segredo
+// Variáveis VITE_* não são suportadas no Lovable (build-time), então hardcoded.
+const RAILWAY_URL =
+  import.meta.env.VITE_RAILWAY_URL ||
+  'https://adscore-keeper-production.up.railway.app';
+
+// API key opcional. Se RAILWAY_API_KEY estiver setada no Railway, o servidor exige
+// header x-api-key. Como expor a key no bundle frontend não traz proteção real
+// (qualquer usuário consegue lê-la), preferimos NÃO setar RAILWAY_API_KEY no
+// Railway — proteção real fica nos próprios handlers (validação de payload + JWT).
 const RAILWAY_API_KEY = import.meta.env.VITE_RAILWAY_API_KEY || '';
 
 // ============================================================
