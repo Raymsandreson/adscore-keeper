@@ -669,7 +669,9 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
       if (!data?.success) throw new Error(data?.error || 'Erro ao criar grupo');
 
       if (leadId && data.group_id) {
-        await (supabase as any).from('leads').update({ whatsapp_group_id: data.group_id }).eq('id', leadId);
+        const updates: any = { whatsapp_group_id: data.group_id };
+        if (customLeadName) updates.lead_name = customLeadName;
+        await (supabase as any).from('leads').update(updates).eq('id', leadId);
       }
       if (data.group_id) {
         const { data: contact } = await supabase.from('contacts').select('id').eq('phone', normalizedPhone).maybeSingle();
