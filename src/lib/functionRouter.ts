@@ -153,8 +153,18 @@ async function invokeFunction<T = any>(
   options?: { body?: any; authToken?: string; requestId?: string }
 ): Promise<{ data: T | null; error: Error | null }> {
   const body = options?.body;
-  const authToken = options?.authToken;
+  let authToken = options?.authToken;
   const requestId = options?.requestId || generateRequestId();
+
+  // Auto-injeta JWT da sessão Cloud se não foi passado explicitamente.
+  // Necessário para handlers do Railway que validam JWT (ex.: onboarding-checkpoint-execute).
+  if (!authToken) {
+    try {
+      const { authClient } = await import('@/integrations/supabase');
+      const { data: { session } } = await authClient.auth.getSession();
+      if (session?.access_token) authToken = session.access_token;
+    } catch {/* segue sem token — handler decide se aceita anônimo */}
+  }
 
   const target = getTarget(functionName);
   const primary = target === 'railway' ? callRailway : callCloud;
