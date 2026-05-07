@@ -33,7 +33,7 @@ async function callCloudFn(name: string, body: unknown) {
     },
     body: JSON.stringify(body),
   });
-  const data = await r.json().catch(() => ({} as any));
+  const data: any = await r.json().catch(() => ({}));
   return { ok: r.ok && (data?.success !== false), data };
 }
 
