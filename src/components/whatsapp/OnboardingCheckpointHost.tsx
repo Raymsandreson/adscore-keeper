@@ -570,9 +570,7 @@ function CreateGroupSummary({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [result?.group_jid, leadId]);
 
-  // Atalho universal pra abrir o app do WhatsApp no grupo (mesmo sem invite link)
-  const waJid = result?.group_jid ? String(result.group_jid).replace('@g.us', '') : '';
-  const waAppLink = waJid ? `https://wa.me/${waJid}` : '';
+  // Atalho universal pra abrir o app do WhatsApp no grupo (apenas via invite link)
   const displayName = groupName || 'Grupo';
 
   return (
@@ -607,11 +605,6 @@ function CreateGroupSummary({
         )}
         {groupLink && (
           <a href={groupLink} target="_blank" rel="noreferrer" className="text-primary underline">
-            Link de convite
-          </a>
-        )}
-        {waAppLink && (
-          <a href={waAppLink} target="_blank" rel="noreferrer" className="text-primary underline">
             Abrir no app do WhatsApp
           </a>
         )}
