@@ -5,6 +5,19 @@ import { useWhatsAppInstanceStatus } from '@/hooks/useWhatsAppInstanceStatus';
 import { WhatsAppConversationList } from './WhatsAppConversationList';
 import { WhatsAppChat } from './WhatsAppChat';
 import { ZapSignDialogHost } from './ZapSignDialogHost';
+import { OnboardingCheckpointHost } from './OnboardingCheckpointHost';
+import { hasOnboardingPending, getPendingLeadId, subscribeOnboardingPending } from '@/lib/onboardingGuard';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { db as externalDb } from '@/integrations/supabase';
 
 import { WhatsAppSetupGuide } from './WhatsAppSetupGuide';
 import { WhatsAppSettingsPage } from './WhatsAppSettingsPage';
