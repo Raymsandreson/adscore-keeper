@@ -641,8 +641,8 @@ Deno.serve(async (req) => {
               if (shouldPersistClosedSequence && settings && nextSeq) {
                 await supabase.from('board_group_settings').update({ closed_current_sequence: nextSeq }).eq('board_id', board_id)
               }
-              // Bug 5: lead_name = nome do grupo
-              if (lead_id || leadData?.id) {
+              // Bug 5: lead_name = nome do grupo (apenas se sync ativo)
+              if ((lead_id || leadData?.id) && settings?.sync_lead_name_with_group) {
                 await supabase.from('leads').update({ lead_name: finalName }).eq('id', lead_id || leadData.id)
               }
               await supabase
@@ -822,8 +822,8 @@ Deno.serve(async (req) => {
         console.error('Error updating closed sequence after group creation:', closedSeqError)
       }
     }
-    // Bug 5: lead_name passa a refletir o nome do grupo
-    if (lead_id && groupName) {
+    // Bug 5: lead_name passa a refletir o nome do grupo (apenas se sync ativo)
+    if (lead_id && groupName && settings?.sync_lead_name_with_group) {
       try { await supabase.from('leads').update({ lead_name: groupName }).eq('id', lead_id) } catch (_) { /* noop */ }
     }
 
