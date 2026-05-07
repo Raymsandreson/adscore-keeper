@@ -344,7 +344,7 @@ export function ZapSignDocumentDialog({
 
   // Signer management
   const addSigner = () => {
-    setSigners(prev => [...prev, { name: '', email: '', phone: '', role: 'witness', auth_mode: 'assinaturaTela' }]);
+    setSigners(prev => [...prev, { name: '', email: '', phone: '', role: 'witness', auth_mode: funnelDefaults.signer_auth_mode || 'assinaturaTela' }]);
   };
 
   const removeSigner = (index: number) => {
@@ -371,6 +371,8 @@ export function ZapSignDocumentDialog({
     setExtractingSigners(true);
 
     try {
+      const defaults = await fetchFunnelDefaults(selectedTemplate);
+      const configuredAuthMode = defaults?.signer_auth_mode || funnelDefaults.signer_auth_mode || 'assinaturaTela';
       const { data, error } = await cloudFunctions.invoke('zapsign-api', {
         body: {
           action: 'extract_signers',
@@ -387,7 +389,7 @@ export function ZapSignDocumentDialog({
           email: s.email || '',
           phone: s.phone || '',
           role: idx === 0 ? 'sign' : (s.role === 'witness' ? 'witness' : s.role || 'witness'),
-          auth_mode: 'assinaturaTela',
+          auth_mode: configuredAuthMode,
         }));
         // Merge: keep defaults for empty fields on main signer
         const defaultSigner = signers[0];
