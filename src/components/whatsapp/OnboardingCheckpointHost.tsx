@@ -454,6 +454,11 @@ export function OnboardingCheckpointHost({ selectedPhone }: Props = {}) {
               )}
             </div>
           </div>
+
+          {/* Sequência de fechados — determinística por confirmed_at */}
+          {leadId && (
+            <CloseSequencePanel leadId={leadId} onRefresh={refresh} />
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2 min-h-0">
@@ -492,7 +497,9 @@ export function OnboardingCheckpointHost({ selectedPhone }: Props = {}) {
                       onRefresh={refresh}
                     />
                   )}
-                  <RegenerateLeadNameButton leadId={c.lead_id} onRefresh={refresh} />
+                  {c.status === 'done' && (
+                    <ReprocessStepButton checkpointId={c.id} onRefresh={refresh} />
+                  )}
                 </div>
                 <Badge variant={c.status === 'done' ? 'default' : 'outline'} className="text-[10px] shrink-0">
                   {c.status}
@@ -882,34 +889,43 @@ function CreateGroupSummary({
   );
 }
 
-function RegenerateLeadNameButton({
-  leadId,
+function ReprocessStepButton({
+  checkpointId,
   onRefresh,
 }: {
-  leadId: string;
+  checkpointId: string;
   onRefresh?: () => void | Promise<void>;
 }) {
+  const { user } = useAuth();
   const [busy, setBusy] = useState(false);
   const handleClick = async () => {
     if (busy) return;
-    if (!confirm('Regerar o nome deste lead seguindo a configuração atual do funil? Será atribuída uma nova sequência.')) return;
+    if (!confirm('Reprocessar esta etapa? Ela será resetada e re-executada agora.')) return;
     setBusy(true);
     try {
-      const { data, error } = await cloudFunctions.invoke<any>('regenerate-lead-name', {
-        body: { lead_id: leadId },
-      });
-      if (error || data?.success === false) {
-        toast({
-          title: 'Não foi possível regerar',
-          description: data?.error || error?.message || 'Erro desconhecido',
-          variant: 'destructive',
-        });
+      // 1) reset
+      const { data: resetData } = await cloudFunctions.invoke<any>(
+        'onboarding-checkpoint-reprocess',
+        { body: { checkpoint_id: checkpointId } },
+      );
+      if (resetData?.success === false) {
+        toast({ title: 'Falhou ao resetar', description: resetData?.error, variant: 'destructive' });
         return;
       }
-      toast({
-        title: 'Nome regerado',
-        description: data?.lead_name + (data?.group_renamed ? ' (grupo também renomeado)' : ''),
-      });
+      // 2) re-executa
+      const { data: execData, error: execErr } = await cloudFunctions.invoke<any>(
+        'onboarding-checkpoint-execute',
+        { body: { checkpoint_id: checkpointId, user_id: user?.id } },
+      );
+      if (execErr || execData?.success === false) {
+        toast({
+          title: 'Falhou ao reprocessar',
+          description: execData?.error || execErr?.message || 'Erro',
+          variant: 'destructive',
+        });
+      } else {
+        toast({ title: 'Etapa reprocessada' });
+      }
       await onRefresh?.();
     } finally {
       setBusy(false);
@@ -920,9 +936,118 @@ function RegenerateLeadNameButton({
       type="button"
       onClick={handleClick}
       disabled={busy}
-      className="text-[11px] text-primary underline mt-1 disabled:opacity-50"
+      className="text-[11px] text-muted-foreground hover:text-primary underline mt-1 disabled:opacity-50"
     >
-      {busy ? 'Regerando…' : '🔄 Regerar nome do lead'}
+      {busy ? 'Reprocessando…' : '↻ Reprocessar etapa'}
     </button>
+  );
+}
+
+function CloseSequencePanel({
+  leadId,
+  onRefresh,
+}: {
+  leadId: string;
+  onRefresh?: () => void | Promise<void>;
+}) {
+  const [info, setInfo] = useState<{
+    position: number | null;
+    total_closed: number;
+    previous_closed: { lead_name: string; confirmed_at: string } | null;
+  } | null>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = async () => {
+    const { data: seq } = await cloudFunctions.invoke<any>('lead-close-sequence-info', {
+      body: { lead_id: leadId },
+    });
+    if (seq?.success) {
+      setInfo({
+        position: seq.position,
+        total_closed: seq.total_closed,
+        previous_closed: seq.previous_closed,
+      });
+    }
+    const { data: dry } = await cloudFunctions.invoke<any>('regenerate-lead-name', {
+      body: { lead_id: leadId, dry_run: true },
+    });
+    if (dry?.success) setPreview(dry.lead_name);
+  };
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leadId]);
+
+  const apply = async () => {
+    if (busy) return;
+    if (!confirm(`Aplicar este nome ao lead?\n\n${preview}`)) return;
+    setBusy(true);
+    try {
+      const { data, error } = await cloudFunctions.invoke<any>('regenerate-lead-name', {
+        body: { lead_id: leadId },
+      });
+      if (error || data?.success === false) {
+        toast({
+          title: 'Não foi possível aplicar',
+          description: data?.error || error?.message || 'Erro',
+          variant: 'destructive',
+        });
+        return;
+      }
+      toast({
+        title: 'Nome do lead atualizado',
+        description: data?.lead_name + (data?.group_renamed ? ' (grupo renomeado)' : ''),
+      });
+      await onRefresh?.();
+      await load();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!info) {
+    return (
+      <div className="mt-2 rounded-md border bg-muted/20 p-2 text-[11px] text-muted-foreground">
+        Carregando sequência…
+      </div>
+    );
+  }
+
+  const fmtDate = (iso: string) => {
+    try { return new Date(iso).toLocaleString('pt-BR'); } catch { return iso; }
+  };
+
+  return (
+    <div className="mt-2 rounded-md border bg-muted/20 p-2 space-y-1.5 text-[11px]">
+      <div className="font-medium text-foreground">📊 Sequência de fechados (este funil)</div>
+      <div>
+        Posição deste lead: <b>{info.position ?? '—'}</b> de <b>{info.total_closed}</b> fechados
+      </div>
+      {info.previous_closed ? (
+        <div className="text-muted-foreground">
+          Anterior: <span className="break-words">{info.previous_closed.lead_name}</span>
+          <br />
+          <span className="text-[10px]">fechado em {fmtDate(info.previous_closed.confirmed_at)}</span>
+        </div>
+      ) : (
+        <div className="text-muted-foreground italic">Nenhum lead fechado antes deste neste funil.</div>
+      )}
+      {preview && (
+        <div className="rounded border border-primary/30 bg-primary/5 p-1.5 mt-1">
+          <div className="text-[10px] uppercase text-muted-foreground">Nome calculado</div>
+          <div className="font-mono text-[11px] break-words">{preview}</div>
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={apply}
+        disabled={busy || !preview}
+        className="w-full mt-1 rounded bg-primary text-primary-foreground py-1 text-[11px] font-medium disabled:opacity-50"
+      >
+        {busy ? 'Aplicando…' : '🔄 Regerar nome deste lead'}
+      </button>
+    </div>
   );
 }
