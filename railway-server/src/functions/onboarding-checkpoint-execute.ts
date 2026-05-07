@@ -96,7 +96,7 @@ export const handler: RequestHandler = async (req, res) => {
     const authHeader = req.headers['authorization'] as string | undefined;
     const auth = await verifyCloudJwt(authHeader);
     logAuth(rid, 'pre', auth, { path: req.path, ip: req.ip });
-    if (!auth.ok) {
+    if (auth.ok !== true) {
       logAuth(rid, 'post', auth, { blocked: true });
       return res.status(401).json({ success: false, error: 'unauthorized', reason: auth.reason, rid });
     }
