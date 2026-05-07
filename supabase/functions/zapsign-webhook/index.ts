@@ -211,6 +211,8 @@ Deno.serve(async (req) => {
           signer_phone: signerPhoneForCreate || null,
           signer_status: signerForCreate?.status || null,
           signed_at: signerForCreate?.signed_at || (isDocFullySigned ? new Date().toISOString() : null),
+          template_id: docData.template_id || docData.template?.id || body.template_id || body.template?.id || body.original_id || null,
+          template_name: docData.template_name || docData.template?.name || body.template_name || body.template?.name || null,
           template_data: {
             source: 'zapsign_webhook_auto_upsert',
             open_id: body.open_id || null,
@@ -925,6 +927,23 @@ Deno.serve(async (req) => {
             if (funnelDefault?.board_id) {
               boardId = funnelDefault.board_id
               console.log(`[zapsign-webhook] Board resolved from funnel_zapsign_defaults (template ${localDoc.template_id}): ${boardId}`)
+            }
+          }
+
+          // 4a-ter. Fallback: match document_name against funnel_zapsign_defaults.document_name_patterns
+          // Used when ZapSign payload arrives without template_id (e.g. legacy/manual docs).
+          if (!boardId && localDoc.document_name) {
+            const { data: allDefaults } = await supabase
+              .from('funnel_zapsign_defaults')
+              .select('board_id, document_name_patterns')
+            const docNameUpper = String(localDoc.document_name).toUpperCase()
+            const match = (allDefaults || []).find((d: any) =>
+              Array.isArray(d.document_name_patterns) &&
+              d.document_name_patterns.some((p: string) => p && docNameUpper.includes(String(p).toUpperCase()))
+            )
+            if (match?.board_id) {
+              boardId = match.board_id
+              console.log(`[zapsign-webhook] Board resolved from document_name_patterns (doc ${localDoc.document_name}): ${boardId}`)
             }
           }
 
