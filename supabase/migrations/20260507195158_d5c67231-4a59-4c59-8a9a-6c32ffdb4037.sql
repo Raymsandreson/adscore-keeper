@@ -1,0 +1,1 @@
+ALTER TABLE public.lead_custom_fields ADD COLUMN IF NOT EXISTS tab text NOT NULL DEFAULT 'basic';

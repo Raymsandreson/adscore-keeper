@@ -4954,6 +4954,7 @@ export type Database = {
           field_type: string
           id: string
           is_required: boolean | null
+          tab: string
           updated_at: string
         }
         Insert: {
@@ -4966,6 +4967,7 @@ export type Database = {
           field_type?: string
           id?: string
           is_required?: boolean | null
+          tab?: string
           updated_at?: string
         }
         Update: {
@@ -4978,6 +4980,7 @@ export type Database = {
           field_type?: string
           id?: string
           is_required?: boolean | null
+          tab?: string
           updated_at?: string
         }
         Relationships: [
