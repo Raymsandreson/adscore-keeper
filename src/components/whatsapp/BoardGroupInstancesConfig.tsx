@@ -988,12 +988,6 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
             )}
           </div>
 
-          {/* Save Button */}
-          <Button size="sm" onClick={saveSettings} disabled={savingSettings} className="w-full h-8 text-xs">
-            {savingSettings ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
-            Salvar Todas as Configurações
-          </Button>
-
           {/* Instâncias — divididas em Antes / Depois / Ambos */}
           <InstanceParticipantsSection
             instances={instances}
@@ -1004,6 +998,12 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
             updateInstanceConfig={updateInstanceConfig}
             updateInstanceAppliesTo={updateInstanceAppliesTo}
           />
+
+          {/* Save Button — final */}
+          <Button size="sm" onClick={saveSettings} disabled={savingSettings} className="w-full h-9 text-xs sticky bottom-2 shadow-md">
+            {savingSettings ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
+            Salvar Todas as Configurações
+          </Button>
         </>
       )}
     </div>
@@ -1040,16 +1040,16 @@ function InstanceParticipantsSection({
     return false;
   };
 
-  const togglePhase = (instId: string, checked: boolean) => {
+  const togglePhase = async (instId: string, checked: boolean) => {
     const isLinked = linkedInstances.includes(instId);
     const current: AppliesTo = instanceConfigs[instId]?.applies_to || 'both';
 
     if (phase === 'both') {
       if (checked) {
-        if (!isLinked) toggleInstance(instId);
-        if (current !== 'both') updateInstanceAppliesTo(instId, 'both');
+        if (!isLinked) await toggleInstance(instId);
+        if (current !== 'both') await updateInstanceAppliesTo(instId, 'both');
       } else if (isLinked) {
-        toggleInstance(instId);
+        await toggleInstance(instId);
       }
       return;
     }
@@ -1059,18 +1059,18 @@ function InstanceParticipantsSection({
 
     if (checked) {
       if (!isLinked) {
-        toggleInstance(instId);
-        // toggleInstance insere com applies_to='both' por padrão; ajusta para a fase atual
-        setTimeout(() => updateInstanceAppliesTo(instId, phase), 0);
+        await toggleInstance(instId);
+        // toggleInstance insere com applies_to='both'; ajusta para a fase atual
+        await updateInstanceAppliesTo(instId, phase);
       } else {
-        updateInstanceAppliesTo(instId, wasInOther ? 'both' : phase);
+        await updateInstanceAppliesTo(instId, wasInOther ? 'both' : phase);
       }
     } else {
       if (!isLinked) return;
       if (current === 'both') {
-        updateInstanceAppliesTo(instId, otherPhase);
+        await updateInstanceAppliesTo(instId, otherPhase);
       } else if (current === phase) {
-        toggleInstance(instId);
+        await toggleInstance(instId);
       }
     }
   };
@@ -1127,7 +1127,14 @@ function InstanceParticipantsSection({
       {instances.length === 0 ? (
         <p className="text-xs text-muted-foreground">Nenhuma instância ativa encontrada.</p>
       ) : (
-        instances.map((inst) => {
+        [...instances]
+          .sort((a, b) => {
+            const aSel = isInPhase(a.id) ? 0 : linkedInstances.includes(a.id) ? 1 : 2;
+            const bSel = isInPhase(b.id) ? 0 : linkedInstances.includes(b.id) ? 1 : 2;
+            if (aSel !== bSel) return aSel - bSel;
+            return a.instance_name.localeCompare(b.instance_name);
+          })
+          .map((inst) => {
           const checked = isInPhase(inst.id);
           const isLinked = linkedInstances.includes(inst.id);
           const config: InstanceConfig =
