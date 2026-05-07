@@ -774,6 +774,7 @@ function CreateGroupSummary({
   const [groupName, setGroupName] = useState<string>(result?.group_name || '');
   const [groupLink, setGroupLink] = useState<string>(result?.group_link || '');
   const [renaming, setRenaming] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
   useEffect(() => {
     if (groupName && groupLink) return;
