@@ -1,317 +1,24 @@
-// Pós-assinatura ZapSign: cria grupo (com retry queue) + importa docs originais
-// (WhatsApp últimos 7d + extra_docs do envelope), classificando por IA.
+// Pós-assinatura ZapSign: REGISTRA 5 checkpoints como `pending` em
+// `onboarding_checkpoints` no Externo. NÃO executa nada automaticamente.
+// O frontend (modal bloqueante) é quem dispara cada passo após confirmação manual.
 //
-// Roda no Railway, depois do forward pro Cloud zapsign-webhook (que já cuida de
-// notificação, PDF assinado, enrich-lead, attachments).
-//
-// Tudo escreve no Supabase Externo. Sem novo código no Cloud.
+// Histórico: antes este arquivo criava grupo + importava docs em paralelo,
+// causando duplicações (3 grupos, contatos órfãos, casos com defaults silenciosos).
+// Migrado para fluxo de checkpoint manual em 2026-05-07.
 import { supabase } from '../lib/supabase';
-
-const ZAPSIGN_TOKEN = process.env.ZAPSIGN_API_TOKEN || '';
-const GOOGLE_AI_API_KEY = process.env.GOOGLE_AI_API_KEY || '';
-const CLOUD_FUNCTIONS_URL = process.env.CLOUD_FUNCTIONS_URL || 'https://gliigkupoebmlbwyvijp.supabase.co';
-const CLOUD_ANON_KEY = process.env.CLOUD_ANON_KEY || process.env.SUPABASE_ANON_KEY || '';
-
-const GEMINI_MODEL = 'gemini-2.5-flash-lite';
-const GEMINI_API = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
 interface PostSignInput {
   doc_token: string;
   lead_id?: string | null;
 }
 
-const DOC_TYPES = [
-  'RG',
-  'CPF',
-  'CNH',
-  'Comprovante de Residência',
-  'Procuração',
-  'Contrato Social',
-  'Carteira de Trabalho',
-  'Certidão de Nascimento',
-  'Certidão de Casamento',
-  'Laudo Médico',
-  'Outro',
+const STEPS = [
+  'create_group',          // 1. Criar grupo WhatsApp
+  'send_initial_message',  // 2. Enviar mensagem de boas-vindas
+  'import_docs',           // 3. Importar docs (WhatsApp 7d + ZapSign extras)
+  'create_case_process',   // 4. Criar Caso + Processo (pergunta tipo + honorários)
+  'create_onboarding_activity', // 5. Atividade ONBOARDING CLIENTE
 ] as const;
-
-async function fetchAsBase64(url: string): Promise<{ data: string; mimeType: string } | null> {
-  try {
-    const r = await fetch(url);
-    if (!r.ok) return null;
-    const mimeType = r.headers.get('content-type')?.split(';')[0]?.trim() || 'application/octet-stream';
-    const buf = Buffer.from(await r.arrayBuffer());
-    return { data: buf.toString('base64'), mimeType };
-  } catch {
-    return null;
-  }
-}
-
-async function classifyDocument(
-  fileUrl: string,
-  fileName: string,
-): Promise<{ type: string; title: string }> {
-  if (!GOOGLE_AI_API_KEY) {
-    console.warn('[post-sign-extras] GOOGLE_AI_API_KEY missing, cannot classify');
-    return { type: 'Outro', title: fileName };
-  }
-
-  const file = await fetchAsBase64(fileUrl);
-  if (!file) {
-    console.warn('[post-sign-extras] failed to fetch file for classification:', fileName);
-    return { type: 'Outro', title: fileName };
-  }
-
-  const prompt = `Você classifica documentos brasileiros enviados em processos jurídicos.
-Tipos permitidos: ${DOC_TYPES.join(', ')}.
-Nome do arquivo: "${fileName}".
-Responda EXCLUSIVAMENTE um JSON no formato:
-{"document_type":"<um dos tipos>","title":"<título descritivo curto, ex: RG do titular>"}`;
-
-  try {
-    const resp = await fetch(`${GEMINI_API}?key=${GOOGLE_AI_API_KEY}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [
-          {
-            role: 'user',
-            parts: [
-              { text: prompt },
-              { inlineData: { mimeType: file.mimeType, data: file.data } },
-            ],
-          },
-        ],
-        generationConfig: {
-          responseMimeType: 'application/json',
-          temperature: 0.1,
-        },
-      }),
-    });
-    if (!resp.ok) {
-      console.warn('[post-sign-extras] Gemini classify status', resp.status, await resp.text().catch(() => ''));
-      return { type: 'Outro', title: fileName };
-    }
-    const data: any = await resp.json();
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text) return { type: 'Outro', title: fileName };
-    const parsed = JSON.parse(text);
-    const type = (DOC_TYPES as readonly string[]).includes(parsed.document_type)
-      ? parsed.document_type
-      : 'Outro';
-    return { type, title: parsed.title || fileName };
-  } catch (e) {
-    console.warn('[post-sign-extras] classify error:', e);
-    return { type: 'Outro', title: fileName };
-  }
-}
-
-async function fetchExtraDocsFromZapSign(docToken: string): Promise<Array<{ url: string; name: string }>> {
-  if (!ZAPSIGN_TOKEN) return [];
-  try {
-    const resp = await fetch(`https://api.zapsign.com.br/api/v1/docs/${docToken}/`, {
-      headers: { Authorization: `Bearer ${ZAPSIGN_TOKEN}` },
-    });
-    if (!resp.ok) {
-      console.warn('[post-sign-extras] zapsign detail status', resp.status);
-      return [];
-    }
-    const data: any = await resp.json();
-    // ZapSign expõe extras em `extra_docs` (anexos extras do envelope) e `signers[].auth_extra_docs`.
-    const out: Array<{ url: string; name: string }> = [];
-    for (const d of data?.extra_docs || []) {
-      if (d?.original_file) {
-        out.push({ url: d.original_file, name: d.name || 'extra-doc.pdf' });
-      }
-    }
-    for (const s of data?.signers || []) {
-      for (const a of s?.auth_extra_docs || []) {
-        if (a?.url) out.push({ url: a.url, name: a.label || 'auth-doc' });
-      }
-    }
-    return out;
-  } catch (e) {
-    console.warn('[post-sign-extras] zapsign detail error:', e);
-    return [];
-  }
-}
-
-async function ensureGroup(params: {
-  lead_id: string;
-  lead_phone: string;
-  lead_name: string;
-  board_id: string | null;
-  instance_name: string | null;
-}): Promise<{ ok: boolean; group_jid?: string; error?: string }> {
-  // Já tem grupo? Não cria outro.
-  const { data: lead } = await supabase
-    .from('leads')
-    .select('whatsapp_group_id')
-    .eq('id', params.lead_id)
-    .maybeSingle();
-  if (lead?.whatsapp_group_id) {
-    return { ok: true, group_jid: lead.whatsapp_group_id };
-  }
-
-  // Resolve instance_id pelo instance_name
-  let creator_instance_id: string | null = null;
-  if (params.instance_name) {
-    const { data: inst } = await supabase
-      .from('whatsapp_instances')
-      .select('id')
-      .ilike('instance_name', params.instance_name)
-      .maybeSingle();
-    creator_instance_id = inst?.id || null;
-  }
-
-  // Tenta sincronamente via create-whatsapp-group (Cloud, política de nome já aplicada)
-  try {
-    const resp = await fetch(`${CLOUD_FUNCTIONS_URL}/functions/v1/create-whatsapp-group`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${CLOUD_ANON_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        lead_id: params.lead_id,
-        lead_name: params.lead_name,
-        phone: params.lead_phone,
-        contact_phone: params.lead_phone,
-        board_id: params.board_id,
-        creator_instance_id,
-        creation_origin: 'auto_post_sign',
-      }),
-    });
-    const data: any = await resp.json().catch(() => ({}));
-    if (data?.success && data?.group_id) {
-      await supabase
-        .from('leads')
-        .update({ whatsapp_group_id: data.group_id })
-        .eq('id', params.lead_id);
-      return { ok: true, group_jid: data.group_id };
-    }
-    throw new Error(data?.error || `create-whatsapp-group ${resp.status}`);
-  } catch (e: any) {
-    // Falhou: enfileira retry
-    const errMsg = e?.message || String(e);
-    console.warn('[post-sign-extras] group create failed, queuing retry:', errMsg);
-    await supabase.from('group_creation_queue').insert({
-      lead_id: params.lead_id,
-      lead_name: params.lead_name,
-      phone: params.lead_phone,
-      contact_phone: params.lead_phone,
-      board_id: params.board_id,
-      instance_name: params.instance_name,
-      creation_origin: 'auto_post_sign',
-      status: 'pending',
-      last_error: errMsg,
-    });
-    return { ok: false, error: errMsg };
-  }
-}
-
-async function importWhatsAppDocs(params: {
-  lead_id: string;
-  lead_name: string;
-  lead_phone: string;
-  signed_at: Date;
-}): Promise<number> {
-  const sevenDaysBefore = new Date(params.signed_at.getTime() - 7 * 24 * 60 * 60 * 1000);
-  const phoneNorm = params.lead_phone.replace(/\D/g, '');
-  const last10 = phoneNorm.slice(-10);
-
-  const { data: msgs } = await supabase
-    .from('whatsapp_messages')
-    .select('message_id, media_type, media_url, media_filename, created_at')
-    .ilike('phone', `%${last10}%`)
-    .in('media_type', ['document', 'image'])
-    .gte('created_at', sevenDaysBefore.toISOString())
-    .lte('created_at', params.signed_at.toISOString())
-    .not('media_url', 'is', null);
-
-  if (!msgs || msgs.length === 0) return 0;
-
-  // Chama import-group-docs-to-lead (Cloud) com classificação default; classifica depois.
-  // Para evitar recodificar todo o pipeline de mídia, delegamos ao import existente.
-  const docs = msgs.map((m: any) => ({
-    message_id: m.message_id,
-    document_type: 'Outro', // será reclassificado abaixo via update
-  }));
-
-  try {
-    const resp = await fetch(`${CLOUD_FUNCTIONS_URL}/functions/v1/import-group-docs-to-lead`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${CLOUD_ANON_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        lead_id: params.lead_id,
-        lead_name: params.lead_name,
-        documents: docs,
-      }),
-    });
-    if (!resp.ok) {
-      console.warn('[post-sign-extras] import-group-docs status', resp.status);
-      return 0;
-    }
-    const data: any = await resp.json().catch(() => ({}));
-    const imported: any[] = data?.imported || data?.documents || [];
-
-    // Reclassifica via IA (best effort)
-    for (const item of imported) {
-      const docId = item?.id || item?.document_id;
-      const url = item?.file_url || item?.url;
-      const name = item?.file_name || item?.name || 'doc';
-      if (!docId || !url) continue;
-      const cls = await classifyDocument(url, name);
-      await supabase
-        .from('process_documents')
-        .update({ document_type: cls.type, title: `Doc original (WhatsApp) - ${cls.title}` })
-        .eq('id', docId);
-    }
-
-    return imported.length;
-  } catch (e) {
-    console.warn('[post-sign-extras] import-group-docs error:', e);
-    return 0;
-  }
-}
-
-async function importZapSignExtraDocs(params: {
-  lead_id: string;
-  lead_name: string;
-  doc_token: string;
-  uploaded_by: string | null;
-  contact_id: string | null;
-}): Promise<number> {
-  const extras = await fetchExtraDocsFromZapSign(params.doc_token);
-  if (extras.length === 0) return 0;
-
-  let count = 0;
-  for (const x of extras) {
-    try {
-      const cls = await classifyDocument(x.url, x.name);
-      const { error } = await supabase.from('process_documents').insert({
-        lead_id: params.lead_id,
-        document_type: cls.type,
-        title: `Doc original (ZapSign) - ${cls.title}`,
-        source: 'zapsign_extra',
-        file_url: x.url,
-        original_url: x.url,
-        file_name: x.name,
-        uploaded_by: params.uploaded_by,
-        zapsign_document_id: params.doc_token,
-        document_date: new Date().toISOString().slice(0, 10),
-        metadata: { contact_id: params.contact_id },
-      });
-      if (!error) count++;
-      else console.warn('[post-sign-extras] insert extra-doc error:', error);
-    } catch (e) {
-      console.warn('[post-sign-extras] extra-doc loop error:', e);
-    }
-  }
-  return count;
-}
 
 export async function runPostSignExtras(input: PostSignInput): Promise<void> {
   const { doc_token } = input;
@@ -320,7 +27,6 @@ export async function runPostSignExtras(input: PostSignInput): Promise<void> {
     return;
   }
 
-  // Busca o documento no Externo
   const { data: doc, error: docErr } = await supabase
     .from('zapsign_documents')
     .select('id, lead_id, contact_id, instance_name, signed_at, signer_name, created_by, status')
@@ -349,38 +55,34 @@ export async function runPostSignExtras(input: PostSignInput): Promise<void> {
     return;
   }
 
-  const leadPhone = (lead.lead_phone || '').replace(/\D/g, '');
-
-  // 1. Cria grupo (idempotente; com retry queue)
-  if (leadPhone) {
-    const g = await ensureGroup({
-      lead_id: doc.lead_id,
-      lead_phone: leadPhone,
-      lead_name: lead.lead_name || doc.signer_name || 'Lead',
-      board_id: lead.board_id || null,
-      instance_name: doc.instance_name || null,
-    });
-    console.log('[post-sign-extras] group:', g);
-  }
-
-  // 2. Importa docs originais do WhatsApp (últimos 7d antes da assinatura)
-  if (leadPhone && doc.signed_at) {
-    const n = await importWhatsAppDocs({
-      lead_id: doc.lead_id,
-      lead_name: lead.lead_name || 'Lead',
-      lead_phone: leadPhone,
-      signed_at: new Date(doc.signed_at),
-    });
-    console.log('[post-sign-extras] whatsapp docs imported:', n);
-  }
-
-  // 3. Importa extras do envelope ZapSign
-  const n2 = await importZapSignExtraDocs({
-    lead_id: doc.lead_id,
-    lead_name: lead.lead_name || 'Lead',
+  const basePayload = {
     doc_token,
-    uploaded_by: doc.created_by || null,
-    contact_id: doc.contact_id || null,
-  });
-  console.log('[post-sign-extras] zapsign extras imported:', n2);
+    lead_name: lead.lead_name,
+    lead_phone: (lead.lead_phone || '').replace(/\D/g, ''),
+    board_id: lead.board_id,
+    instance_name: doc.instance_name,
+    signed_at: doc.signed_at,
+    signer_name: doc.signer_name,
+    contact_id: doc.contact_id,
+    created_by: doc.created_by,
+  };
+
+  // Idempotência: UNIQUE(lead_id, step) garante que múltiplos webhooks
+  // (signed_at + envelope + retry) não duplicam checkpoints.
+  for (const step of STEPS) {
+    const { error } = await supabase
+      .from('onboarding_checkpoints')
+      .upsert(
+        {
+          lead_id: doc.lead_id,
+          doc_token,
+          step,
+          status: 'pending',
+          payload: basePayload,
+        },
+        { onConflict: 'lead_id,step', ignoreDuplicates: true },
+      );
+    if (error) console.warn('[post-sign-extras] upsert checkpoint failed:', step, error.message);
+  }
+  console.log('[post-sign-extras] checkpoints registered for lead', doc.lead_id);
 }
