@@ -13,6 +13,7 @@ interface PostSignInput {
 }
 
 const STEPS = [
+  'confirm_funnel',        // 0. Confirmar/escolher funil (board) do lead antes de tudo
   'setup_lead_close',      // 1. Garantir lead/contato + marcar lead como fechado
   'create_group',          // 2. Criar grupo WhatsApp
   'send_initial_message',  // 3. Enviar mensagem de boas-vindas
