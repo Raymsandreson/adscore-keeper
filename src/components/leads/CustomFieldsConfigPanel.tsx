@@ -62,8 +62,7 @@ export function CustomFieldsConfigPanel({
   const [localFieldValues, setLocalFieldValues] = useState<Record<string, { type: FieldType; value: string | number | boolean | null }>>({});
   const [valuesLoaded, setValuesLoaded] = useState(false);
 
-  // Config mode
-  const [configMode, setConfigMode] = useState(false);
+  // Unified layout editor
   const [unifiedOpen, setUnifiedOpen] = useState(false);
 
   // Field creation/edit dialog
@@ -331,104 +330,7 @@ export function CustomFieldsConfigPanel({
         💡 Para mover campos entre abas, ocultar ou reordenar, use o botão <b>Personalizar</b> no topo do formulário.
       </p>
 
-      {/* Config Mode */}
-      {configMode && currentBoardId ? (
-        <LeadFieldsUnifiedEditor
-          open={true}
-          onOpenChange={(v) => { if (!v) setConfigMode(false); }}
-          boardId={currentBoardId}
-          boardName={currentBoard?.name}
-          adAccountId={adAccountId}
-          inline
-        />
-      ) : configMode ? (
-        <div className="space-y-1 border rounded-lg overflow-hidden">
-          {relevantFields.length === 0 ? (
-            <div className="p-6 text-center text-muted-foreground text-sm">
-              Nenhum campo personalizado criado
-            </div>
-          ) : (
-            relevantFields.map((field) => (
-              <div
-                key={field.id}
-                className="flex items-center justify-between px-4 py-3 border-b last:border-b-0 hover:bg-accent/30 transition-colors group"
-              >
-                <div className="flex items-center gap-3 flex-1 min-w-0">
-                  <GripVertical className="h-4 w-4 text-muted-foreground/50 flex-shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <span className="font-medium text-sm">{field.field_name}</span>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      {field.field_type === 'select' && field.field_options?.length > 0 && (
-                        <span className="text-xs text-muted-foreground">
-                          {field.field_options.length} variantes
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  {field.is_required && (
-                    <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
-                      Obrigatório {relevantFields.filter(f => f.is_required).length}
-                    </Badge>
-                  )}
-                  {field.board_id ? (
-                    <Badge variant="secondary" className="text-[10px]">
-                      {boards.find(b => b.id === field.board_id)?.name || 'Funil'}
-                    </Badge>
-                  ) : (
-                    <Badge variant="outline" className="text-[10px] text-muted-foreground">
-                      Global
-                    </Badge>
-                  )}
-                  {getStagesForField(field.id).length > 0 && (
-                    <Badge variant="default" className="text-[10px] gap-0.5">
-                      <ShieldCheck className="h-2.5 w-2.5" />
-                      {getStagesForField(field.id).length} fase(s)
-                    </Badge>
-                  )}
-                  {currentBoard && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
-                      onClick={() => openStageReqDialog(field)}
-                      title="Obrigatório por fase"
-                    >
-                      <ShieldCheck className="h-3.5 w-3.5" />
-                    </Button>
-                  )}
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
-                    onClick={() => openEditField(field)}
-                  >
-                    <Pencil className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity text-destructive"
-                    onClick={() => handleDeleteField(field)}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              </div>
-            ))
-          )}
-
-          {/* Add field button - Kommo style */}
-          <button
-            onClick={openNewField}
-            className="w-full flex items-center gap-2 px-4 py-3 text-sm text-muted-foreground hover:text-foreground hover:bg-accent/30 transition-colors border-t"
-          >
-            <Plus className="h-4 w-4" />
-            Adicionar campo
-          </button>
-        </div>
-      ) : (
+      {(
         /* Normal mode - show field values for filling */
         <>
           {fieldsLoading ? (
@@ -438,9 +340,9 @@ export function CustomFieldsConfigPanel({
           ) : relevantFields.length === 0 ? (
             <div className="text-center text-muted-foreground py-6 space-y-2">
               <p className="text-sm">Nenhum campo personalizado configurado</p>
-              <Button variant="outline" size="sm" onClick={() => setConfigMode(true)} className="gap-1">
+              <Button variant="outline" size="sm" onClick={() => setUnifiedOpen(true)} className="gap-1" disabled={!currentBoardId}>
                 <Plus className="h-3.5 w-3.5" />
-                Configurar campos
+                Personalizar campos
               </Button>
             </div>
           ) : (
