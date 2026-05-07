@@ -609,8 +609,16 @@ function DoneResultSummary({
       </div>
     );
   }
+  if (step === 'confirm_funnel') {
+    const name = result?.board_name || 'funil';
+    return (
+      <div className="text-xs text-muted-foreground mt-1 truncate">
+        Funil: <b>{name}</b>{result?.switched ? ' (alterado)' : ''}
+      </div>
+    );
+  }
   return (
-    <div className="text-xs text-muted-foreground mt-1 truncate">
+    <div className="text-xs text-muted-foreground mt-1 line-clamp-2 break-words">
       {typeof result === 'object' ? JSON.stringify(result) : String(result)}
     </div>
   );
