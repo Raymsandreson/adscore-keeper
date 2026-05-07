@@ -19,6 +19,7 @@ import { toast } from '@/hooks/use-toast';
 import { setOnboardingPending } from '@/lib/onboardingGuard';
 
 const STEP_ORDER = [
+  'setup_lead_close',
   'create_group',
   'send_initial_message',
   'import_docs',
@@ -29,11 +30,12 @@ const STEP_ORDER = [
 type StepKey = typeof STEP_ORDER[number];
 
 const STEP_LABEL: Record<StepKey, string> = {
-  create_group: '1. Criar grupo no WhatsApp',
-  send_initial_message: '2. Enviar mensagem inicial',
-  import_docs: '3. Importar documentos',
-  create_case_process: '4. Criar Caso + Processo',
-  create_onboarding_activity: '5. Atividade de Onboarding',
+  setup_lead_close: '1. Criar lead/contato e marcar como fechado',
+  create_group: '2. Criar grupo no WhatsApp',
+  send_initial_message: '3. Enviar mensagem inicial',
+  import_docs: '4. Importar documentos',
+  create_case_process: '5. Criar Caso + Processo',
+  create_onboarding_activity: '6. Atividade de Onboarding',
 };
 
 interface Checkpoint {
@@ -132,14 +134,37 @@ export function OnboardingCheckpointHost({ selectedPhone }: Props = {}) {
 
   const allDone = checkpoints.length > 0 && checkpoints.every((c) => c.status === 'done');
 
-  // Pré-preenche mensagem inicial
+  // Pré-preenche mensagem inicial usando o template do board_group_settings
   useEffect(() => {
-    if (currentStep?.step === 'send_initial_message' && !msgText) {
+    if (currentStep?.step !== 'send_initial_message' || msgText) return;
+    (async () => {
       const name = currentStep.payload?.lead_name || 'cliente';
-      setMsgText(
-        `Olá ${name}! 👋\nSeja bem-vindo(a). Recebemos sua assinatura e a partir de agora vamos cuidar do seu caso.`,
-      );
-    }
+      const boardId = currentStep.payload?.board_id;
+      const groupResult = checkpoints.find((c) => c.step === 'create_group')?.result || {};
+      const groupName = groupResult?.group_name || '';
+      let template = '';
+      if (boardId) {
+        const dbAny = db as any;
+        const { data } = await dbAny
+          .from('board_group_settings')
+          .select('initial_message_template')
+          .eq('board_id', boardId)
+          .maybeSingle();
+        template = data?.initial_message_template || '';
+      }
+      if (template) {
+        const filled = template
+          .replace(/\{lead_name\}/g, name)
+          .replace(/\{group_name\}/g, groupName)
+          .replace(/\{victim_name\}/g, currentStep.payload?.victim_name || '')
+          .replace(/\{case_type\}/g, currentStep.payload?.case_type || '');
+        setMsgText(filled);
+      } else {
+        setMsgText(
+          `Olá ${name}! 👋\nSeja bem-vindo(a). Recebemos sua assinatura e a partir de agora vamos cuidar do seu caso.`,
+        );
+      }
+    })();
   }, [currentStep?.id]);
 
   const execute = async (extra: Record<string, unknown> = {}) => {
@@ -174,6 +199,7 @@ export function OnboardingCheckpointHost({ selectedPhone }: Props = {}) {
   const handleConfirm = () => {
     if (!currentStep) return;
     switch (currentStep.step) {
+      case 'setup_lead_close':
       case 'create_group':
       case 'create_onboarding_activity':
         return execute();
@@ -276,9 +302,7 @@ export function OnboardingCheckpointHost({ selectedPhone }: Props = {}) {
                     <div className="text-xs text-destructive mt-1">{c.error_message}</div>
                   )}
                   {c.status === 'done' && c.result && (
-                    <div className="text-xs text-muted-foreground mt-1 truncate">
-                      {JSON.stringify(c.result)}
-                    </div>
+                    <DoneResultSummary step={c.step} result={c.result} leadId={c.lead_id} />
                   )}
                 </div>
                 <Badge variant={c.status === 'done' ? 'default' : 'outline'} className="text-[10px]">
@@ -327,6 +351,19 @@ export function OnboardingCheckpointHost({ selectedPhone }: Props = {}) {
               </div>
             )}
 
+            {currentStep.step === 'setup_lead_close' && (
+              <div className="text-xs text-muted-foreground space-y-1">
+                <div>Marca o lead como <b>fechado</b> e cria/atualiza o contato do signatário.</div>
+                <div>Lead: <b>{currentStep.payload?.lead_name}</b></div>
+                {currentStep.payload?.signer_name && (
+                  <div>Signatário: <b>{currentStep.payload?.signer_name}</b></div>
+                )}
+                {currentStep.payload?.lead_phone && (
+                  <div>Telefone: {currentStep.payload?.lead_phone}</div>
+                )}
+              </div>
+            )}
+
             {currentStep.step === 'create_group' && (
               <div className="text-xs text-muted-foreground">
                 Lead: <b>{currentStep.payload?.lead_name}</b> · {currentStep.payload?.lead_phone}
@@ -366,5 +403,63 @@ export function OnboardingCheckpointHost({ selectedPhone }: Props = {}) {
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+function DoneResultSummary({ step, result, leadId }: { step: StepKey; result: any; leadId: string }) {
+  if (step === 'setup_lead_close') {
+    return (
+      <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
+        <div>✅ Lead marcado como <b>fechado</b></div>
+        {result.signer_name && <div>Contato: <b>{result.signer_name}</b></div>}
+        {result.contact_id && (
+          <a href={`/contacts?id=${result.contact_id}`} target="_blank" rel="noreferrer" className="text-primary underline">
+            Ver contato
+          </a>
+        )}
+      </div>
+    );
+  }
+  if (step === 'create_group') {
+    const participants: Array<{ id: string; name: string; phone?: string }> = result.participants || [];
+    return (
+      <div className="text-xs text-muted-foreground mt-1 space-y-1">
+        {result.group_name && <div>📱 Grupo: <b>{result.group_name}</b></div>}
+        {result.group_jid && <div className="font-mono text-[10px] truncate">{result.group_jid}</div>}
+        {result.reused && <div className="italic">Reaproveitado de grupo existente</div>}
+        {participants.length > 0 && (
+          <div>
+            <div className="font-medium">Vinculados ao lead ({participants.length}):</div>
+            <ul className="list-disc list-inside max-h-24 overflow-auto">
+              {participants.map((p) => (
+                <li key={p.id} className="truncate">
+                  {p.name}{p.phone ? ` · ${p.phone}` : ''}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        <div className="flex gap-2 pt-0.5">
+          <a href={`/?leadId=${leadId}`} className="text-primary underline">Ver lead</a>
+          {result.group_link && (
+            <a href={result.group_link} target="_blank" rel="noreferrer" className="text-primary underline">
+              Abrir grupo
+            </a>
+          )}
+        </div>
+      </div>
+    );
+  }
+  if (step === 'create_case_process') {
+    return (
+      <div className="text-xs text-muted-foreground mt-1">
+        {result.case_number && <span>Caso <b>{result.case_number}</b></span>}
+      </div>
+    );
+  }
+  return (
+    <div className="text-xs text-muted-foreground mt-1 truncate">
+      {typeof result === 'object' ? JSON.stringify(result) : String(result)}
+    </div>
   );
 }
