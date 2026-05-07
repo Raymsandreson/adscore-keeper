@@ -845,13 +845,19 @@ export function WhatsAppInbox() {
               </SelectItem>
               {instances.map(inst => {
                 const status = statuses.find(s => s.id === inst.id);
-                const isConnected = status ? status.connected : true; // assume connected if not checked yet
+                const state: 'connected' | 'disconnected' | 'unknown' =
+                  status ? (status.connected ? 'connected' : 'disconnected') : 'unknown';
+                const dotClass =
+                  state === 'connected' ? 'bg-green-500' :
+                  state === 'disconnected' ? 'bg-destructive' :
+                  'bg-muted-foreground/40';
                 return (
                   <SelectItem key={inst.id} value={inst.id}>
                     <div className="flex items-center gap-2">
-                      <span className={`h-2 w-2 rounded-full flex-shrink-0 ${isConnected ? 'bg-green-500' : 'bg-destructive'}`} />
-                      <span className={!isConnected ? 'text-muted-foreground' : ''}>{inst.instance_name}</span>
-                      {!isConnected && <span className="text-[10px] text-destructive">offline</span>}
+                      <span className={`h-2 w-2 rounded-full flex-shrink-0 ${dotClass}`} />
+                      <span className={state === 'disconnected' ? 'text-muted-foreground' : ''}>{inst.instance_name}</span>
+                      {state === 'disconnected' && <span className="text-[10px] text-destructive">offline</span>}
+                      {state === 'unknown' && <span className="text-[10px] text-muted-foreground">verificando…</span>}
                     </div>
                   </SelectItem>
                 );
