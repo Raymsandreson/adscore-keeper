@@ -575,6 +575,12 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     nameFormatOverride?: string,
     nicknameOverride?: string | null
   ) => {
+    const debugId = Math.random().toString(36).slice(2, 8);
+    console.log(`[sendMessage ${debugId}] START`, {
+      phone, messageLength: message?.length, contactId, leadId,
+      conversationInstanceName, identifySender, chatId,
+      selectedInstanceId,
+    });
     try {
       let finalMessage = message;
       let targetInstanceId = selectedInstanceId && selectedInstanceId !== 'all' ? selectedInstanceId : undefined;
@@ -590,10 +596,18 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
 
       const [instanceResult, profileResult] = await Promise.all([instancePromise, profilePromise]);
 
+      console.log(`[sendMessage ${debugId}] instance lookup`, {
+        conversationInstanceName,
+        instanceData: instanceResult?.data,
+        instanceError: instanceResult?.error,
+        targetInstanceIdBefore: targetInstanceId,
+      });
+
       if (instanceResult?.data?.id) {
         targetInstanceId = instanceResult.data.id;
       }
       if (!targetInstanceId) {
+        console.error(`[sendMessage ${debugId}] ABORT: no instance identified`);
         toast.error('Erro: instância não identificada. Selecione uma instância antes de enviar.');
         return false;
       }
@@ -625,23 +639,31 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         }
       }
 
-      const { data, error } = await cloudFunctions.invoke('send-whatsapp', {
-        body: {
-          phone,
-          chat_id: chatId,
-          message: finalMessage,
-          contact_id: contactId,
-          lead_id: leadId,
-          instance_id: targetInstanceId,
-        },
+      const invokePayload = {
+        phone,
+        chat_id: chatId,
+        message: finalMessage,
+        contact_id: contactId,
+        lead_id: leadId,
+        instance_id: targetInstanceId,
+      };
+      console.log(`[sendMessage ${debugId}] invoking send-whatsapp`, {
+        ...invokePayload,
+        message: `<${finalMessage?.length} chars>`,
       });
+
+      const { data, error } = await cloudFunctions.invoke('send-whatsapp', { body: invokePayload });
+
+      console.log(`[sendMessage ${debugId}] response`, { data, error });
+
       if (error) throw error;
-      if (!data.success) {
-        if (data.error_code === 'INSTANCE_DISCONNECTED') {
+      if (!data?.success) {
+        console.error(`[sendMessage ${debugId}] returning false — server reported failure`, data);
+        if (data?.error_code === 'INSTANCE_DISCONNECTED') {
           toast.error(`Instância ${data.instance_name || ''} desconectada. Reconecte o WhatsApp e tente novamente.`.trim());
           return false;
         }
-        throw new Error(data.error);
+        throw new Error(data?.error || 'Resposta inesperada do servidor');
       }
       toast.success('Mensagem enviada!');
 
@@ -673,9 +695,10 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
           : c
       ));
 
+      console.log(`[sendMessage ${debugId}] SUCCESS`);
       return true;
     } catch (error: any) {
-      console.error('Error sending message:', error);
+      console.error(`[sendMessage ${debugId}] EXCEPTION`, error);
       toast.error('Erro ao enviar mensagem: ' + (error.message || 'Erro desconhecido'));
       return false;
     }

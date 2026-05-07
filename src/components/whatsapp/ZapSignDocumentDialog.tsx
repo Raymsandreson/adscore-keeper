@@ -578,7 +578,15 @@ export function ZapSignDocumentDialog({
   };
 
   const handleSendSigningLink = async () => {
-    if (!pendingSignUrl || !onSendMessage) return;
+    console.log('[ZapSignDialog] handleSendSigningLink', {
+      hasPendingUrl: !!pendingSignUrl,
+      hasOnSendMessage: !!onSendMessage,
+      pendingSignUrl,
+    });
+    if (!pendingSignUrl || !onSendMessage) {
+      console.warn('[ZapSignDialog] aborted: missing url or sender');
+      return;
+    }
     setSendingLink(true);
     try {
       const { template, signerName, emptyFieldsList } = pendingDocData || {};
@@ -588,7 +596,9 @@ export function ZapSignDocumentDialog({
 
       const message = `📝 *Documento para assinatura*\n\nOlá ${signerName}! Segue o link para assinar o documento *${template?.name || 'Documento'}*:\n\n👉 ${pendingSignUrl}${missingList}\n\n*Instruções:*\n1. Clique no link acima\n2. ${emptyFieldsList?.length > 0 ? 'Preencha os campos indicados' : 'Confira seus dados'}\n3. Assine digitalmente no local indicado\n4. Pronto! Você receberá uma cópia por email.\n\nQualquer dúvida, estou à disposição! 🙏`;
 
+      console.log('[ZapSignDialog] calling onSendMessage', { messageLength: message.length });
       const sent = await onSendMessage(message);
+      console.log('[ZapSignDialog] onSendMessage returned', { sent });
       if (sent) {
         toast.success('Link de assinatura enviado pelo WhatsApp!');
         onOpenChange(false);
@@ -596,6 +606,7 @@ export function ZapSignDocumentDialog({
         toast.error('Não foi possível enviar a mensagem.');
       }
     } catch (err: any) {
+      console.error('[ZapSignDialog] handleSendSigningLink exception', err);
       toast.error('Erro ao enviar: ' + err.message);
     } finally {
       setSendingLink(false);
