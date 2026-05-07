@@ -361,10 +361,12 @@ export function CustomFieldsConfigPanel({
           ) : relevantFields.length === 0 ? (
             <div className="text-center text-muted-foreground py-6 space-y-2">
               <p className="text-sm">Nenhum campo personalizado configurado</p>
-              <Button variant="outline" size="sm" onClick={() => setUnifiedOpen(true)} className="gap-1" disabled={!currentBoardId}>
-                <Plus className="h-3.5 w-3.5" />
-                Personalizar campos
-              </Button>
+              {!hideEmptyStateButton && (
+                <Button variant="outline" size="sm" onClick={() => setUnifiedOpen(true)} className="gap-1" disabled={!currentBoardId}>
+                  <Plus className="h-3.5 w-3.5" />
+                  Personalizar campos
+                </Button>
+              )}
             </div>
           ) : (
             <div className="space-y-3">
