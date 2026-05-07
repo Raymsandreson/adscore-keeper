@@ -2713,20 +2713,6 @@ ${scrapeData.content || ''}
               )}
             </TabsContent>
 
-            {/* Configurações Tab */}
-            <TabsContent value="config" className="mt-0">
-              {activeTab === 'config' && (
-                <Suspense fallback={<div className="flex items-center justify-center p-8"><Loader2 className="h-5 w-5 animate-spin" /></div>}>
-                  <CustomFieldsConfigPanel
-                    leadId={lead.id}
-                    currentBoardId={lead.board_id || selectedBoardId || null}
-                    boards={boards}
-                    adAccountId={adAccountId}
-                  />
-                </Suspense>
-              )}
-            </TabsContent>
-
             {/* Chat IA Tab */}
             <TabsContent value="ai_chat" className="mt-0" style={{ height: 'calc(90vh - 320px)', minHeight: '300px' }}>
               {activeTab === 'ai_chat' && (
