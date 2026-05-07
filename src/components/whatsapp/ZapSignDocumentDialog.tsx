@@ -1107,6 +1107,82 @@ export function ZapSignDocumentDialog({
           )}
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={confirmStep !== null} onOpenChange={(o) => { if (!o) setConfirmStep(null); }}>
+        <AlertDialogContent>
+          {confirmStep === 'pre-create' && (() => {
+            const mainSigner = signers[0];
+            const effectiveAuth = mainSigner?.auth_mode || funnelDefaults.signer_auth_mode;
+            const authMatches = effectiveAuth === funnelDefaults.signer_auth_mode;
+            return (
+              <>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Confirmar geração do documento</AlertDialogTitle>
+                  <AlertDialogDescription asChild>
+                    <div className="space-y-3 text-sm pt-2">
+                      <div className="space-y-1">
+                        <div className="text-xs font-semibold text-muted-foreground uppercase">Lead / Caso</div>
+                        {nextLeadNumber && <div>➡️ Próximo: <span className="font-mono font-medium">{nextLeadNumber}</span></div>}
+                        {lastLeadNumber && <div>📌 Último fechado: <span className="font-mono">{lastLeadNumber}</span></div>}
+                      </div>
+                      <div className="space-y-1">
+                        <div className="text-xs font-semibold text-muted-foreground uppercase">Signatário principal</div>
+                        <div>👤 {mainSigner?.name || '—'}</div>
+                        <div className="text-xs text-muted-foreground">📱 {mainSigner?.phone || phone || '—'} {mainSigner?.email && `· ✉️ ${mainSigner.email}`}</div>
+                        {signers.length > 1 && <div className="text-xs">+ {signers.length - 1} testemunha(s)/co-signatário(s)</div>}
+                      </div>
+                      <div className="space-y-1">
+                        <div className="text-xs font-semibold text-muted-foreground uppercase">Modo de assinatura</div>
+                        <div>{authModeLabels[effectiveAuth] || effectiveAuth}</div>
+                        {!authMatches && (
+                          <div className="text-xs text-amber-600 bg-amber-50 dark:bg-amber-950/30 p-2 rounded">
+                            ⚠️ Modo dos signatários ({authModeLabels[effectiveAuth] || effectiveAuth}) difere do configurado no funil ({authModeLabels[funnelDefaults.signer_auth_mode] || funnelDefaults.signer_auth_mode}).
+                          </div>
+                        )}
+                      </div>
+                      <div className="text-xs text-muted-foreground border-t pt-2">
+                        Ao confirmar, o documento será criado no ZapSign. O link só será enviado depois de você revisar o PDF.
+                      </div>
+                    </div>
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel onClick={() => setConfirmStep(null)}>Cancelar</AlertDialogCancel>
+                  <Button variant="outline" onClick={() => { setConfirmStep(null); setStep('signers'); }}>Editar signatários</Button>
+                  <AlertDialogAction onClick={() => { setConfirmStep(null); handleCreateDocument(true); }}>Confirmar e gerar</AlertDialogAction>
+                </AlertDialogFooter>
+              </>
+            );
+          })()}
+          {confirmStep === 'pre-send' && (() => {
+            const { signerName } = pendingDocData || {};
+            return (
+              <>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Confirmar envio do link</AlertDialogTitle>
+                  <AlertDialogDescription asChild>
+                    <div className="space-y-3 text-sm pt-2">
+                      <div>O link de assinatura será enviado por WhatsApp para:</div>
+                      <div className="bg-muted/50 p-3 rounded space-y-1">
+                        <div>👤 <span className="font-medium">{signerName || '—'}</span></div>
+                        <div className="text-xs">📱 {phone || '—'}</div>
+                        {instanceName && <div className="text-xs text-muted-foreground">via instância: <span className="font-mono">{instanceName}</span></div>}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        Confirme que o número acima está correto antes de enviar.
+                      </div>
+                    </div>
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel onClick={() => setConfirmStep(null)}>Cancelar</AlertDialogCancel>
+                  <AlertDialogAction onClick={() => { setConfirmStep(null); handleSendSigningLink(true); }}>Confirmar e enviar</AlertDialogAction>
+                </AlertDialogFooter>
+              </>
+            );
+          })()}
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   );
 }
