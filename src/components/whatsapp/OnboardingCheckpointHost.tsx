@@ -302,9 +302,7 @@ export function OnboardingCheckpointHost({ selectedPhone }: Props = {}) {
                     <div className="text-xs text-destructive mt-1">{c.error_message}</div>
                   )}
                   {c.status === 'done' && c.result && (
-                    <div className="text-xs text-muted-foreground mt-1 truncate">
-                      {JSON.stringify(c.result)}
-                    </div>
+                    <DoneResultSummary step={c.step} result={c.result} leadId={c.lead_id} />
                   )}
                 </div>
                 <Badge variant={c.status === 'done' ? 'default' : 'outline'} className="text-[10px]">
