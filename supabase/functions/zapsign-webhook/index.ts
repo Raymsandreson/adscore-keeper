@@ -2,7 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 import { resolveSupabaseUrl, resolveServiceRoleKey } from "../_shared/supabase-url-resolver.ts";
 import { getExternalClient } from "../_shared/external-client.ts";
-import { remapToExternal } from "../_shared/uuid-remap.ts";
+import { remapToExternal, remapToCloud } from "../_shared/uuid-remap.ts";
 
 // Use external Supabase project when configured (hybrid architecture)
 const RESOLVED_SUPABASE_URL = resolveSupabaseUrl();
@@ -1045,7 +1045,7 @@ Deno.serve(async (req) => {
         // Get lead's board_id
         const { data: leadForBoard } = await supabase
           .from('leads')
-          .select('board_id, lead_phone, lead_name, whatsapp_group_id')
+          .select('board_id, lead_phone, lead_name, whatsapp_group_id, created_by')
           .eq('id', localDoc.lead_id)
           .single()
 
@@ -1053,7 +1053,7 @@ Deno.serve(async (req) => {
           // Check board_group_settings for post-signature automations
           const { data: boardSettings } = await supabase
             .from('board_group_settings')
-            .select('auto_close_lead_on_sign, auto_create_group_on_sign, initial_message_template, use_ai_message, ai_generated_message, send_audio_message, audio_voice_id, lead_fields, process_workflows, process_workflow_board_id')
+            .select('auto_close_lead_on_sign, auto_create_group_on_sign, initial_message_template, use_ai_message, ai_generated_message, send_audio_message, audio_voice_id, lead_fields, process_workflows, process_workflow_board_id, processual_acolhedor_id')
             .eq('board_id', leadForBoard.board_id)
             .maybeSingle()
 
@@ -1149,22 +1149,41 @@ Deno.serve(async (req) => {
                 // Auto-create ONBOARDING activity for CASO-prefixed cases
                 if (caseNumber && caseNumber.startsWith('CASO')) {
                   try {
-                    // Determine assignee: prefer processual_acolhedor_id from board settings,
-                    // fallback to Wanessa (legacy hardcoded default)
-                    const wanessaCloudUuid = '1f788b8d-e30e-484a-9460-39a881d25128'
-                    const assigneeCloudUuid = boardSettings.processual_acolhedor_id || wanessaCloudUuid
+                    // Determine assignee priority:
+                    // 1) onboarding_meeting_configs.host_user_id (config explícita do funil)
+                    // 2) boardSettings.processual_acolhedor_id (legado)
+                    // 3) lead.created_by (responsável original)
+                    let assigneeCloudUuid: string | null = null
+                    let assigneeName = ''
 
-                    let assigneeName = 'Wanessa Vitória Rodrigues de Sousa'
-                    if (boardSettings.processual_acolhedor_id) {
+                    const { data: omc } = await extClient
+                      .from('onboarding_meeting_configs')
+                      .select('host_user_id')
+                      .eq('board_id', leadForBoard.board_id)
+                      .eq('is_active', true)
+                      .maybeSingle()
+                    if (omc?.host_user_id) {
+                      // host_user_id já é UUID do banco externo (a config vive lá)
+                      assigneeCloudUuid = await remapToCloud(extClient, omc.host_user_id) || omc.host_user_id
+                    }
+
+                    if (!assigneeCloudUuid && boardSettings.processual_acolhedor_id) {
+                      assigneeCloudUuid = boardSettings.processual_acolhedor_id
+                    }
+                    if (!assigneeCloudUuid && leadForBoard.created_by) {
+                      assigneeCloudUuid = leadForBoard.created_by
+                    }
+
+                    if (assigneeCloudUuid) {
                       const { data: acolhedorProfile } = await supabase
                         .from('profiles')
                         .select('full_name')
-                        .eq('user_id', boardSettings.processual_acolhedor_id)
+                        .eq('user_id', assigneeCloudUuid)
                         .maybeSingle()
                       if (acolhedorProfile?.full_name) assigneeName = acolhedorProfile.full_name
                     }
 
-                    const assigneeExtUuid = await remapToExternal(extClient, assigneeCloudUuid)
+                    const assigneeExtUuid = assigneeCloudUuid ? await remapToExternal(extClient, assigneeCloudUuid) : null
                     await extClient.from('lead_activities').insert({
                       lead_id: localDoc.lead_id,
                       lead_name: leadForBoard.lead_name || 'Novo',
@@ -1177,7 +1196,7 @@ Deno.serve(async (req) => {
                       assigned_to_name: assigneeName,
                       deadline: new Date().toISOString().split('T')[0],
                     })
-                    console.log(`[zapsign-webhook] Onboarding activity created for ${caseNumber} assigned to ${assigneeName}`)
+                    console.log(`[zapsign-webhook] Onboarding activity created for ${caseNumber} assigned to ${assigneeName || assigneeCloudUuid}`)
                   } catch (onbErr) {
                     console.warn('[zapsign-webhook] Onboarding activity error:', onbErr)
                   }

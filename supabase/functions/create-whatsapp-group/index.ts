@@ -519,33 +519,39 @@ Deno.serve(async (req) => {
 
     let nextSeq: number | null = null
     let shouldPersistSequence = false
+    let shouldPersistClosedSequence = false
 
     if (settings) {
-      const existingLeadSequence = extractExistingSequenceFromName(leadData?.lead_name || lead_name, settings.group_name_prefix)
-      if (existingLeadSequence !== null) {
+      // When phase=closed, prefer closed_group_name_prefix + closed_sequence (MAT 0001 padrão)
+      const useClosed = phase === 'closed' && !!settings.closed_group_name_prefix
+      const activePrefix = useClosed ? settings.closed_group_name_prefix : settings.group_name_prefix
+      const activeSeqStart = useClosed ? (settings.closed_sequence_start || 1) : (settings.sequence_start || 1)
+      const activeCurrentSeq = useClosed ? (settings.closed_current_sequence || 0) : (settings.current_sequence || 0)
+
+      const existingLeadSequence = extractExistingSequenceFromName(leadData?.lead_name || lead_name, activePrefix)
+      if (existingLeadSequence !== null && !useClosed) {
+        // Mantém sequência detectada apenas para phase open (caso fechado precisa de nova numeração MAT)
         nextSeq = existingLeadSequence
         shouldPersistSequence = false
       } else {
-        nextSeq = Math.max(
-          (settings.current_sequence || 0) + 1,
-          settings.sequence_start || 1
-        )
-        shouldPersistSequence = true
+        nextSeq = Math.max(activeCurrentSeq + 1, activeSeqStart)
+        if (useClosed) shouldPersistClosedSequence = true
+        else shouldPersistSequence = true
       }
 
       // Build name parts
       const parts: string[] = []
-      if (settings.group_name_prefix) parts.push(settings.group_name_prefix)
-      parts.push(String(nextSeq).padStart(existingLeadSequence !== null ? String(existingLeadSequence).length : 4, '0'))
+      if (activePrefix) parts.push(activePrefix)
+      parts.push(String(nextSeq).padStart(existingLeadSequence !== null && !useClosed ? String(existingLeadSequence).length : 4, '0'))
 
       const leadFields = settings.lead_fields || ['lead_name']
       for (const field of leadFields) {
         if (field === 'board_name' && boardName) {
           parts.push(boardName)
         } else if (leadData && leadData[field]) {
-          parts.push(field === 'lead_name' ? stripExistingSequenceFromName(leadData[field], settings.group_name_prefix) : String(leadData[field]))
+          parts.push(field === 'lead_name' ? stripExistingSequenceFromName(leadData[field], activePrefix) : String(leadData[field]))
         } else if (field === 'lead_name') {
-          parts.push(stripExistingSequenceFromName(lead_name, settings.group_name_prefix))
+          parts.push(stripExistingSequenceFromName(lead_name, activePrefix))
         }
       }
 
@@ -632,6 +638,18 @@ Deno.serve(async (req) => {
               if (shouldPersistSequence && settings && nextSeq) {
                 await supabase.from('board_group_settings').update({ current_sequence: nextSeq }).eq('board_id', board_id)
               }
+              if (shouldPersistClosedSequence && settings && nextSeq) {
+                await supabase.from('board_group_settings').update({ closed_current_sequence: nextSeq }).eq('board_id', board_id)
+              }
+              // Bug 5: lead_name = nome do grupo
+              if (lead_id || leadData?.id) {
+                await supabase.from('leads').update({ lead_name: finalName }).eq('id', lead_id || leadData.id)
+              }
+              await supabase
+                .from('lead_whatsapp_groups')
+                .update({ group_name: finalName })
+                .eq('group_jid', leadData.whatsapp_group_id)
+                .catch(() => {})
             } else {
               console.warn(`[create-whatsapp-group] Rename failed (${renameRes.status})`)
             }
@@ -793,6 +811,20 @@ Deno.serve(async (req) => {
       if (sequenceError) {
         console.error('Error updating board sequence after group creation:', sequenceError)
       }
+    }
+    if (settings && board_id && nextSeq !== null && shouldPersistClosedSequence) {
+      const { error: closedSeqError } = await supabase
+        .from('board_group_settings')
+        .update({ closed_current_sequence: nextSeq, updated_at: new Date().toISOString() })
+        .eq('board_id', board_id)
+        .or(`closed_current_sequence.is.null,closed_current_sequence.lte.${nextSeq}`)
+      if (closedSeqError) {
+        console.error('Error updating closed sequence after group creation:', closedSeqError)
+      }
+    }
+    // Bug 5: lead_name passa a refletir o nome do grupo
+    if (lead_id && groupName) {
+      await supabase.from('leads').update({ lead_name: groupName }).eq('id', lead_id).catch(() => {})
     }
 
     const groupJid = groupId.includes('@g.us') ? groupId : `${groupId}@g.us`
