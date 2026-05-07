@@ -626,8 +626,17 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
       }
 
       // Add predefined processes (like LegalCasesTab)
+      // For 'Benefício INSS' the activity goes to the current user (case creator).
+      let inssAssigneeName: string | null = null;
+      if (selectedPredefinedProcesses.has('Benefício INSS') && user?.id) {
+        const { data: prof } = await supabase.from('profiles').select('full_name').eq('user_id', user.id).maybeSingle();
+        inssAssigneeName = prof?.full_name || null;
+      }
       for (const procName of selectedPredefinedProcesses) {
-        const assignment = CASO_PROCESS_ASSIGNMENTS[procName];
+        const isInss = procName === 'Benefício INSS';
+        const assignment = isInss
+          ? (user?.id ? { userId: user.id, userName: inssAssigneeName || '' } : undefined)
+          : CASO_PROCESS_ASSIGNMENTS[procName];
         allProcessesToCreate.push({
           title: procName,
           process_type: 'administrativo',
