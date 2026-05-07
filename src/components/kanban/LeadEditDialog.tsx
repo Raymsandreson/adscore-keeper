@@ -2340,9 +2340,10 @@ ${scrapeData.content || ''}
                 <Suspense fallback={<div className="flex items-center justify-center p-8"><Loader2 className="h-5 w-5 animate-spin" /></div>}>
                   <CustomFieldsConfigPanel
                     leadId={lead.id}
-                    currentBoardId={lead.board_id || selectedBoardId || null}
+                    currentBoardId={layoutBoardId}
                     boards={boards}
                     adAccountId={adAccountId}
+                    tabKey="basic"
                     hideHeader
                     hideEmptyStateButton
                   />
