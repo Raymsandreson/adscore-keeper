@@ -870,6 +870,8 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
             onOpenExtractor={() => setShowExtractor(true)}
             teamMembers={teamProfiles}
             classifications={classifications}
+            boardId={selectedBoardForNewLead || selectedBoardId}
+            boardName={boards.find(b => b.id === (selectedBoardForNewLead || selectedBoardId))?.name}
           />
 
           <DialogFooter>
