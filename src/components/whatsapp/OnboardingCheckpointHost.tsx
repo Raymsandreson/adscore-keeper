@@ -24,6 +24,7 @@ import { useLeads } from '@/hooks/useLeads';
 import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 
 const STEP_ORDER = [
+  'confirm_funnel',
   'setup_lead_close',
   'create_group',
   'send_initial_message',
@@ -35,12 +36,13 @@ const STEP_ORDER = [
 type StepKey = typeof STEP_ORDER[number];
 
 const STEP_LABEL: Record<StepKey, string> = {
-  setup_lead_close: '1. Criar lead/contato e marcar como fechado',
-  create_group: '2. Criar grupo no WhatsApp',
-  send_initial_message: '3. Enviar mensagem inicial',
-  import_docs: '4. Importar documentos',
-  create_case_process: '5. Criar Caso + Processo',
-  create_onboarding_activity: '6. Atividade de Onboarding',
+  confirm_funnel: '1. Confirmar funil do lead',
+  setup_lead_close: '2. Criar lead/contato e marcar como fechado',
+  create_group: '3. Criar grupo no WhatsApp',
+  send_initial_message: '4. Enviar mensagem inicial',
+  import_docs: '5. Importar documentos',
+  create_case_process: '6. Criar Caso + Processo',
+  create_onboarding_activity: '7. Atividade de Onboarding',
 };
 
 interface Checkpoint {
