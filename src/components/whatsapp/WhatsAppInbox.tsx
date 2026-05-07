@@ -1511,6 +1511,47 @@ export function WhatsAppInbox() {
       )}
       <ZapSignLeadCreationListener />
       <ZapSignDialogHost />
+      <OnboardingCheckpointHost selectedPhone={selectedPhone} />
+
+      <AlertDialog
+        open={!!pendingNav}
+        onOpenChange={(o) => { if (!o) setPendingNav(null); }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Onboarding pendente nesta conversa</AlertDialogTitle>
+            <AlertDialogDescription>
+              Há etapas de onboarding pós-assinatura abertas para este cliente.
+              Se você sair, o formulário será fechado. O que deseja fazer?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="gap-2 sm:gap-2">
+            <AlertDialogCancel onClick={() => setPendingNav(null)}>
+              Continuar onboarding
+            </AlertDialogCancel>
+            <Button
+              variant="outline"
+              onClick={() => {
+                const nav = pendingNav;
+                setPendingNav(null);
+                nav?.();
+              }}
+            >
+              Sair sem finalizar
+            </Button>
+            <AlertDialogAction
+              onClick={async () => {
+                await finalizeOnboardingForCurrent();
+                const nav = pendingNav;
+                setPendingNav(null);
+                nav?.();
+              }}
+            >
+              Finalizar onboarding
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
