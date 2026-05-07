@@ -13,11 +13,12 @@ interface PostSignInput {
 }
 
 const STEPS = [
-  'create_group',          // 1. Criar grupo WhatsApp
-  'send_initial_message',  // 2. Enviar mensagem de boas-vindas
-  'import_docs',           // 3. Importar docs (WhatsApp 7d + ZapSign extras)
-  'create_case_process',   // 4. Criar Caso + Processo (pergunta tipo + honorários)
-  'create_onboarding_activity', // 5. Atividade ONBOARDING CLIENTE
+  'setup_lead_close',      // 1. Garantir lead/contato + marcar lead como fechado
+  'create_group',          // 2. Criar grupo WhatsApp
+  'send_initial_message',  // 3. Enviar mensagem de boas-vindas
+  'import_docs',           // 4. Importar docs (WhatsApp 7d + ZapSign extras)
+  'create_case_process',   // 5. Criar Caso + Processo (pergunta tipo + honorários)
+  'create_onboarding_activity', // 6. Atividade ONBOARDING CLIENTE
 ] as const;
 
 export async function runPostSignExtras(input: PostSignInput): Promise<void> {
