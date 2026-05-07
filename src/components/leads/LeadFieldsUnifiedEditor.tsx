@@ -18,6 +18,8 @@ interface Props {
   boardId: string;
   boardName?: string;
   adAccountId?: string;
+  /** When true, renders inline (no Dialog wrapper). */
+  inline?: boolean;
 }
 
 type UnifiedItem = {
@@ -35,7 +37,7 @@ const fieldTypeLabels: Record<FieldType, string> = {
   text: 'Texto', number: 'Número', date: 'Data', select: 'Seleção', checkbox: 'Sim/Não',
 };
 
-export function LeadFieldsUnifiedEditor({ open, onOpenChange, boardId, boardName, adAccountId }: Props) {
+export function LeadFieldsUnifiedEditor({ open, onOpenChange, boardId, boardName, adAccountId, inline }: Props) {
   const { resolved, saveLayout, refetch: refetchLayout } = useLeadFieldLayout(boardId);
   const { customFields, addCustomField, updateCustomField, deleteCustomField, fetchCustomFields } =
     useLeadCustomFields(adAccountId);
@@ -59,7 +61,7 @@ export function LeadFieldsUnifiedEditor({ open, onOpenChange, boardId, boardName
   );
 
   useEffect(() => {
-    if (!open) return;
+    if (!open && !inline) return;
     const labelOf = (k: string) => LEAD_FIELD_REGISTRY.find(d => d.key === k)?.label || k;
     const fixed: UnifiedItem[] = resolved.map(r => ({
       key: 'fixed:' + r.field_key,
@@ -176,95 +178,105 @@ export function LeadFieldsUnifiedEditor({ open, onOpenChange, boardId, boardName
     onOpenChange(false);
   };
 
-  return (
+  const body = (
     <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Campos e grupos {boardName ? `— ${boardName}` : ''}</DialogTitle>
-          </DialogHeader>
-          <p className="text-xs text-muted-foreground">
-            Arraste qualquer campo (fixo ou personalizado) entre as abas. Use o olho para ocultar campos fixos neste funil — o valor existente no banco é preservado.
-            Personalizados podem ser editados, excluídos ou criados em qualquer aba.
-          </p>
+      <p className="text-xs text-muted-foreground">
+        Arraste qualquer campo (fixo ou personalizado) entre as abas. Use o olho para ocultar campos fixos neste funil — o valor existente no banco é preservado.
+        Personalizados podem ser editados, excluídos ou criados em qualquer aba.
+      </p>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
-            {TAB_DEFS.map(tab => {
-              const list = fieldsOf(tab.key);
-              return (
-                <div
-                  key={tab.key}
-                  className="border rounded-lg bg-muted/30 p-2 min-h-[260px] flex flex-col"
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={() => handleDrop(tab.key, null)}
-                >
-                  <div className="text-xs font-semibold uppercase text-muted-foreground mb-2 px-1 flex items-center justify-between">
-                    <span>{tab.label} <span className="text-muted-foreground/60">({list.filter(i => !i.hidden).length})</span></span>
-                  </div>
-                  <div className="space-y-1 flex-1">
-                    {list.map(f => (
-                      <div
-                        key={f.key}
-                        draggable
-                        onDragStart={() => setDragKey(f.key)}
-                        onDragOver={(e) => e.preventDefault()}
-                        onDrop={(e) => { e.stopPropagation(); handleDrop(tab.key, f.key); }}
-                        className={`flex items-center gap-1 p-1.5 rounded border bg-background text-xs cursor-grab active:cursor-grabbing group ${f.hidden ? 'opacity-50' : ''}`}
-                      >
-                        <GripVertical className="h-3 w-3 text-muted-foreground shrink-0" />
-                        <span className="flex-1 truncate" title={f.label}>{f.label}</span>
-                        {f.kind === 'fixed' ? (
-                          <>
-                            <Badge variant="outline" className="text-[9px] py-0 px-1 hidden group-hover:inline-flex" title="Campo fixo do sistema">
-                              <Lock className="h-2.5 w-2.5" />
-                            </Badge>
-                            <button type="button" onClick={() => toggleHidden(f.key)}
-                              className="text-muted-foreground hover:text-foreground p-0.5"
-                              title={f.hidden ? 'Mostrar' : 'Ocultar'}>
-                              {f.hidden ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
-                            </button>
-                          </>
-                        ) : (
-                          <>
-                            {f.custom?.is_required && (
-                              <Badge variant="destructive" className="text-[9px] py-0 px-1">obr</Badge>
-                            )}
-                            <button type="button" onClick={() => openEditCustom(f.custom!, tab.key)}
-                              className="text-muted-foreground hover:text-foreground p-0.5" title="Editar">
-                              <Pencil className="h-3 w-3" />
-                            </button>
-                            <button type="button" onClick={() => handleCustomDelete(f.custom!)}
-                              className="text-muted-foreground hover:text-destructive p-0.5" title="Excluir">
-                              <Trash2 className="h-3 w-3" />
-                            </button>
-                          </>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3 mt-3">
+        {TAB_DEFS.map(tab => {
+          const list = fieldsOf(tab.key);
+          return (
+            <div
+              key={tab.key}
+              className="border rounded-lg bg-muted/30 p-2 min-h-[260px] flex flex-col"
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={() => handleDrop(tab.key, null)}
+            >
+              <div className="text-xs font-semibold uppercase text-muted-foreground mb-2 px-1 flex items-center justify-between">
+                <span>{tab.label} <span className="text-muted-foreground/60">({list.filter(i => !i.hidden).length})</span></span>
+              </div>
+              <div className="space-y-1 flex-1">
+                {list.map(f => (
+                  <div
+                    key={f.key}
+                    draggable
+                    onDragStart={() => setDragKey(f.key)}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => { e.stopPropagation(); handleDrop(tab.key, f.key); }}
+                    className={`flex items-center gap-1 p-1.5 rounded border bg-background text-xs cursor-grab active:cursor-grabbing group ${f.hidden ? 'opacity-50' : ''}`}
+                  >
+                    <GripVertical className="h-3 w-3 text-muted-foreground shrink-0" />
+                    <span className="flex-1 truncate" title={f.label}>{f.label}</span>
+                    {f.kind === 'fixed' ? (
+                      <>
+                        <Badge variant="outline" className="text-[9px] py-0 px-1 hidden group-hover:inline-flex" title="Campo fixo do sistema">
+                          <Lock className="h-2.5 w-2.5" />
+                        </Badge>
+                        <button type="button" onClick={() => toggleHidden(f.key)}
+                          className="text-muted-foreground hover:text-foreground p-0.5"
+                          title={f.hidden ? 'Mostrar' : 'Ocultar'}>
+                          {f.hidden ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        {f.custom?.is_required && (
+                          <Badge variant="destructive" className="text-[9px] py-0 px-1">obr</Badge>
                         )}
-                      </div>
-                    ))}
-                    {list.length === 0 && (
-                      <div className="text-[10px] text-muted-foreground/60 italic text-center py-4 border-2 border-dashed rounded">
-                        Solte campos aqui
-                      </div>
+                        <button type="button" onClick={() => openEditCustom(f.custom!, tab.key)}
+                          className="text-muted-foreground hover:text-foreground p-0.5" title="Editar">
+                          <Pencil className="h-3 w-3" />
+                        </button>
+                        <button type="button" onClick={() => handleCustomDelete(f.custom!)}
+                          className="text-muted-foreground hover:text-destructive p-0.5" title="Excluir">
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      </>
                     )}
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => openNewCustom(tab.key)}
-                    className="mt-2 w-full flex items-center justify-center gap-1 text-[11px] text-muted-foreground hover:text-foreground border border-dashed rounded py-1"
-                  >
-                    <Plus className="h-3 w-3" /> Adicionar campo
-                  </button>
-                </div>
-              );
-            })}
-          </div>
+                ))}
+                {list.length === 0 && (
+                  <div className="text-[10px] text-muted-foreground/60 italic text-center py-4 border-2 border-dashed rounded">
+                    Solte campos aqui
+                  </div>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => openNewCustom(tab.key)}
+                className="mt-2 w-full flex items-center justify-center gap-1 text-[11px] text-muted-foreground hover:text-foreground border border-dashed rounded py-1"
+              >
+                <Plus className="h-3 w-3" /> Adicionar campo
+              </button>
+            </div>
+          );
+        })}
+      </div>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-            <Button onClick={handleSaveAll}>Salvar</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <div className="flex justify-end gap-2 mt-4">
+        <Button variant="outline" onClick={() => onOpenChange(false)}>{inline ? 'Concluir' : 'Cancelar'}</Button>
+        <Button onClick={handleSaveAll}>Salvar</Button>
+      </div>
+    </>
+  );
+
+  return (
+    <>
+      {inline ? (
+        <div>{body}</div>
+      ) : (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+          <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Campos e grupos {boardName ? `— ${boardName}` : ''}</DialogTitle>
+            </DialogHeader>
+            {body}
+          </DialogContent>
+        </Dialog>
+      )}
 
       {/* Custom field create/edit dialog */}
       <Dialog open={cfDialogOpen} onOpenChange={setCfDialogOpen}>

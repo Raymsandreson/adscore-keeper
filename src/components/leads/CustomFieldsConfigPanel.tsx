@@ -316,20 +316,29 @@ export function CustomFieldsConfigPanel({
           )}
         </h4>
         <Button
-          variant="outline"
+          variant={configMode ? 'default' : 'outline'}
           size="sm"
-          onClick={() => currentBoardId ? setUnifiedOpen(true) : setConfigMode(!configMode)}
+          onClick={() => setConfigMode(!configMode)}
           className="gap-1"
-          disabled={!currentBoardId}
-          title={!currentBoardId ? 'Selecione um funil primeiro' : 'Personalizar campos e abas'}
+          disabled={!currentBoardId && !configMode}
+          title={!currentBoardId ? 'Selecione um funil primeiro' : 'Editar campos e abas'}
         >
           <Settings2 className="h-3.5 w-3.5" />
-          Configurar
+          {configMode ? 'Concluir' : 'Configurar'}
         </Button>
       </div>
 
-      {/* Config Mode - Kommo style field list */}
-      {configMode ? (
+      {/* Config Mode */}
+      {configMode && currentBoardId ? (
+        <LeadFieldsUnifiedEditor
+          open={true}
+          onOpenChange={(v) => { if (!v) setConfigMode(false); }}
+          boardId={currentBoardId}
+          boardName={currentBoard?.name}
+          adAccountId={adAccountId}
+          inline
+        />
+      ) : configMode ? (
         <div className="space-y-1 border rounded-lg overflow-hidden">
           {relevantFields.length === 0 ? (
             <div className="p-6 text-center text-muted-foreground text-sm">
