@@ -94,6 +94,7 @@ export function OnboardingCheckpointHost({ selectedPhone }: Props = {}) {
   const [msgText, setMsgText] = useState('');
   const [processType, setProcessType] = useState<string>('');
   const [feePct, setFeePct] = useState<string>('');
+  const [selectedBoardId, setSelectedBoardId] = useState<string>('');
 
   const normPhone = (selectedPhone || '').replace(/\D/g, '').slice(-8);
 
