@@ -1177,7 +1177,7 @@ export function WhatsAppInbox() {
               {selectedConversation && (
                 <WhatsAppChat
                   conversation={selectedConversation}
-                  onBack={() => { setSelectedPhone(null); setSelectedInstance(null); }}
+                  onBack={() => { guardLeaveCurrent(() => { setSelectedPhone(null); setSelectedInstance(null); }); }}
                   onSendMessage={(() => {
                     const share = sharedConvs.find(s => s.phone === selectedConversation.phone && s.instance_name === selectedConversation.instance_name);
                     if (share) {
@@ -1251,7 +1251,7 @@ export function WhatsAppInbox() {
             {selectedConversation ? (
                 <WhatsAppChat
                   conversation={selectedConversation}
-                  onBack={() => { setSelectedPhone(null); setSelectedInstance(null); }}
+                  onBack={() => { guardLeaveCurrent(() => { setSelectedPhone(null); setSelectedInstance(null); }); }}
                   onSendMessage={(() => {
                     const share = sharedConvs.find(s => s.phone === selectedConversation.phone && s.instance_name === selectedConversation.instance_name);
                     if (share) {
