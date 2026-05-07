@@ -881,3 +881,48 @@ function CreateGroupSummary({
     </div>
   );
 }
+
+function RegenerateLeadNameButton({
+  leadId,
+  onRefresh,
+}: {
+  leadId: string;
+  onRefresh?: () => void | Promise<void>;
+}) {
+  const [busy, setBusy] = useState(false);
+  const handleClick = async () => {
+    if (busy) return;
+    if (!confirm('Regerar o nome deste lead seguindo a configuração atual do funil? Será atribuída uma nova sequência.')) return;
+    setBusy(true);
+    try {
+      const { data, error } = await cloudFunctions.invoke<any>('regenerate-lead-name', {
+        body: { lead_id: leadId },
+      });
+      if (error || data?.success === false) {
+        toast({
+          title: 'Não foi possível regerar',
+          description: data?.error || error?.message || 'Erro desconhecido',
+          variant: 'destructive',
+        });
+        return;
+      }
+      toast({
+        title: 'Nome regerado',
+        description: data?.lead_name + (data?.group_renamed ? ' (grupo também renomeado)' : ''),
+      });
+      await onRefresh?.();
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      disabled={busy}
+      className="text-[11px] text-primary underline mt-1 disabled:opacity-50"
+    >
+      {busy ? 'Regerando…' : '🔄 Regerar nome do lead'}
+    </button>
+  );
+}
