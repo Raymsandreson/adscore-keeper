@@ -885,6 +885,48 @@ function CreateGroupSummary({
         >
           {renaming ? 'Renomeando…' : 'Reprocessar nome do grupo'}
         </button>
+        <button
+          type="button"
+          onClick={async () => {
+            if (!result?.group_jid) return;
+            setSyncing(true);
+            try {
+              const { data, error } = await cloudFunctions.invoke<any>('create-whatsapp-group', {
+                body: {
+                  lead_id: leadId,
+                  lead_name: payload?.lead_name,
+                  phone: payload?.lead_phone,
+                  contact_phone: payload?.lead_phone,
+                  board_id: payload?.board_id,
+                  creation_origin: 'onboarding_checkpoint_sync_participants',
+                  phase: 'closed',
+                  sync_participants: true,
+                },
+              });
+              if (error || data?.success === false) {
+                toast({
+                  title: 'Não foi possível sincronizar integrantes',
+                  description: data?.error || error?.message || 'Erro desconhecido',
+                  variant: 'destructive',
+                });
+                return;
+              }
+              const added = data?.added_participants?.length || 0;
+              const failed = data?.failed_participants?.length || 0;
+              toast({
+                title: added > 0 ? `${added} integrante(s) adicionado(s)` : 'Nenhum integrante faltando',
+                description: failed > 0 ? `${failed} falharam ao serem adicionados` : undefined,
+              });
+              await onRefresh?.();
+            } finally {
+              setSyncing(false);
+            }
+          }}
+          disabled={syncing}
+          className="text-primary underline disabled:opacity-50"
+        >
+          {syncing ? 'Sincronizando…' : 'Reprocessar integrantes do grupo'}
+        </button>
       </div>
     </div>
   );
