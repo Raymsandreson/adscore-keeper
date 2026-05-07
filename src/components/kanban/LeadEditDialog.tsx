@@ -1266,6 +1266,17 @@ ${scrapeData.content || ''}
             </Title>
             {currentLead && (
               <div className="flex items-center gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1 h-7 text-xs"
+                  onClick={() => setUnifiedEditorOpen(true)}
+                  disabled={!currentLead.board_id}
+                  title={!currentLead.board_id ? 'Selecione um funil primeiro' : 'Personalizar campos'}
+                >
+                  <Wand2 className="h-3 w-3" />
+                  Personalizar
+                </Button>
                 <ShareMenu entityType="lead" entityId={currentLead.id} entityName={currentLead.lead_name || 'Lead'} />
               </div>
             )}
