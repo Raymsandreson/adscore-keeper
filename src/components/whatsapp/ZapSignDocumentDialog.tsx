@@ -1028,7 +1028,7 @@ export function ZapSignDocumentDialog({
           {showPreview && (
             <div className="flex gap-2 w-full">
               <Button variant="outline" onClick={() => onOpenChange(false)}>Fechar</Button>
-              <Button className="flex-1 gap-2" onClick={handleSendSigningLink} disabled={sendingLink}>
+              <Button className="flex-1 gap-2" onClick={() => handleSendSigningLink(false)} disabled={sendingLink}>
                 {sendingLink ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                 Enviar link de assinatura
               </Button>
