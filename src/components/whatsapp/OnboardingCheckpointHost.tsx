@@ -267,27 +267,71 @@ export function OnboardingCheckpointHost({ selectedPhone }: Props = {}) {
   const open = !!leadId && !allDone;
   const hasFailed = checkpoints.some((c) => c.status === 'failed');
 
-  // Empurra o conteúdo do app pra esquerda enquanto o painel está aberto,
-  // pra que chat e onboarding fiquem lado a lado e ambos clicáveis.
-  // Recalcula a largura no resize/orientationchange pra não sobrar espaço.
+  // Painel lateral redimensionável + colapsável.
+  // Persiste largura/colapso em localStorage. Recalcula no resize pra não estourar a viewport.
+  const [collapsed, setCollapsed] = useState<boolean>(() => {
+    try { return localStorage.getItem('onboarding-panel-collapsed') === '1'; } catch { return false; }
+  });
+  const [panelWidth, setPanelWidth] = useState<number>(() => {
+    try {
+      const saved = parseInt(localStorage.getItem('onboarding-panel-width') || '0', 10);
+      if (saved > 0) return saved;
+    } catch { /* noop */ }
+    return 0; // 0 = ainda não definido, calcula no primeiro effect
+  });
+  const COLLAPSED_W = 44;
+  const MIN_W = 280;
+
   useEffect(() => {
     if (!open) return;
-    const compute = () => {
+    const apply = () => {
       const vw = document.documentElement.clientWidth;
-      const widthPx = vw < 640 ? Math.round(vw * 0.5) : Math.min(480, Math.round(vw * 0.5));
-      document.documentElement.style.setProperty('--onboarding-panel-w', `${widthPx}px`);
-      document.body.style.paddingRight = `${widthPx}px`;
+      const maxW = Math.max(MIN_W, vw - 320); // garante pelo menos 320px pro chat
+      let w = collapsed ? COLLAPSED_W : (panelWidth || Math.min(420, Math.round(vw * 0.45)));
+      w = Math.min(w, maxW);
+      w = Math.max(w, collapsed ? COLLAPSED_W : MIN_W);
+      document.documentElement.style.setProperty('--onboarding-panel-w', `${w}px`);
+      document.body.style.paddingRight = `${w}px`;
     };
-    compute();
-    window.addEventListener('resize', compute);
-    window.addEventListener('orientationchange', compute);
+    apply();
+    window.addEventListener('resize', apply);
+    window.addEventListener('orientationchange', apply);
     return () => {
-      window.removeEventListener('resize', compute);
-      window.removeEventListener('orientationchange', compute);
+      window.removeEventListener('resize', apply);
+      window.removeEventListener('orientationchange', apply);
       document.body.style.paddingRight = '';
       document.documentElement.style.removeProperty('--onboarding-panel-w');
     };
-  }, [open]);
+  }, [open, collapsed, panelWidth]);
+
+  // Drag handle pra redimensionar
+  const startDrag = (e: React.PointerEvent) => {
+    if (collapsed) return;
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = panelWidth || parseInt(getComputedStyle(document.documentElement).getPropertyValue('--onboarding-panel-w')) || 420;
+    const onMove = (ev: PointerEvent) => {
+      const vw = document.documentElement.clientWidth;
+      const delta = startX - ev.clientX; // arrastar pra esquerda aumenta
+      const next = Math.min(Math.max(MIN_W, startW + delta), Math.max(MIN_W, vw - 320));
+      setPanelWidth(next);
+      try { localStorage.setItem('onboarding-panel-width', String(next)); } catch { /* noop */ }
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  };
+
+  const toggleCollapsed = () => {
+    setCollapsed((c) => {
+      const next = !c;
+      try { localStorage.setItem('onboarding-panel-collapsed', next ? '1' : '0'); } catch { /* noop */ }
+      return next;
+    });
+  };
 
   const skipCurrent = async () => {
     if (!currentStep) return;
