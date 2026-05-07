@@ -144,44 +144,144 @@ export const handler: RequestHandler = async (req, res) => {
 
     try {
       switch (ckpt.step) {
+        case 'setup_lead_close': {
+          // 1) Garante lead existe (já existe — só atualiza para closed)
+          const { data: leadRow, error: leadErr } = await ext
+            .from('leads')
+            .select('id, lead_name, lead_phone, lead_status')
+            .eq('id', ckpt.lead_id)
+            .maybeSingle();
+          if (leadErr || !leadRow) { errMsg = leadErr?.message || 'lead não encontrado'; break; }
+
+          // 2) Cria/atualiza contato do signatário (com nome do signer + telefone do lead)
+          const signerName = (p.signer_name as string) || leadRow.lead_name || '';
+          const phoneDigits = (leadRow.lead_phone || p.lead_phone || '').replace(/\D/g, '');
+          let contactId: string | null = (p.contact_id as string) || null;
+          if (!contactId && phoneDigits) {
+            const { data: existingContact } = await ext
+              .from('contacts')
+              .select('id')
+              .eq('phone', phoneDigits)
+              .is('whatsapp_group_id', null)
+              .maybeSingle();
+            contactId = existingContact?.id || null;
+          }
+          if (!contactId && signerName) {
+            const { data: newC } = await ext
+              .from('contacts')
+              .insert({
+                full_name: signerName,
+                phone: phoneDigits || null,
+                lead_id: ckpt.lead_id,
+                action_source: 'zapsign_signed',
+                action_source_detail: 'Contato criado automaticamente após assinatura ZapSign',
+              })
+              .select('id')
+              .maybeSingle();
+            contactId = newC?.id || null;
+          } else if (contactId) {
+            await ext.from('contacts').update({
+              full_name: signerName || undefined,
+              lead_id: ckpt.lead_id,
+            }).eq('id', contactId);
+          }
+
+          // 3) Garante junction contact_leads
+          if (contactId) {
+            await ext
+              .from('contact_leads')
+              .insert({ contact_id: contactId, lead_id: ckpt.lead_id })
+              .then(() => {}, () => {}); // ignore duplicate
+          }
+
+          // 4) Marca lead como closed
+          await ext
+            .from('leads')
+            .update({
+              lead_status: 'closed',
+              became_client_date: new Date().toISOString().slice(0, 10),
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', ckpt.lead_id);
+
+          result = {
+            lead_id: ckpt.lead_id,
+            lead_name: leadRow.lead_name,
+            contact_id: contactId,
+            signer_name: signerName,
+            lead_status: 'closed',
+          };
+          success = true;
+          break;
+        }
+
         case 'create_group': {
           const { data: lead } = await ext
             .from('leads')
             .select('whatsapp_group_id')
             .eq('id', ckpt.lead_id)
             .maybeSingle();
-          if (lead?.whatsapp_group_id) {
-            result = { group_jid: lead.whatsapp_group_id, reused: true };
-            success = true;
-            break;
-          }
-          let creator_instance_id: string | null = null;
-          if (p.instance_name) {
-            const { data: inst } = await ext
-              .from('whatsapp_instances')
-              .select('id')
-              .ilike('instance_name', p.instance_name)
-              .maybeSingle();
-            creator_instance_id = inst?.id || null;
-          }
-          const r = await callCloudFn('create-whatsapp-group', {
-            lead_id: ckpt.lead_id,
-            lead_name: p.lead_name,
-            phone: p.lead_phone,
-            contact_phone: p.lead_phone,
-            board_id: p.board_id,
-            creator_instance_id,
-            creation_origin: 'onboarding_checkpoint',
-          });
-          if (r.ok && r.data?.group_id) {
-            await ext.from('leads').update({ whatsapp_group_id: r.data.group_id }).eq('id', ckpt.lead_id);
-            result = { group_jid: r.data.group_id };
-            success = true;
+          let groupJid = lead?.whatsapp_group_id || null;
+          let reused = false;
+          if (groupJid) {
+            reused = true;
           } else {
-            errMsg = r.data?.error || 'create-whatsapp-group falhou';
+            let creator_instance_id: string | null = null;
+            if (p.instance_name) {
+              const { data: inst } = await ext
+                .from('whatsapp_instances')
+                .select('id')
+                .ilike('instance_name', p.instance_name)
+                .maybeSingle();
+              creator_instance_id = inst?.id || null;
+            }
+            const r = await callCloudFn('create-whatsapp-group', {
+              lead_id: ckpt.lead_id,
+              lead_name: p.lead_name,
+              phone: p.lead_phone,
+              contact_phone: p.lead_phone,
+              board_id: p.board_id,
+              creator_instance_id,
+              creation_origin: 'onboarding_checkpoint',
+            });
+            if (r.ok && r.data?.group_id) {
+              groupJid = r.data.group_id;
+              await ext.from('leads').update({ whatsapp_group_id: groupJid }).eq('id', ckpt.lead_id);
+            } else {
+              errMsg = r.data?.error || 'create-whatsapp-group falhou';
+              break;
+            }
           }
+
+          // Enriquece com nome do grupo + participantes vinculados
+          const { data: lwg } = await ext
+            .from('lead_whatsapp_groups')
+            .select('group_name, group_link')
+            .eq('lead_id', ckpt.lead_id)
+            .eq('group_jid', groupJid)
+            .maybeSingle();
+
+          const { data: linkedContacts } = await ext
+            .from('contact_leads')
+            .select('contact_id, contacts:contacts(id, full_name, phone)')
+            .eq('lead_id', ckpt.lead_id);
+
+          const participants = (linkedContacts || [])
+            .map((row: any) => row.contacts)
+            .filter((c: any) => c && c.full_name)
+            .map((c: any) => ({ id: c.id, name: c.full_name, phone: c.phone }));
+
+          result = {
+            group_jid: groupJid,
+            group_name: lwg?.group_name || null,
+            group_link: lwg?.group_link || null,
+            participants,
+            reused,
+          };
+          success = true;
           break;
         }
+
 
         case 'send_initial_message': {
           const text = (extra?.message_text as string) || '';
