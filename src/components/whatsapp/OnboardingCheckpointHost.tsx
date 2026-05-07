@@ -333,6 +333,8 @@ export function OnboardingCheckpointHost({ selectedPhone }: Props = {}) {
                     <DoneResultSummary
                       step={c.step}
                       result={c.result}
+                      payload={c.payload}
+                      checkpointId={c.id}
                       leadId={c.lead_id}
                       onOpenLead={(id) => openLeadById(id)}
                       onOpenContact={(id) => openContactById(id)}
@@ -341,6 +343,7 @@ export function OnboardingCheckpointHost({ selectedPhone }: Props = {}) {
                         name,
                         instance: (c.payload?.instance_name || '') as string,
                       })}
+                      onRefresh={refresh}
                     />
                   )}
                 </div>
