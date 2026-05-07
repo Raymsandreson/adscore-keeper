@@ -2349,6 +2349,15 @@ ${scrapeData.content || ''}
                   />
                 </Suspense>
               </div>
+              <CustomFieldsConfigPanel
+                leadId={lead.id}
+                currentBoardId={layoutBoardId}
+                boards={boards}
+                adAccountId={adAccountId}
+                tabKey="accident"
+                hideHeader
+                hideEmptyStateButton
+              />
               </>)}
             </TabsContent>
 
@@ -2435,6 +2444,15 @@ ${scrapeData.content || ''}
                   />
                 </div>)}
               </div>
+              <CustomFieldsConfigPanel
+                leadId={lead.id}
+                currentBoardId={layoutBoardId}
+                boards={boards}
+                adAccountId={adAccountId}
+                tabKey="location"
+                hideHeader
+                hideEmptyStateButton
+              />
               </>)}
             </TabsContent>
 
