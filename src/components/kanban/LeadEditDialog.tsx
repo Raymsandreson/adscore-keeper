@@ -2449,7 +2449,7 @@ ${scrapeData.content || ''}
                 currentBoardId={layoutBoardId}
                 boards={boards}
                 adAccountId={adAccountId}
-                tabKey="location"
+                tabKey="accident"
                 hideHeader
                 hideEmptyStateButton
               />
@@ -2534,6 +2534,15 @@ ${scrapeData.content || ''}
                   />
                 </div>)}
               </div>
+              <CustomFieldsConfigPanel
+                leadId={lead.id}
+                currentBoardId={layoutBoardId}
+                boards={boards}
+                adAccountId={adAccountId}
+                tabKey="location"
+                hideHeader
+                hideEmptyStateButton
+              />
               </>)}
             </TabsContent>
 
@@ -2583,6 +2592,15 @@ ${scrapeData.content || ''}
                   />
                 </div>)}
               </div>
+              <CustomFieldsConfigPanel
+                leadId={lead.id}
+                currentBoardId={layoutBoardId}
+                boards={boards}
+                adAccountId={adAccountId}
+                tabKey="companies"
+                hideHeader
+                hideEmptyStateButton
+              />
               </>)}
             </TabsContent>
 
