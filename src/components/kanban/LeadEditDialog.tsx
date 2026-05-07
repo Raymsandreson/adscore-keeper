@@ -441,7 +441,6 @@ export function LeadEditDialog({
   const loadCustomFieldValues = async (leadId: string) => {
     const values = leadFieldValuesCache.get(leadId) || await getFieldValues(leadId);
     leadFieldValuesCache.set(leadId, values);
-    setFieldValues(values);
     
     // Initialize local values from loaded values
     const initial: Record<string, { type: FieldType; value: string | number | boolean | null }> = {};
