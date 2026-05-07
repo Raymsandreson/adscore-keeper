@@ -10,6 +10,7 @@ import type { RequestHandler } from 'express';
 import { supabase as ext } from '../lib/supabase';
 
 const STEP_ORDER = [
+  'confirm_funnel',
   'setup_lead_close',
   'create_group',
   'send_initial_message',
@@ -144,6 +145,65 @@ export const handler: RequestHandler = async (req, res) => {
 
     try {
       switch (ckpt.step) {
+        case 'confirm_funnel': {
+          const newBoardId = (extra?.board_id as string) || p.board_id;
+          if (!newBoardId) { errMsg = 'board_id obrigatório'; break; }
+
+          // Carrega lead + board atual pra validar workspace
+          const { data: leadRow, error: leadErr } = await ext
+            .from('leads')
+            .select('id, board_id, lead_name')
+            .eq('id', ckpt.lead_id)
+            .maybeSingle();
+          if (leadErr || !leadRow) { errMsg = leadErr?.message || 'lead não encontrado'; break; }
+
+          const { data: newBoard, error: nbErr } = await ext
+            .from('kanban_boards')
+            .select('id, name, workspace_id, stages')
+            .eq('id', newBoardId)
+            .maybeSingle();
+          if (nbErr || !newBoard) { errMsg = 'board destino não encontrado'; break; }
+
+          // Se mudou de board, valida workspace
+          if (leadRow.board_id && leadRow.board_id !== newBoardId) {
+            const { data: oldBoard } = await ext
+              .from('kanban_boards')
+              .select('workspace_id')
+              .eq('id', leadRow.board_id)
+              .maybeSingle();
+            if (oldBoard?.workspace_id && newBoard.workspace_id && oldBoard.workspace_id !== newBoard.workspace_id) {
+              errMsg = 'board destino é de outro workspace'; break;
+            }
+          }
+
+          // Atualiza lead.board_id + reseta status pra 1ª etapa do novo board
+          const stages = Array.isArray(newBoard.stages) ? (newBoard.stages as any[]) : [];
+          const firstStageId = stages[0]?.id || null;
+          const leadUpdates: Record<string, unknown> = {
+            board_id: newBoardId,
+            updated_at: new Date().toISOString(),
+          };
+          if (firstStageId) leadUpdates.status = firstStageId;
+          await ext.from('leads').update(leadUpdates).eq('id', ckpt.lead_id);
+
+          // Re-monta payload dos demais checkpoints com novo board_id
+          const newPayload = { ...(p || {}), board_id: newBoardId };
+          await ext
+            .from('onboarding_checkpoints')
+            .update({ payload: newPayload, updated_at: new Date().toISOString() })
+            .eq('lead_id', ckpt.lead_id)
+            .neq('id', checkpoint_id);
+
+          result = {
+            previous_board_id: leadRow.board_id,
+            board_id: newBoardId,
+            board_name: newBoard.name,
+            switched: leadRow.board_id !== newBoardId,
+          };
+          success = true;
+          break;
+        }
+
         case 'setup_lead_close': {
           // 1) Garante lead existe (já existe — só atualiza para closed)
           const { data: leadRow, error: leadErr } = await ext

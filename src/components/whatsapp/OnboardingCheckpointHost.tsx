@@ -24,6 +24,7 @@ import { useLeads } from '@/hooks/useLeads';
 import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 
 const STEP_ORDER = [
+  'confirm_funnel',
   'setup_lead_close',
   'create_group',
   'send_initial_message',
@@ -35,12 +36,13 @@ const STEP_ORDER = [
 type StepKey = typeof STEP_ORDER[number];
 
 const STEP_LABEL: Record<StepKey, string> = {
-  setup_lead_close: '1. Criar lead/contato e marcar como fechado',
-  create_group: '2. Criar grupo no WhatsApp',
-  send_initial_message: '3. Enviar mensagem inicial',
-  import_docs: '4. Importar documentos',
-  create_case_process: '5. Criar Caso + Processo',
-  create_onboarding_activity: '6. Atividade de Onboarding',
+  confirm_funnel: '1. Confirmar funil do lead',
+  setup_lead_close: '2. Criar lead/contato e marcar como fechado',
+  create_group: '3. Criar grupo no WhatsApp',
+  send_initial_message: '4. Enviar mensagem inicial',
+  import_docs: '5. Importar documentos',
+  create_case_process: '6. Criar Caso + Processo',
+  create_onboarding_activity: '7. Atividade de Onboarding',
 };
 
 interface Checkpoint {
@@ -92,6 +94,7 @@ export function OnboardingCheckpointHost({ selectedPhone }: Props = {}) {
   const [msgText, setMsgText] = useState('');
   const [processType, setProcessType] = useState<string>('');
   const [feePct, setFeePct] = useState<string>('');
+  const [selectedBoardId, setSelectedBoardId] = useState<string>('');
 
   const normPhone = (selectedPhone || '').replace(/\D/g, '').slice(-8);
 
@@ -194,6 +197,13 @@ export function OnboardingCheckpointHost({ selectedPhone }: Props = {}) {
     })();
   }, [currentStep?.id]);
 
+  // Pré-seleciona board atual no passo confirm_funnel
+  useEffect(() => {
+    if (currentStep?.step !== 'confirm_funnel') return;
+    const cur = currentStep.payload?.board_id || '';
+    if (cur && !selectedBoardId) setSelectedBoardId(cur);
+  }, [currentStep?.id]);
+
   const execute = async (extra: Record<string, unknown> = {}) => {
     if (!currentStep) return;
     setBusy(true);
@@ -226,6 +236,12 @@ export function OnboardingCheckpointHost({ selectedPhone }: Props = {}) {
   const handleConfirm = () => {
     if (!currentStep) return;
     switch (currentStep.step) {
+      case 'confirm_funnel':
+        if (!selectedBoardId) {
+          toast({ title: 'Selecione um funil', variant: 'destructive' });
+          return;
+        }
+        return execute({ board_id: selectedBoardId });
       case 'setup_lead_close':
       case 'create_group':
       case 'create_onboarding_activity':
@@ -358,6 +374,28 @@ export function OnboardingCheckpointHost({ selectedPhone }: Props = {}) {
         {currentStep && (
           <div className="space-y-3 border-t pt-3">
             <div className="text-sm font-medium">{STEP_LABEL[currentStep.step]}</div>
+
+            {currentStep.step === 'confirm_funnel' && (
+              <div className="space-y-2">
+                <div className="text-xs text-muted-foreground">
+                  Lead: <b>{currentStep.payload?.lead_name}</b>
+                </div>
+                <Label className="text-xs">Funil (board) deste lead</Label>
+                <Select value={selectedBoardId} onValueChange={setSelectedBoardId}>
+                  <SelectTrigger><SelectValue placeholder="Escolha o funil correto" /></SelectTrigger>
+                  <SelectContent className="max-h-72">
+                    {boards.map((b: any) => (
+                      <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {selectedBoardId && currentStep.payload?.board_id && selectedBoardId !== currentStep.payload?.board_id && (
+                  <div className="text-[11px] text-amber-600">
+                    ⚠️ Lead será movido para outro funil. As próximas etapas usarão a configuração do novo funil (nome do grupo, mensagens, etc.).
+                  </div>
+                )}
+              </div>
+            )}
 
             {currentStep.step === 'send_initial_message' && (
               <Textarea
