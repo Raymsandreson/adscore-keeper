@@ -134,14 +134,37 @@ export function OnboardingCheckpointHost({ selectedPhone }: Props = {}) {
 
   const allDone = checkpoints.length > 0 && checkpoints.every((c) => c.status === 'done');
 
-  // Pré-preenche mensagem inicial
+  // Pré-preenche mensagem inicial usando o template do board_group_settings
   useEffect(() => {
-    if (currentStep?.step === 'send_initial_message' && !msgText) {
+    if (currentStep?.step !== 'send_initial_message' || msgText) return;
+    (async () => {
       const name = currentStep.payload?.lead_name || 'cliente';
-      setMsgText(
-        `Olá ${name}! 👋\nSeja bem-vindo(a). Recebemos sua assinatura e a partir de agora vamos cuidar do seu caso.`,
-      );
-    }
+      const boardId = currentStep.payload?.board_id;
+      const groupResult = checkpoints.find((c) => c.step === 'create_group')?.result || {};
+      const groupName = groupResult?.group_name || '';
+      let template = '';
+      if (boardId) {
+        const dbAny = db as any;
+        const { data } = await dbAny
+          .from('board_group_settings')
+          .select('initial_message_template')
+          .eq('board_id', boardId)
+          .maybeSingle();
+        template = data?.initial_message_template || '';
+      }
+      if (template) {
+        const filled = template
+          .replaceAll('{lead_name}', name)
+          .replaceAll('{group_name}', groupName)
+          .replaceAll('{victim_name}', currentStep.payload?.victim_name || '')
+          .replaceAll('{case_type}', currentStep.payload?.case_type || '');
+        setMsgText(filled);
+      } else {
+        setMsgText(
+          `Olá ${name}! 👋\nSeja bem-vindo(a). Recebemos sua assinatura e a partir de agora vamos cuidar do seu caso.`,
+        );
+      }
+    })();
   }, [currentStep?.id]);
 
   const execute = async (extra: Record<string, unknown> = {}) => {
