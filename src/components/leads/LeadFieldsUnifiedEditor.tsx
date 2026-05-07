@@ -61,7 +61,7 @@ export function LeadFieldsUnifiedEditor({ open, onOpenChange, boardId, boardName
   );
 
   useEffect(() => {
-    if (!open) return;
+    if (!open && !inline) return;
     const labelOf = (k: string) => LEAD_FIELD_REGISTRY.find(d => d.key === k)?.label || k;
     const fixed: UnifiedItem[] = resolved.map(r => ({
       key: 'fixed:' + r.field_key,
