@@ -154,10 +154,10 @@ export function OnboardingCheckpointHost({ selectedPhone }: Props = {}) {
       }
       if (template) {
         const filled = template
-          .replaceAll('{lead_name}', name)
-          .replaceAll('{group_name}', groupName)
-          .replaceAll('{victim_name}', currentStep.payload?.victim_name || '')
-          .replaceAll('{case_type}', currentStep.payload?.case_type || '');
+          .replace(/\{lead_name\}/g, name)
+          .replace(/\{group_name\}/g, groupName)
+          .replace(/\{victim_name\}/g, currentStep.payload?.victim_name || '')
+          .replace(/\{case_type\}/g, currentStep.payload?.case_type || '');
         setMsgText(filled);
       } else {
         setMsgText(
