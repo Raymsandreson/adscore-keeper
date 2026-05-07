@@ -216,10 +216,17 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
   };
 
   const fetchLinked = async () => {
-    const { data } = await (db as any)
+    const { data, error } = await (db as any)
       .from('board_group_instances')
       .select('instance_id, role_title, role_description, applies_to')
       .eq('board_id', selectedBoard);
+    if (error) {
+      console.error('Erro ao carregar instâncias do grupo:', error);
+      toast.error('Erro ao carregar participantes do grupo');
+      setLinkedInstances([]);
+      setInstanceConfigs({});
+      return;
+    }
     setLinkedInstances((data || []).map((d: any) => d.instance_id));
     const configs: Record<string, InstanceConfig> = {};
     (data || []).forEach((d: any) => {
@@ -293,11 +300,12 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
     setSaving(true);
     try {
       if (linkedInstances.includes(instanceId)) {
-        await (db as any)
+        const { error } = await (db as any)
           .from('board_group_instances')
           .delete()
           .eq('board_id', selectedBoard)
           .eq('instance_id', instanceId);
+        if (error) throw error;
         setLinkedInstances(prev => prev.filter(id => id !== instanceId));
         setInstanceConfigs(prev => {
           const next = { ...prev };
@@ -305,9 +313,13 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
           return next;
         });
       } else {
-        await (db as any)
+        const { error } = await (db as any)
           .from('board_group_instances')
-          .insert({ board_id: selectedBoard, instance_id: instanceId, applies_to: 'both' });
+          .upsert(
+            { board_id: selectedBoard, instance_id: instanceId, applies_to: 'both' },
+            { onConflict: 'board_id,instance_id' }
+          );
+        if (error) throw error;
         setLinkedInstances(prev => [...prev, instanceId]);
         setInstanceConfigs(prev => ({
           ...prev,
@@ -316,7 +328,9 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
       }
       toast.success('Configuração atualizada');
     } catch (e: any) {
+      console.error('Erro ao salvar instância do grupo:', e);
       toast.error('Erro ao salvar');
+      throw e;
     } finally {
       setSaving(false);
     }
@@ -341,13 +355,16 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
       },
     }));
     try {
-      await (db as any)
+      const { error } = await (db as any)
         .from('board_group_instances')
         .update({ applies_to: value })
         .eq('board_id', selectedBoard)
         .eq('instance_id', instanceId);
+      if (error) throw error;
     } catch (e) {
+      console.error('Erro ao atualizar regra da instância:', e);
       toast.error('Erro ao atualizar regra');
+      throw e;
     }
   };
 
