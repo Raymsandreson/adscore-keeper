@@ -339,7 +339,8 @@ export function OnboardingCheckpointHost({ selectedPhone }: Props = {}) {
     <>
     {open && (
       <div
-        className="fixed top-0 right-0 h-[100dvh] w-1/2 sm:w-[480px] z-40 bg-background border-l shadow-2xl flex flex-col"
+        className="fixed top-0 right-0 h-[100dvh] z-40 bg-background border-l shadow-2xl flex flex-col"
+        style={{ width: 'var(--onboarding-panel-w, 480px)' }}
         role="dialog"
         aria-label="Onboarding pós-assinatura"
       >
