@@ -14,6 +14,8 @@ import { handler as zapsignWebhook } from './functions/zapsign-webhook';
 import { runPostSignExtras } from './functions/zapsign-post-sign-extras';
 import { handler as onboardingCheckpointExecute } from './functions/onboarding-checkpoint-execute';
 import { handler as regenerateLeadName } from './functions/regenerate-lead-name';
+import { handler as leadCloseSequenceInfo } from './functions/lead-close-sequence-info';
+import { handler as onboardingCheckpointReprocess } from './functions/onboarding-checkpoint-reprocess';
 
 const functionHandlers: Record<string, express.RequestHandler> = {
   'whatsapp-webhook': whatsappWebhook,
@@ -22,6 +24,8 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'zapsign-webhook': zapsignWebhook,
   'onboarding-checkpoint-execute': onboardingCheckpointExecute,
   'regenerate-lead-name': regenerateLeadName,
+  'lead-close-sequence-info': leadCloseSequenceInfo,
+  'onboarding-checkpoint-reprocess': onboardingCheckpointReprocess,
 };
 
 const app = express();
