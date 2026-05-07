@@ -439,7 +439,7 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
           }
         }
         toast.success(`${selectedProcesses.size} processo(s) criado(s)`);
-        if (Array.from(selectedProcesses).some(t => CASO_PROCESS_ASSIGNMENTS[t])) {
+        if (Array.from(selectedProcesses).some(t => CASO_PROCESS_ASSIGNMENTS[t] || t === 'Benefício INSS')) {
           toast.success('Atividades atribuídas automaticamente');
         }
       }
