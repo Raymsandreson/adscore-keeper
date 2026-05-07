@@ -44,7 +44,8 @@ interface Checkpoint {
   error_message: string | null;
 }
 
-const FN_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/onboarding-checkpoint-execute`;
+// Edge function vive no Supabase EXTERNO (kmedldlepwiityjsdahz), não no Cloud.
+const FN_URL = 'https://kmedldlepwiityjsdahz.supabase.co/functions/v1/onboarding-checkpoint-execute';
 
 export function OnboardingCheckpointHost() {
   const { user } = useAuth();
