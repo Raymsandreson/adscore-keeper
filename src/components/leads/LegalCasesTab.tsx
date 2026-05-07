@@ -151,11 +151,18 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
           created_by: user?.id,
         } as any).select('id').single();
 
-        // Auto-create activity for all cases with predefined assignments
-        if (CASO_PROCESS_ASSIGNMENTS[title]) {
-          const assignment = CASO_PROCESS_ASSIGNMENTS[title];
+        // Auto-create activity. INSS sempre vai pro criador do caso.
+        const isInss = title === 'Benefício INSS';
+        const assignment = isInss ? null : CASO_PROCESS_ASSIGNMENTS[title];
+        if (isInss || assignment) {
           try {
-            const extAssignedTo = await remapToExternal(assignment.userId);
+            let assignedCloudId: string | null | undefined = assignment?.userId ?? user?.id;
+            let assignedName: string | null | undefined = assignment?.userName ?? null;
+            if (isInss && user?.id) {
+              const { data: prof } = await supabase.from('profiles').select('full_name').eq('user_id', user.id).maybeSingle();
+              assignedName = prof?.full_name || null;
+            }
+            const extAssignedTo = await remapToExternal(assignedCloudId);
             const extCreatedBy = await remapToExternal(user?.id);
             await externalSupabase.from('lead_activities').insert({
               lead_id: caseLeadId,
@@ -165,7 +172,7 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
               status: 'pendente',
               priority: 'normal',
               assigned_to: extAssignedTo,
-              assigned_to_name: assignment.userName,
+              assigned_to_name: assignedName,
               created_by: extCreatedBy,
               deadline: new Date().toISOString().slice(0, 10),
               process_id: savedProcess?.id || null,
@@ -179,7 +186,7 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
       }
     }
     toast.success(`${selectedProcesses.size} processo(s) criado(s) automaticamente`);
-    if (Array.from(selectedProcesses).some(t => CASO_PROCESS_ASSIGNMENTS[t])) {
+    if (Array.from(selectedProcesses).some(t => CASO_PROCESS_ASSIGNMENTS[t] || t === 'Benefício INSS')) {
       toast.success('Atividades atribuídas automaticamente');
     }
   };
