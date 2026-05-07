@@ -55,7 +55,7 @@ const LEGACY_REVIEWED = new Set([
   'migration-orchestrator',
   'migration-validate',
   'monitor-campaign-status',
-  'onboarding-checkpoint-execute',
+  // 'onboarding-checkpoint-execute' — REMOVIDA: portada para Railway.
   'permanent-delete-lead',
   'register-whatsapp-instance',
   'send-password-reset',
