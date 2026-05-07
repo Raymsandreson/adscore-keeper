@@ -13,6 +13,7 @@ import { useLeadCustomFields, CustomField, CustomFieldValue, FieldType } from '@
 import { useKanbanBoards, KanbanBoard } from '@/hooks/useKanbanBoards';
 import { useFieldStageRequirements } from '@/hooks/useFieldStageRequirements';
 import { CustomFieldInput } from '@/components/leads/CustomFieldsForm';
+import { LeadFieldsUnifiedEditor } from '@/components/leads/LeadFieldsUnifiedEditor';
 import { toast } from 'sonner';
 
 const fieldTypeLabels: Record<FieldType, string> = {
@@ -63,6 +64,7 @@ export function CustomFieldsConfigPanel({
 
   // Config mode
   const [configMode, setConfigMode] = useState(false);
+  const [unifiedOpen, setUnifiedOpen] = useState(false);
 
   // Field creation/edit dialog
   const [fieldDialogOpen, setFieldDialogOpen] = useState(false);
@@ -314,13 +316,15 @@ export function CustomFieldsConfigPanel({
           )}
         </h4>
         <Button
-          variant={configMode ? 'default' : 'outline'}
+          variant="outline"
           size="sm"
-          onClick={() => setConfigMode(!configMode)}
+          onClick={() => currentBoardId ? setUnifiedOpen(true) : setConfigMode(!configMode)}
           className="gap-1"
+          disabled={!currentBoardId}
+          title={!currentBoardId ? 'Selecione um funil primeiro' : 'Personalizar campos e abas'}
         >
           <Settings2 className="h-3.5 w-3.5" />
-          {configMode ? 'Concluir' : 'Configurar'}
+          Configurar
         </Button>
       </div>
 
@@ -697,6 +701,16 @@ export function CustomFieldsConfigPanel({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {currentBoardId && (
+        <LeadFieldsUnifiedEditor
+          open={unifiedOpen}
+          onOpenChange={setUnifiedOpen}
+          boardId={currentBoardId}
+          boardName={currentBoard?.name}
+          adAccountId={adAccountId}
+        />
+      )}
     </div>
   );
 }
