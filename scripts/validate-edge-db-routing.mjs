@@ -55,7 +55,7 @@ const LEGACY_REVIEWED = new Set([
   'migration-orchestrator',
   'migration-validate',
   'monitor-campaign-status',
-  'onboarding-checkpoint-execute',
+  // 'onboarding-checkpoint-execute' — REMOVIDA: portada para Railway.
   'permanent-delete-lead',
   'register-whatsapp-instance',
   'send-password-reset',
@@ -70,6 +70,9 @@ const LEGACY_REVIEWED = new Set([
   'zapsign-webhook',
 ]);
 
+// Exceções permanentes: utilitárias de infra que NÃO tocam DB de negócio.
+// `railway-redeploy` mora no Cloud por design — se vivesse no Railway, não conseguiria
+// se redeployar quando o Railway estivesse fora. Não acessa nenhuma tabela.
 const SAFE_INFRA_ONLY = new Set([
   'railway-redeploy',
 ]);

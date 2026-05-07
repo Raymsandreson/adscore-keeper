@@ -5,6 +5,7 @@
 // Render global: vive no WhatsAppInbox (não desmonta com troca de chat).
 import { useEffect, useMemo, useState } from 'react';
 import { db } from '@/integrations/supabase';
+import { cloudFunctions } from '@/lib/functionRouter';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -44,8 +45,7 @@ interface Checkpoint {
   error_message: string | null;
 }
 
-// Edge function vive no Supabase EXTERNO (kmedldlepwiityjsdahz), não no Cloud.
-const FN_URL = 'https://kmedldlepwiityjsdahz.supabase.co/functions/v1/onboarding-checkpoint-execute';
+// Função roda no Railway (Railway-first). O routing vive em src/lib/functionRouter.ts.
 
 export function OnboardingCheckpointHost() {
   const { user } = useAuth();
@@ -116,22 +116,22 @@ export function OnboardingCheckpointHost() {
     if (!currentStep) return;
     setBusy(true);
     try {
-      const r = await fetch(FN_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          // Anon key do Externo (kmedldlepwiityjsdahz)
-          Authorization: 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImttZWRsZGxlcHdpaXR5anNkYWh6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTExOTAsImV4cCI6MjA5MDQ2NzE5MH0.s51bWtABFjJGfGyuPFWr5Tp8CzbxPD5eieFUqUVuQTs',
+      const { data, error } = await cloudFunctions.invoke<{ success: boolean; error?: string }>(
+        'onboarding-checkpoint-execute',
+        {
+          body: {
+            checkpoint_id: currentStep.id,
+            user_id: user?.id,
+            extra,
+          },
         },
-        body: JSON.stringify({
-          checkpoint_id: currentStep.id,
-          user_id: user?.id,
-          extra,
-        }),
-      });
-      const data = await r.json();
-      if (!data.success) {
-        toast({ title: 'Falhou', description: data.error || 'Erro desconhecido', variant: 'destructive' });
+      );
+      if (error || !data?.success) {
+        toast({
+          title: 'Falhou',
+          description: data?.error || error?.message || 'Erro desconhecido',
+          variant: 'destructive',
+        });
       } else {
         toast({ title: 'OK', description: `${STEP_LABEL[currentStep.step]} concluído` });
       }

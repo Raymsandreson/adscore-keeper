@@ -1,13 +1,13 @@
-// Executa um checkpoint de onboarding pós-ZapSign após confirmação manual.
-// Bloqueia avanço: só executa se o checkpoint anterior estiver `done`.
-// Retorna SEMPRE 200 com { success, error? } por convenção do projeto.
-import { createClient } from 'jsr:@supabase/supabase-js@2';
-
-const cors = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-};
+// Executa checkpoint de onboarding pós-ZapSign. Portado do Lovable Cloud para Railway.
+// Regras:
+// - Usa Externo via lib/supabase (EXTERNAL_*).
+// - Bloqueia avanço: passo anterior precisa estar 'done'.
+// - Retorna SEMPRE 200 com { success, error? } (convenção do projeto).
+// - Chama handlers ainda residentes no Cloud (create-whatsapp-group, send-whatsapp-message,
+//   import-group-docs-to-lead) via CLOUD_FUNCTIONS_URL+CLOUD_ANON_KEY (mesma convenção do
+//   webhook ZapSign). Quando esses handlers migrarem, basta trocar a URL.
+import type { RequestHandler } from 'express';
+import { supabase as ext } from '../lib/supabase';
 
 const STEP_ORDER = [
   'create_group',
@@ -15,41 +15,37 @@ const STEP_ORDER = [
   'import_docs',
   'create_case_process',
   'create_onboarding_activity',
-];
+] as const;
 
-const EXT_URL = Deno.env.get('EXTERNAL_SUPABASE_URL')!;
-const EXT_KEY = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY')!;
-const CLOUD_URL = Deno.env.get('SUPABASE_URL')!;
-const CLOUD_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-
-function ok(body: Record<string, unknown>) {
-  return new Response(JSON.stringify(body), {
-    status: 200,
-    headers: { ...cors, 'Content-Type': 'application/json' },
-  });
-}
+const CLOUD_FUNCTIONS_URL =
+  process.env.CLOUD_FUNCTIONS_URL ||
+  process.env.SUPABASE_URL ||
+  'https://gliigkupoebmlbwyvijp.supabase.co';
+const CLOUD_ANON_KEY = process.env.CLOUD_ANON_KEY || process.env.SUPABASE_ANON_KEY || '';
 
 async function callCloudFn(name: string, body: unknown) {
-  const r = await fetch(`${CLOUD_URL}/functions/v1/${name}`, {
+  const r = await fetch(`${CLOUD_FUNCTIONS_URL}/functions/v1/${name}`, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${CLOUD_KEY}`,
+      Authorization: `Bearer ${CLOUD_ANON_KEY}`,
+      apikey: CLOUD_ANON_KEY,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(body),
   });
-  const data = await r.json().catch(() => ({}));
+  const data = await r.json().catch(() => ({} as any));
   return { ok: r.ok && (data?.success !== false), data };
 }
 
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
-
+export const handler: RequestHandler = async (req, res) => {
+  const ok = (b: Record<string, unknown>) => res.status(200).json(b);
   try {
-    const { checkpoint_id, user_id, extra } = await req.json();
+    const { checkpoint_id, user_id, extra } = (req.body || {}) as {
+      checkpoint_id?: string;
+      user_id?: string;
+      extra?: Record<string, any>;
+    };
     if (!checkpoint_id) return ok({ success: false, error: 'checkpoint_id required' });
-
-    const ext = createClient(EXT_URL, EXT_KEY);
 
     const { data: ckpt, error: ckptErr } = await ext
       .from('onboarding_checkpoints')
@@ -59,7 +55,6 @@ Deno.serve(async (req) => {
     if (ckptErr || !ckpt) return ok({ success: false, error: 'checkpoint not found' });
     if (ckpt.status === 'done') return ok({ success: true, already_done: true });
 
-    // Bloqueio: passo anterior precisa estar 'done'
     const idx = STEP_ORDER.indexOf(ckpt.step);
     if (idx > 0) {
       const prev = STEP_ORDER[idx - 1];
@@ -87,7 +82,6 @@ Deno.serve(async (req) => {
     try {
       switch (ckpt.step) {
         case 'create_group': {
-          // Idempotente: se lead já tem whatsapp_group_id, marca done
           const { data: lead } = await ext
             .from('leads')
             .select('whatsapp_group_id')
@@ -146,8 +140,6 @@ Deno.serve(async (req) => {
         }
 
         case 'import_docs': {
-          // Reaproveita import-group-docs-to-lead apenas se aprovado.
-          // `extra.documents` vem da UI já com lista classificada/escolhida.
           const documents = (extra?.documents as any[]) || [];
           if (documents.length === 0) { result = { imported: 0 }; success = true; break; }
           const r = await callCloudFn('import-group-docs-to-lead', {
@@ -161,14 +153,12 @@ Deno.serve(async (req) => {
         }
 
         case 'create_case_process': {
-          // SEM defaults silenciosos: process_type e fee_percentage vêm do `extra`.
           const process_type = extra?.process_type as string;
           const fee_percentage = Number(extra?.fee_percentage);
           if (!process_type || !Number.isFinite(fee_percentage)) {
             errMsg = 'process_type e fee_percentage obrigatórios';
             break;
           }
-          // Cria caso
           const { data: lc, error: lcErr } = await ext
             .from('legal_cases')
             .insert({
@@ -244,4 +234,4 @@ Deno.serve(async (req) => {
   } catch (e) {
     return ok({ success: false, error: e instanceof Error ? e.message : String(e) });
   }
-});
+};
