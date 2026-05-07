@@ -1040,16 +1040,16 @@ function InstanceParticipantsSection({
     return false;
   };
 
-  const togglePhase = (instId: string, checked: boolean) => {
+  const togglePhase = async (instId: string, checked: boolean) => {
     const isLinked = linkedInstances.includes(instId);
     const current: AppliesTo = instanceConfigs[instId]?.applies_to || 'both';
 
     if (phase === 'both') {
       if (checked) {
-        if (!isLinked) toggleInstance(instId);
-        if (current !== 'both') updateInstanceAppliesTo(instId, 'both');
+        if (!isLinked) await toggleInstance(instId);
+        if (current !== 'both') await updateInstanceAppliesTo(instId, 'both');
       } else if (isLinked) {
-        toggleInstance(instId);
+        await toggleInstance(instId);
       }
       return;
     }
@@ -1059,18 +1059,18 @@ function InstanceParticipantsSection({
 
     if (checked) {
       if (!isLinked) {
-        toggleInstance(instId);
-        // toggleInstance insere com applies_to='both' por padrão; ajusta para a fase atual
-        setTimeout(() => updateInstanceAppliesTo(instId, phase), 0);
+        await toggleInstance(instId);
+        // toggleInstance insere com applies_to='both'; ajusta para a fase atual
+        await updateInstanceAppliesTo(instId, phase);
       } else {
-        updateInstanceAppliesTo(instId, wasInOther ? 'both' : phase);
+        await updateInstanceAppliesTo(instId, wasInOther ? 'both' : phase);
       }
     } else {
       if (!isLinked) return;
       if (current === 'both') {
-        updateInstanceAppliesTo(instId, otherPhase);
+        await updateInstanceAppliesTo(instId, otherPhase);
       } else if (current === phase) {
-        toggleInstance(instId);
+        await toggleInstance(instId);
       }
     }
   };
