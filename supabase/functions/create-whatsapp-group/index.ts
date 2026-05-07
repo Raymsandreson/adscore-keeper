@@ -665,6 +665,29 @@ Deno.serve(async (req) => {
             .eq('group_jid', leadData.whatsapp_group_id)
             .eq('lead_id', lead_id || leadData.id)
         } catch {}
+
+        // Sync de participantes: calcula diff e adiciona os que faltam
+        let addedParticipants: string[] = []
+        let failedParticipants: string[] = []
+        if (body.sync_participants) {
+          const actualPhones = extractParticipantPhones(existingGroupInfo?.participants || [])
+          const missing = participants.filter((expected) =>
+            !actualPhones.some((actual) => phoneMatches(actual, expected))
+          )
+          console.log(`[create-group] sync_participants: ${missing.length} faltando de ${participants.length} esperados`)
+          if (missing.length > 0) {
+            const baseUrlForAdd = creatorInstance.base_url || 'https://abraci.uazapi.com'
+            const result = await addParticipantsToGroup(
+              baseUrlForAdd,
+              creatorInstance.instance_token,
+              leadData.whatsapp_group_id,
+              missing,
+            )
+            addedParticipants = result.added
+            failedParticipants = result.failed
+          }
+        }
+
         return new Response(JSON.stringify({
           success: true,
           existing: true,
@@ -672,6 +695,9 @@ Deno.serve(async (req) => {
           group_name: finalName,
           participants_count: existingMatchedParticipants || existingParticipantsTotal,
           renamed: needsRename && finalName === groupName,
+          synced: !!body.sync_participants,
+          added_participants: addedParticipants,
+          failed_participants: failedParticipants,
         }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         })
