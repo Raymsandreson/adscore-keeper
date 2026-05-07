@@ -824,7 +824,7 @@ Deno.serve(async (req) => {
     }
     // Bug 5: lead_name passa a refletir o nome do grupo
     if (lead_id && groupName) {
-      await supabase.from('leads').update({ lead_name: groupName }).eq('id', lead_id).catch(() => {})
+      try { await supabase.from('leads').update({ lead_name: groupName }).eq('id', lead_id) } catch (_) { /* noop */ }
     }
 
     const groupJid = groupId.includes('@g.us') ? groupId : `${groupId}@g.us`
