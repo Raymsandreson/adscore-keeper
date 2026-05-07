@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { db } from '@/integrations/supabase';
 import { cloudFunctions } from '@/lib/functionRouter';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
