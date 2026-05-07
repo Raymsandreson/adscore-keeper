@@ -1268,6 +1268,14 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
               📋 Copiar
             </CopyableText>
           </div>
+          {adOrigin && (
+            <div
+              className="mt-1 text-[10px] text-muted-foreground truncate"
+              title={[adOrigin.campaign_name, adOrigin.adset_name, adOrigin.ad_name].filter(Boolean).join(' › ')}
+            >
+              📢 {adOrigin.adset_name || adOrigin.ad_name || adOrigin.campaign_name}
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-1 shrink-0">
           {isPrivate && <Lock className="h-4 w-4 text-amber-500" />}
