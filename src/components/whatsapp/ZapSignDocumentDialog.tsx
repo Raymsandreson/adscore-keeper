@@ -1046,7 +1046,7 @@ export function ZapSignDocumentDialog({
           {step === 'fill' && !extracting && !showPreview && (
             <div className="flex gap-2 w-full">
               <Button variant="outline" onClick={() => setStep('signers')}>Voltar</Button>
-              <Button className="flex-1 gap-2" onClick={handleCreateDocument} disabled={creating || emptyFields.length > 0}>
+              <Button className="flex-1 gap-2" onClick={() => handleCreateDocument(false)} disabled={creating || emptyFields.length > 0}>
                 {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSignature className="h-4 w-4" />}
                 {emptyFields.length > 0 ? `Preencha ${emptyFields.length} campo(s) faltante(s)` : 'Gerar documento'}
               </Button>
