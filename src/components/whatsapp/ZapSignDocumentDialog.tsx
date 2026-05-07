@@ -206,13 +206,13 @@ export function ZapSignDocumentDialog({
   const fetchCrmData = async () => {
     if (contactId) {
       try {
-        const { data } = await supabase.from('contacts').select('*').eq('id', contactId).single();
+        const { data } = await externalSupabase.from('contacts').select('*').eq('id', contactId).single();
         if (data) setFetchedContactData(data);
       } catch {}
     }
     if (leadId) {
       try {
-        const { data } = await supabase.from('leads').select('*').eq('id', leadId).single();
+        const { data } = await externalSupabase.from('leads').select('*').eq('id', leadId).single();
         if (data) setFetchedLeadData(data);
       } catch {}
     }
