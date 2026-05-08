@@ -620,7 +620,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
       // If sync is OFF, allow user to set a custom lead name manually
       let customLeadName: string | null = null;
       if (boardId) {
-        const { data: bgs } = await (supabase as any)
+        const { data: bgs } = await (externalSupabase as any)
           .from('board_group_settings')
           .select('sync_lead_name_with_group')
           .eq('board_id', boardId)
