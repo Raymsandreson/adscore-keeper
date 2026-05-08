@@ -208,6 +208,9 @@ Deno.serve(async (req) => {
 
     for (const field of leadFields) {
       if (field === 'closed_seq' || field === 'case_number') parts.push(seqStr)
+      else if (typeof field === 'string' && field.startsWith('text:')) {
+        try { parts.push(decodeURIComponent(field.slice(5))) } catch { parts.push(field.slice(5)) }
+      }
       else if (field === 'board_name' && board?.name) parts.push(board.name)
       else if (typeof field === 'string' && field.startsWith('cf:')) {
         const v = cfValuesById[field.slice(3)]
