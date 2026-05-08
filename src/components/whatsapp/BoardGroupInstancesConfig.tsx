@@ -144,6 +144,7 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [customVoices, setCustomVoices] = useState<{id: string; name: string}[]>([]);
+  const [customTextInput, setCustomTextInput] = useState('');
   const [settings, setSettings] = useState<GroupSettings>({
     group_name_prefix: '',
     closed_group_name_prefix: '',
