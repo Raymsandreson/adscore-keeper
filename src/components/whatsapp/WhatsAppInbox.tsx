@@ -1511,8 +1511,7 @@ export function WhatsAppInbox() {
       )}
       <ZapSignLeadCreationListener />
       <ZapSignDialogHost />
-      {/* Temporariamente desativado a pedido do usuário */}
-      {/* <OnboardingCheckpointHost selectedPhone={selectedPhone} /> */}
+      <OnboardingCheckpointHost selectedPhone={selectedPhone} />
 
       <AlertDialog
         open={!!pendingNav}
