@@ -172,7 +172,7 @@ Deno.serve(async (req) => {
     const executorPhone = normalizePhone(instance.owner_phone || instance.phone || '')
 
     // Build new name
-    const closedPrefix = settings.closed_group_name_prefix
+    const closedPrefix = settings.group_name_prefix || ''
     const leadFields = settings.lead_fields || ['lead_name']
     const { data: board } = await supabase
       .from('kanban_boards')
