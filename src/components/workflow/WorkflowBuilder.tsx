@@ -706,11 +706,14 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                         <Collapsible open={phase.isExpanded} onOpenChange={() => togglePhase(phaseIdx)} className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 w-full min-w-0">
                             <CollapsibleTrigger asChild>
-                              <button type="button" className="flex items-center gap-2 text-left min-w-0">
+                              <button type="button" className={cn("flex items-center gap-2 text-left min-w-0", !phase.isExpanded && "flex-1")}>
                                 {phase.isExpanded ? <ChevronDown className="h-4 w-4 flex-shrink-0" /> : <ChevronRight className="h-4 w-4 flex-shrink-0" />}
                                 <span className="flex-shrink-0 h-5 w-5 rounded-full bg-muted-foreground/20 text-muted-foreground text-[10px] font-bold flex items-center justify-center">
                                   {phaseIdx + 1}
                                 </span>
+                                {!phase.isExpanded && (
+                                  <span className="font-semibold text-sm text-foreground truncate">{phase.stageName}</span>
+                                )}
                               </button>
                             </CollapsibleTrigger>
                             {phase.isExpanded ? (
@@ -722,9 +725,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                                 placeholder="Nome da fase..."
                                 className="h-7 text-sm font-semibold text-foreground flex-1"
                               />
-                            ) : (
-                              <span className="font-semibold text-sm text-foreground truncate">{phase.stageName}</span>
-                            )}
+                            ) : null}
                           </div>
                        </Collapsible>
                        <span className="text-xs text-muted-foreground whitespace-nowrap flex-shrink-0">
@@ -764,11 +765,14 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                                  <Collapsible open={obj.isExpanded} onOpenChange={() => toggleObjective(phaseIdx, objIdx)} className="flex-1 min-w-0">
                                    <div className="flex items-center gap-2 w-full min-w-0">
                                      <CollapsibleTrigger asChild>
-                                       <button type="button" className="flex items-center gap-2 text-left min-w-0">
+                                       <button type="button" className={cn("flex items-center gap-2 text-left min-w-0", !obj.isExpanded && "flex-1")}>
                                          {obj.isExpanded ? <ChevronDown className="h-3.5 w-3.5 flex-shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 flex-shrink-0" />}
                                          <span className="flex-shrink-0 h-5 w-5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 text-[10px] font-bold flex items-center justify-center">
                                            {objIdx + 1}
                                          </span>
+                                         {!obj.isExpanded && (
+                                           <span className="font-medium text-sm truncate">{obj.name}</span>
+                                         )}
                                        </button>
                                      </CollapsibleTrigger>
                                      {obj.isExpanded ? (
@@ -780,9 +784,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                                          placeholder="Nome do objetivo..."
                                          className="h-7 text-sm font-medium flex-1"
                                        />
-                                     ) : (
-                                       <span className="font-medium text-sm truncate">{obj.name}</span>
-                                     )}
+                                     ) : null}
                                    </div>
                                </Collapsible>
                                <span className="text-xs text-muted-foreground whitespace-nowrap flex-shrink-0">
