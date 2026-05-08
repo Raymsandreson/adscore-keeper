@@ -171,7 +171,7 @@ export const handler: RequestHandler = async (req, res) => {
 
     const missingFields: string[] = [];
     for (const field of leadFields) {
-      if (field === 'closed_seq') {
+      if (field === 'closed_seq' || field === 'case_number') {
         parts.push(seqStr);
       } else if (field === 'board_name') {
         if (boardName) parts.push(boardName);
