@@ -182,7 +182,8 @@ Deno.serve(async (req) => {
     const parts: string[] = []
     if (closedPrefix) parts.push(closedPrefix)
     const seqStr = String(closedSeq).padStart(4, '0')
-    if (!leadFields.includes('closed_seq')) parts.push(seqStr)
+    const hasSeqToken = leadFields.includes('closed_seq') || leadFields.includes('case_number')
+    if (!hasSeqToken) parts.push(seqStr)
 
     // Pré-carrega valores de campos personalizados (tokens cf:<id>)
     const cfIds: string[] = (leadFields as string[])
@@ -206,7 +207,7 @@ Deno.serve(async (req) => {
     }
 
     for (const field of leadFields) {
-      if (field === 'closed_seq') parts.push(seqStr)
+      if (field === 'closed_seq' || field === 'case_number') parts.push(seqStr)
       else if (field === 'board_name' && board?.name) parts.push(board.name)
       else if (typeof field === 'string' && field.startsWith('cf:')) {
         const v = cfValuesById[field.slice(3)]
