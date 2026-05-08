@@ -150,6 +150,53 @@ export function CustomFieldInput({ field, value, onChange }: CustomFieldInputPro
           </label>
         </div>
       )}
+
+      {field.field_type === 'url' && (() => {
+        const raw = (currentValue as string) || '';
+        const href = normalizeUrl(raw);
+        return (
+          <div className="space-y-2 mt-1">
+            <div className="relative">
+              <LinkIcon className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                type="url"
+                placeholder="https://exemplo.com/..."
+                value={raw}
+                onChange={(e) => handleChange(e.target.value || null)}
+                className="pl-7"
+              />
+            </div>
+            {href && (
+              <a
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 p-2 rounded-md border bg-muted/40 hover:bg-muted/70 transition-colors group"
+              >
+                {isImageUrl(href) ? (
+                  <img
+                    src={href}
+                    alt="Prévia do link"
+                    className="h-12 w-12 rounded object-cover border"
+                    onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                  />
+                ) : (
+                  <div className="h-12 w-12 rounded bg-primary/10 flex items-center justify-center shrink-0">
+                    <LinkIcon className="h-5 w-5 text-primary" />
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs font-medium truncate group-hover:underline">{href}</div>
+                  <div className="text-[10px] text-muted-foreground flex items-center gap-1">
+                    <ExternalLink className="h-2.5 w-2.5" />
+                    Abrir em nova aba
+                  </div>
+                </div>
+              </a>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 }
