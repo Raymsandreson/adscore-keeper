@@ -196,36 +196,58 @@ Deno.serve(async (req) => {
       }
     }
 
+    // 2.5. SIGNER MISMATCH SAFEGUARD
+    // If lead already has a CPF and the extracted CPF differs, this PDF belongs to ANOTHER signer.
+    // Do NOT overwrite personal fields. Just attach the PDF (Drive) and link the doc.
+    const extractedCpf = cleanDigits(extracted.cpf);
+    let mismatchSkip = false;
+    if (extractedCpf) {
+      const { data: existingLead } = await ext
+        .from("leads")
+        .select("cpf, victim_name")
+        .eq("id", lead_id)
+        .maybeSingle();
+      const existingCpf = cleanDigits(existingLead?.cpf);
+      if (existingCpf && existingCpf !== extractedCpf) {
+        mismatchSkip = true;
+        console.warn(
+          `[zapsign-enrich-lead] SIGNER MISMATCH lead=${lead_id} existing_cpf=${existingCpf} extracted_cpf=${extractedCpf} — skipping personal-field overwrite, only attaching PDF.`,
+        );
+      }
+    }
+
     // 3. Build update payload (only set fields when value present, do not overwrite with null)
     const update: Record<string, any> = {};
     const setIf = (k: string, v: any) => {
       if (v !== undefined && v !== null && v !== "") update[k] = v;
     };
 
-    setIf("cpf", cleanDigits(extracted.cpf));
-    setIf("rg", extracted.rg);
-    setIf("birth_date", extracted.birth_date);
-    setIf("cep", cleanDigits(extracted.cep));
-    setIf("street", extracted.street);
-    setIf("street_number", extracted.street_number);
-    setIf("complement", extracted.complement);
-    setIf("neighborhood", extracted.neighborhood);
-    setIf("city", extracted.city);
-    setIf("state", extracted.state?.toUpperCase()?.slice(0, 2));
-    setIf("acolhedor", acolhedor);
-    if (extracted.signature_date) update.became_client_date = extracted.signature_date;
+    if (!mismatchSkip) {
+      setIf("cpf", cleanDigits(extracted.cpf));
+      setIf("rg", extracted.rg);
+      setIf("birth_date", extracted.birth_date);
+      setIf("cep", cleanDigits(extracted.cep));
+      setIf("street", extracted.street);
+      setIf("street_number", extracted.street_number);
+      setIf("complement", extracted.complement);
+      setIf("neighborhood", extracted.neighborhood);
+      setIf("city", extracted.city);
+      setIf("state", extracted.state?.toUpperCase()?.slice(0, 2));
+      setIf("acolhedor", acolhedor);
+      if (extracted.signature_date) update.became_client_date = extracted.signature_date;
 
-    // Mirror visit_* if blank (used em visitas/perícia)
-    setIf("visit_city", extracted.city);
-    setIf("visit_state", extracted.state?.toUpperCase()?.slice(0, 2));
-    setIf("visit_address", [
-      [extracted.street, extracted.street_number].filter(Boolean).join(", "),
-      extracted.complement,
-      extracted.neighborhood,
-    ].filter(Boolean).join(" - ") || null);
+      // Mirror visit_* if blank (used em visitas/perícia)
+      setIf("visit_city", extracted.city);
+      setIf("visit_state", extracted.state?.toUpperCase()?.slice(0, 2));
+      setIf("visit_address", [
+        [extracted.street, extracted.street_number].filter(Boolean).join(", "),
+        extracted.complement,
+        extracted.neighborhood,
+      ].filter(Boolean).join(" - ") || null);
 
-    update.ocr_enriched_at = new Date().toISOString();
-    update.ocr_source = "zapsign_procuracao";
+      update.ocr_enriched_at = new Date().toISOString();
+      update.ocr_source = "zapsign_procuracao";
+    }
 
     if (Object.keys(update).length > 0) {
       const { error: updErr } = await ext.from("leads").update(update).eq("id", lead_id);
