@@ -25,30 +25,43 @@ function stripExistingSequence(name: string, prefix: string): string {
   return trimmed.replace(re, '').trim();
 }
 
+// Posição do lead na fila de fechados do funil, ordenada pela data de assinatura
+// da PRIMEIRA procuração assinada no ZapSign (signed_at ASC). Determinístico.
+// Se o lead ainda não tem procuração assinada, retorna projeção (total+1).
 async function computeClosedPosition(boardId: string, leadId: string): Promise<{ position: number; total: number }> {
-  const { data: closedSteps } = await ext
-    .from('onboarding_checkpoints')
-    .select('lead_id, confirmed_at, updated_at')
-    .eq('step', 'setup_lead_close')
-    .eq('status', 'done');
-  const candidateIds = (closedSteps || []).map((c: any) => c.lead_id);
-  if (candidateIds.length === 0) return { position: 1, total: 0 };
-
-  const { data: leadsRows } = await ext
+  // 1. Pega todos leads do board
+  const { data: boardLeads } = await ext
     .from('leads')
     .select('id')
-    .in('id', candidateIds)
     .eq('board_id', boardId);
-  const inBoard = new Set((leadsRows || []).map((l: any) => l.id));
+  const boardIds = (boardLeads || []).map((l: any) => l.id);
+  if (boardIds.length === 0) return { position: 1, total: 0 };
 
-  const sequence = (closedSteps || [])
-    .filter((c: any) => inBoard.has(c.lead_id))
-    .map((c: any) => ({ lead_id: c.lead_id as string, when: (c.confirmed_at || c.updated_at) as string }))
+  // 2. Pega TODAS as procurações assinadas desses leads
+  const { data: signedDocs } = await ext
+    .from('zapsign_documents')
+    .select('lead_id, signed_at')
+    .in('lead_id', boardIds)
+    .eq('status', 'signed')
+    .not('signed_at', 'is', null);
+
+  // 3. Agrupa por lead_id pegando o MIN(signed_at) de cada
+  const firstSignedByLead = new Map<string, string>();
+  for (const d of signedDocs || []) {
+    const cur = firstSignedByLead.get(d.lead_id);
+    if (!cur || (d.signed_at && d.signed_at < cur)) {
+      firstSignedByLead.set(d.lead_id, d.signed_at);
+    }
+  }
+
+  // 4. Ordena ASC e indexa
+  const sequence = [...firstSignedByLead.entries()]
+    .map(([lead_id, when]) => ({ lead_id, when }))
     .sort((a, b) => (a.when || '').localeCompare(b.when || ''));
 
   const idx = sequence.findIndex((s) => s.lead_id === leadId);
   if (idx >= 0) return { position: idx + 1, total: sequence.length };
-  // Lead ainda não fechado: projeção = próximo da fila
+  // Lead sem procuração assinada ainda: projeção = próximo da fila
   return { position: sequence.length + 1, total: sequence.length };
 }
 
@@ -138,11 +151,13 @@ export const handler: RequestHandler = async (req, res) => {
 
     const useClosed = phase === 'closed' && !!settings.closed_group_name_prefix;
     const activePrefix = (useClosed ? settings.closed_group_name_prefix : settings.group_name_prefix) || '';
-    const activeSeqStart = useClosed ? (settings.closed_sequence_start || 1) : (settings.sequence_start || 1);
+    const activeSeqStart = useClosed ? 1 : (settings.sequence_start || 1);
 
-    // Sequência determinística por posição
+    // Sequência determinística por posição.
+    // Para fechados: usa SEMPRE a posição real (data de assinatura ZapSign), ignora seq inicial.
+    // Para abertos: respeita seq inicial configurada.
     const { position, total } = await computeClosedPosition(lead.board_id, lead_id);
-    const nextSeq = Math.max(position, activeSeqStart);
+    const nextSeq = useClosed ? position : Math.max(position, activeSeqStart);
 
     const { data: boardData } = await ext
       .from('kanban_boards')
