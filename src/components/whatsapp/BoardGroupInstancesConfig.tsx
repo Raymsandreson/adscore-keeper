@@ -78,7 +78,7 @@ interface ProcessActivity {
 }
 
 const LEAD_FIELD_OPTIONS = [
-  { value: 'closed_seq', label: 'Nº do Caso (ex: 0047)' },
+  { value: 'case_number', label: 'Nº do Caso (ex: 0047)' },
   { value: 'board_name', label: 'Nome do Funil' },
   { value: 'lead_name', label: 'Nome do Lead' },
   { value: 'victim_name', label: 'Nome da Vítima' },
@@ -87,7 +87,6 @@ const LEAD_FIELD_OPTIONS = [
   { value: 'city', label: 'Cidade' },
   { value: 'state', label: 'Estado' },
   { value: 'source', label: 'Origem' },
-  { value: 'case_number', label: 'Número do Caso' },
   { value: 'main_company', label: 'Empresa Principal' },
   { value: 'contractor_company', label: 'Empresa Contratante' },
   { value: 'sector', label: 'Setor' },
