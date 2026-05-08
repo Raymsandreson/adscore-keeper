@@ -114,6 +114,10 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
   const [aiMode, setAiMode] = useState<'create' | 'edit'>('create');
   const [aiChangelog, setAiChangelog] = useState<Array<{ action: string; location: string; detail: string }> | null>(null);
 
+  const stopSpacePropagation = (e: React.KeyboardEvent<HTMLElement>) => {
+    if (e.key === ' ' || e.code === 'Space') e.stopPropagation();
+  };
+
   // Reset viewMode when sheet opens based on props
   useEffect(() => {
     if (!open) {
