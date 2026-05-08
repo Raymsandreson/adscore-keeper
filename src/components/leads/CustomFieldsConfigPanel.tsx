@@ -100,7 +100,7 @@ export function CustomFieldsConfigPanel({
           if (val) {
             let value: string | number | boolean | null = null;
             switch (field.field_type) {
-              case 'text': case 'select': value = val.value_text; break;
+              case 'text': case 'select': case 'url': value = val.value_text; break;
               case 'number': value = val.value_number; break;
               case 'date': value = val.value_date; break;
               case 'checkbox': value = val.value_boolean; break;
