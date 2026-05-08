@@ -380,11 +380,23 @@ Deno.serve(async (req) => {
         const statusObj = data?.status
         
         // Check nested checked_instance.connection_status first (new UazAPI format)
+        // IMPORTANT: UazAPI's /status returns a "checked_instance" that is whatever instance
+        // the server last health-checked — NOT necessarily the one whose token we sent.
+        // We must validate the returned name matches the instance we're querying, otherwise
+        // we'd report a disconnected instance as "connected" (causing 503 on subsequent ops).
         if (typeof statusObj === 'object' && statusObj !== null) {
           const checkedInstance = statusObj?.checked_instance
-          if (checkedInstance?.connection_status === 'connected' || checkedInstance?.is_healthy === true) {
-            console.log(`[create-group] Instance ${inst.instance_name} -> connected (checked_instance)`)
+          const returnedName = checkedInstance?.name || ''
+          const sameInstance = returnedName && inst.instance_name &&
+            returnedName.trim().toLowerCase() === String(inst.instance_name).trim().toLowerCase()
+          if (!sameInstance && returnedName) {
+            console.warn(`[create-group] /status returned data for "${returnedName}" but we asked for "${inst.instance_name}" — ignoring (UazAPI server health-check artifact)`)
+          } else if (sameInstance && (checkedInstance?.connection_status === 'connected' || checkedInstance?.is_healthy === true)) {
+            console.log(`[create-group] Instance ${inst.instance_name} -> connected (checked_instance verified)`)
             return true
+          } else if (sameInstance) {
+            console.log(`[create-group] Instance ${inst.instance_name} -> NOT connected (checked_instance: ${checkedInstance?.connection_status})`)
+            return false
           }
         }
         
