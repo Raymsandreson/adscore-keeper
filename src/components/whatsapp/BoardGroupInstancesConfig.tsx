@@ -681,6 +681,34 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
                   </button>
                 ))}
               </div>
+              {boardCustomFields.length > 0 && (
+                <>
+                  <Label className="text-[10px] text-muted-foreground/80 mt-2 block">
+                    Campos personalizados deste funil
+                  </Label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {boardCustomFields.map(cf => {
+                      const token = `cf:${cf.id}`;
+                      const active = settings.lead_fields.includes(token);
+                      return (
+                        <button
+                          key={cf.id}
+                          type="button"
+                          onClick={() => toggleField(token)}
+                          className={`text-[10px] px-2 py-1 rounded-full border transition-colors ${
+                            active
+                              ? 'bg-primary text-primary-foreground border-primary'
+                              : 'bg-background text-muted-foreground border-border hover:border-primary/50'
+                          }`}
+                          title={`Tipo: ${cf.field_type}`}
+                        >
+                          ✦ {cf.field_name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
             </div>
 
             <div className="space-y-1">
