@@ -217,14 +217,17 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
 
   const fetchHiddenFieldKeys = async () => {
     try {
-      const { data, error } = await (db as any)
-        .from('lead_field_layouts')
-        .select('field_key, hidden')
-        .eq('board_id', selectedBoard);
-      if (error) throw error;
+      const [fieldsRes, tabsRes] = await Promise.all([
+        (db as any).from('lead_field_layouts').select('field_key, hidden, tab').eq('board_id', selectedBoard),
+        (db as any).from('lead_tab_layouts').select('tab_key, hidden').eq('board_id', selectedBoard),
+      ]);
+      if (fieldsRes.error) throw fieldsRes.error;
+      const hiddenTabs = new Set<string>(
+        ((tabsRes.data as any[]) || []).filter(t => t.hidden).map(t => t.tab_key)
+      );
       const hidden = new Set<string>();
-      (data || []).forEach((row: any) => {
-        if (row.hidden) hidden.add(row.field_key);
+      ((fieldsRes.data as any[]) || []).forEach((row: any) => {
+        if (row.hidden || hiddenTabs.has(row.tab)) hidden.add(row.field_key);
       });
       setHiddenFieldKeys(hidden);
     } catch (e) {
