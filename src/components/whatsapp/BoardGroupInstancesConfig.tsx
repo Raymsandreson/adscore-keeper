@@ -182,6 +182,7 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
   const [teamMembers, setTeamMembers] = useState<{user_id: string; full_name: string}[]>([]);
   const [products, setProducts] = useState<{id: string; name: string; nucleus_id: string | null}[]>([]);
   const [boardCustomFields, setBoardCustomFields] = useState<{ id: string; field_name: string; field_type: string }[]>([]);
+  const [hiddenFieldKeys, setHiddenFieldKeys] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     fetchData();
@@ -192,6 +193,7 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
       fetchLinked();
       fetchSettings();
       fetchBoardCustomFields();
+      fetchHiddenFieldKeys();
     }
   }, [selectedBoard]);
 
@@ -210,6 +212,24 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
     } catch (e) {
       console.warn('[BoardGroupInstancesConfig] fetch custom fields failed:', e);
       setBoardCustomFields([]);
+    }
+  };
+
+  const fetchHiddenFieldKeys = async () => {
+    try {
+      const { data, error } = await (db as any)
+        .from('lead_field_layouts')
+        .select('field_key, hidden')
+        .eq('board_id', selectedBoard);
+      if (error) throw error;
+      const hidden = new Set<string>();
+      (data || []).forEach((row: any) => {
+        if (row.hidden) hidden.add(row.field_key);
+      });
+      setHiddenFieldKeys(hidden);
+    } catch (e) {
+      console.warn('[BoardGroupInstancesConfig] fetch hidden fields failed:', e);
+      setHiddenFieldKeys(new Set());
     }
   };
 
@@ -666,7 +686,7 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
             <div className="space-y-1.5">
               <Label className="text-[11px] text-muted-foreground">Campos do lead no nome</Label>
               <div className="flex flex-wrap gap-1.5">
-                {LEAD_FIELD_OPTIONS.map(opt => (
+                {LEAD_FIELD_OPTIONS.filter(opt => !hiddenFieldKeys.has(opt.value)).map(opt => (
                   <button
                     key={opt.value}
                     type="button"
