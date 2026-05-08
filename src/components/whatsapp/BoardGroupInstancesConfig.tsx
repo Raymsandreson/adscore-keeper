@@ -732,7 +732,88 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
                         </button>
                       );
                     })}
+
+              {/* Inserir texto livre entre campos */}
+              <div className="mt-2 space-y-1">
+                <Label className="text-[10px] text-muted-foreground/80">Inserir texto livre (ex: " - ", "Caso", "/")</Label>
+                <div className="flex gap-1.5">
+                  <Input
+                    value={customTextInput}
+                    onChange={e => setCustomTextInput(e.target.value)}
+                    placeholder='Ex: " - " ou "Caso"'
+                    className="h-7 text-xs"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && customTextInput.trim()) {
+                        e.preventDefault();
+                        const token = `text:${encodeURIComponent(customTextInput)}`;
+                        setSettings(prev => ({ ...prev, lead_fields: [...prev.lead_fields, token] }));
+                        setCustomTextInput('');
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    disabled={!customTextInput.trim()}
+                    onClick={() => {
+                      const token = `text:${encodeURIComponent(customTextInput)}`;
+                      setSettings(prev => ({ ...prev, lead_fields: [...prev.lead_fields, token] }));
+                      setCustomTextInput('');
+                    }}
+                    className="text-[10px] px-2 py-1 rounded border bg-primary text-primary-foreground border-primary disabled:opacity-50"
+                  >
+                    + Adicionar
+                  </button>
+                </div>
+              </div>
+
+              {/* Ordem atual dos elementos no nome */}
+              {settings.lead_fields.length > 0 && (
+                <div className="mt-2 space-y-1">
+                  <Label className="text-[10px] text-muted-foreground/80">Ordem no nome (clique no × para remover, e re-adicione para reordenar)</Label>
+                  <div className="flex flex-wrap gap-1.5 p-2 rounded border bg-background">
+                    {settings.lead_fields.map((f, idx) => {
+                      let label = f;
+                      let isText = false;
+                      if (f === 'closed_seq' || f === 'case_number') label = 'Nº do Caso';
+                      else if (f.startsWith('text:')) {
+                        try { label = `"${decodeURIComponent(f.slice(5))}"`; } catch { label = `"${f.slice(5)}"`; }
+                        isText = true;
+                      } else if (f.startsWith('cf:')) {
+                        const cf = boardCustomFields.find(c => c.id === f.slice(3));
+                        label = cf ? `✦ ${cf.field_name}` : '✦ campo';
+                      } else {
+                        const opt = LEAD_FIELD_OPTIONS.find(o => o.value === f);
+                        if (opt) label = opt.label;
+                      }
+                      return (
+                        <span
+                          key={`${f}-${idx}`}
+                          className={`text-[10px] px-2 py-1 rounded-full border inline-flex items-center gap-1 ${
+                            isText ? 'bg-amber-100 text-amber-900 border-amber-300 dark:bg-amber-900/30 dark:text-amber-200 dark:border-amber-700' : 'bg-muted border-border'
+                          }`}
+                        >
+                          <span className="text-[9px] text-muted-foreground/70">{idx + 1}.</span>
+                          {label}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSettings(prev => {
+                                const next = prev.lead_fields.filter((_, i) => i !== idx);
+                                return { ...prev, lead_fields: next.length > 0 ? next : ['lead_name'] };
+                              });
+                            }}
+                            className="ml-0.5 hover:text-destructive"
+                            aria-label="Remover"
+                          >
+                            ×
+                          </button>
+                        </span>
+                      );
+                    })}
                   </div>
+                </div>
+              )}
+            </div>
                 </>
               )}
             </div>
