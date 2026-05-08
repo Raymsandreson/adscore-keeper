@@ -141,12 +141,17 @@ export const handler: RequestHandler = async (req, res) => {
 
     const parts: string[] = [];
     if (activePrefix) parts.push(activePrefix);
-    parts.push(String(nextSeq).padStart(4, '0'));
+    const seqStr = String(nextSeq).padStart(4, '0');
 
     const leadFields: string[] = settings.lead_fields || ['lead_name'];
+    // Legacy: se não houver token closed_seq, mantém comportamento antigo (seq logo após prefixo)
+    if (!leadFields.includes('closed_seq')) parts.push(seqStr);
+
     const missingFields: string[] = [];
     for (const field of leadFields) {
-      if (field === 'board_name') {
+      if (field === 'closed_seq') {
+        parts.push(seqStr);
+      } else if (field === 'board_name') {
         if (boardName) parts.push(boardName);
         else missingFields.push(field);
       } else if (lead[field]) {
