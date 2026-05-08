@@ -547,7 +547,7 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
         parts.push(opt ? `[${opt.label}]` : `[${f}]`);
       }
     }
-    return parts.join(' ');
+    return parts.join(' ').replace(/\s+/g, ' ').trim();
   };
 
   const allVoices = [...VOICE_OPTIONS, ...customVoices];
