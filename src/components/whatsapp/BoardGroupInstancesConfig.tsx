@@ -830,6 +830,31 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
                   Use <code className="px-1 rounded bg-muted">{'{{Nome do Campo}}'}</code> para variáveis. Tudo fora das chaves é texto literal.
                 </p>
               </div>
+            </div>
+
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 p-2 rounded bg-muted/50 border">
+                <Eye className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                <span className="text-[10px] text-muted-foreground">Antes:</span>
+                <span className="text-[11px] font-medium truncate">{getPreviewName(false)}</span>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-2 p-2 rounded-md border bg-background">
+              <Checkbox
+                id="sync_lead_name_with_group"
+                checked={settings.sync_lead_name_with_group}
+                onCheckedChange={(checked) => setSettings(prev => ({ ...prev, sync_lead_name_with_group: !!checked }))}
+                className="mt-0.5"
+              />
+              <Label htmlFor="sync_lead_name_with_group" className="text-xs cursor-pointer flex-1">
+                <div className="font-medium">Sincronizar nome do lead com o nome do grupo</div>
+                <div className="text-[10px] text-muted-foreground mt-0.5">
+                  Quando ativo, ao criar/renomear o grupo o nome do lead será atualizado para ficar igual. Desligue para manter o nome do lead independente.
+                </div>
+              </Label>
+            </div>
+          </div>
 
           {/* Initial Message Configuration */}
           <div className="space-y-3 p-3 rounded-lg border bg-muted/30">
