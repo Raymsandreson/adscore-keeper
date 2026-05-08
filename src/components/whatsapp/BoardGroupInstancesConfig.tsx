@@ -185,6 +185,7 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
   const [teamMembers, setTeamMembers] = useState<{user_id: string; full_name: string}[]>([]);
   const [products, setProducts] = useState<{id: string; name: string; nucleus_id: string | null}[]>([]);
   const [boardCustomFields, setBoardCustomFields] = useState<{ id: string; field_name: string; field_type: string }[]>([]);
+  const lastSyncedBoardRef = useRef<string | null>(null);
   const [hiddenFieldKeys, setHiddenFieldKeys] = useState<Set<string>>(new Set());
 
   useEffect(() => {
