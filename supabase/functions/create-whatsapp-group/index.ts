@@ -710,8 +710,12 @@ Deno.serve(async (req) => {
         const expectedPrefix = (
           (useClosedPrefix ? settings?.closed_group_name_prefix : settings?.group_name_prefix) || ''
         ).trim()
-        const needsRename = settings && groupName && groupName !== currentName &&
-          (!currentName || (expectedPrefix && !currentName.toUpperCase().startsWith(expectedPrefix.toUpperCase())))
+        const forceRename = !!body.allow_rename
+        const needsRename = settings && groupName && groupName !== currentName && (
+          forceRename ||
+          !currentName ||
+          (expectedPrefix && !currentName.toUpperCase().startsWith(expectedPrefix.toUpperCase()))
+        )
         if (needsRename) {
           try {
             const renameRes = await fetch(`${baseUrl}/group/updateName`, {
