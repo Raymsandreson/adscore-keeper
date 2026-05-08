@@ -662,7 +662,7 @@ Deno.serve(async (req) => {
       const forceSyncBranch = !!body.sync_participants
       if (forceSyncBranch || (existingGroupInfo && (existingMatchedParticipants > 0 || existingParticipantsTotal > 1))) {
         // Rename existing group to follow configured naming pattern when needed
-        const currentName = (existingGroupInfo.groupName || '').trim()
+        const currentName = (existingGroupInfo?.groupName || '').trim()
         let finalName = currentName
         const expectedPrefix = (settings?.group_name_prefix || '').trim()
         const needsRename = settings && groupName && groupName !== currentName &&
@@ -711,6 +711,8 @@ Deno.serve(async (req) => {
         // Sync de participantes: calcula diff e adiciona os que faltam
         let addedParticipants: string[] = []
         let failedParticipants: string[] = []
+        let promotedParticipants: string[] = []
+        let failedPromotions: string[] = []
         if (body.sync_participants) {
           let missing: string[]
           if (existingGroupInfo) {
@@ -736,6 +738,19 @@ Deno.serve(async (req) => {
             addedParticipants = result.added
             failedParticipants = result.failed
           }
+
+          const normalizedLeadContact = normalizePhone(contact_phone || phone || '')
+          const instancePhonesToPromote = boardInstances
+            .map((inst: any) => normalizePhone(inst.owner_phone || ''))
+            .filter((p: string) => p && p !== normalizedLeadContact && p !== normalizePhone(creatorInstance.owner_phone || ''))
+          const promoteResult = await promoteParticipantsInGroup(
+            baseUrlForAdd,
+            creatorInstance.instance_token,
+            leadData.whatsapp_group_id,
+            instancePhonesToPromote,
+          )
+          promotedParticipants = promoteResult.promoted
+          failedPromotions = promoteResult.failed
         }
 
         return new Response(JSON.stringify({
@@ -748,6 +763,8 @@ Deno.serve(async (req) => {
           synced: !!body.sync_participants,
           added_participants: addedParticipants,
           failed_participants: failedParticipants,
+          promoted_participants: promotedParticipants,
+          failed_promotions: failedPromotions,
         }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         })
