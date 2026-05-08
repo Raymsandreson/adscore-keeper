@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { db as supabase } from '@/integrations/supabase';
 import { toast } from 'sonner';
 
 export interface KanbanStage {
