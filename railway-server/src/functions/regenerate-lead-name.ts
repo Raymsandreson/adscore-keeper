@@ -144,8 +144,9 @@ export const handler: RequestHandler = async (req, res) => {
     const seqStr = String(nextSeq).padStart(4, '0');
 
     const leadFields: string[] = settings.lead_fields || ['lead_name'];
-    // Legacy: se não houver token closed_seq, mantém comportamento antigo (seq logo após prefixo)
-    if (!leadFields.includes('closed_seq')) parts.push(seqStr);
+    // Legacy: se não houver token de seq (case_number/closed_seq), seq logo após prefixo
+    const hasSeqToken = leadFields.includes('case_number') || leadFields.includes('closed_seq');
+    if (!hasSeqToken) parts.push(seqStr);
 
     // Pré-carrega valores de campos personalizados se houver tokens cf:<id>
     const cfIds = leadFields
