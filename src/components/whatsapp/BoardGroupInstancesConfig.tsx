@@ -78,6 +78,7 @@ interface ProcessActivity {
 }
 
 const LEAD_FIELD_OPTIONS = [
+  { value: 'closed_seq', label: 'Nº do Caso (ex: 0047)' },
   { value: 'board_name', label: 'Nome do Funil' },
   { value: 'lead_name', label: 'Nome do Lead' },
   { value: 'victim_name', label: 'Nome da Vítima' },
