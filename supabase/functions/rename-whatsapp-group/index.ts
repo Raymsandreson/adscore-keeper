@@ -181,7 +181,7 @@ Deno.serve(async (req) => {
       .maybeSingle()
     const parts: string[] = []
     if (closedPrefix) parts.push(closedPrefix)
-    const seqStr = String(closedSeq).padStart(4, '0')
+    const seqStr = String(closedSeq)
     const hasSeqToken = leadFields.includes('closed_seq') || leadFields.includes('case_number')
     if (!hasSeqToken) parts.push(seqStr)
 

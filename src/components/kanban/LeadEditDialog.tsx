@@ -451,9 +451,7 @@ export function LeadEditDialog({
           body: { lead_id: currentLead.id, dry_run: true },
         });
         if (cancelled || !data?.success) return;
-        const expectedCaseNumber = data.position
-          ? String(data.position).padStart(4, '0')
-          : '';
+        const expectedCaseNumber = data.position ? String(data.position) : '';
         const expectedLeadName = data.lead_name || '';
         const currentCaseNumber = leadAny.case_number || '';
         const currentLeadName = currentLead.lead_name || '';
@@ -484,7 +482,7 @@ export function LeadEditDialog({
           (data?.group_renamed ? ' (grupo renomeado)' : ''),
       );
       if (data?.lead_name) setLeadName(data.lead_name);
-      if (data?.position) setCaseNumber(String(data.position).padStart(4, '0'));
+      if (data?.position) setCaseNumber(String(data.position));
       setCaseSyncCheck((prev) => prev ? { ...prev, needsUpdate: false } : prev);
     } finally {
       setCaseSyncApplying(false);

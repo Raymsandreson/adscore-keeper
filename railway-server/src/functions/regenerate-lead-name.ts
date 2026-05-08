@@ -141,7 +141,7 @@ export const handler: RequestHandler = async (req, res) => {
 
     const parts: string[] = [];
     if (activePrefix) parts.push(activePrefix);
-    const seqStr = String(nextSeq).padStart(4, '0');
+    const seqStr = String(nextSeq);
 
     const leadFields: string[] = settings.lead_fields || ['lead_name'];
     // Legacy: se não houver token de seq (case_number/closed_seq), seq logo após prefixo
@@ -218,7 +218,7 @@ export const handler: RequestHandler = async (req, res) => {
     // Sincroniza nº do caso (campo fixo) com a posição na fila de fechados.
     // Só escreve quando phase=closed pra não sujar leads ainda em aberto.
     if (phase === 'closed' && position) {
-      updatePayload.case_number = String(position).padStart(4, '0');
+      updatePayload.case_number = String(position);
     }
     const { error: updErr } = await ext
       .from('leads')

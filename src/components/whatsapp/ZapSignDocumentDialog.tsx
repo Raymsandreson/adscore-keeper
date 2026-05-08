@@ -299,9 +299,9 @@ export function ZapSignDocumentDialog({
         const prefix = settings.closed_group_name_prefix || settings.group_name_prefix || '';
         const currentSeq = settings.closed_current_sequence ?? settings.current_sequence ?? 0;
         const next = currentSeq + 1;
-        const pad = (n: number) => String(n).padStart(4, '0');
-        setNextLeadNumber(prefix ? `${prefix} ${pad(next)}` : pad(next));
-        setLastLeadNumber(currentSeq > 0 ? (prefix ? `${prefix} ${pad(currentSeq)}` : pad(currentSeq)) : null);
+        const fmt = (n: number) => String(n);
+        setNextLeadNumber(prefix ? `${prefix} ${fmt(next)}` : fmt(next));
+        setLastLeadNumber(currentSeq > 0 ? (prefix ? `${prefix} ${fmt(currentSeq)}` : fmt(currentSeq)) : null);
       }
     } catch (err) {
       console.error('Error fetching funnel defaults:', err);
