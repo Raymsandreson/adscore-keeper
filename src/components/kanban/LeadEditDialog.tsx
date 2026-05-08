@@ -2308,6 +2308,29 @@ ${scrapeData.content || ''}
                       title="Atualizado automaticamente pela ordem de assinatura da procuração"
                     />
                     <p className="text-[11px] text-muted-foreground mt-1">Sincronizado com a ordem de assinatura da procuração.</p>
+                    {caseSyncCheck?.needsUpdate && (
+                      <div className="mt-2 rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800 p-2 text-xs flex items-start gap-2">
+                        <div className="flex-1">
+                          <p className="font-medium text-amber-900 dark:text-amber-200">Nº do caso desatualizado</p>
+                          <p className="text-amber-800 dark:text-amber-300 mt-0.5">
+                            Posição atual na fila: <span className="font-mono font-semibold">{caseSyncCheck.expectedCaseNumber || '—'}</span>
+                            {caseSyncCheck.expectedLeadName && (
+                              <> · novo nome: <span className="font-mono">{caseSyncCheck.expectedLeadName}</span></>
+                            )}
+                          </p>
+                        </div>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs"
+                          onClick={applyCaseSync}
+                          disabled={caseSyncApplying}
+                        >
+                          {caseSyncApplying ? 'Atualizando...' : 'Atualizar agora'}
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 </div>
 
