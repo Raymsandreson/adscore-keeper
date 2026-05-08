@@ -181,9 +181,11 @@ Deno.serve(async (req) => {
       .maybeSingle()
     const parts: string[] = []
     if (closedPrefix) parts.push(closedPrefix)
-    parts.push(String(closedSeq).padStart(4, '0'))
+    const seqStr = String(closedSeq).padStart(4, '0')
+    if (!leadFields.includes('closed_seq')) parts.push(seqStr)
     for (const field of leadFields) {
-      if (field === 'board_name' && board?.name) parts.push(board.name)
+      if (field === 'closed_seq') parts.push(seqStr)
+      else if (field === 'board_name' && board?.name) parts.push(board.name)
       else if (lead[field]) parts.push(String(lead[field]))
     }
     let newName = parts.join(' ')
