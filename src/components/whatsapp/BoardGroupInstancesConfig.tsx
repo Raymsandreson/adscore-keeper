@@ -619,26 +619,17 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-1">
-                <Label className="text-[11px] text-muted-foreground">Prefixo (após fechar)</Label>
-                <Input
-                  value={settings.closed_group_name_prefix}
-                  onChange={e => setSettings(prev => ({ ...prev, closed_group_name_prefix: e.target.value }))}
-                  placeholder="Ex: CASO, CLIENTE"
-                  className="h-8 text-xs"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-[11px] text-muted-foreground">Seq. fechados inicia em</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  value={settings.closed_sequence_start}
-                  onChange={e => setSettings(prev => ({ ...prev, closed_sequence_start: parseInt(e.target.value) || 1 }))}
-                  className="h-8 text-xs"
-                />
-              </div>
+            <div className="space-y-1">
+              <Label className="text-[11px] text-muted-foreground">Prefixo (após fechar)</Label>
+              <Input
+                value={settings.closed_group_name_prefix}
+                onChange={e => setSettings(prev => ({ ...prev, closed_group_name_prefix: e.target.value }))}
+                placeholder="Ex: CASO, CLIENTE"
+                className="h-8 text-xs"
+              />
+              <p className="text-[10px] text-muted-foreground">
+                A sequência de fechados é automática: usa a posição do lead na fila pela data de assinatura no ZapSign (ex: 47º caso assinado = "0047").
+              </p>
             </div>
 
             <div className="space-y-1.5">

@@ -581,18 +581,52 @@ Deno.serve(async (req) => {
       // When phase=closed, prefer closed_group_name_prefix + closed_sequence (MAT 0001 padrão)
       const useClosed = phase === 'closed' && !!settings.closed_group_name_prefix
       const activePrefix = useClosed ? settings.closed_group_name_prefix : settings.group_name_prefix
-      const activeSeqStart = useClosed ? (settings.closed_sequence_start || 1) : (settings.sequence_start || 1)
-      const activeCurrentSeq = useClosed ? (settings.closed_current_sequence || 0) : (settings.current_sequence || 0)
+      const activeSeqStart = useClosed ? 1 : (settings.sequence_start || 1)
+      const activeCurrentSeq = useClosed ? 0 : (settings.current_sequence || 0)
 
       const existingLeadSequence = extractExistingSequenceFromName(leadData?.lead_name || lead_name, activePrefix)
       if (existingLeadSequence !== null && !useClosed) {
         // Mantém sequência detectada apenas para phase open (caso fechado precisa de nova numeração MAT)
         nextSeq = existingLeadSequence
         shouldPersistSequence = false
+      } else if (useClosed) {
+        // Fechados: posição determinística via MIN(zapsign_documents.signed_at) por board_id (RANK ASC)
+        // Mesma fonte do snippet `posicao_fechamento`. Ignora seq inicial configurada.
+        try {
+          const { data: boardLeads } = await supabase
+            .from('leads')
+            .select('id')
+            .eq('board_id', board_id)
+          const ids = (boardLeads || []).map((l: any) => l.id)
+          const targetLeadId = lead_id || leadData?.id
+          let computedPos = 1
+          if (ids.length > 0) {
+            const { data: signedDocs } = await supabase
+              .from('zapsign_documents')
+              .select('lead_id, signed_at')
+              .in('lead_id', ids)
+              .eq('status', 'signed')
+              .not('signed_at', 'is', null)
+            const firstByLead = new Map<string, string>()
+            for (const d of (signedDocs || [])) {
+              const cur = firstByLead.get(d.lead_id)
+              if (!cur || (d.signed_at && d.signed_at < cur)) firstByLead.set(d.lead_id, d.signed_at)
+            }
+            const seq = [...firstByLead.entries()]
+              .map(([id, when]) => ({ id, when }))
+              .sort((a, b) => (a.when || '').localeCompare(b.when || ''))
+            const idx = targetLeadId ? seq.findIndex(s => s.id === targetLeadId) : -1
+            computedPos = idx >= 0 ? idx + 1 : seq.length + 1
+          }
+          nextSeq = computedPos
+        } catch (e) {
+          console.warn('[create-whatsapp-group] computeClosedPosition failed, falling back to current_sequence:', e)
+          nextSeq = Math.max((settings.closed_current_sequence || 0) + 1, 1)
+        }
+        shouldPersistClosedSequence = false
       } else {
         nextSeq = Math.max(activeCurrentSeq + 1, activeSeqStart)
-        if (useClosed) shouldPersistClosedSequence = true
-        else shouldPersistSequence = true
+        shouldPersistSequence = true
       }
 
       // Build name parts

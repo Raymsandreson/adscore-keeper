@@ -57,7 +57,7 @@ Deno.serve(async (req) => {
     // Get board group settings
     const { data: settings } = await supabase
       .from('board_group_settings')
-      .select('closed_group_name_prefix, group_name_prefix, lead_fields, closed_sequence_start, closed_current_sequence')
+      .select('closed_group_name_prefix, group_name_prefix, lead_fields')
       .eq('board_id', lead.board_id)
       .maybeSingle()
 
@@ -67,10 +67,34 @@ Deno.serve(async (req) => {
       })
     }
 
-    const closedSeq = Math.max(
-      (settings.closed_current_sequence || 0) + 1,
-      settings.closed_sequence_start || 1
-    )
+    // Posição determinística por board: RANK pelo MIN(zapsign_documents.signed_at).
+    // Mesma lógica do snippet `posicao_fechamento`. Ignora seq inicial configurada.
+    let closedSeq = 1
+    {
+      const { data: boardLeads } = await supabase
+        .from('leads')
+        .select('id')
+        .eq('board_id', lead.board_id)
+      const ids = (boardLeads || []).map((l: any) => l.id)
+      if (ids.length > 0) {
+        const { data: signedDocs } = await supabase
+          .from('zapsign_documents')
+          .select('lead_id, signed_at')
+          .in('lead_id', ids)
+          .eq('status', 'signed')
+          .not('signed_at', 'is', null)
+        const firstByLead = new Map<string, string>()
+        for (const d of (signedDocs || [])) {
+          const cur = firstByLead.get(d.lead_id)
+          if (!cur || (d.signed_at && d.signed_at < cur)) firstByLead.set(d.lead_id, d.signed_at)
+        }
+        const seq = [...firstByLead.entries()]
+          .map(([id, when]) => ({ id, when }))
+          .sort((a, b) => (a.when || '').localeCompare(b.when || ''))
+        const idx = seq.findIndex(s => s.id === lead.id)
+        closedSeq = idx >= 0 ? idx + 1 : seq.length + 1
+      }
+    }
 
     // Find a connected instance to operate on the group
     const { data: boardInstances } = await supabase
