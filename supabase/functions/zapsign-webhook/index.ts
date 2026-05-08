@@ -803,13 +803,16 @@ Deno.serve(async (req) => {
     // ====================================================
     // AUTO-CREATE CONTACT + LEAD WITH AI CONTEXT ON SIGN
     // ====================================================
-    if (isDocFullySigned && localDoc.whatsapp_phone) {
-      const cleanPhone = (localDoc.whatsapp_phone || '').replace(/\D/g, '')
-      
+    if (isDocFullySigned && (localDoc.whatsapp_phone || localDoc.signer_phone)) {
+      // Prefer signer_phone (real signatory identity) over whatsapp_phone (the forwarder's WA).
+      const signerPhoneClean = (localDoc.signer_phone || '').replace(/\D/g, '')
+      const waPhoneClean = (localDoc.whatsapp_phone || '').replace(/\D/g, '')
+      const cleanPhone = signerPhoneClean.length > 4 ? signerPhoneClean : waPhoneClean
+
       // Only proceed if no lead is linked yet
       if (!localDoc.lead_id && cleanPhone) {
         try {
-          console.log(`[zapsign-webhook] No lead linked, auto-creating contact+lead for phone: ${cleanPhone}`)
+          console.log(`[zapsign-webhook] No lead linked, auto-creating contact+lead for phone: ${cleanPhone} (signer=${signerPhoneClean || 'none'}, wa=${waPhoneClean || 'none'})`)
 
           // Remap Cloud UUID -> External UUID for FK to auth.users on External DB
           let extOwnerId: string | null = resolvedOwnerId
