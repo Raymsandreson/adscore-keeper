@@ -512,6 +512,10 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
     for (const f of fields) {
       if (f === 'closed_seq') {
         parts.push(seqStr);
+      } else if (f.startsWith('cf:')) {
+        const cfId = f.slice(3);
+        const cf = boardCustomFields.find(c => c.id === cfId);
+        parts.push(cf ? `[${cf.field_name}]` : `[campo personalizado]`);
       } else {
         const opt = LEAD_FIELD_OPTIONS.find(o => o.value === f);
         parts.push(opt ? `[${opt.label}]` : `[${f}]`);
