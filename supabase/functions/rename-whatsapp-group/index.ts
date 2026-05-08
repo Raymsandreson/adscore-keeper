@@ -96,13 +96,19 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Find a connected instance to operate on the group
+    // Find a connected instance to operate on the group.
+    // We collect all candidates marked as connected and probe each one with a real
+    // /group/info call — UazAPI's /status endpoint can lie (returns "checked_instance"
+    // from any instance the server health-checked last), so DB connection_status alone
+    // isn't trustworthy. We pick the first instance that answers /group/info successfully.
+    const fullJid = groupJid.includes('@g.us') ? groupJid : `${groupJid}@g.us`
+
     const { data: boardInstances } = await supabase
       .from('board_group_instances')
       .select('instance_id, applies_to')
       .eq('board_id', lead.board_id)
 
-    let instance: any = null
+    const candidates: any[] = []
     if (boardInstances?.length) {
       const { data: instances } = await supabase
         .from('whatsapp_instances')
@@ -110,49 +116,72 @@ Deno.serve(async (req) => {
         .in('id', boardInstances.map((b: any) => b.instance_id))
         .eq('is_active', true)
         .eq('connection_status', 'connected')
-        .limit(1)
-      instance = instances?.[0]
+      if (instances) candidates.push(...instances)
     }
-
-    if (!instance) {
-      const { data: anyInstance } = await supabase
+    {
+      const excludeIds = candidates.map((c: any) => c.id)
+      let q = supabase
         .from('whatsapp_instances')
         .select('*')
         .eq('is_active', true)
         .eq('connection_status', 'connected')
-        .limit(1)
-      instance = anyInstance?.[0]
+      if (excludeIds.length) q = q.not('id', 'in', `(${excludeIds.join(',')})`)
+      const { data: anyInstances } = await q
+      if (anyInstances) candidates.push(...anyInstances)
     }
 
-    if (!instance?.instance_token) {
-      return new Response(JSON.stringify({ success: false, error: 'No connected instance available' }), {
+    if (!candidates.length) {
+      return new Response(JSON.stringify({ success: false, error: 'Nenhuma instância conectada disponível. Reconecte uma instância do WhatsApp.' }), {
         status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
-    const baseUrl = instance.base_url || 'https://abraci.uazapi.com'
-    const fullJid = groupJid.includes('@g.us') ? groupJid : `${groupJid}@g.us`
-    const executorPhone = normalizePhone(instance.owner_phone || instance.phone || '')
-
-    // Fetch current group info (name + participants)
+    let instance: any = null
+    let baseUrl = ''
     let currentName = ''
     let currentParticipants: string[] = []
-    try {
-      const infoRes = await fetch(`${baseUrl}/group/info`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', token: instance.instance_token },
-        body: JSON.stringify({ groupjid: fullJid }),
-      })
-      if (infoRes.ok) {
+    const probeFailures: string[] = []
+
+    for (const cand of candidates) {
+      const candBase = cand.base_url || 'https://abraci.uazapi.com'
+      try {
+        const infoRes = await fetch(`${candBase}/group/info`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', token: cand.instance_token },
+          body: JSON.stringify({ groupjid: fullJid }),
+        })
+        if (!infoRes.ok) {
+          const txt = await infoRes.text().catch(() => '')
+          probeFailures.push(`${cand.instance_name}: ${infoRes.status}`)
+          console.warn(`[rename] probe failed on "${cand.instance_name}": ${infoRes.status} ${txt.slice(0, 160)}`)
+          if (txt.includes('not reconnectable') || txt.includes('disconnected')) {
+            await supabase
+              .from('whatsapp_instances')
+              .update({ connection_status: 'disconnected' })
+              .eq('id', cand.id)
+          }
+          continue
+        }
         const info = await infoRes.json()
+        instance = cand
+        baseUrl = candBase
         currentName = info?.subject || info?.name || info?.data?.subject || ''
         const partsRaw = info?.participants || info?.data?.participants || []
         currentParticipants = partsRaw
           .map((p: any) => normalizePhone(typeof p === 'string' ? p : (p?.id || p?.jid || p?.phone || '')))
           .filter(Boolean)
+        console.log(`[rename] Using instance "${cand.instance_name}" (probed OK)`)
+        break
+      } catch (e: any) {
+        probeFailures.push(`${cand.instance_name}: ${e?.message || 'fetch error'}`)
       }
-    } catch (e) {
-      console.warn('Could not fetch group info:', e)
+    }
+
+    if (!instance) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: `Nenhuma instância respondeu. Reconecte o WhatsApp. Detalhes: ${probeFailures.join(' | ')}`,
+      }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 
     // Build new name
