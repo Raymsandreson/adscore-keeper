@@ -1296,10 +1296,14 @@ function StepAdder({ onAdd }: { onAdd: (label: string) => void }) {
         placeholder="Novo passo..."
         className="flex-1 h-7 text-xs"
         onKeyDown={e => {
+          if (e.key === ' ' || e.code === 'Space') e.stopPropagation();
           if (e.key === 'Enter' && label.trim()) {
             onAdd(label);
             setLabel('');
           }
+        }}
+        onKeyUp={e => {
+          if (e.key === ' ' || e.code === 'Space') e.stopPropagation();
         }}
       />
       <Button variant="outline" size="sm" className="h-7 px-2" onClick={() => {
