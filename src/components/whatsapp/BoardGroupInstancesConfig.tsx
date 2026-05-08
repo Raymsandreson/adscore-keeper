@@ -475,8 +475,8 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
 
   const getPreviewName = (useClosed = false) => {
     const parts: string[] = [];
-    const prefix = useClosed && settings.closed_group_name_prefix 
-      ? settings.closed_group_name_prefix 
+    const prefix = useClosed && settings.closed_group_name_prefix
+      ? settings.closed_group_name_prefix
       : settings.group_name_prefix;
     if (prefix) parts.push(prefix);
     let seq: number;
@@ -485,12 +485,18 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
     } else {
       seq = settings.current_sequence > 0 ? settings.current_sequence + 1 : settings.sequence_start;
     }
-    parts.push(String(seq).padStart(4, '0'));
-    const fieldLabels = settings.lead_fields.map(f => {
-      const opt = LEAD_FIELD_OPTIONS.find(o => o.value === f);
-      return opt ? `[${opt.label}]` : `[${f}]`;
-    });
-    parts.push(fieldLabels.join(' '));
+    const seqStr = String(seq).padStart(4, '0');
+    const fields = settings.lead_fields || [];
+    // Legacy: se não houver token closed_seq, injeta a sequência logo após o prefixo
+    if (!fields.includes('closed_seq')) parts.push(seqStr);
+    for (const f of fields) {
+      if (f === 'closed_seq') {
+        parts.push(seqStr);
+      } else {
+        const opt = LEAD_FIELD_OPTIONS.find(o => o.value === f);
+        parts.push(opt ? `[${opt.label}]` : `[${f}]`);
+      }
+    }
     return parts.join(' ');
   };
 
