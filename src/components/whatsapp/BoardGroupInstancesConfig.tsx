@@ -615,7 +615,7 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
     } else {
       seq = settings.current_sequence > 0 ? settings.current_sequence + 1 : settings.sequence_start;
     }
-    const seqStr = String(seq).padStart(4, '0');
+    const seqStr = String(seq);
     const fields = settings.lead_fields || [];
     // Legacy: se não houver token de sequência (case_number/closed_seq), injeta a seq logo após o prefixo
     const hasSeqToken = fields.includes('case_number') || fields.includes('closed_seq');

@@ -619,7 +619,7 @@ Deno.serve(async (req) => {
       // Build name parts
       const parts: string[] = []
       if (activePrefix) parts.push(activePrefix)
-      parts.push(String(nextSeq).padStart(existingLeadSequence !== null && !useClosed ? String(existingLeadSequence).length : 4, '0'))
+      parts.push(String(nextSeq))
 
       const leadFields = settings.lead_fields || ['lead_name']
       for (const field of leadFields) {
