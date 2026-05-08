@@ -208,9 +208,18 @@ export const handler: RequestHandler = async (req, res) => {
       });
     }
 
+    const updatePayload: Record<string, unknown> = {
+      lead_name: newName,
+      updated_at: new Date().toISOString(),
+    };
+    // Sincroniza nº do caso (campo fixo) com a posição na fila de fechados.
+    // Só escreve quando phase=closed pra não sujar leads ainda em aberto.
+    if (useClosed) {
+      updatePayload.case_number = seqStr;
+    }
     const { error: updErr } = await ext
       .from('leads')
-      .update({ lead_name: newName, updated_at: new Date().toISOString() })
+      .update(updatePayload)
       .eq('id', lead_id);
     if (updErr) return ok({ success: false, error: `falha ao atualizar lead: ${updErr.message}` });
 
