@@ -502,6 +502,15 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
     }
   };
 
+  // Sincroniza o editor de template quando troca o board (após carregar custom fields)
+  useEffect(() => {
+    if (!selectedBoard) return;
+    if (lastSyncedBoardRef.current === selectedBoard) return;
+    lastSyncedBoardRef.current = selectedBoard;
+    setTemplateValue(fieldsToTemplate(settings.lead_fields));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedBoard, boardCustomFields.length, settings.lead_fields.length]);
+
   const tokenToLabel = (token: string): string => {
     if (token === 'case_number' || token === 'closed_seq') return 'Nº do Caso';
     if (token.startsWith('cf:')) {
