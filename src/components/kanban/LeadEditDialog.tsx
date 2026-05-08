@@ -239,6 +239,12 @@ export function LeadEditDialog({
   const [leadOutcomeReason, setLeadOutcomeReason] = useState('');
   const [isGeneratingReason, setIsGeneratingReason] = useState(false);
   const [caseNumber, setCaseNumber] = useState('');
+  const [caseSyncCheck, setCaseSyncCheck] = useState<{
+    expectedCaseNumber: string;
+    expectedLeadName: string;
+    needsUpdate: boolean;
+  } | null>(null);
+  const [caseSyncApplying, setCaseSyncApplying] = useState(false);
   const [unifiedEditorOpen, setUnifiedEditorOpen] = useState(false);
   
   // Accident fields
@@ -430,6 +436,60 @@ export function LeadEditDialog({
     ]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentLead?.id, open]);
+
+  // Verifica (apenas no front, ao abrir) se o nº do caso fechado mudou de posição
+  // na fila de assinaturas. Se mudou, mostra banner pedindo confirmação pra
+  // re-sincronizar nome do lead/grupo. Sem job em background.
+  useEffect(() => {
+    if (!open || !currentLead) { setCaseSyncCheck(null); return; }
+    const leadAny = currentLead as any;
+    if (leadAny.lead_status !== 'closed') { setCaseSyncCheck(null); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await cloudFunctions.invoke<any>('regenerate-lead-name', {
+          body: { lead_id: currentLead.id, dry_run: true },
+        });
+        if (cancelled || !data?.success) return;
+        const expectedCaseNumber = data.position
+          ? String(data.position).padStart(4, '0')
+          : '';
+        const expectedLeadName = data.lead_name || '';
+        const currentCaseNumber = leadAny.case_number || '';
+        const currentLeadName = currentLead.lead_name || '';
+        const needsUpdate =
+          (!!expectedCaseNumber && expectedCaseNumber !== currentCaseNumber) ||
+          (!!expectedLeadName && expectedLeadName !== currentLeadName);
+        setCaseSyncCheck({ expectedCaseNumber, expectedLeadName, needsUpdate });
+      } catch (e) {
+        // silencioso — checagem é opcional
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [open, currentLead?.id]);
+
+  const applyCaseSync = async () => {
+    if (!currentLead || caseSyncApplying) return;
+    setCaseSyncApplying(true);
+    try {
+      const { data, error } = await cloudFunctions.invoke<any>('regenerate-lead-name', {
+        body: { lead_id: currentLead.id },
+      });
+      if (error || data?.success === false) {
+        toast.error(data?.error || error?.message || 'Falha ao sincronizar');
+        return;
+      }
+      toast.success(
+        `Nº do caso atualizado para ${data?.lead_name || ''}` +
+          (data?.group_renamed ? ' (grupo renomeado)' : ''),
+      );
+      if (data?.lead_name) setLeadName(data.lead_name);
+      if (data?.position) setCaseNumber(String(data.position).padStart(4, '0'));
+      setCaseSyncCheck((prev) => prev ? { ...prev, needsUpdate: false } : prev);
+    } finally {
+      setCaseSyncApplying(false);
+    }
+  };
 
   // Reset hydration tracker when dialog closes so reopening the same lead re-hydrates from DB.
   useEffect(() => {
@@ -2248,6 +2308,29 @@ ${scrapeData.content || ''}
                       title="Atualizado automaticamente pela ordem de assinatura da procuração"
                     />
                     <p className="text-[11px] text-muted-foreground mt-1">Sincronizado com a ordem de assinatura da procuração.</p>
+                    {caseSyncCheck?.needsUpdate && (
+                      <div className="mt-2 rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800 p-2 text-xs flex items-start gap-2">
+                        <div className="flex-1">
+                          <p className="font-medium text-amber-900 dark:text-amber-200">Nº do caso desatualizado</p>
+                          <p className="text-amber-800 dark:text-amber-300 mt-0.5">
+                            Posição atual na fila: <span className="font-mono font-semibold">{caseSyncCheck.expectedCaseNumber || '—'}</span>
+                            {caseSyncCheck.expectedLeadName && (
+                              <> · novo nome: <span className="font-mono">{caseSyncCheck.expectedLeadName}</span></>
+                            )}
+                          </p>
+                        </div>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs"
+                          onClick={applyCaseSync}
+                          disabled={caseSyncApplying}
+                        >
+                          {caseSyncApplying ? 'Atualizando...' : 'Atualizar agora'}
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 </div>
 
