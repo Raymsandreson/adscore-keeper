@@ -367,47 +367,22 @@ Deno.serve(async (req) => {
     // Helper to check if an instance is connected via UazAPI
     async function isInstanceConnected(inst: any): Promise<boolean> {
       try {
-        const url = (inst.base_url || 'https://abraci.uazapi.com') + '/status'
+        // Use per-instance endpoint (/instance/status) — not the server health-check (/status),
+        // which returns whatever instance the UazAPI server last probed and causes false negatives.
+        const url = (inst.base_url || 'https://abraci.uazapi.com') + '/instance/status'
         const res = await fetch(url, {
           method: 'GET',
           headers: { 'Content-Type': 'application/json', token: inst.instance_token },
+          signal: AbortSignal.timeout(10000),
         })
-        if (!res.ok) return false
-        const data = await res.json()
-        console.log(`[create-group] Instance ${inst.instance_name} raw status response:`, JSON.stringify(data).substring(0, 300))
-        
-        // UazAPI returns nested structure: { status: { checked_instance: { connection_status: "connected" } } }
-        const statusObj = data?.status
-        
-        // Check nested checked_instance.connection_status first (new UazAPI format)
-        // IMPORTANT: UazAPI's /status returns a "checked_instance" that is whatever instance
-        // the server last health-checked — NOT necessarily the one whose token we sent.
-        // We must validate the returned name matches the instance we're querying, otherwise
-        // we'd report a disconnected instance as "connected" (causing 503 on subsequent ops).
-        if (typeof statusObj === 'object' && statusObj !== null) {
-          const checkedInstance = statusObj?.checked_instance
-          const returnedName = checkedInstance?.name || ''
-          const sameInstance = returnedName && inst.instance_name &&
-            returnedName.trim().toLowerCase() === String(inst.instance_name).trim().toLowerCase()
-          if (!sameInstance && returnedName) {
-            console.warn(`[create-group] /status returned data for "${returnedName}" but we asked for "${inst.instance_name}" — ignoring (UazAPI server health-check artifact)`)
-          } else if (sameInstance && (checkedInstance?.connection_status === 'connected' || checkedInstance?.is_healthy === true)) {
-            console.log(`[create-group] Instance ${inst.instance_name} -> connected (checked_instance verified)`)
-            return true
-          } else if (sameInstance) {
-            console.log(`[create-group] Instance ${inst.instance_name} -> NOT connected (checked_instance: ${checkedInstance?.connection_status})`)
-            return false
-          }
+        if (!res.ok) {
+          console.log(`[create-group] Instance ${inst.instance_name} /instance/status HTTP ${res.status}`)
+          return false
         }
-        
-        // Fallback: flat status string
-        const rawStatus = statusObj || data?.state || data?.connection || ''
-        const status = typeof rawStatus === 'object' ? JSON.stringify(rawStatus) : String(rawStatus)
-        const connected = ['connected', 'open', 'CONNECTED'].includes(status) 
-          || data?.connected === true
-          || data?.status === true
-          || rawStatus === true
-        console.log(`[create-group] Instance ${inst.instance_name} connection status: ${status} -> ${connected}`)
+        const data = await res.json().catch(() => null)
+        const status = data?.instance?.status || data?.status || data?.connection_status || data?.state
+        const connected = status === 'connected' || status === 'open' || data?.connected === true
+        console.log(`[create-group] Instance ${inst.instance_name} -> ${status} (connected=${connected})`)
         return connected
       } catch (e) {
         console.warn(`[create-group] Failed to check status for ${inst.instance_name}:`, e)
