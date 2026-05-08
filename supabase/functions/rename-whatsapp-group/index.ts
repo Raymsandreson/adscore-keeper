@@ -61,8 +61,8 @@ Deno.serve(async (req) => {
       .eq('board_id', lead.board_id)
       .maybeSingle()
 
-    if (!settings?.closed_group_name_prefix) {
-      return new Response(JSON.stringify({ success: false, error: 'No closed prefix configured' }), {
+    if (!settings) {
+      return new Response(JSON.stringify({ success: false, error: 'No board_group_settings configured' }), {
         status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
