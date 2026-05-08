@@ -320,46 +320,57 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
           </div>
         ) : (
           <div className="space-y-2">
-            {activities.map(a => (
+            {activities.map(a => {
+              const prio = priorityStyle(a.priority);
+              return (
               <div
                 key={a.id}
-                className="flex items-center gap-3 p-3 border rounded-lg hover:bg-muted/30 transition-colors cursor-pointer"
+                className="border rounded-lg overflow-hidden hover:bg-muted/30 transition-colors cursor-pointer"
                 onClick={() => openEdit(a)}
               >
-                <button
-                  onClick={e => { e.stopPropagation(); if (a.status !== 'concluida') handleComplete(a.id); }}
-                  className="shrink-0"
+                <div
+                  className="flex items-center justify-between px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-white"
+                  style={{ backgroundColor: prio.bg }}
                 >
-                  {statusIcon(a.status)}
-                </button>
-                <div className="flex-1 min-w-0">
-                  <p className={`text-sm font-medium truncate ${a.status === 'concluida' ? 'line-through text-muted-foreground' : ''}`}>
-                    {a.title}
-                  </p>
-                  <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 gap-1" style={{ borderColor: getTypeColor(a.activity_type) }}>
-                      <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: getTypeColor(a.activity_type) }} />
-                      {getTypeLabel(a.activity_type)}
-                    </Badge>
-                    {a.matrix_quadrant && quadrantLabels[a.matrix_quadrant] && (
-                      <span className="text-[10px] text-muted-foreground">
-                        {quadrantLabels[a.matrix_quadrant]}
-                      </span>
-                    )}
-                    {a.deadline && (
-                      <span className="text-[10px] text-muted-foreground">
-                        {format(new Date(a.deadline), "dd/MM HH:mm", { locale: ptBR })}
-                      </span>
-                    )}
-                    {a.assigned_to_name && (
-                      <span className="text-[10px] text-muted-foreground truncate max-w-[80px]">
-                        {a.assigned_to_name}
-                      </span>
-                    )}
+                  <span>{prio.label}</span>
+                  {a.deadline && (
+                    <span className="opacity-90 normal-case font-medium">
+                      {format(new Date(a.deadline), "dd/MM HH:mm", { locale: ptBR })}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-3 p-3">
+                  <button
+                    onClick={e => { e.stopPropagation(); if (a.status !== 'concluida') handleComplete(a.id); }}
+                    className="shrink-0"
+                  >
+                    {statusIcon(a.status)}
+                  </button>
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-sm font-medium truncate ${a.status === 'concluida' ? 'line-through text-muted-foreground' : ''}`}>
+                      {a.title}
+                    </p>
+                    <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 gap-1" style={{ borderColor: getTypeColor(a.activity_type) }}>
+                        <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: getTypeColor(a.activity_type) }} />
+                        {getTypeLabel(a.activity_type)}
+                      </Badge>
+                      {a.matrix_quadrant && quadrantLabels[a.matrix_quadrant] && (
+                        <span className="text-[10px] text-muted-foreground">
+                          {quadrantLabels[a.matrix_quadrant]}
+                        </span>
+                      )}
+                      {a.assigned_to_name && (
+                        <span className="text-[10px] text-muted-foreground truncate max-w-[80px]">
+                          {a.assigned_to_name}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )
       )}
