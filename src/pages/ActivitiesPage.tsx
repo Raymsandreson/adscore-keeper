@@ -2811,8 +2811,6 @@ const ActivitiesPage = () => {
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                     </div>
-                    </div>
-                  </div>
 
                     {/* Title */}
                     <h3 className="font-medium text-sm mt-1.5 leading-snug">{activity.title}</h3>
