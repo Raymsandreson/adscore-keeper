@@ -293,7 +293,7 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
     if (data) {
       setSettings({
         group_name_prefix: data.group_name_prefix || '',
-        closed_group_name_prefix: data.closed_group_name_prefix || '',
+        closed_group_name_prefix: '',
         sequence_start: data.sequence_start || 1,
         current_sequence: data.current_sequence || 0,
         closed_sequence_start: data.closed_sequence_start || 1,
@@ -426,7 +426,7 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
 
       const payload = {
         group_name_prefix: settings.group_name_prefix,
-        closed_group_name_prefix: settings.closed_group_name_prefix || null,
+        closed_group_name_prefix: null,
         sequence_start: settings.sequence_start,
         closed_sequence_start: settings.closed_sequence_start,
         lead_fields: settings.lead_fields,
