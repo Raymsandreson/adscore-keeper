@@ -227,9 +227,9 @@ export const handler: RequestHandler = async (req, res) => {
       lead_name: newName,
       updated_at: new Date().toISOString(),
     };
-    // Sincroniza nº do caso (campo fixo) com a posição na fila de fechados.
-    // Só escreve quando phase=closed pra não sujar leads ainda em aberto.
-    if (phase === 'closed' && position) {
+    // Sincroniza nº do caso só se o lead ainda não tem um valor salvo
+    // (evita sobrescrever o case_number editado/confirmado pelo usuário).
+    if (phase === 'closed' && position && !(Number.isFinite(existingCaseNum) && existingCaseNum > 0)) {
       updatePayload.case_number = String(position);
     }
     const { error: updErr } = await ext
