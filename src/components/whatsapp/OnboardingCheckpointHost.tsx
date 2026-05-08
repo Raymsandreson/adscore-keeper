@@ -898,6 +898,7 @@ function CreateGroupSummary({
                   phone: payload?.lead_phone,
                   contact_phone: payload?.lead_phone,
                   board_id: payload?.board_id,
+                  group_jid: result.group_jid,
                   creation_origin: 'onboarding_checkpoint_sync_participants',
                   phase: 'closed',
                   sync_participants: true,
@@ -913,9 +914,15 @@ function CreateGroupSummary({
               }
               const added = data?.added_participants?.length || 0;
               const failed = data?.failed_participants?.length || 0;
+              const promoted = data?.promoted_participants?.length || 0;
+              const failedPromotions = data?.failed_promotions?.length || 0;
               toast({
-                title: added > 0 ? `${added} integrante(s) adicionado(s)` : 'Nenhum integrante faltando',
-                description: failed > 0 ? `${failed} falharam ao serem adicionados` : undefined,
+                title: added > 0 ? `${added} integrante(s) adicionado(s)` : 'Sincronização concluída',
+                description: [
+                  promoted > 0 ? `${promoted} instância(s) promovida(s) a admin` : null,
+                  failed > 0 ? `${failed} falharam ao serem adicionados` : null,
+                  failedPromotions > 0 ? `${failedPromotions} falharam ao virar admin` : null,
+                ].filter(Boolean).join(' · ') || undefined,
               });
               await onRefresh?.();
             } finally {

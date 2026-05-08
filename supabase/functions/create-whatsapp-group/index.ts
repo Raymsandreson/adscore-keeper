@@ -266,6 +266,53 @@ async function addParticipantsToGroup(
   return { added, failed }
 }
 
+async function addParticipantsToGroupBulkOnly(
+  baseUrl: string,
+  token: string,
+  groupJid: string,
+  participants: string[],
+): Promise<{ added: string[]; failed: string[] }> {
+  if (participants.length === 0) return { added: [], failed: [] }
+  console.log(`[add-participants] Bulk-only adding ${participants.length} participants`)
+  const bulkRes = await postUazApiWithRetry(baseUrl, token, '/group/updateParticipants', {
+    groupjid: groupJid,
+    action: 'add',
+    participants,
+  }, 0)
+  if (bulkRes.ok) return { added: [...participants], failed: [] }
+  console.warn('[add-participants] Bulk-only add failed:', bulkRes.status, await bulkRes.text())
+  return { added: [], failed: [...participants] }
+}
+
+async function promoteParticipantsInGroup(
+  baseUrl: string,
+  token: string,
+  groupJid: string,
+  participants: string[],
+): Promise<{ promoted: string[]; failed: string[] }> {
+  const promoted: string[] = []
+  const failed: string[] = []
+  const uniqueParticipants = [...new Set(participants.filter(Boolean))]
+
+  for (const participant of uniqueParticipants) {
+    const promoteRes = await postUazApiWithRetry(
+      baseUrl,
+      token,
+      '/group/updateParticipants',
+      { groupjid: groupJid, action: 'promote', participants: [participant] },
+    )
+    if (promoteRes.ok) {
+      promoted.push(participant)
+    } else {
+      console.warn(`[promote] Failed to promote ${participant}:`, await promoteRes.text())
+      failed.push(participant)
+    }
+    await sleep(400)
+  }
+
+  return { promoted, failed }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -280,6 +327,7 @@ Deno.serve(async (req) => {
 
     const body = await req.json()
     const { phone, lead_name, board_id, contact_phone, creator_instance_id, lead_id } = body
+    const explicitExistingGroupJid = String(body?.existing_group_jid || body?.group_jid || body?.whatsapp_group_id || '').trim()
     // phase: 'open' (antes do fechamento) | 'closed' (depois do fechamento)
     // Fallback: deriva de creation_origin — auto_sign/zapsign => closed, default => open
     const explicitPhase: 'open' | 'closed' | undefined = body?.phase
@@ -507,6 +555,10 @@ Deno.serve(async (req) => {
       const { data } = await supabase.from('leads').select('*').eq('id', lead_id).maybeSingle()
       leadData = data
     }
+    if (leadData && explicitExistingGroupJid && leadData.whatsapp_group_id !== explicitExistingGroupJid) {
+      leadData = { ...leadData, whatsapp_group_id: explicitExistingGroupJid }
+      console.log(`[create-group] Using explicit existing group jid for sync: ${explicitExistingGroupJid}`)
+    }
     if (!leadData && normalizedPhone) {
       const { data } = await supabase
         .from('leads')
@@ -515,6 +567,10 @@ Deno.serve(async (req) => {
         .limit(1)
         .maybeSingle()
       leadData = data
+      if (leadData && explicitExistingGroupJid && leadData.whatsapp_group_id !== explicitExistingGroupJid) {
+        leadData = { ...leadData, whatsapp_group_id: explicitExistingGroupJid }
+        console.log(`[create-group] Using explicit existing group jid after phone lookup: ${explicitExistingGroupJid}`)
+      }
     }
 
     let nextSeq: number | null = null
@@ -624,7 +680,7 @@ Deno.serve(async (req) => {
       const forceSyncBranch = !!body.sync_participants
       if (forceSyncBranch || (existingGroupInfo && (existingMatchedParticipants > 0 || existingParticipantsTotal > 1))) {
         // Rename existing group to follow configured naming pattern when needed
-        const currentName = (existingGroupInfo.groupName || '').trim()
+        const currentName = (existingGroupInfo?.groupName || '').trim()
         let finalName = currentName
         const expectedPrefix = (settings?.group_name_prefix || '').trim()
         const needsRename = settings && groupName && groupName !== currentName &&
@@ -673,8 +729,12 @@ Deno.serve(async (req) => {
         // Sync de participantes: calcula diff e adiciona os que faltam
         let addedParticipants: string[] = []
         let failedParticipants: string[] = []
+        let promotedParticipants: string[] = []
+        let failedPromotions: string[] = []
         if (body.sync_participants) {
           let missing: string[]
+          let operatingInstance = creatorInstance
+          let baseUrlForAdd = creatorInstance.base_url || 'https://abraci.uazapi.com'
           if (existingGroupInfo) {
             const actualPhones = extractParticipantPhones(existingGroupInfo?.participants || [])
             missing = participants.filter((expected) =>
@@ -688,16 +748,45 @@ Deno.serve(async (req) => {
           }
           console.log(`[create-group] sync_participants: ${missing.length} faltando de ${participants.length} esperados`)
           if (missing.length > 0) {
-            const baseUrlForAdd = creatorInstance.base_url || 'https://abraci.uazapi.com'
-            const result = await addParticipantsToGroup(
-              baseUrlForAdd,
-              creatorInstance.instance_token,
-              leadData.whatsapp_group_id,
-              missing,
-            )
-            addedParticipants = result.added
-            failedParticipants = result.failed
+            const candidateIds = [creatorInstance.id, ...boardInstances.map((inst: any) => inst.id)].filter(Boolean)
+            const { data: syncCandidateInstances } = await supabase
+              .from('whatsapp_instances')
+              .select('id, instance_name, instance_token, base_url, owner_phone')
+              .in('id', [...new Set(candidateIds)])
+              .eq('is_active', true)
+
+            for (const candidate of syncCandidateInstances || [creatorInstance]) {
+              const candidateBaseUrl = candidate.base_url || 'https://abraci.uazapi.com'
+              console.log(`[create-group] sync_participants: tentando adicionar via ${candidate.instance_name}`)
+              const result = await addParticipantsToGroupBulkOnly(
+                candidateBaseUrl,
+                candidate.instance_token,
+                leadData.whatsapp_group_id,
+                missing,
+              )
+              if (result.added.length > 0) {
+                addedParticipants = result.added
+                failedParticipants = result.failed
+                operatingInstance = candidate
+                baseUrlForAdd = candidateBaseUrl
+                break
+              }
+              failedParticipants = result.failed
+            }
           }
+
+          const normalizedLeadContact = normalizePhone(contact_phone || phone || '')
+          const instancePhonesToPromote = boardInstances
+            .map((inst: any) => normalizePhone(inst.owner_phone || ''))
+            .filter((p: string) => p && p !== normalizedLeadContact && p !== normalizePhone(creatorInstance.owner_phone || ''))
+          const promoteResult = await promoteParticipantsInGroup(
+            baseUrlForAdd,
+            operatingInstance.instance_token,
+            leadData.whatsapp_group_id,
+            instancePhonesToPromote,
+          )
+          promotedParticipants = promoteResult.promoted
+          failedPromotions = promoteResult.failed
         }
 
         return new Response(JSON.stringify({
@@ -710,6 +799,8 @@ Deno.serve(async (req) => {
           synced: !!body.sync_participants,
           added_participants: addedParticipants,
           failed_participants: failedParticipants,
+          promoted_participants: promotedParticipants,
+          failed_promotions: failedPromotions,
         }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         })
