@@ -215,6 +215,24 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
     }
   };
 
+  const fetchHiddenFieldKeys = async () => {
+    try {
+      const { data, error } = await (db as any)
+        .from('lead_field_layouts')
+        .select('field_key, hidden')
+        .eq('board_id', selectedBoard);
+      if (error) throw error;
+      const hidden = new Set<string>();
+      (data || []).forEach((row: any) => {
+        if (row.hidden) hidden.add(row.field_key);
+      });
+      setHiddenFieldKeys(hidden);
+    } catch (e) {
+      console.warn('[BoardGroupInstancesConfig] fetch hidden fields failed:', e);
+      setHiddenFieldKeys(new Set());
+    }
+  };
+
   const fetchData = async () => {
     setLoading(true);
     const [boardsRes, instancesRes, voicesRes, nucleiRes, profilesRes, productsRes] = await Promise.all([
