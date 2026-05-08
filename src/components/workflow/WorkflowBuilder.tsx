@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type KeyboardEvent } from 'react';
 import { useConfirmDelete } from '@/hooks/useConfirmDelete';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -113,6 +113,10 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
   const [showAiDialog, setShowAiDialog] = useState(false);
   const [aiMode, setAiMode] = useState<'create' | 'edit'>('create');
   const [aiChangelog, setAiChangelog] = useState<Array<{ action: string; location: string; detail: string }> | null>(null);
+
+  const stopSpacePropagation = (e: KeyboardEvent<HTMLElement>) => {
+    if (e.key === ' ' || e.code === 'Space') e.stopPropagation();
+  };
 
   // Reset viewMode when sheet opens based on props
   useEffect(() => {
@@ -699,26 +703,30 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                      {/* Phase header */}
                      <div className="flex items-center gap-2 px-3 py-2 bg-muted/30 border-l-4 border-muted-foreground/30">
                        <GripVertical className="h-4 w-4 text-muted-foreground/50 flex-shrink-0" />
-                       <Collapsible open={phase.isExpanded} onOpenChange={() => togglePhase(phaseIdx)} className="flex-1 min-w-0">
-                         <CollapsibleTrigger className="flex items-center gap-2 w-full text-left min-w-0">
-                            {phase.isExpanded ? <ChevronDown className="h-4 w-4 flex-shrink-0" /> : <ChevronRight className="h-4 w-4 flex-shrink-0" />}
-                            <span className="flex-shrink-0 h-5 w-5 rounded-full bg-muted-foreground/20 text-muted-foreground text-[10px] font-bold flex items-center justify-center">
-                              {phaseIdx + 1}
-                            </span>
+                        <Collapsible open={phase.isExpanded} onOpenChange={() => togglePhase(phaseIdx)} className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 w-full min-w-0">
+                            <CollapsibleTrigger asChild>
+                              <button type="button" className={cn("flex items-center gap-2 text-left min-w-0", !phase.isExpanded && "flex-1")}>
+                                {phase.isExpanded ? <ChevronDown className="h-4 w-4 flex-shrink-0" /> : <ChevronRight className="h-4 w-4 flex-shrink-0" />}
+                                <span className="flex-shrink-0 h-5 w-5 rounded-full bg-muted-foreground/20 text-muted-foreground text-[10px] font-bold flex items-center justify-center">
+                                  {phaseIdx + 1}
+                                </span>
+                                {!phase.isExpanded && (
+                                  <span className="font-semibold text-sm text-foreground truncate">{phase.stageName}</span>
+                                )}
+                              </button>
+                            </CollapsibleTrigger>
                             {phase.isExpanded ? (
-                               <Input
-                                 value={phase.stageName}
-                                 onChange={e => updatePhaseName(phaseIdx, e.target.value)}
-                                 onClick={e => e.stopPropagation()}
-                                 onKeyDown={e => e.stopPropagation()}
-                                 onKeyUp={e => e.stopPropagation()}
-                                 placeholder="Nome da fase..."
-                                 className="h-7 text-sm font-semibold text-foreground flex-1"
-                               />
-                            ) : (
-                              <span className="font-semibold text-sm text-foreground truncate">{phase.stageName}</span>
-                            )}
-                         </CollapsibleTrigger>
+                              <Input
+                                value={phase.stageName}
+                                onChange={e => updatePhaseName(phaseIdx, e.target.value)}
+                                onKeyDown={stopSpacePropagation}
+                                onKeyUp={stopSpacePropagation}
+                                placeholder="Nome da fase..."
+                                className="h-7 text-sm font-semibold text-foreground flex-1"
+                              />
+                            ) : null}
+                          </div>
                        </Collapsible>
                        <span className="text-xs text-muted-foreground whitespace-nowrap flex-shrink-0">
                          {phase.objectives.length} obj.
@@ -754,24 +762,30 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                              {/* Objective header */}
                              <div className="flex items-center gap-2 px-4 py-2 ml-4 border-l-2 border-blue-400/40">
                                 <GripVertical className="h-3.5 w-3.5 text-muted-foreground/40 cursor-grab flex-shrink-0" />
-                                <Collapsible open={obj.isExpanded} onOpenChange={() => toggleObjective(phaseIdx, objIdx)} className="flex-1 min-w-0">
-                                  <CollapsibleTrigger className="flex items-center gap-2 w-full text-left min-w-0">
-                                    {obj.isExpanded ? <ChevronDown className="h-3.5 w-3.5 flex-shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 flex-shrink-0" />}
-                                    <span className="flex-shrink-0 h-5 w-5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 text-[10px] font-bold flex items-center justify-center">
-                                      {objIdx + 1}
-                                    </span>
-                                    {obj.isExpanded ? (
-                                      <Input
-                                        value={obj.name}
-                                        onChange={e => updateObjective(phaseIdx, objIdx, { name: e.target.value })}
-                                        onClick={e => e.stopPropagation()}
-                                        placeholder="Nome do objetivo..."
-                                        className="h-7 text-sm font-medium flex-1"
-                                      />
-                                    ) : (
-                                      <span className="font-medium text-sm truncate">{obj.name}</span>
-                                    )}
-                                 </CollapsibleTrigger>
+                                 <Collapsible open={obj.isExpanded} onOpenChange={() => toggleObjective(phaseIdx, objIdx)} className="flex-1 min-w-0">
+                                   <div className="flex items-center gap-2 w-full min-w-0">
+                                     <CollapsibleTrigger asChild>
+                                       <button type="button" className={cn("flex items-center gap-2 text-left min-w-0", !obj.isExpanded && "flex-1")}>
+                                         {obj.isExpanded ? <ChevronDown className="h-3.5 w-3.5 flex-shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 flex-shrink-0" />}
+                                         <span className="flex-shrink-0 h-5 w-5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 text-[10px] font-bold flex items-center justify-center">
+                                           {objIdx + 1}
+                                         </span>
+                                         {!obj.isExpanded && (
+                                           <span className="font-medium text-sm truncate">{obj.name}</span>
+                                         )}
+                                       </button>
+                                     </CollapsibleTrigger>
+                                     {obj.isExpanded ? (
+                                       <Input
+                                         value={obj.name}
+                                         onChange={e => updateObjective(phaseIdx, objIdx, { name: e.target.value })}
+                                         onKeyDown={stopSpacePropagation}
+                                         onKeyUp={stopSpacePropagation}
+                                         placeholder="Nome do objetivo..."
+                                         className="h-7 text-sm font-medium flex-1"
+                                       />
+                                     ) : null}
+                                   </div>
                                </Collapsible>
                                <span className="text-xs text-muted-foreground whitespace-nowrap flex-shrink-0">
                                  {obj.items.length} passo(s)
@@ -790,6 +804,8 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                                   <Textarea
                                     value={obj.description}
                                     onChange={e => updateObjective(phaseIdx, objIdx, { description: e.target.value })}
+                                     onKeyDown={stopSpacePropagation}
+                                     onKeyUp={stopSpacePropagation}
                                     placeholder="Descreva o objetivo desta fase do funil..."
                                     className="mt-1 min-h-[52px] text-xs resize-none"
                                   />
@@ -824,6 +840,8 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                                               <Input
                                                 value={step.label}
                                                 onChange={e => updateStepLabel(phaseIdx, objIdx, step.id, e.target.value)}
+                                                 onKeyDown={stopSpacePropagation}
+                                                 onKeyUp={stopSpacePropagation}
                                                 placeholder="Nome do passo..."
                                                 className="h-7 text-sm font-medium"
                                               />
@@ -1280,10 +1298,14 @@ function StepAdder({ onAdd }: { onAdd: (label: string) => void }) {
         placeholder="Novo passo..."
         className="flex-1 h-7 text-xs"
         onKeyDown={e => {
+          if (e.key === ' ' || e.code === 'Space') e.stopPropagation();
           if (e.key === 'Enter' && label.trim()) {
             onAdd(label);
             setLabel('');
           }
+        }}
+        onKeyUp={e => {
+          if (e.key === ' ' || e.code === 'Space') e.stopPropagation();
         }}
       />
       <Button variant="outline" size="sm" className="h-7 px-2" onClick={() => {
