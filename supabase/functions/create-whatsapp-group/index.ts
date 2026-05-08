@@ -266,6 +266,35 @@ async function addParticipantsToGroup(
   return { added, failed }
 }
 
+async function promoteParticipantsInGroup(
+  baseUrl: string,
+  token: string,
+  groupJid: string,
+  participants: string[],
+): Promise<{ promoted: string[]; failed: string[] }> {
+  const promoted: string[] = []
+  const failed: string[] = []
+  const uniqueParticipants = [...new Set(participants.filter(Boolean))]
+
+  for (const participant of uniqueParticipants) {
+    const promoteRes = await postUazApiWithRetry(
+      baseUrl,
+      token,
+      '/group/updateParticipants',
+      { groupjid: groupJid, action: 'promote', participants: [participant] },
+    )
+    if (promoteRes.ok) {
+      promoted.push(participant)
+    } else {
+      console.warn(`[promote] Failed to promote ${participant}:`, await promoteRes.text())
+      failed.push(participant)
+    }
+    await sleep(400)
+  }
+
+  return { promoted, failed }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -280,6 +309,7 @@ Deno.serve(async (req) => {
 
     const body = await req.json()
     const { phone, lead_name, board_id, contact_phone, creator_instance_id, lead_id } = body
+    const explicitExistingGroupJid = String(body?.existing_group_jid || body?.group_jid || body?.whatsapp_group_id || '').trim()
     // phase: 'open' (antes do fechamento) | 'closed' (depois do fechamento)
     // Fallback: deriva de creation_origin — auto_sign/zapsign => closed, default => open
     const explicitPhase: 'open' | 'closed' | undefined = body?.phase
