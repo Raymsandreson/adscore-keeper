@@ -80,7 +80,8 @@ export function CustomFieldInput({ field, value, onChange }: CustomFieldInputPro
            field.field_type === 'number' ? 'Número' :
            field.field_type === 'date' ? 'Data' :
            field.field_type === 'select' ? 'Seleção' :
-           field.field_type === 'checkbox' ? 'Checkbox' : field.field_type}
+           field.field_type === 'checkbox' ? 'Checkbox' :
+           field.field_type === 'url' ? 'Link' : field.field_type}
         </span>
       </div>
       
