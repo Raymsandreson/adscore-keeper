@@ -733,7 +733,8 @@ Deno.serve(async (req) => {
         let failedPromotions: string[] = []
         if (body.sync_participants) {
           let missing: string[]
-          const baseUrlForAdd = creatorInstance.base_url || 'https://abraci.uazapi.com'
+          let operatingInstance = creatorInstance
+          let baseUrlForAdd = creatorInstance.base_url || 'https://abraci.uazapi.com'
           if (existingGroupInfo) {
             const actualPhones = extractParticipantPhones(existingGroupInfo?.participants || [])
             missing = participants.filter((expected) =>
@@ -747,14 +748,31 @@ Deno.serve(async (req) => {
           }
           console.log(`[create-group] sync_participants: ${missing.length} faltando de ${participants.length} esperados`)
           if (missing.length > 0) {
-            const result = await addParticipantsToGroup(
-              baseUrlForAdd,
-              creatorInstance.instance_token,
-              leadData.whatsapp_group_id,
-              missing,
-            )
-            addedParticipants = result.added
-            failedParticipants = result.failed
+            const candidateIds = [creatorInstance.id, ...boardInstances.map((inst: any) => inst.id)].filter(Boolean)
+            const { data: syncCandidateInstances } = await supabase
+              .from('whatsapp_instances')
+              .select('id, instance_name, instance_token, base_url, owner_phone')
+              .in('id', [...new Set(candidateIds)])
+              .eq('is_active', true)
+
+            for (const candidate of syncCandidateInstances || [creatorInstance]) {
+              const candidateBaseUrl = candidate.base_url || 'https://abraci.uazapi.com'
+              console.log(`[create-group] sync_participants: tentando adicionar via ${candidate.instance_name}`)
+              const result = await addParticipantsToGroupBulkOnly(
+                candidateBaseUrl,
+                candidate.instance_token,
+                leadData.whatsapp_group_id,
+                missing,
+              )
+              if (result.added.length > 0) {
+                addedParticipants = result.added
+                failedParticipants = result.failed
+                operatingInstance = candidate
+                baseUrlForAdd = candidateBaseUrl
+                break
+              }
+              failedParticipants = result.failed
+            }
           }
 
           const normalizedLeadContact = normalizePhone(contact_phone || phone || '')
@@ -763,7 +781,7 @@ Deno.serve(async (req) => {
             .filter((p: string) => p && p !== normalizedLeadContact && p !== normalizePhone(creatorInstance.owner_phone || ''))
           const promoteResult = await promoteParticipantsInGroup(
             baseUrlForAdd,
-            creatorInstance.instance_token,
+            operatingInstance.instance_token,
             leadData.whatsapp_group_id,
             instancePhonesToPromote,
           )
