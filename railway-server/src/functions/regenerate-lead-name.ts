@@ -151,11 +151,12 @@ export const handler: RequestHandler = async (req, res) => {
 
     const useClosed = phase === 'closed' && !!settings.closed_group_name_prefix;
     const activePrefix = (useClosed ? settings.closed_group_name_prefix : settings.group_name_prefix) || '';
-    const activeSeqStart = useClosed ? (settings.closed_sequence_start || 1) : (settings.sequence_start || 1);
+    const activeSeqStart = useClosed ? 1 : (settings.sequence_start || 1);
 
-    // Sequência determinística por posição
-    const { position, total } = await computeClosedPosition(lead.board_id, lead_id);
-    const nextSeq = Math.max(position, activeSeqStart);
+    // Sequência determinística por posição.
+    // Para fechados: usa SEMPRE a posição real (data de assinatura ZapSign), ignora seq inicial.
+    // Para abertos: respeita seq inicial configurada.
+    const nextSeq = useClosed ? position : Math.max(position, activeSeqStart);
 
     const { data: boardData } = await ext
       .from('kanban_boards')
