@@ -193,6 +193,7 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
       fetchLinked();
       fetchSettings();
       fetchBoardCustomFields();
+      fetchHiddenFieldKeys();
     }
   }, [selectedBoard]);
 
