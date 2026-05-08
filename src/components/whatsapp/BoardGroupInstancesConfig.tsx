@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { db } from '@/integrations/supabase';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
@@ -146,6 +146,8 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
   const [saving, setSaving] = useState(false);
   const [customVoices, setCustomVoices] = useState<{id: string; name: string}[]>([]);
   const [customTextInput, setCustomTextInput] = useState('');
+  const [templateValue, setTemplateValue] = useState('');
+  const templateRef = useRef<HTMLTextAreaElement>(null);
   const [settings, setSettings] = useState<GroupSettings>({
     group_name_prefix: '',
     closed_group_name_prefix: '',
@@ -183,6 +185,7 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
   const [teamMembers, setTeamMembers] = useState<{user_id: string; full_name: string}[]>([]);
   const [products, setProducts] = useState<{id: string; name: string; nucleus_id: string | null}[]>([]);
   const [boardCustomFields, setBoardCustomFields] = useState<{ id: string; field_name: string; field_type: string }[]>([]);
+  const lastSyncedBoardRef = useRef<string | null>(null);
   const [hiddenFieldKeys, setHiddenFieldKeys] = useState<Set<string>>(new Set());
 
   useEffect(() => {
@@ -499,13 +502,96 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
     }
   };
 
+  // Sincroniza o editor de template quando troca o board (após carregar custom fields)
+  useEffect(() => {
+    if (!selectedBoard) return;
+    if (lastSyncedBoardRef.current === selectedBoard) return;
+    lastSyncedBoardRef.current = selectedBoard;
+    setTemplateValue(fieldsToTemplate(settings.lead_fields));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedBoard, boardCustomFields.length, settings.lead_fields.length]);
+
+  const tokenToLabel = (token: string): string => {
+    if (token === 'case_number' || token === 'closed_seq') return 'Nº do Caso';
+    if (token.startsWith('cf:')) {
+      const cf = boardCustomFields.find(c => c.id === token.slice(3));
+      return cf?.field_name || 'campo';
+    }
+    const opt = LEAD_FIELD_OPTIONS.find(o => o.value === token);
+    return opt?.label || token;
+  };
+
+  const labelToToken = (label: string): string | null => {
+    const trimmed = label.trim();
+    if (trimmed === 'Nº do Caso') return 'case_number';
+    const cf = boardCustomFields.find(c => c.field_name.toLowerCase() === trimmed.toLowerCase());
+    if (cf) return `cf:${cf.id}`;
+    const opt = LEAD_FIELD_OPTIONS.find(o => o.label.toLowerCase() === trimmed.toLowerCase());
+    if (opt) return opt.value;
+    return null;
+  };
+
+  const fieldsToTemplate = (fields: string[]): string => {
+    return fields.map(f => {
+      if (typeof f === 'string' && f.startsWith('text:')) {
+        try { return decodeURIComponent(f.slice(5)); } catch { return f.slice(5); }
+      }
+      return `{{${tokenToLabel(f)}}}`;
+    }).join('');
+  };
+
+  const templateToFields = (tpl: string): string[] => {
+    const out: string[] = [];
+    const re = /\{\{([^}]+)\}\}/g;
+    let last = 0;
+    let m;
+    while ((m = re.exec(tpl)) !== null) {
+      if (m.index > last) {
+        const text = tpl.slice(last, m.index);
+        if (text) out.push(`text:${encodeURIComponent(text)}`);
+      }
+      const tok = labelToToken(m[1]);
+      if (tok) out.push(tok);
+      else out.push(`text:${encodeURIComponent(m[0])}`);
+      last = m.index + m[0].length;
+    }
+    if (last < tpl.length) {
+      const tail = tpl.slice(last);
+      if (tail) out.push(`text:${encodeURIComponent(tail)}`);
+    }
+    return out.length ? out : ['lead_name'];
+  };
+
+  const updateTemplate = (next: string) => {
+    setTemplateValue(next);
+    setSettings(prev => ({ ...prev, lead_fields: templateToFields(next) }));
+  };
+
+  const insertTokenAtCursor = (insertText: string) => {
+    const ta = templateRef.current;
+    const cur = templateValue;
+    if (!ta) {
+      updateTemplate(cur + insertText);
+      return;
+    }
+    const start = ta.selectionStart ?? cur.length;
+    const end = ta.selectionEnd ?? cur.length;
+    const next = cur.slice(0, start) + insertText + cur.slice(end);
+    updateTemplate(next);
+    setTimeout(() => {
+      ta.focus();
+      const pos = start + insertText.length;
+      ta.selectionStart = ta.selectionEnd = pos;
+    }, 0);
+  };
+
   const toggleField = (field: string) => {
-    setSettings(prev => {
-      const fields = prev.lead_fields.includes(field)
-        ? prev.lead_fields.filter(f => f !== field)
-        : [...prev.lead_fields, field];
-      return { ...prev, lead_fields: fields.length > 0 ? fields : ['lead_name'] };
-    });
+    const placeholder = `{{${tokenToLabel(field)}}}`;
+    if (templateValue.includes(placeholder)) {
+      updateTemplate(templateValue.split(placeholder).join('').replace(/\s{2,}/g, ' '));
+    } else {
+      insertTokenAtCursor(placeholder);
+    }
   };
 
   const toggleDocType = (docType: string) => {
@@ -678,11 +764,11 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
             </div>
 
             <p className="text-[10px] text-muted-foreground">
-              A sequência de fechados (Nº do Caso) é automática: usa a posição do lead na fila pela data de assinatura no ZapSign (ex: 47º caso assinado = "0047"). Use o campo "Inserir texto livre" abaixo se quiser adicionar um prefixo (ex: "CASO ") antes do número.
+              A sequência de fechados (Nº do Caso) é automática: usa a posição do lead na fila pela data de assinatura no ZapSign (ex: 47º caso assinado = "0047"). Escreva o nome diretamente no editor abaixo e clique nos campos para inserir <code className="px-1 rounded bg-muted">{'{{Campo}}'}</code> no cursor.
             </p>
 
             <div className="space-y-1.5">
-              <Label className="text-[11px] text-muted-foreground">Campos do lead no nome</Label>
+              <Label className="text-[11px] text-muted-foreground">Inserir campo no cursor</Label>
               <div className="flex flex-wrap gap-1.5">
                 {LEAD_FIELD_OPTIONS.filter(opt => !hiddenFieldKeys.has(opt.value)).map(opt => (
                   <button
@@ -695,7 +781,7 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
                         : 'bg-background text-muted-foreground border-border hover:border-primary/50'
                     }`}
                   >
-                    {opt.label}
+                    + {opt.label}
                   </button>
                 ))}
               </div>
@@ -720,7 +806,7 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
                           }`}
                           title={`Tipo: ${cf.field_type}`}
                         >
-                          ✦ {cf.field_name}
+                          + ✦ {cf.field_name}
                         </button>
                       );
                     })}
@@ -728,86 +814,22 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
                 </>
               )}
 
-              {/* Inserir texto livre entre campos */}
-              <div className="mt-2 space-y-1">
-                <Label className="text-[10px] text-muted-foreground/80">Inserir texto livre (ex: " - ", "Caso", "/")</Label>
-                <div className="flex gap-1.5">
-                  <Input
-                    value={customTextInput}
-                    onChange={e => setCustomTextInput(e.target.value)}
-                    placeholder='Ex: " - " ou "Caso"'
-                    className="h-7 text-xs"
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && customTextInput.trim()) {
-                        e.preventDefault();
-                        const token = `text:${encodeURIComponent(customTextInput)}`;
-                        setSettings(prev => ({ ...prev, lead_fields: [...prev.lead_fields, token] }));
-                        setCustomTextInput('');
-                      }
-                    }}
-                  />
-                  <button
-                    type="button"
-                    disabled={!customTextInput.trim()}
-                    onClick={() => {
-                      const token = `text:${encodeURIComponent(customTextInput)}`;
-                      setSettings(prev => ({ ...prev, lead_fields: [...prev.lead_fields, token] }));
-                      setCustomTextInput('');
-                    }}
-                    className="text-[10px] px-2 py-1 rounded border bg-primary text-primary-foreground border-primary disabled:opacity-50"
-                  >
-                    + Adicionar
-                  </button>
-                </div>
+              {/* Editor de template livre */}
+              <div className="mt-3 space-y-1">
+                <Label className="text-[11px] text-muted-foreground">
+                  Template do nome (escreva o texto e clique nos campos acima para inserir)
+                </Label>
+                <Textarea
+                  ref={templateRef}
+                  value={templateValue}
+                  onChange={e => updateTemplate(e.target.value)}
+                  placeholder='Ex: MAT- {{Nº do Caso}} / {{Nome da Vítima}} - {{Cidade}}'
+                  className="min-h-[64px] text-xs font-mono"
+                />
+                <p className="text-[10px] text-muted-foreground/70">
+                  Use <code className="px-1 rounded bg-muted">{'{{Nome do Campo}}'}</code> para variáveis. Tudo fora das chaves é texto literal.
+                </p>
               </div>
-
-              {/* Ordem atual dos elementos no nome */}
-              {settings.lead_fields.length > 0 && (
-                <div className="mt-2 space-y-1">
-                  <Label className="text-[10px] text-muted-foreground/80">Ordem no nome (clique no × para remover, e re-adicione para reordenar)</Label>
-                  <div className="flex flex-wrap gap-1.5 p-2 rounded border bg-background">
-                    {settings.lead_fields.map((f, idx) => {
-                      let label = f;
-                      let isText = false;
-                      if (f === 'closed_seq' || f === 'case_number') label = 'Nº do Caso';
-                      else if (f.startsWith('text:')) {
-                        try { label = `"${decodeURIComponent(f.slice(5))}"`; } catch { label = `"${f.slice(5)}"`; }
-                        isText = true;
-                      } else if (f.startsWith('cf:')) {
-                        const cf = boardCustomFields.find(c => c.id === f.slice(3));
-                        label = cf ? `✦ ${cf.field_name}` : '✦ campo';
-                      } else {
-                        const opt = LEAD_FIELD_OPTIONS.find(o => o.value === f);
-                        if (opt) label = opt.label;
-                      }
-                      return (
-                        <span
-                          key={`${f}-${idx}`}
-                          className={`text-[10px] px-2 py-1 rounded-full border inline-flex items-center gap-1 ${
-                            isText ? 'bg-amber-100 text-amber-900 border-amber-300 dark:bg-amber-900/30 dark:text-amber-200 dark:border-amber-700' : 'bg-muted border-border'
-                          }`}
-                        >
-                          <span className="text-[9px] text-muted-foreground/70">{idx + 1}.</span>
-                          {label}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSettings(prev => {
-                                const next = prev.lead_fields.filter((_, i) => i !== idx);
-                                return { ...prev, lead_fields: next.length > 0 ? next : ['lead_name'] };
-                              });
-                            }}
-                            className="ml-0.5 hover:text-destructive"
-                            aria-label="Remover"
-                          >
-                            ×
-                          </button>
-                        </span>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
             </div>
 
             <div className="space-y-1">
@@ -816,13 +838,6 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
                 <span className="text-[10px] text-muted-foreground">Antes:</span>
                 <span className="text-[11px] font-medium truncate">{getPreviewName(false)}</span>
               </div>
-              {settings.closed_group_name_prefix && (
-                <div className="flex items-center gap-2 p-2 rounded bg-primary/10 border border-primary/20">
-                  <Eye className="h-3.5 w-3.5 text-primary shrink-0" />
-                  <span className="text-[10px] text-primary">Após fechar:</span>
-                  <span className="text-[11px] font-medium truncate">{getPreviewName(true)}</span>
-                </div>
-              )}
             </div>
 
             <div className="flex items-start gap-2 p-2 rounded-md border bg-background">
