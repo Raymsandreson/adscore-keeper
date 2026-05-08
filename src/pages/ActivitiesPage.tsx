@@ -2761,11 +2761,25 @@ const ActivitiesPage = () => {
                     <ContextMenuTrigger asChild>
                   <div
                     className={cn(
-                      "bg-card rounded-lg shadow-sm border border-border/50 p-3 cursor-pointer transition-all hover:shadow-md active:scale-[0.99]",
+                      "bg-card rounded-lg shadow-sm border border-border/50 cursor-pointer transition-all hover:shadow-md active:scale-[0.99] overflow-hidden",
                       selectedActivity?.id === activity.id && "ring-2 ring-primary border-primary/30"
                     )}
                     onClick={() => handleOpenEdit(activity)}
                   >
+                    {/* Priority header bar */}
+                    <div
+                      className={cn(
+                        "px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-white",
+                        activity.priority === 'urgente' && "bg-red-600",
+                        activity.priority === 'alta' && "bg-orange-500",
+                        activity.priority === 'baixa' && "bg-emerald-600",
+                        (!activity.priority || activity.priority === 'normal') && "bg-blue-600",
+                      )}
+                    >
+                      {PRIORITY_OPTIONS.find(p => p.value === (activity.priority || 'normal'))?.label || 'Normal'}
+                    </div>
+                    <div className="p-3">
+
                     {/* Top row: badges + actions */}
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex items-center gap-1.5 flex-wrap flex-1">
