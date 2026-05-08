@@ -61,6 +61,8 @@ export function CustomFieldInput({ field, value, onChange }: CustomFieldInputPro
         return `Escolha entre: ${field.field_options?.join(', ') || 'opções definidas'}`;
       case 'checkbox':
         return 'Marque para confirmar (Sim/Não)';
+      case 'url':
+        return 'Link (URL) — abre em nova aba e mostra prévia';
       default:
         return '';
     }
