@@ -126,11 +126,23 @@ export const handler: RequestHandler = async (req, res) => {
     const activePrefix = settings.group_name_prefix || '';
     const activeSeqStart = useClosed ? 1 : (settings.sequence_start || 1);
 
-    // Sequência determinística por posição.
-    // Para fechados: usa SEMPRE a posição real (data de assinatura ZapSign), ignora seq inicial.
-    // Para abertos: respeita seq inicial configurada.
-    const { position, total } = await computeClosedPosition(lead.board_id, lead_id);
-    const nextSeq = useClosed ? position : Math.max(position, activeSeqStart);
+    // Sequência: se o lead já tem case_number salvo, RESPEITA esse valor (fonte de verdade
+    // editada pelo usuário no front). Só calcula via posição quando não há case_number.
+    const existingCaseNum = lead.case_number != null && String(lead.case_number).trim() !== ''
+      ? parseInt(String(lead.case_number).replace(/\D/g, ''), 10)
+      : NaN;
+    let position = 0;
+    let total = 0;
+    let nextSeq: number;
+    if (Number.isFinite(existingCaseNum) && existingCaseNum > 0) {
+      nextSeq = existingCaseNum;
+      position = existingCaseNum;
+    } else {
+      const computed = await computeClosedPosition(lead.board_id, lead_id);
+      position = computed.position;
+      total = computed.total;
+      nextSeq = useClosed ? position : Math.max(position, activeSeqStart);
+    }
 
     const { data: boardData } = await ext
       .from('kanban_boards')
@@ -215,9 +227,9 @@ export const handler: RequestHandler = async (req, res) => {
       lead_name: newName,
       updated_at: new Date().toISOString(),
     };
-    // Sincroniza nº do caso (campo fixo) com a posição na fila de fechados.
-    // Só escreve quando phase=closed pra não sujar leads ainda em aberto.
-    if (phase === 'closed' && position) {
+    // Sincroniza nº do caso só se o lead ainda não tem um valor salvo
+    // (evita sobrescrever o case_number editado/confirmado pelo usuário).
+    if (phase === 'closed' && position && !(Number.isFinite(existingCaseNum) && existingCaseNum > 0)) {
       updatePayload.case_number = String(position);
     }
     const { error: updErr } = await ext
