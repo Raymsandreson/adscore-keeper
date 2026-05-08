@@ -501,13 +501,87 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
     }
   };
 
+  const tokenToLabel = (token: string): string => {
+    if (token === 'case_number' || token === 'closed_seq') return 'Nº do Caso';
+    if (token.startsWith('cf:')) {
+      const cf = boardCustomFields.find(c => c.id === token.slice(3));
+      return cf?.field_name || 'campo';
+    }
+    const opt = LEAD_FIELD_OPTIONS.find(o => o.value === token);
+    return opt?.label || token;
+  };
+
+  const labelToToken = (label: string): string | null => {
+    const trimmed = label.trim();
+    if (trimmed === 'Nº do Caso') return 'case_number';
+    const cf = boardCustomFields.find(c => c.field_name.toLowerCase() === trimmed.toLowerCase());
+    if (cf) return `cf:${cf.id}`;
+    const opt = LEAD_FIELD_OPTIONS.find(o => o.label.toLowerCase() === trimmed.toLowerCase());
+    if (opt) return opt.value;
+    return null;
+  };
+
+  const fieldsToTemplate = (fields: string[]): string => {
+    return fields.map(f => {
+      if (typeof f === 'string' && f.startsWith('text:')) {
+        try { return decodeURIComponent(f.slice(5)); } catch { return f.slice(5); }
+      }
+      return `{{${tokenToLabel(f)}}}`;
+    }).join('');
+  };
+
+  const templateToFields = (tpl: string): string[] => {
+    const out: string[] = [];
+    const re = /\{\{([^}]+)\}\}/g;
+    let last = 0;
+    let m;
+    while ((m = re.exec(tpl)) !== null) {
+      if (m.index > last) {
+        const text = tpl.slice(last, m.index);
+        if (text) out.push(`text:${encodeURIComponent(text)}`);
+      }
+      const tok = labelToToken(m[1]);
+      if (tok) out.push(tok);
+      else out.push(`text:${encodeURIComponent(m[0])}`);
+      last = m.index + m[0].length;
+    }
+    if (last < tpl.length) {
+      const tail = tpl.slice(last);
+      if (tail) out.push(`text:${encodeURIComponent(tail)}`);
+    }
+    return out.length ? out : ['lead_name'];
+  };
+
+  const updateTemplate = (next: string) => {
+    setTemplateValue(next);
+    setSettings(prev => ({ ...prev, lead_fields: templateToFields(next) }));
+  };
+
+  const insertTokenAtCursor = (insertText: string) => {
+    const ta = templateRef.current;
+    const cur = templateValue;
+    if (!ta) {
+      updateTemplate(cur + insertText);
+      return;
+    }
+    const start = ta.selectionStart ?? cur.length;
+    const end = ta.selectionEnd ?? cur.length;
+    const next = cur.slice(0, start) + insertText + cur.slice(end);
+    updateTemplate(next);
+    setTimeout(() => {
+      ta.focus();
+      const pos = start + insertText.length;
+      ta.selectionStart = ta.selectionEnd = pos;
+    }, 0);
+  };
+
   const toggleField = (field: string) => {
-    setSettings(prev => {
-      const fields = prev.lead_fields.includes(field)
-        ? prev.lead_fields.filter(f => f !== field)
-        : [...prev.lead_fields, field];
-      return { ...prev, lead_fields: fields.length > 0 ? fields : ['lead_name'] };
-    });
+    const placeholder = `{{${tokenToLabel(field)}}}`;
+    if (templateValue.includes(placeholder)) {
+      updateTemplate(templateValue.split(placeholder).join('').replace(/\s{2,}/g, ' '));
+    } else {
+      insertTokenAtCursor(placeholder);
+    }
   };
 
   const toggleDocType = (docType: string) => {
