@@ -181,6 +181,7 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
   const [nuclei, setNuclei] = useState<{id: string; name: string; prefix: string}[]>([]);
   const [teamMembers, setTeamMembers] = useState<{user_id: string; full_name: string}[]>([]);
   const [products, setProducts] = useState<{id: string; name: string; nucleus_id: string | null}[]>([]);
+  const [boardCustomFields, setBoardCustomFields] = useState<{ id: string; field_name: string; field_type: string }[]>([]);
 
   useEffect(() => {
     fetchData();
@@ -190,8 +191,27 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
     if (selectedBoard) {
       fetchLinked();
       fetchSettings();
+      fetchBoardCustomFields();
     }
   }, [selectedBoard]);
+
+  const fetchBoardCustomFields = async () => {
+    try {
+      // Apenas campos personalizados deste funil específico (board_id = selectedBoard).
+      // Globais (board_id NULL) ficam de fora pra evitar poluir com campos que não
+      // pertencem a esse funil — exatamente o que o usuário pediu.
+      const { data, error } = await (db as any)
+        .from('lead_custom_fields')
+        .select('id, field_name, field_type')
+        .eq('board_id', selectedBoard)
+        .order('display_order', { ascending: true });
+      if (error) throw error;
+      setBoardCustomFields((data || []) as any[]);
+    } catch (e) {
+      console.warn('[BoardGroupInstancesConfig] fetch custom fields failed:', e);
+      setBoardCustomFields([]);
+    }
+  };
 
   const fetchData = async () => {
     setLoading(true);
