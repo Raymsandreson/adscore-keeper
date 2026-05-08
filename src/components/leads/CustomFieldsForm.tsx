@@ -30,6 +30,7 @@ export function CustomFieldInput({ field, value, onChange }: CustomFieldInputPro
     switch (field.field_type) {
       case 'text':
       case 'select':
+      case 'url':
         return value.value_text;
       case 'number':
         return value.value_number;
