@@ -266,6 +266,24 @@ async function addParticipantsToGroup(
   return { added, failed }
 }
 
+async function addParticipantsToGroupBulkOnly(
+  baseUrl: string,
+  token: string,
+  groupJid: string,
+  participants: string[],
+): Promise<{ added: string[]; failed: string[] }> {
+  if (participants.length === 0) return { added: [], failed: [] }
+  console.log(`[add-participants] Bulk-only adding ${participants.length} participants`)
+  const bulkRes = await postUazApiWithRetry(baseUrl, token, '/group/updateParticipants', {
+    groupjid: groupJid,
+    action: 'add',
+    participants,
+  }, 0)
+  if (bulkRes.ok) return { added: [...participants], failed: [] }
+  console.warn('[add-participants] Bulk-only add failed:', bulkRes.status, await bulkRes.text())
+  return { added: [], failed: [...participants] }
+}
+
 async function promoteParticipantsInGroup(
   baseUrl: string,
   token: string,
