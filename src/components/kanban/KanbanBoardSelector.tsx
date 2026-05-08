@@ -66,6 +66,7 @@ const fieldTypeLabels: Record<FieldType, string> = {
   date: 'Data',
   select: 'Seleção',
   checkbox: 'Checkbox',
+  url: 'Link',
 };
 
 function BoardCustomFieldsSection({ boardId, stages }: { boardId: string; stages: KanbanStage[] }) {
