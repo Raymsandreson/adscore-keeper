@@ -169,6 +169,7 @@ export function useLeadCustomFields(adAccountId?: string, boardId?: string) {
       switch (fieldType) {
         case 'text':
         case 'select':
+        case 'url':
           valueData.value_text = value as string;
           break;
         case 'number':
