@@ -77,11 +77,13 @@ Deno.serve(async (req) => {
         .eq('board_id', lead.board_id)
       const ids = (boardLeads || []).map((l: any) => l.id)
       if (ids.length > 0) {
+        // NOTE: do NOT filter by status='signed' — the `status` column can be out of
+        // sync with `signed_at` (ZapSign updates timestamp before status flip). The
+        // presence of `signed_at` is the real signal that the document was signed.
         const { data: signedDocs } = await supabase
           .from('zapsign_documents')
           .select('lead_id, signed_at')
           .in('lead_id', ids)
-          .eq('status', 'signed')
           .not('signed_at', 'is', null)
         const firstByLead = new Map<string, string>()
         for (const d of (signedDocs || [])) {
