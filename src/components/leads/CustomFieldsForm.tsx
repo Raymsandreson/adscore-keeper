@@ -3,7 +3,20 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
+import { ExternalLink, LinkIcon } from 'lucide-react';
 import { CustomField, CustomFieldValue, FieldType } from '@/hooks/useLeadCustomFields';
+
+function normalizeUrl(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const s = String(raw).trim();
+  if (!s) return null;
+  if (/^https?:\/\//i.test(s)) return s;
+  return `https://${s}`;
+}
+
+function isImageUrl(u: string): boolean {
+  return /\.(png|jpe?g|gif|webp|svg|avif)(\?|#|$)/i.test(u);
+}
 
 interface CustomFieldInputProps {
   field: CustomField;
