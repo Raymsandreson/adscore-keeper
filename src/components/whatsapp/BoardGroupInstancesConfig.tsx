@@ -529,10 +529,11 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
     }
     const seqStr = String(seq).padStart(4, '0');
     const fields = settings.lead_fields || [];
-    // Legacy: se não houver token closed_seq, injeta a sequência logo após o prefixo
-    if (!fields.includes('closed_seq')) parts.push(seqStr);
+    // Legacy: se não houver token de sequência (case_number/closed_seq), injeta a seq logo após o prefixo
+    const hasSeqToken = fields.includes('case_number') || fields.includes('closed_seq');
+    if (!hasSeqToken) parts.push(seqStr);
     for (const f of fields) {
-      if (f === 'closed_seq') {
+      if (f === 'closed_seq' || f === 'case_number') {
         parts.push(seqStr);
       } else if (f.startsWith('cf:')) {
         const cfId = f.slice(3);
