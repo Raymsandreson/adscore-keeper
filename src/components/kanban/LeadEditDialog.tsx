@@ -451,6 +451,7 @@ export function LeadEditDialog({
         switch (field.field_type) {
           case 'text':
           case 'select':
+          case 'url':
             value = val.value_text;
             break;
           case 'number':
