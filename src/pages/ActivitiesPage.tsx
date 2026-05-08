@@ -2772,8 +2772,8 @@ const ActivitiesPage = () => {
                         "px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-white",
                         activity.priority === 'urgente' && "bg-red-600",
                         activity.priority === 'alta' && "bg-orange-500",
-                        activity.priority === 'baixa' && "bg-emerald-600",
-                        (!activity.priority || activity.priority === 'normal') && "bg-blue-600",
+                        activity.priority === 'baixa' && "bg-slate-500",
+                        (!activity.priority || activity.priority === 'normal') && "bg-emerald-600",
                       )}
                     >
                       {PRIORITY_OPTIONS.find(p => p.value === (activity.priority || 'normal'))?.label || 'Normal'}

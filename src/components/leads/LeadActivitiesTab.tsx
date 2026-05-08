@@ -266,8 +266,8 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
     switch ((priority || 'normal').toLowerCase()) {
       case 'urgente': return { bg: 'hsl(0 84% 55%)', label: 'Urgente' };
       case 'alta':    return { bg: 'hsl(25 95% 55%)', label: 'Alta' };
-      case 'baixa':   return { bg: 'hsl(142 60% 45%)', label: 'Baixa' };
-      default:        return { bg: 'hsl(217 90% 55%)', label: 'Normal' };
+      case 'baixa':   return { bg: 'hsl(215 16% 47%)', label: 'Baixa' };
+      default:        return { bg: 'hsl(142 60% 45%)', label: 'Normal' };
     }
   };
 
