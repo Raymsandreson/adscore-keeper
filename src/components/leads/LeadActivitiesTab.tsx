@@ -262,6 +262,15 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
     return found?.color || '#888';
   };
 
+  const priorityStyle = (priority: string | null): { bg: string; label: string } => {
+    switch ((priority || 'normal').toLowerCase()) {
+      case 'urgente': return { bg: 'hsl(0 84% 55%)', label: 'Urgente' };
+      case 'alta':    return { bg: 'hsl(25 95% 55%)', label: 'Alta' };
+      case 'baixa':   return { bg: 'hsl(142 60% 45%)', label: 'Baixa' };
+      default:        return { bg: 'hsl(217 90% 55%)', label: 'Normal' };
+    }
+  };
+
   const quadrantLabels: Record<string, string> = {
     do_now: '🔥 Faça Agora',
     schedule: '📅 Agende',
