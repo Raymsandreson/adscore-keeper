@@ -21,11 +21,14 @@ function isImageUrl(u: string): boolean {
 interface CustomFieldInputProps {
   field: CustomField;
   value: CustomFieldValue | null;
+  localValue?: string | number | boolean | null;
   onChange: (fieldId: string, type: FieldType, value: string | number | boolean | null) => void;
 }
 
-export function CustomFieldInput({ field, value, onChange }: CustomFieldInputProps) {
+export function CustomFieldInput({ field, value, localValue, onChange }: CustomFieldInputProps) {
   const getValue = () => {
+    // Prefer locally-edited value so the input reflects what the user is typing
+    if (localValue !== undefined) return localValue;
     if (!value) return null;
     switch (field.field_type) {
       case 'text':
@@ -287,6 +290,7 @@ export function CustomFieldsForm({ customFields, leadId, getFieldValues, onValue
             key={field.id}
             field={field}
             value={fieldValues[field.id] || null}
+            localValue={localValues[field.id]?.value}
             onChange={handleChange}
           />
         ))}
