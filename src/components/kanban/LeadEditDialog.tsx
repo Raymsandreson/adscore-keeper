@@ -2239,7 +2239,16 @@ ${scrapeData.content || ''}
                       </div>
                     </>
                   )}
-                  {/* Nº do Caso removido — gerenciado na aba Casos */}
+                  <div>
+                    <Label className="flex items-center gap-1">Nº do Caso <span className="text-xs text-muted-foreground font-normal">(auto)</span></Label>
+                    <Input
+                      value={caseNumber || '—'}
+                      readOnly
+                      className="bg-muted font-mono"
+                      title="Atualizado automaticamente pela ordem de assinatura da procuração"
+                    />
+                    <p className="text-[11px] text-muted-foreground mt-1">Sincronizado com a ordem de assinatura da procuração.</p>
+                  </div>
                 </div>
 
                 {isFieldVisible('news_link') && (<div className="col-span-2">
