@@ -802,6 +802,8 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                                   <Textarea
                                     value={obj.description}
                                     onChange={e => updateObjective(phaseIdx, objIdx, { description: e.target.value })}
+                                     onKeyDown={stopSpacePropagation}
+                                     onKeyUp={stopSpacePropagation}
                                     placeholder="Descreva o objetivo desta fase do funil..."
                                     className="mt-1 min-h-[52px] text-xs resize-none"
                                   />
@@ -836,6 +838,8 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                                               <Input
                                                 value={step.label}
                                                 onChange={e => updateStepLabel(phaseIdx, objIdx, step.id, e.target.value)}
+                                                 onKeyDown={stopSpacePropagation}
+                                                 onKeyUp={stopSpacePropagation}
                                                 placeholder="Nome do passo..."
                                                 className="h-7 text-sm font-medium"
                                               />
