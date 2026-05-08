@@ -715,6 +715,7 @@ Deno.serve(async (req) => {
         let failedPromotions: string[] = []
         if (body.sync_participants) {
           let missing: string[]
+          const baseUrlForAdd = creatorInstance.base_url || 'https://abraci.uazapi.com'
           if (existingGroupInfo) {
             const actualPhones = extractParticipantPhones(existingGroupInfo?.participants || [])
             missing = participants.filter((expected) =>
@@ -728,7 +729,6 @@ Deno.serve(async (req) => {
           }
           console.log(`[create-group] sync_participants: ${missing.length} faltando de ${participants.length} esperados`)
           if (missing.length > 0) {
-            const baseUrlForAdd = creatorInstance.base_url || 'https://abraci.uazapi.com'
             const result = await addParticipantsToGroup(
               baseUrlForAdd,
               creatorInstance.instance_token,
