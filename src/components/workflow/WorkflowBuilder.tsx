@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type KeyboardEvent } from 'react';
 import { useConfirmDelete } from '@/hooks/useConfirmDelete';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -114,7 +114,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
   const [aiMode, setAiMode] = useState<'create' | 'edit'>('create');
   const [aiChangelog, setAiChangelog] = useState<Array<{ action: string; location: string; detail: string }> | null>(null);
 
-  const stopSpacePropagation = (e: React.KeyboardEvent<HTMLElement>) => {
+  const stopSpacePropagation = (e: KeyboardEvent<HTMLElement>) => {
     if (e.key === ' ' || e.code === 'Space') e.stopPropagation();
   };
 
