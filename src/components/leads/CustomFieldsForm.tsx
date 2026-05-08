@@ -290,6 +290,7 @@ export function CustomFieldsForm({ customFields, leadId, getFieldValues, onValue
             key={field.id}
             field={field}
             value={fieldValues[field.id] || null}
+            localValue={localValues[field.id]?.value}
             onChange={handleChange}
           />
         ))}
