@@ -735,7 +735,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
       // If sync is OFF, ask user for custom lead name
       let customLeadName: string | null = null;
       if (boardId) {
-        const { data: bgs } = await (supabase as any)
+        const { data: bgs } = await (externalSupabase as any)
           .from('board_group_settings')
           .select('sync_lead_name_with_group')
           .eq('board_id', boardId)
