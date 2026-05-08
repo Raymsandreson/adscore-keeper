@@ -1,56 +1,41 @@
-## Diagnóstico (com evidência)
+## Bug
+Quando um cliente assina pelo seu próprio WhatsApp e depois encaminha contratos de OUTROS signatários pela mesma conversa, o webhook ZapSign vincula todos esses documentos ao lead original (por `whatsapp_phone`). O `zapsign-enrich-lead` então sobrescreve city/state/neighborhood/cpf/cep/victim_name do lead com os dados do último signatário.
 
-Rodei contagens reais agora:
+Caso atual no lead `bfaddfed`:
+- doc 1 — RAYMSANDRESON (cliente real, dono do telefone)
+- doc 2 — ANDRÉIA BARBOSA (sobrescreveu)
+- doc 3 — CAROLINE MATOS (sobrescreveu de novo)
 
-| Fonte | Total | Últimos 30d | Assinados |
-|---|---|---|---|
-| **Supabase Externo** (`zapsign_documents`) | **300** | **135** | **174** |
-| **Supabase Cloud** (mesma tabela espelhada) | 268 | ~133 | ~89 |
-| Tela do card | 133 | — | 89 |
-| Tela do sheet | 123 | — | — |
+## Regra nova
+Cada `signer_token` único = um lead único. Documento só é vinculado a lead existente se o `signer_token` (ou nome+CPF) for o mesmo. Caso contrário → cria lead novo.
 
-**Causa raiz:** tanto o card "Docs" quanto o sheet "Documentos Assinados" estão lendo do **Cloud** (`supabase.from('zapsign_documents')`), que está dessincronizado do Externo (drift de 32 docs no total, 85 nos assinados). Os vendedores estão certos — geraram/assinaram bem mais do que aparece. A fonte de verdade é o Externo (300 docs, 174 assinados).
+## Mudanças de código
 
-A diferença 123 vs 133 entre card e sheet é timezone/janela: o card usa `dateRange` da página (label "30d"), o sheet usa `fromDate/toDate` próprios (04/04→04/05) — então cortam alguns docs de borda diferente. Quando trocarmos para a mesma fonte e a mesma janela, baterá.
+### 1. `supabase/functions/zapsign-webhook/index.ts`
+**Bloco AUTO-RESOLVE (linhas 238–292):** antes de gravar `localDoc.lead_id` a partir de `lead_phone`, verificar se aquele lead já tem documento com `signer_token` diferente. Se sim → NÃO vincula. O doc segue sem `lead_id`, cai no bloco AUTO-CREATE (793+) e gera lead próprio para o novo signatário.
 
-Distribuição real por instância no Externo (300 docs):
-`cris=122, sem instância=73, Prev. Edilan=59, Raym=19, Analyne=14, Viviane=8, João Pedro=2, Atendimento Previdenciário=1, Prudencred=1, Test=1`
+**Bloco AUTO-CREATE (linhas 786–1057):** já cria lead novo quando `!localDoc.lead_id`. Adicionar: usar `signer_phone` da ZapSign como `lead_phone` quando existir e tiver >4 dígitos (preserva identidade real do signatário, em vez do WhatsApp do encaminhador).
 
-Os 73 docs sem `instance_name` são justamente os que o vendedor gerou direto no painel ZapSign (sem usar o botão "Gerar documento" do CRM). É aí que entra o fallback que você pediu: cruzar `whatsapp_phone` do doc com `whatsapp_messages` do Externo para descobrir em qual instância o cliente conversou.
+### 2. `supabase/functions/zapsign-enrich-lead/index.ts`
+Salvaguarda dupla: se o lead já tem `cpf` preenchido E o `cpf` extraído do PDF é diferente → aborta o `update` dos campos pessoais (cpf/rg/birth_date/cep/street/number/complement/neighborhood/city/state/victim_name). Mantém apenas o upload do PDF no Drive e o vínculo do doc. Loga aviso `signer mismatch`.
 
-## Mudanças
+### 3. UI (Aba Documentação) — sem mudança
+Já lista por `lead_id`, então com a regra nova cada lead mostrará só os docs do seu próprio signatário. Drive já está anexando — manter como está.
 
-### 1. `src/pages/ZapsignSyncPage.tsx`
-- Trocar as duas queries do `useEffect` de `docCounts` de `supabase` (Cloud) para `externalSupabase` (Externo).
-- Resultado esperado: card "Docs (30d)" passa a mostrar 135 total, 124 assinados, 11 pendentes (ou números atualizados na hora da execução).
+## Correção de dados (one-shot)
+1. Restaurar lead `bfaddfed` para Raymsandreson: rodar `zapsign-enrich-lead` apontando para o doc `9e02a671` (PDF do Raymsandreson) — ele sobrescreve com os dados certos.
+2. Criar lead novo para **ANDRÉIA**: clonar a partir do board original, `lead_phone` = `signer_phone` da ZapSign quando válido (caso contrário deixar do WhatsApp + sufixo), repassar `lead_id` ao doc `cce9482b`, rodar enrich.
+3. Idem para **CAROLINE**: novo lead, doc `860d6186` revinculado, enrich.
 
-### 2. `src/components/whatsapp/agent-monitor/components/OperationalDetailSheet.tsx` (bloco `signed_docs`, linhas 76–95)
-- Trocar `supabase.from('zapsign_documents')` → `externalSupabase.from('zapsign_documents')`.
-- Trocar também o `supabase.from('leads')` que enriquece o lead_name → `externalSupabase`.
-- Adicionar campo `signed_at` ao select para podermos exibir/ordenar pela assinatura quando existir.
-- **Novo: resolver instância via telefone para docs sem `instance_name`.** Antes do `setItems`, juntar todos os `whatsapp_phone` dos docs com `instance_name` nulo, e fazer 1 query batched no Externo:
-  ```ts
-  externalSupabase.from('whatsapp_messages')
-    .select('phone, instance_name, created_at')
-    .in('phone', phonesSemInstancia)
-    .order('created_at', { ascending: false })
-  ```
-  Para cada telefone, escolher a instância com mais mensagens (mesma heurística do `lead-reprocess-procuracao`, com variantes 9º dígito). Anexar como `_resolved_instance` no item, exibida com tag "via chat" para deixar claro que é fallback.
+Tudo via `run-external-migration` + `curl_edge_functions` para o enrich. Lead antigo (`bfaddfed`) NÃO é apagado, só restaurado.
 
-### 3. Filtro por instância dentro do sheet
-- Adicionar um `<Select>` no header do sheet (ao lado dos botões Hoje/7d/30d/90d) listando as instâncias presentes nos docs carregados (`cris`, `Prev. Edilan`, `Raym`, etc.) + opção "Sem instância" + opção "Todas".
-- Filtragem usa `instance_name || _resolved_instance` — então o filtro também pega os docs gerados direto no ZapSign mas cuja conversa estava na instância selecionada.
-- Mostrar contador filtrado no badge do header (já existe).
+## O que NÃO vai mexer
+- Schema das tabelas.
+- Lógica de criação de grupos / renomeação.
+- `lead-drive` (já funciona).
+- Railway `zapsign-webhook.ts` (138 linhas, é só proxy — não decide vínculo).
+- Outras funções `zapsign-*` (audit, backfill, bulk-sync).
 
-### 4. Exibição no card do doc
-- Mostrar a tag da instância (com indicador "via chat" se veio do fallback) abaixo do nome do signer, para você bater olho e ver "ah, esse foi do João Pedro mesmo que não tenha botão".
-
-## O que NÃO vai mudar
-- Não toco no Cloud nem tento ressincronizar a tabela espelhada — trato direto na origem (Externo).
-- Não toco em `zapsign_sync_runs` nem nos KPIs de "Contatos/Leads enriq./Grupos/Erros" (essas continuam vindo dos runs).
-- Sem migrations, sem edge function nova.
-
-## Verificação pós-deploy
-1. Abrir o sheet com período 30d → conferir que "Todos" agora mostra ~135 (não 123).
-2. Filtrar por instância "cris" → comparar com `cris=122` real.
-3. Filtrar por "Sem instância" → ver os 73 docs e validar que `_resolved_instance` foi preenchido para a maioria.
+## Riscos
+- Risco baixo: a verificação de `signer_token` é defensiva — se a query falhar, mantém comportamento atual (vincula). Não quebra fluxos onde só há 1 signatário.
+- Risco médio na correção de dados: se algum signer_phone vier vazio (ex.: Andréia/Caroline têm `signer_phone="55"`), o lead novo nasce com `lead_phone` igual ao do Raymsandreson + sufixo `-2/-3` para não colidir UNIQUE (se houver). Conferir constraint antes.

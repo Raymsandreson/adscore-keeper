@@ -280,12 +280,29 @@ Deno.serve(async (req) => {
       }
 
       if (matchedLead) {
-        localDoc.lead_id = matchedLead.id
-        await supabase
+        // SAFEGUARD: do not link this doc to a lead that already belongs to a DIFFERENT signer.
+        // Each signer_token must own its own lead — otherwise enrich-lead overwrites the original.
+        const currentSignerToken = localDoc.signer_token || null
+        const { data: otherDocs } = await supabase
           .from('zapsign_documents')
-          .update({ lead_id: matchedLead.id })
-          .eq('id', localDoc.id)
-        console.log(`[zapsign-webhook] Resolved lead_id: ${matchedLead.id} from phone ${cleanPhone}`)
+          .select('id, signer_token, signer_name')
+          .eq('lead_id', matchedLead.id)
+          .neq('id', localDoc.id)
+          .limit(5)
+        const hasDifferentSigner = (otherDocs || []).some(d =>
+          d.signer_token && currentSignerToken && d.signer_token !== currentSignerToken
+        )
+        if (hasDifferentSigner) {
+          console.log(`[zapsign-webhook] Skip auto-resolve: lead ${matchedLead.id} already owned by other signer(s):`, otherDocs?.map(d => d.signer_name))
+          // leave localDoc.lead_id NULL → AUTO-CREATE branch will spawn a new lead for this signer
+        } else {
+          localDoc.lead_id = matchedLead.id
+          await supabase
+            .from('zapsign_documents')
+            .update({ lead_id: matchedLead.id })
+            .eq('id', localDoc.id)
+          console.log(`[zapsign-webhook] Resolved lead_id: ${matchedLead.id} from phone ${cleanPhone}`)
+        }
       } else {
         console.log(`[zapsign-webhook] No lead found for phone ${cleanPhone}`)
       }
@@ -786,13 +803,16 @@ Deno.serve(async (req) => {
     // ====================================================
     // AUTO-CREATE CONTACT + LEAD WITH AI CONTEXT ON SIGN
     // ====================================================
-    if (isDocFullySigned && localDoc.whatsapp_phone) {
-      const cleanPhone = (localDoc.whatsapp_phone || '').replace(/\D/g, '')
-      
+    if (isDocFullySigned && (localDoc.whatsapp_phone || localDoc.signer_phone)) {
+      // Prefer signer_phone (real signatory identity) over whatsapp_phone (the forwarder's WA).
+      const signerPhoneClean = (localDoc.signer_phone || '').replace(/\D/g, '')
+      const waPhoneClean = (localDoc.whatsapp_phone || '').replace(/\D/g, '')
+      const cleanPhone = signerPhoneClean.length > 4 ? signerPhoneClean : waPhoneClean
+
       // Only proceed if no lead is linked yet
       if (!localDoc.lead_id && cleanPhone) {
         try {
-          console.log(`[zapsign-webhook] No lead linked, auto-creating contact+lead for phone: ${cleanPhone}`)
+          console.log(`[zapsign-webhook] No lead linked, auto-creating contact+lead for phone: ${cleanPhone} (signer=${signerPhoneClean || 'none'}, wa=${waPhoneClean || 'none'})`)
 
           // Remap Cloud UUID -> External UUID for FK to auth.users on External DB
           let extOwnerId: string | null = resolvedOwnerId
