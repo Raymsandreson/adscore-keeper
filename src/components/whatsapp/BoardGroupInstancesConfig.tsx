@@ -732,6 +732,9 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
                         </button>
                       );
                     })}
+                  </div>
+                </>
+              )}
 
               {/* Inserir texto livre entre campos */}
               <div className="mt-2 space-y-1">
@@ -812,9 +815,6 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
                     })}
                   </div>
                 </div>
-              )}
-            </div>
-                </>
               )}
             </div>
 
