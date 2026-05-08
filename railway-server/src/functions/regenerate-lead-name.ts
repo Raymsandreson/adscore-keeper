@@ -38,11 +38,11 @@ async function computeClosedPosition(boardId: string, leadId: string): Promise<{
   if (boardIds.length === 0) return { position: 1, total: 0 };
 
   // 2. Pega TODAS as procurações assinadas desses leads
+  // (filtra por signed_at apenas — status pode ficar fora de sync com a assinatura real)
   const { data: signedDocs } = await ext
     .from('zapsign_documents')
     .select('lead_id, signed_at')
     .in('lead_id', boardIds)
-    .eq('status', 'signed')
     .not('signed_at', 'is', null);
 
   // 3. Agrupa por lead_id pegando o MIN(signed_at) de cada
