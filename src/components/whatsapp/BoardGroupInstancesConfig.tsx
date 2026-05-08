@@ -686,7 +686,7 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
             <div className="space-y-1.5">
               <Label className="text-[11px] text-muted-foreground">Campos do lead no nome</Label>
               <div className="flex flex-wrap gap-1.5">
-                {LEAD_FIELD_OPTIONS.map(opt => (
+                {LEAD_FIELD_OPTIONS.filter(opt => !hiddenFieldKeys.has(opt.value)).map(opt => (
                   <button
                     key={opt.value}
                     type="button"
