@@ -293,7 +293,7 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
     if (data) {
       setSettings({
         group_name_prefix: data.group_name_prefix || '',
-        closed_group_name_prefix: data.closed_group_name_prefix || '',
+        closed_group_name_prefix: '',
         sequence_start: data.sequence_start || 1,
         current_sequence: data.current_sequence || 0,
         closed_sequence_start: data.closed_sequence_start || 1,
