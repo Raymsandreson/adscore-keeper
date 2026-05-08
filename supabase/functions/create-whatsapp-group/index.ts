@@ -619,12 +619,41 @@ Deno.serve(async (req) => {
       // Build name parts
       const parts: string[] = []
       if (activePrefix) parts.push(activePrefix)
-      parts.push(String(nextSeq))
 
       const leadFields = settings.lead_fields || ['lead_name']
+      const hasSeqToken = leadFields.includes('closed_seq') || leadFields.includes('case_number')
+      if (!hasSeqToken) parts.push(String(nextSeq))
+
+      const targetLeadId = lead_id || leadData?.id
+      const cfIds: string[] = (leadFields as string[])
+        .filter((f) => typeof f === 'string' && f.startsWith('cf:'))
+        .map((f) => f.slice(3))
+      const cfValuesById: Record<string, string> = {}
+      if (targetLeadId && cfIds.length > 0) {
+        const { data: cfVals } = await supabase
+          .from('lead_custom_field_values')
+          .select('field_id, value_text, value_number, value_date, value_boolean')
+          .eq('lead_id', targetLeadId)
+          .in('field_id', cfIds)
+        for (const v of (cfVals || []) as any[]) {
+          const raw =
+            v.value_text ??
+            (v.value_number !== null ? String(v.value_number) : null) ??
+            v.value_date ??
+            (v.value_boolean !== null ? (v.value_boolean ? 'Sim' : 'Não') : null)
+          if (raw) cfValuesById[v.field_id] = String(raw)
+        }
+      }
       for (const field of leadFields) {
-        if (field === 'board_name' && boardName) {
+        if (field === 'closed_seq' || field === 'case_number') {
+          parts.push(String(nextSeq))
+        } else if (typeof field === 'string' && field.startsWith('text:')) {
+          try { parts.push(decodeURIComponent(field.slice(5))) } catch { parts.push(field.slice(5)) }
+        } else if (field === 'board_name' && boardName) {
           parts.push(boardName)
+        } else if (typeof field === 'string' && field.startsWith('cf:')) {
+          const v = cfValuesById[field.slice(3)]
+          if (v) parts.push(v)
         } else if (leadData && leadData[field]) {
           parts.push(field === 'lead_name' ? stripExistingSequenceFromName(leadData[field], activePrefix) : String(leadData[field]))
         } else if (field === 'lead_name') {
