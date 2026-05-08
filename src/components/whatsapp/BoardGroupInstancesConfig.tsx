@@ -676,18 +676,9 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
               </div>
             </div>
 
-            <div className="space-y-1">
-              <Label className="text-[11px] text-muted-foreground">Prefixo (após fechar)</Label>
-              <Input
-                value={settings.closed_group_name_prefix}
-                onChange={e => setSettings(prev => ({ ...prev, closed_group_name_prefix: e.target.value }))}
-                placeholder="Ex: CASO, CLIENTE"
-                className="h-8 text-xs"
-              />
-              <p className="text-[10px] text-muted-foreground">
-                A sequência de fechados é automática: usa a posição do lead na fila pela data de assinatura no ZapSign (ex: 47º caso assinado = "0047").
-              </p>
-            </div>
+            <p className="text-[10px] text-muted-foreground">
+              A sequência de fechados (Nº do Caso) é automática: usa a posição do lead na fila pela data de assinatura no ZapSign (ex: 47º caso assinado = "0047"). Use o campo "Inserir texto livre" abaixo se quiser adicionar um prefixo (ex: "CASO ") antes do número.
+            </p>
 
             <div className="space-y-1.5">
               <Label className="text-[11px] text-muted-foreground">Campos do lead no nome</Label>
