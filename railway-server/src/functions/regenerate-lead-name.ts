@@ -147,12 +147,38 @@ export const handler: RequestHandler = async (req, res) => {
     // Legacy: se não houver token closed_seq, mantém comportamento antigo (seq logo após prefixo)
     if (!leadFields.includes('closed_seq')) parts.push(seqStr);
 
+    // Pré-carrega valores de campos personalizados se houver tokens cf:<id>
+    const cfIds = leadFields
+      .filter((f) => typeof f === 'string' && f.startsWith('cf:'))
+      .map((f) => f.slice(3));
+    const cfValuesById: Record<string, string> = {};
+    if (cfIds.length > 0) {
+      const { data: cfVals } = await ext
+        .from('lead_custom_field_values')
+        .select('field_id, value_text, value_number, value_date, value_boolean')
+        .eq('lead_id', lead_id)
+        .in('field_id', cfIds);
+      for (const v of (cfVals || []) as any[]) {
+        const raw =
+          v.value_text ??
+          (v.value_number !== null ? String(v.value_number) : null) ??
+          v.value_date ??
+          (v.value_boolean !== null ? (v.value_boolean ? 'Sim' : 'Não') : null);
+        if (raw) cfValuesById[v.field_id] = String(raw);
+      }
+    }
+
     const missingFields: string[] = [];
     for (const field of leadFields) {
       if (field === 'closed_seq') {
         parts.push(seqStr);
       } else if (field === 'board_name') {
         if (boardName) parts.push(boardName);
+        else missingFields.push(field);
+      } else if (field.startsWith('cf:')) {
+        const cfId = field.slice(3);
+        const v = cfValuesById[cfId];
+        if (v) parts.push(v);
         else missingFields.push(field);
       } else if (lead[field]) {
         const val = field === 'lead_name'
