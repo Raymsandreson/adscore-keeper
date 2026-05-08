@@ -181,6 +181,7 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
   const [nuclei, setNuclei] = useState<{id: string; name: string; prefix: string}[]>([]);
   const [teamMembers, setTeamMembers] = useState<{user_id: string; full_name: string}[]>([]);
   const [products, setProducts] = useState<{id: string; name: string; nucleus_id: string | null}[]>([]);
+  const [boardCustomFields, setBoardCustomFields] = useState<{ id: string; field_name: string; field_type: string }[]>([]);
 
   useEffect(() => {
     fetchData();
@@ -190,8 +191,27 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
     if (selectedBoard) {
       fetchLinked();
       fetchSettings();
+      fetchBoardCustomFields();
     }
   }, [selectedBoard]);
+
+  const fetchBoardCustomFields = async () => {
+    try {
+      // Apenas campos personalizados deste funil específico (board_id = selectedBoard).
+      // Globais (board_id NULL) ficam de fora pra evitar poluir com campos que não
+      // pertencem a esse funil — exatamente o que o usuário pediu.
+      const { data, error } = await (db as any)
+        .from('lead_custom_fields')
+        .select('id, field_name, field_type')
+        .eq('board_id', selectedBoard)
+        .order('display_order', { ascending: true });
+      if (error) throw error;
+      setBoardCustomFields((data || []) as any[]);
+    } catch (e) {
+      console.warn('[BoardGroupInstancesConfig] fetch custom fields failed:', e);
+      setBoardCustomFields([]);
+    }
+  };
 
   const fetchData = async () => {
     setLoading(true);
@@ -492,6 +512,10 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
     for (const f of fields) {
       if (f === 'closed_seq') {
         parts.push(seqStr);
+      } else if (f.startsWith('cf:')) {
+        const cfId = f.slice(3);
+        const cf = boardCustomFields.find(c => c.id === cfId);
+        parts.push(cf ? `[${cf.field_name}]` : `[campo personalizado]`);
       } else {
         const opt = LEAD_FIELD_OPTIONS.find(o => o.value === f);
         parts.push(opt ? `[${opt.label}]` : `[${f}]`);
@@ -657,6 +681,34 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
                   </button>
                 ))}
               </div>
+              {boardCustomFields.length > 0 && (
+                <>
+                  <Label className="text-[10px] text-muted-foreground/80 mt-2 block">
+                    Campos personalizados deste funil
+                  </Label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {boardCustomFields.map(cf => {
+                      const token = `cf:${cf.id}`;
+                      const active = settings.lead_fields.includes(token);
+                      return (
+                        <button
+                          key={cf.id}
+                          type="button"
+                          onClick={() => toggleField(token)}
+                          className={`text-[10px] px-2 py-1 rounded-full border transition-colors ${
+                            active
+                              ? 'bg-primary text-primary-foreground border-primary'
+                              : 'bg-background text-muted-foreground border-border hover:border-primary/50'
+                          }`}
+                          title={`Tipo: ${cf.field_type}`}
+                        >
+                          ✦ {cf.field_name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
             </div>
 
             <div className="space-y-1">

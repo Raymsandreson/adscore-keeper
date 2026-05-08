@@ -3,7 +3,7 @@ import { db } from '@/integrations/supabase';
 import { toast } from 'sonner';
 import type { LeadFieldTab } from '@/components/leads/leadFormFields';
 
-export type FieldType = 'text' | 'number' | 'date' | 'select' | 'checkbox';
+export type FieldType = 'text' | 'number' | 'date' | 'select' | 'checkbox' | 'url';
 
 export interface CustomField {
   id: string;
@@ -169,6 +169,7 @@ export function useLeadCustomFields(adAccountId?: string, boardId?: string) {
       switch (fieldType) {
         case 'text':
         case 'select':
+        case 'url':
           valueData.value_text = value as string;
           break;
         case 'number':

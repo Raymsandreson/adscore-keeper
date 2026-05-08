@@ -3,7 +3,20 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
+import { ExternalLink, LinkIcon } from 'lucide-react';
 import { CustomField, CustomFieldValue, FieldType } from '@/hooks/useLeadCustomFields';
+
+function normalizeUrl(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const s = String(raw).trim();
+  if (!s) return null;
+  if (/^https?:\/\//i.test(s)) return s;
+  return `https://${s}`;
+}
+
+function isImageUrl(u: string): boolean {
+  return /\.(png|jpe?g|gif|webp|svg|avif)(\?|#|$)/i.test(u);
+}
 
 interface CustomFieldInputProps {
   field: CustomField;
@@ -17,6 +30,7 @@ export function CustomFieldInput({ field, value, onChange }: CustomFieldInputPro
     switch (field.field_type) {
       case 'text':
       case 'select':
+      case 'url':
         return value.value_text;
       case 'number':
         return value.value_number;
@@ -47,6 +61,8 @@ export function CustomFieldInput({ field, value, onChange }: CustomFieldInputPro
         return `Escolha entre: ${field.field_options?.join(', ') || 'opções definidas'}`;
       case 'checkbox':
         return 'Marque para confirmar (Sim/Não)';
+      case 'url':
+        return 'Link (URL) — abre em nova aba e mostra prévia';
       default:
         return '';
     }
@@ -64,7 +80,8 @@ export function CustomFieldInput({ field, value, onChange }: CustomFieldInputPro
            field.field_type === 'number' ? 'Número' :
            field.field_type === 'date' ? 'Data' :
            field.field_type === 'select' ? 'Seleção' :
-           field.field_type === 'checkbox' ? 'Checkbox' : field.field_type}
+           field.field_type === 'checkbox' ? 'Checkbox' :
+           field.field_type === 'url' ? 'Link' : field.field_type}
         </span>
       </div>
       
@@ -133,6 +150,53 @@ export function CustomFieldInput({ field, value, onChange }: CustomFieldInputPro
           </label>
         </div>
       )}
+
+      {field.field_type === 'url' && (() => {
+        const raw = (currentValue as string) || '';
+        const href = normalizeUrl(raw);
+        return (
+          <div className="space-y-2 mt-1">
+            <div className="relative">
+              <LinkIcon className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                type="url"
+                placeholder="https://exemplo.com/..."
+                value={raw}
+                onChange={(e) => handleChange(e.target.value || null)}
+                className="pl-7"
+              />
+            </div>
+            {href && (
+              <a
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 p-2 rounded-md border bg-muted/40 hover:bg-muted/70 transition-colors group"
+              >
+                {isImageUrl(href) ? (
+                  <img
+                    src={href}
+                    alt="Prévia do link"
+                    className="h-12 w-12 rounded object-cover border"
+                    onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                  />
+                ) : (
+                  <div className="h-12 w-12 rounded bg-primary/10 flex items-center justify-center shrink-0">
+                    <LinkIcon className="h-5 w-5 text-primary" />
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs font-medium truncate group-hover:underline">{href}</div>
+                  <div className="text-[10px] text-muted-foreground flex items-center gap-1">
+                    <ExternalLink className="h-2.5 w-2.5" />
+                    Abrir em nova aba
+                  </div>
+                </div>
+              </a>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -169,6 +233,7 @@ export function CustomFieldsForm({ customFields, leadId, getFieldValues, onValue
           switch (field.field_type) {
             case 'text':
             case 'select':
+            case 'url':
               value = val.value_text;
               break;
             case 'number':
