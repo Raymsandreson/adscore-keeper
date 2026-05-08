@@ -233,6 +233,7 @@ export function CustomFieldsForm({ customFields, leadId, getFieldValues, onValue
           switch (field.field_type) {
             case 'text':
             case 'select':
+            case 'url':
               value = val.value_text;
               break;
             case 'number':
