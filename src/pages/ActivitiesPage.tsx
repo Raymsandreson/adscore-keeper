@@ -2838,8 +2838,9 @@ const ActivitiesPage = () => {
                       </div>
                       <span>{format(parseISO(activity.created_at), "dd/MM 'às' HH:mm")}</span>
                     </div>
+                    </div>
                   </div>
-                    </ContextMenuTrigger>
+
                     <ContextMenuContent>
                       <ContextMenuItem
                         onClick={() => {
