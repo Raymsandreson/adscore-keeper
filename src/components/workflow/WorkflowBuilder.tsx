@@ -706,13 +706,15 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                               {phaseIdx + 1}
                             </span>
                             {phase.isExpanded ? (
-                              <Input
-                                value={phase.stageName}
-                                onChange={e => updatePhaseName(phaseIdx, e.target.value)}
-                                onClick={e => e.stopPropagation()}
-                                placeholder="Nome da fase..."
-                                className="h-7 text-sm font-semibold text-foreground flex-1"
-                              />
+                               <Input
+                                 value={phase.stageName}
+                                 onChange={e => updatePhaseName(phaseIdx, e.target.value)}
+                                 onClick={e => e.stopPropagation()}
+                                 onKeyDown={e => e.stopPropagation()}
+                                 onKeyUp={e => e.stopPropagation()}
+                                 placeholder="Nome da fase..."
+                                 className="h-7 text-sm font-semibold text-foreground flex-1"
+                               />
                             ) : (
                               <span className="font-semibold text-sm text-foreground truncate">{phase.stageName}</span>
                             )}
