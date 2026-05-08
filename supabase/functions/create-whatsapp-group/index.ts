@@ -703,7 +703,13 @@ Deno.serve(async (req) => {
         // Rename existing group to follow configured naming pattern when needed
         const currentName = (existingGroupInfo?.groupName || '').trim()
         let finalName = currentName
-        const expectedPrefix = (settings?.group_name_prefix || '').trim()
+        // Quando phase=closed, o prefixo esperado é o closed_group_name_prefix (ex: "MAT"),
+        // não o group_name_prefix (ex: "72"). Sem isso, grupos abertos com prefixo "72"
+        // nunca são renomeados ao virar CASO porque o check pensa que já está OK.
+        const useClosedPrefix = phase === 'closed' && !!settings?.closed_group_name_prefix
+        const expectedPrefix = (
+          (useClosedPrefix ? settings?.closed_group_name_prefix : settings?.group_name_prefix) || ''
+        ).trim()
         const needsRename = settings && groupName && groupName !== currentName &&
           (!currentName || (expectedPrefix && !currentName.toUpperCase().startsWith(expectedPrefix.toUpperCase())))
         if (needsRename) {
