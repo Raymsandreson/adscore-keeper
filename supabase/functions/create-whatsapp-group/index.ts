@@ -537,6 +537,10 @@ Deno.serve(async (req) => {
       const { data } = await supabase.from('leads').select('*').eq('id', lead_id).maybeSingle()
       leadData = data
     }
+    if (leadData && explicitExistingGroupJid && leadData.whatsapp_group_id !== explicitExistingGroupJid) {
+      leadData = { ...leadData, whatsapp_group_id: explicitExistingGroupJid }
+      console.log(`[create-group] Using explicit existing group jid for sync: ${explicitExistingGroupJid}`)
+    }
     if (!leadData && normalizedPhone) {
       const { data } = await supabase
         .from('leads')
@@ -545,6 +549,10 @@ Deno.serve(async (req) => {
         .limit(1)
         .maybeSingle()
       leadData = data
+      if (leadData && explicitExistingGroupJid && leadData.whatsapp_group_id !== explicitExistingGroupJid) {
+        leadData = { ...leadData, whatsapp_group_id: explicitExistingGroupJid }
+        console.log(`[create-group] Using explicit existing group jid after phone lookup: ${explicitExistingGroupJid}`)
+      }
     }
 
     let nextSeq: number | null = null
