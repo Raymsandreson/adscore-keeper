@@ -67,35 +67,18 @@ Deno.serve(async (req) => {
       })
     }
 
-    // Posição determinística por board: RANK pelo MIN(zapsign_documents.signed_at).
-    // Mesma lógica do snippet `posicao_fechamento`. Ignora seq inicial configurada.
+    // Posição determinística por board via SQL (RPC). Resolve em uma única query
+    // no Postgres — sem o limite de 1000 linhas do PostgREST que falhava em boards grandes.
     let closedSeq = 1
     {
-      const { data: boardLeads } = await supabase
-        .from('leads')
-        .select('id')
-        .eq('board_id', lead.board_id)
-      const ids = (boardLeads || []).map((l: any) => l.id)
-      if (ids.length > 0) {
-        // NOTE: do NOT filter by status='signed' — the `status` column can be out of
-        // sync with `signed_at` (ZapSign updates timestamp before status flip). The
-        // presence of `signed_at` is the real signal that the document was signed.
-        const { data: signedDocs } = await supabase
-          .from('zapsign_documents')
-          .select('lead_id, signed_at')
-          .in('lead_id', ids)
-          .not('signed_at', 'is', null)
-        const firstByLead = new Map<string, string>()
-        for (const d of (signedDocs || [])) {
-          const cur = firstByLead.get(d.lead_id)
-          if (!cur || (d.signed_at && d.signed_at < cur)) firstByLead.set(d.lead_id, d.signed_at)
-        }
-        const seq = [...firstByLead.entries()]
-          .map(([id, when]) => ({ id, when }))
-          .sort((a, b) => (a.when || '').localeCompare(b.when || ''))
-        const idx = seq.findIndex(s => s.id === lead.id)
-        closedSeq = idx >= 0 ? idx + 1 : seq.length + 1
+      const { data: posData, error: posErr } = await supabase
+        .rpc('get_lead_closed_position', { p_lead_id: lead.id, p_board_id: lead.board_id })
+      if (posErr) {
+        console.error('[rename] get_lead_closed_position error:', posErr)
+      } else if (typeof posData === 'number') {
+        closedSeq = posData
       }
+      console.log(`[rename] closedSeq=${closedSeq} for lead ${lead.id} board ${lead.board_id}`)
     }
 
     // Find a connected instance to operate on the group.

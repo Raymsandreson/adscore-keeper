@@ -25,44 +25,17 @@ function stripExistingSequence(name: string, prefix: string): string {
   return trimmed.replace(re, '').trim();
 }
 
-// Posição do lead na fila de fechados do funil, ordenada pela data de assinatura
-// da PRIMEIRA procuração assinada no ZapSign (signed_at ASC). Determinístico.
-// Se o lead ainda não tem procuração assinada, retorna projeção (total+1).
+// Posição do lead na fila de fechados do funil. Resolvido em UMA SQL via RPC
+// (`get_lead_closed_position`) — sem o limite de 1000 linhas do PostgREST que
+// quebrava boards grandes (Raym caía fora do .in() e voltava posição 1).
 async function computeClosedPosition(boardId: string, leadId: string): Promise<{ position: number; total: number }> {
-  // 1. Pega todos leads do board
-  const { data: boardLeads } = await ext
-    .from('leads')
-    .select('id')
-    .eq('board_id', boardId);
-  const boardIds = (boardLeads || []).map((l: any) => l.id);
-  if (boardIds.length === 0) return { position: 1, total: 0 };
-
-  // 2. Pega TODAS as procurações assinadas desses leads
-  // (filtra por signed_at apenas — status pode ficar fora de sync com a assinatura real)
-  const { data: signedDocs } = await ext
-    .from('zapsign_documents')
-    .select('lead_id, signed_at')
-    .in('lead_id', boardIds)
-    .not('signed_at', 'is', null);
-
-  // 3. Agrupa por lead_id pegando o MIN(signed_at) de cada
-  const firstSignedByLead = new Map<string, string>();
-  for (const d of signedDocs || []) {
-    const cur = firstSignedByLead.get(d.lead_id);
-    if (!cur || (d.signed_at && d.signed_at < cur)) {
-      firstSignedByLead.set(d.lead_id, d.signed_at);
-    }
+  const { data: pos, error: posErr } = await ext
+    .rpc('get_lead_closed_position', { p_lead_id: leadId, p_board_id: boardId });
+  if (posErr) {
+    console.error('[regenerate-lead-name] get_lead_closed_position error:', posErr);
+    return { position: 1, total: 0 };
   }
-
-  // 4. Ordena ASC e indexa
-  const sequence = [...firstSignedByLead.entries()]
-    .map(([lead_id, when]) => ({ lead_id, when }))
-    .sort((a, b) => (a.when || '').localeCompare(b.when || ''));
-
-  const idx = sequence.findIndex((s) => s.lead_id === leadId);
-  if (idx >= 0) return { position: idx + 1, total: sequence.length };
-  // Lead sem procuração assinada ainda: projeção = próximo da fila
-  return { position: sequence.length + 1, total: sequence.length };
+  return { position: typeof pos === 'number' ? pos : 1, total: typeof pos === 'number' ? pos : 0 };
 }
 
 export const handler: RequestHandler = async (req, res) => {
