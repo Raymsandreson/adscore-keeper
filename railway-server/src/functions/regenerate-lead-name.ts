@@ -214,8 +214,8 @@ export const handler: RequestHandler = async (req, res) => {
     };
     // Sincroniza nº do caso (campo fixo) com a posição na fila de fechados.
     // Só escreve quando phase=closed pra não sujar leads ainda em aberto.
-    if (useClosed) {
-      updatePayload.case_number = seqStr;
+    if (phase === 'closed' && position) {
+      updatePayload.case_number = String(position).padStart(4, '0');
     }
     const { error: updErr } = await ext
       .from('leads')
