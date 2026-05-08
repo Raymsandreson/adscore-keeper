@@ -87,6 +87,7 @@ const LEAD_FIELD_OPTIONS = [
   { value: 'city', label: 'Cidade' },
   { value: 'state', label: 'Estado' },
   { value: 'source', label: 'Origem' },
+  { value: 'acolhedor', label: 'Acolhedor (auto)' },
   { value: 'main_company', label: 'Empresa Principal' },
   { value: 'contractor_company', label: 'Empresa Contratante' },
   { value: 'sector', label: 'Setor' },
