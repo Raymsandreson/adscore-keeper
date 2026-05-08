@@ -204,6 +204,7 @@ export function CustomFieldsManager({ adAccountId }: CustomFieldsManagerProps) {
                       <SelectItem value="date">Data</SelectItem>
                       <SelectItem value="select">Seleção (dropdown)</SelectItem>
                       <SelectItem value="checkbox">Checkbox (sim/não)</SelectItem>
+                      <SelectItem value="url">Link (URL com prévia)</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
