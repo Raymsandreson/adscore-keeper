@@ -2840,6 +2840,7 @@ const ActivitiesPage = () => {
                     </div>
                     </div>
                   </div>
+                    </ContextMenuTrigger>
 
                     <ContextMenuContent>
                       <ContextMenuItem
