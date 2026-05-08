@@ -184,6 +184,8 @@ Deno.serve(async (req) => {
       }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 
+    const executorPhone = normalizePhone(instance.owner_phone || instance.phone || '')
+
     // Build new name
     const closedPrefix = settings.closed_group_name_prefix
     const leadFields = settings.lead_fields || ['lead_name']
