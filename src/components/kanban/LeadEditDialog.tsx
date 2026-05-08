@@ -239,6 +239,12 @@ export function LeadEditDialog({
   const [leadOutcomeReason, setLeadOutcomeReason] = useState('');
   const [isGeneratingReason, setIsGeneratingReason] = useState(false);
   const [caseNumber, setCaseNumber] = useState('');
+  const [caseSyncCheck, setCaseSyncCheck] = useState<{
+    expectedCaseNumber: string;
+    expectedLeadName: string;
+    needsUpdate: boolean;
+  } | null>(null);
+  const [caseSyncApplying, setCaseSyncApplying] = useState(false);
   const [unifiedEditorOpen, setUnifiedEditorOpen] = useState(false);
   
   // Accident fields
