@@ -122,8 +122,8 @@ export const handler: RequestHandler = async (req, res) => {
       }
     }
 
-    const useClosed = phase === 'closed' && !!settings.closed_group_name_prefix;
-    const activePrefix = (useClosed ? settings.closed_group_name_prefix : settings.group_name_prefix) || '';
+    const useClosed = phase === 'closed';
+    const activePrefix = settings.group_name_prefix || '';
     const activeSeqStart = useClosed ? 1 : (settings.sequence_start || 1);
 
     // Sequência determinística por posição.
