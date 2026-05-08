@@ -156,6 +156,7 @@ export const handler: RequestHandler = async (req, res) => {
     // Sequência determinística por posição.
     // Para fechados: usa SEMPRE a posição real (data de assinatura ZapSign), ignora seq inicial.
     // Para abertos: respeita seq inicial configurada.
+    const { position, total } = await computeClosedPosition(lead.board_id, lead_id);
     const nextSeq = useClosed ? position : Math.max(position, activeSeqStart);
 
     const { data: boardData } = await ext
