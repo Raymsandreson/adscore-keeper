@@ -807,6 +807,7 @@ function CreateGroupSummary({
           phone: payload?.lead_phone,
           contact_phone: payload?.lead_phone,
           board_id: payload?.board_id,
+          group_jid: result.group_jid,
           creation_origin: 'onboarding_checkpoint_rename',
           phase: 'closed',
           allow_rename: true,
