@@ -535,6 +535,8 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
     for (const f of fields) {
       if (f === 'closed_seq' || f === 'case_number') {
         parts.push(seqStr);
+      } else if (f.startsWith('text:')) {
+        try { parts.push(decodeURIComponent(f.slice(5))); } catch { parts.push(f.slice(5)); }
       } else if (f.startsWith('cf:')) {
         const cfId = f.slice(3);
         const cf = boardCustomFields.find(c => c.id === cfId);
