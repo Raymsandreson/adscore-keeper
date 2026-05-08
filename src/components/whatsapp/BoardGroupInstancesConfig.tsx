@@ -426,7 +426,7 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
 
       const payload = {
         group_name_prefix: settings.group_name_prefix,
-        closed_group_name_prefix: settings.closed_group_name_prefix || null,
+        closed_group_name_prefix: null,
         sequence_start: settings.sequence_start,
         closed_sequence_start: settings.closed_sequence_start,
         lead_fields: settings.lead_fields,
