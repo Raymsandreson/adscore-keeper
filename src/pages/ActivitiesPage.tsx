@@ -2810,8 +2810,9 @@ const ActivitiesPage = () => {
                         <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-destructive" onClick={e => { e.stopPropagation(); handleDelete(activity.id); }} title="Excluir">
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
-                      </div>
                     </div>
+                    </div>
+                  </div>
 
                     {/* Title */}
                     <h3 className="font-medium text-sm mt-1.5 leading-snug">{activity.title}</h3>
