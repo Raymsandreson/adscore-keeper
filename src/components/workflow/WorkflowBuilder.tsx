@@ -39,9 +39,13 @@ import {
   ClipboardList,
   Sparkles,
   Loader2,
+  PenLine,
 } from 'lucide-react';
 import { useKanbanBoards, KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
-import { useChecklists, ChecklistItem, DocChecklistItem, CHECKLIST_TYPES, ChecklistType } from '@/hooks/useChecklists';
+import { useChecklists, ChecklistItem, DocChecklistItem, CHECKLIST_TYPES, ChecklistType, ACTIVITY_MESSAGE_FIELDS } from '@/hooks/useChecklists';
+import { TEMPLATE_VARIABLES } from '@/hooks/useActivityMessageTemplates';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { useActivityTypes } from '@/hooks/useActivityTypes';
 import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -105,6 +109,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
   const [scriptDialog, setScriptDialog] = useState<{ phaseIdx: number; objIdx: number; stepId: string; script: string } | null>(null);
   const [descDialog, setDescDialog] = useState<{ phaseIdx: number; objIdx: number; stepId: string; description: string } | null>(null);
   const [docChecklistDialog, setDocChecklistDialog] = useState<{ phaseIdx: number; objIdx: number; stepId: string; items: DocChecklistItem[]; checklistType: ChecklistType } | null>(null);
+  const [msgTemplatesDialog, setMsgTemplatesDialog] = useState<{ phaseIdx: number; objIdx: number; stepId: string; templates: Record<string, string>; activeTab: string } | null>(null);
   const [newDocItem, setNewDocItem] = useState('');
   const [dragItem, setDragItem] = useState<{ type: 'objective' | 'step'; phaseIdx: number; objIdx: number; stepIdx?: number } | null>(null);
   const [dragOverItem, setDragOverItem] = useState<{ type: 'objective' | 'step'; phaseIdx: number; objIdx: number; stepIdx?: number } | null>(null);
@@ -443,7 +448,18 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
     });
   };
 
-  // Drag-and-drop handlers
+  const updateStepMessageTemplates = (phaseIdx: number, objIdx: number, stepId: string, templates: Record<string, string>) => {
+    // Remove chaves vazias para não poluir o JSON salvo
+    const cleaned: Record<string, string> = {};
+    for (const [k, v] of Object.entries(templates)) {
+      if (v && v.trim()) cleaned[k] = v;
+    }
+    updateObjective(phaseIdx, objIdx, {
+      items: phases[phaseIdx].objectives[objIdx].items.map(s =>
+        s.id === stepId ? { ...s, messageTemplates: Object.keys(cleaned).length > 0 ? cleaned : undefined } : s
+      ),
+    });
+  };
   const handleDragStart = (type: 'objective' | 'step', phaseIdx: number, objIdx: number, stepIdx?: number) => {
     setDragItem({ type, phaseIdx, objIdx, stepIdx });
   };
@@ -867,6 +883,21 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                                             >
                                               <ClipboardList className="h-3.5 w-3.5" />
                                             </Button>
+                                            <Button
+                                              variant="ghost"
+                                              size="icon"
+                                              className={cn("h-6 w-6 flex-shrink-0", step.messageTemplates && Object.keys(step.messageTemplates).length > 0 ? "text-blue-500" : "text-muted-foreground")}
+                                              title={step.messageTemplates && Object.keys(step.messageTemplates).length > 0 ? `Modelos de mensagem (${Object.keys(step.messageTemplates).length})` : 'Adicionar modelos de mensagem da atividade'}
+                                              onClick={() => setMsgTemplatesDialog({
+                                                phaseIdx,
+                                                objIdx,
+                                                stepId: step.id,
+                                                templates: { ...(step.messageTemplates || {}) },
+                                                activeTab: ACTIVITY_MESSAGE_FIELDS[0].key,
+                                              })}
+                                            >
+                                              <PenLine className="h-3.5 w-3.5" />
+                                            </Button>
                                             <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive/80 hover:text-destructive flex-shrink-0" onClick={() => removeStep(phaseIdx, objIdx, step.id)}>
                                               <X className="h-3.5 w-3.5" />
                                             </Button>
@@ -1238,7 +1269,107 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
       </DialogContent>
     </Dialog>
 
-    {/* AI Generation/Edit Dialog */}
+    {/* Modelos de mensagem por campo da atividade */}
+    <Dialog open={!!msgTemplatesDialog} onOpenChange={(open) => !open && setMsgTemplatesDialog(null)}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <PenLine className="h-5 w-5 text-blue-500" />
+            Modelos de mensagem da atividade
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <p className="text-xs text-muted-foreground">
+            Defina o texto que vai pré-preencher cada caixa de texto da atividade quando ela for criada a partir deste passo. Use as variáveis abaixo para deixar dinâmico (ex: <code className="bg-muted px-1 rounded">{'{{lead_name}}'}</code>, <code className="bg-muted px-1 rounded">{'{{saudacao}}'}</code>).
+          </p>
+
+          {msgTemplatesDialog && (
+            <Tabs
+              value={msgTemplatesDialog.activeTab}
+              onValueChange={(v) => setMsgTemplatesDialog(prev => prev ? { ...prev, activeTab: v } : null)}
+            >
+              <TabsList className="grid grid-cols-4 w-full h-auto">
+                {ACTIVITY_MESSAGE_FIELDS.map(f => {
+                  const filled = !!(msgTemplatesDialog.templates[f.key] || '').trim();
+                  return (
+                    <TabsTrigger key={f.key} value={f.key} className="text-xs py-1.5 relative">
+                      {f.label}
+                      {filled && <span className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-blue-500" />}
+                    </TabsTrigger>
+                  );
+                })}
+              </TabsList>
+
+              {ACTIVITY_MESSAGE_FIELDS.map(f => (
+                <TabsContent key={f.key} value={f.key} className="mt-3 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <Label className="text-xs text-muted-foreground">Texto do campo "{f.label}"</Label>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="outline" size="sm" className="h-7 text-xs">
+                          <Plus className="h-3 w-3 mr-1" /> Inserir variável
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent className="max-h-72 overflow-y-auto w-72">
+                        {TEMPLATE_VARIABLES.map(v => (
+                          <DropdownMenuItem
+                            key={v.var}
+                            onClick={() => setMsgTemplatesDialog(prev => {
+                              if (!prev) return null;
+                              const current = prev.templates[f.key] || '';
+                              return {
+                                ...prev,
+                                templates: { ...prev.templates, [f.key]: current + (current && !current.endsWith(' ') ? ' ' : '') + v.var },
+                              };
+                            })}
+                            className="text-xs flex flex-col items-start gap-0.5 py-1.5"
+                          >
+                            <code className="text-[10px] bg-muted px-1 rounded">{v.var}</code>
+                            <span className="text-[10px] text-muted-foreground">{v.label}</span>
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                  <Textarea
+                    value={msgTemplatesDialog.templates[f.key] || ''}
+                    onChange={e => setMsgTemplatesDialog(prev => prev ? {
+                      ...prev,
+                      templates: { ...prev.templates, [f.key]: e.target.value },
+                    } : null)}
+                    placeholder={f.placeholder}
+                    className="min-h-[160px] text-sm"
+                  />
+                  <p className="text-[10px] text-muted-foreground">
+                    Deixe em branco para não pré-preencher este campo na atividade.
+                  </p>
+                </TabsContent>
+              ))}
+            </Tabs>
+          )}
+
+          <div className="flex justify-end gap-2 pt-2 border-t">
+            <Button variant="outline" size="sm" onClick={() => setMsgTemplatesDialog(null)}>Cancelar</Button>
+            <Button size="sm" onClick={() => {
+              if (msgTemplatesDialog) {
+                updateStepMessageTemplates(
+                  msgTemplatesDialog.phaseIdx,
+                  msgTemplatesDialog.objIdx,
+                  msgTemplatesDialog.stepId,
+                  msgTemplatesDialog.templates,
+                );
+                setMsgTemplatesDialog(null);
+                toast.success('Modelos de mensagem salvos!');
+              }
+            }}>
+              Salvar modelos
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+
+
     <Dialog open={showAiDialog} onOpenChange={setShowAiDialog}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>

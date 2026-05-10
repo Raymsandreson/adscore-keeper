@@ -20,6 +20,16 @@ export interface DocChecklistItem {
   nextStageId?: string;
 }
 
+// Campos da atividade que podem ter modelo de mensagem por passo.
+// Mantidos como constante para reuso no editor (tabs do dialog) e no
+// pré-preenchimento ao criar a atividade vinculada ao passo.
+export const ACTIVITY_MESSAGE_FIELDS: { key: string; label: string; placeholder: string }[] = [
+  { key: 'current_status', label: 'Como está', placeholder: 'Ex: Lead aguardando retorno após primeira ligação...' },
+  { key: 'what_was_done', label: 'O que foi feito', placeholder: 'Ex: Entrei em contato pelo WhatsApp e enviei o script de apresentação.' },
+  { key: 'next_steps', label: 'Próximo passo', placeholder: 'Ex: Aguardar resposta até {{data_retorno}} e ligar novamente se não responder.' },
+  { key: 'notes', label: 'Observações', placeholder: 'Ex: {{lead_name}} prefere ser contatado após as 18h.' },
+];
+
 export interface ChecklistItem {
   id: string;
   label: string;
@@ -29,6 +39,10 @@ export interface ChecklistItem {
   script?: string; // script de contato para este passo
   nextStageId?: string; // ao concluir, mover lead para esta fase
   docChecklist?: DocChecklistItem[]; // checklist de documentação
+  // Modelo de mensagem por campo da atividade gerada neste passo.
+  // Chaves correspondem a ACTIVITY_MESSAGE_FIELDS (current_status, what_was_done, next_steps, notes).
+  // Aceita as mesmas variáveis de TEMPLATE_VARIABLES (ex: {{lead_name}}, {{saudacao}}, {{data_retorno}}).
+  messageTemplates?: Record<string, string>;
 }
 
 export interface ChecklistTemplate {
