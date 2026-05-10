@@ -151,6 +151,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
     setPhases([]);
     setNewPhaseName('');
     setEditingBoardId(null);
+    setSelectedPhaseIdx(null);
     setViewMode('list');
   };
 
