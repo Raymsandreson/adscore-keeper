@@ -322,6 +322,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
     });
 
     setPhases(phaseConfigs);
+    setSelectedPhaseIdx(phaseConfigs.length > 0 ? 0 : null);
     setViewMode('edit');
   };
 
