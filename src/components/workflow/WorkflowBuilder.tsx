@@ -164,6 +164,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
       { stageId: 'progress_' + Date.now(), stageName: 'Em Andamento', stageColor: '#f97316', objectives: [], isExpanded: false },
       { stageId: 'done_' + Date.now(), stageName: 'Concluído', stageColor: '#22c55e', objectives: [], isExpanded: false },
     ]);
+    setSelectedPhaseIdx(0);
     setViewMode('edit');
   };
 
