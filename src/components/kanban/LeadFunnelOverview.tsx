@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { db as supabase } from '@/integrations/supabase';
 import { KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
 import { useChecklists, LeadChecklistInstance, ChecklistItem, CHECKLIST_TYPES } from '@/hooks/useChecklists';
 import { Checkbox } from '@/components/ui/checkbox';
