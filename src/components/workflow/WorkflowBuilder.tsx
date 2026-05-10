@@ -109,6 +109,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
   const [scriptDialog, setScriptDialog] = useState<{ phaseIdx: number; objIdx: number; stepId: string; script: string } | null>(null);
   const [descDialog, setDescDialog] = useState<{ phaseIdx: number; objIdx: number; stepId: string; description: string } | null>(null);
   const [docChecklistDialog, setDocChecklistDialog] = useState<{ phaseIdx: number; objIdx: number; stepId: string; items: DocChecklistItem[]; checklistType: ChecklistType } | null>(null);
+  const [msgTemplatesDialog, setMsgTemplatesDialog] = useState<{ phaseIdx: number; objIdx: number; stepId: string; templates: Record<string, string>; activeTab: string } | null>(null);
   const [newDocItem, setNewDocItem] = useState('');
   const [dragItem, setDragItem] = useState<{ type: 'objective' | 'step'; phaseIdx: number; objIdx: number; stepIdx?: number } | null>(null);
   const [dragOverItem, setDragOverItem] = useState<{ type: 'objective' | 'step'; phaseIdx: number; objIdx: number; stepIdx?: number } | null>(null);
