@@ -31,6 +31,7 @@ import {
   Edit3,
   X,
   ChevronRight,
+  ChevronLeft,
   ChevronDown,
   GripVertical,
   Workflow,
@@ -719,7 +720,10 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
               {/* Master-Detail: lista de fases (esq) + editor (dir) */}
               <div className="grid grid-cols-1 md:grid-cols-[220px_1fr] gap-4 border rounded-lg overflow-hidden">
                 {/* === LISTA DE FASES === */}
-                <div className="border-b md:border-b-0 md:border-r bg-muted/20 flex flex-col">
+                <div className={cn(
+                  "border-b md:border-b-0 md:border-r bg-muted/20 flex-col",
+                  selectedPhaseIdx !== null ? "hidden md:flex" : "flex"
+                )}>
                   <div className="px-3 py-2 border-b bg-muted/30">
                     <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                       Fases ({phases.length})
@@ -794,7 +798,10 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                 </div>
 
                 {/* === EDITOR DA FASE SELECIONADA === */}
-                <div className="min-h-[400px]">
+                <div className={cn(
+                  "min-h-[400px]",
+                  selectedPhaseIdx === null ? "hidden md:block" : "block"
+                )}>
                   {selectedPhaseIdx === null || !phases[selectedPhaseIdx] ? (
                     <div className="h-full flex items-center justify-center p-8 text-center">
                       <p className="text-sm text-muted-foreground">
@@ -809,6 +816,15 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                         <div>
                           {/* Cabeçalho da fase */}
                           <div className="flex items-center gap-2 px-4 py-3 bg-muted/30 border-b">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 md:hidden flex-shrink-0"
+                              title="Voltar para fases"
+                              onClick={() => setSelectedPhaseIdx(null)}
+                            >
+                              <ChevronLeft className="h-4 w-4" />
+                            </Button>
                             <span className="flex-shrink-0 h-6 w-6 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center">
                               {phaseIdx + 1}
                             </span>
