@@ -883,6 +883,21 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                                             >
                                               <ClipboardList className="h-3.5 w-3.5" />
                                             </Button>
+                                            <Button
+                                              variant="ghost"
+                                              size="icon"
+                                              className={cn("h-6 w-6 flex-shrink-0", step.messageTemplates && Object.keys(step.messageTemplates).length > 0 ? "text-blue-500" : "text-muted-foreground")}
+                                              title={step.messageTemplates && Object.keys(step.messageTemplates).length > 0 ? `Modelos de mensagem (${Object.keys(step.messageTemplates).length})` : 'Adicionar modelos de mensagem da atividade'}
+                                              onClick={() => setMsgTemplatesDialog({
+                                                phaseIdx,
+                                                objIdx,
+                                                stepId: step.id,
+                                                templates: { ...(step.messageTemplates || {}) },
+                                                activeTab: ACTIVITY_MESSAGE_FIELDS[0].key,
+                                              })}
+                                            >
+                                              <PenLine className="h-3.5 w-3.5" />
+                                            </Button>
                                             <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive/80 hover:text-destructive flex-shrink-0" onClick={() => removeStep(phaseIdx, objIdx, step.id)}>
                                               <X className="h-3.5 w-3.5" />
                                             </Button>
