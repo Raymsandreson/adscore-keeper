@@ -606,7 +606,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
   return (
     <>
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="sm:max-w-xl w-full flex flex-col p-0">
+      <SheetContent side="right" className="sm:max-w-4xl w-full flex flex-col p-0">
         <SheetHeader className="px-6 py-4 border-b">
           <SheetTitle className="flex items-center gap-2">
             <Workflow className="h-5 w-5" />
