@@ -964,17 +964,18 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                   </div>
                 ))}
 
-                {/* Add phase */}
-                <div className="flex gap-2">
+                {/* Add phase column */}
+                <div className="w-[280px] flex-shrink-0 snap-start border-2 border-dashed rounded-xl bg-muted/10 flex flex-col items-center justify-center p-4 gap-2 min-h-[200px]">
+                  <Plus className="h-6 w-6 text-muted-foreground/50" />
                   <Input
                     value={newPhaseName}
                     onChange={e => setNewPhaseName(e.target.value)}
                     placeholder="Nova fase..."
-                    className="flex-1"
+                    className="text-center"
                     onKeyDown={e => e.key === 'Enter' && addPhase()}
                   />
-                  <Button variant="outline" onClick={addPhase} disabled={!newPhaseName.trim()}>
-                    <Plus className="h-4 w-4" />
+                  <Button variant="outline" size="sm" onClick={addPhase} disabled={!newPhaseName.trim()} className="w-full">
+                    <Plus className="h-4 w-4 mr-1" /> Adicionar fase
                   </Button>
                 </div>
               </div>
