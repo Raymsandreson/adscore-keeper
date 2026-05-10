@@ -39,6 +39,7 @@ import {
   ClipboardList,
   Sparkles,
   Loader2,
+  PenLine,
 } from 'lucide-react';
 import { useKanbanBoards, KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
 import { useChecklists, ChecklistItem, DocChecklistItem, CHECKLIST_TYPES, ChecklistType } from '@/hooks/useChecklists';
