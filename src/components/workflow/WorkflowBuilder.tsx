@@ -237,6 +237,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
         }));
 
         setPhases(editedPhases);
+        setSelectedPhaseIdx(editedPhases.length > 0 ? 0 : null);
         setAiChangelog(data.changelog || []);
         setShowAiDialog(false);
         setAiPrompt('');
