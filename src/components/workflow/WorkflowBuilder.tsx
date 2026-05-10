@@ -797,7 +797,10 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                 </div>
 
                 {/* === EDITOR DA FASE SELECIONADA === */}
-                <div className="min-h-[400px]">
+                <div className={cn(
+                  "min-h-[400px]",
+                  selectedPhaseIdx === null ? "hidden md:block" : "block"
+                )}>
                   {selectedPhaseIdx === null || !phases[selectedPhaseIdx] ? (
                     <div className="h-full flex items-center justify-center p-8 text-center">
                       <p className="text-sm text-muted-foreground">
