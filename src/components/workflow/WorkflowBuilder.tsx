@@ -1269,7 +1269,107 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
       </DialogContent>
     </Dialog>
 
-    {/* AI Generation/Edit Dialog */}
+    {/* Modelos de mensagem por campo da atividade */}
+    <Dialog open={!!msgTemplatesDialog} onOpenChange={(open) => !open && setMsgTemplatesDialog(null)}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <PenLine className="h-5 w-5 text-blue-500" />
+            Modelos de mensagem da atividade
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <p className="text-xs text-muted-foreground">
+            Defina o texto que vai pré-preencher cada caixa de texto da atividade quando ela for criada a partir deste passo. Use as variáveis abaixo para deixar dinâmico (ex: <code className="bg-muted px-1 rounded">{'{{lead_name}}'}</code>, <code className="bg-muted px-1 rounded">{'{{saudacao}}'}</code>).
+          </p>
+
+          {msgTemplatesDialog && (
+            <Tabs
+              value={msgTemplatesDialog.activeTab}
+              onValueChange={(v) => setMsgTemplatesDialog(prev => prev ? { ...prev, activeTab: v } : null)}
+            >
+              <TabsList className="grid grid-cols-4 w-full h-auto">
+                {ACTIVITY_MESSAGE_FIELDS.map(f => {
+                  const filled = !!(msgTemplatesDialog.templates[f.key] || '').trim();
+                  return (
+                    <TabsTrigger key={f.key} value={f.key} className="text-xs py-1.5 relative">
+                      {f.label}
+                      {filled && <span className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-blue-500" />}
+                    </TabsTrigger>
+                  );
+                })}
+              </TabsList>
+
+              {ACTIVITY_MESSAGE_FIELDS.map(f => (
+                <TabsContent key={f.key} value={f.key} className="mt-3 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <Label className="text-xs text-muted-foreground">Texto do campo "{f.label}"</Label>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="outline" size="sm" className="h-7 text-xs">
+                          <Plus className="h-3 w-3 mr-1" /> Inserir variável
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent className="max-h-72 overflow-y-auto w-72">
+                        {TEMPLATE_VARIABLES.map(v => (
+                          <DropdownMenuItem
+                            key={v.var}
+                            onClick={() => setMsgTemplatesDialog(prev => {
+                              if (!prev) return null;
+                              const current = prev.templates[f.key] || '';
+                              return {
+                                ...prev,
+                                templates: { ...prev.templates, [f.key]: current + (current && !current.endsWith(' ') ? ' ' : '') + v.var },
+                              };
+                            })}
+                            className="text-xs flex flex-col items-start gap-0.5 py-1.5"
+                          >
+                            <code className="text-[10px] bg-muted px-1 rounded">{v.var}</code>
+                            <span className="text-[10px] text-muted-foreground">{v.label}</span>
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                  <Textarea
+                    value={msgTemplatesDialog.templates[f.key] || ''}
+                    onChange={e => setMsgTemplatesDialog(prev => prev ? {
+                      ...prev,
+                      templates: { ...prev.templates, [f.key]: e.target.value },
+                    } : null)}
+                    placeholder={f.placeholder}
+                    className="min-h-[160px] text-sm"
+                  />
+                  <p className="text-[10px] text-muted-foreground">
+                    Deixe em branco para não pré-preencher este campo na atividade.
+                  </p>
+                </TabsContent>
+              ))}
+            </Tabs>
+          )}
+
+          <div className="flex justify-end gap-2 pt-2 border-t">
+            <Button variant="outline" size="sm" onClick={() => setMsgTemplatesDialog(null)}>Cancelar</Button>
+            <Button size="sm" onClick={() => {
+              if (msgTemplatesDialog) {
+                updateStepMessageTemplates(
+                  msgTemplatesDialog.phaseIdx,
+                  msgTemplatesDialog.objIdx,
+                  msgTemplatesDialog.stepId,
+                  msgTemplatesDialog.templates,
+                );
+                setMsgTemplatesDialog(null);
+                toast.success('Modelos de mensagem salvos!');
+              }
+            }}>
+              Salvar modelos
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+
+
     <Dialog open={showAiDialog} onOpenChange={setShowAiDialog}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
