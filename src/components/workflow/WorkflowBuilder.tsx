@@ -31,7 +31,6 @@ import {
   Edit3,
   X,
   ChevronRight,
-  ChevronLeft,
   ChevronDown,
   GripVertical,
   Workflow,
@@ -98,7 +97,6 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
 
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [editingBoardId, setEditingBoardId] = useState<string | null>(null);
-  const [selectedPhaseIdx, setSelectedPhaseIdx] = useState<number | null>(null);
   const [formName, setFormName] = useState('');
   const [formDescription, setFormDescription] = useState('');
   const [phases, setPhases] = useState<PhaseConfig[]>([]);
@@ -152,7 +150,6 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
     setPhases([]);
     setNewPhaseName('');
     setEditingBoardId(null);
-    setSelectedPhaseIdx(null);
     setViewMode('list');
   };
 
@@ -165,7 +162,6 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
       { stageId: 'progress_' + Date.now(), stageName: 'Em Andamento', stageColor: '#f97316', objectives: [], isExpanded: false },
       { stageId: 'done_' + Date.now(), stageName: 'Concluído', stageColor: '#22c55e', objectives: [], isExpanded: false },
     ]);
-    setSelectedPhaseIdx(0);
     setViewMode('edit');
   };
 
@@ -238,7 +234,6 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
         }));
 
         setPhases(editedPhases);
-        setSelectedPhaseIdx(editedPhases.length > 0 ? 0 : null);
         setAiChangelog(data.changelog || []);
         setShowAiDialog(false);
         setAiPrompt('');
@@ -282,7 +277,6 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
         }));
 
         setPhases(generatedPhases);
-        setSelectedPhaseIdx(generatedPhases.length > 0 ? 0 : null);
         setShowAiDialog(false);
         setAiPrompt('');
         toast.success(`Fluxo "${data.name}" gerado com ${generatedPhases.length} fases!`);
@@ -325,7 +319,6 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
     });
 
     setPhases(phaseConfigs);
-    setSelectedPhaseIdx(phaseConfigs.length > 0 ? 0 : null);
     setViewMode('edit');
   };
 
@@ -340,31 +333,17 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
   // Phase helpers
   const addPhase = () => {
     if (!newPhaseName.trim()) return;
-    setPhases(prev => {
-      const next = [...prev, {
-        stageId: newPhaseName.toLowerCase().replace(/\s+/g, '_') + '_' + Date.now(),
-        stageName: newPhaseName,
-        stageColor: '#3b82f6',
-        objectives: [],
-        isExpanded: false,
-      }];
-      setSelectedPhaseIdx(next.length - 1);
-      return next;
-    });
+    setPhases(prev => [...prev, {
+      stageId: newPhaseName.toLowerCase().replace(/\s+/g, '_') + '_' + Date.now(),
+      stageName: newPhaseName,
+      stageColor: '#3b82f6',
+      objectives: [],
+      isExpanded: false,
+    }]);
     setNewPhaseName('');
   };
 
-  const removePhase = (idx: number) => setPhases(prev => {
-    const next = prev.filter((_, i) => i !== idx);
-    setSelectedPhaseIdx(prevSel => {
-      if (next.length === 0) return null;
-      if (prevSel === null) return null;
-      if (prevSel === idx) return Math.min(idx, next.length - 1);
-      if (prevSel > idx) return prevSel - 1;
-      return prevSel;
-    });
-    return next;
-  });
+  const removePhase = (idx: number) => setPhases(prev => prev.filter((_, i) => i !== idx));
 
   const togglePhase = (idx: number) =>
     setPhases(prev => prev.map((p, i) => i === idx ? { ...p, isExpanded: !p.isExpanded } : p));
@@ -607,7 +586,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
   return (
     <>
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="sm:max-w-4xl w-full flex flex-col p-0">
+      <SheetContent side="right" className="sm:max-w-xl w-full flex flex-col p-0">
         <SheetHeader className="px-6 py-4 border-b">
           <SheetTitle className="flex items-center gap-2">
             <Workflow className="h-5 w-5" />
@@ -717,372 +696,295 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                 </Card>
               )}
 
-              {/* Master-Detail: lista de fases (esq) + editor (dir) */}
-              <div className="grid grid-cols-1 md:grid-cols-[220px_1fr] gap-4 border rounded-lg overflow-hidden">
-                {/* === LISTA DE FASES === */}
-                <div className={cn(
-                  "border-b md:border-b-0 md:border-r bg-muted/20 flex-col",
-                  selectedPhaseIdx !== null ? "hidden md:flex" : "flex"
-                )}>
-                  <div className="px-3 py-2 border-b bg-muted/30">
-                    <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                      Fases ({phases.length})
-                    </span>
-                  </div>
-                  <div className="flex-1 overflow-y-auto p-2 space-y-1 max-h-[60vh] md:max-h-none">
-                    {phases.length === 0 && (
-                      <p className="text-xs text-muted-foreground italic px-2 py-3 text-center">
-                        Nenhuma fase
-                      </p>
-                    )}
-                    {phases.map((phase, phaseIdx) => {
-                      const isSelected = selectedPhaseIdx === phaseIdx;
-                      return (
-                        <button
-                          key={phase.stageId}
-                          type="button"
-                          onClick={() => setSelectedPhaseIdx(phaseIdx)}
-                          className={cn(
-                            "w-full text-left flex items-center gap-2 px-2 py-2 rounded-md transition-colors group",
-                            isSelected
-                              ? "bg-primary/10 border border-primary/30"
-                              : "hover:bg-muted/50 border border-transparent"
-                          )}
-                        >
-                          <span
-                            className={cn(
-                              "flex-shrink-0 h-6 w-6 rounded-full text-[10px] font-bold flex items-center justify-center",
-                              isSelected
-                                ? "bg-primary text-primary-foreground"
-                                : "bg-muted-foreground/20 text-muted-foreground"
-                            )}
-                          >
-                            {phaseIdx + 1}
-                          </span>
-                          <div className="flex-1 min-w-0">
-                            <div className={cn("text-xs font-medium truncate", isSelected && "text-foreground")}>
-                              {phase.stageName || 'Sem nome'}
-                            </div>
-                            <div className="text-[10px] text-muted-foreground">
-                              {phase.objectives.length} obj.
-                            </div>
-                          </div>
-                          <span
-                            className="h-2 w-2 rounded-full flex-shrink-0"
-                            style={{ backgroundColor: phase.stageColor }}
-                          />
-                        </button>
-                      );
-                    })}
-                  </div>
-                  {/* Adicionar fase */}
-                  <div className="p-2 border-t bg-muted/30 space-y-1">
-                    <Input
-                      value={newPhaseName}
-                      onChange={e => setNewPhaseName(e.target.value)}
-                      placeholder="Nova fase..."
-                      className="h-8 text-xs"
-                      onKeyDown={e => e.key === 'Enter' && addPhase()}
-                    />
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full h-7 text-xs"
-                      onClick={addPhase}
-                      disabled={!newPhaseName.trim()}
-                    >
-                      <Plus className="h-3 w-3 mr-1" />
-                      Adicionar fase
-                    </Button>
-                  </div>
-                </div>
-
-                {/* === EDITOR DA FASE SELECIONADA === */}
-                <div className={cn(
-                  "min-h-[400px]",
-                  selectedPhaseIdx === null ? "hidden md:block" : "block"
-                )}>
-                  {selectedPhaseIdx === null || !phases[selectedPhaseIdx] ? (
-                    <div className="h-full flex items-center justify-center p-8 text-center">
-                      <p className="text-sm text-muted-foreground">
-                        Selecione uma fase à esquerda para editar
-                      </p>
-                    </div>
-                  ) : (
-                    (() => {
-                      const phaseIdx = selectedPhaseIdx;
-                      const phase = phases[phaseIdx];
-                      return (
-                        <div>
-                          {/* Cabeçalho da fase */}
-                          <div className="flex items-center gap-2 px-4 py-3 bg-muted/30 border-b">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7 md:hidden flex-shrink-0"
-                              title="Voltar para fases"
-                              onClick={() => setSelectedPhaseIdx(null)}
-                            >
-                              <ChevronLeft className="h-4 w-4" />
-                            </Button>
-                            <span className="flex-shrink-0 h-6 w-6 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center">
-                              {phaseIdx + 1}
-                            </span>
-                            <Input
-                              value={phase.stageName}
-                              onChange={e => updatePhaseName(phaseIdx, e.target.value)}
-                              onKeyDown={stopSpacePropagation}
-                              onKeyUp={stopSpacePropagation}
-                              placeholder="Nome da fase..."
-                              className="h-8 text-sm font-semibold flex-1"
-                            />
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="h-7 text-xs flex-shrink-0"
-                              onClick={() => addObjective(phaseIdx)}
-                            >
-                              <Plus className="h-3.5 w-3.5 mr-1" />
-                              Objetivo
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7 text-destructive/80 hover:text-destructive flex-shrink-0"
-                              title="Excluir fase"
-                              onClick={() => removePhase(phaseIdx)}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          </div>
-
-                          {/* Conteúdo: objetivos */}
-                          <div className="p-3 space-y-2">
-                            {phase.objectives.length === 0 && (
-                              <p className="text-xs text-muted-foreground italic px-2 py-6 text-center">
-                                Nenhum objetivo adicionado nesta fase
-                              </p>
-                            )}
-
-                            {phase.objectives.map((obj, objIdx) => (
-                              <div
-                                key={objIdx}
-                                className={cn(
-                                  "border rounded-md transition-all",
-                                  dragOverItem?.type === 'objective' && dragOverItem.phaseIdx === phaseIdx && dragOverItem.objIdx === objIdx && "ring-2 ring-blue-400"
+              {/* Phases → Objectives → Steps */}
+              <div className="space-y-3">
+                {phases.map((phase, phaseIdx) => (
+                   <div key={phase.stageId} className="border rounded-lg overflow-hidden">
+                     {/* Phase header */}
+                     <div className="flex items-center gap-2 px-3 py-2 bg-muted/30 border-l-4 border-muted-foreground/30">
+                       <GripVertical className="h-4 w-4 text-muted-foreground/50 flex-shrink-0" />
+                        <Collapsible open={phase.isExpanded} onOpenChange={() => togglePhase(phaseIdx)} className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 w-full min-w-0">
+                            <CollapsibleTrigger asChild>
+                              <button type="button" className={cn("flex items-center gap-2 text-left min-w-0", !phase.isExpanded && "flex-1")}>
+                                {phase.isExpanded ? <ChevronDown className="h-4 w-4 flex-shrink-0" /> : <ChevronRight className="h-4 w-4 flex-shrink-0" />}
+                                <span className="flex-shrink-0 h-5 w-5 rounded-full bg-muted-foreground/20 text-muted-foreground text-[10px] font-bold flex items-center justify-center">
+                                  {phaseIdx + 1}
+                                </span>
+                                {!phase.isExpanded && (
+                                  <span className="font-semibold text-sm text-foreground truncate">{phase.stageName}</span>
                                 )}
-                                draggable
-                                onDragStart={() => handleDragStart('objective', phaseIdx, objIdx)}
-                                onDragOver={(e) => handleDragOver(e, 'objective', phaseIdx, objIdx)}
-                                onDragEnd={handleDragEnd}
-                              >
-                                {/* Cabeçalho do objetivo */}
-                                <div className="flex items-center gap-2 px-3 py-2 bg-blue-50/50 dark:bg-blue-950/20 border-l-2 border-blue-400/60 rounded-t-md">
-                                  <GripVertical className="h-3.5 w-3.5 text-muted-foreground/40 cursor-grab flex-shrink-0" />
-                                  <Collapsible open={obj.isExpanded} onOpenChange={() => toggleObjective(phaseIdx, objIdx)} className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2 w-full min-w-0">
-                                      <CollapsibleTrigger asChild>
-                                        <button type="button" className={cn("flex items-center gap-2 text-left min-w-0", !obj.isExpanded && "flex-1")}>
-                                          {obj.isExpanded ? <ChevronDown className="h-3.5 w-3.5 flex-shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 flex-shrink-0" />}
-                                          <span className="flex-shrink-0 h-5 w-5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 text-[10px] font-bold flex items-center justify-center">
-                                            {objIdx + 1}
-                                          </span>
-                                          {!obj.isExpanded && (
-                                            <span className="font-medium text-sm truncate">{obj.name}</span>
-                                          )}
-                                        </button>
-                                      </CollapsibleTrigger>
-                                      {obj.isExpanded ? (
-                                        <Input
-                                          value={obj.name}
-                                          onChange={e => updateObjective(phaseIdx, objIdx, { name: e.target.value })}
-                                          onKeyDown={stopSpacePropagation}
-                                          onKeyUp={stopSpacePropagation}
-                                          placeholder="Nome do objetivo..."
-                                          className="h-7 text-sm font-medium flex-1"
-                                        />
-                                      ) : null}
-                                    </div>
-                                  </Collapsible>
-                                  <span className="text-xs text-muted-foreground whitespace-nowrap flex-shrink-0">
-                                    {obj.items.length} passo(s)
-                                  </span>
-                                  <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive/80 hover:text-destructive flex-shrink-0" onClick={() => removeObjective(phaseIdx, objIdx)}>
-                                    <X className="h-3.5 w-3.5" />
-                                  </Button>
+                              </button>
+                            </CollapsibleTrigger>
+                            {phase.isExpanded ? (
+                              <Input
+                                value={phase.stageName}
+                                onChange={e => updatePhaseName(phaseIdx, e.target.value)}
+                                onKeyDown={stopSpacePropagation}
+                                onKeyUp={stopSpacePropagation}
+                                placeholder="Nome da fase..."
+                                className="h-7 text-sm font-semibold text-foreground flex-1"
+                              />
+                            ) : null}
+                          </div>
+                       </Collapsible>
+                       <span className="text-xs text-muted-foreground whitespace-nowrap flex-shrink-0">
+                         {phase.objectives.length} obj.
+                       </span>
+                       <Button variant="ghost" size="icon" className="h-6 w-6 flex-shrink-0" title="Adicionar objetivo" onClick={() => addObjective(phaseIdx)}>
+                         <Plus className="h-3.5 w-3.5" />
+                       </Button>
+                        <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive/80 hover:text-destructive flex-shrink-0" onClick={() => removePhase(phaseIdx)}>
+                          <X className="h-3.5 w-3.5" />
+                        </Button>
+                     </div>
+
+                    {/* Phase description row */}
+                    {phase.isExpanded && (
+                      <div className="border-t">
+                        {/* Objectives */}
+                        {phase.objectives.length === 0 && (
+                          <p className="text-xs text-muted-foreground italic px-4 py-3">Nenhum objetivo adicionado</p>
+                        )}
+
+                        {phase.objectives.map((obj, objIdx) => (
+                           <div
+                             key={objIdx}
+                             className={cn(
+                               "border-t first:border-t-0 transition-all",
+                               dragOverItem?.type === 'objective' && dragOverItem.phaseIdx === phaseIdx && dragOverItem.objIdx === objIdx && "border-t-2 border-t-blue-400"
+                             )}
+                             draggable
+                             onDragStart={() => handleDragStart('objective', phaseIdx, objIdx)}
+                             onDragOver={(e) => handleDragOver(e, 'objective', phaseIdx, objIdx)}
+                             onDragEnd={handleDragEnd}
+                           >
+                             {/* Objective header */}
+                             <div className="flex items-center gap-2 px-4 py-2 ml-4 border-l-2 border-blue-400/40">
+                                <GripVertical className="h-3.5 w-3.5 text-muted-foreground/40 cursor-grab flex-shrink-0" />
+                                 <Collapsible open={obj.isExpanded} onOpenChange={() => toggleObjective(phaseIdx, objIdx)} className="flex-1 min-w-0">
+                                   <div className="flex items-center gap-2 w-full min-w-0">
+                                     <CollapsibleTrigger asChild>
+                                       <button type="button" className={cn("flex items-center gap-2 text-left min-w-0", !obj.isExpanded && "flex-1")}>
+                                         {obj.isExpanded ? <ChevronDown className="h-3.5 w-3.5 flex-shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 flex-shrink-0" />}
+                                         <span className="flex-shrink-0 h-5 w-5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 text-[10px] font-bold flex items-center justify-center">
+                                           {objIdx + 1}
+                                         </span>
+                                         {!obj.isExpanded && (
+                                           <span className="font-medium text-sm truncate">{obj.name}</span>
+                                         )}
+                                       </button>
+                                     </CollapsibleTrigger>
+                                     {obj.isExpanded ? (
+                                       <Input
+                                         value={obj.name}
+                                         onChange={e => updateObjective(phaseIdx, objIdx, { name: e.target.value })}
+                                         onKeyDown={stopSpacePropagation}
+                                         onKeyUp={stopSpacePropagation}
+                                         placeholder="Nome do objetivo..."
+                                         className="h-7 text-sm font-medium flex-1"
+                                       />
+                                     ) : null}
+                                   </div>
+                               </Collapsible>
+                               <span className="text-xs text-muted-foreground whitespace-nowrap flex-shrink-0">
+                                 {obj.items.length} passo(s)
+                               </span>
+                                <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive/80 hover:text-destructive flex-shrink-0" onClick={() => removeObjective(phaseIdx, objIdx)}>
+                                  <X className="h-3.5 w-3.5" />
+                                </Button>
+                             </div>
+
+                            {/* Objective content */}
+                            {obj.isExpanded && (
+                              <div className="ml-4 border-l-2 border-blue-400/30 px-4 pb-4 pt-2 space-y-3">
+                                {/* Objective description field */}
+                                <div>
+                                  <Label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Descrição do objetivo</Label>
+                                  <Textarea
+                                    value={obj.description}
+                                    onChange={e => updateObjective(phaseIdx, objIdx, { description: e.target.value })}
+                                     onKeyDown={stopSpacePropagation}
+                                     onKeyUp={stopSpacePropagation}
+                                    placeholder="Descreva o objetivo desta fase do funil..."
+                                    className="mt-1 min-h-[52px] text-xs resize-none"
+                                  />
                                 </div>
 
-                                {/* Conteúdo do objetivo */}
-                                {obj.isExpanded && (
-                                  <div className="px-3 pb-3 pt-2 space-y-3">
-                                    <div>
-                                      <Label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Descrição do objetivo</Label>
-                                      <Textarea
-                                        value={obj.description}
-                                        onChange={e => updateObjective(phaseIdx, objIdx, { description: e.target.value })}
-                                        onKeyDown={stopSpacePropagation}
-                                        onKeyUp={stopSpacePropagation}
-                                        placeholder="Descreva o objetivo desta fase do funil..."
-                                        className="mt-1 min-h-[52px] text-xs resize-none"
-                                      />
-                                    </div>
-
-                                    <div>
-                                      <Label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Passos</Label>
-                                      <div className="mt-1.5 space-y-2">
-                                        {obj.items.length === 0 ? (
-                                          <p className="text-[11px] text-muted-foreground italic py-1">Nenhum passo adicionado</p>
-                                        ) : (
-                                          obj.items.map((step, stepIdx) => (
-                                            <div
-                                              key={step.id}
-                                              className={cn(
-                                                "border border-green-200 dark:border-green-900/40 rounded-md bg-green-50/30 dark:bg-green-950/10 p-2.5 space-y-2 transition-all",
-                                                dragOverItem?.type === 'step' && dragOverItem.phaseIdx === phaseIdx && dragOverItem.objIdx === objIdx && dragOverItem.stepIdx === stepIdx && "ring-2 ring-green-400"
-                                              )}
-                                              draggable
-                                              onDragStart={(e) => { e.stopPropagation(); handleDragStart('step', phaseIdx, objIdx, stepIdx); }}
-                                              onDragOver={(e) => { e.stopPropagation(); handleDragOver(e, 'step', phaseIdx, objIdx, stepIdx); }}
-                                              onDragEnd={handleDragEnd}
-                                            >
-                                              <div className="flex items-center gap-2">
-                                                <GripVertical className="h-3.5 w-3.5 text-muted-foreground/40 cursor-grab flex-shrink-0" />
-                                                <span className="flex-shrink-0 h-5 w-5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-[10px] font-bold flex items-center justify-center">
-                                                  {stepIdx + 1}
-                                                </span>
-                                                <div className="flex-1 min-w-0">
-                                                  <Input
-                                                    value={step.label}
-                                                    onChange={e => updateStepLabel(phaseIdx, objIdx, step.id, e.target.value)}
-                                                    onKeyDown={stopSpacePropagation}
-                                                    onKeyUp={stopSpacePropagation}
-                                                    placeholder="Nome do passo..."
-                                                    className="h-7 text-sm font-medium"
-                                                  />
-                                                </div>
-                                                <Button
-                                                  variant="ghost"
-                                                  size="icon"
-                                                  className={cn("h-6 w-6 flex-shrink-0", step.script ? "text-primary" : "text-muted-foreground")}
-                                                  title={step.script ? "Editar script de contato" : "Adicionar script de contato"}
-                                                  onClick={() => setScriptDialog({ phaseIdx, objIdx, stepId: step.id, script: step.script || '' })}
-                                                >
-                                                  <MessageSquareText className="h-3.5 w-3.5" />
-                                                </Button>
-                                                <Button
-                                                  variant="ghost"
-                                                  size="icon"
-                                                  className={cn("h-6 w-6 flex-shrink-0", step.docChecklist?.length ? "text-orange-500" : "text-muted-foreground")}
-                                                  title={step.docChecklist?.length ? `Checklist (${step.docChecklist.length})` : "Adicionar checklist"}
-                                                  onClick={() => {
-                                                    const existingType = step.docChecklist?.[0]?.type || 'documentos';
-                                                    setDocChecklistDialog({ phaseIdx, objIdx, stepId: step.id, items: step.docChecklist ? [...step.docChecklist] : [], checklistType: existingType });
-                                                  }}
-                                                >
-                                                  <ClipboardList className="h-3.5 w-3.5" />
-                                                </Button>
-                                                <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive/80 hover:text-destructive flex-shrink-0" onClick={() => removeStep(phaseIdx, objIdx, step.id)}>
-                                                  <X className="h-3.5 w-3.5" />
-                                                </Button>
-                                              </div>
-
-                                              <div className="flex items-center gap-2">
-                                                <Label className="text-[10px] text-muted-foreground whitespace-nowrap w-20 flex-shrink-0">Tipo de atv.:</Label>
-                                                <Select
-                                                  value={step.activityType || '__none__'}
-                                                  onValueChange={v => updateStepActivityType(phaseIdx, objIdx, step.id, v === '__none__' ? '' : v)}
-                                                >
-                                                  <SelectTrigger className="h-7 text-xs flex-1">
-                                                    <SelectValue placeholder="Nenhum" />
-                                                  </SelectTrigger>
-                                                  <SelectContent>
-                                                    <SelectItem value="__none__">
-                                                      <span className="text-muted-foreground">Nenhum</span>
-                                                    </SelectItem>
-                                                    {activityTypes.filter(t => t.is_active).map(t => (
-                                                      <SelectItem key={t.id} value={t.key}>
-                                                        <div className="flex items-center gap-1.5">
-                                                          <span className="h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: t.color }} />
-                                                          {t.label}
-                                                        </div>
-                                                      </SelectItem>
-                                                    ))}
-                                                  </SelectContent>
-                                                </Select>
-                                              </div>
-
-                                              <div className="flex items-start gap-1.5">
-                                                <button
-                                                  className={cn(
-                                                    "flex items-center gap-1 text-[10px] rounded px-1 py-0.5 transition-colors",
-                                                    step.description
-                                                      ? "text-muted-foreground hover:text-foreground"
-                                                      : "text-muted-foreground/40 hover:text-muted-foreground"
-                                                  )}
-                                                  title={step.description || 'Adicionar descrição'}
-                                                  onClick={() => setDescDialog({ phaseIdx, objIdx, stepId: step.id, description: step.description || '' })}
-                                                >
-                                                  <Info className="h-3 w-3 flex-shrink-0" />
-                                                  {step.description && (
-                                                    <span className="line-clamp-1 max-w-[200px] text-left">{step.description}</span>
-                                                  )}
-                                                </button>
-                                                {step.description && (
-                                                  <button
-                                                    className="text-muted-foreground/60 hover:text-foreground p-0.5"
-                                                    onClick={() => setDescDialog({ phaseIdx, objIdx, stepId: step.id, description: step.description || '' })}
-                                                  >
-                                                    <Edit3 className="h-3 w-3" />
-                                                  </button>
-                                                )}
-                                              </div>
-
-                                              <div className="flex items-center gap-2">
-                                                <Label className="text-[10px] text-muted-foreground whitespace-nowrap w-20 flex-shrink-0">Mover para:</Label>
-                                                <Select
-                                                  value={step.nextStageId || '__none__'}
-                                                  onValueChange={v => updateStepNextStage(phaseIdx, objIdx, step.id, v === '__none__' ? '' : v)}
-                                                >
-                                                  <SelectTrigger className="h-7 text-xs flex-1">
-                                                    <SelectValue placeholder="Não mover" />
-                                                  </SelectTrigger>
-                                                  <SelectContent>
-                                                    <SelectItem value="__none__">
-                                                      <span className="text-muted-foreground">Não mover</span>
-                                                    </SelectItem>
-                                                    <SelectItem value="__finalize__">
-                                                      <div className="flex items-center gap-1.5 text-green-600 dark:text-green-400 font-medium">
-                                                        <span className="h-2.5 w-2.5 rounded-full flex-shrink-0 bg-green-500" />
-                                                        ✅ Finalizar
-                                                      </div>
-                                                    </SelectItem>
-                                                    {phases.filter((_, pi) => pi !== phaseIdx).map(p => (
-                                                      <SelectItem key={p.stageId} value={p.stageId}>
-                                                        <div className="flex items-center gap-1.5">
-                                                          <span className="h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: p.stageColor }} />
-                                                          {p.stageName}
-                                                        </div>
-                                                      </SelectItem>
-                                                    ))}
-                                                  </SelectContent>
-                                                </Select>
-                                              </div>
+                                {/* Steps */}
+                                <div>
+                                  <Label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Passos</Label>
+                                  <div className="mt-1.5 space-y-2">
+                                    {obj.items.length === 0 ? (
+                                      <p className="text-[11px] text-muted-foreground italic py-1">Nenhum passo adicionado</p>
+                                    ) : (
+                                      obj.items.map((step, stepIdx) => (
+                                        <div
+                                          key={step.id}
+                                          className={cn(
+                                            "border border-green-200 dark:border-green-900/40 rounded-md bg-green-50/30 dark:bg-green-950/10 p-2.5 space-y-2 transition-all",
+                                            dragOverItem?.type === 'step' && dragOverItem.phaseIdx === phaseIdx && dragOverItem.objIdx === objIdx && dragOverItem.stepIdx === stepIdx && "ring-2 ring-green-400"
+                                          )}
+                                          draggable
+                                          onDragStart={(e) => { e.stopPropagation(); handleDragStart('step', phaseIdx, objIdx, stepIdx); }}
+                                          onDragOver={(e) => { e.stopPropagation(); handleDragOver(e, 'step', phaseIdx, objIdx, stepIdx); }}
+                                          onDragEnd={handleDragEnd}
+                                        >
+                                          {/* Step header: number + delete */}
+                                          <div className="flex items-center gap-2">
+                                            <GripVertical className="h-3.5 w-3.5 text-muted-foreground/40 cursor-grab flex-shrink-0" />
+                                            <span className="flex-shrink-0 h-5 w-5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-[10px] font-bold flex items-center justify-center">
+                                              {stepIdx + 1}
+                                            </span>
+                                            <div className="flex-1 min-w-0">
+                                              <Input
+                                                value={step.label}
+                                                onChange={e => updateStepLabel(phaseIdx, objIdx, step.id, e.target.value)}
+                                                 onKeyDown={stopSpacePropagation}
+                                                 onKeyUp={stopSpacePropagation}
+                                                placeholder="Nome do passo..."
+                                                className="h-7 text-sm font-medium"
+                                              />
                                             </div>
-                                          ))
-                                        )}
-                                      </div>
-                                    </div>
+                                            <Button
+                                              variant="ghost"
+                                              size="icon"
+                                              className={cn("h-6 w-6 flex-shrink-0", step.script ? "text-primary" : "text-muted-foreground")}
+                                              title={step.script ? "Editar script de contato" : "Adicionar script de contato"}
+                                              onClick={() => setScriptDialog({ phaseIdx, objIdx, stepId: step.id, script: step.script || '' })}
+                                            >
+                                              <MessageSquareText className="h-3.5 w-3.5" />
+                                            </Button>
+                                            <Button
+                                              variant="ghost"
+                                              size="icon"
+                                              className={cn("h-6 w-6 flex-shrink-0", step.docChecklist?.length ? "text-orange-500" : "text-muted-foreground")}
+                                              title={step.docChecklist?.length ? `Checklist (${step.docChecklist.length})` : "Adicionar checklist"}
+                                              onClick={() => {
+                                                const existingType = step.docChecklist?.[0]?.type || 'documentos';
+                                                setDocChecklistDialog({ phaseIdx, objIdx, stepId: step.id, items: step.docChecklist ? [...step.docChecklist] : [], checklistType: existingType });
+                                              }}
+                                            >
+                                              <ClipboardList className="h-3.5 w-3.5" />
+                                            </Button>
+                                            <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive/80 hover:text-destructive flex-shrink-0" onClick={() => removeStep(phaseIdx, objIdx, step.id)}>
+                                              <X className="h-3.5 w-3.5" />
+                                            </Button>
+                                          </div>
 
-                                    <StepAdder onAdd={(label) => addStep(phaseIdx, objIdx, label)} />
+                                          {/* Tipo de atividade */}
+                                          <div className="flex items-center gap-2">
+                                            <Label className="text-[10px] text-muted-foreground whitespace-nowrap w-20 flex-shrink-0">Tipo de atv.:</Label>
+                                            <Select
+                                              value={step.activityType || '__none__'}
+                                              onValueChange={v => updateStepActivityType(phaseIdx, objIdx, step.id, v === '__none__' ? '' : v)}
+                                            >
+                                              <SelectTrigger className="h-7 text-xs flex-1">
+                                                <SelectValue placeholder="Nenhum" />
+                                              </SelectTrigger>
+                                              <SelectContent>
+                                                <SelectItem value="__none__">
+                                                  <span className="text-muted-foreground">Nenhum</span>
+                                                </SelectItem>
+                                                {activityTypes.filter(t => t.is_active).map(t => (
+                                                  <SelectItem key={t.id} value={t.key}>
+                                                    <div className="flex items-center gap-1.5">
+                                                      <span className="h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: t.color }} />
+                                                      {t.label}
+                                                    </div>
+                                                  </SelectItem>
+                                                ))}
+                                              </SelectContent>
+                                            </Select>
+                                          </div>
+
+                                          {/* Descrição do passo - minimal icon */}
+                                          <div className="flex items-start gap-1.5">
+                                            <button
+                                              className={cn(
+                                                "flex items-center gap-1 text-[10px] rounded px-1 py-0.5 transition-colors",
+                                                step.description
+                                                  ? "text-muted-foreground hover:text-foreground"
+                                                  : "text-muted-foreground/40 hover:text-muted-foreground"
+                                              )}
+                                              title={step.description || 'Adicionar descrição'}
+                                              onClick={() => setDescDialog({ phaseIdx, objIdx, stepId: step.id, description: step.description || '' })}
+                                            >
+                                              <Info className="h-3 w-3 flex-shrink-0" />
+                                              {step.description && (
+                                                <span className="line-clamp-1 max-w-[200px] text-left">{step.description}</span>
+                                              )}
+                                            </button>
+                                            {step.description && (
+                                              <button
+                                                className="text-muted-foreground/60 hover:text-foreground p-0.5"
+                                                onClick={() => setDescDialog({ phaseIdx, objIdx, stepId: step.id, description: step.description || '' })}
+                                              >
+                                                <Edit3 className="h-3 w-3" />
+                                              </button>
+                                            )}
+                                          </div>
+
+                                          {/* Ramificação condicional - mover para fase */}
+                                          <div className="flex items-center gap-2">
+                                            <Label className="text-[10px] text-muted-foreground whitespace-nowrap w-20 flex-shrink-0">Mover para:</Label>
+                                            <Select
+                                              value={step.nextStageId || '__none__'}
+                                              onValueChange={v => updateStepNextStage(phaseIdx, objIdx, step.id, v === '__none__' ? '' : v)}
+                                            >
+                                              <SelectTrigger className="h-7 text-xs flex-1">
+                                                <SelectValue placeholder="Não mover" />
+                                              </SelectTrigger>
+                                              <SelectContent>
+                                                <SelectItem value="__none__">
+                                                  <span className="text-muted-foreground">Não mover</span>
+                                                </SelectItem>
+                                                <SelectItem value="__finalize__">
+                                                  <div className="flex items-center gap-1.5 text-green-600 dark:text-green-400 font-medium">
+                                                    <span className="h-2.5 w-2.5 rounded-full flex-shrink-0 bg-green-500" />
+                                                    ✅ Finalizar
+                                                  </div>
+                                                </SelectItem>
+                                                {phases.filter((_, pi) => pi !== phaseIdx).map(p => (
+                                                  <SelectItem key={p.stageId} value={p.stageId}>
+                                                    <div className="flex items-center gap-1.5">
+                                                      <span className="h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: p.stageColor }} />
+                                                      {p.stageName}
+                                                    </div>
+                                                  </SelectItem>
+                                                ))}
+                                              </SelectContent>
+                                            </Select>
+                                          </div>
+                                        </div>
+                                      ))
+                                    )}
                                   </div>
-                                )}
+                                </div>
+
+                                {/* Add step */}
+                                <StepAdder onAdd={(label) => addStep(phaseIdx, objIdx, label)} />
                               </div>
-                            ))}
+                            )}
                           </div>
-                        </div>
-                      );
-                    })()
-                  )}
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+
+                {/* Add phase */}
+                <div className="flex gap-2">
+                  <Input
+                    value={newPhaseName}
+                    onChange={e => setNewPhaseName(e.target.value)}
+                    placeholder="Nova fase..."
+                    className="flex-1"
+                    onKeyDown={e => e.key === 'Enter' && addPhase()}
+                  />
+                  <Button variant="outline" onClick={addPhase} disabled={!newPhaseName.trim()}>
+                    <Plus className="h-4 w-4" />
+                  </Button>
                 </div>
               </div>
             </div>
