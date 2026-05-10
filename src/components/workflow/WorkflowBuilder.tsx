@@ -448,7 +448,18 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
     });
   };
 
-  // Drag-and-drop handlers
+  const updateStepMessageTemplates = (phaseIdx: number, objIdx: number, stepId: string, templates: Record<string, string>) => {
+    // Remove chaves vazias para não poluir o JSON salvo
+    const cleaned: Record<string, string> = {};
+    for (const [k, v] of Object.entries(templates)) {
+      if (v && v.trim()) cleaned[k] = v;
+    }
+    updateObjective(phaseIdx, objIdx, {
+      items: phases[phaseIdx].objectives[objIdx].items.map(s =>
+        s.id === stepId ? { ...s, messageTemplates: Object.keys(cleaned).length > 0 ? cleaned : undefined } : s
+      ),
+    });
+  };
   const handleDragStart = (type: 'objective' | 'step', phaseIdx: number, objIdx: number, stepIdx?: number) => {
     setDragItem({ type, phaseIdx, objIdx, stepIdx });
   };
