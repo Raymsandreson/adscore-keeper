@@ -31,6 +31,7 @@ import {
   Edit3,
   X,
   ChevronRight,
+  ChevronLeft,
   ChevronDown,
   GripVertical,
   Workflow,
