@@ -337,17 +337,31 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
   // Phase helpers
   const addPhase = () => {
     if (!newPhaseName.trim()) return;
-    setPhases(prev => [...prev, {
-      stageId: newPhaseName.toLowerCase().replace(/\s+/g, '_') + '_' + Date.now(),
-      stageName: newPhaseName,
-      stageColor: '#3b82f6',
-      objectives: [],
-      isExpanded: false,
-    }]);
+    setPhases(prev => {
+      const next = [...prev, {
+        stageId: newPhaseName.toLowerCase().replace(/\s+/g, '_') + '_' + Date.now(),
+        stageName: newPhaseName,
+        stageColor: '#3b82f6',
+        objectives: [],
+        isExpanded: false,
+      }];
+      setSelectedPhaseIdx(next.length - 1);
+      return next;
+    });
     setNewPhaseName('');
   };
 
-  const removePhase = (idx: number) => setPhases(prev => prev.filter((_, i) => i !== idx));
+  const removePhase = (idx: number) => setPhases(prev => {
+    const next = prev.filter((_, i) => i !== idx);
+    setSelectedPhaseIdx(prevSel => {
+      if (next.length === 0) return null;
+      if (prevSel === null) return null;
+      if (prevSel === idx) return Math.min(idx, next.length - 1);
+      if (prevSel > idx) return prevSel - 1;
+      return prevSel;
+    });
+    return next;
+  });
 
   const togglePhase = (idx: number) =>
     setPhases(prev => prev.map((p, i) => i === idx ? { ...p, isExpanded: !p.isExpanded } : p));
