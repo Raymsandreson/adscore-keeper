@@ -281,6 +281,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
         }));
 
         setPhases(generatedPhases);
+        setSelectedPhaseIdx(generatedPhases.length > 0 ? 0 : null);
         setShowAiDialog(false);
         setAiPrompt('');
         toast.success(`Fluxo "${data.name}" gerado com ${generatedPhases.length} fases!`);
