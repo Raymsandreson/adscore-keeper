@@ -811,26 +811,33 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                                 </Button>
                              </div>
 
-                            {/* Objective content */}
-                            {obj.isExpanded && (
-                              <div className="ml-4 border-l-2 border-blue-400/30 px-4 pb-4 pt-2 space-y-3">
-                                {/* Objective description field */}
-                                <div>
-                                  <Label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Descrição do objetivo</Label>
-                                  <Textarea
-                                    value={obj.description}
-                                    onChange={e => updateObjective(phaseIdx, objIdx, { description: e.target.value })}
+                             {/* Objective content */}
+                             {obj.isExpanded && (
+                               <div className="ml-4 border-l-2 border-blue-400/30 px-4 pb-4 pt-2 space-y-3">
+                                 {/* Objective description field — oculto por padrão */}
+                                 <details className="group">
+                                   <summary className="flex items-center gap-1.5 cursor-pointer list-none text-[10px] font-medium text-muted-foreground uppercase tracking-wide hover:text-foreground transition-colors select-none">
+                                     <ChevronRight className="h-3 w-3 transition-transform group-open:rotate-90" />
+                                     Descrição do objetivo
+                                     {obj.description && <span className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-blue-500" />}
+                                   </summary>
+                                   <Textarea
+                                     value={obj.description}
+                                     onChange={e => updateObjective(phaseIdx, objIdx, { description: e.target.value })}
                                      onKeyDown={stopSpacePropagation}
                                      onKeyUp={stopSpacePropagation}
-                                    placeholder="Descreva o objetivo desta fase do funil..."
-                                    className="mt-1 min-h-[52px] text-xs resize-none"
-                                  />
-                                </div>
+                                     placeholder="Descreva o objetivo desta fase do funil..."
+                                     className="mt-1.5 min-h-[52px] text-xs resize-none"
+                                   />
+                                 </details>
 
-                                {/* Steps */}
-                                <div>
-                                  <Label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Passos</Label>
-                                  <div className="mt-1.5 space-y-2">
+                                 {/* Steps — recuados pra dentro do objetivo */}
+                                 <div className="ml-4 pl-3 border-l-2 border-green-400/30">
+                                   <Label className="text-[10px] font-medium text-green-700 dark:text-green-400 uppercase tracking-wide flex items-center gap-1.5">
+                                     <ClipboardList className="h-3 w-3" />
+                                     Passos
+                                   </Label>
+                                   <div className="mt-1.5 space-y-2">
                                     {obj.items.length === 0 ? (
                                       <p className="text-[11px] text-muted-foreground italic py-1">Nenhum passo adicionado</p>
                                     ) : (
