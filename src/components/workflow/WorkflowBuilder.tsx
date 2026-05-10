@@ -97,6 +97,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
 
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [editingBoardId, setEditingBoardId] = useState<string | null>(null);
+  const [selectedPhaseIdx, setSelectedPhaseIdx] = useState<number | null>(null);
   const [formName, setFormName] = useState('');
   const [formDescription, setFormDescription] = useState('');
   const [phases, setPhases] = useState<PhaseConfig[]>([]);
