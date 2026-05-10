@@ -719,7 +719,10 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
               {/* Master-Detail: lista de fases (esq) + editor (dir) */}
               <div className="grid grid-cols-1 md:grid-cols-[220px_1fr] gap-4 border rounded-lg overflow-hidden">
                 {/* === LISTA DE FASES === */}
-                <div className="border-b md:border-b-0 md:border-r bg-muted/20 flex flex-col">
+                <div className={cn(
+                  "border-b md:border-b-0 md:border-r bg-muted/20 flex-col",
+                  selectedPhaseIdx !== null ? "hidden md:flex" : "flex"
+                )}>
                   <div className="px-3 py-2 border-b bg-muted/30">
                     <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                       Fases ({phases.length})
