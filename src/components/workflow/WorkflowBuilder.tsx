@@ -1069,6 +1069,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                   )}
                 </div>
               </div>
+            </div>
 
             <SheetFooter className="px-6 py-3 border-t mt-auto flex justify-between">
               {editingBoardId && (
