@@ -815,6 +815,15 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                         <div>
                           {/* Cabeçalho da fase */}
                           <div className="flex items-center gap-2 px-4 py-3 bg-muted/30 border-b">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 md:hidden flex-shrink-0"
+                              title="Voltar para fases"
+                              onClick={() => setSelectedPhaseIdx(null)}
+                            >
+                              <ChevronLeft className="h-4 w-4" />
+                            </Button>
                             <span className="flex-shrink-0 h-6 w-6 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center">
                               {phaseIdx + 1}
                             </span>
