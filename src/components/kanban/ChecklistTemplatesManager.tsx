@@ -266,31 +266,15 @@ export function ChecklistTemplatesManager({ open, onOpenChange }: ChecklistTempl
               </div>
 
               <div>
-                <Label>Itens</Label>
-                <div className="border rounded-md p-2 mt-1 space-y-1">
+                <Label>Passos</Label>
+                <div className="mt-1 space-y-1">
                   {formItems.map((item, idx) => (
-                    <div key={item.id} className="flex items-center gap-1 py-1 border-b border-border/50 last:border-0">
-                      <div className="flex flex-col">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-4 w-4 p-0"
-                          onClick={() => handleMoveItem(idx, 'up')}
-                          disabled={idx === 0}
-                        >
-                          <ArrowUp className="h-2.5 w-2.5" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-4 w-4 p-0"
-                          onClick={() => handleMoveItem(idx, 'down')}
-                          disabled={idx === formItems.length - 1}
-                        >
-                          <ArrowDown className="h-2.5 w-2.5" />
-                        </Button>
-                      </div>
-                      <CheckSquare className="h-3 w-3 text-muted-foreground" />
+                    <div
+                      key={item.id}
+                      className="group flex items-center gap-2 py-1.5 px-1 rounded hover:bg-accent/30 transition-colors"
+                    >
+                      <GripVertical className="h-4 w-4 text-muted-foreground/40 flex-shrink-0" />
+                      <div className="h-4 w-4 rounded-full border-2 border-muted-foreground/40 flex-shrink-0" />
                       <Input
                         value={item.label}
                         onChange={(e) => {
@@ -298,26 +282,61 @@ export function ChecklistTemplatesManager({ open, onOpenChange }: ChecklistTempl
                           updated[idx] = { ...item, label: e.target.value };
                           setFormItems(updated);
                         }}
-                        className="flex-1 h-7 text-sm"
+                        placeholder={`Passo ${idx + 1}`}
+                        className="flex-1 h-8 text-sm border-0 border-b border-transparent rounded-none px-1 focus-visible:ring-0 focus-visible:border-primary bg-transparent"
                       />
-                      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleRemoveItem(item.id)}>
-                        <X className="h-3 w-3" />
+                      <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6"
+                          onClick={() => handleMoveItem(idx, 'up')}
+                          disabled={idx === 0}
+                        >
+                          <ArrowUp className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6"
+                          onClick={() => handleMoveItem(idx, 'down')}
+                          disabled={idx === formItems.length - 1}
+                        >
+                          <ArrowDown className="h-3 w-3" />
+                        </Button>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                        onClick={() => handleRemoveItem(item.id)}
+                      >
+                        <X className="h-4 w-4" />
                       </Button>
                     </div>
                   ))}
-                </div>
 
-                <div className="flex gap-2 mt-2">
-                  <Input
-                    value={newItemLabel}
-                    onChange={(e) => setNewItemLabel(e.target.value)}
-                    placeholder="Novo item..."
-                    className="flex-1"
-                    onKeyDown={(e) => e.key === 'Enter' && handleAddItem()}
-                  />
-                  <Button variant="outline" size="sm" onClick={handleAddItem}>
-                    <Plus className="h-4 w-4" />
-                  </Button>
+                  <div className="flex items-center gap-2 py-1.5 px-1">
+                    <div className="h-4 w-4 flex-shrink-0" />
+                    <div className="h-4 w-4 rounded-full border-2 border-muted-foreground/30 flex-shrink-0" />
+                    <Input
+                      value={newItemLabel}
+                      onChange={(e) => setNewItemLabel(e.target.value)}
+                      placeholder='Adicionar passo'
+                      className="flex-1 h-8 text-sm border-0 border-b border-transparent rounded-none px-1 focus-visible:ring-0 focus-visible:border-primary bg-transparent text-muted-foreground placeholder:text-muted-foreground"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleAddItem();
+                        }
+                      }}
+                    />
+                    {newItemLabel.trim() && (
+                      <Button variant="ghost" size="sm" onClick={handleAddItem} className="h-7">
+                        <Plus className="h-4 w-4 mr-1" /> Adicionar
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </div>
 
