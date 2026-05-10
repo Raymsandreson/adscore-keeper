@@ -742,8 +742,8 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                            <div
                              key={objIdx}
                              className={cn(
-                               "border-t first:border-t-0 transition-all",
-                               dragOverItem?.type === 'objective' && dragOverItem.phaseIdx === phaseIdx && dragOverItem.objIdx === objIdx && "border-t-2 border-t-blue-400"
+                               "rounded-lg border bg-background transition-all",
+                               dragOverItem?.type === 'objective' && dragOverItem.phaseIdx === phaseIdx && dragOverItem.objIdx === objIdx && "ring-2 ring-blue-400"
                              )}
                              draggable
                              onDragStart={() => handleDragStart('objective', phaseIdx, objIdx)}
@@ -751,7 +751,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                              onDragEnd={handleDragEnd}
                            >
                              {/* Objective header */}
-                             <div className="flex items-center gap-2 px-4 py-2 ml-4 border-l-2 border-blue-400/40">
+                             <div className="flex items-center gap-2 px-2 py-1.5 border-l-2 border-blue-400/60 rounded-l-lg">
                                 <GripVertical className="h-3.5 w-3.5 text-muted-foreground/40 cursor-grab flex-shrink-0" />
                                  <Collapsible open={obj.isExpanded} onOpenChange={() => toggleObjective(phaseIdx, objIdx)} className="flex-1 min-w-0">
                                    <div className="flex items-center gap-2 w-full min-w-0">
