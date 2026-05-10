@@ -696,52 +696,43 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                 </Card>
               )}
 
-              {/* Phases → Objectives → Steps */}
-              <div className="space-y-3">
+              {/* Phases → Objectives → Steps (Kanban-like horizontal columns) */}
+              <div className="flex gap-3 overflow-x-auto pb-3 snap-x snap-mandatory -mx-2 px-2 [scrollbar-width:thin]">
                 {phases.map((phase, phaseIdx) => (
-                   <div key={phase.stageId} className="border rounded-lg overflow-hidden">
-                     {/* Phase header */}
-                     <div className="flex items-center gap-2 px-3 py-2 bg-muted/30 border-l-4 border-muted-foreground/30">
-                       <GripVertical className="h-4 w-4 text-muted-foreground/50 flex-shrink-0" />
-                        <Collapsible open={phase.isExpanded} onOpenChange={() => togglePhase(phaseIdx)} className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 w-full min-w-0">
-                            <CollapsibleTrigger asChild>
-                              <button type="button" className={cn("flex items-center gap-2 text-left min-w-0", !phase.isExpanded && "flex-1")}>
-                                {phase.isExpanded ? <ChevronDown className="h-4 w-4 flex-shrink-0" /> : <ChevronRight className="h-4 w-4 flex-shrink-0" />}
-                                <span className="flex-shrink-0 h-5 w-5 rounded-full bg-muted-foreground/20 text-muted-foreground text-[10px] font-bold flex items-center justify-center">
-                                  {phaseIdx + 1}
-                                </span>
-                                {!phase.isExpanded && (
-                                  <span className="font-semibold text-sm text-foreground truncate">{phase.stageName}</span>
-                                )}
-                              </button>
-                            </CollapsibleTrigger>
-                            {phase.isExpanded ? (
-                              <Input
-                                value={phase.stageName}
-                                onChange={e => updatePhaseName(phaseIdx, e.target.value)}
-                                onKeyDown={stopSpacePropagation}
-                                onKeyUp={stopSpacePropagation}
-                                placeholder="Nome da fase..."
-                                className="h-7 text-sm font-semibold text-foreground flex-1"
-                              />
-                            ) : null}
-                          </div>
-                       </Collapsible>
-                       <span className="text-xs text-muted-foreground whitespace-nowrap flex-shrink-0">
-                         {phase.objectives.length} obj.
+                   <div
+                     key={phase.stageId}
+                     className="w-[320px] flex-shrink-0 snap-start border rounded-xl bg-muted/20 flex flex-col overflow-hidden shadow-sm"
+                   >
+                     {/* Phase header (column top) */}
+                     <div className="flex items-center gap-2 px-3 py-2.5 bg-background/60 border-b">
+                       <GripVertical className="h-4 w-4 text-muted-foreground/50 flex-shrink-0 cursor-grab" />
+                       <span className="flex-shrink-0 h-6 w-6 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center">
+                         {phaseIdx + 1}
                        </span>
-                       <Button variant="ghost" size="icon" className="h-6 w-6 flex-shrink-0" title="Adicionar objetivo" onClick={() => addObjective(phaseIdx)}>
-                         <Plus className="h-3.5 w-3.5" />
+                       <Input
+                         value={phase.stageName}
+                         onChange={e => updatePhaseName(phaseIdx, e.target.value)}
+                         onKeyDown={stopSpacePropagation}
+                         onKeyUp={stopSpacePropagation}
+                         placeholder="Nome da fase..."
+                         className="h-7 text-sm font-semibold flex-1 bg-transparent border-0 focus-visible:bg-background focus-visible:border focus-visible:ring-1 px-2"
+                       />
+                       <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive/70 hover:text-destructive flex-shrink-0" onClick={() => removePhase(phaseIdx)}>
+                         <X className="h-4 w-4" />
                        </Button>
-                        <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive/80 hover:text-destructive flex-shrink-0" onClick={() => removePhase(phaseIdx)}>
-                          <X className="h-3.5 w-3.5" />
-                        </Button>
                      </div>
 
-                    {/* Phase description row */}
-                    {phase.isExpanded && (
-                      <div className="border-t">
+                     {/* Phase meta row */}
+                     <div className="flex items-center justify-between px-3 py-1.5 text-[11px] text-muted-foreground bg-muted/10 border-b">
+                       <span>{phase.objectives.length} objetivo(s)</span>
+                       <Button variant="ghost" size="sm" className="h-6 px-2 text-[11px]" onClick={() => addObjective(phaseIdx)}>
+                         <Plus className="h-3 w-3 mr-1" /> Objetivo
+                       </Button>
+                     </div>
+
+                    {/* Phase body — always visible inside the column */}
+                    {true && (
+                      <div className="flex-1 overflow-y-auto p-2 space-y-2 max-h-[60vh]">
                         {/* Objectives */}
                         {phase.objectives.length === 0 && (
                           <p className="text-xs text-muted-foreground italic px-4 py-3">Nenhum objetivo adicionado</p>
