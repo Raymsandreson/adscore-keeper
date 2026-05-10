@@ -788,7 +788,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
 
                             {/* Objective content */}
                             {obj.isExpanded && (
-                              <div className="ml-4 border-l-2 border-blue-400/30 px-4 pb-4 pt-2 space-y-3">
+                              <div className="px-2 pb-2 pt-1 space-y-2">
                                 {/* Objective description field */}
                                 <div>
                                   <Label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Descrição do objetivo</Label>
