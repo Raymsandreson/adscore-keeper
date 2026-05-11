@@ -1424,6 +1424,40 @@ ${scrapeData.content || ''}
           </Suspense>
         )}
 
+        {/* Funil de Vendas — sempre visível no topo */}
+        {lead && (
+          <div className="rounded-lg border bg-card">
+            <button
+              type="button"
+              onClick={() => setFunnelPanelOpen(o => !o)}
+              className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-accent/40 rounded-t-lg"
+            >
+              <div className="flex items-center gap-2">
+                <CheckSquare className="h-4 w-4 text-primary" />
+                <span className="text-sm font-medium">
+                  {leadOutcome === 'closed' ? 'Fluxo de Trabalho' : 'Funil de Vendas'}
+                </span>
+              </div>
+              {funnelPanelOpen
+                ? <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+            </button>
+            {funnelPanelOpen && (
+              <div className="px-3 pb-3 pt-1 border-t">
+                <Suspense fallback={<div className="flex items-center justify-center p-4"><Loader2 className="h-4 w-4 animate-spin" /></div>}>
+                  <LeadFunnelOverview
+                    leadId={lead.id}
+                    boardId={lead.board_id || null}
+                    currentStageId={lead.status || null}
+                    boards={boards}
+                    isClosed={leadOutcome === 'closed'}
+                  />
+                </Suspense>
+              </div>
+            )}
+          </div>
+        )}
+
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 min-h-0 flex flex-col">
           <div className="w-full flex-shrink-0">
             <TabsList className="flex flex-wrap h-auto gap-1 p-1 bg-muted">
