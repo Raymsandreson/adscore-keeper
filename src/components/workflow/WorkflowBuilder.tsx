@@ -448,15 +448,11 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
     });
   };
 
-  const updateStepMessageTemplates = (phaseIdx: number, objIdx: number, stepId: string, templates: Record<string, string>) => {
-    // Remove chaves vazias para não poluir o JSON salvo
-    const cleaned: Record<string, string> = {};
-    for (const [k, v] of Object.entries(templates)) {
-      if (v && v.trim()) cleaned[k] = v;
-    }
+  const updateStepMessageTemplates = (phaseIdx: number, objIdx: number, stepId: string, variations: Record<string, TemplateVariation[]>) => {
+    const serialized = serializeMessageTemplates(variations);
     updateObjective(phaseIdx, objIdx, {
       items: phases[phaseIdx].objectives[objIdx].items.map(s =>
-        s.id === stepId ? { ...s, messageTemplates: Object.keys(cleaned).length > 0 ? cleaned : undefined } : s
+        s.id === stepId ? { ...s, messageTemplates: Object.keys(serialized).length > 0 ? serialized : undefined } : s
       ),
     });
   };
