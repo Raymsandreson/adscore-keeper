@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Collapsible, CollapsibleContent } from '@/components/ui/collapsible';
@@ -55,9 +55,9 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
 
     try {
       const [boardRes, historyRes, leadRes] = await Promise.all([
-        supabase.from('kanban_boards').select('stages, board_type').eq('id', boardId).maybeSingle(),
+        externalSupabase.from('kanban_boards').select('stages, board_type').eq('id', boardId).maybeSingle(),
         externalSupabase.from('lead_stage_history').select('to_stage').eq('lead_id', leadId).order('changed_at', { ascending: false }).limit(1),
-        supabase.from('leads').select('status, lead_status, became_client_date, board_id').eq('id', leadId).maybeSingle(),
+        externalSupabase.from('leads').select('status, lead_status, became_client_date, board_id').eq('id', leadId).maybeSingle(),
       ]);
 
       // Lead is "closed" only when we're showing its sales funnel (not a process workflow)
@@ -117,7 +117,7 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
         const templateIds = [...new Set(allInstances.map(i => i.checklist_template_id))];
         let templateNames: Record<string, string> = {};
         if (templateIds.length > 0) {
-          const { data: templates } = await supabase
+          const { data: templates } = await externalSupabase
             .from('checklist_templates')
             .select('id, name')
             .in('id', templateIds);
@@ -148,7 +148,7 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
       item.id === itemId ? { ...item, checked: !item.checked } : item
     );
 
-    const { error } = await supabase
+    const { error } = await externalSupabase
       .from('lead_checklist_instances')
       .update({
         items: updatedItems as any,
