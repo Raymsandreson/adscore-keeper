@@ -30,8 +30,9 @@ import { Command, CommandInput, CommandEmpty, CommandGroup, CommandItem, Command
 import {
   Plus, Calendar, CheckCircle2, Clock, AlertTriangle,
   FileText, Loader2, Trash2, Search, X, ChevronLeft, ChevronRight, MessageCircle, Copy, ChevronsUpDown, Check,
-  Play, ArrowRight, Trophy, SkipForward, Timer, Share2, User, ExternalLink, RotateCcw, LayoutGrid, List, Layers, Settings2, Sparkles, TrendingUp, Briefcase,
+  Play, ArrowRight, Trophy, SkipForward, Timer, Share2, User, ExternalLink, RotateCcw, LayoutGrid, List, Layers, Settings2, Sparkles, TrendingUp, Briefcase, MoreVertical,
 } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { ShareMenu } from '@/components/ShareMenu';
 import { WorkflowTimer } from '@/components/instagram/WorkflowTimer';
 import { ActivityChatSheet } from '@/components/activities/ActivityChatSheet';
@@ -2931,15 +2932,7 @@ const ActivitiesPage = () => {
                       Criar Lead
                     </Button>
                   )}
-                  {sheetMode === 'edit' && selectedActivity?.id && (
-                    <TeamChatButton
-                      entityType="activity"
-                      entityId={selectedActivity.id}
-                      entityName={selectedActivity.title}
-                      variant="full"
-                      className="h-7"
-                    />
-                  )}
+                  {/* Chat Equipe moved to bottom action bar to reduce top clutter */}
                   {formLeadId && (
                     <Button
                       variant="ghost"
@@ -2977,25 +2970,16 @@ const ActivitiesPage = () => {
                   )}
                   {leadPreview.updated_at && (
                     <span className="flex items-center gap-0.5">
-                      <Clock className="h-3 w-3" /> Últ: {format(parseISO(leadPreview.updated_at), 'dd/MM HH:mm')}
+                      <Clock className="h-3 w-3" /> Atualizado {format(parseISO(leadPreview.updated_at), 'dd/MM HH:mm')}
                     </span>
                   )}
-                  {leadPreview.board_name && (
-                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4">
-                      🎯 {leadPreview.board_name}
-                    </Badge>
-                  )}
+                  {/* board_name badge removed — case_type already shown above and next to process */}
                 </div>
               )}
               {/* No lead message */}
               {!formLeadId && (
                 <p className="text-[11px] text-muted-foreground mt-1.5">
                   Nenhum lead vinculado. Vincule um lead existente no formulário ou crie um novo.
-                </p>
-              )}
-              {sheetMode === 'edit' && selectedActivity?.id && (
-                <p className="text-[11px] text-muted-foreground mt-1.5">
-                  Para marcar pessoas com @, use o botão 👥 Chat da Equipe no topo desta atividade.
                 </p>
               )}
               {/* Funnel or Process Workflow progress bar */}
@@ -3061,87 +3045,93 @@ const ActivitiesPage = () => {
               )}
               {sheetMode === 'edit' ? (
                 <div className="flex items-center justify-between gap-2 max-w-2xl flex-wrap">
-                    <div className="flex gap-2">
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        className="h-8 text-xs"
-                        onClick={() => selectedActivity && handleDelete(selectedActivity.id)}
-                      >
-                        <Trash2 className="h-3.5 w-3.5 mr-1" /> Excluir
+                  {/* Secondary group: kebab menu hides Excluir / Duplicar / Chat Equipe / Chat IA */}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm" className="h-8 text-xs gap-1">
+                        <MoreVertical className="h-3.5 w-3.5" /> Mais
                       </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-8 text-xs gap-1"
-                        onClick={() => selectedActivity && handleCloneActivity(selectedActivity)}
-                      >
-                        <Copy className="h-3.5 w-3.5" /> Duplicar
-                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="w-48">
                       {selectedActivity?.id && (
-                        <TeamChatButton
-                          entityType="activity"
-                          entityId={selectedActivity.id}
-                          entityName={selectedActivity.title}
-                          variant="full"
-                          className="h-8"
-                        />
+                        <DropdownMenuItem asChild>
+                          <div className="p-0">
+                            <TeamChatButton
+                              entityType="activity"
+                              entityId={selectedActivity.id}
+                              entityName={selectedActivity.title}
+                              variant="full"
+                              className="h-8 w-full justify-start text-xs px-2"
+                            />
+                          </div>
+                        </DropdownMenuItem>
                       )}
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-8 text-xs gap-1"
-                        onClick={() => setChatOpen(true)}
+                      <DropdownMenuItem onClick={() => setChatOpen(true)} className="text-xs">
+                        <MessageCircle className="h-3.5 w-3.5 mr-2" /> Chat IA
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => selectedActivity && handleCloneActivity(selectedActivity)}
+                        className="text-xs"
                       >
-                        <MessageCircle className="h-3.5 w-3.5" /> Chat IA
+                        <Copy className="h-3.5 w-3.5 mr-2" /> Duplicar
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onClick={() => selectedActivity && handleDelete(selectedActivity.id)}
+                        className="text-xs text-destructive focus:text-destructive"
+                      >
+                        <Trash2 className="h-3.5 w-3.5 mr-2" /> Excluir
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+
+                  {/* Primary actions */}
+                  <div className="flex gap-2 flex-wrap">
+                    {selectedActivity?.status === 'concluida' && (
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button size="sm" variant="outline" className="h-8 text-xs gap-1">
+                            <RotateCcw className="h-3.5 w-3.5" /> Reabrir
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-40 p-1" align="start">
+                          <div className="flex flex-col gap-0.5">
+                            {[
+                              { value: 'pendente', label: 'Pendente' },
+                              { value: 'em_andamento', label: 'Em Andamento' },
+                            ].map(opt => (
+                              <Button
+                                key={opt.value}
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 text-xs justify-start"
+                                onClick={async () => {
+                                  if (!selectedActivity) return;
+                                  await updateActivity(selectedActivity.id, { status: opt.value, completed_at: null, completed_by: null, completed_by_name: null });
+                                  fetchActivities(getFilterParams());
+                                  setSelectedActivity(prev => prev ? { ...prev, status: opt.value, completed_at: null, completed_by: null, completed_by_name: null } : prev);
+                                }}
+                              >
+                                {opt.label}
+                              </Button>
+                            ))}
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+                    )}
+                    <Button size="sm" variant="outline" className="h-8 text-xs" onClick={handleUpdate}>Salvar</Button>
+                    {selectedActivity?.status !== 'concluida' && (
+                      <Button size="sm" className="h-8 text-xs gap-1 bg-warning hover:bg-warning/90 text-warning-foreground" onClick={() => openCompleteAndNotify('sheet')}>
+                        <CheckCircle2 className="h-3.5 w-3.5" /> Concluir + próxima
                       </Button>
-                    </div>
-                    <div className="flex gap-2 flex-wrap">
-                      {selectedActivity?.status === 'concluida' && (
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <Button size="sm" variant="outline" className="h-8 text-xs gap-1">
-                              <RotateCcw className="h-3.5 w-3.5" /> Reabrir
-                            </Button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-40 p-1" align="start">
-                            <div className="flex flex-col gap-0.5">
-                              {[
-                                { value: 'pendente', label: 'Pendente' },
-                                { value: 'em_andamento', label: 'Em Andamento' },
-                              ].map(opt => (
-                                <Button
-                                  key={opt.value}
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-7 text-xs justify-start"
-                                  onClick={async () => {
-                                    if (!selectedActivity) return;
-                                    await updateActivity(selectedActivity.id, { status: opt.value, completed_at: null, completed_by: null, completed_by_name: null });
-                                    fetchActivities(getFilterParams());
-                                    setSelectedActivity(prev => prev ? { ...prev, status: opt.value, completed_at: null, completed_by: null, completed_by_name: null } : prev);
-                                  }}
-                                >
-                                  {opt.label}
-                                </Button>
-                              ))}
-                            </div>
-                          </PopoverContent>
-                        </Popover>
-                      )}
-                      {selectedActivity?.status !== 'concluida' && (
-                        <Button size="sm" className="h-8 text-xs bg-success hover:bg-success/90 text-success-foreground" onClick={() => selectedActivity && handleComplete(selectedActivity.id)}>
-                          <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Concluir
-                        </Button>
-                      )}
-                      {selectedActivity?.status !== 'concluida' && (
-                        <Button size="sm" className="h-8 text-xs gap-1 bg-warning hover:bg-warning/90 text-warning-foreground" onClick={() => openCompleteAndNotify('sheet')}>
-                          <CheckCircle2 className="h-3.5 w-3.5" /> Concluir e Criar Próxima Atv
-                        </Button>
-                      )}
-                      <Button size="sm" className="h-8 text-xs" onClick={handleUpdate}>Salvar</Button>
-                    </div>
+                    )}
+                    {selectedActivity?.status !== 'concluida' && (
+                      <Button size="sm" className="h-8 text-xs bg-success hover:bg-success/90 text-success-foreground" onClick={() => selectedActivity && handleComplete(selectedActivity.id)}>
+                        <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Concluir
+                      </Button>
+                    )}
                   </div>
+                </div>
               ) : (
                 <div className="flex items-center justify-between max-w-2xl">
                   <Button variant="ghost" size="sm" className="h-8 text-xs text-muted-foreground" onClick={closeSheet}>Cancelar</Button>
