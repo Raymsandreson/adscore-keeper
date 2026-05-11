@@ -2932,15 +2932,7 @@ const ActivitiesPage = () => {
                       Criar Lead
                     </Button>
                   )}
-                  {sheetMode === 'edit' && selectedActivity?.id && (
-                    <TeamChatButton
-                      entityType="activity"
-                      entityId={selectedActivity.id}
-                      entityName={selectedActivity.title}
-                      variant="full"
-                      className="h-7"
-                    />
-                  )}
+                  {/* Chat Equipe moved to bottom action bar to reduce top clutter */}
                   {formLeadId && (
                     <Button
                       variant="ghost"
