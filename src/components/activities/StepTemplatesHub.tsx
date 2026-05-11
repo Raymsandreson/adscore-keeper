@@ -200,12 +200,11 @@ export function StepTemplatesHub({
                     className="h-9 text-sm"
                     autoFocus
                   />
-                  <Textarea
+                  <RichTextEditor
                     value={draftContent}
-                    onChange={e => setDraftContent(e.target.value)}
+                    onChange={setDraftContent}
                     placeholder="Conteúdo do modelo. Pode usar variáveis como {{lead_name}}."
-                    rows={10}
-                    className="text-sm"
+                    minHeight="220px"
                   />
                   <div className="flex justify-end gap-2 pt-1">
                     <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={cancelDraft}>
