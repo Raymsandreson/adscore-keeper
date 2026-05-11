@@ -1393,8 +1393,19 @@ const ActivitiesPage = () => {
     return `${greetingLine}\n\n*Assunto da atividade:* ${formTitle.toUpperCase()}\n\n${fieldLines}\n\n${responsavelDrFb ? `*${responsavelDrFb} voltará com mais informações no dia ${notifDate || '—'}, até o final do dia.*` : ''}\n${tempoStr}\n\nEstamos à disposição para quaisquer dúvidas.\n\n🚀Avante!\n\nTem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se tudo está claro, digite 2.`;
   };
 
+  // Active step context — same boardId resolution as the progress bar above:
+  // process workflow > lead's funnel board.
+  const activeStepBoardId = (() => {
+    const linkedProcess = formProcessId ? caseProcesses.find(p => p.id === formProcessId) : null;
+    if (linkedProcess?.workflow_id) return linkedProcess.workflow_id;
+    if (leadPreview?.board_id && leadPreview?.lead_status !== 'closed') return leadPreview.board_id;
+    return null;
+  })();
+  const { stepContext } = useActivityStepContext(formLeadId || null, activeStepBoardId);
+
   const activityFormContent = (
     <ActivityFormCompact
+      stepContext={stepContext}
       formTitle={formTitle} setFormTitle={setFormTitle}
       formAssignedTo={formAssignedTo} handleSelectAssignee={handleSelectAssignee}
       formType={formType} setFormType={setFormType}
