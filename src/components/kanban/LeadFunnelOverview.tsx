@@ -13,6 +13,9 @@ interface LeadFunnelOverviewProps {
   currentStageId: string | null;
   boards?: KanbanBoard[];
   isClosed?: boolean; // true = "Fluxo de Trabalho", false = "Funil de Vendas"
+  hideStagesList?: boolean; // when true, only renders header + progress bar
+  autoExpandStageId?: string | null; // stage id to auto-expand on mount
+  onHeaderClick?: () => void; // makes header clickable
 }
 
 // Module-level cache: instant render on re-open
@@ -93,14 +96,14 @@ export const invalidateLeadFunnelOverviewCache = (leadId: string, boardId: strin
   funnelRequests.delete(cacheKey);
 };
 
-export function LeadFunnelOverview({ leadId, boardId, currentStageId, boards = [], isClosed }: LeadFunnelOverviewProps) {
+export function LeadFunnelOverview({ leadId, boardId, currentStageId, boards = [], isClosed, hideStagesList, autoExpandStageId, onHeaderClick }: LeadFunnelOverviewProps) {
   const { fetchLeadInstances, updateInstanceItem, createLeadInstances } = useChecklists();
   const cacheKey = `${leadId}:${boardId || ''}:${currentStageId || ''}`;
   const cached = funnelCache.get(cacheKey);
   const [instances, setInstances] = useState<LeadChecklistInstance[]>(() => cached?.instances || []);
   const [templateNames, setTemplateNames] = useState<Record<string, { name: string; is_mandatory: boolean }>>(() => cached?.templateNames || {});
   const [loading, setLoading] = useState(() => !cached);
-  const [expandedStages, setExpandedStages] = useState<Set<string>>(new Set());
+  const [expandedStages, setExpandedStages] = useState<Set<string>>(() => autoExpandStageId ? new Set([autoExpandStageId]) : new Set());
   const [fallbackBoard, setFallbackBoard] = useState<KanbanBoard | null>(null);
 
   const board = boards.find(b => b.id === boardId) || fallbackBoard;
@@ -124,6 +127,33 @@ export function LeadFunnelOverview({ leadId, boardId, currentStageId, boards = [
   useEffect(() => {
     loadData();
   }, [leadId, boardId, currentStageId]);
+
+  // Lazy-create + scroll for autoExpandStageId
+  useEffect(() => {
+    if (!autoExpandStageId || !boardId) return;
+    setExpandedStages(prev => {
+      if (prev.has(autoExpandStageId)) return prev;
+      const next = new Set(prev);
+      next.add(autoExpandStageId);
+      return next;
+    });
+    if (!instances.some(i => i.stage_id === autoExpandStageId)) {
+      (async () => {
+        try {
+          await createLeadInstances(leadId, boardId, autoExpandStageId);
+          const fresh = await fetchLeadInstances(leadId);
+          setInstances(fresh);
+          funnelCache.set(cacheKey, { instances: fresh, templateNames });
+        } catch (e) { /* noop */ }
+      })();
+    }
+    // Scroll into view shortly after render
+    const t = setTimeout(() => {
+      const el = document.querySelector(`[data-funnel-stage-id="${autoExpandStageId}"]`);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 200);
+    return () => clearTimeout(t);
+  }, [autoExpandStageId, boardId]);
 
   const loadData = async (force = false) => {
     if (!funnelCache.has(cacheKey)) setLoading(true);
@@ -232,27 +262,34 @@ export function LeadFunnelOverview({ leadId, boardId, currentStageId, boards = [
   return (
     <div className="space-y-3">
       {/* Header with overall progress */}
-      <div className="flex items-center justify-between px-1">
-        <div className="flex items-center gap-2">
-          <Badge variant="outline" className="text-xs font-medium" style={{ borderColor: board.color, color: board.color }}>
-            {board.name}
-          </Badge>
-          <span className="text-xs text-muted-foreground">
-            Fase {currentIndex + 1} de {totalStages}
-          </span>
+      <div
+        className={cn("space-y-2", onHeaderClick && "cursor-pointer")}
+        onClick={onHeaderClick}
+        role={onHeaderClick ? 'button' : undefined}
+      >
+        <div className="flex items-center justify-between px-1">
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className="text-xs font-medium" style={{ borderColor: board.color, color: board.color }}>
+              {board.name}
+            </Badge>
+            <span className="text-xs text-muted-foreground">
+              Fase {currentIndex + 1} de {totalStages}
+            </span>
+          </div>
+          <span className="text-xs font-medium text-muted-foreground">{overallPercent}%</span>
         </div>
-        <span className="text-xs font-medium text-muted-foreground">{overallPercent}%</span>
-      </div>
 
-      {/* Overall progress bar */}
-      <div className="w-full bg-muted rounded-full h-2">
-        <div
-          className="h-2 rounded-full bg-primary transition-all"
-          style={{ width: `${overallPercent}%` }}
-        />
+        {/* Overall progress bar */}
+        <div className="w-full bg-muted rounded-full h-2">
+          <div
+            className="h-2 rounded-full bg-primary transition-all"
+            style={{ width: `${overallPercent}%` }}
+          />
+        </div>
       </div>
 
       {/* Stages list */}
+      {!hideStagesList && (
       <div className="space-y-1">
         {stages.map((stage, index) => {
           const status = getStageStatus(stage, index);
@@ -262,7 +299,7 @@ export function LeadFunnelOverview({ leadId, boardId, currentStageId, boards = [
           const hasContent = stageInsts.length > 0;
 
           return (
-            <div key={stage.id} className="rounded-lg overflow-hidden">
+            <div key={stage.id} data-funnel-stage-id={stage.id} className="rounded-lg overflow-hidden">
               {/* Stage header */}
               <button
                 onClick={() => toggleStage(stage.id)}
@@ -411,6 +448,7 @@ export function LeadFunnelOverview({ leadId, boardId, currentStageId, boards = [
           );
         })}
       </div>
+      )}
     </div>
   );
 }

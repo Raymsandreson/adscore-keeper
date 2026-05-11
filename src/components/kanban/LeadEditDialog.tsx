@@ -286,7 +286,7 @@ export function LeadEditDialog({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [activeTab, setActiveTab] = useState('basic');
-  const [funnelPanelOpen, setFunnelPanelOpen] = useState(true);
+  const [funnelPanelOpen, setFunnelPanelOpen] = useState(false);
   const [viewingContactId, setViewingContactId] = useState<string | null>(null);
   const [viewingContact, setViewingContact] = useState<ContactType | null>(null);
   const [contactSheetOpen, setContactSheetOpen] = useState(false);
@@ -1429,14 +1429,19 @@ ${scrapeData.content || ''}
           </Suspense>
         )}
 
-        {/* Funil de Vendas — sempre visível e expandido no topo */}
+        {/* Funil de Vendas — header sempre visível com barra de progresso; clique expande */}
         {lead && (
           <div className="rounded-lg border bg-card">
-            <div className="flex items-center gap-2 px-3 py-2 border-b">
+            <div className="flex items-center gap-2 px-3 py-2">
               <CheckSquare className="h-4 w-4 text-primary" />
               <span className="text-sm font-medium">Funil de Vendas</span>
+              <div className="ml-auto">
+                {funnelPanelOpen
+                  ? <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                  : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+              </div>
             </div>
-            <div className="px-3 pb-3 pt-2">
+            <div className="px-3 pb-3">
               <Suspense fallback={<div className="flex items-center justify-center p-4"><Loader2 className="h-4 w-4 animate-spin" /></div>}>
                 <LeadFunnelOverview
                   leadId={lead.id}
@@ -1444,6 +1449,9 @@ ${scrapeData.content || ''}
                   currentStageId={lead.status || null}
                   boards={boards}
                   isClosed={leadOutcome === 'closed'}
+                  hideStagesList={!funnelPanelOpen}
+                  autoExpandStageId={funnelPanelOpen ? (lead.status || null) : null}
+                  onHeaderClick={() => setFunnelPanelOpen(o => !o)}
                 />
               </Suspense>
             </div>
