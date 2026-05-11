@@ -401,9 +401,15 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
   // Step helpers
   const addStep = (phaseIdx: number, objIdx: number, label: string) => {
     if (!label.trim()) return;
-    updateObjective(phaseIdx, objIdx, {
-      items: [...(phases[phaseIdx].objectives[objIdx].items), { id: crypto.randomUUID(), label: label.trim() }],
-    });
+    setPhases(prev => prev.map((p, pi) =>
+      pi === phaseIdx
+        ? { ...p, objectives: p.objectives.map((o, oi) =>
+            oi === objIdx
+              ? { ...o, items: [...o.items, { id: crypto.randomUUID(), label: label.trim() }] }
+              : o
+          ) }
+        : p
+    ));
   };
 
   const removeStep = (phaseIdx: number, objIdx: number, stepId: string) => {
@@ -504,7 +510,15 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
     setSaving(true);
 
     try {
-      const stages: KanbanStage[] = phases.map(p => ({
+      // Aguarda flush de qualquer setState pendente (ex: onBlur do StepAdder
+      // que commita "Novo passo..." quando o usuário clica direto em Salvar)
+      // e lê a versão MAIS RECENTE de phases via setter callback.
+      await new Promise(r => setTimeout(r, 0));
+      const latestPhases: PhaseConfig[] = await new Promise(resolve => {
+        setPhases(p => { resolve(p); return p; });
+      });
+
+      const stages: KanbanStage[] = latestPhases.map(p => ({
         id: p.stageId,
         name: p.stageName,
         color: p.stageColor,
@@ -533,7 +547,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
 
       const existingLinks = await fetchStageLinks(boardId);
 
-      for (const phase of phases) {
+      for (const phase of latestPhases) {
         const phaseLinks = existingLinks.filter(l => l.stage_id === phase.stageId);
         const wantedTemplateIds = new Set<string>();
 
