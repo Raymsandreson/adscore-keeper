@@ -448,6 +448,7 @@ export function LeadFunnelOverview({ leadId, boardId, currentStageId, boards = [
           );
         })}
       </div>
+      )}
     </div>
   );
 }
