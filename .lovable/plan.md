@@ -1,41 +1,88 @@
-## Bug
-Quando um cliente assina pelo seu próprio WhatsApp e depois encaminha contratos de OUTROS signatários pela mesma conversa, o webhook ZapSign vincula todos esses documentos ao lead original (por `whatsapp_phone`). O `zapsign-enrich-lead` então sobrescreve city/state/neighborhood/cpf/cep/victim_name do lead com os dados do último signatário.
+## Objetivo
 
-Caso atual no lead `bfaddfed`:
-- doc 1 — RAYMSANDRESON (cliente real, dono do telefone)
-- doc 2 — ANDRÉIA BARBOSA (sobrescreveu)
-- doc 3 — CAROLINE MATOS (sobrescreveu de novo)
+Quando uma atividade está aberta, mostrar de forma limpa, dentro do form, **o que está configurado para o passo atual do funil/processo do lead**:
 
-## Regra nova
-Cada `signer_token` único = um lead único. Documento só é vinculado a lead existente se o `signer_token` (ou nome+CPF) for o mesmo. Caso contrário → cria lead novo.
+- Mensagens pré-definidas para cada caixa de texto (com suporte a **múltiplas variações** por caixa).
+- Checklist do passo (acessível por ícone expansível, sem ocupar espaço no form).
 
-## Mudanças de código
+Configuração continua na tela do **Funil de Vendas** (WorkflowBuilder), reaproveitando o dialog "Modelos de mensagem da atividade" já existente.
 
-### 1. `supabase/functions/zapsign-webhook/index.ts`
-**Bloco AUTO-RESOLVE (linhas 238–292):** antes de gravar `localDoc.lead_id` a partir de `lead_phone`, verificar se aquele lead já tem documento com `signer_token` diferente. Se sim → NÃO vincula. O doc segue sem `lead_id`, cai no bloco AUTO-CREATE (793+) e gera lead próprio para o novo signatário.
+---
 
-**Bloco AUTO-CREATE (linhas 786–1057):** já cria lead novo quando `!localDoc.lead_id`. Adicionar: usar `signer_phone` da ZapSign como `lead_phone` quando existir e tiver >4 dígitos (preserva identidade real do signatário, em vez do WhatsApp do encaminhador).
+## UX
 
-### 2. `supabase/functions/zapsign-enrich-lead/index.ts`
-Salvaguarda dupla: se o lead já tem `cpf` preenchido E o `cpf` extraído do PDF é diferente → aborta o `update` dos campos pessoais (cpf/rg/birth_date/cep/street/number/complement/neighborhood/city/state/victim_name). Mantém apenas o upload do PDF no Drive e o vínculo do doc. Loga aviso `signer mismatch`.
+### Acima de cada caixa de texto (Como está / O que foi feito / Próximo passo / Observações)
 
-### 3. UI (Aba Documentação) — sem mudança
-Já lista por `lead_id`, então com a regra nova cada lead mostrará só os docs do seu próprio signatário. Drive já está anexando — manter como está.
+Renderiza apenas se o passo atual tiver modelo para aquela caixa:
 
-## Correção de dados (one-shot)
-1. Restaurar lead `bfaddfed` para Raymsandreson: rodar `zapsign-enrich-lead` apontando para o doc `9e02a671` (PDF do Raymsandreson) — ele sobrescreve com os dados certos.
-2. Criar lead novo para **ANDRÉIA**: clonar a partir do board original, `lead_phone` = `signer_phone` da ZapSign quando válido (caso contrário deixar do WhatsApp + sufixo), repassar `lead_id` ao doc `cce9482b`, rodar enrich.
-3. Idem para **CAROLINE**: novo lead, doc `860d6186` revinculado, enrich.
+- **1 modelo:** chip discreto `✦ Aplicar modelo` (clique substitui o conteúdo da caixa, com confirmação se já houver texto).
+- **2+ modelos:** chip com balão `✦ 3 modelos ▾` → abre dropdown com nome + preview de cada variação. Clique aplica.
+- **0 modelos:** nada renderizado (zero poluição).
 
-Tudo via `run-external-migration` + `curl_edge_functions` para o enrich. Lead antigo (`bfaddfed`) NÃO é apagado, só restaurado.
+### Acima do bloco "Detalhes e Observações"
 
-## O que NÃO vai mexer
-- Schema das tabelas.
-- Lógica de criação de grupos / renomeação.
-- `lead-drive` (já funciona).
-- Railway `zapsign-webhook.ts` (138 linhas, é só proxy — não decide vínculo).
-- Outras funções `zapsign-*` (audit, backfill, bulk-sync).
+Botão-ícone `📋 Checklist do passo (2/5)` — expansível inline. Mostra os itens (docChecklist) do passo atual como referência visual (read-only por enquanto). Se passo não tem checklist, botão não aparece.
 
-## Riscos
-- Risco baixo: a verificação de `signer_token` é defensiva — se a query falhar, mantém comportamento atual (vincula). Não quebra fluxos onde só há 1 signatário.
-- Risco médio na correção de dados: se algum signer_phone vier vazio (ex.: Andréia/Caroline têm `signer_phone="55"`), o lead novo nasce com `lead_phone` igual ao do Raymsandreson + sufixo `-2/-3` para não colidir UNIQUE (se houver). Conferir constraint antes.
+---
+
+## Schema
+
+`ChecklistItem.messageTemplates` muda de `Record<string, string>` para `Record<string, string | TemplateVariation[]>` onde:
+
+```ts
+type TemplateVariation = { id: string; name: string; content: string };
+```
+
+Leitores normalizam string solta → `[{id, name: 'Padrão', content: string}]`. Sem migration de banco (campo é JSONB livre).
+
+---
+
+## Mudanças
+
+### 1. `src/hooks/useChecklists.ts`
+- Exporta `TemplateVariation` e helper `normalizeMessageTemplates(raw) → Record<fieldKey, TemplateVariation[]>`.
+- Atualiza tipagem de `ChecklistItem.messageTemplates`.
+
+### 2. `src/components/workflow/WorkflowBuilder.tsx` — dialog "Modelos de mensagem"
+- Por aba (campo), em vez de uma Textarea única: lista de variações (Nome + Textarea + remover) + botão `+ Adicionar variação`.
+- Salva sempre como array. Se array tem 1 item sem nome, salva como string (compat com dados antigos).
+
+### 3. `src/hooks/useActivityStepContext.ts` (novo)
+Input: `leadId`, `boardId` (do funil de vendas OU do workflow do processo selecionado).
+Faz:
+- Lê `leads.status` (stage atual) na tabela do banco externo.
+- Busca `lead_checklist_instances` daquele lead/board/stage; pega o primeiro item não concluído como **passo ativo**.
+- Retorna `{ stepLabel, docChecklist, messageTemplates: Record<fieldKey, TemplateVariation[]>, completedCount, totalCount }`.
+
+### 4. `src/components/activities/StepTemplatePicker.tsx` (novo)
+Componente puro:
+- Props: `variations: TemplateVariation[]`, `onApply(content)`, `currentValue`.
+- Renderiza chip único OU dropdown conforme contagem.
+- Variáveis dinâmicas (`{{lead_name}}` etc.) **não** são interpoladas aqui — apenas insere texto cru. Interpolação acontece quando a mensagem é enviada (já existe no fluxo).
+
+### 5. `src/components/activities/StepChecklistButton.tsx` (novo)
+- Botão pequeno com badge `2/5`. Popover/Collapsible mostra os itens com check visual (read-only).
+
+### 6. `src/components/activities/ActivityFormCompact.tsx`
+- Aceita prop `stepContext` opcional.
+- Renderiza `StepChecklistButton` no topo do bloco "Detalhes e Observações" se houver checklist.
+- Renderiza `StepTemplatePicker` acima de cada `RichTextEditor` se houver variações para aquele `field_key`.
+
+### 7. `src/pages/ActivitiesPage.tsx`
+- Calcula `boardId` ativo (mesma lógica da progress bar: workflow do processo > board do lead).
+- Usa `useActivityStepContext(formLeadId, boardId)` e passa `stepContext` para `<ActivityFormCompact>`.
+
+---
+
+## O que NÃO muda
+
+- Tabelas do banco (campo já é JSONB).
+- Lógica de envio ao grupo / interpolação de variáveis.
+- Tela do Funil em si — só o conteúdo do dialog de modelos ganha lista de variações.
+- Layout geral da atividade, header, footer, botões.
+
+---
+
+## Risco / rollback
+
+Mudança puramente de UI + leitura. Schema retrocompatível (string → array normalizado em runtime). Reverter = `git restore` nos 7 arquivos. Sem deploy de função, sem migration.
