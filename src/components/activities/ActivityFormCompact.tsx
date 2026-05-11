@@ -637,10 +637,18 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
       {/* SendToGroupSection moved to action bar */}
       {/* === COLLAPSIBLE: Detail fields === */}
       <Collapsible open={detailsOpen} onOpenChange={setDetailsOpen}>
-        <CollapsibleTrigger className="flex items-center gap-1.5 w-full text-left py-1">
-          <ChevronDown className={cn("h-3.5 w-3.5 text-muted-foreground transition-transform", detailsOpen && "rotate-180")} />
-          <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Detalhes e Observações</span>
-        </CollapsibleTrigger>
+        <div className="flex items-center justify-between gap-2 w-full py-1">
+          <CollapsibleTrigger className="flex items-center gap-1.5 text-left">
+            <ChevronDown className={cn("h-3.5 w-3.5 text-muted-foreground transition-transform", detailsOpen && "rotate-180")} />
+            <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Detalhes e Observações</span>
+          </CollapsibleTrigger>
+          {props.stepContext?.docChecklist && props.stepContext.docChecklist.length > 0 && (
+            <StepChecklistButton
+              stepLabel={props.stepContext.stepLabel}
+              items={props.stepContext.docChecklist}
+            />
+          )}
+        </div>
         <CollapsibleContent className="space-y-2.5 pt-1.5">
           {props.fieldSettings.map(field => {
             const valueMap: Record<string, [string, (v: string) => void]> = {
