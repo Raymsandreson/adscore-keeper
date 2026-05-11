@@ -128,6 +128,33 @@ export function LeadFunnelOverview({ leadId, boardId, currentStageId, boards = [
     loadData();
   }, [leadId, boardId, currentStageId]);
 
+  // Lazy-create + scroll for autoExpandStageId
+  useEffect(() => {
+    if (!autoExpandStageId || !boardId) return;
+    setExpandedStages(prev => {
+      if (prev.has(autoExpandStageId)) return prev;
+      const next = new Set(prev);
+      next.add(autoExpandStageId);
+      return next;
+    });
+    if (!instances.some(i => i.stage_id === autoExpandStageId)) {
+      (async () => {
+        try {
+          await createLeadInstances(leadId, boardId, autoExpandStageId);
+          const fresh = await fetchLeadInstances(leadId);
+          setInstances(fresh);
+          funnelCache.set(cacheKey, { instances: fresh, templateNames });
+        } catch (e) { /* noop */ }
+      })();
+    }
+    // Scroll into view shortly after render
+    const t = setTimeout(() => {
+      const el = document.querySelector(`[data-funnel-stage-id="${autoExpandStageId}"]`);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 200);
+    return () => clearTimeout(t);
+  }, [autoExpandStageId, boardId]);
+
   const loadData = async (force = false) => {
     if (!funnelCache.has(cacheKey)) setLoading(true);
     try {
