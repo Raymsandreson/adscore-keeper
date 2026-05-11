@@ -2862,21 +2862,6 @@ ${scrapeData.content || ''}
               </TabsContent>
             ))}
 
-            {/* Funnel/Workflow Tab */}
-            <TabsContent value="checklist" className="mt-0">
-              {activeTab === 'checklist' && lead && (
-                <Suspense fallback={<div className="flex items-center justify-center p-8"><Loader2 className="h-5 w-5 animate-spin" /></div>}>
-                  <LeadFunnelOverview
-                    leadId={lead.id}
-                    boardId={lead.board_id || null}
-                    currentStageId={lead.status || null}
-                    boards={boards}
-                    isClosed={leadOutcome === 'closed'}
-                  />
-                </Suspense>
-              )}
-            </TabsContent>
-
             {/* Casos Tab */}
             {leadOutcome === 'closed' && (
               <TabsContent value="casos" className="mt-0">
