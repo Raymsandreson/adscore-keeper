@@ -213,115 +213,122 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
 
   return (
     <Collapsible open={expanded} onOpenChange={setExpanded}>
-      <CollapsibleTrigger asChild>
-        <button className="w-full mt-2 group cursor-pointer">
-          {/* Compact progress bar */}
-          <div className="flex items-center gap-2">
-            {/* Stage bars with hierarchical progress */}
-            <div className="flex items-center gap-1 flex-1">
-              {stages.map((stage, idx) => {
-                const stageDetail = hierarchicalProgress.stageDetails.find(d => d.stageId === stage.id);
-                const stageWeight = stageDetail?.stagePercent || 0;
-                const stageCompleted = stageDetail?.completedPercent || 0;
-                const fillPercent = stageWeight > 0 ? (stageCompleted / stageWeight) * 100 : 0;
-                const isStageComplete = fillPercent >= 100;
-                const hasPartialProgress = fillPercent > 0 && !isStageComplete;
-                const isCurrent = idx === currentIdx;
-
-                return (
-                  <div key={stage.id} className="flex items-center flex-1 relative">
-                    <div
-                      className={cn(
-                        "h-2.5 w-full rounded-full transition-colors shadow-sm overflow-hidden",
-                        isStageComplete ? "bg-emerald-500" :
-                        "bg-muted-foreground/20"
-                      )}
-                      title={`${stage.name} — ${Math.round(fillPercent)}% concluído (${Math.round(stageCompleted)}% de ${Math.round(stageWeight)}% total)`}
-                    >
-                      {hasPartialProgress && (
-                        <div
-                          className="h-full bg-primary rounded-full transition-all duration-300"
-                          style={{ width: `${fillPercent}%` }}
-                        />
-                      )}
-                    </div>
-                    {isCurrent && !isStageComplete && (
-                      <div className="absolute inset-0 rounded-full ring-2 ring-primary/40 pointer-events-none" />
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-            <div className="flex items-center gap-1.5 text-xs shrink-0">
-              {/* Global percentage */}
-              <span className={cn(
-                "text-xs font-bold min-w-[36px] text-right",
-                globalPercent >= 100 ? "text-emerald-600" : "text-foreground"
-              )}>
-                {Math.round(globalPercent)}%
-              </span>
-              {currentStageId && (
-                <Badge variant="default" className="text-[10px] px-2 py-0.5 h-5 font-semibold">
-                  {stages.find(s => s.id === currentStageId)?.name || currentStageId}
-                </Badge>
-              )}
-              {expanded ? <ChevronUp className="h-3.5 w-3.5 text-foreground" /> : <ChevronDown className="h-3.5 w-3.5 text-foreground" />}
-            </div>
-          </div>
-        </button>
-      </CollapsibleTrigger>
-
-      <CollapsibleContent>
-        <div className="mt-2 space-y-2 max-h-[300px] overflow-y-auto">
-          {/* Global progress summary */}
-          <div className="flex items-center gap-2 px-1">
-            <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
-              <div
-                className={cn(
-                  "h-full rounded-full transition-all duration-500",
-                  globalPercent >= 100 ? "bg-emerald-500" : "bg-primary"
-                )}
-                style={{ width: `${Math.min(globalPercent, 100)}%` }}
-              />
-            </div>
-            <span className={cn(
-              "text-[11px] font-bold",
-              globalPercent >= 100 ? "text-emerald-600" : "text-foreground"
-            )}>
-              {Math.round(globalPercent)}% concluído
-            </span>
-          </div>
-
-          {/* Stage flow visualization */}
-          <div className="flex flex-wrap gap-1 mb-2">
+      {/* Stepper bar — always visible, segments clickable to switch stage view, click toggles expand */}
+      <div className="w-full mt-2">
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 flex-1 min-w-0">
             {stages.map((stage, idx) => {
-              const isPast = idx < currentIdx;
+              const stageDetail = hierarchicalProgress.stageDetails.find(d => d.stageId === stage.id);
+              const stageWeight = stageDetail?.stagePercent || 0;
+              const stageCompleted = stageDetail?.completedPercent || 0;
+              const fillPercent = stageWeight > 0 ? (stageCompleted / stageWeight) * 100 : 0;
+              const isStageComplete = fillPercent >= 100;
+              const hasPartialProgress = fillPercent > 0 && !isStageComplete;
               const isCurrent = idx === currentIdx;
               const isViewing = stage.id === activeViewStageId;
-              const stageDetail = hierarchicalProgress.stageDetails.find(d => d.stageId === stage.id);
-              const stageFill = stageDetail && stageDetail.stagePercent > 0
-                ? Math.round((stageDetail.completedPercent / stageDetail.stagePercent) * 100)
-                : 0;
+
               return (
                 <button
                   key={stage.id}
-                  onClick={(e) => { e.stopPropagation(); setViewingStageId(stage.id === currentStageId ? null : stage.id); }}
-                  className={cn(
-                    "inline-flex items-center text-[10px] px-1.5 py-0 h-5 rounded-full border transition-all font-medium",
-                    isViewing && "ring-2 ring-primary/50",
-                    isPast && "bg-primary/15 text-primary border-primary/30 hover:bg-primary/25 cursor-pointer",
-                    isCurrent && "bg-primary text-primary-foreground border-primary cursor-pointer",
-                    !isPast && !isCurrent && "opacity-70 text-muted-foreground border-border hover:opacity-100 cursor-pointer"
-                  )}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (!expanded) setExpanded(true);
+                    setViewingStageId(stage.id === currentStageId ? null : stage.id);
+                  }}
+                  className="flex items-center flex-1 relative group/seg"
+                  title={`${stage.name} — ${Math.round(fillPercent)}%`}
                 >
-                  {stageFill >= 100 && <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />}
-                  {isCurrent && stageFill < 100 && <Circle className="h-2.5 w-2.5 mr-0.5 fill-current" />}
-                  {stage.name}
-                  <span className="ml-1 opacity-75">{stageFill}%</span>
+                  <div
+                    className={cn(
+                      "h-2 w-full rounded-full transition-all overflow-hidden",
+                      isStageComplete ? "bg-emerald-500" : "bg-muted-foreground/20",
+                      "group-hover/seg:opacity-80"
+                    )}
+                  >
+                    {hasPartialProgress && (
+                      <div
+                        className="h-full bg-primary rounded-full transition-all duration-300"
+                        style={{ width: `${fillPercent}%` }}
+                      />
+                    )}
+                  </div>
+                  {(isCurrent || isViewing) && !isStageComplete && (
+                    <div className={cn(
+                      "absolute inset-0 rounded-full pointer-events-none",
+                      isViewing ? "ring-2 ring-primary" : "ring-2 ring-primary/40"
+                    )} />
+                  )}
                 </button>
               );
             })}
           </div>
+
+          <button
+            type="button"
+            onClick={() => setExpanded(e => !e)}
+            className="flex items-center gap-1.5 text-xs shrink-0 hover:opacity-80 transition-opacity"
+          >
+            <span className={cn(
+              "font-bold tabular-nums min-w-[34px] text-right",
+              globalPercent >= 100 ? "text-emerald-600" : "text-foreground"
+            )}>
+              {Math.round(globalPercent)}%
+            </span>
+            {expanded ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />}
+          </button>
+        </div>
+
+        {/* Single label line — current stage only when collapsed */}
+        {!expanded && currentStageId && (
+          <div className="mt-1.5 text-[11px] text-muted-foreground truncate">
+            <span className="font-medium text-foreground">
+              {stages.find(s => s.id === currentStageId)?.name}
+            </span>
+            <span className="ml-1.5">· fase {currentIdx + 1} de {stages.length}</span>
+          </div>
+        )}
+      </div>
+
+      <CollapsibleContent>
+        <div className="mt-3 space-y-2 max-h-[320px] overflow-y-auto">
+          {/* Stage navigator: prev | current name + position | next */}
+          {(() => {
+            const viewIdx = stages.findIndex(s => s.id === activeViewStageId);
+            const viewStage = stages[viewIdx];
+            const goPrev = () => viewIdx > 0 && setViewingStageId(stages[viewIdx - 1].id === currentStageId ? null : stages[viewIdx - 1].id);
+            const goNext = () => viewIdx < stages.length - 1 && setViewingStageId(stages[viewIdx + 1].id === currentStageId ? null : stages[viewIdx + 1].id);
+            const isViewingCurrent = activeViewStageId === currentStageId;
+            return (
+              <div className="flex items-center justify-between gap-2 px-1 py-1.5 rounded-md bg-muted/40">
+                <button
+                  type="button"
+                  onClick={goPrev}
+                  disabled={viewIdx <= 0}
+                  className="p-1 rounded hover:bg-background disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  aria-label="Fase anterior"
+                >
+                  <ChevronUp className="h-4 w-4 -rotate-90" />
+                </button>
+                <div className="flex-1 min-w-0 text-center">
+                  <div className="text-xs font-semibold truncate">{viewStage?.name || '—'}</div>
+                  <div className="text-[10px] text-muted-foreground">
+                    Fase {viewIdx + 1} de {stages.length}
+                    {!isViewingCurrent && <span className="ml-1.5 text-primary">· visualizando</span>}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={goNext}
+                  disabled={viewIdx >= stages.length - 1}
+                  className="p-1 rounded hover:bg-background disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  aria-label="Próxima fase"
+                >
+                  <ChevronDown className="h-4 w-4 -rotate-90" />
+                </button>
+              </div>
+            );
+          })()}
 
           {/* Current stage checklists with objective percentages */}
           {currentStageInstances.length > 0 ? (
