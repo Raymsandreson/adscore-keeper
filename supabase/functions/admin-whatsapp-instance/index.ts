@@ -35,11 +35,15 @@ Deno.serve(async (req) => {
     if (userErr || !userData?.user) {
       return json({ success: false, error: "unauthenticated" });
     }
-    const { data: isAdmin, error: roleErr } = await cloud.rpc("has_role", {
-      _user_id: userData.user.id,
-      _role: "admin",
-    });
-    if (roleErr || !isAdmin) {
+    // Source of truth for roles is the External DB.
+    const extAuth = createClient(EXTERNAL_URL, EXTERNAL_SR);
+    const { data: roleRow, error: roleErr } = await extAuth
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", userData.user.id)
+      .eq("role", "admin")
+      .maybeSingle();
+    if (roleErr || !roleRow) {
       return json({ success: false, error: "forbidden" });
     }
 
