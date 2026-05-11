@@ -3000,16 +3000,32 @@ const ActivitiesPage = () => {
               )}
               {/* Funnel or Process Workflow progress bar */}
               {formLeadId && (() => {
-                const isLeadClosed = leadPreview?.lead_status === 'closed';
                 const linkedProcess = formProcessId ? caseProcesses.find(p => p.id === formProcessId) : null;
                 const processWorkflowId = linkedProcess?.workflow_id;
-                
-                if (isLeadClosed && processWorkflowId) {
-                  // Show process workflow progress instead of sales funnel
-                  return <LeadFunnelProgressBar leadId={formLeadId} boardId={processWorkflowId} />;
+                const isLeadClosed = leadPreview?.lead_status === 'closed';
+
+                // Priority: if a process with workflow is selected, show its workflow.
+                // This is the most contextual progress for the activity.
+                if (processWorkflowId) {
+                  return (
+                    <div>
+                      <div className="text-[10px] font-medium text-muted-foreground mt-1.5 mb-0.5 uppercase tracking-wide">
+                        Fluxo do Processo
+                      </div>
+                      <LeadFunnelProgressBar leadId={formLeadId} boardId={processWorkflowId} />
+                    </div>
+                  );
                 }
-                if (leadPreview?.board_id) {
-                  return <LeadFunnelProgressBar leadId={formLeadId} boardId={leadPreview.board_id} />;
+                // Otherwise fall back to the sales funnel (only meaningful while lead is open)
+                if (leadPreview?.board_id && !isLeadClosed) {
+                  return (
+                    <div>
+                      <div className="text-[10px] font-medium text-muted-foreground mt-1.5 mb-0.5 uppercase tracking-wide">
+                        Funil de Vendas
+                      </div>
+                      <LeadFunnelProgressBar leadId={formLeadId} boardId={leadPreview.board_id} />
+                    </div>
+                  );
                 }
                 return null;
               })()}
