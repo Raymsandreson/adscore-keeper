@@ -44,7 +44,7 @@ const emptyRule: Rule = {
 
 export default function WhatsAppCloudPage() {
   const { toast } = useToast();
-  const { profiles } = useProfilesList();
+  const profiles = useProfilesList();
   const [loading, setLoading] = useState(true);
   const [config, setConfig] = useState<Config | null>(null);
   const [configDraft, setConfigDraft] = useState<Config>({ phone_number_id: '', waba_id: '' });
