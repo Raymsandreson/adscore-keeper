@@ -895,7 +895,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                                                 phaseIdx,
                                                 objIdx,
                                                 stepId: step.id,
-                                                templates: { ...(step.messageTemplates || {}) },
+                                                templates: normalizeMessageTemplates(step.messageTemplates),
                                                 activeTab: ACTIVITY_MESSAGE_FIELDS[0].key,
                                               })}
                                             >
