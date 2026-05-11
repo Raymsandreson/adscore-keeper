@@ -129,6 +129,7 @@ const FinancePage = lazyRetry(() => import("./pages/FinancePage"), "FinancePage"
 const ExpenseFormPage = lazyRetry(() => import("./pages/ExpenseFormPage"), "ExpenseFormPage");
 const CallsPage = lazyRetry(() => import("./pages/CallsPage"), "CallsPage");
 const WhatsAppPage = lazyRetry(() => import("./pages/WhatsAppPage"), "WhatsAppPage");
+const WhatsAppCloudPage = lazyRetry(() => import("./pages/WhatsAppCloudPage"), "WhatsAppCloudPage");
 const NotFound = lazyRetry(() => import("./pages/NotFound"), "NotFound");
 const PrivacyPolicyPage = lazyRetry(() => import("./pages/PrivacyPolicyPage"), "PrivacyPolicyPage");
 const InstallPage = lazyRetry(() => import("./pages/InstallPage"), "InstallPage");
@@ -240,6 +241,7 @@ function SidebarLayout() {
                 <Route path="/finance" element={<ProtectedRoute><FinancePage /></ProtectedRoute>} />
                 <Route path="/calls" element={<ProtectedRoute><CallsPage /></ProtectedRoute>} />
                 <Route path="/whatsapp" element={<ProtectedRoute><WhatsAppPage /></ProtectedRoute>} />
+                <Route path="/whatsapp/cloud" element={<ProtectedRoute><WhatsAppCloudPage /></ProtectedRoute>} />
                 <Route path="/instagram" element={<ProtectedRoute><InstagramPage /></ProtectedRoute>} />
                 <Route path="/contacts" element={<ProtectedRoute><ContactsPage /></ProtectedRoute>} />
                 <Route path="/referrals" element={<ProtectedRoute><ReferralSearchPage /></ProtectedRoute>} />
