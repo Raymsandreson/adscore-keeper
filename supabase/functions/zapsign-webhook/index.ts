@@ -1442,9 +1442,9 @@ Deno.serve(async (req) => {
     // O bloco anterior já cobriu o caso `post_sign_mode = 'group'`; aqui
     // tratamos somente leads que ficaram sem grupo após aquele bloco.
     // ====================================================
-    // [SUSPENSO 2026-05-11] Fallback de criação automática de grupo desativado.
-    // Grupos só são criados via fluxo manual (checkpoint create_group).
-    if (false && isDocFullySigned && localDoc.lead_id && localDoc.whatsapp_phone) {
+    // [2026-05-11] Fallback reativado SOMENTE quando o documento veio do chat
+    // (lead_id + contact_id presentes). Sem isso, segue manual via checkpoint.
+    if (isDocFullySigned && localDoc.lead_id && localDoc.contact_id && localDoc.whatsapp_phone) {
       try {
         const { data: leadForGroup } = await supabase
           .from('leads')
