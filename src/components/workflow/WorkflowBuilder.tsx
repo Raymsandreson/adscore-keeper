@@ -1155,6 +1155,20 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                 </Button>
               )}
               <div className="flex gap-2 ml-auto">
+                {editingBoardId && autosaveStatus !== 'idle' && (
+                  <span
+                    className={cn(
+                      'text-xs mr-auto self-center',
+                      autosaveStatus === 'error' ? 'text-destructive' : 'text-muted-foreground',
+                    )}
+                    aria-live="polite"
+                  >
+                    {autosaveStatus === 'pending' && '• mudanças pendentes…'}
+                    {autosaveStatus === 'saving' && '⟳ sincronizando…'}
+                    {autosaveStatus === 'saved' && '✓ salvo automaticamente'}
+                    {autosaveStatus === 'error' && '⚠ falha ao sincronizar'}
+                  </span>
+                )}
                 <Button variant="outline" onClick={() => {
                   if (initialEditBoardId || initialCreateNew) {
                     onOpenChange(false);
