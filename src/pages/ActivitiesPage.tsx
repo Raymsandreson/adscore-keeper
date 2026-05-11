@@ -1401,11 +1401,12 @@ const ActivitiesPage = () => {
     if (leadPreview?.board_id && leadPreview?.lead_status !== 'closed') return leadPreview.board_id;
     return null;
   })();
-  const { stepContext } = useActivityStepContext(formLeadId || null, activeStepBoardId);
+  const { stepContext, saveStepFieldTemplates } = useActivityStepContext(formLeadId || null, activeStepBoardId);
 
   const activityFormContent = (
     <ActivityFormCompact
       stepContext={stepContext}
+      saveStepFieldTemplates={saveStepFieldTemplates}
       formTitle={formTitle} setFormTitle={setFormTitle}
       formAssignedTo={formAssignedTo} handleSelectAssignee={handleSelectAssignee}
       formType={formType} setFormType={setFormType}
