@@ -77,6 +77,9 @@ interface ConvShare {
 const getConversationKey = (phone: string, instanceName?: string | null) =>
   `${(phone || '').trim()}__${(instanceName || '').trim().toLowerCase()}`;
 
+const normalizeInstanceName = (instanceName?: string | null) =>
+  (instanceName || '').trim().toLowerCase();
+
 // Force clean rebuild
 export function WhatsAppInbox() {
   // null = ainda não resolvi qual instância usar (não buscar nada).
@@ -129,8 +132,14 @@ export function WhatsAppInbox() {
   // Admins continuam vendo todas (não têm default específico ou enxergam o pool inteiro).
   const relevantDisconnectedInstances = useMemo(() => {
     if (!userDefaultInstanceId) return [];
-    return disconnectedInstances.filter((inst) => inst.id === userDefaultInstanceId);
-  }, [disconnectedInstances, userDefaultInstanceId]);
+    const defaultInstance = instances.find((inst) => inst.id === userDefaultInstanceId);
+    const defaultName = normalizeInstanceName(defaultInstance?.instance_name);
+
+    return disconnectedInstances.filter((inst) => (
+      inst.id === userDefaultInstanceId ||
+      (defaultName && normalizeInstanceName(inst.instance_name) === defaultName)
+    ));
+  }, [disconnectedInstances, instances, userDefaultInstanceId]);
 
   const disconnectedSignature = useMemo(
     () => relevantDisconnectedInstances.map((inst) => inst.id).sort().join('|'),
@@ -886,7 +895,10 @@ export function WhatsAppInbox() {
                 </div>
               </SelectItem>
               {instances.map(inst => {
-                const status = statuses.find(s => s.id === inst.id);
+                const instanceNameKey = normalizeInstanceName(inst.instance_name);
+                const status = statuses.find(s => (
+                  s.id === inst.id || normalizeInstanceName(s.instance_name) === instanceNameKey
+                ));
                 const state: 'connected' | 'disconnected' | 'unknown' =
                   status ? (status.connected ? 'connected' : 'disconnected') : 'unknown';
                 const dotClass =
