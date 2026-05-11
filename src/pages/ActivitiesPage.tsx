@@ -293,6 +293,9 @@ const ActivitiesPage = () => {
     assigned_to: filterAssignee.length > 0 ? filterAssignee : 'all',
     lead_id: filterLead.length > 0 ? filterLead : 'all',
     contact_id: filterContact.length > 0 ? filterContact : 'all',
+    // Sem isso, o teto padrão de 500 corta pendentes antigas quando "Todos" está ativo
+    // (as mais recentes 500 enchem com concluídas e a lista perde pendentes).
+    limit: 5000,
   });
 
   // Re-sync from localStorage when the storage key changes (e.g. user logs in after mount).
