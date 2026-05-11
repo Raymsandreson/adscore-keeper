@@ -541,7 +541,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
 
       const existingLinks = await fetchStageLinks(boardId);
 
-      for (const phase of phases) {
+      for (const phase of latestPhases) {
         const phaseLinks = existingLinks.filter(l => l.stage_id === phase.stageId);
         const wantedTemplateIds = new Set<string>();
 
