@@ -103,6 +103,8 @@ import {
   ShieldCheck,
   Ban,
   Wand2,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { classificationColors } from '@/hooks/useContactClassifications';
 import { ShareMenu } from '@/components/ShareMenu';
@@ -284,6 +286,7 @@ export function LeadEditDialog({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [activeTab, setActiveTab] = useState('basic');
+  const [funnelPanelOpen, setFunnelPanelOpen] = useState(true);
   const [viewingContactId, setViewingContactId] = useState<string | null>(null);
   const [viewingContact, setViewingContact] = useState<ContactType | null>(null);
   const [contactSheetOpen, setContactSheetOpen] = useState(false);
@@ -322,6 +325,11 @@ export function LeadEditDialog({
     if (isTabVisible(activeTab)) return;
     setActiveTab(visibleLayoutTabs[0]?.key || 'contacts');
   }, [activeTab, visibleLayoutTabs, visibleTabKeys, layoutBoardId]);
+
+  // Redirect away from removed 'checklist' tab (now always-visible panel on top)
+  useEffect(() => {
+    if (activeTab === 'checklist') setActiveTab('basic');
+  }, [activeTab]);
 
   // Track previous lead id to only reset tab on lead change, not hydration
   const prevLeadIdRef = useRef<string | null>(null);
@@ -1421,6 +1429,40 @@ ${scrapeData.content || ''}
           </Suspense>
         )}
 
+        {/* Funil de Vendas — sempre visível no topo */}
+        {lead && (
+          <div className="rounded-lg border bg-card">
+            <button
+              type="button"
+              onClick={() => setFunnelPanelOpen(o => !o)}
+              className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-accent/40 rounded-t-lg"
+            >
+              <div className="flex items-center gap-2">
+                <CheckSquare className="h-4 w-4 text-primary" />
+                <span className="text-sm font-medium">
+                  {leadOutcome === 'closed' ? 'Fluxo de Trabalho' : 'Funil de Vendas'}
+                </span>
+              </div>
+              {funnelPanelOpen
+                ? <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+            </button>
+            {funnelPanelOpen && (
+              <div className="px-3 pb-3 pt-1 border-t">
+                <Suspense fallback={<div className="flex items-center justify-center p-4"><Loader2 className="h-4 w-4 animate-spin" /></div>}>
+                  <LeadFunnelOverview
+                    leadId={lead.id}
+                    boardId={lead.board_id || null}
+                    currentStageId={lead.status || null}
+                    boards={boards}
+                    isClosed={leadOutcome === 'closed'}
+                  />
+                </Suspense>
+              </div>
+            )}
+          </div>
+        )}
+
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 min-h-0 flex flex-col">
           <div className="w-full flex-shrink-0">
             <TabsList className="flex flex-wrap h-auto gap-1 p-1 bg-muted">
@@ -1433,10 +1475,6 @@ ${scrapeData.content || ''}
               <TabsTrigger value="contacts" className="text-xs py-1.5 px-2.5">
                 <Users className="h-3 w-3 mr-1" />
                 Contatos
-              </TabsTrigger>
-              <TabsTrigger value="checklist" className="text-xs py-1.5 px-2.5">
-                <CheckSquare className="h-3 w-3 mr-1" />
-                Funil de Vendas
               </TabsTrigger>
               <TabsTrigger value="activities" className="text-xs py-1.5 px-2.5">
                 <Calendar className="h-3 w-3 mr-1" />
@@ -2828,21 +2866,6 @@ ${scrapeData.content || ''}
                 )}
               </TabsContent>
             ))}
-
-            {/* Funnel/Workflow Tab */}
-            <TabsContent value="checklist" className="mt-0">
-              {activeTab === 'checklist' && lead && (
-                <Suspense fallback={<div className="flex items-center justify-center p-8"><Loader2 className="h-5 w-5 animate-spin" /></div>}>
-                  <LeadFunnelOverview
-                    leadId={lead.id}
-                    boardId={lead.board_id || null}
-                    currentStageId={lead.status || null}
-                    boards={boards}
-                    isClosed={leadOutcome === 'closed'}
-                  />
-                </Suspense>
-              )}
-            </TabsContent>
 
             {/* Casos Tab */}
             {leadOutcome === 'closed' && (
