@@ -1721,7 +1721,12 @@ const ActivitiesPage = () => {
                     <Check className={cn("mr-2 h-3.5 w-3.5", filterAssignee.length === 0 ? "opacity-100" : "opacity-0")} />
                     Todos
                   </CommandItem>
-                  {teamMembers.map(m => {
+                  {[...teamMembers].sort((a, b) => {
+                    const aSel = filterAssignee.includes(a.user_id) ? 0 : 1;
+                    const bSel = filterAssignee.includes(b.user_id) ? 0 : 1;
+                    if (aSel !== bSel) return aSel - bSel;
+                    return (a.full_name || '').localeCompare(b.full_name || '');
+                  }).map(m => {
                     const c = countByField('assigned_to', m.user_id);
                     const isSelected = filterAssignee.includes(m.user_id);
                     return (
