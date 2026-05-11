@@ -38,7 +38,10 @@ serve(async (req) => {
 
     let systemPrompt: string;
     if (action === 'custom' && custom_prompt) {
-      systemPrompt = `Aplique a seguinte instrução ao texto do usuário: ${custom_prompt}. Mantenha o idioma original do texto.`;
+      const sameAsPrompt = (text || '').trim() === custom_prompt.trim();
+      systemPrompt = sameAsPrompt
+        ? `Você é um redator profissional. Escreva, do zero, o texto solicitado pelo usuário em português brasileiro, com tom natural e cordial. Não comente, retorne apenas o texto pronto. Instrução: ${custom_prompt}`
+        : `Aplique a seguinte instrução ao texto do usuário: ${custom_prompt}. Mantenha o idioma original do texto.`;
     } else {
       systemPrompt = PROMPTS[action];
       if (!systemPrompt) {
