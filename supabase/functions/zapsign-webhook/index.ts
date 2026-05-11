@@ -1296,7 +1296,10 @@ Deno.serve(async (req) => {
             // ====================================================
             // MODE: GROUP — original behavior
             // ====================================================
-            if (postSignMode === 'group') {
+            // [SUSPENSO 2026-05-11] Criação automática de grupo desativada a pedido do usuário.
+            // O fluxo manual de checkpoints (onboarding-checkpoint-execute) cria o grupo
+            // somente após confirmação no modal pós-assinatura.
+            if (false && postSignMode === 'group') {
               const action = leadForBoard.whatsapp_group_id ? 'reusing/renaming' : 'creating'
               console.log(`[zapsign-webhook] ${action} group for lead ${localDoc.lead_id}`)
 
