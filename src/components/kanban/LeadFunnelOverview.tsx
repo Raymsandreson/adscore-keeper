@@ -13,6 +13,9 @@ interface LeadFunnelOverviewProps {
   currentStageId: string | null;
   boards?: KanbanBoard[];
   isClosed?: boolean; // true = "Fluxo de Trabalho", false = "Funil de Vendas"
+  hideStagesList?: boolean; // when true, only renders header + progress bar
+  autoExpandStageId?: string | null; // stage id to auto-expand on mount
+  onHeaderClick?: () => void; // makes header clickable
 }
 
 // Module-level cache: instant render on re-open
