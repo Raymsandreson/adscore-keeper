@@ -401,9 +401,15 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
   // Step helpers
   const addStep = (phaseIdx: number, objIdx: number, label: string) => {
     if (!label.trim()) return;
-    updateObjective(phaseIdx, objIdx, {
-      items: [...(phases[phaseIdx].objectives[objIdx].items), { id: crypto.randomUUID(), label: label.trim() }],
-    });
+    setPhases(prev => prev.map((p, pi) =>
+      pi === phaseIdx
+        ? { ...p, objectives: p.objectives.map((o, oi) =>
+            oi === objIdx
+              ? { ...o, items: [...o.items, { id: crypto.randomUUID(), label: label.trim() }] }
+              : o
+          ) }
+        : p
+    ));
   };
 
   const removeStep = (phaseIdx: number, objIdx: number, stepId: string) => {
