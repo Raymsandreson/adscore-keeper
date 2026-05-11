@@ -1296,7 +1296,10 @@ Deno.serve(async (req) => {
             // ====================================================
             // MODE: GROUP — original behavior
             // ====================================================
-            if (postSignMode === 'group') {
+            // [SUSPENSO 2026-05-11] Criação automática de grupo desativada a pedido do usuário.
+            // O fluxo manual de checkpoints (onboarding-checkpoint-execute) cria o grupo
+            // somente após confirmação no modal pós-assinatura.
+            if (false && postSignMode === 'group') {
               const action = leadForBoard.whatsapp_group_id ? 'reusing/renaming' : 'creating'
               console.log(`[zapsign-webhook] ${action} group for lead ${localDoc.lead_id}`)
 
@@ -1438,7 +1441,9 @@ Deno.serve(async (req) => {
     // O bloco anterior já cobriu o caso `post_sign_mode = 'group'`; aqui
     // tratamos somente leads que ficaram sem grupo após aquele bloco.
     // ====================================================
-    if (isDocFullySigned && localDoc.lead_id && localDoc.whatsapp_phone) {
+    // [SUSPENSO 2026-05-11] Fallback de criação automática de grupo desativado.
+    // Grupos só são criados via fluxo manual (checkpoint create_group).
+    if (false && isDocFullySigned && localDoc.lead_id && localDoc.whatsapp_phone) {
       try {
         const { data: leadForGroup } = await supabase
           .from('leads')
