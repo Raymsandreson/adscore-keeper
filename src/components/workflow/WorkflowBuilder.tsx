@@ -504,7 +504,15 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
     setSaving(true);
 
     try {
-      const stages: KanbanStage[] = phases.map(p => ({
+      // Aguarda flush de qualquer setState pendente (ex: onBlur do StepAdder
+      // que commita "Novo passo..." quando o usuário clica direto em Salvar)
+      // e lê a versão MAIS RECENTE de phases via setter callback.
+      await new Promise(r => setTimeout(r, 0));
+      const latestPhases: PhaseConfig[] = await new Promise(resolve => {
+        setPhases(p => { resolve(p); return p; });
+      });
+
+      const stages: KanbanStage[] = latestPhases.map(p => ({
         id: p.stageId,
         name: p.stageName,
         color: p.stageColor,
