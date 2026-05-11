@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { db as supabase } from '@/integrations/supabase';
+import { toast } from 'sonner';
 import {
   ChecklistItem,
   DocChecklistItem,
   TemplateVariation,
   normalizeMessageTemplates,
+  serializeMessageTemplates,
 } from './useChecklists';
 
 export interface ActivityStepContext {
@@ -14,6 +16,10 @@ export interface ActivityStepContext {
   messageTemplates: Record<string, TemplateVariation[]>; // por field_key
   totalCount: number;
   completedCount: number;
+  // Origem da persistência (necessária para salvar novos modelos no passo)
+  templateId: string | null;
+  boardId: string | null;
+  stageId: string | null;
 }
 
 /**
@@ -27,6 +33,9 @@ export function useActivityStepContext(
 ) {
   const [ctx, setCtx] = useState<ActivityStepContext | null>(null);
   const [loading, setLoading] = useState(false);
+  const [reloadTick, setReloadTick] = useState(0);
+
+  const reload = useCallback(() => setReloadTick(t => t + 1), []);
 
   useEffect(() => {
     if (!leadId || !boardId) {
@@ -37,7 +46,6 @@ export function useActivityStepContext(
     (async () => {
       setLoading(true);
       try {
-        // 1) stage atual do lead
         const { data: leadData } = await supabase
           .from('leads')
           .select('status')
@@ -49,10 +57,9 @@ export function useActivityStepContext(
           return;
         }
 
-        // 2) instâncias de checklist deste lead/board/stage
         const { data: instances } = await supabase
           .from('lead_checklist_instances')
-          .select('items, is_completed')
+          .select('items, is_completed, checklist_template_id')
           .eq('lead_id', leadId)
           .eq('board_id', boardId)
           .eq('stage_id', stageId)
@@ -63,27 +70,32 @@ export function useActivityStepContext(
           return;
         }
 
-        // Achata todos os itens (passos) das instâncias
-        const allSteps: ChecklistItem[] = [];
+        // Achata todos os itens (passos) das instâncias e mantém origem
+        const allSteps: { item: ChecklistItem; templateId: string }[] = [];
         for (const inst of instances) {
           const items = (inst.items as unknown as ChecklistItem[]) || [];
-          allSteps.push(...items);
+          for (const it of items) {
+            allSteps.push({ item: it, templateId: (inst as any).checklist_template_id });
+          }
         }
         if (allSteps.length === 0) {
           if (!cancelled) setCtx(null);
           return;
         }
-        const completedCount = allSteps.filter(s => s.checked).length;
-        const activeStep = allSteps.find(s => !s.checked) || allSteps[allSteps.length - 1];
+        const completedCount = allSteps.filter(s => s.item.checked).length;
+        const active = allSteps.find(s => !s.item.checked) || allSteps[allSteps.length - 1];
 
         if (!cancelled) {
           setCtx({
-            stepId: activeStep.id,
-            stepLabel: activeStep.label,
-            docChecklist: activeStep.docChecklist || [],
-            messageTemplates: normalizeMessageTemplates(activeStep.messageTemplates),
+            stepId: active.item.id,
+            stepLabel: active.item.label,
+            docChecklist: active.item.docChecklist || [],
+            messageTemplates: normalizeMessageTemplates(active.item.messageTemplates),
             totalCount: allSteps.length,
             completedCount,
+            templateId: active.templateId,
+            boardId,
+            stageId,
           });
         }
       } catch (err) {
@@ -96,7 +108,50 @@ export function useActivityStepContext(
     return () => {
       cancelled = true;
     };
-  }, [leadId, boardId]);
+  }, [leadId, boardId, reloadTick]);
 
-  return { stepContext: ctx, loading };
+  /**
+   * Persiste as variações de um campo (field_key) do passo atual diretamente
+   * no `checklist_templates.items[*].messageTemplates[fieldKey]`.
+   */
+  const saveStepFieldTemplates = useCallback(
+    async (fieldKey: string, variations: TemplateVariation[]) => {
+      if (!ctx?.templateId || !ctx.stepId) {
+        toast.error('Passo atual indisponível para salvar modelo');
+        return false;
+      }
+      try {
+        const { data: tpl, error: fetchErr } = await supabase
+          .from('checklist_templates')
+          .select('items')
+          .eq('id', ctx.templateId)
+          .maybeSingle();
+        if (fetchErr) throw fetchErr;
+
+        const items = ((tpl?.items as unknown as ChecklistItem[]) || []).map(it => {
+          if (it.id !== ctx.stepId) return it;
+          const current = normalizeMessageTemplates(it.messageTemplates);
+          current[fieldKey] = variations;
+          return { ...it, messageTemplates: serializeMessageTemplates(current) };
+        });
+
+        const { error: updErr } = await supabase
+          .from('checklist_templates')
+          .update({ items: JSON.parse(JSON.stringify(items)) })
+          .eq('id', ctx.templateId);
+        if (updErr) throw updErr;
+
+        toast.success('Modelo vinculado ao passo!');
+        reload();
+        return true;
+      } catch (err) {
+        console.error('[saveStepFieldTemplates]', err);
+        toast.error('Erro ao salvar modelo no passo');
+        return false;
+      }
+    },
+    [ctx, reload],
+  );
+
+  return { stepContext: ctx, loading, reload, saveStepFieldTemplates };
 }
