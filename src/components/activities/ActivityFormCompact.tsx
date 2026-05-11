@@ -13,6 +13,9 @@ import { ActivityTTSButton } from '@/components/voice/ActivityTTSButton';
 import { ActivityFieldSettingsDialog } from '@/components/activities/ActivityFieldSettingsDialog';
 import { ActivityMessageTemplateSettings } from '@/components/activities/ActivityMessageTemplateSettings';
 import { ActivityNotesField } from '@/components/activities/ActivityNotesField';
+import { StepTemplatePicker } from '@/components/activities/StepTemplatePicker';
+import { StepChecklistButton } from '@/components/activities/StepChecklistButton';
+import type { ActivityStepContext } from '@/hooks/useActivityStepContext';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
@@ -93,6 +96,8 @@ interface ActivityFormCompactProps {
   formContactIdForTTS?: string;
   // Supabase for case processes
   supabase: any;
+  // Step context (current funnel/process step → templates + checklist)
+  stepContext?: ActivityStepContext | null;
   leads: LeadOption[];
 }
 
@@ -632,10 +637,18 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
       {/* SendToGroupSection moved to action bar */}
       {/* === COLLAPSIBLE: Detail fields === */}
       <Collapsible open={detailsOpen} onOpenChange={setDetailsOpen}>
-        <CollapsibleTrigger className="flex items-center gap-1.5 w-full text-left py-1">
-          <ChevronDown className={cn("h-3.5 w-3.5 text-muted-foreground transition-transform", detailsOpen && "rotate-180")} />
-          <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Detalhes e Observações</span>
-        </CollapsibleTrigger>
+        <div className="flex items-center justify-between gap-2 w-full py-1">
+          <CollapsibleTrigger className="flex items-center gap-1.5 text-left">
+            <ChevronDown className={cn("h-3.5 w-3.5 text-muted-foreground transition-transform", detailsOpen && "rotate-180")} />
+            <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Detalhes e Observações</span>
+          </CollapsibleTrigger>
+          {props.stepContext?.docChecklist && props.stepContext.docChecklist.length > 0 && (
+            <StepChecklistButton
+              stepLabel={props.stepContext.stepLabel}
+              items={props.stepContext.docChecklist}
+            />
+          )}
+        </div>
         <CollapsibleContent className="space-y-2.5 pt-1.5">
           {props.fieldSettings.map(field => {
             const valueMap: Record<string, [string, (v: string) => void]> = {
@@ -647,23 +660,27 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
             const entry = valueMap[field.field_key];
             if (!entry) return null;
             const [value, setter] = entry;
+            const stepVariations = props.stepContext?.messageTemplates?.[field.field_key] || [];
 
             if (field.field_key === 'notes') {
               return (
-                <ActivityNotesField
-                  key={field.field_key}
-                  value={value}
-                  onChange={setter}
-                  activityId={props.selectedActivity?.id || null}
-                  placeholder={field.placeholder || 'Notas adicionais...'}
-                  label={field.label}
-                />
+                <div key={field.field_key}>
+                  <StepTemplatePicker variations={stepVariations} currentValue={value} onApply={setter} />
+                  <ActivityNotesField
+                    value={value}
+                    onChange={setter}
+                    activityId={props.selectedActivity?.id || null}
+                    placeholder={field.placeholder || 'Notas adicionais...'}
+                    label={field.label}
+                  />
+                </div>
               );
             }
 
             return (
               <div key={field.field_key}>
                 <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{field.label}</span>
+                <StepTemplatePicker variations={stepVariations} currentValue={value} onApply={setter} />
                 <div className={expandedFieldKey === field.field_key ? 'hidden' : ''}>
                   <RichTextEditor
                     value={value}

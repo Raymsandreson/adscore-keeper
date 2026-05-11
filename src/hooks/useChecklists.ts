@@ -41,8 +41,50 @@ export interface ChecklistItem {
   docChecklist?: DocChecklistItem[]; // checklist de documentação
   // Modelo de mensagem por campo da atividade gerada neste passo.
   // Chaves correspondem a ACTIVITY_MESSAGE_FIELDS (current_status, what_was_done, next_steps, notes).
-  // Aceita as mesmas variáveis de TEMPLATE_VARIABLES (ex: {{lead_name}}, {{saudacao}}, {{data_retorno}}).
-  messageTemplates?: Record<string, string>;
+  // Aceita string (legado, 1 modelo) OU array de variações (novo, múltiplos modelos por campo).
+  messageTemplates?: Record<string, string | TemplateVariation[]>;
+}
+
+// Variação nomeada de modelo de mensagem (ex: "Formal", "Curta", "Padrão").
+export interface TemplateVariation {
+  id: string;
+  name: string;
+  content: string;
+}
+
+// Normaliza qualquer formato salvo (string solta ou array) para array de variações.
+export function normalizeMessageTemplates(
+  raw: Record<string, string | TemplateVariation[]> | undefined | null
+): Record<string, TemplateVariation[]> {
+  if (!raw) return {};
+  const out: Record<string, TemplateVariation[]> = {};
+  for (const [k, v] of Object.entries(raw)) {
+    if (!v) continue;
+    if (typeof v === 'string') {
+      if (v.trim()) out[k] = [{ id: 'default', name: 'Padrão', content: v }];
+    } else if (Array.isArray(v)) {
+      const filtered = v.filter(x => x && typeof x.content === 'string' && x.content.trim());
+      if (filtered.length > 0) out[k] = filtered;
+    }
+  }
+  return out;
+}
+
+// Serializa array de variações de volta — se 1 só sem nome customizado, salva string (compat).
+export function serializeMessageTemplates(
+  variations: Record<string, TemplateVariation[]>
+): Record<string, string | TemplateVariation[]> {
+  const out: Record<string, string | TemplateVariation[]> = {};
+  for (const [k, list] of Object.entries(variations)) {
+    const clean = (list || []).filter(v => v.content && v.content.trim());
+    if (clean.length === 0) continue;
+    if (clean.length === 1 && (!clean[0].name || clean[0].name === 'Padrão' || clean[0].name === 'default')) {
+      out[k] = clean[0].content;
+    } else {
+      out[k] = clean;
+    }
+  }
+  return out;
 }
 
 export interface ChecklistTemplate {

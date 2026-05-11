@@ -42,7 +42,7 @@ import {
   PenLine,
 } from 'lucide-react';
 import { useKanbanBoards, KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
-import { useChecklists, ChecklistItem, DocChecklistItem, CHECKLIST_TYPES, ChecklistType, ACTIVITY_MESSAGE_FIELDS } from '@/hooks/useChecklists';
+import { useChecklists, ChecklistItem, DocChecklistItem, CHECKLIST_TYPES, ChecklistType, ACTIVITY_MESSAGE_FIELDS, TemplateVariation, normalizeMessageTemplates, serializeMessageTemplates } from '@/hooks/useChecklists';
 import { TEMPLATE_VARIABLES } from '@/hooks/useActivityMessageTemplates';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -109,7 +109,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
   const [scriptDialog, setScriptDialog] = useState<{ phaseIdx: number; objIdx: number; stepId: string; script: string } | null>(null);
   const [descDialog, setDescDialog] = useState<{ phaseIdx: number; objIdx: number; stepId: string; description: string } | null>(null);
   const [docChecklistDialog, setDocChecklistDialog] = useState<{ phaseIdx: number; objIdx: number; stepId: string; items: DocChecklistItem[]; checklistType: ChecklistType } | null>(null);
-  const [msgTemplatesDialog, setMsgTemplatesDialog] = useState<{ phaseIdx: number; objIdx: number; stepId: string; templates: Record<string, string>; activeTab: string } | null>(null);
+  const [msgTemplatesDialog, setMsgTemplatesDialog] = useState<{ phaseIdx: number; objIdx: number; stepId: string; templates: Record<string, TemplateVariation[]>; activeTab: string } | null>(null);
   const [newDocItem, setNewDocItem] = useState('');
   const [dragItem, setDragItem] = useState<{ type: 'objective' | 'step'; phaseIdx: number; objIdx: number; stepIdx?: number } | null>(null);
   const [dragOverItem, setDragOverItem] = useState<{ type: 'objective' | 'step'; phaseIdx: number; objIdx: number; stepIdx?: number } | null>(null);
@@ -448,15 +448,11 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
     });
   };
 
-  const updateStepMessageTemplates = (phaseIdx: number, objIdx: number, stepId: string, templates: Record<string, string>) => {
-    // Remove chaves vazias para não poluir o JSON salvo
-    const cleaned: Record<string, string> = {};
-    for (const [k, v] of Object.entries(templates)) {
-      if (v && v.trim()) cleaned[k] = v;
-    }
+  const updateStepMessageTemplates = (phaseIdx: number, objIdx: number, stepId: string, variations: Record<string, TemplateVariation[]>) => {
+    const serialized = serializeMessageTemplates(variations);
     updateObjective(phaseIdx, objIdx, {
       items: phases[phaseIdx].objectives[objIdx].items.map(s =>
-        s.id === stepId ? { ...s, messageTemplates: Object.keys(cleaned).length > 0 ? cleaned : undefined } : s
+        s.id === stepId ? { ...s, messageTemplates: Object.keys(serialized).length > 0 ? serialized : undefined } : s
       ),
     });
   };
@@ -899,7 +895,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                                                 phaseIdx,
                                                 objIdx,
                                                 stepId: step.id,
-                                                templates: { ...(step.messageTemplates || {}) },
+                                                templates: normalizeMessageTemplates(step.messageTemplates),
                                                 activeTab: ACTIVITY_MESSAGE_FIELDS[0].key,
                                               })}
                                             >
@@ -1297,61 +1293,116 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
             >
               <TabsList className="grid grid-cols-4 w-full h-auto">
                 {ACTIVITY_MESSAGE_FIELDS.map(f => {
-                  const filled = !!(msgTemplatesDialog.templates[f.key] || '').trim();
+                  const count = (msgTemplatesDialog.templates[f.key] || []).filter(v => v.content?.trim()).length;
                   return (
                     <TabsTrigger key={f.key} value={f.key} className="text-xs py-1.5 relative">
                       {f.label}
-                      {filled && <span className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-blue-500" />}
+                      {count > 0 && (
+                        <span className="ml-1 inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-blue-500 text-white text-[9px] font-medium">
+                          {count}
+                        </span>
+                      )}
                     </TabsTrigger>
                   );
                 })}
               </TabsList>
 
-              {ACTIVITY_MESSAGE_FIELDS.map(f => (
-                <TabsContent key={f.key} value={f.key} className="mt-3 space-y-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <Label className="text-xs text-muted-foreground">Texto do campo "{f.label}"</Label>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="outline" size="sm" className="h-7 text-xs">
-                          <Plus className="h-3 w-3 mr-1" /> Inserir variável
+              {ACTIVITY_MESSAGE_FIELDS.map(f => {
+                const variations = msgTemplatesDialog.templates[f.key] || [];
+                const updateVariation = (idx: number, patch: Partial<TemplateVariation>) => {
+                  setMsgTemplatesDialog(prev => {
+                    if (!prev) return null;
+                    const list = [...(prev.templates[f.key] || [])];
+                    list[idx] = { ...list[idx], ...patch };
+                    return { ...prev, templates: { ...prev.templates, [f.key]: list } };
+                  });
+                };
+                const addVariation = () => {
+                  setMsgTemplatesDialog(prev => {
+                    if (!prev) return null;
+                    const list = [...(prev.templates[f.key] || [])];
+                    const idx = list.length + 1;
+                    list.push({ id: crypto.randomUUID(), name: list.length === 0 ? 'Padrão' : `Variação ${idx}`, content: '' });
+                    return { ...prev, templates: { ...prev.templates, [f.key]: list } };
+                  });
+                };
+                const removeVariation = (idx: number) => {
+                  setMsgTemplatesDialog(prev => {
+                    if (!prev) return null;
+                    const list = [...(prev.templates[f.key] || [])];
+                    list.splice(idx, 1);
+                    return { ...prev, templates: { ...prev.templates, [f.key]: list } };
+                  });
+                };
+                const insertVar = (idx: number, varText: string) => {
+                  const current = variations[idx]?.content || '';
+                  updateVariation(idx, { content: current + (current && !current.endsWith(' ') ? ' ' : '') + varText });
+                };
+
+                return (
+                  <TabsContent key={f.key} value={f.key} className="mt-3 space-y-3">
+                    <p className="text-[11px] text-muted-foreground">
+                      Modelos para o campo <strong>"{f.label}"</strong>. Crie múltiplas variações (ex: Formal, Curta) — o usuário escolhe na atividade.
+                    </p>
+
+                    {variations.length === 0 && (
+                      <div className="border border-dashed rounded-md p-4 text-center">
+                        <p className="text-xs text-muted-foreground mb-2">Nenhum modelo configurado</p>
+                        <Button variant="outline" size="sm" className="h-7 text-xs" onClick={addVariation}>
+                          <Plus className="h-3 w-3 mr-1" /> Criar primeiro modelo
                         </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent className="max-h-72 overflow-y-auto w-72">
-                        {TEMPLATE_VARIABLES.map(v => (
-                          <DropdownMenuItem
-                            key={v.var}
-                            onClick={() => setMsgTemplatesDialog(prev => {
-                              if (!prev) return null;
-                              const current = prev.templates[f.key] || '';
-                              return {
-                                ...prev,
-                                templates: { ...prev.templates, [f.key]: current + (current && !current.endsWith(' ') ? ' ' : '') + v.var },
-                              };
-                            })}
-                            className="text-xs flex flex-col items-start gap-0.5 py-1.5"
-                          >
-                            <code className="text-[10px] bg-muted px-1 rounded">{v.var}</code>
-                            <span className="text-[10px] text-muted-foreground">{v.label}</span>
-                          </DropdownMenuItem>
-                        ))}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                  <Textarea
-                    value={msgTemplatesDialog.templates[f.key] || ''}
-                    onChange={e => setMsgTemplatesDialog(prev => prev ? {
-                      ...prev,
-                      templates: { ...prev.templates, [f.key]: e.target.value },
-                    } : null)}
-                    placeholder={f.placeholder}
-                    className="min-h-[160px] text-sm"
-                  />
-                  <p className="text-[10px] text-muted-foreground">
-                    Deixe em branco para não pré-preencher este campo na atividade.
-                  </p>
-                </TabsContent>
-              ))}
+                      </div>
+                    )}
+
+                    {variations.map((variation, idx) => (
+                      <div key={variation.id || idx} className="border rounded-md p-2.5 space-y-2 bg-muted/30">
+                        <div className="flex items-center gap-2">
+                          <Input
+                            value={variation.name}
+                            onChange={e => updateVariation(idx, { name: e.target.value })}
+                            placeholder={`Nome (ex: Formal, Curta)`}
+                            className="h-7 text-xs flex-1"
+                          />
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="outline" size="sm" className="h-7 text-xs">
+                                <Plus className="h-3 w-3 mr-1" /> Variável
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent className="max-h-72 overflow-y-auto w-72">
+                              {TEMPLATE_VARIABLES.map(v => (
+                                <DropdownMenuItem
+                                  key={v.var}
+                                  onClick={() => insertVar(idx, v.var)}
+                                  className="text-xs flex flex-col items-start gap-0.5 py-1.5"
+                                >
+                                  <code className="text-[10px] bg-muted px-1 rounded">{v.var}</code>
+                                  <span className="text-[10px] text-muted-foreground">{v.label}</span>
+                                </DropdownMenuItem>
+                              ))}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                          <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive/70 hover:text-destructive" onClick={() => removeVariation(idx)}>
+                            <X className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                        <Textarea
+                          value={variation.content}
+                          onChange={e => updateVariation(idx, { content: e.target.value })}
+                          placeholder={f.placeholder}
+                          className="min-h-[110px] text-sm"
+                        />
+                      </div>
+                    ))}
+
+                    {variations.length > 0 && (
+                      <Button variant="outline" size="sm" className="h-7 text-xs w-full" onClick={addVariation}>
+                        <Plus className="h-3 w-3 mr-1" /> Adicionar variação
+                      </Button>
+                    )}
+                  </TabsContent>
+                );
+              })}
             </Tabs>
           )}
 
