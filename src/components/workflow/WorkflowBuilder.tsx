@@ -504,18 +504,55 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
     setDragOverItem(null);
   };
 
-  // Save
-  const handleSave = async () => {
-    if (!formName.trim() || phases.length === 0) return;
-    setSaving(true);
+  // ─────────── Autosave (debounce) ───────────
+  // Sincroniza mudanças de objetivo/passo automaticamente enquanto o
+  // usuário digita, para que ao clicar em "Salvar" (ou fechar o sheet)
+  // nada se perca.  Só roda em modo edição de board JÁ existente — em
+  // criação seria perigoso (criaria registro antes do usuário decidir).
+  const autosaveTimerRef = useRef<number | null>(null);
+  const lastSyncedSnapshotRef = useRef<string>('');
+  const isPersistingRef = useRef(false);
+  const [autosaveStatus, setAutosaveStatus] = useState<'idle' | 'pending' | 'saving' | 'saved' | 'error'>('idle');
+
+  const buildSnapshot = (name: string, desc: string, ph: PhaseConfig[]) =>
+    JSON.stringify({
+      n: name.trim(),
+      d: desc.trim(),
+      p: ph.map(x => ({
+        id: x.stageId, n: x.stageName, c: x.stageColor, sd: x.stagnationDays,
+        o: x.objectives.map(o => ({
+          tid: o.templateId, n: o.name, d: o.description, m: o.is_mandatory,
+          i: o.items,
+        })),
+      })),
+    });
+
+  /**
+   * Persiste o workflow no backend.  Lê o estado MAIS RECENTE via
+   * callback do setter (cobre o caso do onBlur do StepAdder que
+   * commita o passo no mesmo ciclo do clique em Salvar).
+   *
+   * - silent: não exibe toast nem fecha o form (usado pelo autosave).
+   */
+  const persistWorkflow = async ({ silent = false }: { silent?: boolean } = {}) => {
+    if (isPersistingRef.current) return null;
+    if (!formName.trim() || phases.length === 0) return null;
+
+    isPersistingRef.current = true;
+    if (!silent) setSaving(true);
+    if (silent) setAutosaveStatus('saving');
 
     try {
-      // Aguarda flush de qualquer setState pendente (ex: onBlur do StepAdder
-      // que commita "Novo passo..." quando o usuário clica direto em Salvar)
-      // e lê a versão MAIS RECENTE de phases via setter callback.
+      // Flush pending setState e lê versão mais recente
       await new Promise(r => setTimeout(r, 0));
       const latestPhases: PhaseConfig[] = await new Promise(resolve => {
         setPhases(p => { resolve(p); return p; });
+      });
+      const latestName: string = await new Promise(resolve => {
+        setFormName(n => { resolve(n); return n; });
+      });
+      const latestDesc: string = await new Promise(resolve => {
+        setFormDescription(d => { resolve(d); return d; });
       });
 
       const stages: KanbanStage[] = latestPhases.map(p => ({
@@ -528,16 +565,16 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
       let boardId: string;
       if (editingBoardId) {
         await updateBoard(editingBoardId, {
-          name: formName.trim(),
-          description: formDescription.trim() || null,
+          name: latestName.trim(),
+          description: latestDesc.trim() || null,
           color: '#3b82f6',
           stages,
         });
         boardId = editingBoardId;
       } else {
         const created = await createBoard({
-          name: formName.trim(),
-          description: formDescription.trim() || null,
+          name: latestName.trim(),
+          description: latestDesc.trim() || null,
           color: '#3b82f6',
           stages,
           board_type: boardType,
@@ -583,31 +620,101 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
         }
       }
 
-      // Notify users working with this workflow about the change
-      if (editingBoardId) {
+      // Notifica equipe apenas em saves manuais — autosave seria spam
+      if (!silent && editingBoardId) {
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
           await supabase.rpc('notify_workflow_change', {
             p_board_id: boardId,
-            p_board_name: formName.trim(),
+            p_board_name: latestName.trim(),
             p_changed_by: user.id,
-            p_change_description: `O fluxo de trabalho "${formName.trim()}" foi atualizado. Verifique as alterações nos passos e checklists.`,
+            p_change_description: `O fluxo de trabalho "${latestName.trim()}" foi atualizado. Verifique as alterações nos passos e checklists.`,
           });
         }
       }
 
-      toast.success(editingBoardId ? 'Fluxo atualizado!' : 'Fluxo criado!');
-      resetForm();
-      fetchBoards();
-      fetchTemplates();
-      onWorkflowSaved?.();
+      lastSyncedSnapshotRef.current = buildSnapshot(latestName, latestDesc, latestPhases);
+
+      if (!silent) {
+        toast.success(editingBoardId ? 'Fluxo atualizado!' : 'Fluxo criado!');
+        resetForm();
+        fetchBoards();
+        fetchTemplates();
+        onWorkflowSaved?.();
+      } else {
+        setAutosaveStatus('saved');
+        // Refresh leve do cache — sem refazer a tela
+        fetchTemplates();
+      }
+
+      return boardId;
     } catch (error) {
       console.error('Error saving workflow:', error);
-      toast.error('Erro ao salvar fluxo');
+      if (silent) {
+        setAutosaveStatus('error');
+      } else {
+        toast.error('Erro ao salvar fluxo');
+      }
+      return null;
     } finally {
-      setSaving(false);
+      isPersistingRef.current = false;
+      if (!silent) setSaving(false);
     }
   };
+
+  // Save manual: cancela qualquer debounce pendente para evitar corrida
+  const handleSave = async () => {
+    if (autosaveTimerRef.current) {
+      window.clearTimeout(autosaveTimerRef.current);
+      autosaveTimerRef.current = null;
+    }
+    await persistWorkflow({ silent: false });
+  };
+
+  // Effect de autosave: dispara 1.5s após a última mudança
+  useEffect(() => {
+    // Só autosalva quando estamos editando um board já existente
+    if (viewMode !== 'edit') return;
+    if (!editingBoardId) return;
+    if (!formName.trim() || phases.length === 0) return;
+    if (saving) return;
+
+    const snapshot = buildSnapshot(formName, formDescription, phases);
+    // Inicializa baseline na entrada do edit mode (snapshot vazio)
+    if (!lastSyncedSnapshotRef.current) {
+      lastSyncedSnapshotRef.current = snapshot;
+      return;
+    }
+    if (snapshot === lastSyncedSnapshotRef.current) return;
+
+    setAutosaveStatus('pending');
+    if (autosaveTimerRef.current) window.clearTimeout(autosaveTimerRef.current);
+    autosaveTimerRef.current = window.setTimeout(() => {
+      autosaveTimerRef.current = null;
+      void persistWorkflow({ silent: true });
+    }, 1500);
+
+    return () => {
+      if (autosaveTimerRef.current) {
+        window.clearTimeout(autosaveTimerRef.current);
+        autosaveTimerRef.current = null;
+      }
+    };
+  }, [phases, formName, formDescription, viewMode, editingBoardId, saving]);
+
+  // Reset baseline ao trocar de board / sair de edit
+  useEffect(() => {
+    if (viewMode !== 'edit' || !editingBoardId) {
+      lastSyncedSnapshotRef.current = '';
+      setAutosaveStatus('idle');
+      if (autosaveTimerRef.current) {
+        window.clearTimeout(autosaveTimerRef.current);
+        autosaveTimerRef.current = null;
+      }
+    }
+  }, [viewMode, editingBoardId]);
+
+
 
   return (
     <>
