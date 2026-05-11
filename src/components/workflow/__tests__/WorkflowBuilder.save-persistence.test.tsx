@@ -89,35 +89,6 @@ function StepAdder({ onAdd }: { onAdd: (label: string) => void }) {
   );
 }
 
-// ──────────────────────────────────────────────────────────────────
-// Anti-regression: harness com o padrão ANTIGO (lê closure direto)
-// — esperamos que falhe em persistir o passo digitado, comprovando
-// que o flush+callback é necessário.
-// ──────────────────────────────────────────────────────────────────
-function BrokenHarness({ onSave }: { onSave: (objs: Objective[]) => void }) {
-  const [objectives, setObjectives] = useState<Objective[]>([{ name: '', items: [] }]);
-
-  const addStep = (label: string) => {
-    if (!label.trim()) return;
-    setObjectives(prev =>
-      prev.map((o, i) =>
-        i === 0 ? { ...o, items: [...o.items, { id: crypto.randomUUID(), label: label.trim() }] } : o,
-      ),
-    );
-  };
-
-  const handleSave = () => {
-    // BUG: lê do closure do render — não enxerga setState pendente
-    onSave(objectives);
-  };
-
-  return (
-    <div>
-      <StepAdder onAdd={addStep} />
-      <button onClick={handleSave}>Salvar</button>
-    </div>
-  );
-}
 
 describe('WorkflowBuilder save flow — persistência sem depender de re-render', () => {
   it('persiste passo digitado mesmo quando o usuário clica direto em Salvar (sem blur prévio)', async () => {
