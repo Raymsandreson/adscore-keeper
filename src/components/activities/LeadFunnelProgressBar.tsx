@@ -148,7 +148,7 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
       item.id === itemId ? { ...item, checked: !item.checked } : item
     );
 
-    const { error } = await supabase
+    const { error } = await externalSupabase
       .from('lead_checklist_instances')
       .update({
         items: updatedItems as any,
