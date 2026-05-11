@@ -326,6 +326,11 @@ export function LeadEditDialog({
     setActiveTab(visibleLayoutTabs[0]?.key || 'contacts');
   }, [activeTab, visibleLayoutTabs, visibleTabKeys, layoutBoardId]);
 
+  // Redirect away from removed 'checklist' tab (now always-visible panel on top)
+  useEffect(() => {
+    if (activeTab === 'checklist') setActiveTab('basic');
+  }, [activeTab]);
+
   // Track previous lead id to only reset tab on lead change, not hydration
   const prevLeadIdRef = useRef<string | null>(null);
 
