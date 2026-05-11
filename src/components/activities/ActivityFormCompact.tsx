@@ -663,11 +663,24 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
             if (!entry) return null;
             const [value, setter] = entry;
             const stepVariations = props.stepContext?.messageTemplates?.[field.field_key] || [];
+            const persistField = async (next: TemplateVariation[]) => {
+              if (!props.saveStepFieldTemplates) return false;
+              return props.saveStepFieldTemplates(field.field_key, next);
+            };
+            const hubProps = {
+              fieldLabel: field.label,
+              variations: stepVariations,
+              currentValue: value,
+              onApply: setter,
+              stepLabel: props.stepContext?.stepLabel || null,
+              canPersist: !!(props.stepContext?.templateId && props.saveStepFieldTemplates),
+              onPersist: persistField,
+            };
 
             if (field.field_key === 'notes') {
               return (
                 <div key={field.field_key}>
-                  <StepTemplatePicker variations={stepVariations} currentValue={value} onApply={setter} />
+                  <StepTemplatesHub {...hubProps} />
                   <ActivityNotesField
                     value={value}
                     onChange={setter}
@@ -682,7 +695,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
             return (
               <div key={field.field_key}>
                 <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{field.label}</span>
-                <StepTemplatePicker variations={stepVariations} currentValue={value} onApply={setter} />
+                <StepTemplatesHub {...hubProps} />
                 <div className={expandedFieldKey === field.field_key ? 'hidden' : ''}>
                   <RichTextEditor
                     value={value}
