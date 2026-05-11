@@ -1479,6 +1479,12 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
 /** Small inline component for adding a step */
 function StepAdder({ onAdd }: { onAdd: (label: string) => void }) {
   const [label, setLabel] = useState('');
+  const commit = () => {
+    if (label.trim()) {
+      onAdd(label);
+      setLabel('');
+    }
+  };
   return (
     <div className="flex gap-1.5">
       <Input
@@ -1488,18 +1494,19 @@ function StepAdder({ onAdd }: { onAdd: (label: string) => void }) {
         className="flex-1 h-7 text-xs"
         onKeyDown={e => {
           if (e.key === ' ' || e.code === 'Space') e.stopPropagation();
-          if (e.key === 'Enter' && label.trim()) {
-            onAdd(label);
-            setLabel('');
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            commit();
           }
         }}
         onKeyUp={e => {
           if (e.key === ' ' || e.code === 'Space') e.stopPropagation();
         }}
+        // Auto-commit ao perder foco (ex: usuário digita e clica direto em "Salvar"
+        // sem apertar + ou Enter — antes o texto era descartado).
+        onBlur={commit}
       />
-      <Button variant="outline" size="sm" className="h-7 px-2" onClick={() => {
-        if (label.trim()) { onAdd(label); setLabel(''); }
-      }}>
+      <Button variant="outline" size="sm" className="h-7 px-2" onMouseDown={e => e.preventDefault()} onClick={commit}>
         <Plus className="h-3 w-3" />
       </Button>
     </div>
