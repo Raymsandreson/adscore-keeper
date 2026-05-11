@@ -599,15 +599,14 @@ function RichTextEditorComponent({
       text = $getRoot().getTextContent().trim();
     });
 
-    if (!text) {
-      toast.error('Escreva algo primeiro para usar a IA');
-      return;
-    }
-
-    const userPrompt = window.prompt('Como você quer que a IA edite o texto?');
+    const promptLabel = text
+      ? 'Como você quer que a IA edite o texto?'
+      : 'O que você quer que a IA escreva? (descreva a mensagem)';
+    const userPrompt = window.prompt(promptLabel);
     if (!userPrompt?.trim()) return;
 
-    fetchAiOptions('custom', text, userPrompt.trim());
+    // Sem texto base → gera do zero a partir do prompt
+    fetchAiOptions('custom', text || userPrompt.trim(), userPrompt.trim());
   }, [fetchAiOptions]);
 
   const handleSelectOption = useCallback((text: string) => {
