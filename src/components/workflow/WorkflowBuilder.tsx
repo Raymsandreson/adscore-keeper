@@ -1,4 +1,4 @@
-import { useState, useEffect, type KeyboardEvent } from 'react';
+import { useState, useEffect, useRef, type KeyboardEvent } from 'react';
 import { useConfirmDelete } from '@/hooks/useConfirmDelete';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
