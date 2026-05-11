@@ -2970,25 +2970,16 @@ const ActivitiesPage = () => {
                   )}
                   {leadPreview.updated_at && (
                     <span className="flex items-center gap-0.5">
-                      <Clock className="h-3 w-3" /> Últ: {format(parseISO(leadPreview.updated_at), 'dd/MM HH:mm')}
+                      <Clock className="h-3 w-3" /> Atualizado {format(parseISO(leadPreview.updated_at), 'dd/MM HH:mm')}
                     </span>
                   )}
-                  {leadPreview.board_name && (
-                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4">
-                      🎯 {leadPreview.board_name}
-                    </Badge>
-                  )}
+                  {/* board_name badge removed — case_type already shown above and next to process */}
                 </div>
               )}
               {/* No lead message */}
               {!formLeadId && (
                 <p className="text-[11px] text-muted-foreground mt-1.5">
                   Nenhum lead vinculado. Vincule um lead existente no formulário ou crie um novo.
-                </p>
-              )}
-              {sheetMode === 'edit' && selectedActivity?.id && (
-                <p className="text-[11px] text-muted-foreground mt-1.5">
-                  Para marcar pessoas com @, use o botão 👥 Chat da Equipe no topo desta atividade.
                 </p>
               )}
               {/* Funnel or Process Workflow progress bar */}
