@@ -262,27 +262,34 @@ export function LeadFunnelOverview({ leadId, boardId, currentStageId, boards = [
   return (
     <div className="space-y-3">
       {/* Header with overall progress */}
-      <div className="flex items-center justify-between px-1">
-        <div className="flex items-center gap-2">
-          <Badge variant="outline" className="text-xs font-medium" style={{ borderColor: board.color, color: board.color }}>
-            {board.name}
-          </Badge>
-          <span className="text-xs text-muted-foreground">
-            Fase {currentIndex + 1} de {totalStages}
-          </span>
+      <div
+        className={cn("space-y-2", onHeaderClick && "cursor-pointer")}
+        onClick={onHeaderClick}
+        role={onHeaderClick ? 'button' : undefined}
+      >
+        <div className="flex items-center justify-between px-1">
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className="text-xs font-medium" style={{ borderColor: board.color, color: board.color }}>
+              {board.name}
+            </Badge>
+            <span className="text-xs text-muted-foreground">
+              Fase {currentIndex + 1} de {totalStages}
+            </span>
+          </div>
+          <span className="text-xs font-medium text-muted-foreground">{overallPercent}%</span>
         </div>
-        <span className="text-xs font-medium text-muted-foreground">{overallPercent}%</span>
-      </div>
 
-      {/* Overall progress bar */}
-      <div className="w-full bg-muted rounded-full h-2">
-        <div
-          className="h-2 rounded-full bg-primary transition-all"
-          style={{ width: `${overallPercent}%` }}
-        />
+        {/* Overall progress bar */}
+        <div className="w-full bg-muted rounded-full h-2">
+          <div
+            className="h-2 rounded-full bg-primary transition-all"
+            style={{ width: `${overallPercent}%` }}
+          />
+        </div>
       </div>
 
       {/* Stages list */}
+      {!hideStagesList && (
       <div className="space-y-1">
         {stages.map((stage, index) => {
           const status = getStageStatus(stage, index);
@@ -292,7 +299,7 @@ export function LeadFunnelOverview({ leadId, boardId, currentStageId, boards = [
           const hasContent = stageInsts.length > 0;
 
           return (
-            <div key={stage.id} className="rounded-lg overflow-hidden">
+            <div key={stage.id} data-funnel-stage-id={stage.id} className="rounded-lg overflow-hidden">
               {/* Stage header */}
               <button
                 onClick={() => toggleStage(stage.id)}
