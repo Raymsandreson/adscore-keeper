@@ -1471,10 +1471,6 @@ ${scrapeData.content || ''}
                 <Users className="h-3 w-3 mr-1" />
                 Contatos
               </TabsTrigger>
-              <TabsTrigger value="checklist" className="text-xs py-1.5 px-2.5">
-                <CheckSquare className="h-3 w-3 mr-1" />
-                Funil de Vendas
-              </TabsTrigger>
               <TabsTrigger value="activities" className="text-xs py-1.5 px-2.5">
                 <Calendar className="h-3 w-3 mr-1" />
                 Atividades
