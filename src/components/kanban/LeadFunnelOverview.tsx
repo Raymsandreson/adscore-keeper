@@ -149,13 +149,41 @@ export function LeadFunnelOverview({ leadId, boardId, currentStageId, boards = [
     ));
   };
 
-  const toggleStage = (stageId: string) => {
+  const toggleStage = async (stageId: string) => {
     setExpandedStages(prev => {
       const next = new Set(prev);
       if (next.has(stageId)) next.delete(stageId);
       else next.add(stageId);
       return next;
     });
+    // Lazy-create instances for the clicked stage if none exist yet
+    if (boardId && !instances.some(i => i.stage_id === stageId)) {
+      try {
+        await createLeadInstances(leadId, boardId, stageId);
+        const fresh = await fetchLeadInstances(leadId);
+        setInstances(fresh);
+        // Update cache
+        funnelCache.set(cacheKey, { instances: fresh, templateNames });
+        // Fetch any new template names
+        const missing = [...new Set(fresh.map(d => d.checklist_template_id))].filter(id => !templateNames[id]);
+        if (missing.length > 0) {
+          const { data: tpls } = await supabase
+            .from('checklist_templates')
+            .select('id, name, is_mandatory')
+            .in('id', missing);
+          if (tpls && tpls.length > 0) {
+            setTemplateNames(prev => {
+              const next = { ...prev };
+              tpls.forEach(t => { next[t.id] = { name: t.name, is_mandatory: t.is_mandatory }; });
+              funnelCache.set(cacheKey, { instances: fresh, templateNames: next });
+              return next;
+            });
+          }
+        }
+      } catch (e) {
+        console.warn('[LeadFunnelOverview] lazy create failed', e);
+      }
+    }
   };
 
   if (loading) {
