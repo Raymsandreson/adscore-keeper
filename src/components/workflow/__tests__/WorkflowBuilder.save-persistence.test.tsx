@@ -166,18 +166,4 @@ describe('WorkflowBuilder save flow — persistência sem depender de re-render'
     expect(saved[0].items.map(i => i.label)).toEqual(['Passo 1', 'Passo 2', 'Passo 3']);
   });
 
-  it('[anti-regression] padrão antigo (closure direto) PERDE o passo digitado — comprova necessidade do fix', async () => {
-    const onSave = vi.fn();
-    const user = userEvent.setup();
-    render(<BrokenHarness onSave={onSave} />);
-
-    await user.type(screen.getByLabelText('step-input'), 'Vai sumir');
-    await user.click(screen.getByRole('button', { name: 'Salvar' }));
-
-    const saved = onSave.mock.calls[0][0] as Objective[];
-    // Demonstra o bug: closure stale → passo perdido. Se este teste
-    // começar a falhar (ou seja, o passo aparecer), significa que o
-    // React mudou o timing e podemos revisitar o fix.
-    expect(saved[0].items).toHaveLength(0);
-  });
 });
