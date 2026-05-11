@@ -96,6 +96,8 @@ interface ActivityFormCompactProps {
   formContactIdForTTS?: string;
   // Supabase for case processes
   supabase: any;
+  // Step context (current funnel/process step → templates + checklist)
+  stepContext?: ActivityStepContext | null;
   leads: LeadOption[];
 }
 
