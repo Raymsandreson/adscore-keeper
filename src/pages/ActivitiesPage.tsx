@@ -1396,12 +1396,13 @@ const ActivitiesPage = () => {
     return `${greetingLine}\n\n*Assunto da atividade:* ${formTitle.toUpperCase()}\n\n${fieldLines}\n\n${responsavelDrFb ? `*${responsavelDrFb} voltará com mais informações no dia ${notifDate || '—'}, até o final do dia.*` : ''}\n${tempoStr}\n\nEstamos à disposição para quaisquer dúvidas.\n\n🚀Avante!\n\nTem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se tudo está claro, digite 2.`;
   };
 
-  // Active step context — same boardId resolution as the progress bar above:
-  // process workflow > lead's funnel board.
+  // Active step context — process workflow > lead's funnel board.
+  // Note: also resolves for closed leads (CASO mode) so templates of the
+  // checkpoint step where the case was created keep working.
   const activeStepBoardId = (() => {
     const linkedProcess = formProcessId ? caseProcesses.find(p => p.id === formProcessId) : null;
     if (linkedProcess?.workflow_id) return linkedProcess.workflow_id;
-    if (leadPreview?.board_id && leadPreview?.lead_status !== 'closed') return leadPreview.board_id;
+    if (leadPreview?.board_id) return leadPreview.board_id;
     return null;
   })();
   const { stepContext, saveStepFieldTemplates } = useActivityStepContext(formLeadId || null, activeStepBoardId);
