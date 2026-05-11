@@ -304,15 +304,18 @@ export function LeadFunnelOverview({ leadId, boardId, currentStageId, boards = [
                 {/* Stage color dot */}
                 <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: stage.color }} />
 
-                {/* Expand indicator */}
-                {hasContent && (
-                  isExpanded
-                    ? <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
-                    : <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
-                )}
+                {/* Expand indicator (always visible) */}
+                {isExpanded
+                  ? <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
+                  : <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />}
               </button>
 
               {/* Expanded content: checklists */}
+              {isExpanded && !hasContent && (
+                <div className="pl-9 pr-3 pb-2 pt-1 text-xs text-muted-foreground italic">
+                  Nenhum passo configurado para esta fase.
+                </div>
+              )}
               {isExpanded && hasContent && (
                 <div className="pl-9 pr-3 pb-2 pt-1 space-y-2">
                   {stageInsts.map(instance => {
