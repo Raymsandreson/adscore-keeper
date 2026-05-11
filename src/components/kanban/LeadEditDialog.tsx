@@ -286,6 +286,7 @@ export function LeadEditDialog({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [activeTab, setActiveTab] = useState('basic');
+  const [funnelPanelOpen, setFunnelPanelOpen] = useState(true);
   const [viewingContactId, setViewingContactId] = useState<string | null>(null);
   const [viewingContact, setViewingContact] = useState<ContactType | null>(null);
   const [contactSheetOpen, setContactSheetOpen] = useState(false);
