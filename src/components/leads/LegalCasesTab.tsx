@@ -76,6 +76,8 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
     'TRCT + Verbas',
     'Seguro de Vida',
     'Benefício INSS',
+    'Aposentadoria',
+    'Pensão por Morte',
     'Inquérito Policial',
     'Organizar docs',
     'Onboarding',
