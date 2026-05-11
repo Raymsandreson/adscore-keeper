@@ -1,88 +1,113 @@
+
+# Integração WhatsApp Cloud API — Número de Gerência
+
 ## Objetivo
 
-Quando uma atividade está aberta, mostrar de forma limpa, dentro do form, **o que está configurado para o passo atual do funil/processo do lead**:
+Adicionar um número oficial Meta (Cloud API) como **porta de entrada única** do WhatsApp. Mensagem entra → cria/atualiza lead → roteia para um atendente (round-robin combinado com regra de funil/produto) → atendente assume e segue conversando **na instância UazAPI dele**. Não substitui nada do que existe.
 
-- Mensagens pré-definidas para cada caixa de texto (com suporte a **múltiplas variações** por caixa).
-- Checklist do passo (acessível por ícone expansível, sem ocupar espaço no form).
+## Pré-requisitos do seu lado (bloqueantes — não há código que resolva)
 
-Configuração continua na tela do **Funil de Vendas** (WorkflowBuilder), reaproveitando o dialog "Modelos de mensagem da atividade" já existente.
+1. **Meta Business Manager** verificado (CNPJ aprovado).
+2. **WhatsApp Business Account (WABA)** criada dentro do BM.
+3. **Número de telefone novo** que **nunca** tenha sido usado em WhatsApp (regular ou Business). Se já foi, precisa apagar a conta antes em `Configurações → Conta → Apagar minha conta` no app.
+4. **App da Meta** com produto "WhatsApp" adicionado.
+5. **Token permanente** (System User token, não o token temporário de 24h).
+6. **Webhook verify token** (string que você inventa, vou usar para autenticar callbacks da Meta).
 
----
+Quando estiverem prontos, vou pedir via tool de secrets:
+- `WHATSAPP_CLOUD_PHONE_NUMBER_ID`
+- `WHATSAPP_CLOUD_WABA_ID`
+- `WHATSAPP_CLOUD_ACCESS_TOKEN`
+- `WHATSAPP_CLOUD_WEBHOOK_VERIFY_TOKEN`
+- `WHATSAPP_CLOUD_APP_SECRET` (para validar assinatura X-Hub do webhook)
 
-## UX
+## Arquitetura
 
-### Acima de cada caixa de texto (Como está / O que foi feito / Próximo passo / Observações)
-
-Renderiza apenas se o passo atual tiver modelo para aquela caixa:
-
-- **1 modelo:** chip discreto `✦ Aplicar modelo` (clique substitui o conteúdo da caixa, com confirmação se já houver texto).
-- **2+ modelos:** chip com balão `✦ 3 modelos ▾` → abre dropdown com nome + preview de cada variação. Clique aplica.
-- **0 modelos:** nada renderizado (zero poluição).
-
-### Acima do bloco "Detalhes e Observações"
-
-Botão-ícone `📋 Checklist do passo (2/5)` — expansível inline. Mostra os itens (docChecklist) do passo atual como referência visual (read-only por enquanto). Se passo não tem checklist, botão não aparece.
-
----
-
-## Schema
-
-`ChecklistItem.messageTemplates` muda de `Record<string, string>` para `Record<string, string | TemplateVariation[]>` onde:
-
-```ts
-type TemplateVariation = { id: string; name: string; content: string };
+```text
+                  ┌──────────────────────────┐
+   Cliente  ───►  │  Número Gerência (Meta)  │  ◄─── Webhook Meta
+                  └────────────┬─────────────┘
+                               │
+                               ▼
+              ┌──────────────────────────────────┐
+              │  Edge: whatsapp-cloud-webhook    │  (Railway, 1ª linha)
+              │  - valida assinatura X-Hub-256    │
+              │  - normaliza payload Meta→interno │
+              │  - upsert contato + lead          │
+              │  - chama distribuidor             │
+              └────────────┬─────────────────────┘
+                           ▼
+              ┌──────────────────────────────────┐
+              │  whatsapp-cloud-router           │
+              │  1. casa lead com funil/produto  │
+              │     (CTWA, palavra-chave, default)│
+              │  2. dentro do pool elegível,     │
+              │     round-robin do atendente     │
+              │     online com menor carga       │
+              │  3. grava assigned_to no lead    │
+              │  4. dispara handoff:             │
+              │     - msg automática "Oi, sou X" │
+              │       saindo do nº de gerência   │
+              │     - notifica atendente no chat │
+              │       interno + atividade        │
+              │     - opcional: encaminha para a │
+              │       instância UazAPI dele      │
+              └──────────────────────────────────┘
 ```
 
-Leitores normalizam string solta → `[{id, name: 'Padrão', content: string}]`. Sem migration de banco (campo é JSONB livre).
+## O que entra no banco (Externo)
 
----
+Tabela nova `whatsapp_cloud_config` (singleton): phone_number_id, waba_id, display name, status.
 
-## Mudanças
+Tabela `whatsapp_cloud_routing_rules`:
+- `priority int`
+- `match_type` (`funnel`, `product`, `keyword`, `ctwa_ad`, `default`)
+- `match_value text`
+- `eligible_user_ids uuid[]` (pool de atendentes para essa regra)
+- `is_active`
 
-### 1. `src/hooks/useChecklists.ts`
-- Exporta `TemplateVariation` e helper `normalizeMessageTemplates(raw) → Record<fieldKey, TemplateVariation[]>`.
-- Atualiza tipagem de `ChecklistItem.messageTemplates`.
+Tabela `whatsapp_cloud_assignments` (estado do round-robin):
+- `rule_id`
+- `last_assigned_user_id`
+- `last_assigned_at`
 
-### 2. `src/components/workflow/WorkflowBuilder.tsx` — dialog "Modelos de mensagem"
-- Por aba (campo), em vez de uma Textarea única: lista de variações (Nome + Textarea + remover) + botão `+ Adicionar variação`.
-- Salva sempre como array. Se array tem 1 item sem nome, salva como string (compat com dados antigos).
+Mensagens entram nas tabelas existentes `whatsapp_messages` com `instance_name = 'cloud_gerencia'` para reusar inbox, monitor IA, métricas, fila de follow-up, tudo igual.
 
-### 3. `src/hooks/useActivityStepContext.ts` (novo)
-Input: `leadId`, `boardId` (do funil de vendas OU do workflow do processo selecionado).
-Faz:
-- Lê `leads.status` (stage atual) na tabela do banco externo.
-- Busca `lead_checklist_instances` daquele lead/board/stage; pega o primeiro item não concluído como **passo ativo**.
-- Retorna `{ stepLabel, docChecklist, messageTemplates: Record<fieldKey, TemplateVariation[]>, completedCount, totalCount }`.
+## UI (mínima viável — 1 página)
 
-### 4. `src/components/activities/StepTemplatePicker.tsx` (novo)
-Componente puro:
-- Props: `variations: TemplateVariation[]`, `onApply(content)`, `currentValue`.
-- Renderiza chip único OU dropdown conforme contagem.
-- Variáveis dinâmicas (`{{lead_name}}` etc.) **não** são interpoladas aqui — apenas insere texto cru. Interpolação acontece quando a mensagem é enviada (já existe no fluxo).
+`/whatsapp/cloud` — Aba nova dentro do módulo WhatsApp:
+- Card "Status do número" (verde/vermelho, último heartbeat)
+- Botão "Configurar credenciais Meta" (leva ao add_secret)
+- Lista de regras de roteamento (tabela editável)
+- Pool de atendentes online em tempo real
+- Histórico de últimos 50 roteamentos (lead → atendente → quanto tempo levou para 1ª resposta)
 
-### 5. `src/components/activities/StepChecklistButton.tsx` (novo)
-- Botão pequeno com badge `2/5`. Popover/Collapsible mostra os itens com check visual (read-only).
+## Fora do escopo desta primeira entrega
 
-### 6. `src/components/activities/ActivityFormCompact.tsx`
-- Aceita prop `stepContext` opcional.
-- Renderiza `StepChecklistButton` no topo do bloco "Detalhes e Observações" se houver checklist.
-- Renderiza `StepTemplatePicker` acima de cada `RichTextEditor` se houver variações para aquele `field_key`.
+- Templates HSM (mensagens fora de 24h) — entra na fase 2
+- Relatórios de SLA por atendente — fase 2
+- Transferência manual entre atendentes pelo painel — fase 2
+- Migração de instâncias atuais — não acontece, nunca foi pedido
 
-### 7. `src/pages/ActivitiesPage.tsx`
-- Calcula `boardId` ativo (mesma lógica da progress bar: workflow do processo > board do lead).
-- Usa `useActivityStepContext(formLeadId, boardId)` e passa `stepContext` para `<ActivityFormCompact>`.
+## Detalhes técnicos
 
----
+- **Onde roda**: webhook na Railway (regra do projeto: novo webhook = Railway primeiro). Edge functions Lovable só como proxy se necessário.
+- **Validação de assinatura**: HMAC SHA256 com `WHATSAPP_CLOUD_APP_SECRET` no header `X-Hub-Signature-256`. Sem isso = 401.
+- **Identidade da conversa**: `phone` (E.164 sem +) + `instance_name = 'cloud_gerencia'`. Mantém regra do projeto.
+- **Round-robin**: `SELECT FOR UPDATE` na linha do `whatsapp_cloud_assignments` da regra para evitar race condition entre webhooks paralelos.
+- **Fallback**: se nenhuma regra casar, usa regra `default` (admin define o pool).
+- **Sem IA por padrão**: você pediu "distribui atendimentos", não triagem. Não vou plugar WJIA neste número agora — fica como toggle para fase 2.
 
-## O que NÃO muda
+## Etapas de execução
 
-- Tabelas do banco (campo já é JSONB).
-- Lógica de envio ao grupo / interpolação de variáveis.
-- Tela do Funil em si — só o conteúdo do dialog de modelos ganha lista de variações.
-- Layout geral da atividade, header, footer, botões.
+1. Você confirma o plano e responde se já tem os 5 itens dos pré-requisitos.
+2. Crio migrations das 3 tabelas no Externo + valido com `cloud_status`.
+3. Subo webhook no Railway + edge proxy mínima no Lovable + valida verify token com a Meta.
+4. UI `/whatsapp/cloud` com config e regras.
+5. Teste end-to-end: você manda msg para o número → vejo aparecer no inbox → vejo atendente atribuído → confirmo handoff.
 
----
+## Riscos a manter no radar
 
-## Risco / rollback
-
-Mudança puramente de UI + leitura. Schema retrocompatível (string → array normalizado em runtime). Reverter = `git restore` nos 7 arquivos. Sem deploy de função, sem migration.
+- Número não verificável na Meta = bloqueio total. Sem plano B além de trocar de número.
+- Token expira se o System User for removido — precisa estar num System User permanente, não no seu user pessoal.
+- Cloud API tem rate limit por tier (1k conversas/24h no tier inicial). Se o volume previsto for maior, precisa solicitar upgrade na Meta antes de ir pra produção.
