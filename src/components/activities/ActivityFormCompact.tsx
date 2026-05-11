@@ -13,9 +13,10 @@ import { ActivityTTSButton } from '@/components/voice/ActivityTTSButton';
 import { ActivityFieldSettingsDialog } from '@/components/activities/ActivityFieldSettingsDialog';
 import { ActivityMessageTemplateSettings } from '@/components/activities/ActivityMessageTemplateSettings';
 import { ActivityNotesField } from '@/components/activities/ActivityNotesField';
-import { StepTemplatePicker } from '@/components/activities/StepTemplatePicker';
+import { StepTemplatesHub } from '@/components/activities/StepTemplatesHub';
 import { StepChecklistButton } from '@/components/activities/StepChecklistButton';
 import type { ActivityStepContext } from '@/hooks/useActivityStepContext';
+import type { TemplateVariation } from '@/hooks/useChecklists';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
@@ -98,6 +99,7 @@ interface ActivityFormCompactProps {
   supabase: any;
   // Step context (current funnel/process step → templates + checklist)
   stepContext?: ActivityStepContext | null;
+  saveStepFieldTemplates?: (fieldKey: string, variations: TemplateVariation[]) => Promise<boolean>;
   leads: LeadOption[];
 }
 
@@ -661,11 +663,24 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
             if (!entry) return null;
             const [value, setter] = entry;
             const stepVariations = props.stepContext?.messageTemplates?.[field.field_key] || [];
+            const persistField = async (next: TemplateVariation[]) => {
+              if (!props.saveStepFieldTemplates) return false;
+              return props.saveStepFieldTemplates(field.field_key, next);
+            };
+            const hubProps = {
+              fieldLabel: field.label,
+              variations: stepVariations,
+              currentValue: value,
+              onApply: setter,
+              stepLabel: props.stepContext?.stepLabel || null,
+              canPersist: !!(props.stepContext?.templateId && props.saveStepFieldTemplates),
+              onPersist: persistField,
+            };
 
             if (field.field_key === 'notes') {
               return (
                 <div key={field.field_key}>
-                  <StepTemplatePicker variations={stepVariations} currentValue={value} onApply={setter} />
+                  <StepTemplatesHub {...hubProps} />
                   <ActivityNotesField
                     value={value}
                     onChange={setter}
@@ -680,7 +695,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
             return (
               <div key={field.field_key}>
                 <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{field.label}</span>
-                <StepTemplatePicker variations={stepVariations} currentValue={value} onApply={setter} />
+                <StepTemplatesHub {...hubProps} />
                 <div className={expandedFieldKey === field.field_key ? 'hidden' : ''}>
                   <RichTextEditor
                     value={value}
