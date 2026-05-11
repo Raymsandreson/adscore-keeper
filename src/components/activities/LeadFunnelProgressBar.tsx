@@ -117,7 +117,7 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
         const templateIds = [...new Set(allInstances.map(i => i.checklist_template_id))];
         let templateNames: Record<string, string> = {};
         if (templateIds.length > 0) {
-          const { data: templates } = await supabase
+          const { data: templates } = await externalSupabase
             .from('checklist_templates')
             .select('id, name')
             .in('id', templateIds);
