@@ -269,9 +269,10 @@ export function StepTemplatesHub({
           <AlertDialogHeader>
             <AlertDialogTitle>{previewing?.name || 'Modelo'}</AlertDialogTitle>
             <AlertDialogDescription asChild>
-              <div className="text-xs whitespace-pre-wrap max-h-[50vh] overflow-y-auto border rounded-md p-3 bg-muted/30">
-                {previewing ? stripHtml(previewing.content) : ''}
-              </div>
+              <div
+                className="text-xs max-h-[50vh] overflow-y-auto border rounded-md p-3 bg-muted/30 prose prose-sm dark:prose-invert max-w-none"
+                dangerouslySetInnerHTML={{ __html: previewing?.content || '' }}
+              />
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
