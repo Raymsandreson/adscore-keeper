@@ -660,23 +660,27 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
             const entry = valueMap[field.field_key];
             if (!entry) return null;
             const [value, setter] = entry;
+            const stepVariations = props.stepContext?.messageTemplates?.[field.field_key] || [];
 
             if (field.field_key === 'notes') {
               return (
-                <ActivityNotesField
-                  key={field.field_key}
-                  value={value}
-                  onChange={setter}
-                  activityId={props.selectedActivity?.id || null}
-                  placeholder={field.placeholder || 'Notas adicionais...'}
-                  label={field.label}
-                />
+                <div key={field.field_key}>
+                  <StepTemplatePicker variations={stepVariations} currentValue={value} onApply={setter} />
+                  <ActivityNotesField
+                    value={value}
+                    onChange={setter}
+                    activityId={props.selectedActivity?.id || null}
+                    placeholder={field.placeholder || 'Notas adicionais...'}
+                    label={field.label}
+                  />
+                </div>
               );
             }
 
             return (
               <div key={field.field_key}>
                 <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{field.label}</span>
+                <StepTemplatePicker variations={stepVariations} currentValue={value} onApply={setter} />
                 <div className={expandedFieldKey === field.field_key ? 'hidden' : ''}>
                   <RichTextEditor
                     value={value}
