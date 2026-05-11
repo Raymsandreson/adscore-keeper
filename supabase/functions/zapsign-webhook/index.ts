@@ -1296,10 +1296,11 @@ Deno.serve(async (req) => {
             // ====================================================
             // MODE: GROUP — original behavior
             // ====================================================
-            // [SUSPENSO 2026-05-11] Criação automática de grupo desativada a pedido do usuário.
-            // O fluxo manual de checkpoints (onboarding-checkpoint-execute) cria o grupo
-            // somente após confirmação no modal pós-assinatura.
-            if (false && postSignMode === 'group') {
+            // [2026-05-11] Reativado SOMENTE quando a procuração foi gerada a partir
+            // do chat (lead_id + contact_id presentes no documento). Geração avulsa
+            // continua usando o fluxo manual de checkpoints.
+            const isFromChatConversation = !!(localDoc.lead_id && localDoc.contact_id)
+            if (isFromChatConversation && postSignMode === 'group') {
               const action = leadForBoard.whatsapp_group_id ? 'reusing/renaming' : 'creating'
               console.log(`[zapsign-webhook] ${action} group for lead ${localDoc.lead_id}`)
 
@@ -1441,9 +1442,9 @@ Deno.serve(async (req) => {
     // O bloco anterior já cobriu o caso `post_sign_mode = 'group'`; aqui
     // tratamos somente leads que ficaram sem grupo após aquele bloco.
     // ====================================================
-    // [SUSPENSO 2026-05-11] Fallback de criação automática de grupo desativado.
-    // Grupos só são criados via fluxo manual (checkpoint create_group).
-    if (false && isDocFullySigned && localDoc.lead_id && localDoc.whatsapp_phone) {
+    // [2026-05-11] Fallback reativado SOMENTE quando o documento veio do chat
+    // (lead_id + contact_id presentes). Sem isso, segue manual via checkpoint.
+    if (isDocFullySigned && localDoc.lead_id && localDoc.contact_id && localDoc.whatsapp_phone) {
       try {
         const { data: leadForGroup } = await supabase
           .from('leads')
