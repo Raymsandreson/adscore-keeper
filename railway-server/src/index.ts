@@ -16,6 +16,7 @@ import { handler as onboardingCheckpointExecute } from './functions/onboarding-c
 import { handler as regenerateLeadName } from './functions/regenerate-lead-name';
 import { handler as leadCloseSequenceInfo } from './functions/lead-close-sequence-info';
 import { handler as onboardingCheckpointReprocess } from './functions/onboarding-checkpoint-reprocess';
+import { handler as whatsappCloudWebhook } from './functions/whatsapp-cloud-webhook';
 
 const functionHandlers: Record<string, express.RequestHandler> = {
   'whatsapp-webhook': whatsappWebhook,
@@ -120,6 +121,12 @@ app.post('/webhooks/zapsign', async (req, res) => {
     console.error('[webhooks/zapsign] post-sign extras error:', err);
   }
 });
+
+// Webhook público da WhatsApp Cloud API (Meta).
+// GET = verify challenge (Meta), POST = eventos.
+// Rota pública, validação por X-Hub-Signature-256 dentro do handler.
+app.get('/webhooks/whatsapp-cloud', (req, res) => whatsappCloudWebhook(req, res));
+app.post('/webhooks/whatsapp-cloud', (req, res) => whatsappCloudWebhook(req, res));
 
 // Start
 app.listen(PORT, () => {
