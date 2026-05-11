@@ -2,10 +2,13 @@ import { useState } from 'react';
 import { Sparkles, ChevronDown, Pencil, Trash2, Plus, Eye, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+  SheetTrigger,
+} from '@/components/ui/sheet';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -158,8 +161,8 @@ export function StepTemplatesHub({
   return (
     <>
       <div className="flex items-center gap-1 mt-0.5 mb-1">
-        <Popover open={open} onOpenChange={setOpen}>
-          <PopoverTrigger asChild>
+        <Sheet open={open} onOpenChange={setOpen}>
+          <SheetTrigger asChild>
             <Button
               variant="outline"
               size="sm"
@@ -169,58 +172,60 @@ export function StepTemplatesHub({
               {count === 0 ? 'Modelos do passo' : `${count} ${count === 1 ? 'modelo' : 'modelos'} do passo`}
               <ChevronDown className="h-2.5 w-2.5" />
             </Button>
-          </PopoverTrigger>
-          <PopoverContent align="start" className="w-96 p-0 max-h-[60vh] overflow-hidden flex flex-col">
-            <div className="px-3 py-2 border-b flex items-center justify-between gap-2">
-              <div className="min-w-0">
-                <div className="text-xs font-medium truncate">Modelos · {fieldLabel}</div>
-                {stepLabel && (
-                  <div className="text-[10px] text-muted-foreground truncate">Passo: {stepLabel}</div>
+          </SheetTrigger>
+          <SheetContent side="right" className="w-full sm:max-w-md p-0 flex flex-col gap-0">
+            <SheetHeader className="px-4 py-3 border-b space-y-1">
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0 text-left">
+                  <SheetTitle className="text-sm truncate">Modelos · {fieldLabel}</SheetTitle>
+                  {stepLabel && (
+                    <SheetDescription className="text-[11px] truncate">Passo: {stepLabel}</SheetDescription>
+                  )}
+                </div>
+                {!creating && !editing && (
+                  <Button size="sm" variant="ghost" className="h-7 text-[11px] gap-1 shrink-0" onClick={startCreate}>
+                    <Plus className="h-3 w-3" /> Novo
+                  </Button>
                 )}
               </div>
-              {!creating && !editing && (
-                <Button size="sm" variant="ghost" className="h-7 text-[11px] gap-1" onClick={startCreate}>
-                  <Plus className="h-3 w-3" /> Novo
-                </Button>
-              )}
-            </div>
+            </SheetHeader>
 
             <div className="flex-1 overflow-y-auto">
               {(creating || editing) ? (
-                <div className="p-3 space-y-2">
+                <div className="p-4 space-y-2">
                   <Input
                     value={draftName}
                     onChange={e => setDraftName(e.target.value)}
                     placeholder="Nome do modelo (ex: Padrão, Formal, Curta...)"
-                    className="h-8 text-xs"
+                    className="h-9 text-sm"
                     autoFocus
                   />
                   <Textarea
                     value={draftContent}
                     onChange={e => setDraftContent(e.target.value)}
                     placeholder="Conteúdo do modelo. Pode usar variáveis como {{lead_name}}."
-                    rows={6}
-                    className="text-xs"
+                    rows={10}
+                    className="text-sm"
                   />
                   <div className="flex justify-end gap-2 pt-1">
-                    <Button size="sm" variant="ghost" className="h-7 text-[11px]" onClick={cancelDraft}>
+                    <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={cancelDraft}>
                       Cancelar
                     </Button>
-                    <Button size="sm" className="h-7 text-[11px]" onClick={submitDraft} disabled={!draftContent.trim()}>
+                    <Button size="sm" className="h-8 text-xs" onClick={submitDraft} disabled={!draftContent.trim()}>
                       <Check className="h-3 w-3 mr-1" />
                       {creating ? 'Criar' : 'Salvar alterações'}
                     </Button>
                   </div>
                 </div>
               ) : variations.length === 0 ? (
-                <div className="p-6 text-center text-[11px] text-muted-foreground">
+                <div className="p-6 text-center text-xs text-muted-foreground">
                   Nenhum modelo cadastrado para este passo.<br />
                   Clique em <strong>Novo</strong> para criar.
                 </div>
               ) : (
                 <ul className="divide-y">
                   {variations.map((v, i) => (
-                    <li key={v.id || i} className="px-3 py-2 hover:bg-muted/40">
+                    <li key={v.id || i} className="px-4 py-3 hover:bg-muted/40">
                       <div className="flex items-start justify-between gap-2">
                         <button
                           type="button"
@@ -228,23 +233,23 @@ export function StepTemplatesHub({
                           onClick={() => setPreviewing(v)}
                           title="Pré-visualizar"
                         >
-                          <div className="text-xs font-medium truncate">{v.name || `Variação ${i + 1}`}</div>
-                          <div className="text-[10px] text-muted-foreground line-clamp-2 whitespace-normal">
-                            {stripHtml(v.content).slice(0, 140)}
-                            {v.content.length > 140 ? '…' : ''}
+                          <div className="text-sm font-medium truncate">{v.name || `Variação ${i + 1}`}</div>
+                          <div className="text-xs text-muted-foreground line-clamp-3 whitespace-normal">
+                            {stripHtml(v.content).slice(0, 200)}
+                            {v.content.length > 200 ? '…' : ''}
                           </div>
                         </button>
                         <div className="flex items-center gap-0.5 shrink-0">
-                          <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => setPreviewing(v)} title="Pré-visualizar">
-                            <Eye className="h-3 w-3" />
+                          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setPreviewing(v)} title="Pré-visualizar">
+                            <Eye className="h-3.5 w-3.5" />
                           </Button>
                           {canPersist && (
                             <>
-                              <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => startEdit(v)} title="Editar">
-                                <Pencil className="h-3 w-3" />
+                              <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => startEdit(v)} title="Editar">
+                                <Pencil className="h-3.5 w-3.5" />
                               </Button>
-                              <Button size="icon" variant="ghost" className="h-6 w-6 text-destructive" onClick={() => removeVariation(v)} title="Remover">
-                                <Trash2 className="h-3 w-3" />
+                              <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => removeVariation(v)} title="Remover">
+                                <Trash2 className="h-3.5 w-3.5" />
                               </Button>
                             </>
                           )}
@@ -255,8 +260,8 @@ export function StepTemplatesHub({
                 </ul>
               )}
             </div>
-          </PopoverContent>
-        </Popover>
+          </SheetContent>
+        </Sheet>
       </div>
 
       {/* Pré-visualização */}
