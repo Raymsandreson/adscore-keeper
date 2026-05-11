@@ -96,14 +96,14 @@ export const invalidateLeadFunnelOverviewCache = (leadId: string, boardId: strin
   funnelRequests.delete(cacheKey);
 };
 
-export function LeadFunnelOverview({ leadId, boardId, currentStageId, boards = [], isClosed }: LeadFunnelOverviewProps) {
+export function LeadFunnelOverview({ leadId, boardId, currentStageId, boards = [], isClosed, hideStagesList, autoExpandStageId, onHeaderClick }: LeadFunnelOverviewProps) {
   const { fetchLeadInstances, updateInstanceItem, createLeadInstances } = useChecklists();
   const cacheKey = `${leadId}:${boardId || ''}:${currentStageId || ''}`;
   const cached = funnelCache.get(cacheKey);
   const [instances, setInstances] = useState<LeadChecklistInstance[]>(() => cached?.instances || []);
   const [templateNames, setTemplateNames] = useState<Record<string, { name: string; is_mandatory: boolean }>>(() => cached?.templateNames || {});
   const [loading, setLoading] = useState(() => !cached);
-  const [expandedStages, setExpandedStages] = useState<Set<string>>(new Set());
+  const [expandedStages, setExpandedStages] = useState<Set<string>>(() => autoExpandStageId ? new Set([autoExpandStageId]) : new Set());
   const [fallbackBoard, setFallbackBoard] = useState<KanbanBoard | null>(null);
 
   const board = boards.find(b => b.id === boardId) || fallbackBoard;
