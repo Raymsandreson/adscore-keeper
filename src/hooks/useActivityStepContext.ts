@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { db as supabase } from '@/integrations/supabase';
 import { toast } from 'sonner';
 import {
@@ -9,31 +9,40 @@ import {
   serializeMessageTemplates,
 } from './useChecklists';
 
+export interface StepOption {
+  stepId: string;
+  stepLabel: string;
+  phaseId: string;
+  phaseLabel: string | null;
+  objectiveLabel: string | null;
+  templateId: string;
+  instanceId: string;
+  checked: boolean;
+}
+
 export interface ActivityStepContext {
   stepId: string;
   stepLabel: string;
   phaseLabel: string | null;
   objectiveLabel: string | null;
   docChecklist: DocChecklistItem[];
-  messageTemplates: Record<string, TemplateVariation[]>; // por field_key
+  messageTemplates: Record<string, TemplateVariation[]>;
   totalCount: number;
   completedCount: number;
-  // Origem da persistência (necessária para salvar novos modelos no passo)
   templateId: string | null;
   boardId: string | null;
   stageId: string | null;
+  // Lista completa de passos do lead nesse board (para troca de passo)
+  allSteps: StepOption[];
 }
 
-/**
- * Resolve o "passo atual" de uma atividade a partir do lead + board (funil ou
- * workflow do processo). Retorna o primeiro passo não concluído da instância
- * de checklist que combina com o stage atual do lead.
- */
 export function useActivityStepContext(
   leadId: string | null | undefined,
   boardId: string | null | undefined,
 ) {
-  const [ctx, setCtx] = useState<ActivityStepContext | null>(null);
+  const [allSteps, setAllSteps] = useState<StepOption[]>([]);
+  const [defaultStepId, setDefaultStepId] = useState<string | null>(null);
+  const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [reloadTick, setReloadTick] = useState(0);
 
@@ -41,91 +50,154 @@ export function useActivityStepContext(
 
   useEffect(() => {
     if (!leadId || !boardId) {
-      setCtx(null);
+      setAllSteps([]);
+      setDefaultStepId(null);
+      setSelectedStepId(null);
       return;
     }
     let cancelled = false;
     (async () => {
       setLoading(true);
       try {
-        const { data: leadData } = await supabase
-          .from('leads')
-          .select('status')
-          .eq('id', leadId)
-          .maybeSingle();
-        const stageId = (leadData as { status?: string } | null)?.status;
-        if (!stageId) {
-          if (!cancelled) setCtx(null);
+        // Carrega o board (para nomes de fases) e todas as instâncias do lead nesse board
+        const [boardRes, instancesRes, leadRes] = await Promise.all([
+          supabase.from('kanban_boards').select('stages').eq('id', boardId).maybeSingle(),
+          supabase
+            .from('lead_checklist_instances')
+            .select('items, checklist_template_id, stage_id, id')
+            .eq('lead_id', leadId)
+            .eq('board_id', boardId)
+            .order('created_at', { ascending: true }),
+          supabase.from('leads').select('status').eq('id', leadId).maybeSingle(),
+        ]);
+
+        const stages = ((boardRes.data as any)?.stages || []) as Array<{ id: string; name: string }>;
+        const stageNameById: Record<string, string> = {};
+        stages.forEach(s => { stageNameById[s.id] = s.name; });
+        const currentStageId = (leadRes.data as any)?.status || null;
+
+        const instances = (instancesRes.data || []) as any[];
+        if (instances.length === 0) {
+          if (!cancelled) {
+            setAllSteps([]);
+            setDefaultStepId(null);
+          }
           return;
         }
 
-        const { data: instances } = await supabase
-          .from('lead_checklist_instances')
-          .select('items, is_completed, checklist_template_id')
-          .eq('lead_id', leadId)
-          .eq('board_id', boardId)
-          .eq('stage_id', stageId)
-          .order('created_at', { ascending: true });
-
-        if (!instances || instances.length === 0) {
-          if (!cancelled) setCtx(null);
-          return;
+        // Resolve nomes dos templates (objetivos)
+        const templateIds = [...new Set(instances.map(i => i.checklist_template_id).filter(Boolean))];
+        let templateNames: Record<string, string> = {};
+        if (templateIds.length > 0) {
+          const { data: tpls } = await supabase
+            .from('checklist_templates')
+            .select('id, name')
+            .in('id', templateIds);
+          (tpls || []).forEach((t: any) => { templateNames[t.id] = t.name; });
         }
 
-        // Achata todos os itens (passos) das instâncias e mantém origem
-        const allSteps: { item: ChecklistItem; templateId: string }[] = [];
+        // Achata todos os passos
+        const steps: StepOption[] = [];
         for (const inst of instances) {
-          const items = (inst.items as unknown as ChecklistItem[]) || [];
+          const items = ((inst.items as ChecklistItem[]) || []);
           for (const it of items) {
-            allSteps.push({ item: it, templateId: (inst as any).checklist_template_id });
+            steps.push({
+              stepId: it.id,
+              stepLabel: it.label,
+              phaseId: inst.stage_id,
+              phaseLabel: stageNameById[inst.stage_id] || null,
+              objectiveLabel: templateNames[inst.checklist_template_id] || null,
+              templateId: inst.checklist_template_id,
+              instanceId: inst.id,
+              checked: !!it.checked,
+            });
           }
         }
-        if (allSteps.length === 0) {
-          if (!cancelled) setCtx(null);
-          return;
-        }
-        const completedCount = allSteps.filter(s => s.item.checked).length;
-        const active = allSteps.find(s => !s.item.checked) || allSteps[allSteps.length - 1];
 
-        // Resolve fase (stage do board) e objetivo (template do passo ativo)
-        const [boardRes, templateRes] = await Promise.all([
-          supabase.from('kanban_boards').select('stages').eq('id', boardId).maybeSingle(),
-          supabase.from('checklist_templates').select('name').eq('id', active.templateId).maybeSingle(),
-        ]);
-        const stages = ((boardRes.data as any)?.stages || []) as Array<{ id: string; name: string }>;
-        const phaseLabel = stages.find(s => s.id === stageId)?.name || null;
-        const objectiveLabel = (templateRes.data as any)?.name || null;
+        // Default = primeiro não-concluído da fase atual; senão primeiro não-concluído geral; senão último
+        let defId: string | null = null;
+        if (currentStageId) {
+          defId = steps.find(s => s.phaseId === currentStageId && !s.checked)?.stepId || null;
+        }
+        if (!defId) defId = steps.find(s => !s.checked)?.stepId || null;
+        if (!defId && steps.length > 0) defId = steps[steps.length - 1].stepId;
 
         if (!cancelled) {
-          setCtx({
-            stepId: active.item.id,
-            stepLabel: active.item.label,
-            phaseLabel,
-            objectiveLabel,
-            docChecklist: active.item.docChecklist || [],
-            messageTemplates: normalizeMessageTemplates(active.item.messageTemplates),
-            totalCount: allSteps.length,
-            completedCount,
-            templateId: active.templateId,
-            boardId,
-            stageId,
-          });
+          setAllSteps(steps);
+          setDefaultStepId(defId);
         }
       } catch (err) {
         console.warn('[useActivityStepContext]', err);
-        if (!cancelled) setCtx(null);
+        if (!cancelled) {
+          setAllSteps([]);
+          setDefaultStepId(null);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
     })();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [leadId, boardId, reloadTick]);
 
+  // Reset seleção manual ao trocar de lead/board
+  useEffect(() => { setSelectedStepId(null); }, [leadId, boardId]);
+
+  // Resolve passo ativo — manual ou default
+  const activeStep = useMemo<StepOption | null>(() => {
+    if (allSteps.length === 0) return null;
+    const id = selectedStepId || defaultStepId;
+    return allSteps.find(s => s.stepId === id) || allSteps[0];
+  }, [allSteps, selectedStepId, defaultStepId]);
+
+  // Carrega docChecklist + messageTemplates do passo ativo (precisa ler items da instância)
+  const [activeDetails, setActiveDetails] = useState<{
+    docChecklist: DocChecklistItem[];
+    messageTemplates: Record<string, TemplateVariation[]>;
+  }>({ docChecklist: [], messageTemplates: {} });
+
+  useEffect(() => {
+    if (!activeStep) {
+      setActiveDetails({ docChecklist: [], messageTemplates: {} });
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from('lead_checklist_instances')
+        .select('items')
+        .eq('id', activeStep.instanceId)
+        .maybeSingle();
+      const items = ((data?.items as unknown as ChecklistItem[]) || []);
+      const it = items.find(i => i.id === activeStep.stepId);
+      if (cancelled) return;
+      setActiveDetails({
+        docChecklist: it?.docChecklist || [],
+        messageTemplates: normalizeMessageTemplates(it?.messageTemplates),
+      });
+    })();
+    return () => { cancelled = true; };
+  }, [activeStep, reloadTick]);
+
+  const ctx = useMemo<ActivityStepContext | null>(() => {
+    if (!activeStep) return null;
+    return {
+      stepId: activeStep.stepId,
+      stepLabel: activeStep.stepLabel,
+      phaseLabel: activeStep.phaseLabel,
+      objectiveLabel: activeStep.objectiveLabel,
+      docChecklist: activeDetails.docChecklist,
+      messageTemplates: activeDetails.messageTemplates,
+      totalCount: allSteps.length,
+      completedCount: allSteps.filter(s => s.checked).length,
+      templateId: activeStep.templateId,
+      boardId: boardId || null,
+      stageId: activeStep.phaseId,
+      allSteps,
+    };
+  }, [activeStep, activeDetails, allSteps, boardId]);
+
   /**
-   * Persiste as variações de um campo (field_key) do passo atual diretamente
-   * no `checklist_templates.items[*].messageTemplates[fieldKey]`.
+   * Persiste as variações de um campo do passo ATIVO no template e na instância.
    */
   const saveStepFieldTemplates = useCallback(
     async (fieldKey: string, variations: TemplateVariation[]) => {
@@ -142,7 +214,7 @@ export function useActivityStepContext(
             return { ...it, messageTemplates: serializeMessageTemplates(current) };
           });
 
-        // 1) Atualiza o TEMPLATE (fonte) — afeta novos leads
+        // 1) Atualiza o TEMPLATE
         const { data: tpl, error: fetchErr } = await supabase
           .from('checklist_templates')
           .select('items')
@@ -157,7 +229,7 @@ export function useActivityStepContext(
           .eq('id', ctx.templateId);
         if (updErr) throw updErr;
 
-        // 2) Atualiza a INSTÂNCIA ativa do lead (snapshot que a UI lê)
+        // 2) Atualiza a INSTÂNCIA do lead correspondente
         if (leadId && ctx.boardId && ctx.stageId) {
           const { data: instances } = await supabase
             .from('lead_checklist_instances')
@@ -165,7 +237,6 @@ export function useActivityStepContext(
             .eq('lead_id', leadId)
             .eq('board_id', ctx.boardId)
             .eq('stage_id', ctx.stageId);
-
           for (const inst of instances || []) {
             if ((inst as any).checklist_template_id !== ctx.templateId) continue;
             const newInstItems = patchItems((inst as any).items as ChecklistItem[]);
@@ -188,5 +259,12 @@ export function useActivityStepContext(
     [ctx, leadId, reload],
   );
 
-  return { stepContext: ctx, loading, reload, saveStepFieldTemplates };
+  return {
+    stepContext: ctx,
+    loading,
+    reload,
+    saveStepFieldTemplates,
+    selectedStepId: activeStep?.stepId || null,
+    setSelectedStepId,
+  };
 }
