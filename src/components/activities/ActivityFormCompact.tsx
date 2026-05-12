@@ -294,6 +294,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
   const [linkLeadOpen, setLinkLeadOpen] = useState(false);
   const [linkContactOpen, setLinkContactOpen] = useState(false);
   const [linkCaseOpen, setLinkCaseOpen] = useState(false);
+  const [processPopoverOpen, setProcessPopoverOpen] = useState(false);
   const [editProcessData, setEditProcessData] = useState<any>(null);
   const [loadingProcessEdit, setLoadingProcessEdit] = useState(false);
 
