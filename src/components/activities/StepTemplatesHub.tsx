@@ -119,6 +119,42 @@ export function StepTemplatesHub({
     setDraftContent('');
   };
 
+  const generateWithAI = async () => {
+    if (aiLoading) return;
+    setAiLoading(true);
+    try {
+      const { data, error } = await cloudFunctions.invoke('suggest-message-template', {
+        body: {
+          fieldLabel,
+          phaseLabel: phaseLabel || null,
+          objectiveLabel: objectiveLabel || null,
+          stepLabel: stepLabel || null,
+          existingNames: variations.map(v => v.name).filter(Boolean),
+        },
+      });
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Falha ao gerar sugestão');
+      const content = String(data.content || '').trim();
+      if (!content) throw new Error('A IA não retornou conteúdo');
+      // Converte quebras de linha simples para HTML do RichTextEditor
+      const html = content
+        .split(/\n{2,}/)
+        .map(p => `<p>${p.replace(/\n/g, '<br/>')}</p>`)
+        .join('');
+      setCreating(true);
+      setEditing(null);
+      setDraftName(String(data.name || `Sugestão IA — ${stepLabel || fieldLabel}`).slice(0, 60));
+      setDraftContent(html);
+      toast.success('Sugestão gerada! Revise e salve.');
+    } catch (err: any) {
+      console.error('[StepTemplatesHub:generateWithAI]', err);
+      toast.error(err?.message || 'Erro ao gerar sugestão com IA');
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+
   const startEdit = (v: TemplateVariation) => {
     setEditing(v);
     setCreating(false);
