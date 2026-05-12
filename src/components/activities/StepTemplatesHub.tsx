@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { Sparkles, ChevronDown, Pencil, Trash2, Plus, Eye, Check } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Sparkles, ChevronDown, Pencil, Trash2, Plus, Eye, Check, CircleCheck, Circle } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import {
   Sheet,
