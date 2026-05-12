@@ -294,6 +294,32 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
   const [linkLeadOpen, setLinkLeadOpen] = useState(false);
   const [linkContactOpen, setLinkContactOpen] = useState(false);
   const [linkCaseOpen, setLinkCaseOpen] = useState(false);
+  const [editProcessData, setEditProcessData] = useState<any>(null);
+  const [loadingProcessEdit, setLoadingProcessEdit] = useState(false);
+
+  const openProcessEditor = async (processId: string) => {
+    if (!processId) return;
+    setLoadingProcessEdit(true);
+    try {
+      await ensureExternalSession();
+      const { data, error } = await externalSupabase
+        .from('lead_processes')
+        .select('*, legal_cases(case_number, title)')
+        .eq('id', processId)
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) {
+        toast.error('Processo não encontrado');
+        return;
+      }
+      setEditProcessData(data);
+    } catch (e: any) {
+      console.error(e);
+      toast.error('Erro ao abrir processo: ' + (e.message || ''));
+    } finally {
+      setLoadingProcessEdit(false);
+    }
+  };
 
   return (
     <div className="space-y-3">
