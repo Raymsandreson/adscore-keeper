@@ -3084,16 +3084,15 @@ const ActivitiesPage = () => {
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="start" className="w-48">
                       {selectedActivity?.id && (
-                        <DropdownMenuItem asChild>
-                          <div className="p-0">
-                            <TeamChatButton
-                              entityType="activity"
-                              entityId={selectedActivity.id}
-                              entityName={selectedActivity.title}
-                              variant="full"
-                              className="h-8 w-full justify-start text-xs px-2"
-                            />
-                          </div>
+                        <DropdownMenuItem
+                          className="text-xs"
+                          onSelect={(e) => {
+                            // Evita que o fechamento do menu desmonte o Sheet
+                            e.preventDefault();
+                            setTeamChatOpen(true);
+                          }}
+                        >
+                          <Users className="h-3.5 w-3.5 mr-2" /> Chat Equipe
                         </DropdownMenuItem>
                       )}
                       <DropdownMenuItem onClick={() => setChatOpen(true)} className="text-xs">
