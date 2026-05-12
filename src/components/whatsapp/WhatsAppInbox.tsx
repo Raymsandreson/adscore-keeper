@@ -321,6 +321,9 @@ export function WhatsAppInbox() {
   const [showAiPreview, setShowAiPreview] = useState(false);
   // Bulk selection state
   const [bulkMode, setBulkMode] = useState(false);
+  const [sharedPanelOpen, setSharedPanelOpen] = useState(false);
+  const { items: sharedWithMe } = useSharedWithMe();
+  const sharedUnread = sharedWithMe.filter(s => !s.acknowledged_at).length;
   const [bulkSelectedPhones, setBulkSelectedPhones] = useState<Set<string>>(new Set());
   const [showBulkDialog, setShowBulkDialog] = useState(false);
 
