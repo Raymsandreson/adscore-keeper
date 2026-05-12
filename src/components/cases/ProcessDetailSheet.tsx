@@ -936,7 +936,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full sm:max-w-lg p-0 flex flex-col">
+      <SheetContent className="w-full sm:max-w-2xl p-0 flex flex-col">
         <div className="sr-only"><SheetHeader><SheetTitle>Detalhes do Processo</SheetTitle></SheetHeader></div>
         {innerContent}
       </SheetContent>
