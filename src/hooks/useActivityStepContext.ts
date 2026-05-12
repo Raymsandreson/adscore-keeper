@@ -87,10 +87,21 @@ export function useActivityStepContext(
         const completedCount = allSteps.filter(s => s.item.checked).length;
         const active = allSteps.find(s => !s.item.checked) || allSteps[allSteps.length - 1];
 
+        // Resolve fase (stage do board) e objetivo (template do passo ativo)
+        const [boardRes, templateRes] = await Promise.all([
+          supabase.from('kanban_boards').select('stages').eq('id', boardId).maybeSingle(),
+          supabase.from('checklist_templates').select('name').eq('id', active.templateId).maybeSingle(),
+        ]);
+        const stages = ((boardRes.data as any)?.stages || []) as Array<{ id: string; name: string }>;
+        const phaseLabel = stages.find(s => s.id === stageId)?.name || null;
+        const objectiveLabel = (templateRes.data as any)?.name || null;
+
         if (!cancelled) {
           setCtx({
             stepId: active.item.id,
             stepLabel: active.item.label,
+            phaseLabel,
+            objectiveLabel,
             docChecklist: active.item.docChecklist || [],
             messageTemplates: normalizeMessageTemplates(active.item.messageTemplates),
             totalCount: allSteps.length,
