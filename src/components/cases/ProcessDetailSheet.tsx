@@ -609,6 +609,14 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
         </div>
       </div>
 
+      {/* Tab navigation */}
+      <div className="shrink-0 border-b">
+        <ScrollArea className="w-full">
+          <div className="flex gap-0.5 px-2 py-1.5 overflow-x-auto">
+            {TABS.map(tab => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+              if (tab.id === 'envolvidos' && envolvidos.length === 0 && audiencias.length === 0 && processosRelacionados.length === 0) return null;
               return (
                 <button
                   key={tab.id}
