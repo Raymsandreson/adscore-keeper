@@ -180,6 +180,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
   const [documents, setDocuments] = useState<ProcessDocument[]>([]);
   const [loadingDocuments, setLoadingDocuments] = useState(false);
   const [fetchingEscavadorDocs, setFetchingEscavadorDocs] = useState(false);
+  const [generatingSummary, setGeneratingSummary] = useState(false);
   const [workflowBoards, setWorkflowBoards] = useState<{ id: string; name: string }[]>([]);
 
   useEffect(() => {
@@ -196,8 +197,11 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
 
   useEffect(() => {
     if (process) {
-      setForm({ ...process });
-      setDirty(false);
+      setForm({
+        ...process,
+        fee_percentage: process.fee_percentage ?? 30,
+      });
+      setDirty(process.fee_percentage == null); // marca dirty se aplicou default
       setActiveTab('partes');
       setActivities([]);
       setDocuments([]);
@@ -336,38 +340,15 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
       if (!data.success) throw new Error(data.error);
 
       const result = data.data;
-      const fonte = result.fontes?.[0];
-      const capa = fonte?.capa || {};
-      const valorCausa = capa?.valor_causa || {};
-
-      const updates: Record<string, any> = {
-        polo_ativo: result.titulo_polo_ativo || form.polo_ativo,
-        polo_passivo: result.titulo_polo_passivo || form.polo_passivo,
-        ano_inicio: result.ano_inicio || form.ano_inicio,
-        tribunal: fonte?.tribunal?.nome || fonte?.nome || form.tribunal,
-        tribunal_sigla: fonte?.tribunal?.sigla || fonte?.sigla || form.tribunal_sigla,
-        grau: fonte?.grau_formatado || fonte?.grau || form.grau,
-        classe: capa?.classe || fonte?.classe?.nome || form.classe,
-        area: capa?.area || fonte?.area?.nome || form.area,
-        assuntos: capa?.assuntos_normalizados?.map((a: any) => a.nome) || fonte?.assuntos?.map((a: any) => a.nome) || form.assuntos,
-        valor_causa: valorCausa?.valor ? parseFloat(valorCausa.valor) : form.valor_causa,
-        valor_causa_formatado: valorCausa?.valor_formatado || form.valor_causa_formatado,
-        situacao: capa?.situacao || fonte?.situacao || form.situacao,
-        data_distribuicao: capa?.data_distribuicao || form.data_distribuicao,
-        envolvidos: fonte?.envolvidos || form.envolvidos,
-        movimentacoes: result.movimentacoes_detalhadas || fonte?.movimentacoes || form.movimentacoes,
-        escavador_raw: result,
-      };
-
-      await externalSupabase.from('lead_processes').update(updates).eq('id', process.id);
-      setForm(prev => ({ ...prev, ...updates }));
-      setDirty(false);
-      onUpdated?.();
-      toast.success('Dados atualizados do Escavador com sucesso');
+      // grava o raw e roda extração completa
+      await externalSupabase.from('lead_processes').update({ escavador_raw: result }).eq('id', process.id);
+      setForm(prev => ({ ...prev, escavador_raw: result }));
+      // delega extração para handleReExtract (já cobre todos os campos)
+      // pequeno delay para garantir que setForm propagou
+      setTimeout(() => handleReExtract(), 50);
     } catch (err: any) {
       console.error('Fetch from API error:', err);
       toast.error(err.message || 'Erro ao buscar no Escavador');
-    } finally {
       setSaving(false);
     }
   };
@@ -843,8 +824,67 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
 
             {activeTab === 'notas' && (
               <>
-                <EditableTextarea label="Descrição" value={form.description || ''} onChange={v => set('description', v)} />
-                <EditableTextarea label="Notas" value={form.notes || ''} onChange={v => set('notes', v)} />
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-semibold flex items-center gap-1.5">
+                    <FileText className="h-3.5 w-3.5 text-primary" />
+                    Resumo & Notas do Processo
+                  </h4>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={generatingSummary}
+                    onClick={async () => {
+                      setGeneratingSummary(true);
+                      try {
+                        const movs = Array.isArray(form.movimentacoes) ? form.movimentacoes.slice(0, 30) : [];
+                        const movsTxt = movs.map((m: any, i: number) =>
+                          `${i + 1}. [${m.data || m.data_hora || '?'}] ${m.tipo || ''} — ${(m.conteudo || m.titulo || m.descricao || '').toString().slice(0, 200)}`
+                        ).join('\n');
+                        const ctx = [
+                          `Nº Processo: ${form.process_number || '—'}`,
+                          `Classe: ${form.classe || '—'}`,
+                          `Assunto: ${form.assunto_principal || (Array.isArray(form.assuntos) ? form.assuntos.join(', ') : '—')}`,
+                          `Órgão Julgador: ${form.orgao_julgador || '—'}`,
+                          `Tribunal: ${form.tribunal || ''} ${form.tribunal_sigla || ''}`,
+                          `Polo Ativo: ${form.polo_ativo || '—'}`,
+                          `Polo Passivo: ${form.polo_passivo || '—'}`,
+                          `Valor da Causa: ${form.valor_causa_formatado || form.valor_causa || '—'}`,
+                          `Situação: ${form.situacao || '—'}`,
+                          `Data Distribuição: ${form.data_distribuicao || '—'}`,
+                          `Última Movimentação: ${form.data_ultima_movimentacao || '—'}`,
+                          movsTxt ? `\nÚltimas movimentações:\n${movsTxt}` : '',
+                        ].join('\n');
+
+                        const { data, error } = await cloudFunctions.invoke('ai-text-editor', {
+                          body: {
+                            text: ctx,
+                            action: 'custom',
+                            custom_prompt: 'Faça um RESUMO JURÍDICO claro e objetivo deste processo em português brasileiro, com no máximo 8 linhas. Inclua: do que se trata, em que fase está, quais foram as últimas movimentações relevantes e qual o próximo passo provável. Linguagem direta, sem juridiquês excessivo. Retorne apenas o texto do resumo.',
+                          },
+                        });
+                        if (error) throw error;
+                        let summary = '';
+                        if (data?.options?.[0]) summary = data.options[0];
+                        else if (typeof data === 'string') summary = data;
+                        else if (data?.text) summary = data.text;
+                        if (!summary) throw new Error('Resposta da IA vazia');
+                        set('description', summary);
+                        toast.success('Resumo gerado por IA');
+                      } catch (err: any) {
+                        console.error('AI summary error:', err);
+                        toast.error('Erro ao gerar resumo: ' + (err.message || ''));
+                      } finally {
+                        setGeneratingSummary(false);
+                      }
+                    }}
+                    className="h-7 text-xs gap-1"
+                  >
+                    {generatingSummary ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                    Gerar resumo (IA)
+                  </Button>
+                </div>
+                <EditableTextarea label="Resumo / Descrição" value={form.description || ''} onChange={v => set('description', v)} />
+                <EditableTextarea label="Notas Internas" value={form.notes || ''} onChange={v => set('notes', v)} />
               </>
             )}
 
@@ -936,7 +976,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full sm:max-w-lg p-0 flex flex-col">
+      <SheetContent className="w-full sm:max-w-2xl p-0 flex flex-col">
         <div className="sr-only"><SheetHeader><SheetTitle>Detalhes do Processo</SheetTitle></SheetHeader></div>
         {innerContent}
       </SheetContent>
