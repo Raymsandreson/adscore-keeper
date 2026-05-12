@@ -126,7 +126,7 @@ export const useChecklists = () => {
   const [templates, setTemplates] = useState<ChecklistTemplate[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const fetchTemplates = useCallback(async () => {
+  const fetchTemplates = useCallback(async (): Promise<ChecklistTemplate[]> => {
     setLoading(true);
     try {
       const { data, error } = await supabase
@@ -136,12 +136,15 @@ export const useChecklists = () => {
 
       if (error) throw error;
 
-      setTemplates((data || []).map(t => ({
+      const parsed = (data || []).map(t => ({
         ...t,
         items: (t.items as unknown as ChecklistItem[]) || [],
-      })));
+      })) as ChecklistTemplate[];
+      setTemplates(parsed);
+      return parsed;
     } catch (error) {
       console.error('Error fetching checklist templates:', error);
+      return [];
     } finally {
       setLoading(false);
     }
