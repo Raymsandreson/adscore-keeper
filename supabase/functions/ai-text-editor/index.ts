@@ -60,8 +60,8 @@ Retorne no formato JSON puro (sem markdown, sem backticks):
 Cada opção deve ter uma abordagem ou estilo ligeiramente diferente, mas todas seguindo a instrução principal.
 Retorne APENAS o JSON, nada mais.`;
 
-    const response = await geminiChat({
-      model: "google/gemini-2.5-flash-lite",
+    const callModel = async (model: string) => geminiChat({
+      model,
       temperature: 0.7,
       max_tokens: 4096,
       messages: [
@@ -70,23 +70,42 @@ Retorne APENAS o JSON, nada mais.`;
       ],
     });
 
+    let response: any;
+    try {
+      response = await callModel("google/gemini-2.5-flash-lite");
+    } catch (err: any) {
+      const status = err?.status ?? 0;
+      // Retry once with a stronger model on transient 5xx (overloaded/unavailable)
+      if (status >= 500 && status < 600) {
+        try {
+          response = await callModel("google/gemini-2.5-flash");
+        } catch (err2: any) {
+          console.error("ai-text-editor fallback failed:", err2?.message);
+          return new Response(JSON.stringify({
+            options: [text],
+            error: "AI_UNAVAILABLE",
+            message: "O serviço de IA está sobrecarregado no momento. Tente novamente em instantes.",
+          }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+      } else {
+        throw err;
+      }
+    }
+
     const raw = response?.choices?.[0]?.message?.content || '';
-    
+
     // Try to parse as JSON with options array
     let options: string[] = [];
     try {
-      // Remove potential markdown code blocks
       const cleaned = raw.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
       const parsed = JSON.parse(cleaned);
       if (Array.isArray(parsed.options) && parsed.options.length > 0) {
         options = parsed.options.slice(0, 3);
       }
     } catch {
-      // Fallback: use the raw text as single option
       options = [raw.trim()];
     }
 
-    // Ensure we always have at least 1 option
     if (options.length === 0) {
       options = [raw.trim() || text];
     }
@@ -94,10 +113,13 @@ Retorne APENAS o JSON, nada mais.`;
     return new Response(JSON.stringify({ options }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
-  } catch (e) {
+  } catch (e: any) {
     console.error("ai-text-editor error:", e);
-    return new Response(JSON.stringify({ error: e.message }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    return new Response(JSON.stringify({
+      options: [],
+      error: e?.message || "Unknown error",
+    }), {
+      status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });
