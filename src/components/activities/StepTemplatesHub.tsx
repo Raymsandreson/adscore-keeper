@@ -73,8 +73,6 @@ export function StepTemplatesHub({
   const [draftName, setDraftName] = useState('');
   const [draftContent, setDraftContent] = useState('');
   const [pendingApply, setPendingApply] = useState<TemplateVariation | null>(null);
-  const [confirmLinkOpen, setConfirmLinkOpen] = useState(false);
-  const [pendingSave, setPendingSave] = useState<{ list: TemplateVariation[]; mode: 'create' | 'edit' } | null>(null);
 
   const hasContent = stripHtml(currentValue).length > 0;
   const count = variations.length;
