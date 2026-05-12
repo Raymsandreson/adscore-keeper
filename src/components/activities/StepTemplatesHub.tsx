@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react';
-import { Sparkles, ChevronDown, Pencil, Trash2, Plus, Eye, Check, CircleCheck, Circle } from 'lucide-react';
+import { Sparkles, ChevronDown, Pencil, Trash2, Plus, Eye, Check, CircleCheck, Circle, Wand2, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { toast } from 'sonner';
+import { cloudFunctions } from '@/lib/functionRouter';
 import {
   Sheet,
   SheetContent,
@@ -90,6 +92,7 @@ export function StepTemplatesHub({
   const [draftName, setDraftName] = useState('');
   const [draftContent, setDraftContent] = useState('');
   const [pendingApply, setPendingApply] = useState<TemplateVariation | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
 
   const hasContent = stripHtml(currentValue).length > 0;
   const count = variations.length;
@@ -115,6 +118,42 @@ export function StepTemplatesHub({
     setDraftName('');
     setDraftContent('');
   };
+
+  const generateWithAI = async () => {
+    if (aiLoading) return;
+    setAiLoading(true);
+    try {
+      const { data, error } = await cloudFunctions.invoke('suggest-message-template', {
+        body: {
+          fieldLabel,
+          phaseLabel: phaseLabel || null,
+          objectiveLabel: objectiveLabel || null,
+          stepLabel: stepLabel || null,
+          existingNames: variations.map(v => v.name).filter(Boolean),
+        },
+      });
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Falha ao gerar sugestão');
+      const content = String(data.content || '').trim();
+      if (!content) throw new Error('A IA não retornou conteúdo');
+      // Converte quebras de linha simples para HTML do RichTextEditor
+      const html = content
+        .split(/\n{2,}/)
+        .map(p => `<p>${p.replace(/\n/g, '<br/>')}</p>`)
+        .join('');
+      setCreating(true);
+      setEditing(null);
+      setDraftName(String(data.name || `Sugestão IA — ${stepLabel || fieldLabel}`).slice(0, 60));
+      setDraftContent(html);
+      toast.success('Sugestão gerada! Revise e salve.');
+    } catch (err: any) {
+      console.error('[StepTemplatesHub:generateWithAI]', err);
+      toast.error(err?.message || 'Erro ao gerar sugestão com IA');
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
 
   const startEdit = (v: TemplateVariation) => {
     setEditing(v);
@@ -183,9 +222,22 @@ export function StepTemplatesHub({
               <div className="flex items-center justify-between gap-2">
                 <SheetTitle className="text-sm truncate">Modelos · {fieldLabel}</SheetTitle>
                 {!creating && !editing && (
-                  <Button size="sm" variant="ghost" className="h-7 text-[11px] gap-1 shrink-0" onClick={startCreate}>
-                    <Plus className="h-3 w-3" /> Novo
-                  </Button>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 text-[11px] gap-1 text-blue-600 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/30"
+                      onClick={generateWithAI}
+                      disabled={aiLoading}
+                      title="Gerar sugestão de modelo com IA baseado na fase, objetivo e passo"
+                    >
+                      {aiLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wand2 className="h-3 w-3" />}
+                      Sugerir com IA
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-7 text-[11px] gap-1" onClick={startCreate}>
+                      <Plus className="h-3 w-3" /> Novo
+                    </Button>
+                  </div>
                 )}
               </div>
 
