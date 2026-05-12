@@ -94,6 +94,21 @@ export function StepTemplatesHub({
   const hasContent = stripHtml(currentValue).length > 0;
   const count = variations.length;
 
+  // Agrupa passos por fase para o picker
+  const phases = useMemo(() => {
+    const map = new Map<string, { phaseId: string; phaseLabel: string | null; steps: StepOption[] }>();
+    for (const s of allSteps) {
+      const key = s.phaseId || '_';
+      if (!map.has(key)) map.set(key, { phaseId: s.phaseId, phaseLabel: s.phaseLabel, steps: [] });
+      map.get(key)!.steps.push(s);
+    }
+    return Array.from(map.values());
+  }, [allSteps]);
+
+  const totalSteps = allSteps.length;
+  const completedSteps = allSteps.filter(s => s.checked).length;
+  const progressPct = totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0;
+
   const startCreate = () => {
     setCreating(true);
     setEditing(null);
