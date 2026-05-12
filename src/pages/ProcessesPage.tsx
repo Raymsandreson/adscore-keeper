@@ -106,7 +106,7 @@ export default function ProcessesPage() {
     setProcesses(prev => prev.filter(x => x.id !== p.id));
   };
 
-
+  return (
     <div className="space-y-4 p-4 md:p-6">
       <div>
         <h1 className="text-2xl font-bold">Processos</h1>
