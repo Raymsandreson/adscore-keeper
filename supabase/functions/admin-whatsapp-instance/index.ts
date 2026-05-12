@@ -49,13 +49,17 @@ Deno.serve(async (req) => {
 
     // 2) Aplicar operação no Externo com service role
     const body = await req.json().catch(() => ({}));
-    const { action, instance_id, is_active } = body as {
-      action?: "delete" | "set_active";
+    const { action, instance_id, is_active, payload } = body as {
+      action?: "delete" | "set_active" | "create" | "update";
       instance_id?: string;
       is_active?: boolean;
+      payload?: Record<string, any>;
     };
-    if (!action || !instance_id) {
-      return json({ success: false, error: "missing action/instance_id" });
+    if (!action) {
+      return json({ success: false, error: "missing action" });
+    }
+    if ((action === "delete" || action === "set_active" || action === "update") && !instance_id) {
+      return json({ success: false, error: "missing instance_id" });
     }
 
     const ext = createClient(EXTERNAL_URL, EXTERNAL_SR);
