@@ -214,30 +214,26 @@ export function WhatsAppInstanceManager() {
     }
     setSaving(true);
     try {
+      const payload = {
+        instance_name: form.instance_name.trim(),
+        instance_token: form.instance_token.trim(),
+        base_url: form.base_url.trim() || null,
+        owner_phone: form.owner_phone.trim() || null,
+        owner_name: form.owner_name.trim() || null,
+      };
       if (editingId) {
-        const { error } = await ext
-          .from('whatsapp_instances')
-          .update({
-            instance_name: form.instance_name.trim(),
-            instance_token: form.instance_token.trim(),
-            base_url: form.base_url.trim() || null,
-            owner_phone: form.owner_phone.trim() || null,
-            owner_name: form.owner_name.trim() || null,
-          } as any)
-          .eq('id', editingId);
+        const { data, error } = await supabase.functions.invoke('admin-whatsapp-instance', {
+          body: { action: 'update', instance_id: editingId, payload },
+        });
         if (error) throw error;
+        if (!data?.success) throw new Error(data?.error || 'Falha ao atualizar instância');
         toast.success('Instância atualizada!');
       } else {
-        const { error } = await ext
-          .from('whatsapp_instances')
-          .insert({
-            instance_name: form.instance_name.trim(),
-            instance_token: form.instance_token.trim(),
-            base_url: form.base_url.trim() || null,
-            owner_phone: form.owner_phone.trim() || null,
-            owner_name: form.owner_name.trim() || null,
-          } as any);
+        const { data, error } = await supabase.functions.invoke('admin-whatsapp-instance', {
+          body: { action: 'create', payload },
+        });
         if (error) throw error;
+        if (!data?.success) throw new Error(data?.error || 'Falha ao criar instância');
         toast.success('Instância criada com sucesso!');
       }
       setDialogOpen(false);
