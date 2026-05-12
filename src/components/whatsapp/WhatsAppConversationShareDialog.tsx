@@ -142,6 +142,17 @@ export function WhatsAppConversationShareDialog({ phone, instanceName }: Props) 
         }
       }
 
+      // Notificar destinatário pelo WhatsApp (em paralelo, sem bloquear)
+      supabase.functions.invoke('notify-conversation-share', {
+        body: {
+          recipient_user_id: selectedUserId,
+          sender_id: user.id,
+          sender_name: sharerName,
+          conversation_phone: phone,
+          conversation_name: phone,
+        },
+      }).catch(err => console.error('notify-conversation-share failed:', err));
+
       // Copy link to clipboard automatically
       const url = `${window.location.origin}/whatsapp?openChat=${encodeURIComponent(phone)}`;
       navigator.clipboard.writeText(url).then(() => {

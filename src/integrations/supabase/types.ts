@@ -8846,6 +8846,7 @@ export type Database = {
       }
       whatsapp_conversation_shares: {
         Row: {
+          acknowledged_at: string | null
           can_reshare: boolean
           created_at: string
           id: string
@@ -8856,6 +8857,7 @@ export type Database = {
           shared_with: string
         }
         Insert: {
+          acknowledged_at?: string | null
           can_reshare?: boolean
           created_at?: string
           id?: string
@@ -8866,6 +8868,7 @@ export type Database = {
           shared_with: string
         }
         Update: {
+          acknowledged_at?: string | null
           can_reshare?: boolean
           created_at?: string
           id?: string

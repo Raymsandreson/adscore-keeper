@@ -34,7 +34,9 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { MessageSquare, Settings, RefreshCw, Smartphone, BarChart3, Chrome, ListChecks, AlertTriangle, WifiOff, X, Sparkles, Check, Loader2, Download, Users, List, Contact2 } from 'lucide-react';
+import { MessageSquare, Settings, RefreshCw, Smartphone, BarChart3, Chrome, ListChecks, AlertTriangle, WifiOff, X, Sparkles, Check, Loader2, Download, Users, List, Contact2, Share2 } from 'lucide-react';
+import { SharedConversationsPanel } from './SharedConversationsPanel';
+import { useSharedWithMe } from '@/hooks/useSharedWithMe';
 
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
@@ -319,6 +321,9 @@ export function WhatsAppInbox() {
   const [showAiPreview, setShowAiPreview] = useState(false);
   // Bulk selection state
   const [bulkMode, setBulkMode] = useState(false);
+  const [sharedPanelOpen, setSharedPanelOpen] = useState(false);
+  const { items: sharedWithMe } = useSharedWithMe();
+  const sharedUnread = sharedWithMe.filter(s => !s.acknowledged_at).length;
   const [bulkSelectedPhones, setBulkSelectedPhones] = useState<Set<string>>(new Set());
   const [showBulkDialog, setShowBulkDialog] = useState(false);
 
@@ -949,6 +954,20 @@ export function WhatsAppInbox() {
             <ListChecks className="h-4 w-4" />
             {bulkMode && <span className="ml-1 text-xs">Lote</span>}
           </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setSharedPanelOpen(true)}
+            title="Conversas compartilhadas comigo"
+            className="relative"
+          >
+            <Share2 className="h-4 w-4" />
+            {sharedUnread > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 h-4 min-w-4 px-1 rounded-full bg-destructive text-destructive-foreground text-[9px] flex items-center justify-center font-semibold">
+                {sharedUnread}
+              </span>
+            )}
+          </Button>
           <Button variant="ghost" size="icon" onClick={() => setShowGooglePanel(true)} title="Google Workspace">
             <Chrome className="h-4 w-4" />
           </Button>
@@ -1564,6 +1583,8 @@ export function WhatsAppInbox() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <SharedConversationsPanel open={sharedPanelOpen} onOpenChange={setSharedPanelOpen} />
     </div>
   );
 }
