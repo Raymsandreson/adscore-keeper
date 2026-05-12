@@ -23,6 +23,15 @@ import {
 } from '@/components/ui/alert-dialog';
 import type { TemplateVariation } from '@/hooks/useChecklists';
 
+interface StepOption {
+  stepId: string;
+  stepLabel: string;
+  phaseId: string;
+  phaseLabel: string | null;
+  objectiveLabel: string | null;
+  checked: boolean;
+}
+
 interface Props {
   fieldLabel: string;
   variations: TemplateVariation[];
@@ -32,8 +41,12 @@ interface Props {
   stepLabel?: string | null;
   phaseLabel?: string | null;
   objectiveLabel?: string | null;
-  canPersist: boolean; // só permite salvar/editar/remover se houver passo
+  canPersist: boolean;
   onPersist: (next: TemplateVariation[]) => Promise<boolean>;
+  // Lista de passos para troca dentro do hub
+  allSteps?: StepOption[];
+  activeStepId?: string | null;
+  onSelectStep?: (id: string | null) => void;
 }
 
 function stripHtml(html: string): string {
