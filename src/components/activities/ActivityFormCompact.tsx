@@ -102,6 +102,8 @@ interface ActivityFormCompactProps {
   // Step context (current funnel/process step → templates + checklist)
   stepContext?: ActivityStepContext | null;
   saveStepFieldTemplates?: (fieldKey: string, variations: TemplateVariation[]) => Promise<boolean>;
+  selectedStepId?: string | null;
+  setSelectedStepId?: (id: string | null) => void;
   leads: LeadOption[];
 }
 
@@ -711,6 +713,9 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
               objectiveLabel: props.stepContext?.objectiveLabel || null,
               canPersist: !!(props.stepContext?.templateId && props.saveStepFieldTemplates),
               onPersist: persistField,
+              allSteps: props.stepContext?.allSteps || [],
+              activeStepId: props.stepContext?.stepId || null,
+              onSelectStep: props.setSelectedStepId,
             };
 
             if (field.field_key === 'notes') {

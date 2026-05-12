@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { Sparkles, ChevronDown, Pencil, Trash2, Plus, Eye, Check } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Sparkles, ChevronDown, Pencil, Trash2, Plus, Eye, Check, CircleCheck, Circle } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import {
   Sheet,
@@ -23,6 +24,15 @@ import {
 } from '@/components/ui/alert-dialog';
 import type { TemplateVariation } from '@/hooks/useChecklists';
 
+interface StepOption {
+  stepId: string;
+  stepLabel: string;
+  phaseId: string;
+  phaseLabel: string | null;
+  objectiveLabel: string | null;
+  checked: boolean;
+}
+
 interface Props {
   fieldLabel: string;
   variations: TemplateVariation[];
@@ -32,8 +42,12 @@ interface Props {
   stepLabel?: string | null;
   phaseLabel?: string | null;
   objectiveLabel?: string | null;
-  canPersist: boolean; // só permite salvar/editar/remover se houver passo
+  canPersist: boolean;
   onPersist: (next: TemplateVariation[]) => Promise<boolean>;
+  // Lista de passos para troca dentro do hub
+  allSteps?: StepOption[];
+  activeStepId?: string | null;
+  onSelectStep?: (id: string | null) => void;
 }
 
 function stripHtml(html: string): string {
@@ -65,6 +79,9 @@ export function StepTemplatesHub({
   objectiveLabel,
   canPersist,
   onPersist,
+  allSteps = [],
+  activeStepId = null,
+  onSelectStep,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [previewing, setPreviewing] = useState<TemplateVariation | null>(null);
@@ -76,6 +93,21 @@ export function StepTemplatesHub({
 
   const hasContent = stripHtml(currentValue).length > 0;
   const count = variations.length;
+
+  // Agrupa passos por fase para o picker
+  const phases = useMemo(() => {
+    const map = new Map<string, { phaseId: string; phaseLabel: string | null; steps: StepOption[] }>();
+    for (const s of allSteps) {
+      const key = s.phaseId || '_';
+      if (!map.has(key)) map.set(key, { phaseId: s.phaseId, phaseLabel: s.phaseLabel, steps: [] });
+      map.get(key)!.steps.push(s);
+    }
+    return Array.from(map.values());
+  }, [allSteps]);
+
+  const totalSteps = allSteps.length;
+  const completedSteps = allSteps.filter(s => s.checked).length;
+  const progressPct = totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0;
 
   const startCreate = () => {
     setCreating(true);
@@ -147,32 +179,85 @@ export function StepTemplatesHub({
             </Button>
           </SheetTrigger>
           <SheetContent side="right" className="w-full sm:max-w-md p-0 flex flex-col gap-0">
-            <SheetHeader className="px-4 py-3 border-b space-y-1">
+            <SheetHeader className="px-4 py-3 border-b space-y-2">
               <div className="flex items-center justify-between gap-2">
-                <div className="min-w-0 text-left">
-                  <SheetTitle className="text-sm truncate">Modelos · {fieldLabel}</SheetTitle>
-                  {(phaseLabel || objectiveLabel || stepLabel) && (
-                    <SheetDescription asChild>
-                      <div className="text-[11px] space-y-0.5 mt-1">
-                        {phaseLabel && (
-                          <div className="truncate"><span className="text-muted-foreground">Fase:</span> <span className="font-medium text-foreground">{phaseLabel}</span></div>
-                        )}
-                        {objectiveLabel && (
-                          <div className="truncate"><span className="text-muted-foreground">Objetivo:</span> <span className="font-medium text-foreground">{objectiveLabel}</span></div>
-                        )}
-                        {stepLabel && (
-                          <div className="truncate"><span className="text-muted-foreground">Passo:</span> <span className="font-medium text-foreground">{stepLabel}</span></div>
-                        )}
-                      </div>
-                    </SheetDescription>
-                  )}
-                </div>
+                <SheetTitle className="text-sm truncate">Modelos · {fieldLabel}</SheetTitle>
                 {!creating && !editing && (
                   <Button size="sm" variant="ghost" className="h-7 text-[11px] gap-1 shrink-0" onClick={startCreate}>
                     <Plus className="h-3 w-3" /> Novo
                   </Button>
                 )}
               </div>
+
+              {/* Barra de progresso do fluxo */}
+              {totalSteps > 0 && (
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                    <span>Progresso do fluxo</span>
+                    <span className="font-medium tabular-nums text-foreground">{completedSteps}/{totalSteps} · {progressPct}%</span>
+                  </div>
+                  <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                    <div className="h-full bg-primary transition-all" style={{ width: `${progressPct}%` }} />
+                  </div>
+                </div>
+              )}
+
+              {/* Picker de passo agrupado por fase */}
+              {phases.length > 0 && onSelectStep && (
+                <SheetDescription asChild>
+                  <div className="max-h-44 overflow-y-auto pr-1 -mr-1 space-y-1.5">
+                    {phases.map(ph => (
+                      <div key={ph.phaseId} className="space-y-0.5">
+                        <div className="text-[10px] uppercase tracking-wider text-muted-foreground/80 font-semibold px-0.5">
+                          {ph.phaseLabel || 'Fase'}
+                        </div>
+                        {ph.steps.map(s => {
+                          const isActive = s.stepId === activeStepId;
+                          return (
+                            <button
+                              key={s.stepId}
+                              type="button"
+                              onClick={() => onSelectStep(s.stepId)}
+                              className={cn(
+                                'w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left text-[11px] transition-colors',
+                                isActive
+                                  ? 'bg-primary/10 border border-primary/40 text-foreground'
+                                  : 'hover:bg-muted/60 border border-transparent'
+                              )}
+                            >
+                              {s.checked ? (
+                                <CircleCheck className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+                              ) : (
+                                <Circle className="h-3.5 w-3.5 text-muted-foreground/60 shrink-0" />
+                              )}
+                              <div className="flex-1 min-w-0">
+                                <div className={cn('truncate font-medium', s.checked && 'line-through text-muted-foreground')}>
+                                  {s.stepLabel}
+                                </div>
+                                {s.objectiveLabel && (
+                                  <div className="truncate text-[10px] text-muted-foreground">{s.objectiveLabel}</div>
+                                )}
+                              </div>
+                              {isActive && <span className="text-[9px] text-primary font-semibold shrink-0">atual</span>}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ))}
+                  </div>
+                </SheetDescription>
+              )}
+
+              {/* Fallback se não houver allSteps (compat) */}
+              {phases.length === 0 && (phaseLabel || objectiveLabel || stepLabel) && (
+                <SheetDescription asChild>
+                  <div className="text-[11px] space-y-0.5">
+                    {phaseLabel && (<div className="truncate"><span className="text-muted-foreground">Fase:</span> <span className="font-medium text-foreground">{phaseLabel}</span></div>)}
+                    {objectiveLabel && (<div className="truncate"><span className="text-muted-foreground">Objetivo:</span> <span className="font-medium text-foreground">{objectiveLabel}</span></div>)}
+                    {stepLabel && (<div className="truncate"><span className="text-muted-foreground">Passo:</span> <span className="font-medium text-foreground">{stepLabel}</span></div>)}
+                  </div>
+                </SheetDescription>
+              )}
             </SheetHeader>
 
             <div className="flex-1 overflow-y-auto">
