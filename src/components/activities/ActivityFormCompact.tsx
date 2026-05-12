@@ -1029,6 +1029,27 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
           </div>
         </SheetContent>
       </Sheet>
+
+      <Suspense fallback={null}>
+        {editProcessData && (
+          <ProcessDetailSheet
+            open={!!editProcessData}
+            onOpenChange={(open) => { if (!open) setEditProcessData(null); }}
+            process={editProcessData}
+            mode="dialog"
+            onUpdated={async () => {
+              // Refresh in-memory caseProcesses so badge reflects new title/workflow
+              if (props.formCaseId) {
+                const { data: procs } = await externalSupabase
+                  .from('lead_processes')
+                  .select('id, title, process_number, polo_passivo, tribunal, area, assuntos, workflow_id, envolvidos')
+                  .eq('case_id', props.formCaseId);
+                if (procs) props.setCaseProcesses(procs);
+              }
+            }}
+          />
+        )}
+      </Suspense>
     </div>
   );
 }
