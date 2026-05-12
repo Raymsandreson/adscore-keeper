@@ -78,6 +78,9 @@ export function StepTemplatesHub({
   objectiveLabel,
   canPersist,
   onPersist,
+  allSteps = [],
+  activeStepId = null,
+  onSelectStep,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [previewing, setPreviewing] = useState<TemplateVariation | null>(null);
