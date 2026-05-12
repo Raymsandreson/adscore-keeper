@@ -19,6 +19,7 @@ import {
   Download, Upload, File, Trash2, FolderOpen
 } from 'lucide-react';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
+import { LeadFunnelProgressBar } from '@/components/activities/LeadFunnelProgressBar';
 
 interface ProcessDetailSheetProps {
   open: boolean;
