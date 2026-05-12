@@ -179,32 +179,85 @@ export function StepTemplatesHub({
             </Button>
           </SheetTrigger>
           <SheetContent side="right" className="w-full sm:max-w-md p-0 flex flex-col gap-0">
-            <SheetHeader className="px-4 py-3 border-b space-y-1">
+            <SheetHeader className="px-4 py-3 border-b space-y-2">
               <div className="flex items-center justify-between gap-2">
-                <div className="min-w-0 text-left">
-                  <SheetTitle className="text-sm truncate">Modelos · {fieldLabel}</SheetTitle>
-                  {(phaseLabel || objectiveLabel || stepLabel) && (
-                    <SheetDescription asChild>
-                      <div className="text-[11px] space-y-0.5 mt-1">
-                        {phaseLabel && (
-                          <div className="truncate"><span className="text-muted-foreground">Fase:</span> <span className="font-medium text-foreground">{phaseLabel}</span></div>
-                        )}
-                        {objectiveLabel && (
-                          <div className="truncate"><span className="text-muted-foreground">Objetivo:</span> <span className="font-medium text-foreground">{objectiveLabel}</span></div>
-                        )}
-                        {stepLabel && (
-                          <div className="truncate"><span className="text-muted-foreground">Passo:</span> <span className="font-medium text-foreground">{stepLabel}</span></div>
-                        )}
-                      </div>
-                    </SheetDescription>
-                  )}
-                </div>
+                <SheetTitle className="text-sm truncate">Modelos · {fieldLabel}</SheetTitle>
                 {!creating && !editing && (
                   <Button size="sm" variant="ghost" className="h-7 text-[11px] gap-1 shrink-0" onClick={startCreate}>
                     <Plus className="h-3 w-3" /> Novo
                   </Button>
                 )}
               </div>
+
+              {/* Barra de progresso do fluxo */}
+              {totalSteps > 0 && (
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                    <span>Progresso do fluxo</span>
+                    <span className="font-medium tabular-nums text-foreground">{completedSteps}/{totalSteps} · {progressPct}%</span>
+                  </div>
+                  <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                    <div className="h-full bg-primary transition-all" style={{ width: `${progressPct}%` }} />
+                  </div>
+                </div>
+              )}
+
+              {/* Picker de passo agrupado por fase */}
+              {phases.length > 0 && onSelectStep && (
+                <SheetDescription asChild>
+                  <div className="max-h-44 overflow-y-auto pr-1 -mr-1 space-y-1.5">
+                    {phases.map(ph => (
+                      <div key={ph.phaseId} className="space-y-0.5">
+                        <div className="text-[10px] uppercase tracking-wider text-muted-foreground/80 font-semibold px-0.5">
+                          {ph.phaseLabel || 'Fase'}
+                        </div>
+                        {ph.steps.map(s => {
+                          const isActive = s.stepId === activeStepId;
+                          return (
+                            <button
+                              key={s.stepId}
+                              type="button"
+                              onClick={() => onSelectStep(s.stepId)}
+                              className={cn(
+                                'w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left text-[11px] transition-colors',
+                                isActive
+                                  ? 'bg-primary/10 border border-primary/40 text-foreground'
+                                  : 'hover:bg-muted/60 border border-transparent'
+                              )}
+                            >
+                              {s.checked ? (
+                                <CircleCheck className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+                              ) : (
+                                <Circle className="h-3.5 w-3.5 text-muted-foreground/60 shrink-0" />
+                              )}
+                              <div className="flex-1 min-w-0">
+                                <div className={cn('truncate font-medium', s.checked && 'line-through text-muted-foreground')}>
+                                  {s.stepLabel}
+                                </div>
+                                {s.objectiveLabel && (
+                                  <div className="truncate text-[10px] text-muted-foreground">{s.objectiveLabel}</div>
+                                )}
+                              </div>
+                              {isActive && <span className="text-[9px] text-primary font-semibold shrink-0">atual</span>}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ))}
+                  </div>
+                </SheetDescription>
+              )}
+
+              {/* Fallback se não houver allSteps (compat) */}
+              {phases.length === 0 && (phaseLabel || objectiveLabel || stepLabel) && (
+                <SheetDescription asChild>
+                  <div className="text-[11px] space-y-0.5">
+                    {phaseLabel && (<div className="truncate"><span className="text-muted-foreground">Fase:</span> <span className="font-medium text-foreground">{phaseLabel}</span></div>)}
+                    {objectiveLabel && (<div className="truncate"><span className="text-muted-foreground">Objetivo:</span> <span className="font-medium text-foreground">{objectiveLabel}</span></div>)}
+                    {stepLabel && (<div className="truncate"><span className="text-muted-foreground">Passo:</span> <span className="font-medium text-foreground">{stepLabel}</span></div>)}
+                  </div>
+                </SheetDescription>
+              )}
             </SheetHeader>
 
             <div className="flex-1 overflow-y-auto">
