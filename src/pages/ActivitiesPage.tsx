@@ -1129,10 +1129,18 @@ const ActivitiesPage = () => {
     if (filterCase.length > 0) {
       list = list.filter(a => (a as any).case_id && filterCase.includes((a as any).case_id));
     }
-    if (selectedCalDays.length === 0) return list;
-    return list.filter(a => {
-      const dateKey = a.deadline || a.notification_date;
-      return dateKey ? selectedCalDays.includes(dateKey) : false;
+    if (selectedCalDays.length > 0) {
+      list = list.filter(a => {
+        const dateKey = a.deadline || a.notification_date;
+        return dateKey ? selectedCalDays.includes(dateKey) : false;
+      });
+    }
+    // Ordena por prioridade: urgente > alta > normal > baixa (mantém ordem original como tiebreaker)
+    const priorityRank: Record<string, number> = { urgente: 0, alta: 1, normal: 2, baixa: 3 };
+    return [...list].sort((a, b) => {
+      const ra = priorityRank[a.priority || 'normal'] ?? 2;
+      const rb = priorityRank[b.priority || 'normal'] ?? 2;
+      return ra - rb;
     });
   }, [activities, selectedCalDays, filterCase]);
 
