@@ -30,6 +30,8 @@ interface Props {
   onApply: (content: string) => void;
   // Contexto do passo (para confirmação de vínculo)
   stepLabel?: string | null;
+  phaseLabel?: string | null;
+  objectiveLabel?: string | null;
   canPersist: boolean; // só permite salvar/editar/remover se houver passo
   onPersist: (next: TemplateVariation[]) => Promise<boolean>;
 }
