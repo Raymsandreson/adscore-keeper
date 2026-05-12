@@ -83,7 +83,7 @@ export function useTeamChat(entityType: string, entityId: string, entityName?: s
       }, (payload) => {
         const newMsg = payload.new as TeamMessage;
         if (newMsg.entity_id === entityId) {
-          setMessages(prev => [...prev, newMsg]);
+          setMessages(prev => prev.some(m => m.id === newMsg.id) ? prev : [...prev, newMsg]);
         }
       })
       .subscribe();
@@ -120,6 +120,11 @@ export function useTeamChat(entityType: string, entityId: string, entityName?: s
     if (error) {
       toast.error('Erro ao enviar mensagem');
       return;
+    }
+
+    // Optimistic update — não esperar o Realtime
+    if (msg) {
+      setMessages(prev => prev.some(m => m.id === (msg as TeamMessage).id) ? prev : [...prev, msg as TeamMessage]);
     }
 
     // Create mentions
