@@ -105,8 +105,7 @@ export function StepTemplatesHub({
       setPendingSave({ list: next, mode: 'create' });
       if (canPersist) setConfirmLinkOpen(true);
       else {
-        // Sem passo: só aplica localmente
-        onApply(content);
+        // Sem passo para vincular: nada a fazer (apenas fecha o rascunho)
         cancelDraft();
         setPendingSave(null);
       }
