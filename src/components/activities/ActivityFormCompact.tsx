@@ -713,6 +713,9 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
               objectiveLabel: props.stepContext?.objectiveLabel || null,
               canPersist: !!(props.stepContext?.templateId && props.saveStepFieldTemplates),
               onPersist: persistField,
+              allSteps: props.stepContext?.allSteps || [],
+              activeStepId: props.stepContext?.stepId || null,
+              onSelectStep: props.setSelectedStepId,
             };
 
             if (field.field_key === 'notes') {
