@@ -134,6 +134,15 @@ export function useActivityStepContext(
         return false;
       }
       try {
+        const patchItems = (raw: ChecklistItem[] | null | undefined) =>
+          ((raw as ChecklistItem[]) || []).map(it => {
+            if (it.id !== ctx.stepId) return it;
+            const current = normalizeMessageTemplates(it.messageTemplates);
+            current[fieldKey] = variations;
+            return { ...it, messageTemplates: serializeMessageTemplates(current) };
+          });
+
+        // 1) Atualiza o TEMPLATE (fonte) — afeta novos leads
         const { data: tpl, error: fetchErr } = await supabase
           .from('checklist_templates')
           .select('items')
@@ -141,18 +150,31 @@ export function useActivityStepContext(
           .maybeSingle();
         if (fetchErr) throw fetchErr;
 
-        const items = ((tpl?.items as unknown as ChecklistItem[]) || []).map(it => {
-          if (it.id !== ctx.stepId) return it;
-          const current = normalizeMessageTemplates(it.messageTemplates);
-          current[fieldKey] = variations;
-          return { ...it, messageTemplates: serializeMessageTemplates(current) };
-        });
-
+        const newTplItems = patchItems(tpl?.items as unknown as ChecklistItem[]);
         const { error: updErr } = await supabase
           .from('checklist_templates')
-          .update({ items: JSON.parse(JSON.stringify(items)) })
+          .update({ items: JSON.parse(JSON.stringify(newTplItems)) })
           .eq('id', ctx.templateId);
         if (updErr) throw updErr;
+
+        // 2) Atualiza a INSTÂNCIA ativa do lead (snapshot que a UI lê)
+        if (leadId && ctx.boardId && ctx.stageId) {
+          const { data: instances } = await supabase
+            .from('lead_checklist_instances')
+            .select('id, items, checklist_template_id')
+            .eq('lead_id', leadId)
+            .eq('board_id', ctx.boardId)
+            .eq('stage_id', ctx.stageId);
+
+          for (const inst of instances || []) {
+            if ((inst as any).checklist_template_id !== ctx.templateId) continue;
+            const newInstItems = patchItems((inst as any).items as ChecklistItem[]);
+            await supabase
+              .from('lead_checklist_instances')
+              .update({ items: JSON.parse(JSON.stringify(newInstItems)) })
+              .eq('id', (inst as any).id);
+          }
+        }
 
         toast.success('Modelo vinculado ao passo!');
         reload();
@@ -163,7 +185,7 @@ export function useActivityStepContext(
         return false;
       }
     },
-    [ctx, reload],
+    [ctx, leadId, reload],
   );
 
   return { stepContext: ctx, loading, reload, saveStepFieldTemplates };
