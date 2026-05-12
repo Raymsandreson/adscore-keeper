@@ -17,36 +17,51 @@ export interface SharedConversation {
 export function useSharedWithMe() {
   const { user } = useAuthContext();
   const [items, setItems] = useState<SharedConversation[]>([]);
+  const [sharedByMe, setSharedByMe] = useState<SharedConversation[]>([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     if (!user) return;
     setLoading(true);
-    const { data } = await supabase
-      .from('whatsapp_conversation_shares')
-      .select('*')
-      .eq('shared_with', user.id)
-      .order('created_at', { ascending: false });
-    setItems((data || []) as any as SharedConversation[]);
+    const [withMe, byMe] = await Promise.all([
+      supabase
+        .from('whatsapp_conversation_shares')
+        .select('*')
+        .eq('shared_with', user.id)
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('whatsapp_conversation_shares')
+        .select('*')
+        .eq('shared_by', user.id)
+        .order('created_at', { ascending: false }),
+    ]);
+    setItems((withMe.data || []) as any);
+    setSharedByMe((byMe.data || []) as any);
     setLoading(false);
   }, [user]);
 
   useEffect(() => { load(); }, [load]);
 
-  // Realtime: refresh when new shares arrive for me
+  // Realtime: refresh when shares change involving me
   useEffect(() => {
     if (!user) return;
     const channel = supabase
-      .channel(`shares-with-me-${user.id}`)
+      .channel(`shares-${user.id}`)
       .on('postgres_changes', {
         event: '*',
         schema: 'public',
         table: 'whatsapp_conversation_shares',
         filter: `shared_with=eq.${user.id}`,
       }, () => { load(); })
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'whatsapp_conversation_shares',
+        filter: `shared_by=eq.${user.id}`,
+      }, () => { load(); })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [user, load]);
 
-  return { items, loading, reload: load };
+  return { items, sharedByMe, loading, reload: load };
 }
