@@ -574,16 +574,41 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
             Ver na aba Processos
           </Button>
         </div>
+
+        {/* Workflow link — destaque */}
+        <div className="rounded-md border border-primary/30 bg-primary/5 p-2 space-y-1">
+          <Label className="text-[10px] uppercase tracking-wider text-primary font-semibold flex items-center gap-1">
+            <ClipboardList className="h-3 w-3" />
+            Fluxo de Trabalho Vinculado
+          </Label>
+          <Select
+            value={form.workflow_id || '__none__'}
+            onValueChange={(val) => {
+              if (val === '__none__') {
+                set('workflow_id', null);
+                set('workflow_name', null);
+                set('workflow_stage_id', null);
+              } else {
+                const wf = workflowBoards.find(w => w.id === val);
+                set('workflow_id', val);
+                set('workflow_name', wf?.name || null);
+                set('workflow_stage_id', null);
+              }
+            }}
+          >
+            <SelectTrigger className="h-8 text-xs bg-background">
+              <SelectValue placeholder="Nenhum fluxo vinculado — selecione" />
+            </SelectTrigger>
+            <SelectContent className="z-[9999]">
+              <SelectItem value="__none__">Nenhum</SelectItem>
+              {workflowBoards.map(wf => (
+                <SelectItem key={wf.id} value={wf.id}>{wf.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
-      {/* Tab navigation */}
-      <div className="shrink-0 border-b">
-        <ScrollArea className="w-full">
-          <div className="flex gap-0.5 px-2 py-1.5 overflow-x-auto">
-            {TABS.map(tab => {
-              const Icon = tab.icon;
-              const isActive = activeTab === tab.id;
-              if (tab.id === 'envolvidos' && envolvidos.length === 0 && audiencias.length === 0 && processosRelacionados.length === 0) return null;
               return (
                 <button
                   key={tab.id}
