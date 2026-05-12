@@ -107,7 +107,7 @@ const TABS = [
   { id: 'tribunal', label: 'Tribunal', icon: Landmark },
   { id: 'local', label: 'Local', icon: MapPin },
   { id: 'datas', label: 'Datas', icon: Calendar },
-  { id: 'fluxo', label: 'Fluxo', icon: ClipboardList },
+  
   { id: 'atividades', label: 'Histórico', icon: ClipboardList },
   { id: 'config', label: 'Config', icon: Info },
   { id: 'notas', label: 'Notas', icon: FileText },
@@ -589,6 +589,17 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
               ))}
             </SelectContent>
           </Select>
+
+          {form.workflow_id && process?.lead_id && (
+            <div className="pt-1">
+              <LeadFunnelProgressBar leadId={process.lead_id} boardId={form.workflow_id} />
+            </div>
+          )}
+          {form.workflow_id && !process?.lead_id && (
+            <p className="text-[10px] text-muted-foreground pt-1">
+              A barra de progresso aparece quando o processo está vinculado a um lead.
+            </p>
+          )}
         </div>
       </div>
 
@@ -769,31 +780,6 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
               </>
             )}
 
-            {activeTab === 'fluxo' && (
-              <div className="space-y-3">
-                {!form.workflow_id ? (
-                  <div className="text-center py-6 text-muted-foreground">
-                    <ClipboardList className="h-6 w-6 mx-auto mb-1 opacity-50" />
-                    <p className="text-xs">Nenhum fluxo de trabalho vinculado a este processo.</p>
-                    <p className="text-[10px] mt-1">Selecione um fluxo no destaque acima do cabeçalho.</p>
-                  </div>
-                ) : !process?.lead_id ? (
-                  <div className="text-center py-6 text-muted-foreground">
-                    <ClipboardList className="h-6 w-6 mx-auto mb-1 opacity-50" />
-                    <p className="text-xs">Este processo não está vinculado a um lead.</p>
-                    <p className="text-[10px] mt-1">A barra de progresso do fluxo precisa de um lead associado.</p>
-                  </div>
-                ) : (
-                  <div className="rounded-lg border bg-card p-3">
-                    <h4 className="text-xs font-semibold mb-2 flex items-center gap-1.5">
-                      <ClipboardList className="h-3.5 w-3.5 text-primary" />
-                      {form.workflow_name || 'Progresso do Fluxo'}
-                    </h4>
-                    <LeadFunnelProgressBar leadId={process.lead_id} boardId={form.workflow_id} />
-                  </div>
-                )}
-              </div>
-            )}
 
             {activeTab === 'atividades' && (
               <div className="space-y-2">

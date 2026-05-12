@@ -614,8 +614,8 @@ const ActivitiesPage = () => {
 
     if ((activity as any).case_id) {
       promises.push(
-        Promise.resolve(externalSupabase.from('lead_processes').select('id, title, process_number, polo_passivo, tribunal, area, assuntos, workflow_id, envolvidos').eq('case_id', (activity as any).case_id)).then(({ data }) => {
-          setCaseProcesses((data || []).map((p: any) => ({ id: p.id, title: p.title, process_number: p.process_number, polo_passivo: p.polo_passivo, tribunal: p.tribunal, area: p.area, assuntos: p.assuntos, workflow_id: p.workflow_id, envolvidos: p.envolvidos })));
+        Promise.resolve(externalSupabase.from('lead_processes').select('id, title, process_number, polo_passivo, tribunal, area, assuntos, workflow_id, workflow_name, envolvidos').eq('case_id', (activity as any).case_id)).then(({ data }) => {
+          setCaseProcesses((data || []).map((p: any) => ({ id: p.id, title: p.title, process_number: p.process_number, polo_passivo: p.polo_passivo, tribunal: p.tribunal, area: p.area, assuntos: p.assuntos, workflow_id: p.workflow_id, workflow_name: p.workflow_name, envolvidos: p.envolvidos })));
         })
       );
     }
@@ -3016,10 +3016,11 @@ const ActivitiesPage = () => {
                 // Priority: if a process with workflow is selected, show its workflow.
                 // This is the most contextual progress for the activity.
                 if (processWorkflowId) {
+                  const wfName = (linkedProcess as any)?.workflow_name || null;
                   return (
                     <div>
                       <div className="text-[10px] font-medium text-muted-foreground mt-1.5 mb-0.5 uppercase tracking-wide">
-                        Fluxo do Processo
+                        Fluxo do Processo{wfName ? ` · ${wfName}` : ''}
                       </div>
                       <LeadFunnelProgressBar leadId={formLeadId} boardId={processWorkflowId} />
                     </div>
