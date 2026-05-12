@@ -107,7 +107,7 @@ const TABS = [
   { id: 'tribunal', label: 'Tribunal', icon: Landmark },
   { id: 'local', label: 'Local', icon: MapPin },
   { id: 'datas', label: 'Datas', icon: Calendar },
-  { id: 'fluxo', label: 'Fluxo', icon: ClipboardList },
+  
   { id: 'atividades', label: 'Histórico', icon: ClipboardList },
   { id: 'config', label: 'Config', icon: Info },
   { id: 'notas', label: 'Notas', icon: FileText },
