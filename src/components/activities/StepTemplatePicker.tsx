@@ -56,49 +56,29 @@ export function StepTemplatePicker({ variations, currentValue, onApply }: Props)
 
   return (
     <>
-      <div className="flex items-center gap-1 mt-0.5 mb-1">
-        {variations.length === 1 ? (
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-6 text-[10px] gap-1 px-2 border-blue-200 dark:border-blue-900 bg-blue-50/50 dark:bg-blue-950/20 hover:bg-blue-100 dark:hover:bg-blue-950/40 text-blue-700 dark:text-blue-300"
-            onClick={() => handlePick(variations[0])}
-            title={variations[0].content.slice(0, 200)}
-          >
-            <Sparkles className="h-2.5 w-2.5" />
-            Aplicar modelo do passo
-          </Button>
-        ) : (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-6 text-[10px] gap-1 px-2 border-blue-200 dark:border-blue-900 bg-blue-50/50 dark:bg-blue-950/20 hover:bg-blue-100 dark:hover:bg-blue-950/40 text-blue-700 dark:text-blue-300"
-              >
-                <Sparkles className="h-2.5 w-2.5" />
-                {variations.length} modelos do passo
-                <ChevronDown className="h-2.5 w-2.5" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-80 max-h-80 overflow-y-auto">
-              {variations.map((v, i) => (
-                <DropdownMenuItem
-                  key={v.id || i}
+      <TooltipProvider delayDuration={200}>
+        <div className="flex items-center gap-1 mt-0.5 mb-1 flex-wrap">
+          {variations.map((v, i) => (
+            <Tooltip key={v.id || i}>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-6 text-[10px] gap-1 px-2 border-blue-200 dark:border-blue-900 bg-blue-50/50 dark:bg-blue-950/20 hover:bg-blue-100 dark:hover:bg-blue-950/40 text-blue-700 dark:text-blue-300 max-w-[180px]"
                   onClick={() => handlePick(v)}
-                  className="flex flex-col items-start gap-1 py-2 cursor-pointer"
                 >
-                  <span className="text-xs font-medium">{v.name || `Variação ${i + 1}`}</span>
-                  <span className="text-[10px] text-muted-foreground line-clamp-2 whitespace-normal">
-                    {v.content.slice(0, 140)}
-                    {v.content.length > 140 ? '…' : ''}
-                  </span>
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-      </div>
+                  <Sparkles className="h-2.5 w-2.5 shrink-0" />
+                  <span className="truncate">{v.name || `Modelo ${i + 1}`}</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" align="start" className="max-w-sm whitespace-pre-wrap text-xs">
+                {stripHtml(v.content).slice(0, 400) || '(sem conteúdo)'}
+                {stripHtml(v.content).length > 400 ? '…' : ''}
+              </TooltipContent>
+            </Tooltip>
+          ))}
+        </div>
+      </TooltipProvider>
 
       <AlertDialog open={!!pending} onOpenChange={(o) => !o && setPending(null)}>
         <AlertDialogContent>
