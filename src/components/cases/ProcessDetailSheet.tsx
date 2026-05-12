@@ -180,6 +180,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
   const [documents, setDocuments] = useState<ProcessDocument[]>([]);
   const [loadingDocuments, setLoadingDocuments] = useState(false);
   const [fetchingEscavadorDocs, setFetchingEscavadorDocs] = useState(false);
+  const [generatingSummary, setGeneratingSummary] = useState(false);
   const [workflowBoards, setWorkflowBoards] = useState<{ id: string; name: string }[]>([]);
 
   useEffect(() => {
