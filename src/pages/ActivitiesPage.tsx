@@ -41,6 +41,7 @@ import { ActivityDetailPanel } from '@/components/activities/ActivityDetailPanel
 import { LeadFunnelProgressBar } from '@/components/activities/LeadFunnelProgressBar';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { TeamChatButton } from '@/components/chat/TeamChatButton';
+import { TeamChatSheet } from '@/components/chat/TeamChatSheet';
 import { ActivityNotesField } from '@/components/activities/ActivityNotesField';
 import { TimeBlockSettingsDialog, TimeBlockConfig } from '@/components/activities/TimeBlockSettingsDialog';
 import { TrafficActivityPanel } from '@/components/traffic/TrafficActivityPanel';
