@@ -5,8 +5,10 @@ import { externalSupabase } from '@/integrations/supabase/external-client';
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { Search, FileText, ExternalLink, Calendar, Building2, Briefcase } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Search, FileText, ExternalLink, Calendar, Building2, Briefcase, Trash2 } from "lucide-react";
 import { format } from "date-fns";
+import { toast } from "sonner";
 
 const ProcessDetailSheet = lazy(() => import("@/components/cases/ProcessDetailSheet"));
 
