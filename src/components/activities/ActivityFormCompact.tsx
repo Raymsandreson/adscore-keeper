@@ -436,10 +436,10 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
                       </div>
                     )}
                     <div className="flex gap-1.5 mt-1">
-                      <Button type="button" variant="default" size="sm" className="flex-1 text-[10px] h-6" onClick={() => openProcessEditor(props.formProcessId)} disabled={loadingProcessEdit}>
+                      <Button type="button" variant="default" size="sm" className="flex-1 text-[10px] h-6" onClick={() => { setProcessPopoverOpen(false); openProcessEditor(props.formProcessId); }} disabled={loadingProcessEdit}>
                         {loadingProcessEdit ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Editar / Vincular Workflow'}
                       </Button>
-                      <Button type="button" variant="outline" size="sm" className="flex-1 text-[10px] h-6" onClick={() => setLinkCaseOpen(true)}>
+                      <Button type="button" variant="outline" size="sm" className="flex-1 text-[10px] h-6" onClick={() => { setProcessPopoverOpen(false); setLinkCaseOpen(true); }}>
                         Trocar
                       </Button>
                     </div>
