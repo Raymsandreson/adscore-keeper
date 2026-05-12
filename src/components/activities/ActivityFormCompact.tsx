@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import { useState, lazy, Suspense } from 'react';
+
+const ProcessDetailSheet = lazy(() => import('@/components/cases/ProcessDetailSheet'));
 import { Input } from '@/components/ui/input';
 import { RichTextEditor } from '@/components/ui/RichTextEditor';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -292,6 +294,32 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
   const [linkLeadOpen, setLinkLeadOpen] = useState(false);
   const [linkContactOpen, setLinkContactOpen] = useState(false);
   const [linkCaseOpen, setLinkCaseOpen] = useState(false);
+  const [editProcessData, setEditProcessData] = useState<any>(null);
+  const [loadingProcessEdit, setLoadingProcessEdit] = useState(false);
+
+  const openProcessEditor = async (processId: string) => {
+    if (!processId) return;
+    setLoadingProcessEdit(true);
+    try {
+      await ensureExternalSession();
+      const { data, error } = await externalSupabase
+        .from('lead_processes')
+        .select('*, legal_cases(case_number, title)')
+        .eq('id', processId)
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) {
+        toast.error('Processo não encontrado');
+        return;
+      }
+      setEditProcessData(data);
+    } catch (e: any) {
+      console.error(e);
+      toast.error('Erro ao abrir processo: ' + (e.message || ''));
+    } finally {
+      setLoadingProcessEdit(false);
+    }
+  };
 
   return (
     <div className="space-y-3">
@@ -406,9 +434,14 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
                         </ul>
                       </div>
                     )}
-                    <Button type="button" variant="outline" size="sm" className="w-full mt-1 text-[10px] h-6" onClick={() => setLinkCaseOpen(true)}>
-                      Trocar processo
-                    </Button>
+                    <div className="flex gap-1.5 mt-1">
+                      <Button type="button" variant="default" size="sm" className="flex-1 text-[10px] h-6" onClick={() => openProcessEditor(props.formProcessId)} disabled={loadingProcessEdit}>
+                        {loadingProcessEdit ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Editar / Vincular Workflow'}
+                      </Button>
+                      <Button type="button" variant="outline" size="sm" className="flex-1 text-[10px] h-6" onClick={() => setLinkCaseOpen(true)}>
+                        Trocar
+                      </Button>
+                    </div>
                   </PopoverContent>
                 </Popover>
                 <button type="button" onClick={() => { props.setFormProcessId(''); props.setFormProcessTitle(''); }} className="text-muted-foreground hover:text-foreground">
@@ -996,6 +1029,27 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
           </div>
         </SheetContent>
       </Sheet>
+
+      <Suspense fallback={null}>
+        {editProcessData && (
+          <ProcessDetailSheet
+            open={!!editProcessData}
+            onOpenChange={(open) => { if (!open) setEditProcessData(null); }}
+            process={editProcessData}
+            mode="dialog"
+            onUpdated={async () => {
+              // Refresh in-memory caseProcesses so badge reflects new title/workflow
+              if (props.formCaseId) {
+                const { data: procs } = await externalSupabase
+                  .from('lead_processes')
+                  .select('id, title, process_number, polo_passivo, tribunal, area, assuntos, workflow_id, envolvidos')
+                  .eq('case_id', props.formCaseId);
+                if (procs) props.setCaseProcesses(procs);
+              }
+            }}
+          />
+        )}
+      </Suspense>
     </div>
   );
 }

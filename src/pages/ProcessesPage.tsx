@@ -5,8 +5,10 @@ import { externalSupabase } from '@/integrations/supabase/external-client';
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { Search, FileText, ExternalLink, Calendar, Building2, Briefcase } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Search, FileText, ExternalLink, Calendar, Building2, Briefcase, Trash2 } from "lucide-react";
 import { format } from "date-fns";
+import { toast } from "sonner";
 
 const ProcessDetailSheet = lazy(() => import("@/components/cases/ProcessDetailSheet"));
 
@@ -89,6 +91,19 @@ export default function ProcessesPage() {
       case "finished": return "Finalizado";
       default: return s;
     }
+  };
+
+  const handleDelete = async (e: React.MouseEvent, p: Process) => {
+    e.stopPropagation();
+    const label = p.process_number || p.title || 'este processo';
+    if (!window.confirm(`Excluir "${label}"?\n\nEsta ação remove o processo do caso. Não pode ser desfeita.`)) return;
+    const { error } = await externalSupabase.from('lead_processes').delete().eq('id', p.id);
+    if (error) {
+      toast.error('Erro ao excluir: ' + error.message);
+      return;
+    }
+    toast.success('Processo excluído');
+    setProcesses(prev => prev.filter(x => x.id !== p.id));
   };
 
   return (
@@ -190,7 +205,18 @@ export default function ProcessesPage() {
                     </div>
                   </div>
 
-                  <ExternalLink className="h-4 w-4 text-muted-foreground shrink-0 mt-1" />
+                  <div className="flex flex-col items-center gap-1 shrink-0">
+                    <ExternalLink className="h-4 w-4 text-muted-foreground mt-1" />
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                      onClick={(e) => handleDelete(e, p)}
+                      title="Excluir processo"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
               </CardContent>
             </Card>
