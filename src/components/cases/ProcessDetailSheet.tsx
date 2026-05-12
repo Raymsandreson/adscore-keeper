@@ -339,38 +339,15 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
       if (!data.success) throw new Error(data.error);
 
       const result = data.data;
-      const fonte = result.fontes?.[0];
-      const capa = fonte?.capa || {};
-      const valorCausa = capa?.valor_causa || {};
-
-      const updates: Record<string, any> = {
-        polo_ativo: result.titulo_polo_ativo || form.polo_ativo,
-        polo_passivo: result.titulo_polo_passivo || form.polo_passivo,
-        ano_inicio: result.ano_inicio || form.ano_inicio,
-        tribunal: fonte?.tribunal?.nome || fonte?.nome || form.tribunal,
-        tribunal_sigla: fonte?.tribunal?.sigla || fonte?.sigla || form.tribunal_sigla,
-        grau: fonte?.grau_formatado || fonte?.grau || form.grau,
-        classe: capa?.classe || fonte?.classe?.nome || form.classe,
-        area: capa?.area || fonte?.area?.nome || form.area,
-        assuntos: capa?.assuntos_normalizados?.map((a: any) => a.nome) || fonte?.assuntos?.map((a: any) => a.nome) || form.assuntos,
-        valor_causa: valorCausa?.valor ? parseFloat(valorCausa.valor) : form.valor_causa,
-        valor_causa_formatado: valorCausa?.valor_formatado || form.valor_causa_formatado,
-        situacao: capa?.situacao || fonte?.situacao || form.situacao,
-        data_distribuicao: capa?.data_distribuicao || form.data_distribuicao,
-        envolvidos: fonte?.envolvidos || form.envolvidos,
-        movimentacoes: result.movimentacoes_detalhadas || fonte?.movimentacoes || form.movimentacoes,
-        escavador_raw: result,
-      };
-
-      await externalSupabase.from('lead_processes').update(updates).eq('id', process.id);
-      setForm(prev => ({ ...prev, ...updates }));
-      setDirty(false);
-      onUpdated?.();
-      toast.success('Dados atualizados do Escavador com sucesso');
+      // grava o raw e roda extração completa
+      await externalSupabase.from('lead_processes').update({ escavador_raw: result }).eq('id', process.id);
+      setForm(prev => ({ ...prev, escavador_raw: result }));
+      // delega extração para handleReExtract (já cobre todos os campos)
+      // pequeno delay para garantir que setForm propagou
+      setTimeout(() => handleReExtract(), 50);
     } catch (err: any) {
       console.error('Fetch from API error:', err);
       toast.error(err.message || 'Erro ao buscar no Escavador');
-    } finally {
       setSaving(false);
     }
   };
