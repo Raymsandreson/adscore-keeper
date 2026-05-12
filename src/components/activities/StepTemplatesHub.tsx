@@ -100,27 +100,25 @@ export function StepTemplatesHub({
     setDraftContent('');
   };
 
-  const submitDraft = () => {
+  const submitDraft = async () => {
     const content = draftContent.trim();
     if (!content) return;
     const name = draftName.trim() || `Modelo ${variations.length + 1}`;
+    let next: TemplateVariation[];
     if (creating) {
-      const next = [...variations, { id: uid(), name, content }];
-      setPendingSave({ list: next, mode: 'create' });
-      if (canPersist) setConfirmLinkOpen(true);
-      else {
-        // Sem passo para vincular: nada a fazer (apenas fecha o rascunho)
-        cancelDraft();
-        setPendingSave(null);
-      }
+      next = [...variations, { id: uid(), name, content }];
     } else if (editing) {
-      const next = variations.map(v => v.id === editing.id ? { ...v, name, content } : v);
-      setPendingSave({ list: next, mode: 'edit' });
-      if (canPersist) setConfirmLinkOpen(true);
-      else {
-        cancelDraft();
-        setPendingSave(null);
-      }
+      next = variations.map(v => v.id === editing.id ? { ...v, name, content } : v);
+    } else {
+      return;
+    }
+    if (!canPersist) {
+      cancelDraft();
+      return;
+    }
+    const ok = await onPersist(next);
+    if (ok) {
+      cancelDraft();
     }
   };
 
