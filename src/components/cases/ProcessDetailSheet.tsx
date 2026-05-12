@@ -513,7 +513,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
         </div>
         <div className="flex items-center gap-2">
           <div className="flex flex-col items-end">
-            <Button size="sm" variant="outline" onClick={form.escavador_raw ? handleReExtract : handleFetchFromApi} disabled={saving} className="h-7 text-xs gap-1">
+            <Button size="sm" variant="outline" onClick={() => form.escavador_raw ? handleReExtract() : handleFetchFromApi()} disabled={saving} className="h-7 text-xs gap-1">
               <RefreshCw className="h-3 w-3" />
               {form.escavador_raw ? 'Re-extrair' : 'Buscar no Escavador'}
             </Button>
