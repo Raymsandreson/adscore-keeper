@@ -204,17 +204,41 @@ export function StepTemplatesHub({
 
   return (
     <>
-      <div className="flex items-center gap-1 mt-0.5 mb-1">
+      <div className="flex items-center gap-1 mt-0.5 mb-1 flex-wrap">
+        {/* Atalhos: clique aplica o modelo direto no campo */}
+        {variations.map((v, i) => (
+          <Button
+            key={v.id || i}
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-6 text-[10px] gap-1 px-2 border-blue-200 dark:border-blue-900 bg-blue-50/50 dark:bg-blue-950/20 hover:bg-blue-100 dark:hover:bg-blue-950/40 text-blue-700 dark:text-blue-300 max-w-[200px]"
+            onClick={() => handlePick(v)}
+            title={stripHtml(v.content).slice(0, 300)}
+          >
+            <Sparkles className="h-2.5 w-2.5 shrink-0" />
+            <span className="truncate">{v.name || `Modelo ${i + 1}`}</span>
+          </Button>
+        ))}
         <Sheet open={open} onOpenChange={setOpen}>
           <SheetTrigger asChild>
             <Button
-              variant="outline"
+              variant="ghost"
               size="sm"
-              className="h-6 text-[10px] gap-1 px-2 border-blue-200 dark:border-blue-900 bg-blue-50/50 dark:bg-blue-950/20 hover:bg-blue-100 dark:hover:bg-blue-950/40 text-blue-700 dark:text-blue-300"
+              className="h-6 text-[10px] gap-1 px-2 text-muted-foreground hover:text-foreground"
+              title="Gerenciar modelos do passo"
             >
-              <Sparkles className="h-2.5 w-2.5" />
-              {count === 0 ? 'Modelos do passo' : `${count} ${count === 1 ? 'modelo' : 'modelos'} do passo`}
-              <ChevronDown className="h-2.5 w-2.5" />
+              {count === 0 ? (
+                <>
+                  <Sparkles className="h-2.5 w-2.5" />
+                  Modelos do passo
+                </>
+              ) : (
+                <>
+                  <ChevronDown className="h-2.5 w-2.5" />
+                  Gerenciar
+                </>
+              )}
             </Button>
           </SheetTrigger>
           <SheetContent side="right" className="w-full sm:max-w-md p-0 flex flex-col gap-0">
