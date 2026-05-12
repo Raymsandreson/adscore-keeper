@@ -1500,6 +1500,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     markAsRead,
     linkToLead,
     linkToContact,
+    refetchInstances: fetchInstances,
     refetch: (silent?: boolean) => fetchMessages(silent, true),
     refetchStats: fetchInstanceStats,
     fetchFullConversation,
