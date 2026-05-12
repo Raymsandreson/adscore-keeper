@@ -32,6 +32,7 @@ import {
   Plus, Calendar, CheckCircle2, Clock, AlertTriangle,
   FileText, Loader2, Trash2, Search, X, ChevronLeft, ChevronRight, MessageCircle, Copy, ChevronsUpDown, Check,
   Play, ArrowRight, Trophy, SkipForward, Timer, Share2, User, ExternalLink, RotateCcw, LayoutGrid, List, Layers, Settings2, Sparkles, TrendingUp, Briefcase, MoreVertical,
+  Users,
 } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { ShareMenu } from '@/components/ShareMenu';
@@ -41,6 +42,7 @@ import { ActivityDetailPanel } from '@/components/activities/ActivityDetailPanel
 import { LeadFunnelProgressBar } from '@/components/activities/LeadFunnelProgressBar';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { TeamChatButton } from '@/components/chat/TeamChatButton';
+import { TeamChatSheet } from '@/components/chat/TeamChatSheet';
 import { ActivityNotesField } from '@/components/activities/ActivityNotesField';
 import { TimeBlockSettingsDialog, TimeBlockConfig } from '@/components/activities/TimeBlockSettingsDialog';
 import { TrafficActivityPanel } from '@/components/traffic/TrafficActivityPanel';
@@ -250,6 +252,7 @@ const ActivitiesPage = () => {
   const [selectedCalDays, setSelectedCalDays] = useState<string[]>([]);
   const selectedCalDay: string | null = selectedCalDays.length > 0 ? selectedCalDays[0] : null;
   const [chatOpen, setChatOpen] = useState(false);
+  const [teamChatOpen, setTeamChatOpen] = useState(false);
   const [rightPanelTab, setRightPanelTab] = useState<'form' | 'context'>('form');
   const [completeNotifyOpen, setCompleteNotifyOpen] = useState(false);
   const [completeNotifySource, setCompleteNotifySource] = useState<'sheet' | 'workflow'>('sheet');
@@ -3082,16 +3085,15 @@ const ActivitiesPage = () => {
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="start" className="w-48">
                       {selectedActivity?.id && (
-                        <DropdownMenuItem asChild>
-                          <div className="p-0">
-                            <TeamChatButton
-                              entityType="activity"
-                              entityId={selectedActivity.id}
-                              entityName={selectedActivity.title}
-                              variant="full"
-                              className="h-8 w-full justify-start text-xs px-2"
-                            />
-                          </div>
+                        <DropdownMenuItem
+                          className="text-xs"
+                          onSelect={(e) => {
+                            // Evita que o fechamento do menu desmonte o Sheet
+                            e.preventDefault();
+                            setTeamChatOpen(true);
+                          }}
+                        >
+                          <Users className="h-3.5 w-3.5 mr-2" /> Chat Equipe
                         </DropdownMenuItem>
                       )}
                       <DropdownMenuItem onClick={() => setChatOpen(true)} className="text-xs">
@@ -3220,6 +3222,16 @@ const ActivitiesPage = () => {
           </div>
         )}
       </div>
+
+      {selectedActivity?.id && (
+        <TeamChatSheet
+          open={teamChatOpen}
+          onOpenChange={setTeamChatOpen}
+          entityType="activity"
+          entityId={selectedActivity.id}
+          entityName={selectedActivity.title}
+        />
+      )}
 
       <ActivityChatSheet
         open={chatOpen}
