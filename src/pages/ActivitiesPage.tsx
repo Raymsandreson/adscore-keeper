@@ -3016,10 +3016,11 @@ const ActivitiesPage = () => {
                 // Priority: if a process with workflow is selected, show its workflow.
                 // This is the most contextual progress for the activity.
                 if (processWorkflowId) {
+                  const wfName = (linkedProcess as any)?.workflow_name || null;
                   return (
                     <div>
                       <div className="text-[10px] font-medium text-muted-foreground mt-1.5 mb-0.5 uppercase tracking-wide">
-                        Fluxo do Processo
+                        Fluxo do Processo{wfName ? ` · ${wfName}` : ''}
                       </div>
                       <LeadFunnelProgressBar leadId={formLeadId} boardId={processWorkflowId} />
                     </div>
