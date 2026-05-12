@@ -1583,6 +1583,8 @@ export function WhatsAppInbox() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <SharedConversationsPanel open={sharedPanelOpen} onOpenChange={setSharedPanelOpen} />
     </div>
   );
 }
