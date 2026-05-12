@@ -102,6 +102,8 @@ interface ActivityFormCompactProps {
   // Step context (current funnel/process step → templates + checklist)
   stepContext?: ActivityStepContext | null;
   saveStepFieldTemplates?: (fieldKey: string, variations: TemplateVariation[]) => Promise<boolean>;
+  selectedStepId?: string | null;
+  setSelectedStepId?: (id: string | null) => void;
   leads: LeadOption[];
 }
 
