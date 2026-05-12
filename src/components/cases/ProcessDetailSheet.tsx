@@ -824,8 +824,67 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
 
             {activeTab === 'notas' && (
               <>
-                <EditableTextarea label="Descrição" value={form.description || ''} onChange={v => set('description', v)} />
-                <EditableTextarea label="Notas" value={form.notes || ''} onChange={v => set('notes', v)} />
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-semibold flex items-center gap-1.5">
+                    <FileText className="h-3.5 w-3.5 text-primary" />
+                    Resumo & Notas do Processo
+                  </h4>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={generatingSummary}
+                    onClick={async () => {
+                      setGeneratingSummary(true);
+                      try {
+                        const movs = Array.isArray(form.movimentacoes) ? form.movimentacoes.slice(0, 30) : [];
+                        const movsTxt = movs.map((m: any, i: number) =>
+                          `${i + 1}. [${m.data || m.data_hora || '?'}] ${m.tipo || ''} — ${(m.conteudo || m.titulo || m.descricao || '').toString().slice(0, 200)}`
+                        ).join('\n');
+                        const ctx = [
+                          `Nº Processo: ${form.process_number || '—'}`,
+                          `Classe: ${form.classe || '—'}`,
+                          `Assunto: ${form.assunto_principal || (Array.isArray(form.assuntos) ? form.assuntos.join(', ') : '—')}`,
+                          `Órgão Julgador: ${form.orgao_julgador || '—'}`,
+                          `Tribunal: ${form.tribunal || ''} ${form.tribunal_sigla || ''}`,
+                          `Polo Ativo: ${form.polo_ativo || '—'}`,
+                          `Polo Passivo: ${form.polo_passivo || '—'}`,
+                          `Valor da Causa: ${form.valor_causa_formatado || form.valor_causa || '—'}`,
+                          `Situação: ${form.situacao || '—'}`,
+                          `Data Distribuição: ${form.data_distribuicao || '—'}`,
+                          `Última Movimentação: ${form.data_ultima_movimentacao || '—'}`,
+                          movsTxt ? `\nÚltimas movimentações:\n${movsTxt}` : '',
+                        ].join('\n');
+
+                        const { data, error } = await cloudFunctions.invoke('ai-text-editor', {
+                          body: {
+                            text: ctx,
+                            action: 'custom',
+                            custom_prompt: 'Faça um RESUMO JURÍDICO claro e objetivo deste processo em português brasileiro, com no máximo 8 linhas. Inclua: do que se trata, em que fase está, quais foram as últimas movimentações relevantes e qual o próximo passo provável. Linguagem direta, sem juridiquês excessivo. Retorne apenas o texto do resumo.',
+                          },
+                        });
+                        if (error) throw error;
+                        let summary = '';
+                        if (data?.options?.[0]) summary = data.options[0];
+                        else if (typeof data === 'string') summary = data;
+                        else if (data?.text) summary = data.text;
+                        if (!summary) throw new Error('Resposta da IA vazia');
+                        set('description', summary);
+                        toast.success('Resumo gerado por IA');
+                      } catch (err: any) {
+                        console.error('AI summary error:', err);
+                        toast.error('Erro ao gerar resumo: ' + (err.message || ''));
+                      } finally {
+                        setGeneratingSummary(false);
+                      }
+                    }}
+                    className="h-7 text-xs gap-1"
+                  >
+                    {generatingSummary ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                    Gerar resumo (IA)
+                  </Button>
+                </div>
+                <EditableTextarea label="Resumo / Descrição" value={form.description || ''} onChange={v => set('description', v)} />
+                <EditableTextarea label="Notas Internas" value={form.notes || ''} onChange={v => set('notes', v)} />
               </>
             )}
 
