@@ -61,6 +61,8 @@ export function StepTemplatesHub({
   currentValue,
   onApply,
   stepLabel,
+  phaseLabel,
+  objectiveLabel,
   canPersist,
   onPersist,
 }: Props) {
