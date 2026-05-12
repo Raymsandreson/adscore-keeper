@@ -528,11 +528,20 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
           <Pencil className="h-4 w-4 text-primary" />
           Detalhes do Processo
         </div>
-        <div className="flex items-center gap-1">
-          <Button size="sm" variant="outline" onClick={form.escavador_raw ? handleReExtract : handleFetchFromApi} disabled={saving} className="h-7 text-xs gap-1">
-            <RefreshCw className="h-3 w-3" />
-            {form.escavador_raw ? 'Re-extrair' : 'Buscar no Escavador'}
-          </Button>
+        <div className="flex items-center gap-2">
+          <div className="flex flex-col items-end">
+            <Button size="sm" variant="outline" onClick={form.escavador_raw ? handleReExtract : handleFetchFromApi} disabled={saving} className="h-7 text-xs gap-1">
+              <RefreshCw className="h-3 w-3" />
+              {form.escavador_raw ? 'Re-extrair' : 'Buscar no Escavador'}
+            </Button>
+            <span className="text-[9px] text-muted-foreground mt-0.5">
+              {form.data_ultima_verificacao
+                ? `Última busca: ${new Date(form.data_ultima_verificacao + (form.data_ultima_verificacao.length === 10 ? 'T00:00:00' : '')).toLocaleDateString('pt-BR')}`
+                : form.escavador_raw
+                  ? 'Buscado anteriormente'
+                  : 'Nunca buscado'}
+            </span>
+          </div>
           {dirty && (
             <Button size="sm" onClick={handleSave} disabled={saving} className="h-7 text-xs gap-1">
               {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
