@@ -126,24 +126,6 @@ export function StepTemplatesHub({
     await onPersist(next);
   };
 
-  const confirmLink = async () => {
-    if (!pendingSave) { setConfirmLinkOpen(false); return; }
-    const ok = await onPersist(pendingSave.list);
-    setConfirmLinkOpen(false);
-    if (ok) {
-      cancelDraft();
-      setPendingSave(null);
-      setOpen(false);
-    }
-  };
-
-  const dismissLink = () => {
-    // Não vincular: descarta o rascunho sem persistir nem aplicar no campo
-    setConfirmLinkOpen(false);
-    cancelDraft();
-    setPendingSave(null);
-  };
-
   const handlePick = (v: TemplateVariation) => {
     if (hasContent) setPendingApply(v);
     else { onApply(v.content); setOpen(false); }
