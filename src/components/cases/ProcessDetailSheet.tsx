@@ -328,37 +328,11 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
     setDirty(true);
   }, []);
 
-  const handleFetchFromApi = async () => {
-    if (!form.process_number) {
-      toast.error('Número do processo não encontrado para buscar no Escavador');
-      return;
-    }
-    setSaving(true);
-    try {
-      const { data, error } = await cloudFunctions.invoke('search-escavador', {
-        body: { action: 'buscar_completo', numero_cnj: form.process_number },
-      });
-      if (error) throw error;
-      if (!data.success) throw new Error(data.error);
-
-      const result = data.data;
-      // grava o raw e roda extração completa
-      await externalSupabase.from('lead_processes').update({ escavador_raw: result }).eq('id', process.id);
-      setForm(prev => ({ ...prev, escavador_raw: result }));
-      // delega extração para handleReExtract (já cobre todos os campos)
-      // pequeno delay para garantir que setForm propagou
-      setTimeout(() => handleReExtract(), 50);
-    } catch (err: any) {
-      console.error('Fetch from API error:', err);
-      toast.error(err.message || 'Erro ao buscar no Escavador');
-      setSaving(false);
-    }
-  };
-
-  const handleReExtract = async () => {
-    const raw = form.escavador_raw;
+  const handleReExtract = async (rawOverride?: any) => {
+    const raw = rawOverride ?? form.escavador_raw;
     if (!raw) {
       toast.error('Dados brutos do Escavador não encontrados');
+      setSaving(false);
       return;
     }
     const fonte: any = raw.fontes?.[0] || {};
@@ -432,6 +406,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
 
     if (count === 0) {
       toast.info('Nenhum dado encontrado no Escavador para extrair');
+      setSaving(false);
       return;
     }
 
@@ -439,7 +414,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
     try {
       const { error } = await externalSupabase.from('lead_processes').update(updates).eq('id', process.id);
       if (error) throw error;
-      setForm(prev => ({ ...prev, ...updates }));
+      setForm(prev => ({ ...prev, ...updates, ...(rawOverride ? { escavador_raw: rawOverride } : {}) }));
       toast.success(`${count} campos atualizados a partir dos dados do Escavador`);
       onUpdated?.();
     } catch (err: any) {
@@ -448,6 +423,31 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
       setSaving(false);
     }
   };
+
+  const handleFetchFromApi = async () => {
+    if (!form.process_number) {
+      toast.error('Número do processo não encontrado para buscar no Escavador');
+      return;
+    }
+    setSaving(true);
+    try {
+      const { data, error } = await cloudFunctions.invoke('search-escavador', {
+        body: { action: 'buscar_completo', numero_cnj: form.process_number },
+      });
+      if (error) throw error;
+      if (!data.success) throw new Error(data.error);
+
+      const result = data.data;
+      await externalSupabase.from('lead_processes').update({ escavador_raw: result }).eq('id', process.id);
+      // chama extração passando o raw direto (evita race com setForm)
+      await handleReExtract(result);
+    } catch (err: any) {
+      console.error('Fetch from API error:', err);
+      toast.error(err.message || 'Erro ao buscar no Escavador');
+      setSaving(false);
+    }
+  };
+
 
   const handleSave = async () => {
     if (!process?.id) return;
