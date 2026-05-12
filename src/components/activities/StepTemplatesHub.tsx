@@ -92,8 +92,7 @@ export function StepTemplatesHub({
   const [draftName, setDraftName] = useState('');
   const [draftContent, setDraftContent] = useState('');
   const [pendingApply, setPendingApply] = useState<TemplateVariation | null>(null);
-
-  const hasContent = stripHtml(currentValue).length > 0;
+  const [aiLoading, setAiLoading] = useState(false);
   const count = variations.length;
 
   // Agrupa passos por fase para o picker
