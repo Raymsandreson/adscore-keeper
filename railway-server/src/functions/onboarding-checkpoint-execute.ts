@@ -331,36 +331,90 @@ export const handler: RequestHandler = async (req, res) => {
             .maybeSingle();
           let groupJid = lead?.whatsapp_group_id || null;
           let reused = false;
+          let reusedFrom: 'lead_record' | 'snapshot_uazapi' | null = null;
+
           if (groupJid) {
             reused = true;
+            reusedFrom = 'lead_record';
           } else {
-            let creator_instance_id: string | null = null;
-            if (p.instance_name) {
-              const { data: inst } = await ext
-                .from('whatsapp_instances')
-                .select('id')
-                .ilike('instance_name', p.instance_name)
-                .maybeSingle();
-              creator_instance_id = inst?.id || null;
+            // ─── ANTI-DUPLICAÇÃO: cruza telefone do signatário com snapshot UazAPI ───
+            // Regra de negócio: 1 cliente = 1 grupo WhatsApp (mesmo que tenha vários casos/processos).
+            // Se telefone já está em algum grupo de caso, REUSA esse grupo.
+            const phoneDigits = (p.lead_phone || '').replace(/\D/g, '');
+            if (phoneDigits) {
+              // Tentativas: telefone completo + variação sem 9 (celular antigo BR)
+              const phoneCandidates = [phoneDigits];
+              if (/^55\d{11}$/.test(phoneDigits)) {
+                phoneCandidates.push(phoneDigits.slice(0, 4) + phoneDigits.slice(5));
+              }
+
+              for (const phone of phoneCandidates) {
+                const { data: existingGroup } = await ext
+                  .from('whatsapp_groups_uazapi_snapshot')
+                  .select('jid, group_name')
+                  .contains('participants_phones', [phone])
+                  .or(
+                    'group_name.ilike.PREV%,' +
+                    'group_name.ilike.MAT-%,' +
+                    'group_name.ilike.BPC%,' +
+                    'group_name.ilike.✅%,' +
+                    'group_name.ilike.%Caso%,' +
+                    'group_name.ilike.%Auxílio%,' +
+                    'group_name.ilike.%Maternidade%'
+                  )
+                  .order('group_created_at', { ascending: false })
+                  .limit(1)
+                  .maybeSingle();
+
+                if (existingGroup?.jid) {
+                  groupJid = existingGroup.jid;
+                  reused = true;
+                  reusedFrom = 'snapshot_uazapi';
+                  await ext.from('leads').update({ whatsapp_group_id: groupJid }).eq('id', ckpt.lead_id);
+                  console.log(JSON.stringify({
+                    fn: 'onboarding-checkpoint-execute',
+                    event: 'create_group.reused_from_snapshot',
+                    rid,
+                    lead_id: ckpt.lead_id,
+                    phone_used: phone,
+                    existing_jid: existingGroup.jid,
+                    existing_name: existingGroup.group_name,
+                  }));
+                  break;
+                }
+              }
             }
-            const r = await callCloudFn('create-whatsapp-group', {
-              lead_id: ckpt.lead_id,
-              lead_name: p.lead_name,
-              phone: p.lead_phone,
-              contact_phone: p.lead_phone,
-              board_id: p.board_id,
-              creator_instance_id,
-              creation_origin: 'onboarding_checkpoint',
-              // Pós-assinatura: usa configuração de grupo "fechado" (closed_group_name_prefix
-              // + closed_sequence) e sincroniza lead_name com o nome final do grupo (ex: MAT 0001).
-              phase: 'closed',
-            });
-            if (r.ok && r.data?.group_id) {
-              groupJid = r.data.group_id;
-              await ext.from('leads').update({ whatsapp_group_id: groupJid }).eq('id', ckpt.lead_id);
-            } else {
-              errMsg = r.data?.error || 'create-whatsapp-group falhou';
-              break;
+
+            // Se não achou nada, cria grupo novo (lógica original)
+            if (!groupJid) {
+              let creator_instance_id: string | null = null;
+              if (p.instance_name) {
+                const { data: inst } = await ext
+                  .from('whatsapp_instances')
+                  .select('id')
+                  .ilike('instance_name', p.instance_name)
+                  .maybeSingle();
+                creator_instance_id = inst?.id || null;
+              }
+              const r = await callCloudFn('create-whatsapp-group', {
+                lead_id: ckpt.lead_id,
+                lead_name: p.lead_name,
+                phone: p.lead_phone,
+                contact_phone: p.lead_phone,
+                board_id: p.board_id,
+                creator_instance_id,
+                creation_origin: 'onboarding_checkpoint',
+                // Pós-assinatura: usa configuração de grupo "fechado" (closed_group_name_prefix
+                // + closed_sequence) e sincroniza lead_name com o nome final do grupo (ex: MAT 0001).
+                phase: 'closed',
+              });
+              if (r.ok && r.data?.group_id) {
+                groupJid = r.data.group_id;
+                await ext.from('leads').update({ whatsapp_group_id: groupJid }).eq('id', ckpt.lead_id);
+              } else {
+                errMsg = r.data?.error || 'create-whatsapp-group falhou';
+                break;
+              }
             }
           }
 
@@ -388,6 +442,7 @@ export const handler: RequestHandler = async (req, res) => {
             group_link: lwg?.group_link || null,
             participants,
             reused,
+            reused_from: reusedFrom,
           };
           success = true;
           break;
