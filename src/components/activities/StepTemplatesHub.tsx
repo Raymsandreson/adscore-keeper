@@ -73,8 +73,6 @@ export function StepTemplatesHub({
   const [draftName, setDraftName] = useState('');
   const [draftContent, setDraftContent] = useState('');
   const [pendingApply, setPendingApply] = useState<TemplateVariation | null>(null);
-  const [confirmLinkOpen, setConfirmLinkOpen] = useState(false);
-  const [pendingSave, setPendingSave] = useState<{ list: TemplateVariation[]; mode: 'create' | 'edit' } | null>(null);
 
   const hasContent = stripHtml(currentValue).length > 0;
   const count = variations.length;
@@ -100,27 +98,25 @@ export function StepTemplatesHub({
     setDraftContent('');
   };
 
-  const submitDraft = () => {
+  const submitDraft = async () => {
     const content = draftContent.trim();
     if (!content) return;
     const name = draftName.trim() || `Modelo ${variations.length + 1}`;
+    let next: TemplateVariation[];
     if (creating) {
-      const next = [...variations, { id: uid(), name, content }];
-      setPendingSave({ list: next, mode: 'create' });
-      if (canPersist) setConfirmLinkOpen(true);
-      else {
-        // Sem passo para vincular: nada a fazer (apenas fecha o rascunho)
-        cancelDraft();
-        setPendingSave(null);
-      }
+      next = [...variations, { id: uid(), name, content }];
     } else if (editing) {
-      const next = variations.map(v => v.id === editing.id ? { ...v, name, content } : v);
-      setPendingSave({ list: next, mode: 'edit' });
-      if (canPersist) setConfirmLinkOpen(true);
-      else {
-        cancelDraft();
-        setPendingSave(null);
-      }
+      next = variations.map(v => v.id === editing.id ? { ...v, name, content } : v);
+    } else {
+      return;
+    }
+    if (!canPersist) {
+      cancelDraft();
+      return;
+    }
+    const ok = await onPersist(next);
+    if (ok) {
+      cancelDraft();
     }
   };
 
@@ -128,24 +124,6 @@ export function StepTemplatesHub({
     if (!canPersist) return;
     const next = variations.filter(x => x.id !== v.id);
     await onPersist(next);
-  };
-
-  const confirmLink = async () => {
-    if (!pendingSave) { setConfirmLinkOpen(false); return; }
-    const ok = await onPersist(pendingSave.list);
-    setConfirmLinkOpen(false);
-    if (ok) {
-      cancelDraft();
-      setPendingSave(null);
-      setOpen(false);
-    }
-  };
-
-  const dismissLink = () => {
-    // Não vincular: descarta o rascunho sem persistir nem aplicar no campo
-    setConfirmLinkOpen(false);
-    cancelDraft();
-    setPendingSave(null);
   };
 
   const handlePick = (v: TemplateVariation) => {
@@ -309,25 +287,6 @@ export function StepTemplatesHub({
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Confirma vínculo ao passo */}
-      <AlertDialog open={confirmLinkOpen} onOpenChange={(o) => { if (!o) dismissLink(); }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Vincular ao passo do fluxo?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Deseja salvar este modelo no passo <strong>{stepLabel || 'atual'}</strong> para que apareça automaticamente em outras atividades deste passo?
-              <br /><br />
-              <span className="text-xs text-muted-foreground">
-                Se escolher <strong>Não vincular</strong>, o conteúdo será apenas aplicado neste campo agora, sem ser salvo no fluxo.
-              </span>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={dismissLink}>Não vincular</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmLink}>Vincular ao passo</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </>
   );
 }
