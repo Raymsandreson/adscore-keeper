@@ -299,11 +299,18 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
     setFormName(board.name);
     setFormDescription(board.description || '');
 
-    const links = await fetchStageLinks(board.id);
+    // Sempre busca templates frescos junto com os links pra evitar race
+    // (sem isso, se o usuário abrir Editar antes do fetchTemplates inicial
+    // resolver, os objetivos vêm sem `items` e a lista de passos fica vazia).
+    const [links, freshTemplates] = await Promise.all([
+      fetchStageLinks(board.id),
+      fetchTemplates(),
+    ]);
+    const tmplList = freshTemplates.length > 0 ? freshTemplates : templates;
     const phaseConfigs: PhaseConfig[] = board.stages.map(stage => {
       const stageLinks = links.filter(l => l.stage_id === stage.id);
       const objectives: PhaseObjective[] = stageLinks.map(link => {
-        const tmpl = templates.find(t => t.id === link.checklist_template_id);
+        const tmpl = tmplList.find(t => t.id === link.checklist_template_id);
         return {
           templateId: link.checklist_template_id,
           name: tmpl?.name || 'Objetivo',
