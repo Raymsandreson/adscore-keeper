@@ -205,7 +205,18 @@ export default function ProcessesPage() {
                     </div>
                   </div>
 
-                  <ExternalLink className="h-4 w-4 text-muted-foreground shrink-0 mt-1" />
+                  <div className="flex flex-col items-center gap-1 shrink-0">
+                    <ExternalLink className="h-4 w-4 text-muted-foreground mt-1" />
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                      onClick={(e) => handleDelete(e, p)}
+                      title="Excluir processo"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
               </CardContent>
             </Card>
