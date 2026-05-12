@@ -85,6 +85,41 @@ Deno.serve(async (req) => {
       return json({ success: true, affected: count ?? 0 });
     }
 
+    if (action === "create") {
+      if (!payload || !payload.instance_name || !payload.instance_token) {
+        return json({ success: false, error: "instance_name e instance_token são obrigatórios" });
+      }
+      const row = {
+        instance_name: String(payload.instance_name).trim(),
+        instance_token: String(payload.instance_token).trim(),
+        base_url: payload.base_url ? String(payload.base_url).trim() : null,
+        owner_phone: payload.owner_phone ? String(payload.owner_phone).trim() : null,
+        owner_name: payload.owner_name ? String(payload.owner_name).trim() : null,
+        is_active: true,
+      };
+      const { data, error } = await ext
+        .from("whatsapp_instances")
+        .insert(row as any)
+        .select()
+        .single();
+      if (error) return json({ success: false, error: error.message });
+      return json({ success: true, instance: data });
+    }
+
+    if (action === "update") {
+      if (!payload) return json({ success: false, error: "missing payload" });
+      const allowed: Record<string, any> = {};
+      for (const k of ["instance_name", "instance_token", "base_url", "owner_phone", "owner_name"]) {
+        if (k in payload) allowed[k] = payload[k] === "" ? null : payload[k];
+      }
+      const { error, count } = await ext
+        .from("whatsapp_instances")
+        .update(allowed, { count: "exact" })
+        .eq("id", instance_id);
+      if (error) return json({ success: false, error: error.message });
+      return json({ success: true, affected: count ?? 0 });
+    }
+
     return json({ success: false, error: "unknown action" });
   } catch (e: any) {
     return json({ success: false, error: e?.message || String(e) });
