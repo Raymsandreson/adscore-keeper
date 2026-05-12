@@ -615,7 +615,7 @@ const ActivitiesPage = () => {
     if ((activity as any).case_id) {
       promises.push(
         Promise.resolve(externalSupabase.from('lead_processes').select('id, title, process_number, polo_passivo, tribunal, area, assuntos, workflow_id, workflow_name, envolvidos').eq('case_id', (activity as any).case_id)).then(({ data }) => {
-          setCaseProcesses((data || []).map((p: any) => ({ id: p.id, title: p.title, process_number: p.process_number, polo_passivo: p.polo_passivo, tribunal: p.tribunal, area: p.area, assuntos: p.assuntos, workflow_id: p.workflow_id, workflow_name, envolvidos: p.envolvidos })));
+          setCaseProcesses((data || []).map((p: any) => ({ id: p.id, title: p.title, process_number: p.process_number, polo_passivo: p.polo_passivo, tribunal: p.tribunal, area: p.area, assuntos: p.assuntos, workflow_id: p.workflow_id, workflow_name: p.workflow_name, envolvidos: p.envolvidos })));
         })
       );
     }
