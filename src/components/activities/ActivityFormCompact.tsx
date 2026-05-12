@@ -392,7 +392,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
             const firstAssunto = selectedProc?.assuntos?.[0];
             return (
               <div className="flex items-center gap-0.5">
-                <Popover>
+                <Popover open={processPopoverOpen} onOpenChange={setProcessPopoverOpen}>
                   <PopoverTrigger asChild>
                     <Badge
                       variant="secondary"
