@@ -1037,7 +1037,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
             open={!!editProcessData}
             onOpenChange={(open) => { if (!open) setEditProcessData(null); }}
             process={editProcessData}
-            mode="dialog"
+            mode="sheet"
             onUpdated={async () => {
               // Refresh in-memory caseProcesses so badge reflects new title/workflow
               if (props.formCaseId) {
