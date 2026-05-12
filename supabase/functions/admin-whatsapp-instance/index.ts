@@ -63,6 +63,10 @@ Deno.serve(async (req) => {
     }
 
     const ext = createClient(EXTERNAL_URL, EXTERNAL_SR);
+    // Cloud mirror: a Inbox e várias FKs (whatsapp_instance_users, profiles.default_instance_id, etc.)
+    // vivem no Cloud. Toda escrita em whatsapp_instances precisa espelhar lá pra não sumir do app.
+    const SUPABASE_SR = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const cloudAdmin = createClient(SUPABASE_URL, SUPABASE_SR);
 
     if (action === "delete") {
       const { error, count } = await ext
@@ -70,6 +74,8 @@ Deno.serve(async (req) => {
         .delete({ count: "exact" })
         .eq("id", instance_id);
       if (error) return json({ success: false, error: error.message });
+      const { error: cErr } = await cloudAdmin.from("whatsapp_instances").delete().eq("id", instance_id);
+      if (cErr) console.warn("[admin-whatsapp-instance] cloud delete mirror failed:", cErr.message);
       return json({ success: true, affected: count ?? 0 });
     }
 
@@ -82,6 +88,8 @@ Deno.serve(async (req) => {
         .update({ is_active }, { count: "exact" })
         .eq("id", instance_id);
       if (error) return json({ success: false, error: error.message });
+      const { error: cErr } = await cloudAdmin.from("whatsapp_instances").update({ is_active }).eq("id", instance_id);
+      if (cErr) console.warn("[admin-whatsapp-instance] cloud set_active mirror failed:", cErr.message);
       return json({ success: true, affected: count ?? 0 });
     }
 
@@ -103,6 +111,16 @@ Deno.serve(async (req) => {
         .select()
         .single();
       if (error) return json({ success: false, error: error.message });
+
+      // Mirror no Cloud com o MESMO id pra manter FKs consistentes.
+      const mirrorRow = { ...row, id: (data as any)?.id };
+      const { error: cErr } = await cloudAdmin
+        .from("whatsapp_instances")
+        .upsert(mirrorRow as any, { onConflict: "id" });
+      if (cErr) {
+        console.warn("[admin-whatsapp-instance] cloud create mirror failed:", cErr.message);
+        return json({ success: true, instance: data, cloud_mirror_warning: cErr.message });
+      }
       return json({ success: true, instance: data });
     }
 
@@ -117,6 +135,8 @@ Deno.serve(async (req) => {
         .update(allowed, { count: "exact" })
         .eq("id", instance_id);
       if (error) return json({ success: false, error: error.message });
+      const { error: cErr } = await cloudAdmin.from("whatsapp_instances").update(allowed).eq("id", instance_id);
+      if (cErr) console.warn("[admin-whatsapp-instance] cloud update mirror failed:", cErr.message);
       return json({ success: true, affected: count ?? 0 });
     }
 
