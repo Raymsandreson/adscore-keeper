@@ -294,6 +294,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
   const [linkLeadOpen, setLinkLeadOpen] = useState(false);
   const [linkContactOpen, setLinkContactOpen] = useState(false);
   const [linkCaseOpen, setLinkCaseOpen] = useState(false);
+  const [processPopoverOpen, setProcessPopoverOpen] = useState(false);
   const [editProcessData, setEditProcessData] = useState<any>(null);
   const [loadingProcessEdit, setLoadingProcessEdit] = useState(false);
 
@@ -392,7 +393,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
             const firstAssunto = selectedProc?.assuntos?.[0];
             return (
               <div className="flex items-center gap-0.5">
-                <Popover>
+                <Popover open={processPopoverOpen} onOpenChange={setProcessPopoverOpen}>
                   <PopoverTrigger asChild>
                     <Badge
                       variant="secondary"
@@ -435,10 +436,10 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
                       </div>
                     )}
                     <div className="flex gap-1.5 mt-1">
-                      <Button type="button" variant="default" size="sm" className="flex-1 text-[10px] h-6" onClick={() => openProcessEditor(props.formProcessId)} disabled={loadingProcessEdit}>
+                      <Button type="button" variant="default" size="sm" className="flex-1 text-[10px] h-6" onClick={() => { setProcessPopoverOpen(false); openProcessEditor(props.formProcessId); }} disabled={loadingProcessEdit}>
                         {loadingProcessEdit ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Editar / Vincular Workflow'}
                       </Button>
-                      <Button type="button" variant="outline" size="sm" className="flex-1 text-[10px] h-6" onClick={() => setLinkCaseOpen(true)}>
+                      <Button type="button" variant="outline" size="sm" className="flex-1 text-[10px] h-6" onClick={() => { setProcessPopoverOpen(false); setLinkCaseOpen(true); }}>
                         Trocar
                       </Button>
                     </div>
