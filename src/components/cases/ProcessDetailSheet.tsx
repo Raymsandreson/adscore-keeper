@@ -196,8 +196,11 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
 
   useEffect(() => {
     if (process) {
-      setForm({ ...process });
-      setDirty(false);
+      setForm({
+        ...process,
+        fee_percentage: process.fee_percentage ?? 30,
+      });
+      setDirty(process.fee_percentage == null); // marca dirty se aplicou default
       setActiveTab('partes');
       setActivities([]);
       setDocuments([]);
