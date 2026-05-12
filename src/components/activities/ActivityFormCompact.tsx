@@ -434,9 +434,14 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
                         </ul>
                       </div>
                     )}
-                    <Button type="button" variant="outline" size="sm" className="w-full mt-1 text-[10px] h-6" onClick={() => setLinkCaseOpen(true)}>
-                      Trocar processo
-                    </Button>
+                    <div className="flex gap-1.5 mt-1">
+                      <Button type="button" variant="default" size="sm" className="flex-1 text-[10px] h-6" onClick={() => openProcessEditor(props.formProcessId)} disabled={loadingProcessEdit}>
+                        {loadingProcessEdit ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Editar / Vincular Workflow'}
+                      </Button>
+                      <Button type="button" variant="outline" size="sm" className="flex-1 text-[10px] h-6" onClick={() => setLinkCaseOpen(true)}>
+                        Trocar
+                      </Button>
+                    </div>
                   </PopoverContent>
                 </Popover>
                 <button type="button" onClick={() => { props.setFormProcessId(''); props.setFormProcessTitle(''); }} className="text-muted-foreground hover:text-foreground">
