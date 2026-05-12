@@ -12,6 +12,8 @@ import {
 export interface ActivityStepContext {
   stepId: string;
   stepLabel: string;
+  phaseLabel: string | null;
+  objectiveLabel: string | null;
   docChecklist: DocChecklistItem[];
   messageTemplates: Record<string, TemplateVariation[]>; // por field_key
   totalCount: number;
