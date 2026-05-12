@@ -3223,6 +3223,16 @@ const ActivitiesPage = () => {
         )}
       </div>
 
+      {selectedActivity?.id && (
+        <TeamChatSheet
+          open={teamChatOpen}
+          onOpenChange={setTeamChatOpen}
+          entityType="activity"
+          entityId={selectedActivity.id}
+          entityName={selectedActivity.title}
+        />
+      )}
+
       <ActivityChatSheet
         open={chatOpen}
         onOpenChange={setChatOpen}
