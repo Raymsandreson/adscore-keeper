@@ -93,7 +93,20 @@ export default function ProcessesPage() {
     }
   };
 
-  return (
+  const handleDelete = async (e: React.MouseEvent, p: Process) => {
+    e.stopPropagation();
+    const label = p.process_number || p.title || 'este processo';
+    if (!window.confirm(`Excluir "${label}"?\n\nEsta ação remove o processo do caso. Não pode ser desfeita.`)) return;
+    const { error } = await externalSupabase.from('lead_processes').delete().eq('id', p.id);
+    if (error) {
+      toast.error('Erro ao excluir: ' + error.message);
+      return;
+    }
+    toast.success('Processo excluído');
+    setProcesses(prev => prev.filter(x => x.id !== p.id));
+  };
+
+
     <div className="space-y-4 p-4 md:p-6">
       <div>
         <h1 className="text-2xl font-bold">Processos</h1>
