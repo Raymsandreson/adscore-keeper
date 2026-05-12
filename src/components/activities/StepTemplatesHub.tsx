@@ -186,9 +186,22 @@ export function StepTemplatesHub({
               <div className="flex items-center justify-between gap-2">
                 <SheetTitle className="text-sm truncate">Modelos · {fieldLabel}</SheetTitle>
                 {!creating && !editing && (
-                  <Button size="sm" variant="ghost" className="h-7 text-[11px] gap-1 shrink-0" onClick={startCreate}>
-                    <Plus className="h-3 w-3" /> Novo
-                  </Button>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 text-[11px] gap-1 text-blue-600 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/30"
+                      onClick={generateWithAI}
+                      disabled={aiLoading}
+                      title="Gerar sugestão de modelo com IA baseado na fase, objetivo e passo"
+                    >
+                      {aiLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wand2 className="h-3 w-3" />}
+                      Sugerir com IA
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-7 text-[11px] gap-1" onClick={startCreate}>
+                      <Plus className="h-3 w-3" /> Novo
+                    </Button>
+                  </div>
                 )}
               </div>
 
