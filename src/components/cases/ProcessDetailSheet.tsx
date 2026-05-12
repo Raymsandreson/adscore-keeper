@@ -528,11 +528,20 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
           <Pencil className="h-4 w-4 text-primary" />
           Detalhes do Processo
         </div>
-        <div className="flex items-center gap-1">
-          <Button size="sm" variant="outline" onClick={form.escavador_raw ? handleReExtract : handleFetchFromApi} disabled={saving} className="h-7 text-xs gap-1">
-            <RefreshCw className="h-3 w-3" />
-            {form.escavador_raw ? 'Re-extrair' : 'Buscar no Escavador'}
-          </Button>
+        <div className="flex items-center gap-2">
+          <div className="flex flex-col items-end">
+            <Button size="sm" variant="outline" onClick={form.escavador_raw ? handleReExtract : handleFetchFromApi} disabled={saving} className="h-7 text-xs gap-1">
+              <RefreshCw className="h-3 w-3" />
+              {form.escavador_raw ? 'Re-extrair' : 'Buscar no Escavador'}
+            </Button>
+            <span className="text-[9px] text-muted-foreground mt-0.5">
+              {form.data_ultima_verificacao
+                ? `Última busca: ${new Date(form.data_ultima_verificacao + (form.data_ultima_verificacao.length === 10 ? 'T00:00:00' : '')).toLocaleDateString('pt-BR')}`
+                : form.escavador_raw
+                  ? 'Buscado anteriormente'
+                  : 'Nunca buscado'}
+            </span>
+          </div>
           {dirty && (
             <Button size="sm" onClick={handleSave} disabled={saving} className="h-7 text-xs gap-1">
               {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
@@ -564,6 +573,39 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
             <ExternalLink className="h-3 w-3" />
             Ver na aba Processos
           </Button>
+        </div>
+
+        {/* Workflow link — destaque */}
+        <div className="rounded-md border border-primary/30 bg-primary/5 p-2 space-y-1">
+          <Label className="text-[10px] uppercase tracking-wider text-primary font-semibold flex items-center gap-1">
+            <ClipboardList className="h-3 w-3" />
+            Fluxo de Trabalho Vinculado
+          </Label>
+          <Select
+            value={form.workflow_id || '__none__'}
+            onValueChange={(val) => {
+              if (val === '__none__') {
+                set('workflow_id', null);
+                set('workflow_name', null);
+                set('workflow_stage_id', null);
+              } else {
+                const wf = workflowBoards.find(w => w.id === val);
+                set('workflow_id', val);
+                set('workflow_name', wf?.name || null);
+                set('workflow_stage_id', null);
+              }
+            }}
+          >
+            <SelectTrigger className="h-8 text-xs bg-background">
+              <SelectValue placeholder="Nenhum fluxo vinculado — selecione" />
+            </SelectTrigger>
+            <SelectContent className="z-[9999]">
+              <SelectItem value="__none__">Nenhum</SelectItem>
+              {workflowBoards.map(wf => (
+                <SelectItem key={wf.id} value={wf.id}>{wf.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
@@ -738,37 +780,9 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
                 <EditableSwitch label="Segredo de Justiça" checked={!!form.segredo_justica} onChange={v => set('segredo_justica', v)} />
                 <EditableSwitch label="Arquivado" checked={!!form.arquivado} onChange={v => set('arquivado', v)} />
                 <EditableSwitch label="Processo Físico" checked={!!form.fisico} onChange={v => set('fisico', v)} />
-                <div className="space-y-1">
-                  <Label className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Fluxo de Trabalho</Label>
-                  <Select
-                    value={form.workflow_id || '__none__'}
-                    onValueChange={(val) => {
-                      if (val === '__none__') {
-                        set('workflow_id', null);
-                        set('workflow_name', null);
-                        set('workflow_stage_id', null);
-                      } else {
-                        const wf = workflowBoards.find(w => w.id === val);
-                        set('workflow_id', val);
-                        set('workflow_name', wf?.name || null);
-                        set('workflow_stage_id', null);
-                      }
-                    }}
-                  >
-                    <SelectTrigger className="h-8 text-xs">
-                      <SelectValue placeholder="Selecione um fluxo de trabalho" />
-                    </SelectTrigger>
-                    <SelectContent className="z-[9999]">
-                      <SelectItem value="__none__">Nenhum</SelectItem>
-                      {workflowBoards.map(wf => (
-                        <SelectItem key={wf.id} value={wf.id}>{wf.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-[10px] text-muted-foreground">
-                    O fluxo selecionado será aplicado às atividades vinculadas a este processo.
-                  </p>
-                </div>
+                <p className="text-[10px] text-muted-foreground italic pt-2">
+                  O fluxo de trabalho vinculado fica em destaque no topo do painel.
+                </p>
               </>
             )}
 
