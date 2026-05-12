@@ -131,22 +131,14 @@ export function StepTemplatesHub({
     const ok = await onPersist(pendingSave.list);
     setConfirmLinkOpen(false);
     if (ok) {
-      // Se for criação, aplica também ao campo atual
-      if (pendingSave.mode === 'create') {
-        const newest = pendingSave.list[pendingSave.list.length - 1];
-        if (newest) onApply(newest.content);
-      }
       cancelDraft();
       setPendingSave(null);
+      setOpen(false);
     }
   };
 
   const dismissLink = () => {
-    // Não vincular: apenas aplica localmente sem persistir
-    if (pendingSave?.mode === 'create') {
-      const newest = pendingSave.list[pendingSave.list.length - 1];
-      if (newest) onApply(newest.content);
-    }
+    // Não vincular: descarta o rascunho sem persistir nem aplicar no campo
     setConfirmLinkOpen(false);
     cancelDraft();
     setPendingSave(null);
