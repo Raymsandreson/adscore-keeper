@@ -287,25 +287,6 @@ export function StepTemplatesHub({
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Confirma vínculo ao passo */}
-      <AlertDialog open={confirmLinkOpen} onOpenChange={(o) => { if (!o) dismissLink(); }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Vincular ao passo do fluxo?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Deseja salvar este modelo no passo <strong>{stepLabel || 'atual'}</strong> para que apareça automaticamente em outras atividades deste passo?
-              <br /><br />
-              <span className="text-xs text-muted-foreground">
-                Se escolher <strong>Não vincular</strong>, o conteúdo será apenas aplicado neste campo agora, sem ser salvo no fluxo.
-              </span>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={dismissLink}>Não vincular</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmLink}>Vincular ao passo</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </>
   );
 }
