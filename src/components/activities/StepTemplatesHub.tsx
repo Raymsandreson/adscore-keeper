@@ -30,6 +30,8 @@ interface Props {
   onApply: (content: string) => void;
   // Contexto do passo (para confirmação de vínculo)
   stepLabel?: string | null;
+  phaseLabel?: string | null;
+  objectiveLabel?: string | null;
   canPersist: boolean; // só permite salvar/editar/remover se houver passo
   onPersist: (next: TemplateVariation[]) => Promise<boolean>;
 }
@@ -59,6 +61,8 @@ export function StepTemplatesHub({
   currentValue,
   onApply,
   stepLabel,
+  phaseLabel,
+  objectiveLabel,
   canPersist,
   onPersist,
 }: Props) {
@@ -169,8 +173,20 @@ export function StepTemplatesHub({
               <div className="flex items-center justify-between gap-2">
                 <div className="min-w-0 text-left">
                   <SheetTitle className="text-sm truncate">Modelos · {fieldLabel}</SheetTitle>
-                  {stepLabel && (
-                    <SheetDescription className="text-[11px] truncate">Passo: {stepLabel}</SheetDescription>
+                  {(phaseLabel || objectiveLabel || stepLabel) && (
+                    <SheetDescription asChild>
+                      <div className="text-[11px] space-y-0.5 mt-1">
+                        {phaseLabel && (
+                          <div className="truncate"><span className="text-muted-foreground">Fase:</span> <span className="font-medium text-foreground">{phaseLabel}</span></div>
+                        )}
+                        {objectiveLabel && (
+                          <div className="truncate"><span className="text-muted-foreground">Objetivo:</span> <span className="font-medium text-foreground">{objectiveLabel}</span></div>
+                        )}
+                        {stepLabel && (
+                          <div className="truncate"><span className="text-muted-foreground">Passo:</span> <span className="font-medium text-foreground">{stepLabel}</span></div>
+                        )}
+                      </div>
+                    </SheetDescription>
                   )}
                 </div>
                 {!creating && !editing && (

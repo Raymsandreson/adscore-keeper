@@ -707,6 +707,8 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
               currentValue: value,
               onApply: setter,
               stepLabel: props.stepContext?.stepLabel || null,
+              phaseLabel: props.stepContext?.phaseLabel || null,
+              objectiveLabel: props.stepContext?.objectiveLabel || null,
               canPersist: !!(props.stepContext?.templateId && props.saveStepFieldTemplates),
               onPersist: persistField,
             };
