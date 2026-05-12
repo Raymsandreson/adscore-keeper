@@ -780,37 +780,9 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
                 <EditableSwitch label="Segredo de Justiça" checked={!!form.segredo_justica} onChange={v => set('segredo_justica', v)} />
                 <EditableSwitch label="Arquivado" checked={!!form.arquivado} onChange={v => set('arquivado', v)} />
                 <EditableSwitch label="Processo Físico" checked={!!form.fisico} onChange={v => set('fisico', v)} />
-                <div className="space-y-1">
-                  <Label className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Fluxo de Trabalho</Label>
-                  <Select
-                    value={form.workflow_id || '__none__'}
-                    onValueChange={(val) => {
-                      if (val === '__none__') {
-                        set('workflow_id', null);
-                        set('workflow_name', null);
-                        set('workflow_stage_id', null);
-                      } else {
-                        const wf = workflowBoards.find(w => w.id === val);
-                        set('workflow_id', val);
-                        set('workflow_name', wf?.name || null);
-                        set('workflow_stage_id', null);
-                      }
-                    }}
-                  >
-                    <SelectTrigger className="h-8 text-xs">
-                      <SelectValue placeholder="Selecione um fluxo de trabalho" />
-                    </SelectTrigger>
-                    <SelectContent className="z-[9999]">
-                      <SelectItem value="__none__">Nenhum</SelectItem>
-                      {workflowBoards.map(wf => (
-                        <SelectItem key={wf.id} value={wf.id}>{wf.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-[10px] text-muted-foreground">
-                    O fluxo selecionado será aplicado às atividades vinculadas a este processo.
-                  </p>
-                </div>
+                <p className="text-[10px] text-muted-foreground italic pt-2">
+                  O fluxo de trabalho vinculado fica em destaque no topo do painel.
+                </p>
               </>
             )}
 
