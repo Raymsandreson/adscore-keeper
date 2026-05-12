@@ -954,6 +954,20 @@ export function WhatsAppInbox() {
             <ListChecks className="h-4 w-4" />
             {bulkMode && <span className="ml-1 text-xs">Lote</span>}
           </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setSharedPanelOpen(true)}
+            title="Conversas compartilhadas comigo"
+            className="relative"
+          >
+            <Share2 className="h-4 w-4" />
+            {sharedUnread > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 h-4 min-w-4 px-1 rounded-full bg-destructive text-destructive-foreground text-[9px] flex items-center justify-center font-semibold">
+                {sharedUnread}
+              </span>
+            )}
+          </Button>
           <Button variant="ghost" size="icon" onClick={() => setShowGooglePanel(true)} title="Google Workspace">
             <Chrome className="h-4 w-4" />
           </Button>
