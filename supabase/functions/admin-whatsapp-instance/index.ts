@@ -49,13 +49,17 @@ Deno.serve(async (req) => {
 
     // 2) Aplicar operação no Externo com service role
     const body = await req.json().catch(() => ({}));
-    const { action, instance_id, is_active } = body as {
-      action?: "delete" | "set_active";
+    const { action, instance_id, is_active, payload } = body as {
+      action?: "delete" | "set_active" | "create" | "update";
       instance_id?: string;
       is_active?: boolean;
+      payload?: Record<string, any>;
     };
-    if (!action || !instance_id) {
-      return json({ success: false, error: "missing action/instance_id" });
+    if (!action) {
+      return json({ success: false, error: "missing action" });
+    }
+    if ((action === "delete" || action === "set_active" || action === "update") && !instance_id) {
+      return json({ success: false, error: "missing instance_id" });
     }
 
     const ext = createClient(EXTERNAL_URL, EXTERNAL_SR);
@@ -76,6 +80,41 @@ Deno.serve(async (req) => {
       const { error, count } = await ext
         .from("whatsapp_instances")
         .update({ is_active }, { count: "exact" })
+        .eq("id", instance_id);
+      if (error) return json({ success: false, error: error.message });
+      return json({ success: true, affected: count ?? 0 });
+    }
+
+    if (action === "create") {
+      if (!payload || !payload.instance_name || !payload.instance_token) {
+        return json({ success: false, error: "instance_name e instance_token são obrigatórios" });
+      }
+      const row = {
+        instance_name: String(payload.instance_name).trim(),
+        instance_token: String(payload.instance_token).trim(),
+        base_url: payload.base_url ? String(payload.base_url).trim() : null,
+        owner_phone: payload.owner_phone ? String(payload.owner_phone).trim() : null,
+        owner_name: payload.owner_name ? String(payload.owner_name).trim() : null,
+        is_active: true,
+      };
+      const { data, error } = await ext
+        .from("whatsapp_instances")
+        .insert(row as any)
+        .select()
+        .single();
+      if (error) return json({ success: false, error: error.message });
+      return json({ success: true, instance: data });
+    }
+
+    if (action === "update") {
+      if (!payload) return json({ success: false, error: "missing payload" });
+      const allowed: Record<string, any> = {};
+      for (const k of ["instance_name", "instance_token", "base_url", "owner_phone", "owner_name"]) {
+        if (k in payload) allowed[k] = payload[k] === "" ? null : payload[k];
+      }
+      const { error, count } = await ext
+        .from("whatsapp_instances")
+        .update(allowed, { count: "exact" })
         .eq("id", instance_id);
       if (error) return json({ success: false, error: error.message });
       return json({ success: true, affected: count ?? 0 });
