@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import { useState, lazy, Suspense } from 'react';
+
+const ProcessDetailSheet = lazy(() => import('@/components/cases/ProcessDetailSheet'));
 import { Input } from '@/components/ui/input';
 import { RichTextEditor } from '@/components/ui/RichTextEditor';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
