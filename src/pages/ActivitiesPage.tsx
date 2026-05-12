@@ -1413,12 +1413,14 @@ const ActivitiesPage = () => {
     if (leadPreview?.board_id) return leadPreview.board_id;
     return null;
   })();
-  const { stepContext, saveStepFieldTemplates } = useActivityStepContext(formLeadId || null, activeStepBoardId);
+  const { stepContext, saveStepFieldTemplates, selectedStepId, setSelectedStepId } = useActivityStepContext(formLeadId || null, activeStepBoardId);
 
   const activityFormContent = (
     <ActivityFormCompact
       stepContext={stepContext}
       saveStepFieldTemplates={saveStepFieldTemplates}
+      selectedStepId={selectedStepId}
+      setSelectedStepId={setSelectedStepId}
       formTitle={formTitle} setFormTitle={setFormTitle}
       formAssignedTo={formAssignedTo} handleSelectAssignee={handleSelectAssignee}
       formType={formType} setFormType={setFormType}
