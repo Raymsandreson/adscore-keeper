@@ -251,6 +251,7 @@ const ActivitiesPage = () => {
   const [selectedCalDays, setSelectedCalDays] = useState<string[]>([]);
   const selectedCalDay: string | null = selectedCalDays.length > 0 ? selectedCalDays[0] : null;
   const [chatOpen, setChatOpen] = useState(false);
+  const [teamChatOpen, setTeamChatOpen] = useState(false);
   const [rightPanelTab, setRightPanelTab] = useState<'form' | 'context'>('form');
   const [completeNotifyOpen, setCompleteNotifyOpen] = useState(false);
   const [completeNotifySource, setCompleteNotifySource] = useState<'sheet' | 'workflow'>('sheet');
