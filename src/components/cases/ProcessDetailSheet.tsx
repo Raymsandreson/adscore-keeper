@@ -589,6 +589,17 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
               ))}
             </SelectContent>
           </Select>
+
+          {form.workflow_id && process?.lead_id && (
+            <div className="pt-1">
+              <LeadFunnelProgressBar leadId={process.lead_id} boardId={form.workflow_id} />
+            </div>
+          )}
+          {form.workflow_id && !process?.lead_id && (
+            <p className="text-[10px] text-muted-foreground pt-1">
+              A barra de progresso aparece quando o processo está vinculado a um lead.
+            </p>
+          )}
         </div>
       </div>
 
