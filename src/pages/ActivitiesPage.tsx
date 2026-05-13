@@ -1683,18 +1683,6 @@ const ActivitiesPage = () => {
           {/* View mode toggle - prominent pill */}
           <div className="flex items-center bg-primary-foreground/15 rounded-full p-0.5 gap-0.5">
             <button
-              onClick={() => setViewMode('list')}
-              className={cn(
-                "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-all",
-                viewMode === 'list'
-                  ? "bg-primary-foreground text-primary shadow-sm"
-                  : "text-primary-foreground/70 hover:text-primary-foreground"
-              )}
-            >
-              <List className="h-3.5 w-3.5" />
-              Lista
-            </button>
-            <button
               onClick={() => setViewMode('blocks')}
               className={cn(
                 "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-all",
@@ -1705,6 +1693,18 @@ const ActivitiesPage = () => {
             >
               <Layers className="h-3.5 w-3.5" />
               Blocos
+            </button>
+            <button
+              onClick={() => setViewMode('list')}
+              className={cn(
+                "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-all",
+                viewMode === 'list'
+                  ? "bg-primary-foreground text-primary shadow-sm"
+                  : "text-primary-foreground/70 hover:text-primary-foreground"
+              )}
+            >
+              <List className="h-3.5 w-3.5" />
+              Lista
             </button>
             <button
               onClick={() => setViewMode('matrix')}
