@@ -296,8 +296,39 @@ Deno.serve(async (req) => {
       let analysis: any = {};
       try { analysis = args ? JSON.parse(args) : {}; } catch { analysis = {}; }
 
+      // Auto-rename in Drive based on AI analysis (preserve extension)
+      let renamed: string | null = null;
+      try {
+        if (analysis?.document_type && analysis?.confidence !== "baixa") {
+          const sanitize = (s: string) => String(s).replace(/[\\/:*?"<>|\r\n]/g, " ").replace(/\s+/g, " ").trim();
+          const dotIdx = (meta.name || "").lastIndexOf(".");
+          const ext = dotIdx > 0 ? (meta.name as string).slice(dotIdx) : "";
+          const parts: string[] = [sanitize(analysis.document_type)];
+          if (analysis.holder_name) parts.push(sanitize(analysis.holder_name));
+          if (analysis.document_subtype) parts.push(`(${sanitize(analysis.document_subtype)})`);
+          let base = parts.join(" — ").slice(0, 180);
+          const desired = `${base}${ext}`;
+          if (desired && desired !== meta.name) {
+            const rnRes = await fetch(`${GATEWAY}/files/${file_id}?fields=id,name`, {
+              method: "PATCH",
+              headers: gwHeaders({ "Content-Type": "application/json" }),
+              body: JSON.stringify({ name: desired }),
+            });
+            if (rnRes.ok) {
+              const rn = await rnRes.json();
+              renamed = rn.name;
+              meta.name = rn.name;
+            } else {
+              console.warn(`drive rename failed [${rnRes.status}]: ${await rnRes.text()}`);
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("auto-rename skipped:", e);
+      }
+
       return new Response(
-        JSON.stringify({ ok: true, file: meta, analysis }),
+        JSON.stringify({ ok: true, file: meta, analysis, renamed }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
