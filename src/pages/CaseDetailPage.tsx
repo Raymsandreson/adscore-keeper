@@ -98,7 +98,7 @@ export default function CaseDetailPage() {
         const [procRes, actRes] = await Promise.all([
           externalSupabase
             .from('lead_processes')
-            .select('id, process_number, court, status, case_type')
+            .select('id, process_number, tribunal, status, case_type')
             .eq('case_id', caseId)
             .order('created_at', { ascending: false }),
           externalSupabase
@@ -256,7 +256,7 @@ export default function CaseDetailPage() {
                 <div key={p.id} className="border rounded p-2 text-sm">
                   <p className="font-medium">{p.process_number || 'Sem número'}</p>
                   <p className="text-xs text-muted-foreground">
-                    {[p.court, p.case_type, p.status].filter(Boolean).join(' • ')}
+                    {[p.tribunal, p.case_type, p.status].filter(Boolean).join(' • ')}
                   </p>
                 </div>
               ))}
