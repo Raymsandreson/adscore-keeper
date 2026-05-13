@@ -292,13 +292,13 @@ export function RoutineCalendarGrid({ blocks, availableTypes, onCreate, onUpdate
                     style={{ top, height }}
                     title={`${b.label} • ${fmt(b.startHour, b.startMinute ?? 0)}–${fmt(b.endHour, b.endMinute ?? 0)} — clique no X para excluir`}
                   >
-                    {/* Top resize handle (apenas 4px no topo, deixa espaço pro X) */}
+                    {/* Top resize handle */}
                     <div
                       onMouseDown={e => startBlockDrag(e, b, day.idx, 'resize-start')}
-                      className="absolute top-0 left-0 right-6 h-1 cursor-ns-resize z-10"
+                      className="absolute top-0 left-0 right-12 h-1 cursor-ns-resize z-10"
                     />
                     {/* Conteúdo */}
-                    <div className="px-1.5 py-1 pr-6">
+                    <div className="px-1.5 py-1 pr-12">
                       <div className="font-bold truncate leading-tight">{b.label}</div>
                       {height > 32 && (
                         <div className="opacity-90 leading-tight">
@@ -306,7 +306,22 @@ export function RoutineCalendarGrid({ blocks, availableTypes, onCreate, onUpdate
                         </div>
                       )}
                     </div>
-                    {/* Botão excluir — área grande, sempre visível, fica acima dos handles */}
+                    {/* Duplicar */}
+                    <button
+                      type="button"
+                      onMouseDown={e => { e.stopPropagation(); e.preventDefault(); }}
+                      onClick={e => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        onCreate({ ...b, blockId: newId() });
+                      }}
+                      className="absolute top-0 right-6 h-6 w-6 flex items-center justify-center bg-black/20 hover:bg-blue-500/90 transition-colors z-20"
+                      title="Duplicar bloco"
+                      aria-label="Duplicar bloco"
+                    >
+                      <Copy className="h-3 w-3" />
+                    </button>
+                    {/* Excluir */}
                     <button
                       type="button"
                       onMouseDown={e => { e.stopPropagation(); e.preventDefault(); }}
