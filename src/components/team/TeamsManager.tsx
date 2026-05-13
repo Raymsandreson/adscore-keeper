@@ -186,6 +186,16 @@ function CollapsibleAddMembers({ available, teamId, onAdd }: {
   onAdd: (teamId: string, userId: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [search, setSearch] = useState('');
+
+  const filtered = available.filter(m => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      (m.full_name || '').toLowerCase().includes(q) ||
+      (m.email || '').toLowerCase().includes(q)
+    );
+  });
 
   return (
     <div className="pt-2 border-t">
@@ -200,19 +210,39 @@ function CollapsibleAddMembers({ available, teamId, onAdd }: {
         </span>
         {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
       </button>
-      <div className={cn(
-        'overflow-hidden transition-all duration-200',
-        expanded ? 'max-h-96 opacity-100 mt-2' : 'max-h-0 opacity-0'
-      )}>
-        <div className="flex flex-wrap gap-1">
-          {available.map(m => (
-            <Button key={m.user_id} variant="outline" size="sm" className="h-7 text-xs" onClick={() => onAdd(teamId, m.user_id)}>
-              <UserPlus className="h-3 w-3 mr-1" />
-              {m.full_name || m.email || 'Sem nome'}
-            </Button>
-          ))}
+      {expanded && (
+        <div className="mt-2 space-y-2">
+          <Input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Buscar por nome ou email..."
+            className="h-8 text-xs"
+          />
+          <div className="max-h-72 overflow-y-auto pr-1">
+            {filtered.length === 0 ? (
+              <p className="text-xs text-muted-foreground py-2 text-center">
+                {available.length === 0 ? 'Todos os membros já estão no time' : 'Nenhum resultado'}
+              </p>
+            ) : (
+              <div className="flex flex-wrap gap-1">
+                {filtered.map(m => (
+                  <Button
+                    key={m.user_id}
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => onAdd(teamId, m.user_id)}
+                    title={m.email || ''}
+                  >
+                    <UserPlus className="h-3 w-3 mr-1" />
+                    {m.full_name || m.email || 'Sem nome'}
+                  </Button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
