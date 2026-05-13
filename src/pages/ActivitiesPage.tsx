@@ -3443,6 +3443,67 @@ const ActivitiesPage = () => {
         leadId={formLeadId || null}
         buildMsg={buildMsg}
       />
+
+      {/* Popup fullscreen de Parabéns ao concluir a última atividade do bloco */}
+      {celebrateBlock && (
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm animate-in fade-in duration-300 cursor-pointer"
+          onClick={() => setCelebrateBlock(null)}
+        >
+          {/* Confetes */}
+          <div className="absolute inset-0 overflow-hidden pointer-events-none">
+            {Array.from({ length: 40 }).map((_, i) => {
+              const colors = ['bg-yellow-400', 'bg-pink-400', 'bg-sky-400', 'bg-lime-400', 'bg-orange-400', 'bg-purple-400'];
+              const color = colors[i % colors.length];
+              const left = (i * 37) % 100;
+              const delay = (i * 73) % 1500;
+              const duration = 2000 + ((i * 131) % 1500);
+              return (
+                <span
+                  key={i}
+                  className={cn('absolute top-[-20px] w-2 h-3 rounded-sm', color)}
+                  style={{
+                    left: `${left}%`,
+                    animation: `confetti-fall ${duration}ms ease-in ${delay}ms infinite`,
+                    transform: `rotate(${(i * 47) % 360}deg)`,
+                  }}
+                />
+              );
+            })}
+          </div>
+
+          <div className="relative text-center px-6 animate-in zoom-in-50 duration-500">
+            <div className="text-7xl sm:text-8xl mb-4">🎉</div>
+            <h1
+              className="font-black uppercase text-yellow-300 tracking-tight leading-none mb-4"
+              style={{
+                fontSize: 'clamp(3rem, 12vw, 8rem)',
+                textShadow: '0 0 30px rgba(250,204,21,0.6), 0 4px 12px rgba(0,0,0,0.8)',
+                WebkitTextStroke: '2px rgba(0,0,0,0.4)',
+              }}
+            >
+              Parabéns!
+            </h1>
+            <p className="text-2xl sm:text-4xl font-bold text-white drop-shadow-lg mb-2">
+              {profile?.full_name || user?.email?.split('@')[0] || 'Você'}
+            </p>
+            <p className="text-base sm:text-xl text-white/90 font-medium drop-shadow">
+              Você concluiu todas as atividades de
+            </p>
+            <p className="text-xl sm:text-3xl font-extrabold text-white uppercase tracking-wide mt-1 drop-shadow-lg">
+              {celebrateBlock.label}
+            </p>
+            <p className="text-xs sm:text-sm text-white/60 mt-6">Toque em qualquer lugar para fechar</p>
+          </div>
+
+          <style>{`
+            @keyframes confetti-fall {
+              0% { transform: translateY(0) rotate(0deg); opacity: 1; }
+              100% { transform: translateY(110vh) rotate(720deg); opacity: 0.6; }
+            }
+          `}</style>
+        </div>
+      )}
     </div>
   );
 };
