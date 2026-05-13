@@ -163,3 +163,6 @@ verify_jwt = false
 
 [functions.bridge-activity-to-external]
 verify_jwt = false
+
+[functions.whatsapp-fetch-history]
+verify_jwt = false
