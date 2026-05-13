@@ -156,7 +156,12 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave, t
   const [editDescription, setEditDescription] = useState('');
 
   // Delete with migration state
-  const [deleteConfirm, setDeleteConfirm] = useState<{ type: ActivityType; linkedCount: number } | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    type: ActivityType;
+    activities: Array<{ id: string; title: string; description: string | null; status: string | null; scheduled_for: string | null; lead_id: string | null; lead_name?: string | null }>;
+    routines: Array<{ id: string; user_id: string; days: number[]; start_hour: number; start_minute: number; end_hour: number; end_minute: number; user_name?: string | null }>;
+  } | null>(null);
+  const [loadingLinked, setLoadingLinked] = useState(false);
   const [migrateToKey, setMigrateToKey] = useState('');
   const [deletingType, setDeletingType] = useState(false);
 
