@@ -1,6 +1,10 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
-import { externalSupabase } from '@/integrations/supabase/external-client';
+// Dashboard de leads consulta SOMENTE tabelas de negócio (whatsapp_messages,
+// leads, contacts, kanban_boards, zapsign_documents, lead_stage_history,
+// whatsapp_instances). Todas vivem no banco Externo — o Cloud está congelado
+// e desatualizado, o que zerava as métricas. Usamos o externalSupabase como
+// `supabase` para evitar reescrever as 13 chamadas espalhadas no arquivo.
+import { externalSupabase as supabase, externalSupabase } from '@/integrations/supabase/external-client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
