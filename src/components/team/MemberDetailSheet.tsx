@@ -545,6 +545,8 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
           </TabsList>
 
           <TabsContent value="profile" className="mt-4 space-y-4">
+            <MemberOpenActivities userId={member.user_id} />
+
             <div className="space-y-2">
               <Label>Nome completo</Label>
               <Input
