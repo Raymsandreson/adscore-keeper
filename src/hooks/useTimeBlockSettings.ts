@@ -107,18 +107,14 @@ export function useTimeBlockSettings(targetUserId?: string) {
       if (error) {
         toast.error('Erro ao salvar rotina: ' + error.message);
         // Reload to restore whatever state is in DB
-        await fetchSettings(uid);
+        await fetchSettings(uid, false);
         return;
-      } else {
-        toast.success('Rotina salva com sucesso!');
       }
-    } else {
-      toast.success('Rotina salva (sem tipos selecionados).');
     }
 
-    // Update local state only after successful save
+    // Não recarrega via fetch — o realtime já vai disparar e atualizar.
+    // Mantemos só o setConfigs local para feedback instantâneo.
     setConfigs(newConfigs);
-    await fetchSettings(uid);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [effectiveUserId, fetchSettings]);
 
