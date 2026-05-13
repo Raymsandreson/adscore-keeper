@@ -68,7 +68,7 @@ async function resolveFolderBaseName(
 }
 
 async function getOrCreateLeadFolder(leadId: string, leadName: string, ext: any): Promise<string> {
-  const baseName = await resolveFolderBaseName(leadId, leadName, ext);
+  const { name: baseName, reason: nameReason } = await resolveFolderBaseName(leadId, leadName, ext);
   const desiredName = `${baseName} - ${leadId.slice(0, 8)}`.replace(/['\\]/g, "");
 
   // Check cache
@@ -93,13 +93,34 @@ async function getOrCreateLeadFolder(leadId: string, leadName: string, ext: any)
             });
             if (rn.ok) {
               await ext.from("lead_drive_folders").upsert({ lead_id: leadId, folder_id: existing.folder_id, folder_name: desiredName });
-              console.log(`[lead-drive] folder renamed "${v.name}" -> "${desiredName}"`);
+              console.log(`[lead-drive] FOLDER_RENAMED ${JSON.stringify({
+                lead_id: leadId,
+                folder_id: existing.folder_id,
+                from: v.name,
+                to: desiredName,
+                reason: nameReason,
+              })}`);
             } else {
-              console.warn(`[lead-drive] folder rename failed [${rn.status}]: ${await rn.text()}`);
+              console.warn(`[lead-drive] FOLDER_RENAME_FAILED ${JSON.stringify({
+                lead_id: leadId,
+                folder_id: existing.folder_id,
+                from: v.name,
+                to: desiredName,
+                reason: nameReason,
+                status: rn.status,
+                error: await rn.text(),
+              })}`);
             }
           } catch (e) {
             console.warn("[lead-drive] folder rename error:", e);
           }
+        } else {
+          console.log(`[lead-drive] FOLDER_RENAME_SKIPPED ${JSON.stringify({
+            lead_id: leadId,
+            folder_id: existing.folder_id,
+            name: v.name,
+            reason: `already_matches:${nameReason}`,
+          })}`);
         }
         return existing.folder_id;
       }
