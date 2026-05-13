@@ -23,6 +23,8 @@ import { ptBR } from 'date-fns/locale';
 import { Save, Loader2, ChevronDown, CheckCircle2, Trash2, ExternalLink } from 'lucide-react';
 import { useActivityTypes } from '@/hooks/useActivityTypes';
 import { useProfilesList } from '@/hooks/useProfilesList';
+import { cn } from '@/lib/utils';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { RichTextEditor } from '@/components/ui/RichTextEditor';
 import { ActivityNotesField } from '@/components/activities/ActivityNotesField';
 
@@ -72,6 +74,7 @@ export function ActivityEditSheet({ open, onOpenChange, activityId, onUpdated }:
   const [activity, setActivity] = useState<ActivityData | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const isMobile = useIsMobile();
 
   // Form state
   const [title, setTitle] = useState('');
@@ -373,18 +376,30 @@ export function ActivityEditSheet({ open, onOpenChange, activityId, onUpdated }:
         )}
 
         {/* Footer actions */}
-        <div className="shrink-0 border-t p-3 flex items-center justify-between">
-          {activity?.status !== 'concluida' && (
-            <Button variant="outline" size="sm" onClick={handleComplete} className="gap-1 text-xs">
-              <CheckCircle2 className="h-3 w-3" /> Concluir
-            </Button>
-          )}
-          <div className="flex gap-2 ml-auto">
-            <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>Cancelar</Button>
-            <Button size="sm" onClick={handleSave} disabled={saving} className="gap-1">
-              {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-              Salvar
-            </Button>
+        <div className="shrink-0 border-t group">
+          {/* Barra indicadora fina no desktop */}
+          <div className={cn(
+            "flex items-center justify-center transition-all duration-200 overflow-hidden",
+            isMobile ? "hidden" : "h-5 group-hover:h-0 opacity-60 group-hover:opacity-0"
+          )}>
+            <span className="text-[10px] text-muted-foreground">Ações ▼</span>
+          </div>
+          <div className={cn(
+            "flex items-center justify-between transition-all duration-200",
+            isMobile ? "p-3 opacity-100" : "p-0 max-h-0 opacity-0 group-hover:p-3 group-hover:max-h-24 group-hover:opacity-100 overflow-hidden"
+          )}>
+            {activity?.status !== 'concluida' && (
+              <Button variant="outline" size="sm" onClick={handleComplete} className="gap-1 text-xs">
+                <CheckCircle2 className="h-3 w-3" /> Concluir
+              </Button>
+            )}
+            <div className="flex gap-2 ml-auto">
+              <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>Cancelar</Button>
+              <Button size="sm" onClick={handleSave} disabled={saving} className="gap-1">
+                {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+                Salvar
+              </Button>
+            </div>
           </div>
         </div>
       </SheetContent>
