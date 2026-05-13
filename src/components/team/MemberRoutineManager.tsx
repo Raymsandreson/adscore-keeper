@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Settings2, User } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { Loader2, Settings2, User, ChevronsUpDown, Check } from 'lucide-react';
 import { ShareMenu } from '@/components/ShareMenu';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { useTimeBlockSettings } from '@/hooks/useTimeBlockSettings';
