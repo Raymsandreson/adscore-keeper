@@ -50,6 +50,7 @@ import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { useUserRole } from '@/hooks/useUserRole';
 import { MODULE_DEFINITIONS, AccessLevel, useModulePermissions } from '@/hooks/useModulePermissions';
 import { MemberDetailSheet } from './MemberDetailSheet';
+import { ReassignActivitiesDialog } from './ReassignActivitiesDialog';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
