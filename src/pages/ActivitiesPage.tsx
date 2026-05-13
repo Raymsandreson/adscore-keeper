@@ -2356,9 +2356,19 @@ const ActivitiesPage = () => {
           })();
 
           return (
-            <div className={cn("flex flex-col overflow-hidden h-full", isEditing ? "w-[220px] shrink-0 border-r" : "flex-1")}>
+            <div className={cn(
+              "overflow-hidden h-full",
+              isEditing
+                ? cn("flex flex-row shrink-0 border-r", selectedBlockData ? "w-[440px]" : "w-[200px]")
+                : "flex flex-col flex-1"
+            )}>
               {/* Weekly grid */}
-              <div className={cn("overflow-auto", selectedBlockData ? "shrink-0 max-h-[45vh]" : "flex-1")}>
+              <div className={cn(
+                "overflow-auto",
+                isEditing
+                  ? "w-[200px] shrink-0 h-full" + (selectedBlockData ? " border-r" : "")
+                  : (selectedBlockData ? "shrink-0 max-h-[45vh]" : "flex-1")
+              )}>
                 {/* Day headers */}
                 <div className="sticky top-0 z-10 bg-card border-b flex">
                   <div className="w-10 shrink-0" />
