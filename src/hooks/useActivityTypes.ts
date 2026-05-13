@@ -51,7 +51,7 @@ export function useActivityTypes() {
     else { toast.success('Tipo excluído!'); await refetch(); }
   }, [refetch]);
 
-  const updateType = useCallback(async (id: string, patch: Partial<Pick<ActivityType, 'label' | 'color' | 'display_order' | 'is_active' | 'description'>>) => {
+  const updateType = useCallback(async (id: string, patch: Partial<Pick<ActivityType, 'label' | 'color' | 'display_order' | 'is_active' | 'description' | 'team_ids'>>) => {
     const { error } = await supabase.from('activity_types').update(patch as any).eq('id', id);
     if (error) toast.error('Erro ao atualizar tipo: ' + error.message);
     else await refetch();
