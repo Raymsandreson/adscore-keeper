@@ -188,7 +188,13 @@ export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId }: 
       });
       if (error) throw error;
       if ((data as any)?.error) throw new Error((data as any).error);
-      setAnalysisResult({ file: f, analysis: (data as any).analysis || {} });
+      const analysis = ((data as any).analysis || {}) as Analysis;
+      const renamed = (data as any).renamed as string | null;
+      setAnalysisResult({ file: { ...f, name: renamed || f.name }, analysis });
+      setAnalyses((prev) => ({ ...prev, [f.id]: analysis }));
+      if (renamed) {
+        setFiles((prev) => prev.map((x) => (x.id === f.id ? { ...x, name: renamed } : x)));
+      }
       setAnalysisOpen(true);
     } catch (err: any) {
       console.error('[LeadDocumentsTab] analyze error', err);
