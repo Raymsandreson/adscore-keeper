@@ -277,13 +277,47 @@ Deno.serve(async (req) => {
       const dlRes = await fetch(`${GATEWAY}/files/${file_id}?alt=media`, { headers: gwHeaders() });
       if (!dlRes.ok) throw new Error(`drive download failed [${dlRes.status}]: ${await dlRes.text()}`);
       const buf = new Uint8Array(await dlRes.arrayBuffer());
-      let bin = "";
-      const chunk = 0x8000;
-      for (let i = 0; i < buf.length; i += chunk) {
-        bin += String.fromCharCode.apply(null, Array.from(buf.subarray(i, i + chunk)));
+
+      // MIME types suportados nativamente pelo Gemini Vision (image_url)
+      const VISION_MIMES = new Set([
+        "image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif", "image/heic", "image/heif",
+        "application/pdf",
+      ]);
+      const isDocx = meta.mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        || /\.docx$/i.test(meta.name || "");
+
+      let userContent: any;
+      if (VISION_MIMES.has(meta.mimeType)) {
+        let bin = "";
+        const chunk = 0x8000;
+        for (let i = 0; i < buf.length; i += chunk) {
+          bin += String.fromCharCode.apply(null, Array.from(buf.subarray(i, i + chunk)));
+        }
+        const b64 = btoa(bin);
+        const dataUrl = `data:${meta.mimeType};base64,${b64}`;
+        userContent = [
+          { type: "text", text: `Identifique o tipo deste documento, o titular e descreva brevemente. Nome do arquivo: ${meta.name}` },
+          { type: "image_url", image_url: { url: dataUrl } },
+        ];
+      } else if (isDocx) {
+        // Converte DOCX para texto puro com mammoth (Gemini não aceita DOCX direto)
+        const mammoth = await import("npm:mammoth@1.12.0");
+        const result = await mammoth.extractRawText({ arrayBuffer: buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) });
+        const text = (result.value || "").slice(0, 40000);
+        userContent = `Identifique o tipo deste documento, o titular e descreva brevemente. Nome do arquivo: ${meta.name}\n\nConteúdo extraído do DOCX:\n\n${text}`;
+      } else {
+        // Tipo não suportado pela IA — devolve análise neutra sem chamar Gemini
+        return new Response(JSON.stringify({
+          success: true,
+          analysis: {
+            document_type: "Outro",
+            description: `Arquivo ${meta.name} (${meta.mimeType}) não pôde ser analisado automaticamente.`,
+            confidence: "baixa",
+          },
+          renamed: false,
+          skipped_reason: `unsupported_mime:${meta.mimeType}`,
+        }), { headers: { ...cors, "Content-Type": "application/json" } });
       }
-      const b64 = btoa(bin);
-      const dataUrl = `data:${meta.mimeType};base64,${b64}`;
 
       const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
       if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY missing");
@@ -300,10 +334,7 @@ Deno.serve(async (req) => {
             },
             {
               role: "user",
-              content: [
-                { type: "text", text: `Identifique o tipo deste documento, o titular e descreva brevemente. Nome do arquivo: ${meta.name}` },
-                { type: "image_url", image_url: { url: dataUrl } },
-              ],
+              content: userContent,
             },
           ],
           tools: [
