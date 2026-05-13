@@ -80,12 +80,15 @@ export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId }: 
   }, [leadId, leadName]);
 
   const runAutoAnalysis = useCallback(async (list: DriveFile[]) => {
-    if (list.length === 0) return;
+    // Skip files que já foram renomeadas pelo padrão "TIPO — ..."
+    const KNOWN_TYPES = ['RG', 'CPF', 'CNH', 'Procuração', 'Comprovante de Endereço', 'Laudo Pericial', 'Boletim de Ocorrência', 'Contrato', 'Atestado Médico', 'Foto', 'Outro'];
+    const pending = list.filter((f) => !KNOWN_TYPES.some((t) => (f.name || '').startsWith(`${t} —`) || (f.name || '').startsWith(`${t} -`)));
+    if (pending.length === 0) return;
     setAutoAnalyzing(true);
     try {
       const concurrency = 3;
-      for (let i = 0; i < list.length; i += concurrency) {
-        const batch = list.slice(i, i + concurrency);
+      for (let i = 0; i < pending.length; i += concurrency) {
+        const batch = pending.slice(i, i + concurrency);
         const results = await Promise.all(batch.map((f) => analyzeOne(f.id).then((r) => [f.id, r] as const)));
         setAnalyses((prev) => {
           const next = { ...prev };
