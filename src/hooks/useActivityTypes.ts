@@ -11,6 +11,8 @@ export interface ActivityType {
   display_order: number;
   is_active: boolean;
   created_at: string;
+  /** Cloud team IDs that this type is restricted to. Empty = global (all teams). */
+  team_ids: string[];
 }
 
 export function useActivityTypes() {
