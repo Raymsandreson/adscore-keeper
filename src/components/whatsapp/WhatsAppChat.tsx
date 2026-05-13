@@ -1354,6 +1354,29 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem
+                onClick={async () => {
+                  const t = toast.loading('Buscando histórico de mensagens antigas...');
+                  try {
+                    const { data, error } = await supabase.functions.invoke('whatsapp-fetch-history', {
+                      body: {
+                        phone: conversation.phone,
+                        instance_name: conversation.instance_name,
+                        count: 50,
+                      },
+                    });
+                    if (error) throw error;
+                    if (data?.success === false) throw new Error(data?.error || 'Falha ao solicitar histórico');
+                    toast.success('Sync solicitado! As mensagens antigas chegarão em alguns segundos.', { id: t });
+                  } catch (e: any) {
+                    toast.error(e?.message || 'Erro ao buscar histórico', { id: t });
+                  }
+                }}
+                className="gap-2"
+              >
+                <RefreshCw className="h-4 w-4" /> Buscar histórico (msgs antigas)
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
               {!conversation.lead_id && contactLinkedLeadIds.length === 0 && (
                 <DropdownMenuItem onClick={() => { setShowLinkDialog(true); fetchLeads(); }} className="gap-2">
                   <Link2 className="h-4 w-4" /> Vincular Lead
