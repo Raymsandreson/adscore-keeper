@@ -63,8 +63,9 @@ function MemberRoutineView({ userId, memberName }: { userId: string; memberName:
                     <div
                       key={c.blockId || `${c.activityType}_${c.startHour}`}
                       className={cn('rounded-md px-2 py-1.5 text-white text-[10px] font-semibold', c.color)}
+                      title={c.label}
                     >
-                      <div className="truncate">{c.label}</div>
+                      <div className="break-words leading-tight">{c.label}</div>
                       <div className="opacity-80">{fmt(c.startHour, c.startMinute)}–{fmt(c.endHour, c.endMinute)}</div>
                     </div>
                   );
