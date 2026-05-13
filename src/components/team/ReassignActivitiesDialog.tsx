@@ -318,22 +318,69 @@ export function ReassignActivitiesDialog({ open, onOpenChange, member, candidate
               {(mode === 'all' ? allCount : matchCount) > 0 && !skipReassign && (
                 <div className="space-y-2">
                   <Label>Reatribuir para</Label>
-                  <Select value={targetUserId} onValueChange={setTargetUserId}>
-                    <SelectTrigger><SelectValue placeholder="Selecione um membro…" /></SelectTrigger>
-                    <SelectContent className="z-[200]">
-                      {targetCandidates.map((c) => (
-                        <SelectItem key={c.user_id} value={c.user_id}>
-                          {c.full_name || c.email}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" role="combobox" className="w-full justify-between font-normal">
+                        {targetMember ? (
+                          <span className="flex flex-col items-start min-w-0">
+                            <span className="truncate">{targetMember.full_name || targetMember.email}</span>
+                            {targetMember.full_name && targetMember.email && (
+                              <span className="text-xs text-muted-foreground truncate">{targetMember.email}</span>
+                            )}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">Selecione um membro…</span>
+                        )}
+                        <ChevronsUpDown className="h-4 w-4 opacity-50 shrink-0 ml-2" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[--radix-popover-trigger-width] p-0 z-[200]" align="start">
+                      <Command
+                        filter={(value, search) => {
+                          // value já é "nome email" lowercased
+                          return value.includes(search.toLowerCase()) ? 1 : 0;
+                        }}
+                      >
+                        <CommandInput placeholder="Buscar por nome ou email…" />
+                        <CommandList>
+                          <CommandEmpty>Nenhum membro encontrado.</CommandEmpty>
+                          <CommandGroup>
+                            {targetCandidates.map((c) => {
+                              const name = c.full_name || '';
+                              const email = c.email || '';
+                              return (
+                                <CommandItem
+                                  key={c.user_id}
+                                  value={`${name} ${email}`.toLowerCase()}
+                                  onSelect={() => setTargetUserId(c.user_id)}
+                                  className="flex items-center justify-between gap-2"
+                                >
+                                  <div className="flex flex-col min-w-0">
+                                    <span className="truncate">{name || email}</span>
+                                    {name && email && (
+                                      <span className="text-xs text-muted-foreground truncate">{email}</span>
+                                    )}
+                                  </div>
+                                  {targetUserId === c.user_id && <Check className="h-4 w-4 shrink-0" />}
+                                </CommandItem>
+                              );
+                            })}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
 
                   {targetMember && (
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <span>{memberLabel}</span>
                       <ArrowRight className="h-3.5 w-3.5" />
-                      <span className="font-medium text-foreground">{targetMember.full_name || targetMember.email}</span>
+                      <span className="font-medium text-foreground">
+                        {targetMember.full_name || targetMember.email}
+                        {targetMember.full_name && targetMember.email && (
+                          <span className="text-muted-foreground font-normal"> · {targetMember.email}</span>
+                        )}
+                      </span>
                     </div>
                   )}
                 </div>
