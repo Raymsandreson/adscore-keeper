@@ -60,50 +60,6 @@ export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId }: 
   const [reprocessing, setReprocessing] = useState(false);
   const [importGroupOpen, setImportGroupOpen] = useState(false);
   const [analyses, setAnalyses] = useState<Record<string, Analysis>>({});
-  const [autoAnalyzing, setAutoAnalyzing] = useState(false);
-
-  const analyzeOne = useCallback(async (fileId: string): Promise<{ analysis: Analysis; renamed: string | null } | null> => {
-    try {
-      const { data, error } = await supabase.functions.invoke('lead-drive', {
-        body: { action: 'analyze_file', lead_id: leadId, lead_name: leadName, file_id: fileId },
-      });
-      if (error) throw error;
-      if ((data as any)?.error) throw new Error((data as any).error);
-      return {
-        analysis: ((data as any).analysis || {}) as Analysis,
-        renamed: ((data as any).renamed as string | null) ?? null,
-      };
-    } catch (e) {
-      console.warn('[LeadDocumentsTab] auto analyze failed', fileId, e);
-      return null;
-    }
-  }, [leadId, leadName]);
-
-  const runAutoAnalysis = useCallback(async (list: DriveFile[]) => {
-    // Skip files que já foram renomeadas pelo padrão "TIPO — ..."
-    const KNOWN_TYPES = ['RG', 'CPF', 'CNH', 'Procuração', 'Comprovante de Endereço', 'Laudo Pericial', 'Boletim de Ocorrência', 'Contrato', 'Atestado Médico', 'Foto', 'Outro'];
-    const pending = list.filter((f) => !KNOWN_TYPES.some((t) => (f.name || '').startsWith(`${t} —`) || (f.name || '').startsWith(`${t} -`)));
-    if (pending.length === 0) return;
-    setAutoAnalyzing(true);
-    try {
-      const concurrency = 3;
-      for (let i = 0; i < pending.length; i += concurrency) {
-        const batch = pending.slice(i, i + concurrency);
-        const results = await Promise.all(batch.map((f) => analyzeOne(f.id).then((r) => [f.id, r] as const)));
-        setAnalyses((prev) => {
-          const next = { ...prev };
-          for (const [id, r] of results) if (r) next[id] = r.analysis;
-          return next;
-        });
-        setFiles((prev) => prev.map((f) => {
-          const r = results.find(([id]) => id === f.id)?.[1];
-          return r?.renamed ? { ...f, name: r.renamed } : f;
-        }));
-      }
-    } finally {
-      setAutoAnalyzing(false);
-    }
-  }, [analyzeOne]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -117,7 +73,6 @@ export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId }: 
       setFiles(list);
       setFolderUrl(data.folder_url);
       setAnalyses({});
-      runAutoAnalysis(list);
     } catch (e: any) {
       console.error('[LeadDocumentsTab] load error', e);
       toast.error(`Erro ao carregar documentos: ${e.message || e}`);
@@ -304,11 +259,6 @@ export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId }: 
       ) : (
         <TooltipProvider delayDuration={150}>
           <div className="border rounded-lg divide-y">
-            {autoAnalyzing && (
-              <div className="px-3 py-2 text-xs text-muted-foreground flex items-center gap-2 bg-muted/20">
-                <Loader2 className="h-3 w-3 animate-spin" /> Analisando documentos com IA…
-              </div>
-            )}
             {files.map((f) => {
               const a = analyses[f.id];
               const smartLabel = a?.document_type
@@ -333,11 +283,6 @@ export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId }: 
                     <div className="text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
                       <span>{new Date(f.modifiedTime).toLocaleString('pt-BR')}{f.size && ` · ${formatBytes(f.size)}`}</span>
                       {smartLabel && <span className="opacity-60 truncate">· {f.name}</span>}
-                      {!a && autoAnalyzing && (
-                        <span className="inline-flex items-center gap-1 text-primary/70">
-                          <Loader2 className="h-3 w-3 animate-spin" /> IA…
-                        </span>
-                      )}
                     </div>
                   </div>
                   <Button

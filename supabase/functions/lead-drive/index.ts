@@ -11,6 +11,7 @@ const corsHeaders = {
 const GATEWAY = "https://connector-gateway.lovable.dev/google_drive/drive/v3";
 const UPLOAD_GATEWAY = "https://connector-gateway.lovable.dev/google_drive/upload/drive/v3";
 const ROOT_FOLDER_NAME = "AdScore Keeper - Leads";
+const MAX_ANALYZE_BYTES = 8 * 1024 * 1024;
 
 function gwHeaders(extra: Record<string, string> = {}) {
   return {
@@ -267,10 +268,23 @@ Deno.serve(async (req) => {
       const { file_id } = body;
       if (!file_id) throw new Error("file_id required");
 
-      // Get file metadata for mime type
-      const metaRes = await fetch(`${GATEWAY}/files/${file_id}?fields=id,name,mimeType`, { headers: gwHeaders() });
+      // Get file metadata before downloading bytes; large files can exceed worker memory.
+      const metaRes = await fetch(`${GATEWAY}/files/${file_id}?fields=id,name,mimeType,size`, { headers: gwHeaders() });
       if (!metaRes.ok) throw new Error(`drive meta failed [${metaRes.status}]: ${await metaRes.text()}`);
       const meta = await metaRes.json();
+      const fileSize = Number(meta.size || 0);
+      if (fileSize > MAX_ANALYZE_BYTES) {
+        return new Response(JSON.stringify({
+          success: true,
+          analysis: {
+            document_type: "Outro",
+            description: `Arquivo ${meta.name} é maior que 8 MB e não foi analisado automaticamente para evitar limite de memória.`,
+            confidence: "baixa",
+          },
+          renamed: false,
+          skipped_reason: "file_too_large",
+        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
 
       // Download bytes
       const dlRes = await fetch(`${GATEWAY}/files/${file_id}?alt=media`, { headers: gwHeaders() });
@@ -498,7 +512,7 @@ Deno.serve(async (req) => {
     console.error("[lead-drive] error:", e);
     return new Response(
       JSON.stringify({ success: false, error: e instanceof Error ? e.message : String(e) }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
 });
