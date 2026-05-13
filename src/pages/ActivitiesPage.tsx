@@ -3008,7 +3008,18 @@ const ActivitiesPage = () => {
                       {sheetMode === 'create' ? 'Nova Atividade' : 'Editar Atividade'}
                     </h2>
                     {formLeadName && (
-                      <p className="text-xs text-muted-foreground truncate">📁 {formLeadName}</p>
+                      formLeadId ? (
+                        <button
+                          type="button"
+                          onClick={() => setShowLeadSheet(true)}
+                          className="text-xs text-muted-foreground truncate hover:text-primary hover:underline text-left"
+                          title="Abrir lead na aba lateral"
+                        >
+                          📁 {formLeadName}
+                        </button>
+                      ) : (
+                        <p className="text-xs text-muted-foreground truncate">📁 {formLeadName}</p>
+                      )
                     )}
                   </div>
                 </div>
