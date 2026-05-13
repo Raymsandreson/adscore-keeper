@@ -2232,7 +2232,7 @@ const ActivitiesPage = () => {
           const minHour = Math.min(...allStartHours, 8);
           const maxHour = Math.max(...allEndHours, 18);
           const WEEK_HOURS = Array.from({ length: maxHour - minHour }, (_, i) => i + minHour);
-          const WEEK_DAYS = [
+          const ALL_WEEK_DAYS = [
             { label: 'SEG', dayIdx: 0 },
             { label: 'TER', dayIdx: 1 },
             { label: 'QUA', dayIdx: 2 },
@@ -2242,6 +2242,9 @@ const ActivitiesPage = () => {
 
           const today = new Date();
           const weekStart = startOfWeek(today, { weekStartsOn: 1 });
+          // Quando estiver editando, encolhe a grade para mostrar apenas o dia de hoje
+          const todayWeekIdx = ALL_WEEK_DAYS.findIndex(d => isSameDay(addDays(weekStart, d.dayIdx), today));
+          const WEEK_DAYS = isEditing && todayWeekIdx >= 0 ? [ALL_WEEK_DAYS[todayWeekIdx]] : ALL_WEEK_DAYS;
           const weekDates = WEEK_DAYS.map(d => addDays(weekStart, d.dayIdx));
           const HOUR_HEIGHT = 64; // px per hour
           const totalHeight = (maxHour - minHour) * HOUR_HEIGHT;
