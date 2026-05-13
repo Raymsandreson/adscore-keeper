@@ -478,9 +478,17 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
                   <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: legalCase.nucleus_color }} />
                 )}
                 <div className="min-w-0">
-                  <p className="text-sm font-medium truncate">
+                  <p className="text-sm font-medium truncate flex items-center gap-1.5">
                     <CopyableText copyValue={legalCase.case_number} label="Número do caso" showIcon={false}>{legalCase.case_number}</CopyableText>
-                    {' — '}
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); navigate(`/cases/${legalCase.id}`); }}
+                      className="text-[10px] text-primary hover:underline"
+                      title="Abrir página do caso"
+                    >
+                      abrir →
+                    </button>
+                    <span>{' — '}</span>
                     <CopyableText copyValue={legalCase.title} label="Título" showIcon={false}>{legalCase.title}</CopyableText>
                   </p>
                   {legalCase.nucleus_name && (
