@@ -2356,19 +2356,9 @@ const ActivitiesPage = () => {
           })();
 
           return (
-            <div className={cn(
-              "overflow-hidden h-full",
-              isEditing
-                ? cn("flex flex-row shrink-0 border-r", selectedBlockData ? "w-[440px]" : "w-[200px]")
-                : "flex flex-col flex-1"
-            )}>
+            <div className={cn("flex flex-col overflow-hidden h-full", isEditing ? "w-[220px] shrink-0 border-r" : "flex-1")}>
               {/* Weekly grid */}
-              <div className={cn(
-                "overflow-auto",
-                isEditing
-                  ? "w-[200px] shrink-0 h-full" + (selectedBlockData ? " border-r" : "")
-                  : (selectedBlockData ? "shrink-0 max-h-[45vh]" : "flex-1")
-              )}>
+              <div className={cn("overflow-auto", selectedBlockData ? "shrink-0 max-h-[45vh]" : "flex-1")}>
                 {/* Day headers */}
                 <div className="sticky top-0 z-10 bg-card border-b flex">
                   <div className="w-10 shrink-0" />
@@ -2496,10 +2486,7 @@ const ActivitiesPage = () => {
 
               {/* Painel de atividades do bloco selecionado (abaixo da grade) */}
               {selectedBlockData && (
-                <div className={cn(
-                  "min-h-0 flex flex-col overflow-hidden bg-card animate-in fade-in duration-200",
-                  isEditing ? "w-[240px] shrink-0 h-full" : "flex-1 border-t slide-in-from-bottom-2"
-                )}>
+                <div className="flex-1 min-h-0 border-t flex flex-col overflow-hidden bg-card animate-in fade-in slide-in-from-bottom-2 duration-200">
                   <div className={cn('px-3 py-2 text-white flex items-center justify-between', selectedBlockData.cfg.color || 'bg-muted-foreground')}>
                     <div className="min-w-0 flex-1">
                       <p className="text-xs font-bold truncate">{selectedBlockData.cfg.label}</p>
