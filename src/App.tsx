@@ -197,6 +197,7 @@ function AppRoutes() {
         {/* Public routes without sidebar */}
         <Route path="/landing" element={<LandingPage />} />
         <Route path="/privacy" element={<PrivacyPolicyPage />} />
+        <Route path="/terms" element={<TermsOfServicePage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/install" element={<InstallPage />} />
         <Route path="/share" element={<ShareTargetPage />} />
