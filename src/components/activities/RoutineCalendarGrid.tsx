@@ -25,6 +25,8 @@ interface Props {
   onCreate: (block: TimeBlockConfig) => void;
   onUpdate: (blockId: string, patch: Partial<TimeBlockConfig>) => void;
   onRemove: (blockId: string) => void;
+  userTeams?: { id: string; name: string; color?: string }[];
+  onAddType?: (label: string, color: string, teamIds: string[]) => Promise<{ key: string; label: string; color: string } | null>;
 }
 
 const newId = () => (crypto as any).randomUUID?.() || `b_${Date.now()}_${Math.random().toString(36).slice(2)}`;
