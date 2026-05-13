@@ -99,7 +99,11 @@ export function GlobalDatabaseSearch() {
         return { data: merged };
       };
 
-      const [leadsRes, contactsRes, commentsRes, dmsRes, activitiesRes, workflowsRes] = await Promise.all([
+      // Detect case-number-like queries (e.g. "369", "CASO-369", "caso 369")
+      const numericMatch = term.trim().match(/^(?:caso[\s-]*)?(\d{1,8})$/i);
+      const caseNumberTerm = numericMatch ? `%${numericMatch[1]}%` : `%${term}%`;
+
+      const [leadsRes, contactsRes, commentsRes, dmsRes, activitiesRes, workflowsRes, casesRes] = await Promise.all([
         dual('leads',
           `lead_name.ilike.${searchTerm},victim_name.ilike.${searchTerm},lead_phone.ilike.${searchTerm},lead_email.ilike.${searchTerm},notes.ilike.${searchTerm},instagram_username.ilike.${searchTerm},city.ilike.${searchTerm},cpf.ilike.${searchTerm},state.ilike.${searchTerm},source.ilike.${searchTerm}`,
           'updated_at', 15),
@@ -117,6 +121,9 @@ export function GlobalDatabaseSearch() {
           'updated_at', 15),
         dual('kanban_boards',
           `name.ilike.${searchTerm},description.ilike.${searchTerm}`,
+          'updated_at', 10),
+        dual('legal_cases',
+          `case_number.ilike.${caseNumberTerm},title.ilike.${searchTerm},description.ilike.${searchTerm}`,
           'updated_at', 10),
       ]);
 
