@@ -2450,11 +2450,11 @@ const ActivitiesPage = () => {
                                 {block.cfg.startHour}:{String(block.cfg.startMinute || 0).padStart(2, '0')}–{block.cfg.endHour}:{String(block.cfg.endMinute || 0).padStart(2, '0')}
                               </div>
                               {openCount === 0 && count > 0 && (
-                                <div className="absolute inset-0 flex flex-col items-center justify-center rounded-lg bg-black/15 pointer-events-none">
-                                  <div className="rounded-full bg-green-500 p-1 shadow-lg border-2 border-white">
-                                    <Check className="h-3.5 w-3.5 text-white" strokeWidth={3} />
+                                <div className="absolute -top-1.5 -right-1.5 pointer-events-none z-10 flex items-center gap-0.5 pl-0.5 pr-1 py-0.5 rounded-full bg-gradient-to-br from-emerald-400 via-green-500 to-emerald-600 shadow-[0_2px_8px_rgba(16,185,129,0.6)] border border-white/80 ring-1 ring-emerald-300/50 animate-in zoom-in-50 duration-300">
+                                  <div className="rounded-full bg-white/95 p-[1px] shadow-inner">
+                                    <Check className="h-2.5 w-2.5 text-emerald-600" strokeWidth={4} />
                                   </div>
-                                  <span className="text-[9px] font-bold text-white mt-0.5 drop-shadow-sm">Tudo pronto!</span>
+                                  <span className="text-[8px] font-extrabold text-white uppercase tracking-wider drop-shadow-sm">Feito</span>
                                 </div>
                               )}
                             </div>
