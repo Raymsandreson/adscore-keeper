@@ -2496,7 +2496,10 @@ const ActivitiesPage = () => {
 
               {/* Painel de atividades do bloco selecionado (abaixo da grade) */}
               {selectedBlockData && (
-                <div className="flex-1 min-h-0 border-t flex flex-col overflow-hidden bg-card animate-in fade-in slide-in-from-bottom-2 duration-200">
+                <div className={cn(
+                  "min-h-0 flex flex-col overflow-hidden bg-card animate-in fade-in duration-200",
+                  isEditing ? "w-[240px] shrink-0 h-full" : "flex-1 border-t slide-in-from-bottom-2"
+                )}>
                   <div className={cn('px-3 py-2 text-white flex items-center justify-between', selectedBlockData.cfg.color || 'bg-muted-foreground')}>
                     <div className="min-w-0 flex-1">
                       <p className="text-xs font-bold truncate">{selectedBlockData.cfg.label}</p>
