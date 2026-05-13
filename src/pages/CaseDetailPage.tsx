@@ -51,7 +51,7 @@ interface CaseFull {
 interface ProcessRow {
   id: string;
   process_number: string | null;
-  court: string | null;
+  tribunal: string | null;
   status: string | null;
   case_type: string | null;
 }
