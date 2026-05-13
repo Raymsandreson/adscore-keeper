@@ -263,6 +263,9 @@ export function GlobalDatabaseSearch() {
       case 'workflow':
         navigate(`/workflow`);
         break;
+      case 'case':
+        navigate(`/cases/${result.id}`);
+        break;
     }
   };
 
@@ -271,6 +274,7 @@ export function GlobalDatabaseSearch() {
     contact: { icon: Contact, label: 'Contato', color: 'bg-green-500/10 text-green-700 border-green-200' },
     activity: { icon: ClipboardList, label: 'Atividade', color: 'bg-amber-500/10 text-amber-700 border-amber-200' },
     workflow: { icon: Workflow, label: 'Fluxo', color: 'bg-violet-500/10 text-violet-700 border-violet-200' },
+    case: { icon: FileText, label: 'Caso', color: 'bg-rose-500/10 text-rose-700 border-rose-200' },
     comment: { icon: MessageCircle, label: 'Comentário', color: 'bg-orange-500/10 text-orange-700 border-orange-200' },
     dm: { icon: Send, label: 'DM', color: 'bg-purple-500/10 text-purple-700 border-purple-200' },
   };
@@ -281,7 +285,7 @@ export function GlobalDatabaseSearch() {
     return acc;
   }, {} as Record<string, SearchResult[]>);
 
-  const groupOrder: Array<SearchResult['type']> = ['lead', 'contact', 'activity', 'workflow', 'comment', 'dm'];
+  const groupOrder: Array<SearchResult['type']> = ['case', 'lead', 'contact', 'activity', 'workflow', 'comment', 'dm'];
 
   return (
     <>
