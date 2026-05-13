@@ -2483,23 +2483,28 @@ const ActivitiesPage = () => {
                                 {block.cfg.startHour}:{String(block.cfg.startMinute || 0).padStart(2, '0')}–{block.cfg.endHour}:{String(block.cfg.endMinute || 0).padStart(2, '0')}
                               </div>
                               {openCount === 0 && count > 0 && (
-                                <div className="absolute bottom-1 right-1 pointer-events-none z-10 flex flex-col items-center animate-in zoom-in-50 duration-300 rotate-[-12deg] origin-bottom-right">
-                                  <div className="relative flex items-center justify-center">
-                                    {/* Confetes estáticos ao redor do selo */}
-                                    <span className="absolute -top-1 -left-2 w-1 h-1 rounded-full bg-yellow-400" />
-                                    <span className="absolute -top-2 left-0 w-1 h-1 rounded-full bg-pink-400" />
-                                    <span className="absolute top-0 -right-2 w-1 h-1 rounded-full bg-sky-400" />
-                                    <span className="absolute -bottom-1 -left-2 w-1 h-1 rounded-full bg-lime-400" />
-                                    {/* Selo */}
-                                    <div className="flex items-center gap-0.5 pl-0.5 pr-1.5 py-0.5 rounded-full bg-gradient-to-br from-emerald-400/70 via-green-500/70 to-emerald-600/70 shadow-[0_2px_6px_rgba(16,185,129,0.3)] border border-white/50 ring-1 ring-emerald-300/30">
-                                      <div className="rounded-full bg-white/85 p-[1px] shadow-inner">
-                                        <Check className="h-2.5 w-2.5 text-emerald-600" strokeWidth={4} />
-                                      </div>
-                                      <span className="text-[8px] font-extrabold text-white uppercase tracking-wider drop-shadow-sm">Feito</span>
+                                <>
+                                  {/* Faixa "PARABÉNS" sobreposta em destaque */}
+                                  <div className="absolute inset-0 pointer-events-none z-20 flex items-center justify-center overflow-hidden">
+                                    <div
+                                      className="rotate-[-8deg] font-black uppercase tracking-widest text-yellow-300 drop-shadow-[0_2px_4px_rgba(0,0,0,0.7)] animate-in zoom-in-50 fade-in duration-500"
+                                      style={{
+                                        fontSize: Math.max(14, Math.min(40, Math.round(blockH * 0.32))),
+                                        textShadow: '0 0 12px rgba(250,204,21,0.5), 0 2px 4px rgba(0,0,0,0.6)',
+                                        WebkitTextStroke: '1px rgba(0,0,0,0.35)',
+                                      }}
+                                    >
+                                      Parabéns!
                                     </div>
                                   </div>
-                                  <span className="mt-0.5 text-[8px] font-extrabold text-yellow-300/80 uppercase tracking-wide drop-shadow-[0_1px_2px_rgba(0,0,0,0.6)]">Parabéns!</span>
-                                </div>
+                                  {/* Selo "Feito" no canto */}
+                                  <div className="absolute bottom-1 right-1 pointer-events-none z-30 flex items-center gap-0.5 pl-0.5 pr-1.5 py-0.5 rounded-full bg-gradient-to-br from-emerald-400/80 via-green-500/80 to-emerald-600/80 shadow-[0_2px_6px_rgba(16,185,129,0.4)] border border-white/60 ring-1 ring-emerald-300/40 rotate-[-12deg] origin-bottom-right">
+                                    <div className="rounded-full bg-white/90 p-[1px] shadow-inner">
+                                      <Check className="h-2.5 w-2.5 text-emerald-600" strokeWidth={4} />
+                                    </div>
+                                    <span className="text-[8px] font-extrabold text-white uppercase tracking-wider drop-shadow-sm">Feito</span>
+                                  </div>
+                                </>
                               )}
                             </div>
                           );
