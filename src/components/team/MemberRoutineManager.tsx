@@ -16,7 +16,8 @@ import { cn } from '@/lib/utils';
 
 function MemberRoutineView({ userId, memberName }: { userId: string; memberName: string }) {
   const { configs, loading, saveSettings } = useTimeBlockSettings(userId);
-  const { types: globalTypes } = useActivityTypes();
+  const { types: globalTypes, addType } = useActivityTypes();
+  const { teams: userTeams } = useUserTeams(userId);
   const [editOpen, setEditOpen] = useState(false);
   const [localBlocks, setLocalBlocks] = useState<TimeBlockConfig[]>([]);
   const dirtyRef = useRef(false);
