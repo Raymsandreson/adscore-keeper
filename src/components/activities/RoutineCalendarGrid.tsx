@@ -85,8 +85,14 @@ export function RoutineCalendarGrid({ blocks, availableTypes, onCreate, onUpdate
         if (newEnd > MAX_HOUR * 60) { newEnd = MAX_HOUR * 60; newStart = newEnd - dur; }
         const s = fromMin(newStart);
         const e2 = fromMin(newEnd);
-        onUpdate(d.blockId, { startHour: s.h, startMinute: s.m, endHour: e2.h, endMinute: e2.m });
-      } else if (d.mode === 'resize-end') {
+        // Detect day under cursor for horizontal drag
+        const targetDay = xToDay(e.clientX);
+        const patch: Partial<TimeBlockConfig> = { startHour: s.h, startMinute: s.m, endHour: e2.h, endMinute: e2.m };
+        if (targetDay != null && targetDay !== d.dayIdx) {
+          patch.days = [targetDay];
+          d.dayIdx = targetDay;
+        }
+        onUpdate(d.blockId, patch);
         let newEnd = Math.max(d.initialStartMin + SNAP_MIN, cur);
         const s = fromMin(d.initialStartMin);
         const e2 = fromMin(newEnd);
