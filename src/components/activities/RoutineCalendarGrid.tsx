@@ -42,6 +42,8 @@ interface DragState {
   initialStartMin: number;
   initialEndMin: number;
   originY: number;
+  originX?: number;
+  moved?: boolean;
   /** for create mode: anchor minute */
   anchorMin?: number;
 }
