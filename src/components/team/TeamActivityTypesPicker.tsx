@@ -4,9 +4,41 @@ import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
-import { CheckCircle2, Circle, ChevronDown, ChevronUp, ListChecks, Loader2, Search, X, Plus, Pencil, Trash2, Check } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  CheckCircle2,
+  Circle,
+  ChevronDown,
+  ChevronUp,
+  ListChecks,
+  Loader2,
+  Search,
+  X,
+  Plus,
+  Pencil,
+  Trash2,
+  Check,
+  AlertTriangle,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useActivityTypes, type ActivityType } from '@/hooks/useActivityTypes';
+import { externalSupabase } from '@/integrations/supabase/external-client';
+import { supabase as cloudSupabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 
 interface Props {
   teamId: string;
@@ -40,6 +72,16 @@ export function TeamActivityTypesPicker({ teamId }: Props) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editLabel, setEditLabel] = useState('');
   const [editColor, setEditColor] = useState(COLOR_OPTIONS[5]);
+
+  // Delete with migration
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    type: ActivityType;
+    activitiesCount: number;
+    routinesCount: number;
+  } | null>(null);
+  const [loadingLinked, setLoadingLinked] = useState(false);
+  const [migrateToKey, setMigrateToKey] = useState('');
+  const [deletingType, setDeletingType] = useState(false);
 
   const linkedTypes = types.filter(t => (t.team_ids || []).includes(teamId));
 
@@ -77,12 +119,62 @@ export function TeamActivityTypesPicker({ teamId }: Props) {
     setEditingId(null);
   };
 
-  const handleDelete = async (id: string, label: string) => {
-    if (!confirm(`Excluir o tipo "${label}"? Essa ação não pode ser desfeita.`)) return;
-    setSavingKey(id);
-    await deleteType(id);
-    setSavingKey(null);
-    if (editingId === id) setEditingId(null);
+  const handleDeleteCheck = async (type: ActivityType) => {
+    setLoadingLinked(true);
+    setMigrateToKey('');
+    try {
+      const [activitiesRes, blocksRes] = await Promise.all([
+        externalSupabase
+          .from('lead_activities')
+          .select('id', { count: 'exact', head: true })
+          .eq('activity_type', type.key),
+        cloudSupabase
+          .from('user_timeblock_settings')
+          .select('id', { count: 'exact', head: true })
+          .eq('activity_type', type.key),
+      ]);
+
+      const activitiesCount = activitiesRes.count || 0;
+      const routinesCount = blocksRes.count || 0;
+
+      if (activitiesCount + routinesCount === 0) {
+        if (!confirm(`Excluir o tipo "${type.label}"? Essa ação não pode ser desfeita.`)) return;
+        setSavingKey(type.id);
+        await deleteType(type.id);
+        setSavingKey(null);
+        if (editingId === type.id) setEditingId(null);
+        return;
+      }
+
+      setDeleteConfirm({ type, activitiesCount, routinesCount });
+    } catch (e: any) {
+      toast.error('Erro ao buscar vínculos: ' + (e.message || ''));
+    } finally {
+      setLoadingLinked(false);
+    }
+  };
+
+  const handleDeleteWithMigration = async () => {
+    if (!deleteConfirm || !migrateToKey) return;
+    setDeletingType(true);
+    try {
+      await externalSupabase
+        .from('lead_activities')
+        .update({ activity_type: migrateToKey } as any)
+        .eq('activity_type', deleteConfirm.type.key);
+      await cloudSupabase
+        .from('user_timeblock_settings')
+        .update({ activity_type: migrateToKey } as any)
+        .eq('activity_type', deleteConfirm.type.key);
+      await deleteType(deleteConfirm.type.id);
+      toast.success('Tipo excluído e registros migrados!');
+      setDeleteConfirm(null);
+      if (editingId === deleteConfirm.type.id) setEditingId(null);
+    } catch (e: any) {
+      toast.error('Erro ao migrar: ' + (e.message || 'Erro desconhecido'));
+    } finally {
+      setDeletingType(false);
+    }
   };
 
   return (
@@ -299,11 +391,12 @@ export function TeamActivityTypesPicker({ teamId }: Props) {
                                 <Pencil className="h-3 w-3" />
                               </button>
                               <button
-                                onClick={(e) => { e.stopPropagation(); handleDelete(t.id, t.label); }}
-                                className="p-1 hover:text-destructive text-muted-foreground"
+                                onClick={(e) => { e.stopPropagation(); handleDeleteCheck(t); }}
+                                disabled={loadingLinked}
+                                className="p-1 hover:text-destructive text-muted-foreground disabled:opacity-50"
                                 title="Excluir"
                               >
-                                <Trash2 className="h-3 w-3" />
+                                {loadingLinked ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
                               </button>
                             </div>
                           </div>
@@ -317,6 +410,61 @@ export function TeamActivityTypesPicker({ teamId }: Props) {
           </Popover>
         </div>
       </div>
+
+      {/* Delete with migration dialog */}
+      <Dialog open={!!deleteConfirm} onOpenChange={(o) => !o && !deletingType && setDeleteConfirm(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              Tipo em uso
+            </DialogTitle>
+            <DialogDescription>
+              O tipo <strong>"{deleteConfirm?.type.label}"</strong> está vinculado a{' '}
+              <strong>{deleteConfirm?.activitiesCount ?? 0}</strong> atividade(s) e{' '}
+              <strong>{deleteConfirm?.routinesCount ?? 0}</strong> bloco(s) de rotina.
+              Escolha para qual tipo migrar antes de excluir.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2">
+            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+              Migrar para qual tipo?
+            </label>
+            <Select value={migrateToKey} onValueChange={setMigrateToKey}>
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione o tipo de destino..." />
+              </SelectTrigger>
+              <SelectContent>
+                {types
+                  .filter(t => t.key !== deleteConfirm?.type.key)
+                  .map(t => (
+                    <SelectItem key={t.key} value={t.key}>
+                      <div className="flex items-center gap-2">
+                        <span className={cn('h-2 w-2 rounded-full', t.color)} />
+                        {t.label}
+                      </div>
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" disabled={deletingType} onClick={() => setDeleteConfirm(null)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleDeleteWithMigration}
+              disabled={!migrateToKey || deletingType}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deletingType ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Trash2 className="h-4 w-4 mr-1" />}
+              Migrar e Excluir
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
