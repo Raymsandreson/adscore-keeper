@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -18,20 +18,41 @@ function MemberRoutineView({ userId, memberName }: { userId: string; memberName:
   const { types: globalTypes } = useActivityTypes();
   const [editOpen, setEditOpen] = useState(false);
   const [localBlocks, setLocalBlocks] = useState<TimeBlockConfig[]>([]);
+  const dirtyRef = useRef(false);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const localBlocksRef = useRef<TimeBlockConfig[]>([]);
+  localBlocksRef.current = localBlocks;
 
-  useEffect(() => { setLocalBlocks(configs); }, [configs]);
+  // Sincroniza com DB só quando NÃO estamos editando localmente
+  useEffect(() => {
+    if (!dirtyRef.current) setLocalBlocks(configs);
+  }, [configs]);
 
   const handleSave = (newConfigs: Parameters<typeof saveSettings>[0]) => saveSettings(newConfigs, userId);
 
-  // Auto-save on local edits (debounced)
-  const persist = (next: TimeBlockConfig[]) => {
-    setLocalBlocks(next);
-    saveSettings(next, userId);
+  const scheduleSave = () => {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(async () => {
+      await saveSettings(localBlocksRef.current, userId);
+      dirtyRef.current = false;
+    }, 700);
   };
-  const onCreate = (b: TimeBlockConfig) => persist([...localBlocks, b]);
-  const onUpdate = (id: string, patch: Partial<TimeBlockConfig>) =>
-    persist(localBlocks.map(b => b.blockId === id ? { ...b, ...patch } : b));
-  const onRemove = (id: string) => persist(localBlocks.filter(b => b.blockId !== id));
+
+  const onCreate = (b: TimeBlockConfig) => {
+    dirtyRef.current = true;
+    setLocalBlocks(prev => [...prev, b]);
+    scheduleSave();
+  };
+  const onUpdate = (id: string, patch: Partial<TimeBlockConfig>) => {
+    dirtyRef.current = true;
+    setLocalBlocks(prev => prev.map(b => b.blockId === id ? { ...b, ...patch } : b));
+    scheduleSave();
+  };
+  const onRemove = (id: string) => {
+    dirtyRef.current = true;
+    setLocalBlocks(prev => prev.filter(b => b.blockId !== id));
+    scheduleSave();
+  };
 
   const availableTypes = globalTypes.map(t => ({ key: t.key, label: t.label, color: t.color }));
 
