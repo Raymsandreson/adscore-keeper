@@ -425,7 +425,7 @@ Deno.serve(async (req) => {
           else if (analysis.holder_name) parts.push(sanitize(analysis.holder_name));
           if (analysis.document_subtype) parts.push(`(${sanitize(analysis.document_subtype)})`);
           let base = parts.join(" — ").slice(0, 180);
-          const desired = `${base}${ext}`;
+          const desired = `${base}${extName}`;
           console.log(`[lead-drive] rename attempt file=${file_id} from="${meta.name}" to="${desired}"`);
           if (desired && desired !== meta.name) {
             const rnRes = await fetch(`${GATEWAY}/files/${file_id}?fields=id,name`, {
