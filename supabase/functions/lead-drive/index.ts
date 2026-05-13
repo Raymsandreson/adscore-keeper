@@ -39,27 +39,73 @@ async function getOrCreateRootFolder(): Promise<string> {
   return created.id;
 }
 
+async function resolveFolderBaseName(leadId: string, leadName: string, ext: any): Promise<string> {
+  // Prioriza o caso jurídico do lead se houver
+  try {
+    const { data: cases } = await ext
+      .from("legal_cases")
+      .select("case_number, title")
+      .eq("lead_id", leadId)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false })
+      .limit(1);
+    const c = Array.isArray(cases) && cases.length > 0 ? cases[0] : null;
+    if (c) {
+      const title = (c.title || "").trim();
+      const num = (c.case_number || "").trim();
+      if (title && num) return `${num} - ${title}`;
+      if (title) return title;
+      if (num) return num;
+    }
+  } catch (e) {
+    console.warn("[lead-drive] resolveFolderBaseName legal_cases lookup failed:", e);
+  }
+  return leadName || "Lead";
+}
+
 async function getOrCreateLeadFolder(leadId: string, leadName: string, ext: any): Promise<string> {
+  const baseName = await resolveFolderBaseName(leadId, leadName, ext);
+  const desiredName = `${baseName} - ${leadId.slice(0, 8)}`.replace(/['\\]/g, "");
+
   // Check cache
   const { data: existing } = await ext
     .from("lead_drive_folders")
-    .select("folder_id")
+    .select("folder_id, folder_name")
     .eq("lead_id", leadId)
     .maybeSingle();
   if (existing?.folder_id) {
     // Verify still exists
-    const verify = await fetch(`${GATEWAY}/files/${existing.folder_id}?fields=id,trashed`, { headers: gwHeaders() });
+    const verify = await fetch(`${GATEWAY}/files/${existing.folder_id}?fields=id,trashed,name`, { headers: gwHeaders() });
     if (verify.ok) {
       const v = await verify.json();
-      if (!v.trashed) return existing.folder_id;
+      if (!v.trashed) {
+        // Renomeia se o nome cadastrado mudou (ex: lead virou caso)
+        if (v.name !== desiredName) {
+          try {
+            const rn = await fetch(`${GATEWAY}/files/${existing.folder_id}?fields=id,name`, {
+              method: "PATCH",
+              headers: gwHeaders({ "Content-Type": "application/json" }),
+              body: JSON.stringify({ name: desiredName }),
+            });
+            if (rn.ok) {
+              await ext.from("lead_drive_folders").upsert({ lead_id: leadId, folder_id: existing.folder_id, folder_name: desiredName });
+              console.log(`[lead-drive] folder renamed "${v.name}" -> "${desiredName}"`);
+            } else {
+              console.warn(`[lead-drive] folder rename failed [${rn.status}]: ${await rn.text()}`);
+            }
+          } catch (e) {
+            console.warn("[lead-drive] folder rename error:", e);
+          }
+        }
+        return existing.folder_id;
+      }
     }
   }
 
   const rootId = await getOrCreateRootFolder();
-  const safeName = `${leadName || "Lead"} - ${leadId.slice(0, 8)}`.replace(/['\\]/g, "");
 
-  // Search inside root
-  const q = encodeURIComponent(`name='${safeName}' and mimeType='application/vnd.google-apps.folder' and '${rootId}' in parents and trashed=false`);
+  // Search inside root pelo nome desejado
+  const q = encodeURIComponent(`name='${desiredName}' and mimeType='application/vnd.google-apps.folder' and '${rootId}' in parents and trashed=false`);
   const searchRes = await fetch(`${GATEWAY}/files?q=${q}&fields=files(id,name)`, { headers: gwHeaders() });
   let folderId: string | null = null;
   if (searchRes.ok) {
@@ -72,7 +118,7 @@ async function getOrCreateLeadFolder(leadId: string, leadName: string, ext: any)
       method: "POST",
       headers: gwHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({
-        name: safeName,
+        name: desiredName,
         mimeType: "application/vnd.google-apps.folder",
         parents: [rootId],
       }),
@@ -82,7 +128,7 @@ async function getOrCreateLeadFolder(leadId: string, leadName: string, ext: any)
     folderId = created.id;
   }
 
-  await ext.from("lead_drive_folders").upsert({ lead_id: leadId, folder_id: folderId, folder_name: safeName });
+  await ext.from("lead_drive_folders").upsert({ lead_id: leadId, folder_id: folderId, folder_name: desiredName });
   return folderId!;
 }
 
