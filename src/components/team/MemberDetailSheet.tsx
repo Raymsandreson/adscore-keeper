@@ -549,7 +549,7 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
           </TabsList>
 
           <TabsContent value="open" className="mt-4">
-            <MemberOpenActivities userId={member.user_id} defaultOpen />
+            <MemberOpenActivities userId={member.user_id} />
           </TabsContent>
 
           <TabsContent value="profile" className="mt-4 space-y-4">
