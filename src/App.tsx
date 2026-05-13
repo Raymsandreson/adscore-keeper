@@ -132,6 +132,7 @@ const WhatsAppPage = lazyRetry(() => import("./pages/WhatsAppPage"), "WhatsAppPa
 const WhatsAppCloudPage = lazyRetry(() => import("./pages/WhatsAppCloudPage"), "WhatsAppCloudPage");
 const NotFound = lazyRetry(() => import("./pages/NotFound"), "NotFound");
 const PrivacyPolicyPage = lazyRetry(() => import("./pages/PrivacyPolicyPage"), "PrivacyPolicyPage");
+const TermsOfServicePage = lazyRetry(() => import("./pages/TermsOfServicePage"), "TermsOfServicePage");
 const InstallPage = lazyRetry(() => import("./pages/InstallPage"), "InstallPage");
 const CasesPage = lazyRetry(() => import("./pages/CasesPage"), "CasesPage");
 const NucleiPage = lazyRetry(() => import("./pages/NucleiPage"), "NucleiPage");
