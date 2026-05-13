@@ -2459,29 +2459,37 @@ const ActivitiesPage = () => {
                                   setSelectedBlockKey(isSelected ? null : blockKey);
                                 }}
                               >
-                                <div
-                                  className="font-bold uppercase tracking-tight opacity-95 px-1 text-center leading-tight line-clamp-2 break-words"
-                                  style={{ fontSize: labelSize }}
-                                >{fullLabel}</div>
-                                <div
-                                  className="font-extrabold leading-none tabular-nums drop-shadow-sm"
-                                  style={{ fontSize: numberSize }}
-                                >{count}</div>
-                                {count > 0 && (
-                                  <div
-                                    className="flex items-center gap-1.5 font-bold mt-0.5"
-                                    style={{ fontSize: metaSize }}
-                                  >
-                                    <span className="text-red-700">○{openCount}</span>
-                                    <span className="text-emerald-700">✓{doneCount}</span>
+                                {openCount === 0 && count > 0 ? (
+                                  <div className="flex items-center justify-center w-full h-full">
+                                    <span className="text-white/90 drop-shadow-md" style={{ fontSize: Math.max(20, Math.min(48, blockH * 0.45)) }}>✓</span>
                                   </div>
+                                ) : (
+                                  <>
+                                    <div
+                                      className="font-bold uppercase tracking-tight opacity-95 px-1 text-center leading-tight line-clamp-2 break-words"
+                                      style={{ fontSize: labelSize }}
+                                    >{fullLabel}</div>
+                                    <div
+                                      className="font-extrabold leading-none tabular-nums drop-shadow-sm"
+                                      style={{ fontSize: numberSize }}
+                                    >{count}</div>
+                                    {count > 0 && (
+                                      <div
+                                        className="flex items-center gap-1.5 font-bold mt-0.5"
+                                        style={{ fontSize: metaSize }}
+                                      >
+                                        <span className="text-red-700">○{openCount}</span>
+                                        <span className="text-emerald-700">✓{doneCount}</span>
+                                      </div>
+                                    )}
+                                    <div
+                                      className="font-medium opacity-80 mt-0.5"
+                                      style={{ fontSize: Math.max(8, metaSize - 1) }}
+                                    >
+                                      {block.cfg.startHour}:{String(block.cfg.startMinute || 0).padStart(2, '0')}–{block.cfg.endHour}:{String(block.cfg.endMinute || 0).padStart(2, '0')}
+                                    </div>
+                                  </>
                                 )}
-                                <div
-                                  className="font-medium opacity-80 mt-0.5"
-                                  style={{ fontSize: Math.max(8, metaSize - 1) }}
-                                >
-                                  {block.cfg.startHour}:{String(block.cfg.startMinute || 0).padStart(2, '0')}–{block.cfg.endHour}:{String(block.cfg.endMinute || 0).padStart(2, '0')}
-                                </div>
                               </div>
 
                               {/* Bloco apenas com aparência apagada quando concluído — sem overlay */}
