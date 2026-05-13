@@ -2210,7 +2210,7 @@ const ActivitiesPage = () => {
 
 
         {/* === BLOCOS DE TEMPO (AGENDA SEMANAL) === */}
-        {viewMode === 'blocks' && !isEditing && (() => {
+        {viewMode === 'blocks' && (() => {
           // Use the selected assignee's routine for blocks view
           const activeSettings = blocksViewSettings.length > 0 ? blocksViewSettings : timeBlockSettings;
 
