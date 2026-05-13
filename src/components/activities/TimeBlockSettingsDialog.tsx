@@ -873,10 +873,12 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave, t
                   )}
                 </div>
               );
-            });
-            })()}
-          </div>
-        )}
+            })}
+                </div>
+              )}
+            </>
+          );
+        })()}
 
         {/* Admin: Manage global types */}
         {isAdmin && (
