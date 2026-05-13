@@ -300,11 +300,28 @@ Deno.serve(async (req) => {
           { type: "image_url", image_url: { url: dataUrl } },
         ];
       } else if (isDocx) {
-        // Converte DOCX para texto puro com mammoth (Gemini não aceita DOCX direto)
-        const mammoth = await import("npm:mammoth@1.12.0");
-        const result = await mammoth.extractRawText({ arrayBuffer: buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) });
-        const text = (result.value || "").slice(0, 40000);
-        userContent = `Identifique o tipo deste documento, o titular e descreva brevemente. Nome do arquivo: ${meta.name}\n\nConteúdo extraído do DOCX:\n\n${text}`;
+        // DOCX = zip com XMLs. Usamos fflate (leve) p/ não estourar memória do worker.
+        const { unzipSync, strFromU8 } = await import("npm:fflate@0.8.2");
+        let text = "";
+        try {
+          const files = unzipSync(buf, { filter: (f) => f.name === "word/document.xml" });
+          const xmlBytes = files["word/document.xml"];
+          if (xmlBytes) {
+            const xml = strFromU8(xmlBytes);
+            // Quebra parágrafos e remove todas as tags XML
+            text = xml
+              .replace(/<\/w:p>/g, "\n")
+              .replace(/<[^>]+>/g, "")
+              .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'")
+              .replace(/[ \t]+/g, " ")
+              .replace(/\n{3,}/g, "\n\n")
+              .trim()
+              .slice(0, 40000);
+          }
+        } catch (e) {
+          console.error("[lead-drive] docx extract failed:", e);
+        }
+        userContent = `Identifique o tipo deste documento, o titular e descreva brevemente. Nome do arquivo: ${meta.name}\n\nConteúdo extraído do DOCX:\n\n${text || "(não foi possível extrair texto)"}`;
       } else {
         // Tipo não suportado pela IA — devolve análise neutra sem chamar Gemini
         return new Response(JSON.stringify({
