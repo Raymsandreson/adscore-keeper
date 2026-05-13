@@ -469,6 +469,7 @@ Deno.serve(async (req) => {
           let base = parts.join(" — ").slice(0, 180);
           const desired = `${base}${extName}`;
           if (desired && desired !== meta.name) {
+            const previousName = meta.name;
             const rnRes = await fetch(`${GATEWAY}/files/${file_id}?fields=id,name`, {
               method: "PATCH",
               headers: gwHeaders({ "Content-Type": "application/json" }),
@@ -481,8 +482,7 @@ Deno.serve(async (req) => {
               console.log(`[lead-drive] FILE_RENAMED ${JSON.stringify({
                 lead_id,
                 file_id,
-                from: (meta.name === rn.name ? undefined : meta.name) ?? null,
-                from_original: undefined,
+                from: previousName,
                 to: rn.name,
                 document_type: analysis.document_type,
                 holder_name: analysis.holder_name ?? null,
