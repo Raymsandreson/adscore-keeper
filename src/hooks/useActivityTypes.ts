@@ -11,6 +11,8 @@ export interface ActivityType {
   display_order: number;
   is_active: boolean;
   created_at: string;
+  /** Cloud team IDs that this type is restricted to. Empty = global (all teams). */
+  team_ids: string[];
 }
 
 export function useActivityTypes() {
@@ -22,7 +24,9 @@ export function useActivityTypes() {
       .from('activity_types')
       .select('*')
       .order('display_order', { ascending: true });
-    if (!error && data) setTypes(data as ActivityType[]);
+    if (!error && data) {
+      setTypes(data.map((t: any) => ({ ...t, team_ids: t.team_ids ?? [] })) as ActivityType[]);
+    }
     setLoading(false);
   }, []);
 
@@ -47,7 +51,7 @@ export function useActivityTypes() {
     else { toast.success('Tipo excluído!'); await refetch(); }
   }, [refetch]);
 
-  const updateType = useCallback(async (id: string, patch: Partial<Pick<ActivityType, 'label' | 'color' | 'display_order' | 'is_active' | 'description'>>) => {
+  const updateType = useCallback(async (id: string, patch: Partial<Pick<ActivityType, 'label' | 'color' | 'display_order' | 'is_active' | 'description' | 'team_ids'>>) => {
     const { error } = await supabase.from('activity_types').update(patch as any).eq('id', id);
     if (error) toast.error('Erro ao atualizar tipo: ' + error.message);
     else await refetch();
