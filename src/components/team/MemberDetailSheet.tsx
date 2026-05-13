@@ -45,6 +45,7 @@ import { toast } from 'sonner';
 import { format, formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
+import { MemberOpenActivities } from './MemberOpenActivities';
 
 interface MemberDetailSheetProps {
   open: boolean;
@@ -544,6 +545,8 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
           </TabsList>
 
           <TabsContent value="profile" className="mt-4 space-y-4">
+            <MemberOpenActivities userId={member.user_id} />
+
             <div className="space-y-2">
               <Label>Nome completo</Label>
               <Input
