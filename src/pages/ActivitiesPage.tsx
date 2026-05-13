@@ -2421,6 +2421,16 @@ const ActivitiesPage = () => {
                           const openCount = block.items.filter(a => a.status !== 'concluida').length;
                           const doneCount = count - openCount;
                           const blockKey = `${dayIdx}::${block.cfg.activityType}`;
+                          const celebrationKey = `${format(dayDate, 'yyyy-MM-dd')}::${block.cfg.activityType}`;
+                          const isFullyDone = openCount === 0 && count > 0;
+                          if (isFullyDone && !celebratedBlocksRef.current.has(celebrationKey)) {
+                            celebratedBlocksRef.current.add(celebrationKey);
+                            if (celebrationInitRef.current && isSameDay(dayDate, today)) {
+                              const labelSnapshot = fullLabel;
+                              const colorSnapshot = bgColor;
+                              queueMicrotask(() => setCelebrateBlock({ label: labelSnapshot, color: colorSnapshot }));
+                            }
+                          }
                           const isSelected = selectedBlockKey === blockKey;
 
                           const blockH = Math.max(block.heightPx - 2, 24);
