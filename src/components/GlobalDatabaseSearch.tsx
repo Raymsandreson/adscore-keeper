@@ -29,7 +29,7 @@ import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 
 interface SearchResult {
   id: string;
-  type: 'lead' | 'contact' | 'comment' | 'dm' | 'activity' | 'workflow';
+  type: 'lead' | 'contact' | 'comment' | 'dm' | 'activity' | 'workflow' | 'case';
   title: string;
   subtitle: string;
   extra?: string;
@@ -99,7 +99,11 @@ export function GlobalDatabaseSearch() {
         return { data: merged };
       };
 
-      const [leadsRes, contactsRes, commentsRes, dmsRes, activitiesRes, workflowsRes] = await Promise.all([
+      // Detect case-number-like queries (e.g. "369", "CASO-369", "caso 369")
+      const numericMatch = term.trim().match(/^(?:caso[\s-]*)?(\d{1,8})$/i);
+      const caseNumberTerm = numericMatch ? `%${numericMatch[1]}%` : `%${term}%`;
+
+      const [leadsRes, contactsRes, commentsRes, dmsRes, activitiesRes, workflowsRes, casesRes] = await Promise.all([
         dual('leads',
           `lead_name.ilike.${searchTerm},victim_name.ilike.${searchTerm},lead_phone.ilike.${searchTerm},lead_email.ilike.${searchTerm},notes.ilike.${searchTerm},instagram_username.ilike.${searchTerm},city.ilike.${searchTerm},cpf.ilike.${searchTerm},state.ilike.${searchTerm},source.ilike.${searchTerm}`,
           'updated_at', 15),
@@ -117,6 +121,9 @@ export function GlobalDatabaseSearch() {
           'updated_at', 15),
         dual('kanban_boards',
           `name.ilike.${searchTerm},description.ilike.${searchTerm}`,
+          'updated_at', 10),
+        dual('legal_cases',
+          `case_number.ilike.${caseNumberTerm},title.ilike.${searchTerm},description.ilike.${searchTerm}`,
           'updated_at', 10),
       ]);
 
@@ -200,6 +207,19 @@ export function GlobalDatabaseSearch() {
         });
       });
 
+      // Legal cases
+      (casesRes.data || []).forEach((c: any) => {
+        mapped.push({
+          id: c.id,
+          type: 'case',
+          title: c.case_number || 'Caso',
+          subtitle: c.title || '',
+          extra: c.status || '',
+          date: c.updated_at,
+          raw: c,
+        });
+      });
+
       setResults(mapped);
     } catch (err) {
       console.error('Search error:', err);
@@ -243,6 +263,9 @@ export function GlobalDatabaseSearch() {
       case 'workflow':
         navigate(`/workflow`);
         break;
+      case 'case':
+        navigate(`/cases/${result.id}`);
+        break;
     }
   };
 
@@ -251,6 +274,7 @@ export function GlobalDatabaseSearch() {
     contact: { icon: Contact, label: 'Contato', color: 'bg-green-500/10 text-green-700 border-green-200' },
     activity: { icon: ClipboardList, label: 'Atividade', color: 'bg-amber-500/10 text-amber-700 border-amber-200' },
     workflow: { icon: Workflow, label: 'Fluxo', color: 'bg-violet-500/10 text-violet-700 border-violet-200' },
+    case: { icon: FileText, label: 'Caso', color: 'bg-rose-500/10 text-rose-700 border-rose-200' },
     comment: { icon: MessageCircle, label: 'Comentário', color: 'bg-orange-500/10 text-orange-700 border-orange-200' },
     dm: { icon: Send, label: 'DM', color: 'bg-purple-500/10 text-purple-700 border-purple-200' },
   };
@@ -261,7 +285,7 @@ export function GlobalDatabaseSearch() {
     return acc;
   }, {} as Record<string, SearchResult[]>);
 
-  const groupOrder: Array<SearchResult['type']> = ['lead', 'contact', 'activity', 'workflow', 'comment', 'dm'];
+  const groupOrder: Array<SearchResult['type']> = ['case', 'lead', 'contact', 'activity', 'workflow', 'comment', 'dm'];
 
   return (
     <>

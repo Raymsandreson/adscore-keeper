@@ -135,6 +135,7 @@ const PrivacyPolicyPage = lazyRetry(() => import("./pages/PrivacyPolicyPage"), "
 const TermsOfServicePage = lazyRetry(() => import("./pages/TermsOfServicePage"), "TermsOfServicePage");
 const InstallPage = lazyRetry(() => import("./pages/InstallPage"), "InstallPage");
 const CasesPage = lazyRetry(() => import("./pages/CasesPage"), "CasesPage");
+const CaseDetailPage = lazyRetry(() => import("./pages/CaseDetailPage"), "CaseDetailPage");
 const NucleiPage = lazyRetry(() => import("./pages/NucleiPage"), "NucleiPage");
 const CostOrganizationPage = lazyRetry(() => import("./pages/CostOrganizationPage"), "CostOrganizationPage");
 const ProcessTrackingPage = lazyRetry(() => import("./pages/ProcessTrackingPage"), "ProcessTrackingPage");
@@ -254,6 +255,7 @@ function SidebarLayout() {
                 <Route path="/settings/zapsign-backfill" element={<ProtectedRoute><ZapsignBackfillPage /></ProtectedRoute>} />
                 <Route path="/zapsign-sync" element={<ProtectedRoute><ZapsignSyncPage /></ProtectedRoute>} />
                 <Route path="/cases" element={<ProtectedRoute><CasesPage /></ProtectedRoute>} />
+                <Route path="/cases/:caseId" element={<ProtectedRoute><CaseDetailPage /></ProtectedRoute>} />
                 <Route path="/processes" element={<ProtectedRoute><ProcessesPage /></ProtectedRoute>} />
                 <Route path="/nuclei" element={<ProtectedRoute><NucleiPage /></ProtectedRoute>} />
                 <Route path="/cost-organization" element={<ProtectedRoute><CostOrganizationPage /></ProtectedRoute>} />
