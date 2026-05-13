@@ -593,6 +593,16 @@ export function TeamManagement() {
         member={selectedMember}
         onUpdate={refetch}
       />
+
+      <ReassignActivitiesDialog
+        open={!!removeTarget}
+        onOpenChange={(v) => { if (!v) setRemoveTarget(null); }}
+        member={removeTarget}
+        candidates={members}
+        onConfirm={async () => {
+          if (removeTarget) await handleRemove(removeTarget.user_id);
+        }}
+      />
     </div>
   );
 }
