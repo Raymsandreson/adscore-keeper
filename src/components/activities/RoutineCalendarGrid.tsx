@@ -27,7 +27,7 @@ interface Props {
   onRemove: (blockId: string) => void;
 }
 
-const newId = () => `block_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+const newId = () => (crypto as any).randomUUID?.() || `b_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 const toMin = (h: number, m = 0) => h * 60 + m;
 const fromMin = (total: number) => ({ h: Math.floor(total / 60), m: total % 60 });
 const fmt = (h: number, m = 0) => `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
