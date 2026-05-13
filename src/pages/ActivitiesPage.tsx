@@ -257,7 +257,7 @@ const ActivitiesPage = () => {
   const [completeNotifyOpen, setCompleteNotifyOpen] = useState(false);
   const [completeNotifySource, setCompleteNotifySource] = useState<'sheet' | 'workflow'>('sheet');
   const [showLeadSheet, setShowLeadSheet] = useState(false);
-  const [viewMode, setViewMode] = usePageState<'list' | 'matrix' | 'blocks'>('activities_viewMode', 'list');
+  const [viewMode, setViewMode] = usePageState<'list' | 'matrix' | 'blocks'>('activities_viewMode', 'blocks');
   const [formMatrixQuadrant, setFormMatrixQuadrant] = useState<string>('');
   const [dragOverQuadrant, setDragOverQuadrant] = useState<string | null>(null);
   const [aiSuggestingType, setAiSuggestingType] = useState(false);
@@ -2473,7 +2473,7 @@ const ActivitiesPage = () => {
                         {/* Proportional blocks */}
                         {blocks.map((block, bi) => {
                           const bgColor = block.cfg.color || 'bg-muted-foreground';
-                          const abbreviation = block.cfg.label.slice(0, 4).toUpperCase();
+                          const fullLabel = block.cfg.label;
                           const count = block.items.length;
                           const openCount = block.items.filter(a => a.status !== 'concluida').length;
                           const doneCount = count - openCount;
@@ -2499,7 +2499,7 @@ const ActivitiesPage = () => {
                                 setSelectedBlockKey(isSelected ? null : blockKey);
                               }}
                             >
-                              <div className="text-[10px] font-bold uppercase tracking-wider opacity-90">{abbreviation}</div>
+                              <div className="text-[10px] font-bold uppercase tracking-tight opacity-95 px-1.5 text-center leading-tight line-clamp-2 break-words">{fullLabel}</div>
                               <div className="text-lg font-bold leading-none">{count}</div>
                               {count > 0 && (
                                 <div className="flex items-center gap-1 text-[9px] font-semibold mt-0.5">
@@ -2507,11 +2507,9 @@ const ActivitiesPage = () => {
                                   <span className="opacity-60">✓{doneCount}</span>
                                 </div>
                               )}
-                              {block.heightPx > 50 && (
-                                <div className="text-[8px] opacity-70 mt-0.5">
-                                  {block.cfg.startHour}:{String(block.cfg.startMinute || 0).padStart(2, '0')}–{block.cfg.endHour}:{String(block.cfg.endMinute || 0).padStart(2, '0')}
-                                </div>
-                              )}
+                              <div className="text-[9px] font-medium opacity-80 mt-0.5">
+                                {block.cfg.startHour}:{String(block.cfg.startMinute || 0).padStart(2, '0')}–{block.cfg.endHour}:{String(block.cfg.endMinute || 0).padStart(2, '0')}
+                              </div>
                             </div>
                           );
                         })}
