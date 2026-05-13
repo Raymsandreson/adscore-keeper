@@ -29,7 +29,7 @@ import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 
 interface SearchResult {
   id: string;
-  type: 'lead' | 'contact' | 'comment' | 'dm' | 'activity' | 'workflow';
+  type: 'lead' | 'contact' | 'comment' | 'dm' | 'activity' | 'workflow' | 'case';
   title: string;
   subtitle: string;
   extra?: string;
