@@ -2441,21 +2441,31 @@ const ActivitiesPage = () => {
                               <div className="text-[10px] font-bold uppercase tracking-tight opacity-95 px-1.5 text-center leading-tight line-clamp-2 break-words">{fullLabel}</div>
                               <div className="text-lg font-bold leading-none">{count}</div>
                               {count > 0 && (
-                                <div className="flex items-center gap-1 text-[9px] font-semibold mt-0.5">
-                                  <span className="opacity-90">○{openCount}</span>
-                                  <span className="opacity-60">✓{doneCount}</span>
+                                <div className="flex items-center gap-1.5 text-[10px] font-bold mt-0.5">
+                                  <span className="px-1 rounded bg-white/95 text-red-600 shadow-sm">○{openCount}</span>
+                                  <span className="px-1 rounded bg-white/95 text-emerald-600 shadow-sm">✓{doneCount}</span>
                                 </div>
                               )}
                               <div className="text-[9px] font-medium opacity-80 mt-0.5">
                                 {block.cfg.startHour}:{String(block.cfg.startMinute || 0).padStart(2, '0')}–{block.cfg.endHour}:{String(block.cfg.endMinute || 0).padStart(2, '0')}
                               </div>
                               {openCount === 0 && count > 0 && (
-                                <div className="absolute top-1 left-1/2 -translate-x-1/2 pointer-events-none z-10 flex items-center gap-0.5 pl-0.5 pr-1.5 py-0.5 rounded-full bg-gradient-to-br from-emerald-400 via-green-500 to-emerald-600 shadow-[0_2px_8px_rgba(16,185,129,0.6)] border border-white/80 ring-1 ring-emerald-300/50 animate-in zoom-in-50 duration-300">
-                                  <div className="rounded-full bg-white/95 p-[1px] shadow-inner">
-                                    <Check className="h-2.5 w-2.5 text-emerald-600" strokeWidth={4} />
+                                <>
+                                  {/* Confetes */}
+                                  <span className="absolute top-2 left-2 w-1 h-1 rounded-full bg-yellow-400 animate-ping pointer-events-none" style={{ animationDelay: '0ms' }} />
+                                  <span className="absolute top-3 right-3 w-1 h-1 rounded-full bg-pink-400 animate-ping pointer-events-none" style={{ animationDelay: '200ms' }} />
+                                  <span className="absolute top-6 left-4 w-1 h-1 rounded-full bg-sky-400 animate-ping pointer-events-none" style={{ animationDelay: '400ms' }} />
+                                  <span className="absolute top-5 right-5 w-1 h-1 rounded-full bg-purple-400 animate-ping pointer-events-none" style={{ animationDelay: '600ms' }} />
+                                  <span className="absolute top-8 left-2 w-1 h-1 rounded-full bg-orange-400 animate-ping pointer-events-none" style={{ animationDelay: '800ms' }} />
+                                  <span className="absolute top-9 right-2 w-1 h-1 rounded-full bg-lime-400 animate-ping pointer-events-none" style={{ animationDelay: '1000ms' }} />
+                                  {/* Selo */}
+                                  <div className="absolute top-1 left-1/2 -translate-x-1/2 pointer-events-none z-10 flex items-center gap-0.5 pl-0.5 pr-1.5 py-0.5 rounded-full bg-gradient-to-br from-emerald-400 via-green-500 to-emerald-600 shadow-[0_2px_8px_rgba(16,185,129,0.6)] border border-white/80 ring-1 ring-emerald-300/50 animate-in zoom-in-50 duration-300">
+                                    <div className="rounded-full bg-white/95 p-[1px] shadow-inner">
+                                      <Check className="h-2.5 w-2.5 text-emerald-600" strokeWidth={4} />
+                                    </div>
+                                    <span className="text-[8px] font-extrabold text-white uppercase tracking-wider drop-shadow-sm">Feito</span>
                                   </div>
-                                  <span className="text-[8px] font-extrabold text-white uppercase tracking-wider drop-shadow-sm">Feito</span>
-                                </div>
+                                </>
                               )}
                             </div>
                           );
