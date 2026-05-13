@@ -2484,30 +2484,7 @@ const ActivitiesPage = () => {
                                 </div>
                               </div>
 
-                              {/* Overlay "Parabéns" + selo — fora do bloco apagado, mantém o brilho */}
-                              {openCount === 0 && count > 0 && (
-                                <div
-                                  className="absolute left-0.5 right-0.5 sm:left-1 sm:right-1 pointer-events-none z-20 flex items-center justify-center overflow-hidden rounded-lg"
-                                  style={{ top: block.topPx + 1, height: blockH }}
-                                >
-                                  <div
-                                    className="rotate-[-8deg] font-black uppercase tracking-widest text-yellow-300 animate-in zoom-in-50 fade-in duration-500"
-                                    style={{
-                                      fontSize: Math.max(11, Math.min(22, Math.round(blockH * 0.18))),
-                                      textShadow: '0 0 10px rgba(250,204,21,0.7), 0 2px 4px rgba(0,0,0,0.85)',
-                                      WebkitTextStroke: '0.5px rgba(0,0,0,0.5)',
-                                    }}
-                                  >
-                                    Parabéns!
-                                  </div>
-                                  <div className="absolute bottom-1 right-1 flex items-center gap-0.5 pl-0.5 pr-1.5 py-0.5 rounded-full bg-gradient-to-br from-emerald-400 via-green-500 to-emerald-600 shadow-[0_2px_6px_rgba(16,185,129,0.5)] border border-white/70 ring-1 ring-emerald-300/50 rotate-[-12deg] origin-bottom-right">
-                                    <div className="rounded-full bg-white p-[1px] shadow-inner">
-                                      <Check className="h-2.5 w-2.5 text-emerald-600" strokeWidth={4} />
-                                    </div>
-                                    <span className="text-[8px] font-extrabold text-white uppercase tracking-wider drop-shadow-sm">Feito</span>
-                                  </div>
-                                </div>
-                              )}
+                              {/* Bloco apenas com aparência apagada quando concluído — sem overlay */}
                             </div>
                           );
                         })}
