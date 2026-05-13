@@ -2,6 +2,7 @@ import { useRef, useState, useCallback, useMemo, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { Trash2, Copy } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { BlockEditPopover } from './BlockEditPopover';
 import type { TimeBlockConfig } from './TimeBlockSettingsDialog';
 
 const DAYS = [
