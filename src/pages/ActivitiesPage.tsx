@@ -2432,6 +2432,7 @@ const ActivitiesPage = () => {
                                 'absolute left-0.5 right-0.5 sm:left-1 sm:right-1 rounded-lg cursor-pointer hover:opacity-90 transition-all shadow-sm flex flex-col items-center justify-center text-white overflow-hidden',
                                 bgColor,
                                 count === 0 && 'opacity-30',
+                                openCount === 0 && count > 0 && 'brightness-[0.82] saturate-[0.55]',
                                 isSelected && 'ring-2 ring-foreground ring-offset-1'
                               )}
                               style={{
@@ -2468,7 +2469,7 @@ const ActivitiesPage = () => {
                                 {block.cfg.startHour}:{String(block.cfg.startMinute || 0).padStart(2, '0')}–{block.cfg.endHour}:{String(block.cfg.endMinute || 0).padStart(2, '0')}
                               </div>
                               {openCount === 0 && count > 0 && (
-                                <div className="absolute top-1 left-1/2 -translate-x-1/2 pointer-events-none z-10 flex flex-col items-center animate-in zoom-in-50 duration-300">
+                                <div className="absolute bottom-0.5 left-1/2 -translate-x-1/2 pointer-events-none z-10 flex flex-col items-center animate-in zoom-in-50 duration-300">
                                   <div className="relative flex items-center justify-center">
                                     {/* Confetes estáticos ao redor do selo */}
                                     <span className="absolute -top-1 -left-3 w-1 h-1 rounded-full bg-yellow-400" />
@@ -2479,14 +2480,14 @@ const ActivitiesPage = () => {
                                     <span className="absolute -bottom-1 -left-2 w-1 h-1 rounded-full bg-lime-400" />
                                     <span className="absolute -bottom-1 right-1 w-1 h-1 rounded-full bg-rose-400" />
                                     {/* Selo */}
-                                    <div className="flex items-center gap-0.5 pl-0.5 pr-1.5 py-0.5 rounded-full bg-gradient-to-br from-emerald-400 via-green-500 to-emerald-600 shadow-[0_2px_8px_rgba(16,185,129,0.6)] border border-white/80 ring-1 ring-emerald-300/50">
-                                      <div className="rounded-full bg-white/95 p-[1px] shadow-inner">
+                                    <div className="flex items-center gap-0.5 pl-0.5 pr-1.5 py-0.5 rounded-full bg-gradient-to-br from-emerald-400/80 via-green-500/80 to-emerald-600/80 shadow-[0_2px_8px_rgba(16,185,129,0.4)] border border-white/60 ring-1 ring-emerald-300/40">
+                                      <div className="rounded-full bg-white/90 p-[1px] shadow-inner">
                                         <Check className="h-2.5 w-2.5 text-emerald-600" strokeWidth={4} />
                                       </div>
                                       <span className="text-[8px] font-extrabold text-white uppercase tracking-wider drop-shadow-sm">Feito</span>
                                     </div>
                                   </div>
-                                  <span className="mt-0.5 text-[8px] font-extrabold text-yellow-300 uppercase tracking-wide drop-shadow-[0_1px_2px_rgba(0,0,0,0.6)]">Parabéns!</span>
+                                  <span className="mt-0.5 text-[8px] font-extrabold text-yellow-300/90 uppercase tracking-wide drop-shadow-[0_1px_2px_rgba(0,0,0,0.6)]">Parabéns!</span>
                                 </div>
                               )}
                             </div>
