@@ -529,10 +529,14 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
         </SheetHeader>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-6">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="profile" className="gap-2">
               <User className="h-4 w-4" />
               Perfil
+            </TabsTrigger>
+            <TabsTrigger value="open" className="gap-2">
+              <FileText className="h-4 w-4" />
+              Em aberto
             </TabsTrigger>
             <TabsTrigger value="sessions" className="gap-2">
               <Clock className="h-4 w-4" />
@@ -544,9 +548,11 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="profile" className="mt-4 space-y-4">
-            <MemberOpenActivities userId={member.user_id} />
+          <TabsContent value="open" className="mt-4">
+            <MemberOpenActivities userId={member.user_id} defaultOpen />
+          </TabsContent>
 
+          <TabsContent value="profile" className="mt-4 space-y-4">
             <div className="space-y-2">
               <Label>Nome completo</Label>
               <Input
