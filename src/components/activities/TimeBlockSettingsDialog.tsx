@@ -22,6 +22,7 @@ import { ActivityProcessGoalsConfig, ProcessGoalEntry } from './ActivityProcessG
 import { useRoutineProcessGoals } from '@/hooks/useRoutineProcessGoals';
 import { useUserTeams } from '@/hooks/useUserTeams';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
+import { RoutineCalendarGrid } from './RoutineCalendarGrid';
 
 /** One time-slot block (a type can have multiple) */
 export interface TimeBlockConfig {
