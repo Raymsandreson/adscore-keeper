@@ -11,61 +11,54 @@ export function useTimeBlockSettings(targetUserId?: string) {
 
   const effectiveUserId = targetUserId || user?.id;
 
-  const fetchSettings = useCallback(async (userId: string) => {
-    setLoading(true);
+  const fetchSettings = useCallback(async (userId: string, withSpinner = false) => {
+    if (withSpinner) setLoading(true);
 
-    // Fetch global types
     const { data: typesData } = await supabase
       .from('activity_types')
       .select('*')
       .order('display_order', { ascending: true });
 
-    // Fetch user's schedule settings
     const { data: settingsData } = await supabase
       .from('user_timeblock_settings')
       .select('*')
       .eq('user_id', userId);
 
-    if (typesData && typesData.length > 0) {
-      if (settingsData && settingsData.length > 0) {
-        // User has configured settings — merge with global type info
-        const loaded: TimeBlockConfig[] = [];
-        settingsData.forEach(row => {
-          const globalType = typesData.find((t: any) => t.key === row.activity_type);
-          if (globalType) {
-            loaded.push({
-              blockId: (row as any).id || `${row.activity_type}_${row.start_hour}`,
-              activityType: row.activity_type,
-              label: (globalType as any).label,
-              color: (globalType as any).color,
-              days: (row.days as number[]) || [],
-              startHour: row.start_hour,
-              startMinute: (row as any).start_minute ?? 0,
-              endHour: row.end_hour,
-              endMinute: (row as any).end_minute ?? 0,
-              isCustom: false,
-            });
-          }
+    if (typesData && typesData.length > 0 && settingsData && settingsData.length > 0) {
+      // Explode cada row em 1 bloco por dia → cada bloco é independente (delete/edit não afeta os outros dias)
+      const loaded: TimeBlockConfig[] = [];
+      settingsData.forEach((row: any) => {
+        const globalType = typesData.find((t: any) => t.key === row.activity_type);
+        if (!globalType) return;
+        const days: number[] = (row.days as number[]) || [];
+        days.forEach(d => {
+          loaded.push({
+            blockId: `${row.id}__d${d}`,
+            activityType: row.activity_type,
+            label: (globalType as any).label,
+            color: (globalType as any).color,
+            days: [d],
+            startHour: row.start_hour,
+            startMinute: row.start_minute ?? 0,
+            endHour: row.end_hour,
+            endMinute: row.end_minute ?? 0,
+            isCustom: false,
+          });
         });
-        // Sort chronologically by start time (hour + minute)
-        loaded.sort((a, b) => (a.startHour + (a.startMinute ?? 0) / 60) - (b.startHour + (b.startMinute ?? 0) / 60));
-        setConfigs(loaded);
-      } else {
-        // No settings yet — show empty (user hasn't picked types yet)
-        setConfigs([]);
-      }
+      });
+      loaded.sort((a, b) => (a.startHour + (a.startMinute ?? 0) / 60) - (b.startHour + (b.startMinute ?? 0) / 60));
+      setConfigs(loaded);
     } else {
       setConfigs([]);
     }
 
-    setLoading(false);
+    if (withSpinner) setLoading(false);
   }, []);
 
   useEffect(() => {
     if (!effectiveUserId) { setLoading(false); return; }
-    fetchSettings(effectiveUserId);
+    fetchSettings(effectiveUserId, true);
 
-    // Realtime: escuta alterações dos blocos desse usuário e recarrega sozinho
     const channel = supabase
       .channel(`tb-settings-${effectiveUserId}`)
       .on(
@@ -76,7 +69,7 @@ export function useTimeBlockSettings(targetUserId?: string) {
           table: 'user_timeblock_settings',
           filter: `user_id=eq.${effectiveUserId}`,
         },
-        () => { fetchSettings(effectiveUserId); }
+        () => { fetchSettings(effectiveUserId, false); }
       )
       .subscribe();
 
@@ -114,18 +107,14 @@ export function useTimeBlockSettings(targetUserId?: string) {
       if (error) {
         toast.error('Erro ao salvar rotina: ' + error.message);
         // Reload to restore whatever state is in DB
-        await fetchSettings(uid);
+        await fetchSettings(uid, false);
         return;
-      } else {
-        toast.success('Rotina salva com sucesso!');
       }
-    } else {
-      toast.success('Rotina salva (sem tipos selecionados).');
     }
 
-    // Update local state only after successful save
+    // Não recarrega via fetch — o realtime já vai disparar e atualizar.
+    // Mantemos só o setConfigs local para feedback instantâneo.
     setConfigs(newConfigs);
-    await fetchSettings(uid);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [effectiveUserId, fetchSettings]);
 
