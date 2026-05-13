@@ -24,7 +24,9 @@ export function useActivityTypes() {
       .from('activity_types')
       .select('*')
       .order('display_order', { ascending: true });
-    if (!error && data) setTypes(data as ActivityType[]);
+    if (!error && data) {
+      setTypes(data.map((t: any) => ({ ...t, team_ids: t.team_ids ?? [] })) as ActivityType[]);
+    }
     setLoading(false);
   }, []);
 
