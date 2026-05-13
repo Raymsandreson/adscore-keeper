@@ -313,7 +313,8 @@ export function RoutineCalendarGrid({ blocks, availableTypes, onCreate, onUpdate
                       onClick={e => {
                         e.stopPropagation();
                         e.preventDefault();
-                        onCreate({ ...b, blockId: newId() });
+                        const nextDay = (day.idx + 1) % DAYS.length;
+                        onCreate({ ...b, blockId: newId(), days: [nextDay] });
                       }}
                       className="absolute top-0 right-6 h-6 w-6 flex items-center justify-center bg-black/20 hover:bg-blue-500/90 transition-colors z-20"
                       title="Duplicar bloco"
