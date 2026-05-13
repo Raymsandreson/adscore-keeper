@@ -2578,7 +2578,8 @@ const ActivitiesPage = () => {
         {/* LEFT: Calendar + Activity list (chat-style) */}
         <div className={cn(
           "flex flex-col overflow-hidden transition-all",
-          (viewMode === 'matrix' || viewMode === 'blocks') && !isEditing ? "hidden" : "",
+          viewMode === 'matrix' ? "hidden" : "",
+          viewMode === 'blocks' ? "hidden" : "",
           isEditing ? "hidden md:flex w-[400px] min-w-[340px] border-r" : "flex-1"
         )}>
           {/* Calendar - collapsible */}
