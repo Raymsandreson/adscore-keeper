@@ -2499,7 +2499,7 @@ const ActivitiesPage = () => {
                                 setSelectedBlockKey(isSelected ? null : blockKey);
                               }}
                             >
-                              <div className="text-[10px] font-bold uppercase tracking-wider opacity-90">{abbreviation}</div>
+                              <div className="text-[10px] font-bold uppercase tracking-tight opacity-95 px-1.5 text-center leading-tight line-clamp-2 break-words">{fullLabel}</div>
                               <div className="text-lg font-bold leading-none">{count}</div>
                               {count > 0 && (
                                 <div className="flex items-center gap-1 text-[9px] font-semibold mt-0.5">
@@ -2507,11 +2507,9 @@ const ActivitiesPage = () => {
                                   <span className="opacity-60">✓{doneCount}</span>
                                 </div>
                               )}
-                              {block.heightPx > 50 && (
-                                <div className="text-[8px] opacity-70 mt-0.5">
-                                  {block.cfg.startHour}:{String(block.cfg.startMinute || 0).padStart(2, '0')}–{block.cfg.endHour}:{String(block.cfg.endMinute || 0).padStart(2, '0')}
-                                </div>
-                              )}
+                              <div className="text-[9px] font-medium opacity-80 mt-0.5">
+                                {block.cfg.startHour}:{String(block.cfg.startMinute || 0).padStart(2, '0')}–{block.cfg.endHour}:{String(block.cfg.endMinute || 0).padStart(2, '0')}
+                              </div>
                             </div>
                           );
                         })}
