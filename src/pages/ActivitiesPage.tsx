@@ -2360,15 +2360,15 @@ const ActivitiesPage = () => {
               {/* Weekly grid */}
               <div className={cn("overflow-auto", selectedBlockData ? "shrink-0 max-h-[45vh]" : "flex-1")}>
                 {/* Day headers */}
-                <div className="sticky top-0 z-10 bg-card border-b flex">
-                  <div className="w-10 shrink-0" />
+                <div className="sticky top-0 z-10 bg-card border-b flex min-w-max sm:min-w-0">
+                  <div className="w-8 sm:w-10 shrink-0" />
                   {weekDates.map((dayDate, i) => (
                     <div key={i} className={cn(
-                      'flex-1 text-center py-2 border-l text-xs font-bold uppercase tracking-wider',
+                      'flex-1 min-w-[64px] sm:min-w-0 text-center py-2 border-l text-[10px] sm:text-xs font-bold uppercase tracking-wider',
                       isSameDay(dayDate, today) ? 'bg-primary/10 text-primary' : 'text-muted-foreground'
                     )}>
                       {WEEK_DAYS[i].label}
-                      <div className="text-[10px] font-normal opacity-70">{format(dayDate, 'dd/MM')}</div>
+                      <div className="text-[9px] sm:text-[10px] font-normal opacity-70">{format(dayDate, 'dd/MM')}</div>
                     </div>
                   ))}
                 </div>
