@@ -11,6 +11,7 @@ import { useTimeBlockSettings } from '@/hooks/useTimeBlockSettings';
 import { TimeBlockSettingsDialog, TimeBlockConfig } from '@/components/activities/TimeBlockSettingsDialog';
 import { RoutineCalendarGrid } from '@/components/activities/RoutineCalendarGrid';
 import { useActivityTypes } from '@/hooks/useActivityTypes';
+import { useUserTeams } from '@/hooks/useUserTeams';
 import { cn } from '@/lib/utils';
 
 function MemberRoutineView({ userId, memberName }: { userId: string; memberName: string }) {
