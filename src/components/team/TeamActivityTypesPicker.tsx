@@ -205,7 +205,14 @@ export function TeamActivityTypesPicker({ teamId }: Props) {
                   <div className="space-y-0.5 pr-2">
                     {(() => {
                       const q = search.trim().toLowerCase();
-                      const list = types.filter(t => !q || t.label.toLowerCase().includes(q));
+                      const list = types
+                        .filter(t => !q || t.label.toLowerCase().includes(q))
+                        .slice()
+                        .sort((a, b) => {
+                          const aL = (a.team_ids || []).includes(teamId) ? 0 : 1;
+                          const bL = (b.team_ids || []).includes(teamId) ? 0 : 1;
+                          return aL - bL;
+                        });
                       if (list.length === 0) {
                         return (
                           <p className="text-[11px] text-muted-foreground italic text-center py-6">
