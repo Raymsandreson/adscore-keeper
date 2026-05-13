@@ -2450,22 +2450,26 @@ const ActivitiesPage = () => {
                                 {block.cfg.startHour}:{String(block.cfg.startMinute || 0).padStart(2, '0')}–{block.cfg.endHour}:{String(block.cfg.endMinute || 0).padStart(2, '0')}
                               </div>
                               {openCount === 0 && count > 0 && (
-                                <>
-                                  {/* Confetes */}
-                                  <span className="absolute top-2 left-2 w-1 h-1 rounded-full bg-yellow-400 animate-ping pointer-events-none" style={{ animationDelay: '0ms' }} />
-                                  <span className="absolute top-3 right-3 w-1 h-1 rounded-full bg-pink-400 animate-ping pointer-events-none" style={{ animationDelay: '200ms' }} />
-                                  <span className="absolute top-6 left-4 w-1 h-1 rounded-full bg-sky-400 animate-ping pointer-events-none" style={{ animationDelay: '400ms' }} />
-                                  <span className="absolute top-5 right-5 w-1 h-1 rounded-full bg-purple-400 animate-ping pointer-events-none" style={{ animationDelay: '600ms' }} />
-                                  <span className="absolute top-8 left-2 w-1 h-1 rounded-full bg-orange-400 animate-ping pointer-events-none" style={{ animationDelay: '800ms' }} />
-                                  <span className="absolute top-9 right-2 w-1 h-1 rounded-full bg-lime-400 animate-ping pointer-events-none" style={{ animationDelay: '1000ms' }} />
-                                  {/* Selo */}
-                                  <div className="absolute top-1 left-1/2 -translate-x-1/2 pointer-events-none z-10 flex items-center gap-0.5 pl-0.5 pr-1.5 py-0.5 rounded-full bg-gradient-to-br from-emerald-400 via-green-500 to-emerald-600 shadow-[0_2px_8px_rgba(16,185,129,0.6)] border border-white/80 ring-1 ring-emerald-300/50 animate-in zoom-in-50 duration-300">
-                                    <div className="rounded-full bg-white/95 p-[1px] shadow-inner">
-                                      <Check className="h-2.5 w-2.5 text-emerald-600" strokeWidth={4} />
+                                <div className="absolute top-1 left-1/2 -translate-x-1/2 pointer-events-none z-10 flex flex-col items-center animate-in zoom-in-50 duration-300">
+                                  <div className="relative flex items-center justify-center">
+                                    {/* Confetes estáticos ao redor do selo */}
+                                    <span className="absolute -top-1 -left-3 w-1 h-1 rounded-full bg-yellow-400" />
+                                    <span className="absolute -top-2 left-1 w-1 h-1 rounded-full bg-pink-400" />
+                                    <span className="absolute -top-1 right-0 w-1 h-1 rounded-full bg-sky-400" />
+                                    <span className="absolute top-1 -left-4 w-1 h-1 rounded-full bg-purple-400" />
+                                    <span className="absolute top-1 -right-3 w-1 h-1 rounded-full bg-orange-400" />
+                                    <span className="absolute -bottom-1 -left-2 w-1 h-1 rounded-full bg-lime-400" />
+                                    <span className="absolute -bottom-1 right-1 w-1 h-1 rounded-full bg-rose-400" />
+                                    {/* Selo */}
+                                    <div className="flex items-center gap-0.5 pl-0.5 pr-1.5 py-0.5 rounded-full bg-gradient-to-br from-emerald-400 via-green-500 to-emerald-600 shadow-[0_2px_8px_rgba(16,185,129,0.6)] border border-white/80 ring-1 ring-emerald-300/50">
+                                      <div className="rounded-full bg-white/95 p-[1px] shadow-inner">
+                                        <Check className="h-2.5 w-2.5 text-emerald-600" strokeWidth={4} />
+                                      </div>
+                                      <span className="text-[8px] font-extrabold text-white uppercase tracking-wider drop-shadow-sm">Feito</span>
                                     </div>
-                                    <span className="text-[8px] font-extrabold text-white uppercase tracking-wider drop-shadow-sm">Feito</span>
                                   </div>
-                                </>
+                                  <span className="mt-0.5 text-[8px] font-extrabold text-yellow-300 uppercase tracking-wide drop-shadow-[0_1px_2px_rgba(0,0,0,0.6)]">Parabéns!</span>
+                                </div>
                               )}
                             </div>
                           );
