@@ -396,9 +396,33 @@ Deno.serve(async (req) => {
         if (analysis?.document_type && analysis?.confidence !== "baixa") {
           const sanitize = (s: string) => String(s).replace(/[\\/:*?"<>|\r\n]/g, " ").replace(/\s+/g, " ").trim();
           const dotIdx = (meta.name || "").lastIndexOf(".");
-          const ext = dotIdx > 0 ? (meta.name as string).slice(dotIdx) : "";
+          const extName = dotIdx > 0 ? (meta.name as string).slice(dotIdx) : "";
+
+          // Se o lead tem caso vinculado, prefere o número/título do caso ao nome do titular
+          let caseLabel: string | null = null;
+          if (lead_id) {
+            try {
+              const { data: cases } = await ext
+                .from("legal_cases")
+                .select("case_number, title")
+                .eq("lead_id", lead_id)
+                .is("deleted_at", null)
+                .order("created_at", { ascending: false })
+                .limit(1);
+              const c = Array.isArray(cases) && cases.length > 0 ? cases[0] : null;
+              if (c) {
+                const num = (c.case_number || "").trim();
+                const title = (c.title || "").trim();
+                caseLabel = num || title || null;
+              }
+            } catch (e) {
+              console.warn("[lead-drive] case lookup for rename failed:", e);
+            }
+          }
+
           const parts: string[] = [sanitize(analysis.document_type)];
-          if (analysis.holder_name) parts.push(sanitize(analysis.holder_name));
+          if (caseLabel) parts.push(sanitize(caseLabel));
+          else if (analysis.holder_name) parts.push(sanitize(analysis.holder_name));
           if (analysis.document_subtype) parts.push(`(${sanitize(analysis.document_subtype)})`);
           let base = parts.join(" — ").slice(0, 180);
           const desired = `${base}${ext}`;
