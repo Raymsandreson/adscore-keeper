@@ -140,23 +140,53 @@ export function MemberRoutineManager() {
           <label className="text-sm font-medium text-muted-foreground whitespace-nowrap">
             Selecionar membro:
           </label>
-          <Select value={selectedUserId} onValueChange={setSelectedUserId}>
-            <SelectTrigger className="max-w-xs">
-              <SelectValue placeholder="Escolha um colaborador..." />
-            </SelectTrigger>
-            <SelectContent>
-              {members.map(m => (
-                <SelectItem key={m.user_id} value={m.user_id}>
-                  <div className="flex items-center gap-2">
-                    <span>{m.full_name || m.email || 'Sem nome'}</span>
-                    {m.role === 'admin' && (
-                      <Badge variant="secondary" className="text-[10px] px-1 py-0">Admin</Badge>
-                    )}
-                  </div>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" role="combobox" className="max-w-xs w-full justify-between font-normal">
+                {selectedMember
+                  ? (selectedMember.full_name || selectedMember.email || 'Sem nome')
+                  : <span className="text-muted-foreground">Escolha um colaborador...</span>}
+                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[320px] p-0" align="start">
+              <Command
+                filter={(value, search) => {
+                  // value contains "name|email" lowercased
+                  return value.includes(search.toLowerCase()) ? 1 : 0;
+                }}
+              >
+                <CommandInput placeholder="Buscar por nome ou email..." />
+                <CommandList>
+                  <CommandEmpty>Nenhum membro encontrado.</CommandEmpty>
+                  <CommandGroup>
+                    {members.map(m => {
+                      const name = m.full_name || m.email || 'Sem nome';
+                      const value = `${name}|${m.email || ''}`.toLowerCase();
+                      return (
+                        <CommandItem
+                          key={m.user_id}
+                          value={value}
+                          onSelect={() => setSelectedUserId(m.user_id)}
+                        >
+                          <Check className={cn('mr-2 h-4 w-4', selectedUserId === m.user_id ? 'opacity-100' : 'opacity-0')} />
+                          <div className="flex items-center gap-2 flex-1 min-w-0">
+                            <span className="truncate">{name}</span>
+                            {m.email && m.email !== name && (
+                              <span className="text-xs text-muted-foreground truncate">{m.email}</span>
+                            )}
+                            {m.role === 'admin' && (
+                              <Badge variant="secondary" className="text-[10px] px-1 py-0 ml-auto">Admin</Badge>
+                            )}
+                          </div>
+                        </CommandItem>
+                      );
+                    })}
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
         </div>
 
         {selectedUserId && selectedMember ? (
