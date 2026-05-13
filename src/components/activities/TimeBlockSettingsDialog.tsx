@@ -135,6 +135,8 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave, t
   const { types: globalTypes, loading: typesLoading, addType, deleteType, updateType, reorder } = useActivityTypes();
   const { isAdmin } = useUserRole();
   const { goals: savedProcessGoals, saveGoals: saveProcessGoals } = useRoutineProcessGoals(targetUserId);
+  const { teams: userTeams } = useUserTeams(targetUserId);
+  const [selectedTeamId, setSelectedTeamId] = useState<string>('all');
 
   // Working copy — list of all blocks being edited
   const [blocks, setBlocks] = useState<TimeBlockConfig[]>([]);
