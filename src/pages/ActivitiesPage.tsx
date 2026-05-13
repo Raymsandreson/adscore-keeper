@@ -2360,27 +2360,27 @@ const ActivitiesPage = () => {
               {/* Weekly grid */}
               <div className={cn("overflow-auto", selectedBlockData ? "shrink-0 max-h-[45vh]" : "flex-1")}>
                 {/* Day headers */}
-                <div className="sticky top-0 z-10 bg-card border-b flex">
-                  <div className="w-10 shrink-0" />
+                <div className="sticky top-0 z-10 bg-card border-b flex min-w-max sm:min-w-0">
+                  <div className="w-8 sm:w-10 shrink-0" />
                   {weekDates.map((dayDate, i) => (
                     <div key={i} className={cn(
-                      'flex-1 text-center py-2 border-l text-xs font-bold uppercase tracking-wider',
+                      'flex-1 min-w-[64px] sm:min-w-0 text-center py-2 border-l text-[10px] sm:text-xs font-bold uppercase tracking-wider',
                       isSameDay(dayDate, today) ? 'bg-primary/10 text-primary' : 'text-muted-foreground'
                     )}>
                       {WEEK_DAYS[i].label}
-                      <div className="text-[10px] font-normal opacity-70">{format(dayDate, 'dd/MM')}</div>
+                      <div className="text-[9px] sm:text-[10px] font-normal opacity-70">{format(dayDate, 'dd/MM')}</div>
                     </div>
                   ))}
                 </div>
 
                 {/* Time grid with proportional blocks */}
-                <div className="relative flex">
+                <div className="relative flex min-w-max sm:min-w-0">
                   {/* Hour labels */}
-                  <div className="w-10 shrink-0 relative" style={{ height: totalHeight }}>
+                  <div className="w-8 sm:w-10 shrink-0 relative" style={{ height: totalHeight }}>
                     {WEEK_HOURS.map((hour) => (
                       <div
                         key={hour}
-                        className="absolute left-0 w-full text-[10px] text-muted-foreground font-medium pl-1"
+                        className="absolute left-0 w-full text-[9px] sm:text-[10px] text-muted-foreground font-medium pl-1"
                         style={{ top: (hour - minHour) * HOUR_HEIGHT }}
                       >
                         {hour}h
@@ -2395,7 +2395,7 @@ const ActivitiesPage = () => {
                       <div
                         key={dayIdx}
                         className={cn(
-                          'flex-1 border-l relative',
+                          'flex-1 min-w-[64px] sm:min-w-0 border-l relative',
                           isSameDay(dayDate, today) && 'bg-primary/5',
                         )}
                         style={{ height: totalHeight }}
@@ -2419,18 +2419,24 @@ const ActivitiesPage = () => {
                           const blockKey = `${dayIdx}::${block.cfg.activityType}`;
                           const isSelected = selectedBlockKey === blockKey;
 
+                          const blockH = Math.max(block.heightPx - 2, 24);
+                          // Tamanho do número proporcional à altura do bloco (clamp entre 18 e 64px)
+                          const numberSize = Math.max(18, Math.min(64, Math.round(blockH * 0.42)));
+                          const labelSize = Math.max(8, Math.min(13, Math.round(blockH * 0.09)));
+                          const metaSize = Math.max(8, Math.min(12, Math.round(blockH * 0.08)));
+
                           return (
                             <div
                               key={bi}
                               className={cn(
-                                'absolute left-1 right-1 rounded-lg cursor-pointer hover:opacity-90 transition-all shadow-sm flex flex-col items-center justify-center text-white overflow-hidden',
+                                'absolute left-0.5 right-0.5 sm:left-1 sm:right-1 rounded-lg cursor-pointer hover:opacity-90 transition-all shadow-sm flex flex-col items-center justify-center text-white overflow-hidden',
                                 bgColor,
                                 count === 0 && 'opacity-30',
                                 isSelected && 'ring-2 ring-foreground ring-offset-1'
                               )}
                               style={{
                                 top: block.topPx + 1,
-                                height: Math.max(block.heightPx - 2, 24),
+                                height: blockH,
                               }}
                               onClick={() => {
                                 setOpenFilterKey(null);
@@ -2438,15 +2444,27 @@ const ActivitiesPage = () => {
                                 setSelectedBlockKey(isSelected ? null : blockKey);
                               }}
                             >
-                              <div className="text-[10px] font-bold uppercase tracking-tight opacity-95 px-1.5 text-center leading-tight line-clamp-2 break-words">{fullLabel}</div>
-                              <div className="text-lg font-bold leading-none">{count}</div>
+                              <div
+                                className="font-bold uppercase tracking-tight opacity-95 px-1 text-center leading-tight line-clamp-2 break-words"
+                                style={{ fontSize: labelSize }}
+                              >{fullLabel}</div>
+                              <div
+                                className="font-extrabold leading-none tabular-nums drop-shadow-sm"
+                                style={{ fontSize: numberSize }}
+                              >{count}</div>
                               {count > 0 && (
-                                <div className="flex items-center gap-1.5 text-[10px] font-bold mt-0.5">
+                                <div
+                                  className="flex items-center gap-1.5 font-bold mt-0.5"
+                                  style={{ fontSize: metaSize }}
+                                >
                                   <span className="text-red-700">○{openCount}</span>
                                   <span className="text-emerald-700">✓{doneCount}</span>
                                 </div>
                               )}
-                              <div className="text-[9px] font-medium opacity-80 mt-0.5">
+                              <div
+                                className="font-medium opacity-80 mt-0.5"
+                                style={{ fontSize: Math.max(8, metaSize - 1) }}
+                              >
                                 {block.cfg.startHour}:{String(block.cfg.startMinute || 0).padStart(2, '0')}–{block.cfg.endHour}:{String(block.cfg.endMinute || 0).padStart(2, '0')}
                               </div>
                               {openCount === 0 && count > 0 && (
