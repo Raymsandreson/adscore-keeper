@@ -40,7 +40,11 @@ async function getOrCreateRootFolder(): Promise<string> {
   return created.id;
 }
 
-async function resolveFolderBaseName(leadId: string, leadName: string, ext: any): Promise<string> {
+async function resolveFolderBaseName(
+  leadId: string,
+  leadName: string,
+  ext: any,
+): Promise<{ name: string; reason: "case_number_and_title" | "case_title" | "case_number" | "lead_name" | "fallback" }> {
   // Prioriza o caso jurídico do lead se houver
   try {
     const { data: cases } = await ext
@@ -53,14 +57,14 @@ async function resolveFolderBaseName(leadId: string, leadName: string, ext: any)
     if (c) {
       const title = (c.title || "").trim();
       const num = (c.case_number || "").trim();
-      if (title && num) return `${num} - ${title}`;
-      if (title) return title;
-      if (num) return num;
+      if (title && num) return { name: `${num} - ${title}`, reason: "case_number_and_title" };
+      if (title) return { name: title, reason: "case_title" };
+      if (num) return { name: num, reason: "case_number" };
     }
   } catch (e) {
     console.warn("[lead-drive] resolveFolderBaseName legal_cases lookup failed:", e);
   }
-  return leadName || "Lead";
+  return { name: leadName || "Lead", reason: leadName ? "lead_name" : "fallback" };
 }
 
 async function getOrCreateLeadFolder(leadId: string, leadName: string, ext: any): Promise<string> {
