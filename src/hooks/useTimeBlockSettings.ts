@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { db, authClient } from '@/integrations/supabase';
+import { db, ensureExternalSession } from '@/integrations/supabase';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { TimeBlockConfig } from '@/components/activities/TimeBlockSettingsDialog';
 import { toast } from 'sonner';
