@@ -2259,67 +2259,59 @@ const ActivitiesPage = () => {
             return a.activity_type;
           };
 
-          // Build blocks per day: each activeSettings generates a visual block per day
+          // Agrega atividades do dia por tipo cadastrado.
+          // Ordena: tipos com MENOS atividades no início do dia, MAIS atividades no fim.
+          // Cada grupo recebe uma fatia igual do tempo disponível (minHour..maxHour).
           const getBlocksForDay = (dayDate: Date, dayIdx: number) => {
             const dayActivities = displayedActivities.filter(a => {
               const d = getActivityDay(a);
               return d && isSameDay(d, dayDate);
             });
-            const noDateActivities = displayedActivities.filter(a => {
-              if (a.deadline || a.notification_date) return false;
-              const effectiveType = getEffectiveType(a);
-              const cfg = activeSettings.find(c => c.activityType === effectiveType);
-              return cfg?.days.includes(dayIdx) ?? false;
+
+            // Agrupa por tipo efetivo
+            const groups = new Map<string, LeadActivity[]>();
+            dayActivities.forEach(a => {
+              const t = getEffectiveType(a) || 'sem_tipo';
+              if (!groups.has(t)) groups.set(t, []);
+              groups.get(t)!.push(a);
             });
 
-            const dayConfigs = activeSettings.filter(cfg => cfg.days.includes(dayIdx));
-            const configuredTypes = new Set(dayConfigs.map(c => c.activityType));
+            if (groups.size === 0) return [];
 
-            const configuredBlocks = dayConfigs.map(cfg => {
-              const startM = cfg.startMinute || 0;
-              const endM = cfg.endMinute || 0;
-              const startDecimal = cfg.startHour + startM / 60;
-              const endDecimal = cfg.endHour + endM / 60;
-              const topPx = (startDecimal - minHour) * HOUR_HEIGHT;
-              const heightPx = (endDecimal - startDecimal) * HOUR_HEIGHT;
+            // Ordena ascendente por quantidade (menor primeiro)
+            const sorted = Array.from(groups.entries()).sort((a, b) => a[1].length - b[1].length);
 
-              const items = [
-                ...dayActivities.filter(a => getEffectiveType(a) === cfg.activityType),
-                ...noDateActivities.filter(a => getEffectiveType(a) === cfg.activityType),
-              ];
+            const totalHours = maxHour - minHour;
+            const slotHours = totalHours / sorted.length;
 
-              return { cfg, items, topPx, heightPx };
-            });
-
-            // Fallback: atividades do dia cujo tipo NÃO está configurado na rotina deste dia.
-            // Mostra um bloco sintético "Sem rotina" ocupando o último horário do dia,
-            // pra elas não sumirem da visualização quando a rotina está vazia/incompleta.
-            const fallbackItems = dayActivities.filter(a => !configuredTypes.has(getEffectiveType(a)));
-            if (fallbackItems.length > 0) {
-              const fbStart = dayConfigs.length > 0
-                ? Math.max(...dayConfigs.map(c => c.endHour + (c.endMinute || 0) / 60))
-                : minHour;
-              const fbEnd = Math.min(maxHour, Math.max(fbStart + 1, fbStart + 1));
-              configuredBlocks.push({
+            return sorted.map(([type, items], idx) => {
+              const meta = dbActivityTypes.find(t => t.key === type);
+              const label = meta?.label || type;
+              const color = meta?.color || 'bg-muted-foreground';
+              const startDecimal = minHour + idx * slotHours;
+              const endDecimal = startDecimal + slotHours;
+              const startHour = Math.floor(startDecimal);
+              const startMinute = Math.round((startDecimal % 1) * 60);
+              const endHour = Math.floor(endDecimal);
+              const endMinute = Math.round((endDecimal % 1) * 60);
+              return {
                 cfg: {
-                  blockId: `__fallback_${dayIdx}`,
-                  activityType: '__no_routine__',
-                  label: 'Sem rotina (outras atvs)',
-                  color: 'bg-muted-foreground',
+                  blockId: `__agg_${dayIdx}_${type}`,
+                  activityType: type,
+                  label: `${label} (${items.length})`,
+                  color,
                   days: [dayIdx],
-                  startHour: Math.floor(fbStart),
-                  startMinute: Math.round((fbStart % 1) * 60),
-                  endHour: Math.floor(fbEnd),
-                  endMinute: Math.round((fbEnd % 1) * 60),
+                  startHour,
+                  startMinute,
+                  endHour,
+                  endMinute,
                   isCustom: false,
                 } as any,
-                items: fallbackItems,
-                topPx: (fbStart - minHour) * HOUR_HEIGHT,
-                heightPx: (fbEnd - fbStart) * HOUR_HEIGHT,
-              });
-            }
-
-            return configuredBlocks;
+                items,
+                topPx: (startDecimal - minHour) * HOUR_HEIGHT,
+                heightPx: slotHours * HOUR_HEIGHT,
+              };
+            });
           };
 
           const unscheduled = displayedActivities.filter(a => {
