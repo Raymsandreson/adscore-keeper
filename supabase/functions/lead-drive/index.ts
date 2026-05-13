@@ -438,6 +438,7 @@ Deno.serve(async (req) => {
 
           // Se o lead tem caso vinculado, prefere o número/título do caso ao nome do titular
           let caseLabel: string | null = null;
+          let caseLabelSource: "case_number" | "case_title" | null = null;
           if (lead_id) {
             try {
               const { data: cases } = await ext
@@ -450,12 +451,16 @@ Deno.serve(async (req) => {
               if (c) {
                 const num = (c.case_number || "").trim();
                 const title = (c.title || "").trim();
-                caseLabel = num || title || null;
+                if (num) { caseLabel = num; caseLabelSource = "case_number"; }
+                else if (title) { caseLabel = title; caseLabelSource = "case_title"; }
               }
             } catch (e) {
               console.warn("[lead-drive] case lookup for rename failed:", e);
             }
           }
+
+          const labelSource: "case_number" | "case_title" | "holder_name" | "none" =
+            caseLabelSource ?? (analysis.holder_name ? "holder_name" : "none");
 
           const parts: string[] = [sanitize(analysis.document_type)];
           if (caseLabel) parts.push(sanitize(caseLabel));
@@ -463,7 +468,6 @@ Deno.serve(async (req) => {
           if (analysis.document_subtype) parts.push(`(${sanitize(analysis.document_subtype)})`);
           let base = parts.join(" — ").slice(0, 180);
           const desired = `${base}${extName}`;
-          console.log(`[lead-drive] rename attempt file=${file_id} from="${meta.name}" to="${desired}"`);
           if (desired && desired !== meta.name) {
             const rnRes = await fetch(`${GATEWAY}/files/${file_id}?fields=id,name`, {
               method: "PATCH",
@@ -474,13 +478,38 @@ Deno.serve(async (req) => {
               const rn = await rnRes.json();
               renamed = rn.name;
               meta.name = rn.name;
-              console.log(`[lead-drive] rename ok -> "${rn.name}"`);
+              console.log(`[lead-drive] FILE_RENAMED ${JSON.stringify({
+                lead_id,
+                file_id,
+                from: (meta.name === rn.name ? undefined : meta.name) ?? null,
+                from_original: undefined,
+                to: rn.name,
+                document_type: analysis.document_type,
+                holder_name: analysis.holder_name ?? null,
+                label_source: labelSource,
+                case_label: caseLabel,
+                confidence: analysis.confidence,
+              })}`);
             } else {
               const errText = await rnRes.text();
-              console.warn(`[lead-drive] drive rename failed [${rnRes.status}]: ${errText}`);
+              console.warn(`[lead-drive] FILE_RENAME_FAILED ${JSON.stringify({
+                lead_id,
+                file_id,
+                from: meta.name,
+                to: desired,
+                label_source: labelSource,
+                status: rnRes.status,
+                error: errText,
+              })}`);
             }
           } else {
-            console.log(`[lead-drive] rename skipped (already matches or empty)`);
+            console.log(`[lead-drive] FILE_RENAME_SKIPPED ${JSON.stringify({
+              lead_id,
+              file_id,
+              name: meta.name,
+              label_source: labelSource,
+              reason: desired ? "already_matches" : "empty_desired",
+            })}`);
           }
         }
       } catch (e) {
