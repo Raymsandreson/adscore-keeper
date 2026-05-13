@@ -292,6 +292,7 @@ export default function CasesPage() {
 function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead }: { 
   legalCase: any; expanded: boolean; onToggle: () => void; onCaseUpdated: () => void; onOpenLead: (leadId: string) => void;
 }) {
+  const navigate = useNavigate();
   const [processes, setProcesses] = useState<any[]>([]);
   const [leadInfo, setLeadInfo] = useState<any>(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
