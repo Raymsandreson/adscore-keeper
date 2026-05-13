@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -8,21 +8,32 @@ import { Loader2, Settings2, User, ChevronsUpDown, Check } from 'lucide-react';
 import { ShareMenu } from '@/components/ShareMenu';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { useTimeBlockSettings } from '@/hooks/useTimeBlockSettings';
-import { TimeBlockSettingsDialog } from '@/components/activities/TimeBlockSettingsDialog';
+import { TimeBlockSettingsDialog, TimeBlockConfig } from '@/components/activities/TimeBlockSettingsDialog';
+import { RoutineCalendarGrid } from '@/components/activities/RoutineCalendarGrid';
+import { useActivityTypes } from '@/hooks/useActivityTypes';
 import { cn } from '@/lib/utils';
-
-const WEEK_DAYS = [
-  { label: 'SEG', idx: 0 },
-  { label: 'TER', idx: 1 },
-  { label: 'QUA', idx: 2 },
-  { label: 'QUI', idx: 3 },
-  { label: 'SEX', idx: 4 },
-];
 
 function MemberRoutineView({ userId, memberName }: { userId: string; memberName: string }) {
   const { configs, loading, saveSettings } = useTimeBlockSettings(userId);
+  const { types: globalTypes } = useActivityTypes();
   const [editOpen, setEditOpen] = useState(false);
+  const [localBlocks, setLocalBlocks] = useState<TimeBlockConfig[]>([]);
+
+  useEffect(() => { setLocalBlocks(configs); }, [configs]);
+
   const handleSave = (newConfigs: Parameters<typeof saveSettings>[0]) => saveSettings(newConfigs, userId);
+
+  // Auto-save on local edits (debounced)
+  const persist = (next: TimeBlockConfig[]) => {
+    setLocalBlocks(next);
+    saveSettings(next, userId);
+  };
+  const onCreate = (b: TimeBlockConfig) => persist([...localBlocks, b]);
+  const onUpdate = (id: string, patch: Partial<TimeBlockConfig>) =>
+    persist(localBlocks.map(b => b.blockId === id ? { ...b, ...patch } : b));
+  const onRemove = (id: string) => persist(localBlocks.filter(b => b.blockId !== id));
+
+  const availableTypes = globalTypes.map(t => ({ key: t.key, label: t.label, color: t.color }));
 
   if (loading) {
     return (
