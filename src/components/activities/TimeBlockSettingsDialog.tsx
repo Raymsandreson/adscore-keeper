@@ -85,8 +85,7 @@ export const getDefaultTimeBlockConfigs = (): TimeBlockConfig[] => [];
 export const loadTimeBlockConfigs = (): TimeBlockConfig[] => [];
 export const saveTimeBlockConfigs = (_: TimeBlockConfig[]) => {};
 
-let _blockIdCounter = 0;
-const newBlockId = () => `block_${Date.now()}_${_blockIdCounter++}`;
+const newBlockId = () => (crypto as any).randomUUID?.() || `block_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
 interface Props {
   open: boolean;
