@@ -255,6 +255,7 @@ function SidebarLayout() {
                 <Route path="/settings/zapsign-backfill" element={<ProtectedRoute><ZapsignBackfillPage /></ProtectedRoute>} />
                 <Route path="/zapsign-sync" element={<ProtectedRoute><ZapsignSyncPage /></ProtectedRoute>} />
                 <Route path="/cases" element={<ProtectedRoute><CasesPage /></ProtectedRoute>} />
+                <Route path="/cases/:caseId" element={<ProtectedRoute><CaseDetailPage /></ProtectedRoute>} />
                 <Route path="/processes" element={<ProtectedRoute><ProcessesPage /></ProtectedRoute>} />
                 <Route path="/nuclei" element={<ProtectedRoute><NucleiPage /></ProtectedRoute>} />
                 <Route path="/cost-organization" element={<ProtectedRoute><CostOrganizationPage /></ProtectedRoute>} />
