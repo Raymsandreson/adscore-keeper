@@ -574,18 +574,17 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave, t
               const userTeamIds = new Set(userTeams.map(t => t.id));
               const visibleTypes = globalTypes.filter(t => {
                 const tIds = t.team_ids || [];
-                // Global type: always visible
-                if (tIds.length === 0) return true;
-                // Filtered to a specific team
+                // Member sem time: mostra tudo (fallback)
+                if (userTeamIds.size === 0) return true;
+                // Filtrado por um time específico: só tipos vinculados a esse time
                 if (selectedTeamId !== 'all') return tIds.includes(selectedTeamId);
-                // Union of all user's teams
-                if (userTeamIds.size === 0) return false;
+                // "Todos os meus times": união dos tipos vinculados aos times do membro
                 return tIds.some(id => userTeamIds.has(id));
               });
               if (visibleTypes.length === 0) {
                 return (
                   <div className="text-center text-sm text-muted-foreground py-8 border rounded-lg bg-muted/10">
-                    Nenhum tipo de atividade disponível para este time.
+                    Nenhum tipo de atividade vinculado a este time.
                     {isAdmin && <div className="text-xs mt-1">Vincule tipos ao time em Gestão de Times.</div>}
                   </div>
                 );
