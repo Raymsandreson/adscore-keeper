@@ -3,7 +3,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { CheckCircle2, Circle, ChevronDown, ChevronUp, ListChecks, Loader2 } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { CheckCircle2, Circle, ChevronDown, ChevronUp, ListChecks, Loader2, Search, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useActivityTypes } from '@/hooks/useActivityTypes';
 
