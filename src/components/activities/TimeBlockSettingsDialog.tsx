@@ -22,6 +22,7 @@ import { ActivityProcessGoalsConfig, ProcessGoalEntry } from './ActivityProcessG
 import { useRoutineProcessGoals } from '@/hooks/useRoutineProcessGoals';
 import { useUserTeams } from '@/hooks/useUserTeams';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
+import { RoutineCalendarGrid } from './RoutineCalendarGrid';
 
 /** One time-slot block (a type can have multiple) */
 export interface TimeBlockConfig {
@@ -563,33 +564,42 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave, t
           </Badge>
         </div>
 
-        {/* Global types list */}
-        {typesLoading ? (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {(() => {
-              const userTeamIds = new Set(userTeams.map(t => t.id));
-              const visibleTypes = globalTypes.filter(t => {
-                const tIds = t.team_ids || [];
-                // Member sem time: mostra tudo (fallback)
-                if (userTeamIds.size === 0) return true;
-                // Filtrado por um time específico: só tipos vinculados a esse time
-                if (selectedTeamId !== 'all') return tIds.includes(selectedTeamId);
-                // "Todos os meus times": união dos tipos vinculados aos times do membro
-                return tIds.some(id => userTeamIds.has(id));
-              });
-              if (visibleTypes.length === 0) {
-                return (
-                  <div className="text-center text-sm text-muted-foreground py-8 border rounded-lg bg-muted/10">
-                    Nenhum tipo de atividade vinculado a este time.
-                    {isAdmin && <div className="text-xs mt-1">Vincule tipos ao time em Gestão de Times.</div>}
-                  </div>
-                );
-              }
-              return visibleTypes.map((type, idx) => {
+        {/* Compute visible types (filtered by team) */}
+        {(() => {
+          const userTeamIds = new Set(userTeams.map(t => t.id));
+          const visibleTypes = globalTypes.filter(t => {
+            const tIds = t.team_ids || [];
+            if (userTeamIds.size === 0) return true;
+            if (selectedTeamId !== 'all') return tIds.includes(selectedTeamId);
+            return tIds.some(id => userTeamIds.has(id));
+          });
+
+          return (
+            <>
+              {/* Visual Calendar Grid (Google Calendar-like) */}
+              {!typesLoading && visibleTypes.length > 0 && (
+                <RoutineCalendarGrid
+                  blocks={blocks}
+                  availableTypes={visibleTypes.map(t => ({ key: t.key, label: t.label, color: t.color }))}
+                  onCreate={(b) => setBlocks(prev => [...prev, b])}
+                  onUpdate={(id, patch) => updateBlock(id, patch)}
+                  onRemove={(id) => removeBlock(id)}
+                />
+              )}
+
+              {/* Global types list */}
+              {typesLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {visibleTypes.length === 0 ? (
+                    <div className="text-center text-sm text-muted-foreground py-8 border rounded-lg bg-muted/10">
+                      Nenhum tipo de atividade vinculado a este time.
+                      {isAdmin && <div className="text-xs mt-1">Vincule tipos ao time em Gestão de Times.</div>}
+                    </div>
+                  ) : visibleTypes.map((type, idx) => {
               const typeBlocks = blocks.filter(b => b.activityType === type.key);
               const sel = typeBlocks.length > 0;
               return (
@@ -863,10 +873,12 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave, t
                   )}
                 </div>
               );
-            });
-            })()}
-          </div>
-        )}
+            })}
+                </div>
+              )}
+            </>
+          );
+        })()}
 
         {/* Admin: Manage global types */}
         {isAdmin && (
