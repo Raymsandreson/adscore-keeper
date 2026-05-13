@@ -81,6 +81,7 @@ export function TeamManagement() {
   const [inviting, setInviting] = useState(false);
   const [selectedMember, setSelectedMember] = useState<TeamMember | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [removeTarget, setRemoveTarget] = useState<TeamMember | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [sendingNotifUserId, setSendingNotifUserId] = useState<string | null>(null);
   const [showPermissions, setShowPermissions] = useState(false);
