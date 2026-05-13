@@ -56,7 +56,10 @@ export async function getConversationSummaries(
       .rpc('get_conversation_summaries', {
         p_instance_names: variants,
         p_days_back: daysBack,
-      });
+      })
+      // PostgREST aplica cap padrão de 1000 linhas em RPC. Sem isso conversas
+      // antigas somem da lista até receberem msg nova. range alto = sem limite efetivo.
+      .range(0, 99999);
     if (error) {
       console.warn(`[getConversationSummaries] failed for "${name}":`, error.message);
       return [];
