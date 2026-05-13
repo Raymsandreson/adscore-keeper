@@ -135,17 +135,17 @@ export default function PrivacyPolicyPage() {
           <li>Revogação do consentimento;</li>
           <li>Oposição ao tratamento realizado com base em legítimo interesse.</li>
         </ul>
-        <p>6.2. Para exercer seus direitos, entre em contato pelo e-mail: <a href={`mailto:${dpoEmail}`} className="text-primary">{dpoEmail}</a>.</p>
-        <p>6.3. Responderemos suas solicitações no prazo de até 15 (quinze) dias, conforme art. 18, §5º da LGPD.</p>
+        <p>7.2. Para exercer seus direitos, entre em contato pelo e-mail: <a href={`mailto:${dpoEmail}`} className="text-primary">{dpoEmail}</a>.</p>
+        <p>7.3. Responderemos suas solicitações no prazo de até 15 (quinze) dias, conforme art. 18, §5º da LGPD.</p>
 
-        <h2>7. Direitos Adicionais (GDPR e CCPA)</h2>
-        <p>7.1. Para titulares residentes no Espaço Econômico Europeu (EEE), são assegurados adicionalmente:</p>
+        <h2>8. Direitos Adicionais (GDPR e CCPA)</h2>
+        <p>8.1. Para titulares residentes no Espaço Econômico Europeu (EEE), são assegurados adicionalmente:</p>
         <ul>
           <li>Direito de apresentar reclamação junto à autoridade supervisora competente;</li>
           <li>Direito à limitação do tratamento;</li>
           <li>Direito à não sujeição a decisões automatizadas.</li>
         </ul>
-        <p>7.2. Para residentes da Califórnia (EUA), nos termos da CCPA:</p>
+        <p>8.2. Para residentes da Califórnia (EUA), nos termos da CCPA:</p>
         <ul>
           <li>Direito de saber quais dados pessoais são coletados;</li>
           <li>Direito de solicitar a exclusão de dados;</li>
@@ -153,31 +153,31 @@ export default function PrivacyPolicyPage() {
           <li>Direito à não discriminação pelo exercício de direitos de privacidade.</li>
         </ul>
 
-        <h2>8. Cookies e Tecnologias de Rastreamento</h2>
-        <p>8.1. Utilizamos cookies e tecnologias similares para:</p>
+        <h2>9. Cookies e Tecnologias de Rastreamento</h2>
+        <p>9.1. Utilizamos cookies e tecnologias similares para:</p>
         <ul>
           <li>Garantir o funcionamento adequado do site/aplicativo;</li>
           <li>Analisar o uso e o desempenho dos serviços;</li>
           <li>Personalizar conteúdo e anúncios;</li>
           <li>Lembrar suas preferências.</li>
         </ul>
-        <p>8.2. Você pode gerenciar suas preferências de cookies a qualquer momento por meio das configurações do seu navegador.</p>
+        <p>9.2. Você pode gerenciar suas preferências de cookies a qualquer momento por meio das configurações do seu navegador.</p>
 
-        <h2>9. Encarregado de Proteção de Dados (DPO)</h2>
-        <p>9.1. O Encarregado de Proteção de Dados designado pode ser contatado pelo e-mail: <a href={`mailto:${dpoEmail}`} className="text-primary">{dpoEmail}</a>.</p>
+        <h2>10. Encarregado de Proteção de Dados (DPO)</h2>
+        <p>10.1. O Encarregado de Proteção de Dados designado pode ser contatado pelo e-mail: <a href={`mailto:${dpoEmail}`} className="text-primary">{dpoEmail}</a>.</p>
 
-        <h2>10. Menores de Idade</h2>
-        <p>10.1. Nossos serviços não se destinam a menores de 18 (dezoito) anos. Dados de crianças e adolescentes somente serão tratados em conformidade com o art. 14 da LGPD, com consentimento específico de pelo menos um dos pais ou responsável legal.</p>
+        <h2>11. Menores de Idade</h2>
+        <p>11.1. Nossos serviços não se destinam a menores de 18 (dezoito) anos. Dados de crianças e adolescentes somente serão tratados em conformidade com o art. 14 da LGPD, com consentimento específico de pelo menos um dos pais ou responsável legal.</p>
 
-        <h2>11. Alterações nesta Política</h2>
-        <p>11.1. Reservamo-nos o direito de atualizar esta Política de Privacidade a qualquer momento, sendo que quaisquer alterações entrarão em vigor imediatamente após sua publicação.</p>
-        <p>11.2. Notificaremos os titulares sobre alterações relevantes por meio de aviso em nosso site ou por e-mail.</p>
+        <h2>12. Alterações nesta Política</h2>
+        <p>12.1. Reservamo-nos o direito de atualizar esta Política de Privacidade a qualquer momento, sendo que quaisquer alterações entrarão em vigor imediatamente após sua publicação.</p>
+        <p>12.2. Notificaremos os titulares sobre alterações relevantes por meio de aviso em nosso site ou por e-mail.</p>
 
-        <h2>12. Legislação e Foro Aplicáveis</h2>
-        <p>12.1. Esta Política é regida pelas leis da República Federativa do Brasil.</p>
-        <p>12.2. Fica eleito o foro da comarca de São Paulo/SP para dirimir quaisquer controvérsias decorrentes desta Política, com renúncia expressa a qualquer outro, por mais privilegiado que seja.</p>
+        <h2>13. Legislação e Foro Aplicáveis</h2>
+        <p>13.1. Esta Política é regida pelas leis da República Federativa do Brasil.</p>
+        <p>13.2. Fica eleito o foro da comarca de São Paulo/SP para dirimir quaisquer controvérsias decorrentes desta Política, com renúncia expressa a qualquer outro, por mais privilegiado que seja.</p>
 
-        <h2>13. Contato</h2>
+        <h2>14. Contato</h2>
         <p>Para dúvidas, sugestões ou solicitações relacionadas a esta Política de Privacidade, entre em contato:</p>
         <address className="not-italic text-sm text-muted-foreground space-y-1">
           <p>{companyName}</p>
