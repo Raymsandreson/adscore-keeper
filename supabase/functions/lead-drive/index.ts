@@ -46,7 +46,6 @@ async function resolveFolderBaseName(leadId: string, leadName: string, ext: any)
       .from("legal_cases")
       .select("case_number, title")
       .eq("lead_id", leadId)
-      .is("deleted_at", null)
       .order("created_at", { ascending: false })
       .limit(1);
     const c = Array.isArray(cases) && cases.length > 0 ? cases[0] : null;
@@ -406,7 +405,6 @@ Deno.serve(async (req) => {
                 .from("legal_cases")
                 .select("case_number, title")
                 .eq("lead_id", lead_id)
-                .is("deleted_at", null)
                 .order("created_at", { ascending: false })
                 .limit(1);
               const c = Array.isArray(cases) && cases.length > 0 ? cases[0] : null;
