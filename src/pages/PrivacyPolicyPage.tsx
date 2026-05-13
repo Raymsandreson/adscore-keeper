@@ -91,9 +91,27 @@ export default function PrivacyPolicyPage() {
         <p>4.2. Em caso de transferência internacional de dados, serão adotadas as salvaguardas previstas nos arts. 33 a 36 da LGPD e no Capítulo V do GDPR, incluindo cláusulas contratuais padrão e verificação do nível de proteção do país destinatário.</p>
         <p>4.3. Não vendemos, alugamos ou comercializamos seus dados pessoais.</p>
 
-        <h2>5. Armazenamento e Segurança</h2>
-        <p>5.1. Seus dados são armazenados em servidores seguros, com a adoção de medidas técnicas e administrativas aptas a proteger os dados pessoais de acessos não autorizados, situações acidentais ou ilícitas de destruição, perda, alteração ou comunicação, conforme art. 46 da LGPD e art. 32 do GDPR.</p>
-        <p>5.2. Medidas de segurança adotadas incluem:</p>
+        <h2>5. WhatsApp Business Platform e Meta</h2>
+        <p>5.1. O WhatsJUD utiliza a WhatsApp Business Platform (Cloud API) fornecida pela Meta Platforms, Inc. para envio e recebimento de mensagens. Ao se comunicar conosco via WhatsApp, você reconhece que:</p>
+        <ul>
+          <li>O conteúdo das mensagens é processado pelos servidores da Meta, localizados nos Estados Unidos e em outros países onde a Meta opera infraestrutura;</li>
+          <li>A transferência internacional desses dados é realizada com base nas salvaguardas previstas no art. 33 da LGPD, incluindo cláusulas contratuais firmadas entre a WhatsJUD e a Meta;</li>
+          <li>A Meta atua como operadora dos dados de mensagens, conforme art. 5º, VII da LGPD, com finalidade exclusiva de processar e entregar a comunicação;</li>
+          <li>A Meta possui suas próprias políticas de privacidade e termos, disponíveis em <a href="https://www.whatsapp.com/legal/business-policy" className="text-primary" target="_blank" rel="noopener noreferrer">https://www.whatsapp.com/legal/business-policy</a> e <a href="https://www.whatsapp.com/legal/privacy-policy" className="text-primary" target="_blank" rel="noopener noreferrer">https://www.whatsapp.com/legal/privacy-policy</a>.</li>
+        </ul>
+        <p>5.2. Dados tratados especificamente via WhatsApp:</p>
+        <ul>
+          <li>Número de telefone do remetente e destinatário;</li>
+          <li>Conteúdo textual, mídia (imagens, áudios, documentos) e metadados (data, hora, status de entrega/leitura);</li>
+          <li>Identificadores únicos da mensagem fornecidos pela Meta;</li>
+          <li>Informações de origem da conversa (campanha publicitária, anúncio, link click-to-WhatsApp).</li>
+        </ul>
+        <p>5.3. Retenção: mensagens trocadas via WhatsApp são armazenadas em nossos servidores enquanto a relação jurídico-processual estiver ativa e por até 5 (cinco) anos após o encerramento do caso ou da relação contratual, observado o prazo prescricional aplicável.</p>
+        <p>5.4. Opt-out: você pode solicitar a interrupção do envio de mensagens pelo WhatsApp a qualquer momento respondendo PARAR, SAIR ou CANCELAR à conversa, ou enviando solicitação ao e-mail informado nesta política. A interrupção será efetivada em até 48 horas úteis.</p>
+
+        <h2>6. Armazenamento e Segurança</h2>
+        <p>6.1. Seus dados são armazenados em servidores seguros, com a adoção de medidas técnicas e administrativas aptas a proteger os dados pessoais de acessos não autorizados, situações acidentais ou ilícitas de destruição, perda, alteração ou comunicação, conforme art. 46 da LGPD e art. 32 do GDPR.</p>
+        <p>6.2. Medidas de segurança adotadas incluem:</p>
         <ul>
           <li>Criptografia de dados em trânsito (TLS/SSL) e em repouso;</li>
           <li>Controles de acesso baseados em função (RBAC);</li>
@@ -101,10 +119,10 @@ export default function PrivacyPolicyPage() {
           <li>Backups regulares e plano de recuperação de desastres;</li>
           <li>Treinamento periódico da equipe sobre proteção de dados.</li>
         </ul>
-        <p>5.3. Os dados serão retidos pelo período necessário ao cumprimento das finalidades descritas nesta Política, observados os prazos legais de retenção obrigatória.</p>
+        <p>6.3. Os dados serão retidos pelo período necessário ao cumprimento das finalidades descritas nesta Política, observados os prazos legais de retenção obrigatória.</p>
 
-        <h2>6. Direitos do Titular (LGPD – Art. 18)</h2>
-        <p>6.1. Você tem o direito de, a qualquer momento, solicitar:</p>
+        <h2>7. Direitos do Titular (LGPD – Art. 18)</h2>
+        <p>7.1. Você tem o direito de, a qualquer momento, solicitar:</p>
         <ul>
           <li>Confirmação da existência de tratamento;</li>
           <li>Acesso aos seus dados pessoais;</li>
