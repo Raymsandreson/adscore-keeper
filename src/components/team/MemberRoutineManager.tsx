@@ -89,6 +89,12 @@ function MemberRoutineView({ userId, memberName }: { userId: string; memberName:
         onCreate={onCreate}
         onUpdate={onUpdate}
         onRemove={onRemove}
+        userTeams={userTeams}
+        onAddType={async (label, color, teamIds) => {
+          const created = await addType(label, color, teamIds);
+          if (!created) return null;
+          return { key: created.key, label: created.label, color: created.color };
+        }}
       />
 
       {/* Resumo dos blocos — agrupado por tipo */}
