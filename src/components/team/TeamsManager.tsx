@@ -525,6 +525,9 @@ export function TeamsManager() {
                       onAdd={handleAddMember}
                     />
                   )}
+
+                  {/* Activity types exclusive to this team */}
+                  <TeamActivityTypesPicker teamId={team.id} />
                 </CardContent>
               </Card>
             );
