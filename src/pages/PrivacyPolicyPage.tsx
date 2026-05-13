@@ -91,9 +91,27 @@ export default function PrivacyPolicyPage() {
         <p>4.2. Em caso de transferência internacional de dados, serão adotadas as salvaguardas previstas nos arts. 33 a 36 da LGPD e no Capítulo V do GDPR, incluindo cláusulas contratuais padrão e verificação do nível de proteção do país destinatário.</p>
         <p>4.3. Não vendemos, alugamos ou comercializamos seus dados pessoais.</p>
 
-        <h2>5. Armazenamento e Segurança</h2>
-        <p>5.1. Seus dados são armazenados em servidores seguros, com a adoção de medidas técnicas e administrativas aptas a proteger os dados pessoais de acessos não autorizados, situações acidentais ou ilícitas de destruição, perda, alteração ou comunicação, conforme art. 46 da LGPD e art. 32 do GDPR.</p>
-        <p>5.2. Medidas de segurança adotadas incluem:</p>
+        <h2>5. WhatsApp Business Platform e Meta</h2>
+        <p>5.1. O WhatsJUD utiliza a WhatsApp Business Platform (Cloud API) fornecida pela Meta Platforms, Inc. para envio e recebimento de mensagens. Ao se comunicar conosco via WhatsApp, você reconhece que:</p>
+        <ul>
+          <li>O conteúdo das mensagens é processado pelos servidores da Meta, localizados nos Estados Unidos e em outros países onde a Meta opera infraestrutura;</li>
+          <li>A transferência internacional desses dados é realizada com base nas salvaguardas previstas no art. 33 da LGPD, incluindo cláusulas contratuais firmadas entre a WhatsJUD e a Meta;</li>
+          <li>A Meta atua como operadora dos dados de mensagens, conforme art. 5º, VII da LGPD, com finalidade exclusiva de processar e entregar a comunicação;</li>
+          <li>A Meta possui suas próprias políticas de privacidade e termos, disponíveis em <a href="https://www.whatsapp.com/legal/business-policy" className="text-primary" target="_blank" rel="noopener noreferrer">https://www.whatsapp.com/legal/business-policy</a> e <a href="https://www.whatsapp.com/legal/privacy-policy" className="text-primary" target="_blank" rel="noopener noreferrer">https://www.whatsapp.com/legal/privacy-policy</a>.</li>
+        </ul>
+        <p>5.2. Dados tratados especificamente via WhatsApp:</p>
+        <ul>
+          <li>Número de telefone do remetente e destinatário;</li>
+          <li>Conteúdo textual, mídia (imagens, áudios, documentos) e metadados (data, hora, status de entrega/leitura);</li>
+          <li>Identificadores únicos da mensagem fornecidos pela Meta;</li>
+          <li>Informações de origem da conversa (campanha publicitária, anúncio, link click-to-WhatsApp).</li>
+        </ul>
+        <p>5.3. Retenção: mensagens trocadas via WhatsApp são armazenadas em nossos servidores enquanto a relação jurídico-processual estiver ativa e por até 5 (cinco) anos após o encerramento do caso ou da relação contratual, observado o prazo prescricional aplicável.</p>
+        <p>5.4. Opt-out: você pode solicitar a interrupção do envio de mensagens pelo WhatsApp a qualquer momento respondendo PARAR, SAIR ou CANCELAR à conversa, ou enviando solicitação ao e-mail informado nesta política. A interrupção será efetivada em até 48 horas úteis.</p>
+
+        <h2>6. Armazenamento e Segurança</h2>
+        <p>6.1. Seus dados são armazenados em servidores seguros, com a adoção de medidas técnicas e administrativas aptas a proteger os dados pessoais de acessos não autorizados, situações acidentais ou ilícitas de destruição, perda, alteração ou comunicação, conforme art. 46 da LGPD e art. 32 do GDPR.</p>
+        <p>6.2. Medidas de segurança adotadas incluem:</p>
         <ul>
           <li>Criptografia de dados em trânsito (TLS/SSL) e em repouso;</li>
           <li>Controles de acesso baseados em função (RBAC);</li>
@@ -101,10 +119,10 @@ export default function PrivacyPolicyPage() {
           <li>Backups regulares e plano de recuperação de desastres;</li>
           <li>Treinamento periódico da equipe sobre proteção de dados.</li>
         </ul>
-        <p>5.3. Os dados serão retidos pelo período necessário ao cumprimento das finalidades descritas nesta Política, observados os prazos legais de retenção obrigatória.</p>
+        <p>6.3. Os dados serão retidos pelo período necessário ao cumprimento das finalidades descritas nesta Política, observados os prazos legais de retenção obrigatória.</p>
 
-        <h2>6. Direitos do Titular (LGPD – Art. 18)</h2>
-        <p>6.1. Você tem o direito de, a qualquer momento, solicitar:</p>
+        <h2>7. Direitos do Titular (LGPD – Art. 18)</h2>
+        <p>7.1. Você tem o direito de, a qualquer momento, solicitar:</p>
         <ul>
           <li>Confirmação da existência de tratamento;</li>
           <li>Acesso aos seus dados pessoais;</li>
@@ -117,17 +135,17 @@ export default function PrivacyPolicyPage() {
           <li>Revogação do consentimento;</li>
           <li>Oposição ao tratamento realizado com base em legítimo interesse.</li>
         </ul>
-        <p>6.2. Para exercer seus direitos, entre em contato pelo e-mail: <a href={`mailto:${dpoEmail}`} className="text-primary">{dpoEmail}</a>.</p>
-        <p>6.3. Responderemos suas solicitações no prazo de até 15 (quinze) dias, conforme art. 18, §5º da LGPD.</p>
+        <p>7.2. Para exercer seus direitos, entre em contato pelo e-mail: <a href={`mailto:${dpoEmail}`} className="text-primary">{dpoEmail}</a>.</p>
+        <p>7.3. Responderemos suas solicitações no prazo de até 15 (quinze) dias, conforme art. 18, §5º da LGPD.</p>
 
-        <h2>7. Direitos Adicionais (GDPR e CCPA)</h2>
-        <p>7.1. Para titulares residentes no Espaço Econômico Europeu (EEE), são assegurados adicionalmente:</p>
+        <h2>8. Direitos Adicionais (GDPR e CCPA)</h2>
+        <p>8.1. Para titulares residentes no Espaço Econômico Europeu (EEE), são assegurados adicionalmente:</p>
         <ul>
           <li>Direito de apresentar reclamação junto à autoridade supervisora competente;</li>
           <li>Direito à limitação do tratamento;</li>
           <li>Direito à não sujeição a decisões automatizadas.</li>
         </ul>
-        <p>7.2. Para residentes da Califórnia (EUA), nos termos da CCPA:</p>
+        <p>8.2. Para residentes da Califórnia (EUA), nos termos da CCPA:</p>
         <ul>
           <li>Direito de saber quais dados pessoais são coletados;</li>
           <li>Direito de solicitar a exclusão de dados;</li>
@@ -135,31 +153,31 @@ export default function PrivacyPolicyPage() {
           <li>Direito à não discriminação pelo exercício de direitos de privacidade.</li>
         </ul>
 
-        <h2>8. Cookies e Tecnologias de Rastreamento</h2>
-        <p>8.1. Utilizamos cookies e tecnologias similares para:</p>
+        <h2>9. Cookies e Tecnologias de Rastreamento</h2>
+        <p>9.1. Utilizamos cookies e tecnologias similares para:</p>
         <ul>
           <li>Garantir o funcionamento adequado do site/aplicativo;</li>
           <li>Analisar o uso e o desempenho dos serviços;</li>
           <li>Personalizar conteúdo e anúncios;</li>
           <li>Lembrar suas preferências.</li>
         </ul>
-        <p>8.2. Você pode gerenciar suas preferências de cookies a qualquer momento por meio das configurações do seu navegador.</p>
+        <p>9.2. Você pode gerenciar suas preferências de cookies a qualquer momento por meio das configurações do seu navegador.</p>
 
-        <h2>9. Encarregado de Proteção de Dados (DPO)</h2>
-        <p>9.1. O Encarregado de Proteção de Dados designado pode ser contatado pelo e-mail: <a href={`mailto:${dpoEmail}`} className="text-primary">{dpoEmail}</a>.</p>
+        <h2>10. Encarregado de Proteção de Dados (DPO)</h2>
+        <p>10.1. O Encarregado de Proteção de Dados designado pode ser contatado pelo e-mail: <a href={`mailto:${dpoEmail}`} className="text-primary">{dpoEmail}</a>.</p>
 
-        <h2>10. Menores de Idade</h2>
-        <p>10.1. Nossos serviços não se destinam a menores de 18 (dezoito) anos. Dados de crianças e adolescentes somente serão tratados em conformidade com o art. 14 da LGPD, com consentimento específico de pelo menos um dos pais ou responsável legal.</p>
+        <h2>11. Menores de Idade</h2>
+        <p>11.1. Nossos serviços não se destinam a menores de 18 (dezoito) anos. Dados de crianças e adolescentes somente serão tratados em conformidade com o art. 14 da LGPD, com consentimento específico de pelo menos um dos pais ou responsável legal.</p>
 
-        <h2>11. Alterações nesta Política</h2>
-        <p>11.1. Reservamo-nos o direito de atualizar esta Política de Privacidade a qualquer momento, sendo que quaisquer alterações entrarão em vigor imediatamente após sua publicação.</p>
-        <p>11.2. Notificaremos os titulares sobre alterações relevantes por meio de aviso em nosso site ou por e-mail.</p>
+        <h2>12. Alterações nesta Política</h2>
+        <p>12.1. Reservamo-nos o direito de atualizar esta Política de Privacidade a qualquer momento, sendo que quaisquer alterações entrarão em vigor imediatamente após sua publicação.</p>
+        <p>12.2. Notificaremos os titulares sobre alterações relevantes por meio de aviso em nosso site ou por e-mail.</p>
 
-        <h2>12. Legislação e Foro Aplicáveis</h2>
-        <p>12.1. Esta Política é regida pelas leis da República Federativa do Brasil.</p>
-        <p>12.2. Fica eleito o foro da comarca de São Paulo/SP para dirimir quaisquer controvérsias decorrentes desta Política, com renúncia expressa a qualquer outro, por mais privilegiado que seja.</p>
+        <h2>13. Legislação e Foro Aplicáveis</h2>
+        <p>13.1. Esta Política é regida pelas leis da República Federativa do Brasil.</p>
+        <p>13.2. Fica eleito o foro da comarca de São Paulo/SP para dirimir quaisquer controvérsias decorrentes desta Política, com renúncia expressa a qualquer outro, por mais privilegiado que seja.</p>
 
-        <h2>13. Contato</h2>
+        <h2>14. Contato</h2>
         <p>Para dúvidas, sugestões ou solicitações relacionadas a esta Política de Privacidade, entre em contato:</p>
         <address className="not-italic text-sm text-muted-foreground space-y-1">
           <p>{companyName}</p>
