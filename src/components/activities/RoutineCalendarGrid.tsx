@@ -67,6 +67,16 @@ export function RoutineCalendarGrid({ blocks, availableTypes, onCreate, onUpdate
     return Math.max(MIN_HOUR * 60, Math.min(MAX_HOUR * 60, snap(minutes)));
   }, [totalHeight]);
 
+  const xToDay = useCallback((x: number): number | null => {
+    for (const day of DAYS) {
+      const col = colRefs.current[day.idx];
+      if (!col) continue;
+      const r = col.getBoundingClientRect();
+      if (x >= r.left && x <= r.right) return day.idx;
+    }
+    return null;
+  }, []);
+
   // Global mouse handlers
   useEffect(() => {
     if (!drag) return;
