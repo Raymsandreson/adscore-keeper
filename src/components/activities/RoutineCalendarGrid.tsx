@@ -90,9 +90,15 @@ export function RoutineCalendarGrid({ blocks, availableTypes, onCreate, onUpdate
     const onMove = (e: MouseEvent) => {
       const d = dragRef.current;
       if (!d) return;
+      if (d.originX != null) {
+        const dx = Math.abs(e.clientX - d.originX);
+        const dy = Math.abs(e.clientY - d.originY);
+        if (dx > 4 || dy > 4) d.moved = true;
+      }
       const cur = yToMin(e.clientY, d.dayIdx);
 
       if (d.mode === 'move') {
+        if (!d.moved) return;
         const dur = d.initialEndMin - d.initialStartMin;
         const offsetMin = yToMin(d.originY, d.dayIdx) - d.initialStartMin;
         let newStart = cur - offsetMin;
@@ -102,7 +108,6 @@ export function RoutineCalendarGrid({ blocks, availableTypes, onCreate, onUpdate
         if (newEnd > MAX_HOUR * 60) { newEnd = MAX_HOUR * 60; newStart = newEnd - dur; }
         const s = fromMin(newStart);
         const e2 = fromMin(newEnd);
-        // Detect day under cursor for horizontal drag
         const targetDay = xToDay(e.clientX);
         const patch: Partial<TimeBlockConfig> = { startHour: s.h, startMinute: s.m, endHour: e2.h, endMinute: e2.m };
         if (targetDay != null && targetDay !== d.dayIdx) {
@@ -129,14 +134,24 @@ export function RoutineCalendarGrid({ blocks, availableTypes, onCreate, onUpdate
         onUpdate(d.blockId, { startHour: s.h, startMinute: s.m, endHour: e2.h, endMinute: e2.m });
       }
     };
-    const onUp = () => setDrag(null);
+    const onUp = (e: MouseEvent) => {
+      const d = dragRef.current;
+      if (d && d.mode === 'move' && !d.moved) {
+        const block = blocks.find(b => b.blockId === d.blockId);
+        const target = (e.target as HTMLElement).closest('[data-block]') as HTMLElement | null;
+        if (block && target) {
+          setEditingBlock({ block, rect: target.getBoundingClientRect() });
+        }
+      }
+      setDrag(null);
+    };
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
     return () => {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
     };
-  }, [drag, yToMin, onUpdate]);
+  }, [drag, yToMin, xToDay, onUpdate, blocks]);
 
   const typeMap = useMemo(() => {
     const m: Record<string, AvailableType> = {};
