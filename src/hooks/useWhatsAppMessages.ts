@@ -520,8 +520,17 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       });
 
       conversationsRef.current = mergedConvList;
-      setConversations(mergedConvList);
-      setMessages(mergedConvList.map(c => c.messages[0]));
+      // Evita re-render quando nada relevante mudou (causa principal do "piscar"
+      // no polling de 15s). Hash leve por chave + última msg + contador de unread.
+      const prevHash = (conversationsRef as any)._listHash || '';
+      const nextHash = mergedConvList
+        .map((c) => `${getConversationKey(c.phone, c.instance_name)}|${c.last_message_at}|${c.unread_count}|${c.last_message ?? ''}`)
+        .join('§');
+      if (nextHash !== prevHash) {
+        (conversationsRef as any)._listHash = nextHash;
+        setConversations(mergedConvList);
+        setMessages(mergedConvList.map(c => c.messages[0]));
+      }
       setHasLoaded(true);
 
       // Persiste no cache module-level para sobreviver a unmount/remount
