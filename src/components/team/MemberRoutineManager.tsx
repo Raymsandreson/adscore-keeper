@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -8,21 +8,32 @@ import { Loader2, Settings2, User, ChevronsUpDown, Check } from 'lucide-react';
 import { ShareMenu } from '@/components/ShareMenu';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { useTimeBlockSettings } from '@/hooks/useTimeBlockSettings';
-import { TimeBlockSettingsDialog } from '@/components/activities/TimeBlockSettingsDialog';
+import { TimeBlockSettingsDialog, TimeBlockConfig } from '@/components/activities/TimeBlockSettingsDialog';
+import { RoutineCalendarGrid } from '@/components/activities/RoutineCalendarGrid';
+import { useActivityTypes } from '@/hooks/useActivityTypes';
 import { cn } from '@/lib/utils';
-
-const WEEK_DAYS = [
-  { label: 'SEG', idx: 0 },
-  { label: 'TER', idx: 1 },
-  { label: 'QUA', idx: 2 },
-  { label: 'QUI', idx: 3 },
-  { label: 'SEX', idx: 4 },
-];
 
 function MemberRoutineView({ userId, memberName }: { userId: string; memberName: string }) {
   const { configs, loading, saveSettings } = useTimeBlockSettings(userId);
+  const { types: globalTypes } = useActivityTypes();
   const [editOpen, setEditOpen] = useState(false);
+  const [localBlocks, setLocalBlocks] = useState<TimeBlockConfig[]>([]);
+
+  useEffect(() => { setLocalBlocks(configs); }, [configs]);
+
   const handleSave = (newConfigs: Parameters<typeof saveSettings>[0]) => saveSettings(newConfigs, userId);
+
+  // Auto-save on local edits (debounced)
+  const persist = (next: TimeBlockConfig[]) => {
+    setLocalBlocks(next);
+    saveSettings(next, userId);
+  };
+  const onCreate = (b: TimeBlockConfig) => persist([...localBlocks, b]);
+  const onUpdate = (id: string, patch: Partial<TimeBlockConfig>) =>
+    persist(localBlocks.map(b => b.blockId === id ? { ...b, ...patch } : b));
+  const onRemove = (id: string) => persist(localBlocks.filter(b => b.blockId !== id));
+
+  const availableTypes = globalTypes.map(t => ({ key: t.key, label: t.label, color: t.color }));
 
   if (loading) {
     return (
@@ -48,39 +59,14 @@ function MemberRoutineView({ userId, memberName }: { userId: string; memberName:
         </div>
       </div>
 
-      {/* Grade visual da rotina */}
-      <div className="rounded-lg border p-4 bg-muted/10">
-        <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-3">Grade Semanal</p>
-        <div className="grid grid-cols-5 gap-2">
-          {WEEK_DAYS.map(d => (
-            <div key={d.idx} className="space-y-1.5">
-              <div className="text-center text-xs font-bold text-muted-foreground">{d.label}</div>
-              {configs
-                .filter(c => c.days.includes(d.idx))
-                .sort((a, b) => (a.startHour + (a.startMinute ?? 0) / 60) - (b.startHour + (b.startMinute ?? 0) / 60))
-                .map(c => {
-                  const fmt = (h: number, m: number = 0) => `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
-                  return (
-                    <div
-                      key={c.blockId || `${c.activityType}_${c.startHour}`}
-                      className={cn('rounded-md px-2 py-1.5 text-white text-[10px] font-semibold', c.color)}
-                      title={c.label}
-                    >
-                      <div className="break-words leading-tight">{c.label}</div>
-                      <div className="opacity-80">{fmt(c.startHour, c.startMinute)}–{fmt(c.endHour, c.endMinute)}</div>
-                    </div>
-                  );
-                })
-              }
-              {configs.filter(c => c.days.includes(d.idx)).length === 0 && (
-                <div className="rounded-md border border-dashed border-muted-foreground/20 h-10 flex items-center justify-center">
-                  <span className="text-[9px] text-muted-foreground/40">vazio</span>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
+      {/* Calendário visual estilo Google Calendar — clicar/arrastar/estender */}
+      <RoutineCalendarGrid
+        blocks={localBlocks}
+        availableTypes={availableTypes}
+        onCreate={onCreate}
+        onUpdate={onUpdate}
+        onRemove={onRemove}
+      />
 
       {/* Resumo dos blocos — agrupado por tipo */}
       <div className="flex flex-wrap gap-2">
