@@ -527,6 +527,34 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave, t
           </div>
         )}
 
+        {/* Team filter — only when user belongs to 1+ team */}
+        {userTeams.length > 0 && (
+          <div className="flex items-center gap-2 rounded-lg border bg-muted/20 p-2.5">
+            <span className="text-xs font-semibold text-muted-foreground whitespace-nowrap">
+              Time:
+            </span>
+            <Select value={selectedTeamId} onValueChange={setSelectedTeamId}>
+              <SelectTrigger className="h-8 text-sm flex-1">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos os meus times</SelectItem>
+                {userTeams.map(t => (
+                  <SelectItem key={t.id} value={t.id}>
+                    <span className="flex items-center gap-2">
+                      <span className={cn('h-2 w-2 rounded-full', t.color || 'bg-primary')} />
+                      {t.name}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <span className="text-[10px] text-muted-foreground hidden sm:inline">
+              tipos globais sempre aparecem
+            </span>
+          </div>
+        )}
+
         {/* Header with count */}
         <div className="flex items-center justify-between">
           <p className="text-sm font-semibold">Tipos de atividade disponíveis</p>
@@ -542,7 +570,27 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave, t
           </div>
         ) : (
           <div className="space-y-2">
-            {globalTypes.map((type, idx) => {
+            {(() => {
+              const userTeamIds = new Set(userTeams.map(t => t.id));
+              const visibleTypes = globalTypes.filter(t => {
+                const tIds = t.team_ids || [];
+                // Global type: always visible
+                if (tIds.length === 0) return true;
+                // Filtered to a specific team
+                if (selectedTeamId !== 'all') return tIds.includes(selectedTeamId);
+                // Union of all user's teams
+                if (userTeamIds.size === 0) return false;
+                return tIds.some(id => userTeamIds.has(id));
+              });
+              if (visibleTypes.length === 0) {
+                return (
+                  <div className="text-center text-sm text-muted-foreground py-8 border rounded-lg bg-muted/10">
+                    Nenhum tipo de atividade disponível para este time.
+                    {isAdmin && <div className="text-xs mt-1">Vincule tipos ao time em Gestão de Times.</div>}
+                  </div>
+                );
+              }
+              return visibleTypes.map((type, idx) => {
               const typeBlocks = blocks.filter(b => b.activityType === type.key);
               const sel = typeBlocks.length > 0;
               return (
