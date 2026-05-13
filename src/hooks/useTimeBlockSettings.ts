@@ -57,9 +57,8 @@ export function useTimeBlockSettings(targetUserId?: string) {
 
   useEffect(() => {
     if (!effectiveUserId) { setLoading(false); return; }
-    fetchSettings(effectiveUserId);
+    fetchSettings(effectiveUserId, true);
 
-    // Realtime: escuta alterações dos blocos desse usuário e recarrega sozinho
     const channel = supabase
       .channel(`tb-settings-${effectiveUserId}`)
       .on(
@@ -70,7 +69,7 @@ export function useTimeBlockSettings(targetUserId?: string) {
           table: 'user_timeblock_settings',
           filter: `user_id=eq.${effectiveUserId}`,
         },
-        () => { fetchSettings(effectiveUserId); }
+        () => { fetchSettings(effectiveUserId, false); }
       )
       .subscribe();
 
