@@ -61,9 +61,19 @@ export function TeamActivityTypesPicker({ teamId }: Props) {
           {linkedTypes.length > 0 ? (
             <div className="flex flex-wrap gap-1.5">
               {linkedTypes.map(t => (
-                <Badge key={t.id} variant="outline" className="gap-1.5 text-[11px]">
+                <Badge
+                  key={t.id}
+                  variant="outline"
+                  className="gap-1.5 text-[11px] pr-1 cursor-pointer hover:bg-destructive/10"
+                  onClick={() => toggleType(t.id, t.team_ids || [])}
+                >
                   <span className={cn('h-2 w-2 rounded-full', t.color)} />
                   {t.label}
+                  {savingKey === t.id ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <X className="h-3 w-3 text-muted-foreground hover:text-destructive" />
+                  )}
                 </Badge>
               ))}
             </div>
@@ -73,69 +83,82 @@ export function TeamActivityTypesPicker({ teamId }: Props) {
             </p>
           )}
 
-          <Popover>
+          <Popover onOpenChange={(o) => !o && setSearch('')}>
             <PopoverTrigger asChild>
               <Button variant="outline" size="sm" className="h-7 text-xs gap-1.5 w-full">
                 <ListChecks className="h-3.5 w-3.5" />
-                Gerenciar tipos do time
+                Adicionar tipo ao time
               </Button>
             </PopoverTrigger>
             <PopoverContent align="start" className="w-72 p-2">
               <p className="text-xs font-semibold px-2 py-1.5">
-                Tipos exclusivos deste time
+                Adicionar tipos a este time
               </p>
               <p className="text-[10px] text-muted-foreground px-2 pb-2">
                 Tipos sem nenhum time aparecem para todos.
               </p>
+              <div className="relative px-1 pb-2">
+                <Search className="h-3.5 w-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                <Input
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  placeholder="Buscar tipo..."
+                  className="h-8 text-xs pl-8"
+                  autoFocus
+                />
+              </div>
               {loading ? (
                 <div className="flex items-center justify-center py-6">
                   <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                 </div>
               ) : (
-                <ScrollArea className="h-[280px]">
+                <ScrollArea className="h-[260px]">
                   <div className="space-y-0.5 pr-2">
-                    {types.map(t => {
-                      const teamIds = t.team_ids || [];
-                      const isLinked = teamIds.includes(teamId);
-                      return (
-                        <button
-                          key={t.id}
-                          onClick={() => toggleType(t.id, teamIds)}
-                          disabled={savingKey === t.id}
-                          className={cn(
-                            'flex items-center gap-2 w-full px-2 py-1.5 rounded text-xs text-left hover:bg-muted transition-colors',
-                            isLinked && 'bg-primary/5'
-                          )}
-                        >
-                          <span className={cn('h-2.5 w-2.5 rounded-full flex-shrink-0', t.color)} />
-                          <span className="flex-1 truncate">{t.label}</span>
-                          {teamIds.length > 0 && !isLinked && (
-                            <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4">
-                              {teamIds.length} time{teamIds.length > 1 ? 's' : ''}
-                            </Badge>
-                          )}
-                          {teamIds.length === 0 && (
-                            <Badge variant="outline" className="text-[9px] px-1 py-0 h-4">
-                              global
-                            </Badge>
-                          )}
-                          {savingKey === t.id ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
-                          ) : isLinked ? (
-                            <CheckCircle2 className="h-3.5 w-3.5 text-primary" />
-                          ) : (
-                            <Circle className="h-3.5 w-3.5 text-muted-foreground/40" />
-                          )}
-                        </button>
-                      );
-                    })}
+                    {(() => {
+                      const q = search.trim().toLowerCase();
+                      const available = types.filter(t => {
+                        const teamIds = t.team_ids || [];
+                        if (teamIds.includes(teamId)) return false;
+                        if (!q) return true;
+                        return t.label.toLowerCase().includes(q);
+                      });
+                      if (available.length === 0) {
+                        return (
+                          <p className="text-[11px] text-muted-foreground italic text-center py-6">
+                            {q ? 'Nenhum tipo encontrado.' : 'Todos os tipos já foram adicionados.'}
+                          </p>
+                        );
+                      }
+                      return available.map(t => {
+                        const teamIds = t.team_ids || [];
+                        return (
+                          <button
+                            key={t.id}
+                            onClick={() => toggleType(t.id, teamIds)}
+                            disabled={savingKey === t.id}
+                            className="flex items-center gap-2 w-full px-2 py-1.5 rounded text-xs text-left hover:bg-muted transition-colors"
+                          >
+                            <span className={cn('h-2.5 w-2.5 rounded-full flex-shrink-0', t.color)} />
+                            <span className="flex-1 truncate">{t.label}</span>
+                            {teamIds.length > 0 ? (
+                              <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4">
+                                {teamIds.length} time{teamIds.length > 1 ? 's' : ''}
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-[9px] px-1 py-0 h-4">
+                                global
+                              </Badge>
+                            )}
+                            {savingKey === t.id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                            ) : (
+                              <Circle className="h-3.5 w-3.5 text-muted-foreground/40" />
+                            )}
+                          </button>
+                        );
+                      });
+                    })()}
                   </div>
                 </ScrollArea>
               )}
             </PopoverContent>
-          </Popover>
-        </div>
-      </div>
-    </div>
-  );
-}
