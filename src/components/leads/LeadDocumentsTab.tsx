@@ -86,12 +86,16 @@ export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId }: 
       const concurrency = 3;
       for (let i = 0; i < list.length; i += concurrency) {
         const batch = list.slice(i, i + concurrency);
-        const results = await Promise.all(batch.map((f) => analyzeOne(f.id).then((a) => [f.id, a] as const)));
+        const results = await Promise.all(batch.map((f) => analyzeOne(f.id).then((r) => [f.id, r] as const)));
         setAnalyses((prev) => {
           const next = { ...prev };
-          for (const [id, a] of results) if (a) next[id] = a;
+          for (const [id, r] of results) if (r) next[id] = r.analysis;
           return next;
         });
+        setFiles((prev) => prev.map((f) => {
+          const r = results.find(([id]) => id === f.id)?.[1];
+          return r?.renamed ? { ...f, name: r.renamed } : f;
+        }));
       }
     } finally {
       setAutoAnalyzing(false);
