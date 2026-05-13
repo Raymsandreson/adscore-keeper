@@ -154,7 +154,11 @@ function extractClientFirstName(raw: string): string {
 const ActivitiesPage = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { user } = useAuthContext();
+  const { user, profile } = useAuthContext();
+  const [celebrateBlock, setCelebrateBlock] = useState<{ label: string; color: string } | null>(null);
+  const celebratedBlocksRef = useRef<Set<string>>(new Set());
+  const celebrationInitRef = useRef(false);
+  useEffect(() => { celebrationInitRef.current = true; }, []);
   const { activities, loading, fetchActivities: _fetchActivities, createActivity, updateActivity, completeActivity, deleteActivity } = useLeadActivities();
   const refreshCountsRef = useRef<(() => Promise<void>) | null>(null);
   const fetchActivities = useCallback(async (params?: Parameters<typeof _fetchActivities>[0]) => {
@@ -2417,6 +2421,16 @@ const ActivitiesPage = () => {
                           const openCount = block.items.filter(a => a.status !== 'concluida').length;
                           const doneCount = count - openCount;
                           const blockKey = `${dayIdx}::${block.cfg.activityType}`;
+                          const celebrationKey = `${format(dayDate, 'yyyy-MM-dd')}::${block.cfg.activityType}`;
+                          const isFullyDone = openCount === 0 && count > 0;
+                          if (isFullyDone && !celebratedBlocksRef.current.has(celebrationKey)) {
+                            celebratedBlocksRef.current.add(celebrationKey);
+                            if (celebrationInitRef.current && isSameDay(dayDate, today)) {
+                              const labelSnapshot = fullLabel;
+                              const colorSnapshot = bgColor;
+                              queueMicrotask(() => setCelebrateBlock({ label: labelSnapshot, color: colorSnapshot }));
+                            }
+                          }
                           const isSelected = selectedBlockKey === blockKey;
 
                           const blockH = Math.max(block.heightPx - 2, 24);
@@ -2469,23 +2483,28 @@ const ActivitiesPage = () => {
                                 {block.cfg.startHour}:{String(block.cfg.startMinute || 0).padStart(2, '0')}–{block.cfg.endHour}:{String(block.cfg.endMinute || 0).padStart(2, '0')}
                               </div>
                               {openCount === 0 && count > 0 && (
-                                <div className="absolute bottom-1 right-1 pointer-events-none z-10 flex flex-col items-center animate-in zoom-in-50 duration-300 rotate-[-12deg] origin-bottom-right">
-                                  <div className="relative flex items-center justify-center">
-                                    {/* Confetes estáticos ao redor do selo */}
-                                    <span className="absolute -top-1 -left-2 w-1 h-1 rounded-full bg-yellow-400" />
-                                    <span className="absolute -top-2 left-0 w-1 h-1 rounded-full bg-pink-400" />
-                                    <span className="absolute top-0 -right-2 w-1 h-1 rounded-full bg-sky-400" />
-                                    <span className="absolute -bottom-1 -left-2 w-1 h-1 rounded-full bg-lime-400" />
-                                    {/* Selo */}
-                                    <div className="flex items-center gap-0.5 pl-0.5 pr-1.5 py-0.5 rounded-full bg-gradient-to-br from-emerald-400/70 via-green-500/70 to-emerald-600/70 shadow-[0_2px_6px_rgba(16,185,129,0.3)] border border-white/50 ring-1 ring-emerald-300/30">
-                                      <div className="rounded-full bg-white/85 p-[1px] shadow-inner">
-                                        <Check className="h-2.5 w-2.5 text-emerald-600" strokeWidth={4} />
-                                      </div>
-                                      <span className="text-[8px] font-extrabold text-white uppercase tracking-wider drop-shadow-sm">Feito</span>
+                                <>
+                                  {/* Faixa "PARABÉNS" sobreposta em destaque */}
+                                  <div className="absolute inset-0 pointer-events-none z-20 flex items-center justify-center overflow-hidden">
+                                    <div
+                                      className="rotate-[-8deg] font-black uppercase tracking-widest text-yellow-300 drop-shadow-[0_2px_4px_rgba(0,0,0,0.7)] animate-in zoom-in-50 fade-in duration-500"
+                                      style={{
+                                        fontSize: Math.max(14, Math.min(40, Math.round(blockH * 0.32))),
+                                        textShadow: '0 0 12px rgba(250,204,21,0.5), 0 2px 4px rgba(0,0,0,0.6)',
+                                        WebkitTextStroke: '1px rgba(0,0,0,0.35)',
+                                      }}
+                                    >
+                                      Parabéns!
                                     </div>
                                   </div>
-                                  <span className="mt-0.5 text-[8px] font-extrabold text-yellow-300/80 uppercase tracking-wide drop-shadow-[0_1px_2px_rgba(0,0,0,0.6)]">Parabéns!</span>
-                                </div>
+                                  {/* Selo "Feito" no canto */}
+                                  <div className="absolute bottom-1 right-1 pointer-events-none z-30 flex items-center gap-0.5 pl-0.5 pr-1.5 py-0.5 rounded-full bg-gradient-to-br from-emerald-400/80 via-green-500/80 to-emerald-600/80 shadow-[0_2px_6px_rgba(16,185,129,0.4)] border border-white/60 ring-1 ring-emerald-300/40 rotate-[-12deg] origin-bottom-right">
+                                    <div className="rounded-full bg-white/90 p-[1px] shadow-inner">
+                                      <Check className="h-2.5 w-2.5 text-emerald-600" strokeWidth={4} />
+                                    </div>
+                                    <span className="text-[8px] font-extrabold text-white uppercase tracking-wider drop-shadow-sm">Feito</span>
+                                  </div>
+                                </>
                               )}
                             </div>
                           );
@@ -3424,6 +3443,67 @@ const ActivitiesPage = () => {
         leadId={formLeadId || null}
         buildMsg={buildMsg}
       />
+
+      {/* Popup fullscreen de Parabéns ao concluir a última atividade do bloco */}
+      {celebrateBlock && (
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm animate-in fade-in duration-300 cursor-pointer"
+          onClick={() => setCelebrateBlock(null)}
+        >
+          {/* Confetes */}
+          <div className="absolute inset-0 overflow-hidden pointer-events-none">
+            {Array.from({ length: 40 }).map((_, i) => {
+              const colors = ['bg-yellow-400', 'bg-pink-400', 'bg-sky-400', 'bg-lime-400', 'bg-orange-400', 'bg-purple-400'];
+              const color = colors[i % colors.length];
+              const left = (i * 37) % 100;
+              const delay = (i * 73) % 1500;
+              const duration = 2000 + ((i * 131) % 1500);
+              return (
+                <span
+                  key={i}
+                  className={cn('absolute top-[-20px] w-2 h-3 rounded-sm', color)}
+                  style={{
+                    left: `${left}%`,
+                    animation: `confetti-fall ${duration}ms ease-in ${delay}ms infinite`,
+                    transform: `rotate(${(i * 47) % 360}deg)`,
+                  }}
+                />
+              );
+            })}
+          </div>
+
+          <div className="relative text-center px-6 animate-in zoom-in-50 duration-500">
+            <div className="text-7xl sm:text-8xl mb-4">🎉</div>
+            <h1
+              className="font-black uppercase text-yellow-300 tracking-tight leading-none mb-4"
+              style={{
+                fontSize: 'clamp(3rem, 12vw, 8rem)',
+                textShadow: '0 0 30px rgba(250,204,21,0.6), 0 4px 12px rgba(0,0,0,0.8)',
+                WebkitTextStroke: '2px rgba(0,0,0,0.4)',
+              }}
+            >
+              Parabéns!
+            </h1>
+            <p className="text-2xl sm:text-4xl font-bold text-white drop-shadow-lg mb-2">
+              {profile?.full_name || user?.email?.split('@')[0] || 'Você'}
+            </p>
+            <p className="text-base sm:text-xl text-white/90 font-medium drop-shadow">
+              Você concluiu todas as atividades de
+            </p>
+            <p className="text-xl sm:text-3xl font-extrabold text-white uppercase tracking-wide mt-1 drop-shadow-lg">
+              {celebrateBlock.label}
+            </p>
+            <p className="text-xs sm:text-sm text-white/60 mt-6">Toque em qualquer lugar para fechar</p>
+          </div>
+
+          <style>{`
+            @keyframes confetti-fall {
+              0% { transform: translateY(0) rotate(0deg); opacity: 1; }
+              100% { transform: translateY(110vh) rotate(720deg); opacity: 0.6; }
+            }
+          `}</style>
+        </div>
+      )}
     </div>
   );
 };
