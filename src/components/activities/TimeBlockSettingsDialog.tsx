@@ -550,7 +550,7 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave, t
               </SelectContent>
             </Select>
             <span className="text-[10px] text-muted-foreground hidden sm:inline">
-              tipos globais sempre aparecem
+              só tipos vinculados ao time
             </span>
           </div>
         )}
