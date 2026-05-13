@@ -52,23 +52,36 @@ export async function getConversationSummaries(
     // vs "Karolyne Atendimento" cadastrado). A RPC usa '=' case-sensitive, então
     // tentamos múltiplas variantes (original, UPPER, lower) e mesclamos.
     const variants = Array.from(new Set([name, name.toUpperCase(), name.toLowerCase()]));
-    // PostgREST aplica cap padrão de 1000 linhas em RPC. Sem isso conversas
-    // antigas somem da lista até receberem msg nova. Usamos range + limit para
-    // garantir que todas voltem (cinto e suspensório).
-    const { data, error, count } = await (externalSupabase as any)
-      .rpc('get_conversation_summaries', {
-        p_instance_names: variants,
-        p_days_back: daysBack,
-      }, { count: 'exact' })
-      .range(0, 199999)
-      .limit(200000);
-    if (error) {
-      console.warn(`[getConversationSummaries] failed for "${name}":`, error.message);
-      return [];
+    // O PostgREST do banco externo corta cada resposta em 1000 linhas, mesmo
+    // quando o count exato informa mais. Então paginamos em blocos: é como
+    // pegar várias caixas da prateleira, não só a primeira.
+    const pageSize = 1000;
+    const allRows: ConversationSummary[] = [];
+    let exactCount: number | null = null;
+
+    for (let from = 0; ; from += pageSize) {
+      const to = from + pageSize - 1;
+      const { data, error, count } = await (externalSupabase as any)
+        .rpc('get_conversation_summaries', {
+          p_instance_names: variants,
+          p_days_back: daysBack,
+        }, { count: from === 0 ? 'exact' : undefined })
+        .range(from, to);
+
+      if (error) {
+        console.warn(`[getConversationSummaries] failed for "${name}" page ${from}-${to}:`, error.message);
+        return allRows;
+      }
+
+      const rows = (data || []) as ConversationSummary[];
+      allRows.push(...rows);
+      if (from === 0 && typeof count === 'number') exactCount = count;
+      if (rows.length < pageSize || (exactCount !== null && allRows.length >= exactCount)) break;
     }
-    console.log(`[getConversationSummaries] "${name}" → ${data?.length ?? 0} linhas (count exato: ${count ?? 'n/a'})`);
+
+    console.log(`[getConversationSummaries] "${name}" → ${allRows.length} linhas (count exato: ${exactCount ?? 'n/a'})`);
     // Normaliza instance_name de volta para o nome canônico cadastrado
-    return (data || []).map((row: ConversationSummary) => ({ ...row, instance_name: name }));
+    return allRows.map((row: ConversationSummary) => ({ ...row, instance_name: name }));
   };
 
   const results = await Promise.all(instanceNames.map(callOne));
