@@ -2,6 +2,7 @@ import { useRef, useState, useCallback, useMemo, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { Trash2, Copy } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { BlockEditPopover } from './BlockEditPopover';
 import type { TimeBlockConfig } from './TimeBlockSettingsDialog';
 
 const DAYS = [
@@ -25,6 +26,8 @@ interface Props {
   onCreate: (block: TimeBlockConfig) => void;
   onUpdate: (blockId: string, patch: Partial<TimeBlockConfig>) => void;
   onRemove: (blockId: string) => void;
+  userTeams?: { id: string; name: string; color?: string }[];
+  onAddType?: (label: string, color: string, teamIds: string[]) => Promise<{ key: string; label: string; color: string } | null>;
 }
 
 const newId = () => (crypto as any).randomUUID?.() || `b_${Date.now()}_${Math.random().toString(36).slice(2)}`;
@@ -40,15 +43,19 @@ interface DragState {
   initialStartMin: number;
   initialEndMin: number;
   originY: number;
+  originX?: number;
+  moved?: boolean;
   /** for create mode: anchor minute */
   anchorMin?: number;
 }
 
-export function RoutineCalendarGrid({ blocks, availableTypes, onCreate, onUpdate, onRemove }: Props) {
+export function RoutineCalendarGrid({ blocks, availableTypes, onCreate, onUpdate, onRemove, userTeams = [], onAddType }: Props) {
   const [activeKey, setActiveKey] = useState<string>(availableTypes[0]?.key ?? '');
   useEffect(() => {
     if (!activeKey && availableTypes[0]) setActiveKey(availableTypes[0].key);
   }, [availableTypes, activeKey]);
+
+  const [editingBlock, setEditingBlock] = useState<{ block: TimeBlockConfig; rect: DOMRect } | null>(null);
 
   const colRefs = useRef<Record<number, HTMLDivElement | null>>({});
   const [drag, setDrag] = useState<DragState | null>(null);
@@ -83,9 +90,15 @@ export function RoutineCalendarGrid({ blocks, availableTypes, onCreate, onUpdate
     const onMove = (e: MouseEvent) => {
       const d = dragRef.current;
       if (!d) return;
+      if (d.originX != null) {
+        const dx = Math.abs(e.clientX - d.originX);
+        const dy = Math.abs(e.clientY - d.originY);
+        if (dx > 4 || dy > 4) d.moved = true;
+      }
       const cur = yToMin(e.clientY, d.dayIdx);
 
       if (d.mode === 'move') {
+        if (!d.moved) return;
         const dur = d.initialEndMin - d.initialStartMin;
         const offsetMin = yToMin(d.originY, d.dayIdx) - d.initialStartMin;
         let newStart = cur - offsetMin;
@@ -95,7 +108,6 @@ export function RoutineCalendarGrid({ blocks, availableTypes, onCreate, onUpdate
         if (newEnd > MAX_HOUR * 60) { newEnd = MAX_HOUR * 60; newStart = newEnd - dur; }
         const s = fromMin(newStart);
         const e2 = fromMin(newEnd);
-        // Detect day under cursor for horizontal drag
         const targetDay = xToDay(e.clientX);
         const patch: Partial<TimeBlockConfig> = { startHour: s.h, startMinute: s.m, endHour: e2.h, endMinute: e2.m };
         if (targetDay != null && targetDay !== d.dayIdx) {
@@ -122,14 +134,24 @@ export function RoutineCalendarGrid({ blocks, availableTypes, onCreate, onUpdate
         onUpdate(d.blockId, { startHour: s.h, startMinute: s.m, endHour: e2.h, endMinute: e2.m });
       }
     };
-    const onUp = () => setDrag(null);
+    const onUp = (e: MouseEvent) => {
+      const d = dragRef.current;
+      if (d && d.mode === 'move' && !d.moved) {
+        const block = blocks.find(b => b.blockId === d.blockId);
+        const target = (e.target as HTMLElement).closest('[data-block]') as HTMLElement | null;
+        if (block && target) {
+          setEditingBlock({ block, rect: target.getBoundingClientRect() });
+        }
+      }
+      setDrag(null);
+    };
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
     return () => {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
     };
-  }, [drag, yToMin, onUpdate]);
+  }, [drag, yToMin, xToDay, onUpdate, blocks]);
 
   const typeMap = useMemo(() => {
     const m: Record<string, AvailableType> = {};
@@ -187,6 +209,8 @@ export function RoutineCalendarGrid({ blocks, availableTypes, onCreate, onUpdate
       initialStartMin: toMin(block.startHour, block.startMinute ?? 0),
       initialEndMin: toMin(block.endHour, block.endMinute ?? 0),
       originY: e.clientY,
+      originX: e.clientX,
+      moved: false,
     });
   };
 
@@ -349,6 +373,28 @@ export function RoutineCalendarGrid({ blocks, availableTypes, onCreate, onUpdate
           );
         })}
       </div>
+
+      {editingBlock && (
+        <BlockEditPopover
+          open={!!editingBlock}
+          anchorRect={editingBlock.rect}
+          currentTypeKey={editingBlock.block.activityType}
+          availableTypes={availableTypes}
+          userTeams={userTeams}
+          onSelectType={(t) => {
+            onUpdate(editingBlock.block.blockId, {
+              activityType: t.key,
+              label: t.label,
+              color: t.color,
+            });
+          }}
+          onAddType={async (label, color, teamIds) => {
+            if (!onAddType) return null;
+            return await onAddType(label, color, teamIds);
+          }}
+          onClose={() => setEditingBlock(null)}
+        />
+      )}
     </div>
   );
 }

@@ -11,11 +11,13 @@ import { useTimeBlockSettings } from '@/hooks/useTimeBlockSettings';
 import { TimeBlockSettingsDialog, TimeBlockConfig } from '@/components/activities/TimeBlockSettingsDialog';
 import { RoutineCalendarGrid } from '@/components/activities/RoutineCalendarGrid';
 import { useActivityTypes } from '@/hooks/useActivityTypes';
+import { useUserTeams } from '@/hooks/useUserTeams';
 import { cn } from '@/lib/utils';
 
 function MemberRoutineView({ userId, memberName }: { userId: string; memberName: string }) {
   const { configs, loading, saveSettings } = useTimeBlockSettings(userId);
-  const { types: globalTypes } = useActivityTypes();
+  const { types: globalTypes, addType } = useActivityTypes();
+  const { teams: userTeams } = useUserTeams(userId);
   const [editOpen, setEditOpen] = useState(false);
   const [localBlocks, setLocalBlocks] = useState<TimeBlockConfig[]>([]);
   const dirtyRef = useRef(false);
@@ -87,6 +89,12 @@ function MemberRoutineView({ userId, memberName }: { userId: string; memberName:
         onCreate={onCreate}
         onUpdate={onUpdate}
         onRemove={onRemove}
+        userTeams={userTeams}
+        onAddType={async (label, color, teamIds) => {
+          const created = await addType(label, color, teamIds);
+          if (!created) return null;
+          return { key: created.key, label: created.label, color: created.color };
+        }}
       />
 
       {/* Resumo dos blocos — agrupado por tipo */}
