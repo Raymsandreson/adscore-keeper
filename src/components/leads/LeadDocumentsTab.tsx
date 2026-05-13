@@ -62,14 +62,17 @@ export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId }: 
   const [analyses, setAnalyses] = useState<Record<string, Analysis>>({});
   const [autoAnalyzing, setAutoAnalyzing] = useState(false);
 
-  const analyzeOne = useCallback(async (fileId: string): Promise<Analysis | null> => {
+  const analyzeOne = useCallback(async (fileId: string): Promise<{ analysis: Analysis; renamed: string | null } | null> => {
     try {
       const { data, error } = await supabase.functions.invoke('lead-drive', {
         body: { action: 'analyze_file', lead_id: leadId, lead_name: leadName, file_id: fileId },
       });
       if (error) throw error;
       if ((data as any)?.error) throw new Error((data as any).error);
-      return ((data as any).analysis || {}) as Analysis;
+      return {
+        analysis: ((data as any).analysis || {}) as Analysis,
+        renamed: ((data as any).renamed as string | null) ?? null,
+      };
     } catch (e) {
       console.warn('[LeadDocumentsTab] auto analyze failed', fileId, e);
       return null;
@@ -83,12 +86,16 @@ export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId }: 
       const concurrency = 3;
       for (let i = 0; i < list.length; i += concurrency) {
         const batch = list.slice(i, i + concurrency);
-        const results = await Promise.all(batch.map((f) => analyzeOne(f.id).then((a) => [f.id, a] as const)));
+        const results = await Promise.all(batch.map((f) => analyzeOne(f.id).then((r) => [f.id, r] as const)));
         setAnalyses((prev) => {
           const next = { ...prev };
-          for (const [id, a] of results) if (a) next[id] = a;
+          for (const [id, r] of results) if (r) next[id] = r.analysis;
           return next;
         });
+        setFiles((prev) => prev.map((f) => {
+          const r = results.find(([id]) => id === f.id)?.[1];
+          return r?.renamed ? { ...f, name: r.renamed } : f;
+        }));
       }
     } finally {
       setAutoAnalyzing(false);
@@ -181,7 +188,13 @@ export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId }: 
       });
       if (error) throw error;
       if ((data as any)?.error) throw new Error((data as any).error);
-      setAnalysisResult({ file: f, analysis: (data as any).analysis || {} });
+      const analysis = ((data as any).analysis || {}) as Analysis;
+      const renamed = (data as any).renamed as string | null;
+      setAnalysisResult({ file: { ...f, name: renamed || f.name }, analysis });
+      setAnalyses((prev) => ({ ...prev, [f.id]: analysis }));
+      if (renamed) {
+        setFiles((prev) => prev.map((x) => (x.id === f.id ? { ...x, name: renamed } : x)));
+      }
       setAnalysisOpen(true);
     } catch (err: any) {
       console.error('[LeadDocumentsTab] analyze error', err);
