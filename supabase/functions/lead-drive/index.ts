@@ -308,6 +308,7 @@ Deno.serve(async (req) => {
           if (analysis.document_subtype) parts.push(`(${sanitize(analysis.document_subtype)})`);
           let base = parts.join(" — ").slice(0, 180);
           const desired = `${base}${ext}`;
+          console.log(`[lead-drive] rename attempt file=${file_id} from="${meta.name}" to="${desired}"`);
           if (desired && desired !== meta.name) {
             const rnRes = await fetch(`${GATEWAY}/files/${file_id}?fields=id,name`, {
               method: "PATCH",
@@ -318,9 +319,13 @@ Deno.serve(async (req) => {
               const rn = await rnRes.json();
               renamed = rn.name;
               meta.name = rn.name;
+              console.log(`[lead-drive] rename ok -> "${rn.name}"`);
             } else {
-              console.warn(`drive rename failed [${rnRes.status}]: ${await rnRes.text()}`);
+              const errText = await rnRes.text();
+              console.warn(`[lead-drive] drive rename failed [${rnRes.status}]: ${errText}`);
             }
+          } else {
+            console.log(`[lead-drive] rename skipped (already matches or empty)`);
           }
         }
       } catch (e) {
