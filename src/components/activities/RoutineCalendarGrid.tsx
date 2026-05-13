@@ -49,11 +49,13 @@ interface DragState {
   anchorMin?: number;
 }
 
-export function RoutineCalendarGrid({ blocks, availableTypes, onCreate, onUpdate, onRemove }: Props) {
+export function RoutineCalendarGrid({ blocks, availableTypes, onCreate, onUpdate, onRemove, userTeams = [], onAddType }: Props) {
   const [activeKey, setActiveKey] = useState<string>(availableTypes[0]?.key ?? '');
   useEffect(() => {
     if (!activeKey && availableTypes[0]) setActiveKey(availableTypes[0].key);
   }, [availableTypes, activeKey]);
+
+  const [editingBlock, setEditingBlock] = useState<{ block: TimeBlockConfig; rect: DOMRect } | null>(null);
 
   const colRefs = useRef<Record<number, HTMLDivElement | null>>({});
   const [drag, setDrag] = useState<DragState | null>(null);
