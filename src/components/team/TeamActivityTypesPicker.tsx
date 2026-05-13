@@ -162,3 +162,10 @@ export function TeamActivityTypesPicker({ teamId }: Props) {
                 </ScrollArea>
               )}
             </PopoverContent>
+          </Popover>
+        </div>
+      </div>
+    </div>
+  );
+}
+
