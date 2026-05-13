@@ -2453,6 +2453,7 @@ const ActivitiesPage = () => {
                                   top: block.topPx + 1,
                                   height: blockH,
                                 }}
+                                title={fullLabel}
                                 onClick={() => {
                                   setOpenFilterKey(null);
                                   setBlockSearchText('');
@@ -2461,10 +2462,6 @@ const ActivitiesPage = () => {
                               >
                                 {openCount === 0 && count > 0 ? (
                                   <div className="flex flex-col items-center justify-center w-full h-full gap-0.5 px-1">
-                                    <div
-                                      className="font-bold uppercase tracking-tight text-white/50 text-center leading-tight line-clamp-2 break-words"
-                                      style={{ fontSize: Math.max(7, Math.min(11, blockH * 0.12)) }}
-                                    >{fullLabel}</div>
                                     <span className="text-white/90 drop-shadow-md leading-none" style={{ fontSize: Math.max(16, Math.min(32, blockH * 0.32)) }}>✓</span>
                                     <span className="text-white/60 font-medium leading-none" style={{ fontSize: Math.max(8, Math.min(13, blockH * 0.13)) }}>{doneCount} feitas</span>
                                   </div>
