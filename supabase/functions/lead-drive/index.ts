@@ -512,7 +512,7 @@ Deno.serve(async (req) => {
     console.error("[lead-drive] error:", e);
     return new Response(
       JSON.stringify({ success: false, error: e instanceof Error ? e.message : String(e) }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
 });
