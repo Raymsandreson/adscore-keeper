@@ -32,17 +32,21 @@ export function useActivityTypes() {
 
   useEffect(() => { refetch(); }, [refetch]);
 
-  const addType = useCallback(async (label: string, color: string) => {
+  const addType = useCallback(async (label: string, color: string, teamIds: string[] = []) => {
     const key = `custom_${Date.now()}`;
-    const { error } = await supabase.from('activity_types').insert({
+    const payload: any = {
       key,
       label,
       color,
       display_order: types.length,
       is_active: true,
-    } as any);
-    if (error) toast.error('Erro ao adicionar tipo: ' + error.message);
-    else { toast.success('Tipo adicionado!'); await refetch(); }
+    };
+    if (teamIds.length > 0) payload.team_ids = teamIds;
+    const { data, error } = await supabase.from('activity_types').insert(payload).select().single();
+    if (error) { toast.error('Erro ao adicionar tipo: ' + error.message); return null; }
+    toast.success('Tipo adicionado!');
+    await refetch();
+    return data as ActivityType | null;
   }, [types.length, refetch]);
 
   const deleteType = useCallback(async (id: string) => {
