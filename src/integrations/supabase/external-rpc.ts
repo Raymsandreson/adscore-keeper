@@ -52,18 +52,21 @@ export async function getConversationSummaries(
     // vs "Karolyne Atendimento" cadastrado). A RPC usa '=' case-sensitive, então
     // tentamos múltiplas variantes (original, UPPER, lower) e mesclamos.
     const variants = Array.from(new Set([name, name.toUpperCase(), name.toLowerCase()]));
-    const { data, error } = await (externalSupabase as any)
+    // PostgREST aplica cap padrão de 1000 linhas em RPC. Sem isso conversas
+    // antigas somem da lista até receberem msg nova. Usamos range + limit para
+    // garantir que todas voltem (cinto e suspensório).
+    const { data, error, count } = await (externalSupabase as any)
       .rpc('get_conversation_summaries', {
         p_instance_names: variants,
         p_days_back: daysBack,
-      })
-      // PostgREST aplica cap padrão de 1000 linhas em RPC. Sem isso conversas
-      // antigas somem da lista até receberem msg nova. range alto = sem limite efetivo.
-      .range(0, 99999);
+      }, { count: 'exact' })
+      .range(0, 199999)
+      .limit(200000);
     if (error) {
       console.warn(`[getConversationSummaries] failed for "${name}":`, error.message);
       return [];
     }
+    console.log(`[getConversationSummaries] "${name}" → ${data?.length ?? 0} linhas (count exato: ${count ?? 'n/a'})`);
     // Normaliza instance_name de volta para o nome canônico cadastrado
     return (data || []).map((row: ConversationSummary) => ({ ...row, instance_name: name }));
   };
