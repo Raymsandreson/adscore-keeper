@@ -50,6 +50,7 @@ import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { useUserRole } from '@/hooks/useUserRole';
 import { MODULE_DEFINITIONS, AccessLevel, useModulePermissions } from '@/hooks/useModulePermissions';
 import { MemberDetailSheet } from './MemberDetailSheet';
+import { ReassignActivitiesDialog } from './ReassignActivitiesDialog';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -80,6 +81,7 @@ export function TeamManagement() {
   const [inviting, setInviting] = useState(false);
   const [selectedMember, setSelectedMember] = useState<TeamMember | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [removeTarget, setRemoveTarget] = useState<TeamMember | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [sendingNotifUserId, setSendingNotifUserId] = useState<string | null>(null);
   const [showPermissions, setShowPermissions] = useState(false);
@@ -568,28 +570,14 @@ export function TeamManagement() {
                       >
                         <Eye className="h-4 w-4" />
                       </Button>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="ghost" size="icon">
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Remover membro?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              Esta ação removerá {member.full_name || member.email} da equipe. 
-                              O usuário perderá acesso ao sistema.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => handleRemove(member.user_id)}>
-                              Remover
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        title="Remover membro"
+                        onClick={() => setRemoveTarget(member)}
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -604,6 +592,16 @@ export function TeamManagement() {
         onOpenChange={setDetailOpen}
         member={selectedMember}
         onUpdate={refetch}
+      />
+
+      <ReassignActivitiesDialog
+        open={!!removeTarget}
+        onOpenChange={(v) => { if (!v) setRemoveTarget(null); }}
+        member={removeTarget}
+        candidates={members}
+        onConfirm={async () => {
+          if (removeTarget) await handleRemove(removeTarget.user_id);
+        }}
       />
     </div>
   );
