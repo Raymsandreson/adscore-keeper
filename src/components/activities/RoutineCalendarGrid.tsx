@@ -1,6 +1,6 @@
 import { useRef, useState, useCallback, useMemo, useEffect } from 'react';
 import { cn } from '@/lib/utils';
-import { Trash2 } from 'lucide-react';
+import { Trash2, Copy } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { TimeBlockConfig } from './TimeBlockSettingsDialog';
 
