@@ -2356,7 +2356,7 @@ const ActivitiesPage = () => {
           })();
 
           return (
-            <div className="flex flex-col flex-1 overflow-hidden h-full">
+            <div className={cn("flex flex-col overflow-hidden h-full", isEditing ? "w-[220px] shrink-0 border-r" : "flex-1")}>
               {/* Weekly grid */}
               <div className={cn("overflow-auto", selectedBlockData ? "shrink-0 max-h-[45vh]" : "flex-1")}>
                 {/* Day headers */}
@@ -2571,10 +2571,8 @@ const ActivitiesPage = () => {
 
         {/* LEFT: Calendar + Activity list (chat-style) */}
         <div className={cn(
-          "flex flex-col overflow-hidden transition-all",
-          viewMode === 'matrix' ? "hidden" : "",
-          viewMode === 'blocks' ? "hidden" : "",
-          isEditing ? "hidden md:flex w-[400px] min-w-[340px] border-r" : "flex-1"
+          "flex-col overflow-hidden transition-all",
+          viewMode === 'matrix' || viewMode === 'blocks' ? "hidden" : (isEditing ? "hidden md:flex w-[400px] min-w-[340px] border-r" : "flex flex-1")
         )}>
           {/* Calendar - collapsible */}
           <div className="shrink-0 border-b bg-card/50">
