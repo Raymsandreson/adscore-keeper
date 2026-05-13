@@ -207,6 +207,19 @@ export function GlobalDatabaseSearch() {
         });
       });
 
+      // Legal cases
+      (casesRes.data || []).forEach((c: any) => {
+        mapped.push({
+          id: c.id,
+          type: 'case',
+          title: c.case_number || 'Caso',
+          subtitle: c.title || '',
+          extra: c.status || '',
+          date: c.updated_at,
+          raw: c,
+        });
+      });
+
       setResults(mapped);
     } catch (err) {
       console.error('Search error:', err);
