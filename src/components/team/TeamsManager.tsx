@@ -41,6 +41,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { toast } from 'sonner';
+import { TeamActivityTypesPicker } from './TeamActivityTypesPicker';
 
 const ALL_METRICS = [
   { key: 'replies', label: 'Respostas' },
