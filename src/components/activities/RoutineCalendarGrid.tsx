@@ -1,6 +1,6 @@
 import { useRef, useState, useCallback, useMemo, useEffect } from 'react';
 import { cn } from '@/lib/utils';
-import { Trash2 } from 'lucide-react';
+import { Trash2, Copy } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { TimeBlockConfig } from './TimeBlockSettingsDialog';
 
@@ -67,6 +67,16 @@ export function RoutineCalendarGrid({ blocks, availableTypes, onCreate, onUpdate
     return Math.max(MIN_HOUR * 60, Math.min(MAX_HOUR * 60, snap(minutes)));
   }, [totalHeight]);
 
+  const xToDay = useCallback((x: number): number | null => {
+    for (const day of DAYS) {
+      const col = colRefs.current[day.idx];
+      if (!col) continue;
+      const r = col.getBoundingClientRect();
+      if (x >= r.left && x <= r.right) return day.idx;
+    }
+    return null;
+  }, []);
+
   // Global mouse handlers
   useEffect(() => {
     if (!drag) return;
@@ -85,7 +95,14 @@ export function RoutineCalendarGrid({ blocks, availableTypes, onCreate, onUpdate
         if (newEnd > MAX_HOUR * 60) { newEnd = MAX_HOUR * 60; newStart = newEnd - dur; }
         const s = fromMin(newStart);
         const e2 = fromMin(newEnd);
-        onUpdate(d.blockId, { startHour: s.h, startMinute: s.m, endHour: e2.h, endMinute: e2.m });
+        // Detect day under cursor for horizontal drag
+        const targetDay = xToDay(e.clientX);
+        const patch: Partial<TimeBlockConfig> = { startHour: s.h, startMinute: s.m, endHour: e2.h, endMinute: e2.m };
+        if (targetDay != null && targetDay !== d.dayIdx) {
+          patch.days = [targetDay];
+          d.dayIdx = targetDay;
+        }
+        onUpdate(d.blockId, patch);
       } else if (d.mode === 'resize-end') {
         let newEnd = Math.max(d.initialStartMin + SNAP_MIN, cur);
         const s = fromMin(d.initialStartMin);
@@ -275,13 +292,13 @@ export function RoutineCalendarGrid({ blocks, availableTypes, onCreate, onUpdate
                     style={{ top, height }}
                     title={`${b.label} • ${fmt(b.startHour, b.startMinute ?? 0)}–${fmt(b.endHour, b.endMinute ?? 0)} — clique no X para excluir`}
                   >
-                    {/* Top resize handle (apenas 4px no topo, deixa espaço pro X) */}
+                    {/* Top resize handle */}
                     <div
                       onMouseDown={e => startBlockDrag(e, b, day.idx, 'resize-start')}
-                      className="absolute top-0 left-0 right-6 h-1 cursor-ns-resize z-10"
+                      className="absolute top-0 left-0 right-12 h-1 cursor-ns-resize z-10"
                     />
                     {/* Conteúdo */}
-                    <div className="px-1.5 py-1 pr-6">
+                    <div className="px-1.5 py-1 pr-12">
                       <div className="font-bold truncate leading-tight">{b.label}</div>
                       {height > 32 && (
                         <div className="opacity-90 leading-tight">
@@ -289,7 +306,22 @@ export function RoutineCalendarGrid({ blocks, availableTypes, onCreate, onUpdate
                         </div>
                       )}
                     </div>
-                    {/* Botão excluir — área grande, sempre visível, fica acima dos handles */}
+                    {/* Duplicar */}
+                    <button
+                      type="button"
+                      onMouseDown={e => { e.stopPropagation(); e.preventDefault(); }}
+                      onClick={e => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        onCreate({ ...b, blockId: newId() });
+                      }}
+                      className="absolute top-0 right-6 h-6 w-6 flex items-center justify-center bg-black/20 hover:bg-blue-500/90 transition-colors z-20"
+                      title="Duplicar bloco"
+                      aria-label="Duplicar bloco"
+                    >
+                      <Copy className="h-3 w-3" />
+                    </button>
+                    {/* Excluir */}
                     <button
                       type="button"
                       onMouseDown={e => { e.stopPropagation(); e.preventDefault(); }}
