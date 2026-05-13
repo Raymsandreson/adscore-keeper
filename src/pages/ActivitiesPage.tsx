@@ -2440,71 +2440,73 @@ const ActivitiesPage = () => {
                           const metaSize = Math.max(8, Math.min(12, Math.round(blockH * 0.08)));
 
                           return (
-                            <div
-                              key={bi}
-                              className={cn(
-                                'absolute left-0.5 right-0.5 sm:left-1 sm:right-1 rounded-lg cursor-pointer hover:opacity-90 transition-all shadow-sm flex flex-col items-center justify-center text-white overflow-hidden',
-                                bgColor,
-                                count === 0 && 'opacity-30',
-                                openCount === 0 && count > 0 && 'brightness-[0.72] saturate-[0.4] opacity-60',
-                                isSelected && 'ring-2 ring-foreground ring-offset-1'
-                              )}
-                              style={{
-                                top: block.topPx + 1,
-                                height: blockH,
-                              }}
-                              onClick={() => {
-                                setOpenFilterKey(null);
-                                setBlockSearchText('');
-                                setSelectedBlockKey(isSelected ? null : blockKey);
-                              }}
-                            >
+                            <div key={bi} className="contents">
                               <div
-                                className="font-bold uppercase tracking-tight opacity-95 px-1 text-center leading-tight line-clamp-2 break-words"
-                                style={{ fontSize: labelSize }}
-                              >{fullLabel}</div>
-                              <div
-                                className="font-extrabold leading-none tabular-nums drop-shadow-sm"
-                                style={{ fontSize: numberSize }}
-                              >{count}</div>
-                              {count > 0 && (
-                                <div
-                                  className="flex items-center gap-1.5 font-bold mt-0.5"
-                                  style={{ fontSize: metaSize }}
-                                >
-                                  <span className="text-red-700">○{openCount}</span>
-                                  <span className="text-emerald-700">✓{doneCount}</span>
-                                </div>
-                              )}
-                              <div
-                                className="font-medium opacity-80 mt-0.5"
-                                style={{ fontSize: Math.max(8, metaSize - 1) }}
+                                className={cn(
+                                  'absolute left-0.5 right-0.5 sm:left-1 sm:right-1 rounded-lg cursor-pointer hover:opacity-90 transition-all shadow-sm flex flex-col items-center justify-center text-white overflow-hidden',
+                                  bgColor,
+                                  count === 0 && 'opacity-30',
+                                  openCount === 0 && count > 0 && 'brightness-[0.55] saturate-[0.35] opacity-55',
+                                  isSelected && 'ring-2 ring-foreground ring-offset-1'
+                                )}
+                                style={{
+                                  top: block.topPx + 1,
+                                  height: blockH,
+                                }}
+                                onClick={() => {
+                                  setOpenFilterKey(null);
+                                  setBlockSearchText('');
+                                  setSelectedBlockKey(isSelected ? null : blockKey);
+                                }}
                               >
-                                {block.cfg.startHour}:{String(block.cfg.startMinute || 0).padStart(2, '0')}–{block.cfg.endHour}:{String(block.cfg.endMinute || 0).padStart(2, '0')}
-                              </div>
-                              {openCount === 0 && count > 0 && (
-                                <>
-                                  {/* Faixa "PARABÉNS" sobreposta em destaque */}
-                                  <div className="absolute inset-0 pointer-events-none z-20 flex items-center justify-center overflow-hidden">
-                                    <div
-                                      className="rotate-[-8deg] font-black uppercase tracking-widest text-yellow-300 drop-shadow-[0_2px_4px_rgba(0,0,0,0.7)] animate-in zoom-in-50 fade-in duration-500"
-                                      style={{
-                                        fontSize: Math.max(14, Math.min(40, Math.round(blockH * 0.32))),
-                                        textShadow: '0 0 12px rgba(250,204,21,0.5), 0 2px 4px rgba(0,0,0,0.6)',
-                                        WebkitTextStroke: '1px rgba(0,0,0,0.35)',
-                                      }}
-                                    >
-                                      Parabéns!
-                                    </div>
+                                <div
+                                  className="font-bold uppercase tracking-tight opacity-95 px-1 text-center leading-tight line-clamp-2 break-words"
+                                  style={{ fontSize: labelSize }}
+                                >{fullLabel}</div>
+                                <div
+                                  className="font-extrabold leading-none tabular-nums drop-shadow-sm"
+                                  style={{ fontSize: numberSize }}
+                                >{count}</div>
+                                {count > 0 && (
+                                  <div
+                                    className="flex items-center gap-1.5 font-bold mt-0.5"
+                                    style={{ fontSize: metaSize }}
+                                  >
+                                    <span className="text-red-700">○{openCount}</span>
+                                    <span className="text-emerald-700">✓{doneCount}</span>
                                   </div>
-                                  {/* Selo "Feito" no canto */}
-                                  <div className="absolute bottom-1 right-1 pointer-events-none z-30 flex items-center gap-0.5 pl-0.5 pr-1.5 py-0.5 rounded-full bg-gradient-to-br from-emerald-400/80 via-green-500/80 to-emerald-600/80 shadow-[0_2px_6px_rgba(16,185,129,0.4)] border border-white/60 ring-1 ring-emerald-300/40 rotate-[-12deg] origin-bottom-right">
-                                    <div className="rounded-full bg-white/90 p-[1px] shadow-inner">
+                                )}
+                                <div
+                                  className="font-medium opacity-80 mt-0.5"
+                                  style={{ fontSize: Math.max(8, metaSize - 1) }}
+                                >
+                                  {block.cfg.startHour}:{String(block.cfg.startMinute || 0).padStart(2, '0')}–{block.cfg.endHour}:{String(block.cfg.endMinute || 0).padStart(2, '0')}
+                                </div>
+                              </div>
+
+                              {/* Overlay "Parabéns" + selo — fora do bloco apagado, mantém o brilho */}
+                              {openCount === 0 && count > 0 && (
+                                <div
+                                  className="absolute left-0.5 right-0.5 sm:left-1 sm:right-1 pointer-events-none z-20 flex items-center justify-center overflow-hidden rounded-lg"
+                                  style={{ top: block.topPx + 1, height: blockH }}
+                                >
+                                  <div
+                                    className="rotate-[-8deg] font-black uppercase tracking-widest text-yellow-300 animate-in zoom-in-50 fade-in duration-500"
+                                    style={{
+                                      fontSize: Math.max(11, Math.min(22, Math.round(blockH * 0.18))),
+                                      textShadow: '0 0 10px rgba(250,204,21,0.7), 0 2px 4px rgba(0,0,0,0.85)',
+                                      WebkitTextStroke: '0.5px rgba(0,0,0,0.5)',
+                                    }}
+                                  >
+                                    Parabéns!
+                                  </div>
+                                  <div className="absolute bottom-1 right-1 flex items-center gap-0.5 pl-0.5 pr-1.5 py-0.5 rounded-full bg-gradient-to-br from-emerald-400 via-green-500 to-emerald-600 shadow-[0_2px_6px_rgba(16,185,129,0.5)] border border-white/70 ring-1 ring-emerald-300/50 rotate-[-12deg] origin-bottom-right">
+                                    <div className="rounded-full bg-white p-[1px] shadow-inner">
                                       <Check className="h-2.5 w-2.5 text-emerald-600" strokeWidth={4} />
                                     </div>
                                     <span className="text-[8px] font-extrabold text-white uppercase tracking-wider drop-shadow-sm">Feito</span>
                                   </div>
-                                </>
+                                </div>
                               )}
                             </div>
                           );
