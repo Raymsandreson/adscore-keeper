@@ -7,10 +7,11 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
+import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from '@/components/ui/command';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { remapToExternal, ensureRemapCache } from '@/integrations/supabase/uuid-remap';
 import { useActivityTypes } from '@/hooks/useActivityTypes';
-import { Loader2, AlertTriangle, ArrowRight, Filter } from 'lucide-react';
+import { Loader2, AlertTriangle, ArrowRight, Filter, Check, ChevronsUpDown } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface MemberLite {
