@@ -21,6 +21,7 @@ export function TeamActivityTypesPicker({ teamId }: Props) {
   const { types, loading, updateType } = useActivityTypes();
   const [expanded, setExpanded] = useState(false);
   const [savingKey, setSavingKey] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
 
   const linkedTypes = types.filter(t => (t.team_ids || []).includes(teamId));
 
