@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from '@/components/ui/alert-dialog';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from '@/components/ui/sheet';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -155,7 +156,12 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave, t
   const [editDescription, setEditDescription] = useState('');
 
   // Delete with migration state
-  const [deleteConfirm, setDeleteConfirm] = useState<{ type: ActivityType; linkedCount: number } | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    type: ActivityType;
+    activities: Array<{ id: string; title: string; description: string | null; status: string | null; scheduled_for: string | null; lead_id: string | null; lead_name?: string | null }>;
+    routines: Array<{ id: string; user_id: string; days: number[]; start_hour: number; start_minute: number; end_hour: number; end_minute: number; user_name?: string | null }>;
+  } | null>(null);
+  const [loadingLinked, setLoadingLinked] = useState(false);
   const [migrateToKey, setMigrateToKey] = useState('');
   const [deletingType, setDeletingType] = useState(false);
 
@@ -307,17 +313,59 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave, t
   };
 
   const handleDeleteCheck = async (type: ActivityType) => {
-    // Check if there are activities or routine blocks linked to this type
-    const [activitiesRes, blocksRes] = await Promise.all([
-      externalSupabase.from('lead_activities').select('id', { count: 'exact', head: true }).eq('activity_type', type.key),
-      supabase.from('user_timeblock_settings').select('id', { count: 'exact', head: true }).eq('activity_type', type.key),
-    ]);
-    const total = (activitiesRes.count || 0) + (blocksRes.count || 0);
-    if (total > 0) {
-      setDeleteConfirm({ type, linkedCount: total });
-      setMigrateToKey('');
-    } else {
-      await deleteType(type.id);
+    setLoadingLinked(true);
+    setDeleteConfirm({ type, activities: [], routines: [] });
+    setMigrateToKey('');
+    try {
+      const [activitiesRes, blocksRes] = await Promise.all([
+        externalSupabase
+          .from('lead_activities')
+          .select('id, title, description, status, scheduled_for, lead_id')
+          .eq('activity_type', type.key)
+          .order('scheduled_for', { ascending: false })
+          .limit(200),
+        supabase
+          .from('user_timeblock_settings')
+          .select('id, user_id, days, start_hour, start_minute, end_hour, end_minute')
+          .eq('activity_type', type.key),
+      ]);
+
+      const activities = (activitiesRes.data || []) as any[];
+      const routines = (blocksRes.data || []) as any[];
+
+      // Lookup lead names
+      const leadIds = Array.from(new Set(activities.map(a => a.lead_id).filter(Boolean)));
+      let leadMap: Record<string, string> = {};
+      if (leadIds.length > 0) {
+        const { data: leads } = await externalSupabase.from('leads').select('id, name').in('id', leadIds as string[]);
+        leadMap = Object.fromEntries((leads || []).map((l: any) => [l.id, l.name]));
+      }
+
+      // Lookup user names
+      const userIds = Array.from(new Set(routines.map(r => r.user_id).filter(Boolean)));
+      let userMap: Record<string, string> = {};
+      if (userIds.length > 0) {
+        const { data: profs } = await supabase.from('profiles').select('user_id, full_name, email').in('user_id', userIds as string[]);
+        userMap = Object.fromEntries((profs || []).map((p: any) => [p.user_id, p.full_name || p.email?.split('@')[0] || 'Usuário']));
+      }
+
+      const total = activities.length + routines.length;
+      if (total === 0) {
+        setDeleteConfirm(null);
+        await deleteType(type.id);
+        return;
+      }
+
+      setDeleteConfirm({
+        type,
+        activities: activities.map(a => ({ ...a, lead_name: a.lead_id ? leadMap[a.lead_id] : null })),
+        routines: routines.map(r => ({ ...r, user_name: userMap[r.user_id] || null })),
+      });
+    } catch (e: any) {
+      toast.error('Erro ao buscar vínculos: ' + (e.message || ''));
+      setDeleteConfirm(null);
+    } finally {
+      setLoadingLinked(false);
     }
   };
 
@@ -904,20 +952,99 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave, t
           </>
         )}
 
-        {/* Delete with migration dialog */}
-        <AlertDialog open={!!deleteConfirm} onOpenChange={(o) => !o && setDeleteConfirm(null)}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle className="flex items-center gap-2">
+        {/* Delete with migration side panel */}
+        <Sheet open={!!deleteConfirm} onOpenChange={(o) => !o && !deletingType && setDeleteConfirm(null)}>
+          <SheetContent side="right" className="w-full sm:max-w-xl flex flex-col gap-0 p-0">
+            <SheetHeader className="p-6 pb-4 border-b">
+              <SheetTitle className="flex items-center gap-2">
                 <AlertTriangle className="h-5 w-5 text-destructive" />
-                Tipo em uso
-              </AlertDialogTitle>
-              <AlertDialogDescription className="space-y-3">
-                <p>
-                  O tipo <strong>"{deleteConfirm?.type.label}"</strong> possui{' '}
-                  <strong>{deleteConfirm?.linkedCount}</strong> registro(s) vinculado(s) (atividades e/ou rotinas).
-                </p>
-                <p>Selecione para qual tipo deseja migrar antes de excluir:</p>
+                Tipo em uso — revise antes de excluir
+              </SheetTitle>
+              <SheetDescription>
+                O tipo <strong>"{deleteConfirm?.type.label}"</strong> possui{' '}
+                <strong>{(deleteConfirm?.activities.length ?? 0) + (deleteConfirm?.routines.length ?? 0)}</strong>{' '}
+                registro(s) vinculado(s). Confira abaixo o que será migrado.
+              </SheetDescription>
+            </SheetHeader>
+
+            <ScrollArea className="flex-1 px-6 py-4">
+              {loadingLinked ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {/* Activities */}
+                  <div>
+                    <h4 className="text-sm font-bold text-muted-foreground uppercase tracking-wide mb-2">
+                      Atividades ({deleteConfirm?.activities.length ?? 0})
+                    </h4>
+                    {deleteConfirm && deleteConfirm.activities.length > 0 ? (
+                      <div className="space-y-2">
+                        {deleteConfirm.activities.map(a => (
+                          <div key={a.id} className="rounded-lg border p-3 text-sm bg-muted/20">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex-1 min-w-0">
+                                <p className="font-medium truncate">{a.title || 'Sem título'}</p>
+                                {a.lead_name && (
+                                  <p className="text-xs text-muted-foreground truncate">Lead: {a.lead_name}</p>
+                                )}
+                                {a.description && (
+                                  <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{a.description}</p>
+                                )}
+                              </div>
+                              <div className="flex flex-col items-end gap-1 shrink-0">
+                                {a.status && (
+                                  <Badge variant="outline" className="text-[10px]">{a.status}</Badge>
+                                )}
+                                {a.scheduled_for && (
+                                  <span className="text-[10px] text-muted-foreground">
+                                    {new Date(a.scheduled_for).toLocaleDateString('pt-BR')}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground italic">Nenhuma atividade vinculada.</p>
+                    )}
+                  </div>
+
+                  {/* Routines */}
+                  <div>
+                    <h4 className="text-sm font-bold text-muted-foreground uppercase tracking-wide mb-2">
+                      Blocos de Rotina ({deleteConfirm?.routines.length ?? 0})
+                    </h4>
+                    {deleteConfirm && deleteConfirm.routines.length > 0 ? (
+                      <div className="space-y-2">
+                        {deleteConfirm.routines.map(r => {
+                          const fmt = (h: number, m: number) => `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+                          const dayLabels = (r.days || []).map(d => WEEK_DAYS[d]?.label).filter(Boolean).join(', ');
+                          return (
+                            <div key={r.id} className="rounded-lg border p-3 text-sm bg-muted/20">
+                              <p className="font-medium">{r.user_name || 'Usuário'}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {dayLabels || '—'} • {fmt(r.start_hour, r.start_minute || 0)}–{fmt(r.end_hour, r.end_minute || 0)}
+                              </p>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground italic">Nenhum bloco de rotina vinculado.</p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </ScrollArea>
+
+            <div className="border-t p-6 space-y-3 bg-background">
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                  Migrar para qual tipo?
+                </label>
                 <Select value={migrateToKey} onValueChange={setMigrateToKey}>
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione o tipo de destino..." />
@@ -935,21 +1062,23 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave, t
                       ))}
                   </SelectContent>
                 </Select>
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel disabled={deletingType}>Cancelar</AlertDialogCancel>
-              <AlertDialogAction
-                onClick={handleDeleteWithMigration}
-                disabled={!migrateToKey || deletingType}
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              >
-                {deletingType ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Trash2 className="h-4 w-4 mr-1" />}
-                Migrar e Excluir
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+              </div>
+              <SheetFooter className="flex-row justify-end gap-2 sm:gap-2">
+                <Button variant="outline" disabled={deletingType} onClick={() => setDeleteConfirm(null)}>
+                  Cancelar
+                </Button>
+                <Button
+                  onClick={handleDeleteWithMigration}
+                  disabled={!migrateToKey || deletingType || loadingLinked}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  {deletingType ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Trash2 className="h-4 w-4 mr-1" />}
+                  Migrar e Excluir
+                </Button>
+              </SheetFooter>
+            </div>
+          </SheetContent>
+        </Sheet>
 
         {/* Save footer */}
         <div className="flex justify-end gap-2 pt-2 border-t">
