@@ -113,23 +113,34 @@ export function useTimeBlockSettings(targetUserId?: string) {
 
   useEffect(() => {
     if (!effectiveUserId) { setLoading(false); return; }
-    fetchSettings(effectiveUserId, true);
+    let cancelled = false;
+    let channel: any = null;
 
-    const channel = (db as any)
-      .channel(`tb-settings-${effectiveUserId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'user_timeblock_settings',
-          filter: `user_id=eq.${effectiveUserId}`,
-        },
-        () => { fetchSettings(effectiveUserId, false); }
-      )
-      .subscribe();
+    (async () => {
+      try { await ensureExternalSession(); } catch {}
+      if (cancelled) return;
+      await fetchSettings(effectiveUserId, true);
+      if (cancelled) return;
 
-    return () => { (db as any).removeChannel(channel); };
+      channel = (db as any)
+        .channel(`tb-settings-${effectiveUserId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'user_timeblock_settings',
+            filter: `user_id=eq.${effectiveUserId}`,
+          },
+          () => { fetchSettings(effectiveUserId, false); }
+        )
+        .subscribe();
+    })();
+
+    return () => {
+      cancelled = true;
+      if (channel) (db as any).removeChannel(channel);
+    };
   }, [effectiveUserId, fetchSettings]);
 
   /**
