@@ -313,17 +313,59 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave, t
   };
 
   const handleDeleteCheck = async (type: ActivityType) => {
-    // Check if there are activities or routine blocks linked to this type
-    const [activitiesRes, blocksRes] = await Promise.all([
-      externalSupabase.from('lead_activities').select('id', { count: 'exact', head: true }).eq('activity_type', type.key),
-      supabase.from('user_timeblock_settings').select('id', { count: 'exact', head: true }).eq('activity_type', type.key),
-    ]);
-    const total = (activitiesRes.count || 0) + (blocksRes.count || 0);
-    if (total > 0) {
-      setDeleteConfirm({ type, linkedCount: total });
-      setMigrateToKey('');
-    } else {
-      await deleteType(type.id);
+    setLoadingLinked(true);
+    setDeleteConfirm({ type, activities: [], routines: [] });
+    setMigrateToKey('');
+    try {
+      const [activitiesRes, blocksRes] = await Promise.all([
+        externalSupabase
+          .from('lead_activities')
+          .select('id, title, description, status, scheduled_for, lead_id')
+          .eq('activity_type', type.key)
+          .order('scheduled_for', { ascending: false })
+          .limit(200),
+        supabase
+          .from('user_timeblock_settings')
+          .select('id, user_id, days, start_hour, start_minute, end_hour, end_minute')
+          .eq('activity_type', type.key),
+      ]);
+
+      const activities = (activitiesRes.data || []) as any[];
+      const routines = (blocksRes.data || []) as any[];
+
+      // Lookup lead names
+      const leadIds = Array.from(new Set(activities.map(a => a.lead_id).filter(Boolean)));
+      let leadMap: Record<string, string> = {};
+      if (leadIds.length > 0) {
+        const { data: leads } = await externalSupabase.from('leads').select('id, name').in('id', leadIds as string[]);
+        leadMap = Object.fromEntries((leads || []).map((l: any) => [l.id, l.name]));
+      }
+
+      // Lookup user names
+      const userIds = Array.from(new Set(routines.map(r => r.user_id).filter(Boolean)));
+      let userMap: Record<string, string> = {};
+      if (userIds.length > 0) {
+        const { data: profs } = await supabase.from('profiles').select('user_id, full_name, email').in('user_id', userIds as string[]);
+        userMap = Object.fromEntries((profs || []).map((p: any) => [p.user_id, p.full_name || p.email?.split('@')[0] || 'Usuário']));
+      }
+
+      const total = activities.length + routines.length;
+      if (total === 0) {
+        setDeleteConfirm(null);
+        await deleteType(type.id);
+        return;
+      }
+
+      setDeleteConfirm({
+        type,
+        activities: activities.map(a => ({ ...a, lead_name: a.lead_id ? leadMap[a.lead_id] : null })),
+        routines: routines.map(r => ({ ...r, user_name: userMap[r.user_id] || null })),
+      });
+    } catch (e: any) {
+      toast.error('Erro ao buscar vínculos: ' + (e.message || ''));
+      setDeleteConfirm(null);
+    } finally {
+      setLoadingLinked(false);
     }
   };
 
