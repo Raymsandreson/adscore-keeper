@@ -2460,8 +2460,9 @@ const ActivitiesPage = () => {
                                 }}
                               >
                                 {openCount === 0 && count > 0 ? (
-                                  <div className="flex items-center justify-center w-full h-full">
-                                    <span className="text-white/90 drop-shadow-md" style={{ fontSize: Math.max(20, Math.min(48, blockH * 0.45)) }}>✓</span>
+                                  <div className="flex flex-col items-center justify-center w-full h-full gap-0.5">
+                                    <span className="text-white/90 drop-shadow-md leading-none" style={{ fontSize: Math.max(18, Math.min(40, blockH * 0.38)) }}>✓</span>
+                                    <span className="text-white/60 font-medium leading-none" style={{ fontSize: Math.max(8, Math.min(14, blockH * 0.14)) }}>{doneCount} feitas</span>
                                   </div>
                                 ) : (
                                   <>
