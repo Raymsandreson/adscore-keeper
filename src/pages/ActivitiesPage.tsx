@@ -2272,23 +2272,54 @@ const ActivitiesPage = () => {
               return cfg?.days.includes(dayIdx) ?? false;
             });
 
-            return activeSettings
-              .filter(cfg => cfg.days.includes(dayIdx))
-              .map(cfg => {
-                const startM = cfg.startMinute || 0;
-                const endM = cfg.endMinute || 0;
-                const startDecimal = cfg.startHour + startM / 60;
-                const endDecimal = cfg.endHour + endM / 60;
-                const topPx = (startDecimal - minHour) * HOUR_HEIGHT;
-                const heightPx = (endDecimal - startDecimal) * HOUR_HEIGHT;
+            const dayConfigs = activeSettings.filter(cfg => cfg.days.includes(dayIdx));
+            const configuredTypes = new Set(dayConfigs.map(c => c.activityType));
 
-                const items = [
-                  ...dayActivities.filter(a => getEffectiveType(a) === cfg.activityType),
-                  ...noDateActivities.filter(a => getEffectiveType(a) === cfg.activityType),
-                ];
+            const configuredBlocks = dayConfigs.map(cfg => {
+              const startM = cfg.startMinute || 0;
+              const endM = cfg.endMinute || 0;
+              const startDecimal = cfg.startHour + startM / 60;
+              const endDecimal = cfg.endHour + endM / 60;
+              const topPx = (startDecimal - minHour) * HOUR_HEIGHT;
+              const heightPx = (endDecimal - startDecimal) * HOUR_HEIGHT;
 
-                return { cfg, items, topPx, heightPx };
+              const items = [
+                ...dayActivities.filter(a => getEffectiveType(a) === cfg.activityType),
+                ...noDateActivities.filter(a => getEffectiveType(a) === cfg.activityType),
+              ];
+
+              return { cfg, items, topPx, heightPx };
+            });
+
+            // Fallback: atividades do dia cujo tipo NÃO está configurado na rotina deste dia.
+            // Mostra um bloco sintético "Sem rotina" ocupando o último horário do dia,
+            // pra elas não sumirem da visualização quando a rotina está vazia/incompleta.
+            const fallbackItems = dayActivities.filter(a => !configuredTypes.has(getEffectiveType(a)));
+            if (fallbackItems.length > 0) {
+              const fbStart = dayConfigs.length > 0
+                ? Math.max(...dayConfigs.map(c => c.endHour + (c.endMinute || 0) / 60))
+                : minHour;
+              const fbEnd = Math.min(maxHour, Math.max(fbStart + 1, fbStart + 1));
+              configuredBlocks.push({
+                cfg: {
+                  blockId: `__fallback_${dayIdx}`,
+                  activityType: '__no_routine__',
+                  label: 'Sem rotina (outras atvs)',
+                  color: 'bg-muted-foreground',
+                  days: [dayIdx],
+                  startHour: Math.floor(fbStart),
+                  startMinute: Math.round((fbStart % 1) * 60),
+                  endHour: Math.floor(fbEnd),
+                  endMinute: Math.round((fbEnd % 1) * 60),
+                  isCustom: false,
+                } as any,
+                items: fallbackItems,
+                topPx: (fbStart - minHour) * HOUR_HEIGHT,
+                heightPx: (fbEnd - fbStart) * HOUR_HEIGHT,
               });
+            }
+
+            return configuredBlocks;
           };
 
           const unscheduled = displayedActivities.filter(a => {
