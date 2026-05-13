@@ -104,8 +104,11 @@ export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId }: 
       });
       if (error) throw error;
       if ((data as any)?.error) throw new Error((data as any).error);
-      setFiles(data.files || []);
+      const list: DriveFile[] = data.files || [];
+      setFiles(list);
       setFolderUrl(data.folder_url);
+      setAnalyses({});
+      runAutoAnalysis(list);
     } catch (e: any) {
       console.error('[LeadDocumentsTab] load error', e);
       toast.error(`Erro ao carregar documentos: ${e.message || e}`);
