@@ -2374,13 +2374,13 @@ const ActivitiesPage = () => {
                 </div>
 
                 {/* Time grid with proportional blocks */}
-                <div className="relative flex">
+                <div className="relative flex min-w-max sm:min-w-0">
                   {/* Hour labels */}
-                  <div className="w-10 shrink-0 relative" style={{ height: totalHeight }}>
+                  <div className="w-8 sm:w-10 shrink-0 relative" style={{ height: totalHeight }}>
                     {WEEK_HOURS.map((hour) => (
                       <div
                         key={hour}
-                        className="absolute left-0 w-full text-[10px] text-muted-foreground font-medium pl-1"
+                        className="absolute left-0 w-full text-[9px] sm:text-[10px] text-muted-foreground font-medium pl-1"
                         style={{ top: (hour - minHour) * HOUR_HEIGHT }}
                       >
                         {hour}h
