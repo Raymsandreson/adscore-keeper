@@ -62,14 +62,17 @@ export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId }: 
   const [analyses, setAnalyses] = useState<Record<string, Analysis>>({});
   const [autoAnalyzing, setAutoAnalyzing] = useState(false);
 
-  const analyzeOne = useCallback(async (fileId: string): Promise<Analysis | null> => {
+  const analyzeOne = useCallback(async (fileId: string): Promise<{ analysis: Analysis; renamed: string | null } | null> => {
     try {
       const { data, error } = await supabase.functions.invoke('lead-drive', {
         body: { action: 'analyze_file', lead_id: leadId, lead_name: leadName, file_id: fileId },
       });
       if (error) throw error;
       if ((data as any)?.error) throw new Error((data as any).error);
-      return ((data as any).analysis || {}) as Analysis;
+      return {
+        analysis: ((data as any).analysis || {}) as Analysis,
+        renamed: ((data as any).renamed as string | null) ?? null,
+      };
     } catch (e) {
       console.warn('[LeadDocumentsTab] auto analyze failed', fileId, e);
       return null;
