@@ -59,39 +59,14 @@ function MemberRoutineView({ userId, memberName }: { userId: string; memberName:
         </div>
       </div>
 
-      {/* Grade visual da rotina */}
-      <div className="rounded-lg border p-4 bg-muted/10">
-        <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-3">Grade Semanal</p>
-        <div className="grid grid-cols-5 gap-2">
-          {WEEK_DAYS.map(d => (
-            <div key={d.idx} className="space-y-1.5">
-              <div className="text-center text-xs font-bold text-muted-foreground">{d.label}</div>
-              {configs
-                .filter(c => c.days.includes(d.idx))
-                .sort((a, b) => (a.startHour + (a.startMinute ?? 0) / 60) - (b.startHour + (b.startMinute ?? 0) / 60))
-                .map(c => {
-                  const fmt = (h: number, m: number = 0) => `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
-                  return (
-                    <div
-                      key={c.blockId || `${c.activityType}_${c.startHour}`}
-                      className={cn('rounded-md px-2 py-1.5 text-white text-[10px] font-semibold', c.color)}
-                      title={c.label}
-                    >
-                      <div className="break-words leading-tight">{c.label}</div>
-                      <div className="opacity-80">{fmt(c.startHour, c.startMinute)}–{fmt(c.endHour, c.endMinute)}</div>
-                    </div>
-                  );
-                })
-              }
-              {configs.filter(c => c.days.includes(d.idx)).length === 0 && (
-                <div className="rounded-md border border-dashed border-muted-foreground/20 h-10 flex items-center justify-center">
-                  <span className="text-[9px] text-muted-foreground/40">vazio</span>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
+      {/* Calendário visual estilo Google Calendar — clicar/arrastar/estender */}
+      <RoutineCalendarGrid
+        blocks={localBlocks}
+        availableTypes={availableTypes}
+        onCreate={onCreate}
+        onUpdate={onUpdate}
+        onRemove={onRemove}
+      />
 
       {/* Resumo dos blocos — agrupado por tipo */}
       <div className="flex flex-wrap gap-2">
