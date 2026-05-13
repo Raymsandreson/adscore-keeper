@@ -2483,6 +2483,87 @@ const ActivitiesPage = () => {
                   </div>
                 )}
               </div>
+
+              {/* Painel de atividades do bloco selecionado (abaixo da grade) */}
+              {selectedBlockData && (
+                <div className="flex-1 min-h-0 border-t flex flex-col overflow-hidden bg-card animate-in fade-in slide-in-from-bottom-2 duration-200">
+                  <div className={cn('px-3 py-2 text-white flex items-center justify-between', selectedBlockData.cfg.color || 'bg-muted-foreground')}>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-bold truncate">{selectedBlockData.cfg.label}</p>
+                      <p className="text-[10px] opacity-80">
+                        {format(selectedBlockData.dayDate, 'EEEE, dd/MM', { locale: ptBR })} • {selectedBlockData.cfg.startHour}h–{selectedBlockData.cfg.endHour}h
+                      </p>
+                    </div>
+                    <button
+                      className="text-white/80 hover:text-white ml-2 shrink-0"
+                      onClick={() => { setSelectedBlockKey(null); setBlockSearchText(''); }}
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                  <div className="px-2 py-1.5 border-b">
+                    <div className="relative">
+                      <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                      <Input
+                        placeholder="Buscar atividade..."
+                        value={blockSearchText}
+                        onChange={e => setBlockSearchText(e.target.value)}
+                        className="h-7 pl-7 text-xs"
+                      />
+                    </div>
+                  </div>
+                  <ScrollArea className="flex-1 min-h-0">
+                    {(() => {
+                      const searchLower = blockSearchText.toLowerCase();
+                      const filtered = blockSearchText
+                        ? selectedBlockData.items.filter(a =>
+                            (a.title || '').toLowerCase().includes(searchLower) ||
+                            (a.current_status_notes || '').toLowerCase().includes(searchLower) ||
+                            (a.what_was_done || '').toLowerCase().includes(searchLower) ||
+                            (a.next_steps || '').toLowerCase().includes(searchLower) ||
+                            (a.notes || '').toLowerCase().includes(searchLower) ||
+                            (a.lead_name || '').toLowerCase().includes(searchLower)
+                          )
+                        : selectedBlockData.items;
+                      if (filtered.length === 0) {
+                        return (
+                          <div className="px-3 py-8 text-center text-xs text-muted-foreground">
+                            {blockSearchText ? 'Nenhum resultado encontrado' : 'Nenhuma atividade neste bloco'}
+                          </div>
+                        );
+                      }
+                      return (
+                        <div className="divide-y">
+                          {filtered.map(a => (
+                            <div
+                              key={a.id}
+                              className={cn(
+                                "px-3 py-2 transition-colors hover:bg-muted/50 cursor-pointer flex items-start gap-2",
+                                selectedActivityId === a.id && "bg-primary/10"
+                              )}
+                              onClick={() => handleOpenEdit(a)}
+                            >
+                              <span className={cn('mt-1 h-2 w-2 rounded-full shrink-0', selectedBlockData.cfg.color || 'bg-muted-foreground')} />
+                              <div className="min-w-0 flex-1">
+                                <p className="text-xs font-medium truncate">{a.title}</p>
+                                <div className="flex items-center gap-1.5 mt-0.5">
+                                  {a.lead_name && <span className="text-[10px] text-muted-foreground truncate max-w-[240px]">📁 {a.lead_name}</span>}
+                                  <Badge variant={a.status === 'concluida' ? 'default' : 'outline'} className="text-[9px] px-1 py-0 h-4">
+                                    {a.status === 'concluida' ? '✓' : a.status === 'em_andamento' ? '▶' : '○'}
+                                  </Badge>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
+                  </ScrollArea>
+                  <div className="px-3 py-1.5 border-t text-xs text-muted-foreground text-center shrink-0">
+                    {selectedBlockData.items.length} atividade{selectedBlockData.items.length !== 1 ? 's' : ''}
+                  </div>
+                </div>
+              )}
             </div>
           );
         })()}
