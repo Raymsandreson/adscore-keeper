@@ -77,13 +77,12 @@ export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId }: 
   }, [leadId, leadName]);
 
   const runAutoAnalysis = useCallback(async (list: DriveFile[]) => {
-    const pending = list.filter((f) => !analyses[f.id]);
-    if (pending.length === 0) return;
+    if (list.length === 0) return;
     setAutoAnalyzing(true);
     try {
       const concurrency = 3;
-      for (let i = 0; i < pending.length; i += concurrency) {
-        const batch = pending.slice(i, i + concurrency);
+      for (let i = 0; i < list.length; i += concurrency) {
+        const batch = list.slice(i, i + concurrency);
         const results = await Promise.all(batch.map((f) => analyzeOne(f.id).then((a) => [f.id, a] as const)));
         setAnalyses((prev) => {
           const next = { ...prev };
@@ -94,7 +93,7 @@ export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId }: 
     } finally {
       setAutoAnalyzing(false);
     }
-  }, [analyses, analyzeOne]);
+  }, [analyzeOne]);
 
   const load = useCallback(async () => {
     setLoading(true);
