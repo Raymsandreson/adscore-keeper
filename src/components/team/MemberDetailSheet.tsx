@@ -45,6 +45,7 @@ import { toast } from 'sonner';
 import { format, formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
+import { MemberOpenActivities } from './MemberOpenActivities';
 
 interface MemberDetailSheetProps {
   open: boolean;
