@@ -93,6 +93,7 @@ export function RoutineCalendarGrid({ blocks, availableTypes, onCreate, onUpdate
           d.dayIdx = targetDay;
         }
         onUpdate(d.blockId, patch);
+      } else if (d.mode === 'resize-end') {
         let newEnd = Math.max(d.initialStartMin + SNAP_MIN, cur);
         const s = fromMin(d.initialStartMin);
         const e2 = fromMin(newEnd);
