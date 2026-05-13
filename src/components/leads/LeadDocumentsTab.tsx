@@ -59,6 +59,42 @@ export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId }: 
   const [analysisResult, setAnalysisResult] = useState<{ file: DriveFile; analysis: Analysis } | null>(null);
   const [reprocessing, setReprocessing] = useState(false);
   const [importGroupOpen, setImportGroupOpen] = useState(false);
+  const [analyses, setAnalyses] = useState<Record<string, Analysis>>({});
+  const [autoAnalyzing, setAutoAnalyzing] = useState(false);
+
+  const analyzeOne = useCallback(async (fileId: string): Promise<Analysis | null> => {
+    try {
+      const { data, error } = await supabase.functions.invoke('lead-drive', {
+        body: { action: 'analyze_file', lead_id: leadId, lead_name: leadName, file_id: fileId },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      return ((data as any).analysis || {}) as Analysis;
+    } catch (e) {
+      console.warn('[LeadDocumentsTab] auto analyze failed', fileId, e);
+      return null;
+    }
+  }, [leadId, leadName]);
+
+  const runAutoAnalysis = useCallback(async (list: DriveFile[]) => {
+    const pending = list.filter((f) => !analyses[f.id]);
+    if (pending.length === 0) return;
+    setAutoAnalyzing(true);
+    try {
+      const concurrency = 3;
+      for (let i = 0; i < pending.length; i += concurrency) {
+        const batch = pending.slice(i, i + concurrency);
+        const results = await Promise.all(batch.map((f) => analyzeOne(f.id).then((a) => [f.id, a] as const)));
+        setAnalyses((prev) => {
+          const next = { ...prev };
+          for (const [id, a] of results) if (a) next[id] = a;
+          return next;
+        });
+      }
+    } finally {
+      setAutoAnalyzing(false);
+    }
+  }, [analyses, analyzeOne]);
 
   const load = useCallback(async () => {
     setLoading(true);
