@@ -20,6 +20,7 @@ import { useActivityTypes, ActivityType } from '@/hooks/useActivityTypes';
 import { useUserRole } from '@/hooks/useUserRole';
 import { ActivityProcessGoalsConfig, ProcessGoalEntry } from './ActivityProcessGoalsConfig';
 import { useRoutineProcessGoals } from '@/hooks/useRoutineProcessGoals';
+import { useUserTeams } from '@/hooks/useUserTeams';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 /** One time-slot block (a type can have multiple) */
