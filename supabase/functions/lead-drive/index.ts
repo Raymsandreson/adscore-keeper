@@ -316,7 +316,7 @@ Deno.serve(async (req) => {
           },
           renamed: false,
           skipped_reason: `unsupported_mime:${meta.mimeType}`,
-        }), { headers: { ...cors, "Content-Type": "application/json" } });
+        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
       const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
