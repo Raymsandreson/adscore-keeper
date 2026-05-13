@@ -2395,7 +2395,7 @@ const ActivitiesPage = () => {
                       <div
                         key={dayIdx}
                         className={cn(
-                          'flex-1 border-l relative',
+                          'flex-1 min-w-[64px] sm:min-w-0 border-l relative',
                           isSameDay(dayDate, today) && 'bg-primary/5',
                         )}
                         style={{ height: totalHeight }}
