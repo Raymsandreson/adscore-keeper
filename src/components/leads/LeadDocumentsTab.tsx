@@ -286,47 +286,84 @@ export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId }: 
           <div className="mt-1 text-xs">Use "Enviar arquivo" para adicionar.</div>
         </div>
       ) : (
-        <div className="border rounded-lg divide-y">
-          {files.map((f) => (
-            <div key={f.id} className="flex items-center gap-3 p-3 hover:bg-muted/30">
-              {f.iconLink ? (
-                <img src={f.iconLink} alt="" className="h-5 w-5" />
-              ) : (
-                <FileText className="h-5 w-5 text-muted-foreground" />
-              )}
-              <div className="flex-1 min-w-0">
-                <a
-                  href={f.webViewLink}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-sm font-medium truncate hover:underline block"
-                >
-                  {f.name}
-                </a>
-                <div className="text-xs text-muted-foreground">
-                  {new Date(f.modifiedTime).toLocaleString('pt-BR')} {f.size && `· ${formatBytes(f.size)}`}
-                </div>
+        <TooltipProvider delayDuration={150}>
+          <div className="border rounded-lg divide-y">
+            {autoAnalyzing && (
+              <div className="px-3 py-2 text-xs text-muted-foreground flex items-center gap-2 bg-muted/20">
+                <Loader2 className="h-3 w-3 animate-spin" /> Analisando documentos com IA…
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handleAnalyze(f)}
-                disabled={analyzingId === f.id}
-                title="Analisar com IA"
-              >
-                {analyzingId === f.id ? (
-                  <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
-                ) : (
-                  <Sparkles className="h-3.5 w-3.5 mr-1" />
-                )}
-                Analisar com IA
-              </Button>
-              <Button variant="ghost" size="icon" onClick={() => handleDelete(f)}>
-                <Trash2 className="h-4 w-4 text-destructive" />
-              </Button>
-            </div>
-          ))}
-        </div>
+            )}
+            {files.map((f) => {
+              const a = analyses[f.id];
+              const smartLabel = a?.document_type
+                ? `${a.document_type}${a.holder_name ? ' — ' + a.holder_name : ''}`
+                : null;
+              const row = (
+                <div key={f.id} className="flex items-center gap-3 p-3 hover:bg-muted/30">
+                  {f.iconLink ? (
+                    <img src={f.iconLink} alt="" className="h-5 w-5" />
+                  ) : (
+                    <FileText className="h-5 w-5 text-muted-foreground" />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <a
+                      href={f.webViewLink}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-sm font-medium truncate hover:underline block"
+                    >
+                      {smartLabel || f.name}
+                    </a>
+                    <div className="text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
+                      <span>{new Date(f.modifiedTime).toLocaleString('pt-BR')}{f.size && ` · ${formatBytes(f.size)}`}</span>
+                      {smartLabel && <span className="opacity-60 truncate">· {f.name}</span>}
+                      {!a && autoAnalyzing && (
+                        <span className="inline-flex items-center gap-1 text-primary/70">
+                          <Loader2 className="h-3 w-3 animate-spin" /> IA…
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleAnalyze(f)}
+                    disabled={analyzingId === f.id}
+                    title="Ver análise detalhada"
+                  >
+                    {analyzingId === f.id ? (
+                      <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                    ) : (
+                      <Sparkles className="h-3.5 w-3.5 mr-1" />
+                    )}
+                    Detalhes IA
+                  </Button>
+                  <Button variant="ghost" size="icon" onClick={() => handleDelete(f)}>
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>
+                </div>
+              );
+              if (!a?.description && !a?.document_type) return row;
+              return (
+                <Tooltip key={f.id}>
+                  <TooltipTrigger asChild>{row}</TooltipTrigger>
+                  <TooltipContent side="left" className="max-w-sm">
+                    <div className="space-y-1 text-xs">
+                      {a.document_type && (
+                        <div className="font-semibold">
+                          {a.document_type}
+                          {a.holder_name ? ` — ${a.holder_name}` : ''}
+                        </div>
+                      )}
+                      {a.holder_cpf && <div className="font-mono opacity-80">CPF: {a.holder_cpf}</div>}
+                      {a.description && <div className="leading-relaxed opacity-90">{a.description}</div>}
+                    </div>
+                  </TooltipContent>
+                </Tooltip>
+              );
+            })}
+          </div>
+        </TooltipProvider>
       )}
 
       <Dialog open={analysisOpen} onOpenChange={setAnalysisOpen}>
