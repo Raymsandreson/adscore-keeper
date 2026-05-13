@@ -154,7 +154,11 @@ function extractClientFirstName(raw: string): string {
 const ActivitiesPage = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { user } = useAuthContext();
+  const { user, profile } = useAuthContext();
+  const [celebrateBlock, setCelebrateBlock] = useState<{ label: string; color: string } | null>(null);
+  const celebratedBlocksRef = useRef<Set<string>>(new Set());
+  const celebrationInitRef = useRef(false);
+  useEffect(() => { celebrationInitRef.current = true; }, []);
   const { activities, loading, fetchActivities: _fetchActivities, createActivity, updateActivity, completeActivity, deleteActivity } = useLeadActivities();
   const refreshCountsRef = useRef<(() => Promise<void>) | null>(null);
   const fetchActivities = useCallback(async (params?: Parameters<typeof _fetchActivities>[0]) => {
