@@ -2356,7 +2356,7 @@ const ActivitiesPage = () => {
           })();
 
           return (
-            <div className="flex flex-col flex-1 overflow-hidden h-full">
+            <div className={cn("flex flex-col overflow-hidden h-full", isEditing ? "w-[220px] shrink-0 border-r" : "flex-1")}>
               {/* Weekly grid */}
               <div className={cn("overflow-auto", selectedBlockData ? "shrink-0 max-h-[45vh]" : "flex-1")}>
                 {/* Day headers */}
