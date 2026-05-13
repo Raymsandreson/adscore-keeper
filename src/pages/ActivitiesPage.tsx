@@ -2453,6 +2453,7 @@ const ActivitiesPage = () => {
                                   top: block.topPx + 1,
                                   height: blockH,
                                 }}
+                                title={fullLabel}
                                 onClick={() => {
                                   setOpenFilterKey(null);
                                   setBlockSearchText('');
