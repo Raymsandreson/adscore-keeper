@@ -2473,7 +2473,7 @@ const ActivitiesPage = () => {
                         {/* Proportional blocks */}
                         {blocks.map((block, bi) => {
                           const bgColor = block.cfg.color || 'bg-muted-foreground';
-                          const abbreviation = block.cfg.label.slice(0, 4).toUpperCase();
+                          const fullLabel = block.cfg.label;
                           const count = block.items.length;
                           const openCount = block.items.filter(a => a.status !== 'concluida').length;
                           const doneCount = count - openCount;
