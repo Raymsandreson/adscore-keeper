@@ -223,6 +223,66 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     return () => { cancelled = true; };
   }, [conversation.lead_id]);
 
+  // Auto-fetch de histórico em background quando a instância da conversa
+  // teve uma desconexão recente (últimos 7 dias) que cruza com a janela de
+  // atividade desta conversa. Dispara silenciosamente, no máximo 1x por
+  // (phone+instance) por sessão, com count=20 (leve).
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const phone = conversation.phone;
+      const instanceName = conversation.instance_name;
+      if (!phone || !instanceName) return;
+
+      const sessionKey = `wa-auto-history:${phone}__${instanceName.toLowerCase()}`;
+      try {
+        if (sessionStorage.getItem(sessionKey)) return;
+      } catch {}
+
+      try {
+        // Janela da conversa (com folga de 1h dos dois lados)
+        const lastAt = conversation.last_message_at
+          ? new Date(conversation.last_message_at)
+          : new Date();
+        const convStart = new Date(lastAt.getTime() - 60 * 60 * 1000).toISOString();
+        const convEnd = new Date(lastAt.getTime() + 60 * 60 * 1000).toISOString();
+        const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+        // Procura desconexão da instância que cruza com a janela da conversa
+        const { data: disconnects, error } = await externalSupabase
+          .from('instance_connection_log' as any)
+          .select('disconnected_at, reconnected_at')
+          .ilike('instance_name', instanceName)
+          .gte('disconnected_at', sevenDaysAgo)
+          .lte('disconnected_at', convEnd)
+          .limit(5);
+
+        if (cancelled || error || !disconnects || disconnects.length === 0) return;
+
+        // Confere se alguma desconexão termina (ou continua aberta) após o
+        // início da janela — i.e. instância estava caída quando a conversa
+        // estava ativa.
+        const overlaps = (disconnects as any[]).some((d) => {
+          const recoveredAt = d.reconnected_at ? new Date(d.reconnected_at).getTime() : Date.now();
+          return recoveredAt >= new Date(convStart).getTime();
+        });
+        if (!overlaps) return;
+
+        // Marca antes de disparar pra evitar corrida em re-render rápido
+        try { sessionStorage.setItem(sessionKey, String(Date.now())); } catch {}
+
+        console.log('[auto-history] Disparando fetch silencioso', { phone, instanceName });
+        // Fire-and-forget — sem toast, sem bloquear UI
+        supabase.functions.invoke('whatsapp-fetch-history', {
+          body: { phone, instance_name: instanceName, count: 20 },
+        }).catch((e) => console.warn('[auto-history] falhou:', e));
+      } catch (e) {
+        console.warn('[auto-history] erro ao verificar desconexão:', e);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [conversation.phone, conversation.instance_name, conversation.last_message_at]);
+
   // Fetch agent state for this conversation
   useEffect(() => {
     const fetchAgentState = async () => {
