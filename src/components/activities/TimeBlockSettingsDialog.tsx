@@ -864,7 +864,8 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave, t
                   )}
                 </div>
               );
-            })}
+            });
+            })()}
           </div>
         )}
 
