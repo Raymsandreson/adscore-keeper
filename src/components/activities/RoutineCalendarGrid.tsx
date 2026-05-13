@@ -209,6 +209,8 @@ export function RoutineCalendarGrid({ blocks, availableTypes, onCreate, onUpdate
       initialStartMin: toMin(block.startHour, block.startMinute ?? 0),
       initialEndMin: toMin(block.endHour, block.endMinute ?? 0),
       originY: e.clientY,
+      originX: e.clientX,
+      moved: false,
     });
   };
 
