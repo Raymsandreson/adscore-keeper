@@ -2442,8 +2442,8 @@ const ActivitiesPage = () => {
                               <div className="text-lg font-bold leading-none">{count}</div>
                               {count > 0 && (
                                 <div className="flex items-center gap-1.5 text-[10px] font-bold mt-0.5">
-                                  <span className="px-1 rounded bg-white/95 text-red-600 shadow-sm">○{openCount}</span>
-                                  <span className="px-1 rounded bg-white/95 text-emerald-600 shadow-sm">✓{doneCount}</span>
+                                  <span className="text-red-600">○{openCount}</span>
+                                  <span className="text-emerald-600">✓{doneCount}</span>
                                 </div>
                               )}
                               <div className="text-[9px] font-medium opacity-80 mt-0.5">
