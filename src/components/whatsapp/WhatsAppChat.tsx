@@ -13,7 +13,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Send, User, Users, Link2, UserPlus, ExternalLink, Plus, Loader2, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, X, Lock, LockOpen, Share2, Sparkles, Scale, MoreVertical, FileSignature, Download, Paperclip, Mic, MapPin, Image, FileUp, Trash2, StopCircle, StickyNote, MessageSquare, AtSign, MessageCircle, ClipboardList, Search, ArrowLeft, Bot, BotOff, VolumeX, Volume2, BellOff, Pencil } from 'lucide-react';
+import { Send, User, Users, Link2, UserPlus, ExternalLink, Plus, Loader2, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, X, Lock, LockOpen, Share2, Sparkles, Scale, MoreVertical, FileSignature, Download, Paperclip, Mic, MapPin, Image, FileUp, Trash2, StopCircle, StickyNote, MessageSquare, AtSign, MessageCircle, ClipboardList, Search, ArrowLeft, Bot, BotOff, VolumeX, Volume2, BellOff, Pencil, RefreshCw } from 'lucide-react';
 import { FastForward } from 'lucide-react';
 import { DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger } from '@/components/ui/dropdown-menu';
 import { useWhatsAppInternalNotes } from '@/hooks/useWhatsAppInternalNotes';
@@ -1354,6 +1354,29 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem
+                onClick={async () => {
+                  const t = toast.loading('Buscando histórico de mensagens antigas...');
+                  try {
+                    const { data, error } = await supabase.functions.invoke('whatsapp-fetch-history', {
+                      body: {
+                        phone: conversation.phone,
+                        instance_name: conversation.instance_name,
+                        count: 50,
+                      },
+                    });
+                    if (error) throw error;
+                    if (data?.success === false) throw new Error(data?.error || 'Falha ao solicitar histórico');
+                    toast.success('Sync solicitado! As mensagens antigas chegarão em alguns segundos.', { id: t });
+                  } catch (e: any) {
+                    toast.error(e?.message || 'Erro ao buscar histórico', { id: t });
+                  }
+                }}
+                className="gap-2"
+              >
+                <RefreshCw className="h-4 w-4" /> Buscar histórico (msgs antigas)
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
               {!conversation.lead_id && contactLinkedLeadIds.length === 0 && (
                 <DropdownMenuItem onClick={() => { setShowLinkDialog(true); fetchLeads(); }} className="gap-2">
                   <Link2 className="h-4 w-4" /> Vincular Lead
