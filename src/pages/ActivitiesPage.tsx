@@ -3466,10 +3466,10 @@ const ActivitiesPage = () => {
             <p className="text-2xl sm:text-4xl font-bold text-white drop-shadow-lg mb-2">
               {profile?.full_name || user?.email?.split('@')[0] || 'Você'}
             </p>
-            <p className="text-base sm:text-xl text-white/90 font-medium drop-shadow">
-              Você concluiu todas as atividades de
+            <p className="text-lg sm:text-2xl font-semibold text-white/95 italic drop-shadow-lg max-w-2xl mx-auto leading-snug">
+              Você é merecedor de suas batalhas, avante!
             </p>
-            <p className="text-xl sm:text-3xl font-extrabold text-white uppercase tracking-wide mt-1 drop-shadow-lg">
+            <p className="text-sm sm:text-lg font-bold text-yellow-200/90 uppercase tracking-wide mt-3 drop-shadow">
               {celebrateBlock.label}
             </p>
             <p className="text-xs sm:text-sm text-white/60 mt-6">Toque em qualquer lugar para fechar</p>
