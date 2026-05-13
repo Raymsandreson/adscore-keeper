@@ -373,6 +373,28 @@ export function RoutineCalendarGrid({ blocks, availableTypes, onCreate, onUpdate
           );
         })}
       </div>
+
+      {editingBlock && (
+        <BlockEditPopover
+          open={!!editingBlock}
+          anchorRect={editingBlock.rect}
+          currentTypeKey={editingBlock.block.activityType}
+          availableTypes={availableTypes}
+          userTeams={userTeams}
+          onSelectType={(t) => {
+            onUpdate(editingBlock.block.blockId, {
+              activityType: t.key,
+              label: t.label,
+              color: t.color,
+            });
+          }}
+          onAddType={async (label, color, teamIds) => {
+            if (!onAddType) return null;
+            return await onAddType(label, color, teamIds);
+          }}
+          onClose={() => setEditingBlock(null)}
+        />
+      )}
     </div>
   );
 }
