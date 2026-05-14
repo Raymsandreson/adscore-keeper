@@ -310,6 +310,17 @@ export function useTeamDirectChat() {
         setMessages((prev) => prev.some(m => m.id === (inserted as TeamMessage).id) ? prev : [...prev, inserted as TeamMessage]);
       }
 
+      // Insert mentions (if any)
+      const mentionedIds = (options?.mentionedUserIds || []).filter(uid => uid && uid !== user.id);
+      if (inserted && mentionedIds.length > 0) {
+        const rows = mentionedIds.map(uid => ({
+          message_id: (inserted as any).id,
+          mentioned_user_id: uid,
+          conversation_id: activeConversationId,
+        }));
+        await (externalSupabase.from('team_chat_mentions') as any).insert(rows);
+      }
+
       await externalSupabase
         .from('team_conversations')
         .update({ updated_at: new Date().toISOString() })
