@@ -288,6 +288,36 @@ export function TeamChatNotifications() {
         if (isMuted()) return;
         const mention = payload.new as any;
 
+        // Branch 1: mention inside a team conversation (general/direct chat)
+        if (mention.conversation_id) {
+          const { data: tmsg } = await externalSupabase
+            .from('team_messages')
+            .select('content, sender_name, message_type, file_name')
+            .eq('id', mention.message_id)
+            .maybeSingle();
+
+          if (!tmsg) return;
+          const senderName = tmsg.sender_name || 'Alguém';
+          const context = await resolveConversationLabel(mention.conversation_id);
+          const preview = buildPreview(tmsg as any).substring(0, 120);
+
+          showNotificationToast({
+            icon: <AtSign className="h-4 w-4 text-primary shrink-0" />,
+            title: `${senderName} te mencionou`,
+            context,
+            preview,
+            onOpen: () => {
+              openTeamChatConversation({
+                conversationId: mention.conversation_id,
+                focusComposer: true,
+              });
+            },
+            onReply: (reply) => replyToConversation(mention.conversation_id, reply),
+          });
+          return;
+        }
+
+        // Branch 2: legacy entity-bound mention (lead/activity/etc)
         const { data: msg } = await externalSupabase
           .from('team_chat_messages')
           .select('content, sender_name, entity_name, entity_type')

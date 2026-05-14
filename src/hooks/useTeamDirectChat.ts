@@ -269,6 +269,7 @@ export function useTeamDirectChat() {
       file_size?: number;
       file_type?: string;
       audio_duration?: number;
+      mentionedUserIds?: string[];
     }
   ) => {
     if (!activeConversationId || !user?.id) return;
@@ -307,6 +308,17 @@ export function useTeamDirectChat() {
       // Optimistic: não esperar Realtime
       if (inserted) {
         setMessages((prev) => prev.some(m => m.id === (inserted as TeamMessage).id) ? prev : [...prev, inserted as TeamMessage]);
+      }
+
+      // Insert mentions (if any)
+      const mentionedIds = (options?.mentionedUserIds || []).filter(uid => uid && uid !== user.id);
+      if (inserted && mentionedIds.length > 0) {
+        const rows = mentionedIds.map(uid => ({
+          message_id: (inserted as any).id,
+          mentioned_user_id: uid,
+          conversation_id: activeConversationId,
+        }));
+        await (externalSupabase.from('team_chat_mentions') as any).insert(rows);
       }
 
       await externalSupabase

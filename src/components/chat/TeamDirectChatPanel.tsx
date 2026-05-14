@@ -51,6 +51,8 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const audioElementsRef = useRef<Map<string, HTMLAudioElement>>(new Map());
+  // Track which user_ids were @mentioned in the current draft
+  const mentionedUsersRef = useRef<Map<string, string>>(new Map()); // name -> user_id
 
   // Filtered members for @mention picker
   const mentionCandidates = (() => {
@@ -64,7 +66,6 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
 
   const handleMessageChange = (value: string) => {
     setMessageText(value);
-    // Detect @ token at the end of the text (allows letters/spaces until newline or boundary)
     const m = value.match(/(?:^|\s)@([\wÀ-ÿ.\- ]{0,30})$/);
     if (m) {
       setMentionQuery(m[1]);
@@ -74,13 +75,25 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
     }
   };
 
-  const insertMention = (name: string) => {
+  const insertMention = (name: string, userId: string) => {
+    mentionedUsersRef.current.set(name, userId);
     setMessageText(prev => prev.replace(/(?:^|\s)@([\wÀ-ÿ.\- ]{0,30})$/, (full, _q, offset) => {
       const prefix = offset === 0 ? '' : full[0];
       return `${prefix}@${name} `;
     }));
     setMentionQuery(null);
     requestAnimationFrame(() => messageInputRef.current?.focus());
+  };
+
+  // Resolve mentioned user_ids by scanning final text against the tracked map
+  const resolveMentionedUserIds = (text: string): string[] => {
+    const ids = new Set<string>();
+    for (const [name, uid] of mentionedUsersRef.current.entries()) {
+      // word boundary match for "@Name"
+      const re = new RegExp(`@${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`);
+      if (re.test(text)) ids.add(uid);
+    }
+    return Array.from(ids);
   };
 
 
@@ -99,6 +112,7 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
       setMessageText(intent.draft);
     }
 
+
     if (intent.focusComposer) {
       requestAnimationFrame(() => {
         messageInputRef.current?.focus();
@@ -110,8 +124,10 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
 
   const handleSend = async () => {
     if (!messageText.trim()) return;
-    await sendMessage(messageText);
+    const mentionedIds = resolveMentionedUserIds(messageText);
+    await sendMessage(messageText, { mentionedUserIds: mentionedIds });
     setMessageText('');
+    mentionedUsersRef.current.clear();
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -121,7 +137,7 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
       if (e.key === 'Enter' || e.key === 'Tab') {
         e.preventDefault();
         const pick = mentionCandidates[mentionIndex];
-        if (pick) insertMention(pick.full_name || pick.email || 'membro');
+        if (pick) insertMention(pick.full_name || pick.email || 'membro', pick.user_id);
         return;
       }
       if (e.key === 'Escape') { setMentionQuery(null); return; }
@@ -515,7 +531,7 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
                       <button
                         key={p.user_id}
                         type="button"
-                        onMouseDown={(e) => { e.preventDefault(); insertMention(p.full_name || p.email || 'membro'); }}
+                        onMouseDown={(e) => { e.preventDefault(); insertMention(p.full_name || p.email || 'membro', p.user_id); }}
                         className={cn(
                           'w-full flex items-center gap-2 px-2 py-1.5 text-left text-xs hover:bg-accent',
                           i === mentionIndex && 'bg-accent'
