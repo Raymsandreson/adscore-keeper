@@ -39,7 +39,7 @@ async function downloadAndStoreMedia(
   messageType: string,
   baseUrl: string,
   instanceToken: string,
-): Promise<{ publicUrl: string | null; transcription: string | null }> {
+): Promise<{ publicUrl: string | null; transcription: string | null; contentType: string | null }> {
   try {
     console.log('Downloading media via UazAPI for message:', messageId, 'type:', messageType);
 
