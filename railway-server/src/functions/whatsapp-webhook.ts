@@ -68,6 +68,28 @@ const corsHeaders: Record<string, string> = {
 // HELPER FUNCTIONS
 // ============================================================
 
+function isEncryptedWhatsAppUrl(url?: string | null): boolean {
+  return typeof url === 'string' && /\.enc(?:\?|$)/i.test(url);
+}
+
+function findMediaKeyDeep(value: any, depth = 0): string | null {
+  if (!value || depth > 5) return null;
+  if (typeof value !== 'object') return null;
+
+  const direct = value.mediaKey || value.media_key;
+  if (typeof direct === 'string' && direct.length >= 32) return direct;
+
+  for (const child of Object.values(value)) {
+    const found = findMediaKeyDeep(child, depth + 1);
+    if (found) return found;
+  }
+  return null;
+}
+
+function toExactArrayBuffer(buffer: Buffer): ArrayBuffer {
+  return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer;
+}
+
 async function downloadAndStoreMedia(
   supabase: any,
   messageId: string,
@@ -78,13 +100,16 @@ async function downloadAndStoreMedia(
   baseUrl: string,
   instanceToken: string,
   mediaKey?: string | null,
-): Promise<{ publicUrl: string | null; transcription: string | null; contentType: string | null }> {
+): Promise<{ publicUrl: string | null; transcription: string | null; contentType: string | null; encryptedSource: boolean }> {
   try {
     console.log('Downloading media via UazAPI for message:', messageId, 'type:', messageType);
 
     let fileBuffer: ArrayBuffer | null = null;
     let contentType = mediaType || 'application/octet-stream';
     let transcription: string | null = null;
+    let encryptedSource = isEncryptedWhatsAppUrl(mediaUrl);
+    let encryptedDownloadUrl = encryptedSource ? mediaUrl : null;
+    let downloadedEncryptedBytes = false;
 
     const downloadUrl = `${baseUrl}/message/download`;
     console.log('Calling /message/download at:', downloadUrl, 'with id:', messageId);
@@ -109,21 +134,31 @@ async function downloadAndStoreMedia(
           if (mediaResp.ok) {
             fileBuffer = await mediaResp.arrayBuffer();
             contentType = jsonData.mimetype || mediaResp.headers.get('content-type') || contentType;
+            if (isEncryptedWhatsAppUrl(jsonData.fileURL)) {
+              encryptedSource = true;
+              encryptedDownloadUrl = jsonData.fileURL;
+              downloadedEncryptedBytes = true;
+            }
           }
           if (typeof jsonData.transcription === 'string' && jsonData.transcription.trim()) {
             transcription = jsonData.transcription.trim();
           }
         } else if (jsonData.base64Data) {
-          fileBuffer = Buffer.from(jsonData.base64Data, 'base64').buffer;
+          fileBuffer = toExactArrayBuffer(Buffer.from(jsonData.base64Data, 'base64'));
           if (jsonData.mimetype) contentType = jsonData.mimetype;
         } else if (jsonData.data) {
-          fileBuffer = Buffer.from(jsonData.data, 'base64').buffer;
+          fileBuffer = toExactArrayBuffer(Buffer.from(jsonData.data, 'base64'));
           if (jsonData.mimetype) contentType = jsonData.mimetype;
         } else if (jsonData.url) {
           const mediaResp = await fetch(jsonData.url);
           if (mediaResp.ok) {
             fileBuffer = await mediaResp.arrayBuffer();
             contentType = mediaResp.headers.get('content-type') || contentType;
+            if (isEncryptedWhatsAppUrl(jsonData.url)) {
+              encryptedSource = true;
+              encryptedDownloadUrl = jsonData.url;
+              downloadedEncryptedBytes = true;
+            }
           }
         } else {
           console.log('downloadMediaMessage unexpected JSON:', JSON.stringify(jsonData).substring(0, 500));
@@ -162,6 +197,11 @@ async function downloadAndStoreMedia(
             if (dlResp.ok) {
               fileBuffer = await dlResp.arrayBuffer();
               contentType = fallbackData.mimetype || dlResp.headers.get('content-type') || contentType;
+              if (isEncryptedWhatsAppUrl(resolvedUrl)) {
+                encryptedSource = true;
+                encryptedDownloadUrl = resolvedUrl;
+                downloadedEncryptedBytes = true;
+              }
             }
           }
         } else {
@@ -172,7 +212,7 @@ async function downloadAndStoreMedia(
     }
 
     // Fallback: direct URL
-    if ((!fileBuffer || fileBuffer.byteLength < 50) && mediaUrl && !mediaUrl.includes('.enc')) {
+    if ((!fileBuffer || fileBuffer.byteLength < 50) && mediaUrl && !isEncryptedWhatsAppUrl(mediaUrl)) {
       console.log('Trying direct media URL...');
       const directResp = await fetch(mediaUrl);
       if (directResp.ok) {
@@ -182,14 +222,15 @@ async function downloadAndStoreMedia(
     }
 
     // Fallback: download .enc + decrypt locally with mediaKey
-    if ((!fileBuffer || fileBuffer.byteLength < 50) && mediaKey && mediaUrl && mediaUrl.includes('.enc')) {
+    if ((downloadedEncryptedBytes || !fileBuffer || fileBuffer.byteLength < 50) && mediaKey && encryptedDownloadUrl) {
       console.log('Trying local AES decrypt of .enc URL with mediaKey...');
       try {
-        const encResp = await fetch(mediaUrl);
+        const encResp = await fetch(encryptedDownloadUrl);
         if (encResp.ok) {
           const encBuf = Buffer.from(await encResp.arrayBuffer());
           const decrypted = decryptWhatsAppMedia(encBuf, mediaKey, messageType);
           fileBuffer = decrypted.buffer.slice(decrypted.byteOffset, decrypted.byteOffset + decrypted.byteLength) as ArrayBuffer;
+          downloadedEncryptedBytes = false;
           console.log('Local AES decrypt OK, size:', decrypted.length);
         } else {
           console.log('Failed to fetch .enc URL:', encResp.status);
@@ -201,7 +242,17 @@ async function downloadAndStoreMedia(
 
     if (!fileBuffer || fileBuffer.byteLength < 50) {
       console.log('Could not download media, buffer empty or too small, size:', fileBuffer?.byteLength || 0);
-      return { publicUrl: null, transcription, contentType: null };
+      return { publicUrl: null, transcription, contentType: null, encryptedSource };
+    }
+
+    if (downloadedEncryptedBytes) {
+      console.error('Encrypted WhatsApp media was returned as a download but no valid mediaKey/decrypt result was available. Refusing to upload unreadable bytes.', {
+        messageId,
+        messageType,
+        hasMediaKey: !!mediaKey,
+        size: fileBuffer.byteLength,
+      });
+      return { publicUrl: null, transcription, contentType: null, encryptedSource: true };
     }
 
     // Normalize content type when UazAPI didn't tell us what it is.
@@ -255,15 +306,15 @@ async function downloadAndStoreMedia(
 
     if (uploadError) {
       console.error('Storage upload error:', uploadError);
-      return { publicUrl: null, transcription, contentType };
+      return { publicUrl: null, transcription, contentType, encryptedSource };
     }
 
     const { data: urlData } = supabase.storage.from('whatsapp-media').getPublicUrl(filePath);
     console.log('Media uploaded successfully:', urlData.publicUrl);
-    return { publicUrl: urlData.publicUrl, transcription, contentType };
+    return { publicUrl: urlData.publicUrl, transcription, contentType, encryptedSource };
   } catch (e) {
     console.error('Media download/upload error:', e);
-    return { publicUrl: null, transcription: null, contentType: null };
+    return { publicUrl: null, transcription: null, contentType: null, encryptedSource: isEncryptedWhatsAppUrl(mediaUrl) };
   }
 }
 
@@ -802,6 +853,17 @@ export const handler: RequestHandler = async (req, res) => {
         if (!messageText && messageType !== 'text') messageText = null;
       }
       if (!mediaKey && rawContentObj) mediaKey = rawContentObj.mediaKey || rawContentObj.media_key || null;
+      if (!mediaKey) mediaKey = findMediaKeyDeep(msg) || findMediaKeyDeep(body.message) || findMediaKeyDeep(body.chat?.message) || findMediaKeyDeep(body.chat) || null;
+      if (messageType !== 'text') {
+        console.log('Media parse debug:', {
+          messageType,
+          mediaType,
+          hasMediaUrl: !!mediaUrl,
+          mediaUrlIsEnc: isEncryptedWhatsAppUrl(mediaUrl),
+          hasMediaKey: !!mediaKey,
+          externalMessageId,
+        });
+      }
 
       // Direction
       const fromMeFlag = body.message?.fromMe === true || body.chat?.fromMe === true;
@@ -872,7 +934,15 @@ export const handler: RequestHandler = async (req, res) => {
         mediaTranscription = mediaDownload.transcription;
         if (mediaDownload.contentType) mediaType = mediaDownload.contentType;
         if (mediaDownload.publicUrl) { storedMediaUrl = mediaDownload.publicUrl; console.log('Media stored at:', mediaDownload.publicUrl); }
-        else console.log('Media download failed, keeping original URL');
+        else if (mediaDownload.encryptedSource) {
+          storedMediaUrl = null;
+          console.error('Media download/decrypt failed for encrypted source; not saving .enc URL as playable media', {
+            externalMessageId,
+            messageType,
+            instanceName,
+            hasMediaKey: !!mediaKey,
+          });
+        } else console.log('Media download failed, keeping original URL');
       } else console.log('No instance token/baseUrl for media download');
     }
 
