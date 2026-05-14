@@ -849,6 +849,17 @@ export const handler: RequestHandler = async (req, res) => {
         if (!messageText && messageType !== 'text') messageText = null;
       }
       if (!mediaKey && rawContentObj) mediaKey = rawContentObj.mediaKey || rawContentObj.media_key || null;
+      if (!mediaKey) mediaKey = findMediaKeyDeep(msg) || findMediaKeyDeep(body.message) || findMediaKeyDeep(body.chat?.message) || findMediaKeyDeep(body.chat) || null;
+      if (messageType !== 'text') {
+        console.log('Media parse debug:', {
+          messageType,
+          mediaType,
+          hasMediaUrl: !!mediaUrl,
+          mediaUrlIsEnc: isEncryptedWhatsAppUrl(mediaUrl),
+          hasMediaKey: !!mediaKey,
+          externalMessageId,
+        });
+      }
 
       // Direction
       const fromMeFlag = body.message?.fromMe === true || body.chat?.fromMe === true;
