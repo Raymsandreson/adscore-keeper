@@ -94,6 +94,15 @@ export function useWhatsAppInstanceStatus(enabled: boolean = true) {
     const now = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     const message = `✅ *Instâncias Reconectadas* ✅\n\nAs seguintes instâncias voltaram a ficar *online* às ${now}:\n\n${reconnectedInstances.map(i => `🟢 ${i.instance_name}`).join('\n')}\n\nTudo funcionando normalmente! 🚀`;
     await sendWhatsAppAlert(message);
+
+    // Após reconectar, pede à UazAPI um sync das últimas 50 mensagens de
+    // cada conversa ativa da instância (fire-and-forget, com cooldown de 5min
+    // dentro da edge function). Mensagens chegam depois via webhook.
+    for (const inst of reconnectedInstances) {
+      cloudFunctions.invoke('whatsapp-bulk-history-sync', {
+        body: { instance_name: inst.instance_name, count: 50 },
+      }).catch(err => console.warn('Bulk history sync failed:', err));
+    }
   }, [sendWhatsAppAlert]);
 
   const checkStatus = useCallback(async () => {
