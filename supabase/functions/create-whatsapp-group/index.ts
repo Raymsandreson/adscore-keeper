@@ -1641,6 +1641,8 @@ Deno.serve(async (req) => {
 
   } catch (error: any) {
     console.error('Create group error:', error)
+    // Libera o sentinel pra permitir retry
+    try { await releaseSentinelIfOurs() } catch (_) { /* noop */ }
     return new Response(JSON.stringify({ 
       success: false, 
       error: error.message,
