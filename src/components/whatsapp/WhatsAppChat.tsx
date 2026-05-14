@@ -2047,8 +2047,23 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                 {msg.message_type === 'image' && msg.media_url && (
                   <div className="mb-1 relative group/img">
                     <a href={msg.media_url} target="_blank" rel="noopener noreferrer">
-                      <img src={msg.media_url} alt="Imagem" className="max-w-full rounded-lg max-h-[300px] object-cover cursor-pointer" loading="lazy" />
+                      <img
+                        src={msg.media_url}
+                        alt="Imagem"
+                        className="max-w-full rounded-lg max-h-[320px] w-auto object-contain cursor-pointer bg-black/5"
+                        loading="lazy"
+                        onError={(e) => {
+                          const img = e.currentTarget;
+                          img.style.display = 'none';
+                          const sibling = img.parentElement?.parentElement?.querySelector('[data-img-fallback]') as HTMLElement | null;
+                          if (sibling) sibling.style.display = 'flex';
+                        }}
+                      />
                     </a>
+                    <div data-img-fallback className="hidden items-center gap-2 text-xs italic opacity-70 px-2 py-3 border rounded-lg bg-muted/40">
+                      🖼️ Imagem indisponível — abra no link original
+                      <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="underline">abrir</a>
+                    </div>
                     <a href={msg.media_url} download target="_blank" rel="noopener noreferrer" className="absolute top-2 right-2 bg-black/60 text-white rounded-full p-1.5 opacity-0 group-hover/img:opacity-100 transition-opacity">
                       <Download className="h-3.5 w-3.5" />
                     </a>
@@ -2056,7 +2071,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                 )}
                 {msg.message_type === 'video' && msg.media_url && (
                   <div className="mb-1">
-                    <video controls className="max-w-full rounded-lg max-h-[300px]" preload="none">
+                    <video controls className="max-w-full rounded-lg max-h-[320px]" preload="metadata">
                       <source src={msg.media_url} type={msg.media_type || 'video/mp4'} />
                     </video>
                     <a href={msg.media_url} download target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] mt-1 opacity-70 hover:opacity-100">
@@ -2064,16 +2079,30 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                     </a>
                   </div>
                 )}
-                {msg.message_type === 'document' && msg.media_url && (
-                  <div className="flex items-center gap-2 mb-1">
-                    <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs underline">
-                      <ExternalLink className="h-3 w-3" /> {msg.media_type || 'Documento'}
-                    </a>
-                    <a href={msg.media_url} download target="_blank" rel="noopener noreferrer" className="opacity-70 hover:opacity-100">
-                      <Download className="h-3.5 w-3.5" />
-                    </a>
-                  </div>
-                )}
+                {msg.message_type === 'document' && msg.media_url && (() => {
+                  const isPdf = (msg.media_type || '').includes('pdf') || /\.pdf($|\?)/i.test(msg.media_url);
+                  const fileName = msg.message_text || (msg.media_url.split('/').pop()?.split('?')[0]) || 'Documento';
+                  return (
+                    <div className="mb-1 space-y-1">
+                      {isPdf && (
+                        <div className="rounded-lg overflow-hidden border bg-white">
+                          <object data={msg.media_url} type="application/pdf" className="w-full h-[360px]">
+                            <iframe src={msg.media_url} className="w-full h-[360px]" title={fileName} />
+                          </object>
+                        </div>
+                      )}
+                      <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-muted/40">
+                        <FileText className="h-4 w-4 text-orange-500 shrink-0" />
+                        <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="flex-1 text-xs underline truncate">
+                          {fileName}
+                        </a>
+                        <a href={msg.media_url} download target="_blank" rel="noopener noreferrer" className="opacity-70 hover:opacity-100">
+                          <Download className="h-3.5 w-3.5" />
+                        </a>
+                      </div>
+                    </div>
+                  );
+                })()}
                 {msg.media_url && msg.message_type === 'text' && (
                   <div className="flex items-center gap-2 mb-1">
                     <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs underline">
