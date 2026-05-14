@@ -219,6 +219,9 @@ export function LeadFieldsUnifiedEditor({ open, onOpenChange, boardId, boardName
     }
     const options = cfType === 'select' ? cfOptions.split(',').map(o => o.trim()).filter(Boolean) : [];
     try {
+      // Persist tabs first — garante que abas customizadas recém-criadas (ainda só no estado local)
+      // sejam gravadas no banco antes de associarmos o campo a elas.
+      await saveTabs(tabs);
       let fieldId: string | null = editing?.id || null;
       if (editing) {
         await updateCustomField(editing.id, {
