@@ -36,6 +36,7 @@ export function CustomFieldInput({ field, value, localValue, onChange }: CustomF
       case 'text':
       case 'select':
       case 'url':
+      case 'password':
         return value.value_text;
       case 'number':
         return value.value_number;
@@ -68,6 +69,8 @@ export function CustomFieldInput({ field, value, localValue, onChange }: CustomF
         return 'Marque para confirmar (Sim/Não)';
       case 'url':
         return 'Link (URL) — abre em nova aba e mostra prévia';
+      case 'password':
+        return 'Valor sensível — fica oculto, copie para colar (ex: senha do gov.br)';
       default:
         return '';
     }
@@ -81,12 +84,13 @@ export function CustomFieldInput({ field, value, localValue, onChange }: CustomF
           {field.is_required && <span className="text-destructive ml-1">*</span>}
         </Label>
         <span className="text-xs text-muted-foreground px-2 py-0.5 rounded-full bg-muted capitalize">
-          {field.field_type === 'text' ? 'Texto' : 
+          {field.field_type === 'text' ? 'Texto' :
            field.field_type === 'number' ? 'Número' :
            field.field_type === 'date' ? 'Data' :
            field.field_type === 'select' ? 'Seleção' :
            field.field_type === 'checkbox' ? 'Checkbox' :
-           field.field_type === 'url' ? 'Link' : field.field_type}
+           field.field_type === 'url' ? 'Link' :
+           field.field_type === 'password' ? 'Senha' : field.field_type}
         </span>
       </div>
       
