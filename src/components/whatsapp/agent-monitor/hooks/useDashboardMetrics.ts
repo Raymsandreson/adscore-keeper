@@ -124,8 +124,8 @@ export function useDashboardMetrics() {
           .gte('created_at', startISO).lte('created_at', endISO),
         // Conversas NOVAS hoje + enriquecimento (RPC encapsula o SQL canônico).
         // Substitui o scan de 20k mensagens — só roda quando period = today.
-        isToday
-          ? ext.rpc('get_new_conversations_today')
+        rpcDate
+          ? ext.rpc('get_new_conversations_for_date', { p_date: rpcDate })
           : Promise.resolve({ data: [] as any[], error: null }),
       ]);
 
