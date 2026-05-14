@@ -362,6 +362,8 @@ Deno.serve(async (req) => {
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
+
+    if (action === "analyze_file") {
       // Baixa um arquivo do Drive e usa Gemini Vision para identificar tipo + titular
       const { file_id } = body;
       if (!file_id) throw new Error("file_id required");
