@@ -3,7 +3,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ExternalLink, LinkIcon } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { ExternalLink, LinkIcon, Eye, EyeOff, Copy, Check } from 'lucide-react';
+import { toast } from 'sonner';
 import { CustomField, CustomFieldValue, FieldType } from '@/hooks/useLeadCustomFields';
 
 function normalizeUrl(raw: string | null | undefined): string | null {
