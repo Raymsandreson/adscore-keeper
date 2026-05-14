@@ -320,6 +320,12 @@ export function ContactDetailSheet({
 
       if (error) throw error;
 
+      // Save custom field values
+      if (contact && Object.keys(customFieldValues).length > 0) {
+        try { await saveContactFieldValues(contact.id, customFieldValues); }
+        catch (e) { console.error('save custom fields', e); }
+      }
+
       toast.success('Contato atualizado com sucesso!');
       onContactUpdated?.();
     } catch (error) {
