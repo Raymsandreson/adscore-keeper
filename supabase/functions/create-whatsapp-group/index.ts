@@ -363,7 +363,7 @@ Deno.serve(async (req) => {
         .select('id')
 
       if (claimed1 && claimed1.length > 0) {
-        claimedSentinel = sentinel
+        claimedSentinel = sentinel; claimedSentinelOuter = sentinel; leadIdOuter = lead_id
         console.log(`[create-group] CLAIM ok (null→sentinel) lead=${lead_id}`)
       } else {
         // Já tem valor. Ler para decidir.
@@ -395,7 +395,7 @@ Deno.serve(async (req) => {
             .eq('whatsapp_group_id', current)
             .select('id')
           if (claimed2 && claimed2.length > 0) {
-            claimedSentinel = sentinel
+            claimedSentinel = sentinel; claimedSentinelOuter = sentinel; leadIdOuter = lead_id
             console.log(`[create-group] CLAIM ok (stale→sentinel) lead=${lead_id} previousAge=${ageMs}ms`)
           } else {
             console.log(`[create-group] DEDUP: outra execução tomou o slot stale antes. Skip.`)
