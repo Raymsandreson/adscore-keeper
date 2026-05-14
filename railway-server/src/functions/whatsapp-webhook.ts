@@ -868,7 +868,7 @@ export const handler: RequestHandler = async (req, res) => {
         if (inst) { resolvedToken = resolvedToken || inst.instance_token; resolvedBaseUrl = resolvedBaseUrl || inst.base_url; }
       }
       if (resolvedToken && resolvedBaseUrl) {
-        const mediaDownload = await downloadAndStoreMedia(supabase, externalMessageId, instanceName || 'unknown', mediaUrl || '', mediaType || 'application/octet-stream', messageType, resolvedBaseUrl, resolvedToken);
+        const mediaDownload = await downloadAndStoreMedia(supabase, externalMessageId, instanceName || 'unknown', mediaUrl || '', mediaType || 'application/octet-stream', messageType, resolvedBaseUrl, resolvedToken, mediaKey);
         mediaTranscription = mediaDownload.transcription;
         if (mediaDownload.contentType) mediaType = mediaDownload.contentType;
         if (mediaDownload.publicUrl) { storedMediaUrl = mediaDownload.publicUrl; console.log('Media stored at:', mediaDownload.publicUrl); }
