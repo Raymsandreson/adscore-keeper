@@ -1672,6 +1672,33 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
           />
           <WhatsAppConversationShareDialog phone={conversation.phone} instanceName={conversation.instance_name} />
           <WhatsAppMediaGallery messages={conversation.messages} />
+          {(() => {
+            const missingCount = (conversation.messages || []).filter((m: any) => isMissingMedia(m) && m.external_message_id).length;
+            if (missingCount === 0) return null;
+            return (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8 relative"
+                    onClick={handleBulkResyncMissingMedia}
+                    disabled={bulkResyncing}
+                  >
+                    {bulkResyncing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                    <span className="absolute -top-0.5 -right-0.5 bg-amber-500 text-white text-[9px] font-bold rounded-full h-4 w-4 flex items-center justify-center">
+                      {missingCount > 99 ? '99+' : missingCount}
+                    </span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {bulkResyncing && bulkResyncProgress
+                    ? `Sincronizando ${bulkResyncProgress.done}/${bulkResyncProgress.total}...`
+                    : `Sincronizar ${missingCount} mídia(s) antiga(s)`}
+                </TooltipContent>
+              </Tooltip>
+            );
+          })()}
           {isGroup && (
             <>
               <Tooltip>
