@@ -104,8 +104,13 @@ export function WhatsAppMediaGallery({ messages }: Props) {
                 ) : (
                   audios.map(msg => (
                     <div key={msg.id} className="flex items-center gap-2 p-2 rounded-lg border bg-card">
-                      <audio controls className="flex-1 h-8" preload="none">
-                        <source src={msg.media_url!} type={msg.media_type || 'audio/ogg'} />
+                      <audio controls className="flex-1 h-8" preload="metadata">
+                        <source
+                          src={msg.media_url!}
+                          type={(!msg.media_type || msg.media_type === 'application/octet-stream') ? 'audio/ogg' : msg.media_type}
+                        />
+                        <source src={msg.media_url!} type="audio/mpeg" />
+                        <source src={msg.media_url!} />
                       </audio>
                       <span className="text-[10px] text-muted-foreground shrink-0">{format(new Date(msg.created_at), "dd/MM HH:mm")}</span>
                     </div>

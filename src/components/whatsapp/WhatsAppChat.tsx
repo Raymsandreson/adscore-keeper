@@ -2028,8 +2028,15 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                 {/* Media rendering */}
                 {msg.message_type === 'audio' && msg.media_url && (
                   <div className="mb-1">
-                    <audio controls className="max-w-full" preload="none">
-                      <source src={msg.media_url} type={msg.media_type || 'audio/ogg'} />
+                    <audio controls className="max-w-full" preload="metadata">
+                      {/* Mídias antigas vieram com media_type genérico (octet-stream) e o
+                          navegador recusa. Forçamos audio/ogg como dica padrão do WhatsApp. */}
+                      <source
+                        src={msg.media_url}
+                        type={(!msg.media_type || msg.media_type === 'application/octet-stream') ? 'audio/ogg' : msg.media_type}
+                      />
+                      <source src={msg.media_url} type="audio/mpeg" />
+                      <source src={msg.media_url} />
                       Áudio não suportado
                     </audio>
                     <a href={msg.media_url} download target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] mt-1 opacity-70 hover:opacity-100">
