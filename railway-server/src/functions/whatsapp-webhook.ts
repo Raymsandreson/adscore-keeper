@@ -9,9 +9,47 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { RequestHandler } from 'express';
+import * as nodeCrypto from 'crypto';
 import { geminiChat } from '../lib/gemini';
 import { getLocationFromDDD } from '../lib/ddd-mapping';
 import { transcribeAudio } from '../lib/stt';
+
+// ============================================================
+// WhatsApp media decryption (HKDF + AES-256-CBC)
+// Used as fallback when UazAPI /message/download fails to return
+// decrypted bytes. Requires the mediaKey from the original message
+// metadata. Without it, .enc files cannot be decoded.
+// ============================================================
+const WA_MEDIA_TYPE_INFO: Record<string, string> = {
+  document: 'WhatsApp Document Keys',
+  image: 'WhatsApp Image Keys',
+  video: 'WhatsApp Video Keys',
+  audio: 'WhatsApp Audio Keys',
+};
+
+function hkdfSha256(ikm: Buffer, salt: Buffer, info: Buffer, length: number): Buffer {
+  const prk = nodeCrypto.createHmac('sha256', salt).update(ikm).digest();
+  const blocks = Math.ceil(length / 32);
+  let prev = Buffer.alloc(0);
+  const out: Buffer[] = [];
+  for (let i = 1; i <= blocks; i++) {
+    prev = nodeCrypto.createHmac('sha256', prk).update(Buffer.concat([prev, info, Buffer.from([i])])).digest();
+    out.push(prev);
+  }
+  return Buffer.concat(out).slice(0, length);
+}
+
+function decryptWhatsAppMedia(encBuf: Buffer, mediaKeyB64: string, messageType: string): Buffer {
+  const info = WA_MEDIA_TYPE_INFO[messageType] || WA_MEDIA_TYPE_INFO.document;
+  const mediaKey = Buffer.from(mediaKeyB64, 'base64');
+  const expanded = hkdfSha256(mediaKey, Buffer.alloc(32), Buffer.from(info, 'utf8'), 112);
+  const iv = expanded.slice(0, 16);
+  const cipherKey = expanded.slice(16, 48);
+  // last 10 bytes are MAC
+  const ciphertext = encBuf.slice(0, encBuf.length - 10);
+  const decipher = nodeCrypto.createDecipheriv('aes-256-cbc', cipherKey, iv);
+  return Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+}
 
 // ============================================================
 // ENV CONFIG
