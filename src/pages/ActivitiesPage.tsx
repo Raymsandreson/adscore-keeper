@@ -1379,6 +1379,7 @@ const ActivitiesPage = () => {
         notes: valueMap.notes || '—',
         case_number: formCaseTitle || '—',
         process_number: formProcessTitle || '—',
+        process_info: processInfo,
       };
 
       // Replace simple {{var}} first
