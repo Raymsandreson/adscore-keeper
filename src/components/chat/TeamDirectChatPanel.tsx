@@ -124,8 +124,10 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
 
   const handleSend = async () => {
     if (!messageText.trim()) return;
-    await sendMessage(messageText);
+    const mentionedIds = resolveMentionedUserIds(messageText);
+    await sendMessage(messageText, { mentionedUserIds: mentionedIds });
     setMessageText('');
+    mentionedUsersRef.current.clear();
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
