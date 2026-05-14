@@ -23,7 +23,7 @@ const fieldTypeLabels: Record<FieldType, string> = {
   date: 'Data',
   select: 'Seleção',
   checkbox: 'Checkbox',
-  url: 'Link',
+  url: 'Link', password: 'Senha',
 };
 
 interface CustomFieldsConfigPanelProps {

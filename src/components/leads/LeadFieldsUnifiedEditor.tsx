@@ -40,7 +40,7 @@ type UnifiedItem = {
 };
 
 const fieldTypeLabels: Record<FieldType, string> = {
-  text: 'Texto', number: 'Número', date: 'Data', select: 'Seleção', checkbox: 'Sim/Não', url: 'Link',
+  text: 'Texto', number: 'Número', date: 'Data', select: 'Seleção', checkbox: 'Sim/Não', url: 'Link', password: 'Senha',
 };
 
 const slugify = (s: string) =>
