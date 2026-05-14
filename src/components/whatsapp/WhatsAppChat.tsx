@@ -2244,9 +2244,22 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                       🖼️ Imagem indisponível — abra no link original
                       <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="underline">abrir</a>
                     </div>
-                    <a href={msg.media_url} download target="_blank" rel="noopener noreferrer" className="absolute top-2 right-2 bg-black/60 text-white rounded-full p-1.5 opacity-0 group-hover/img:opacity-100 transition-opacity">
+                    <a href={msg.media_url} download target="_blank" rel="noopener noreferrer" className="absolute top-2 right-2 bg-black/60 text-white rounded-full p-1.5 opacity-0 group-hover/img:opacity-100 transition-opacity" title="Baixar">
                       <Download className="h-3.5 w-3.5" />
                     </a>
+                    <button
+                      type="button"
+                      onClick={() => handleSaveToDrive(msg)}
+                      disabled={savingDriveMsgId === msg.id || !conversation.lead_id}
+                      className="absolute top-2 right-11 bg-black/60 text-white rounded-full p-1.5 opacity-0 group-hover/img:opacity-100 transition-opacity disabled:opacity-30"
+                      title={conversation.lead_id ? 'Salvar na pasta do lead no Google Drive (com classificação por IA)' : 'Vincule a conversa a um lead para salvar no Drive'}
+                    >
+                      {savingDriveMsgId === msg.id ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Sparkles className="h-3.5 w-3.5" />
+                      )}
+                    </button>
                   </div>
                 )}
                 {msg.message_type === 'video' && msg.media_url && !isEncUrl(msg.media_url) && (
