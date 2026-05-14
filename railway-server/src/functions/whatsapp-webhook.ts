@@ -930,7 +930,15 @@ export const handler: RequestHandler = async (req, res) => {
         mediaTranscription = mediaDownload.transcription;
         if (mediaDownload.contentType) mediaType = mediaDownload.contentType;
         if (mediaDownload.publicUrl) { storedMediaUrl = mediaDownload.publicUrl; console.log('Media stored at:', mediaDownload.publicUrl); }
-        else console.log('Media download failed, keeping original URL');
+        else if (mediaDownload.encryptedSource) {
+          storedMediaUrl = null;
+          console.error('Media download/decrypt failed for encrypted source; not saving .enc URL as playable media', {
+            externalMessageId,
+            messageType,
+            instanceName,
+            hasMediaKey: !!mediaKey,
+          });
+        } else console.log('Media download failed, keeping original URL');
       } else console.log('No instance token/baseUrl for media download');
     }
 
