@@ -1342,6 +1342,12 @@ const ActivitiesPage = () => {
     const activityLink = selectedActivity ? `🔗 Ver atividade: ${window.location.origin}/?openActivity=${selectedActivity.id}` : '';
     const updatedInfo = updatedByName && updatedAtFmt ? `\n*Última atualização por:* ${updatedByName} em ${updatedAtFmt}` : '';
 
+    // Linked process info — "Referente ao processo n° "X" de "Y""
+    const linkedProcessForMsg = formProcessId ? caseProcesses.find(p => p.id === formProcessId) : null;
+    const processInfo = linkedProcessForMsg && (linkedProcessForMsg.process_number || linkedProcessForMsg.title)
+      ? `Referente ao processo n° "${linkedProcessForMsg.process_number || '—'}" de "${linkedProcessForMsg.title || '—'}"`
+      : '';
+
     // Try to use a saved template for this board/workflow
     const boardId = leadPreview?.board_id || undefined;
     const template = getTemplateForContext(boardId);
@@ -1373,6 +1379,7 @@ const ActivitiesPage = () => {
         notes: valueMap.notes || '—',
         case_number: formCaseTitle || '—',
         process_number: formProcessTitle || '—',
+        process_info: processInfo,
       };
 
       // Replace simple {{var}} first
@@ -1408,7 +1415,7 @@ const ActivitiesPage = () => {
     const greetingLine = clientFirstName
       ? `*${saudacaoFb} Sr(a). ${clientFirstName}*`
       : `*${saudacaoFb}*`;
-    return `${greetingLine}\n\n*Assunto da atividade:* ${formTitle.toUpperCase()}\n\n${fieldLines}\n\n${responsavelDrFb ? `*${responsavelDrFb} voltará com mais informações no dia ${notifDate || '—'}, até o final do dia.*` : ''}\n${tempoStr}\n\nEstamos à disposição para quaisquer dúvidas.\n\n🚀Avante!\n\nTem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se tudo está claro, digite 2.`;
+    return `${greetingLine}${processInfo ? `\n\n${processInfo}` : ''}\n\n*Assunto da atividade:* ${formTitle.toUpperCase()}\n\n${fieldLines}\n\n${responsavelDrFb ? `*${responsavelDrFb} voltará com mais informações no dia ${notifDate || '—'}, até o final do dia.*` : ''}\n${tempoStr}\n\nEstamos à disposição para quaisquer dúvidas.\n\n🚀Avante!\n\nTem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se tudo está claro, digite 2.`;
   };
 
   // Active step context — process workflow > lead's funnel board.
