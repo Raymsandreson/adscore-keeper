@@ -224,31 +224,6 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
   const fetchTodayMetrics = async () => {
     const { since: todayStart, until: todayEnd } = getPeriodRange();
 
-    // Helper to fetch all rows paginated (avoid 1000-row default limit)
-    const fetchAllInbound = async () => {
-      const allRows: any[] = [];
-      let from = 0;
-      const pageSize = 1000;
-      while (true) {
-        let q = supabase
-          .from('whatsapp_messages')
-          .select('phone, contact_name, created_at, instance_name')
-          .eq('direction', 'inbound')
-          .not('phone', 'like', '%@g.us')
-          .gte('created_at', todayStart)
-          .order('created_at', { ascending: true })
-          .range(from, from + pageSize - 1);
-        if (todayEnd) q = q.lte('created_at', todayEnd);
-        if (selectedInstance !== 'all') q = q.eq('instance_name', selectedInstance);
-        const { data } = await q;
-        if (!data || data.length === 0) break;
-        allRows.push(...data);
-        if (data.length < pageSize) break;
-        from += pageSize;
-      }
-      return allRows;
-    };
-
     let outboundQuery = supabase
       .from('whatsapp_messages')
       .select('phone, contact_name, created_at, instance_name')
@@ -257,8 +232,6 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
       .order('created_at', { ascending: false })
       .limit(1000);
     if (todayEnd) outboundQuery = outboundQuery.lte('created_at', todayEnd);
-
-    // Apply instance filter to today metrics too
     if (selectedInstance !== 'all') {
       outboundQuery = outboundQuery.eq('instance_name', selectedInstance);
     }
@@ -270,147 +243,53 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
       .order('created_at', { ascending: false });
     if (todayEnd) docsQuery = docsQuery.lte('created_at', todayEnd);
 
-    const [inboundData, followupsRes, docsRes] = await Promise.all([
-      fetchAllInbound(),
+    // ÚNICA fonte de verdade pra "Conversas Novas Hoje": RPC no Externo
+    // (encapsula o SQL canônico baseado em primeira_mensagem_global por phone+instance,
+    //  com filtro de grupo igual ao usado no painel SQL).
+    // Substitui ~190 linhas de paginação manual + N+1 de leads/contacts.
+    const newConvsRpc = (period === 'today' || !period)
+      ? (externalSupabase as any).rpc('get_new_conversations_today')
+      : Promise.resolve({ data: [] as any[], error: null });
+
+    const [newConvsRes, followupsRes, docsRes] = await Promise.all([
+      newConvsRpc,
       outboundQuery,
       docsQuery,
     ]);
 
-    if (inboundData.length > 0) {
-      const phoneMap = new Map<string, { phone: string; contact_name: string | null; first_message_at: string; instance_name: string | null }>();
-      for (const msg of inboundData) {
-        // Skip group conversations (phones > 13 digits or containing @g.us)
-        if (msg.phone.length > 13 || msg.phone.includes('@g.us')) continue;
-        if (!phoneMap.has(msg.phone)) {
-          phoneMap.set(msg.phone, { phone: msg.phone, contact_name: msg.contact_name, first_message_at: msg.created_at, instance_name: msg.instance_name });
-        }
-      }
-      const uniquePhones = Array.from(phoneMap.keys());
+    const rpcRows = (newConvsRes?.data || []) as Array<{
+      phone: string;
+      instance_name: string | null;
+      first_message_at: string;
+      last_inbound_at: string | null;
+      contact_name: string | null;
+      lead_name: string | null;
+      has_lead: boolean;
+      has_contact: boolean;
+      was_responded: boolean;
+      response_time_minutes: number | null;
+      outbound_count: number;
+      lead_stage_type: 'closed' | 'refused' | 'funnel' | 'none';
+    }>;
 
-      if (uniquePhones.length > 0) {
-        // Check which phones had messages BEFORE today (not truly new) - paginate in batches of 200
-        const oldPhones = new Set<string>();
-        for (let i = 0; i < uniquePhones.length; i += 200) {
-          const batch = uniquePhones.slice(i, i + 200);
-          const { data: oldMsgs } = await supabase
-            .from('whatsapp_messages')
-            .select('phone')
-            .eq('direction', 'inbound')
-            .lt('created_at', todayStart)
-            .in('phone', batch);
-          (oldMsgs || []).forEach(m => oldPhones.add(m.phone));
-        }
+    const filteredRows = selectedInstance !== 'all'
+      ? rpcRows.filter(r => r.instance_name === selectedInstance)
+      : rpcRows;
 
-        // Check which phones have leads or contacts
-        const phoneSuffixes = uniquePhones.filter(p => !oldPhones.has(p)).map(p => p.slice(-8));
-        
-        let leadPhones = new Set<string>();
-        let contactPhones = new Set<string>();
-        let leadInfoMap = new Map<string, { name: string; stage_type: 'closed' | 'refused' | 'funnel' }>();
-
-        if (phoneSuffixes.length > 0) {
-          const [leadsRes, contactsRes, boardsRes] = await Promise.all([
-            supabase.from('leads').select('lead_phone, lead_name, status, board_id').not('lead_phone', 'is', null),
-            supabase.from('contacts').select('phone').not('phone', 'is', null),
-            supabase.from('kanban_boards').select('id, stages'),
-          ]);
-          
-          const leadPhoneList = (leadsRes.data || []).map(l => ({ phone: (l.lead_phone || '').replace(/\D/g, ''), name: l.lead_name, status: l.status, board_id: l.board_id }));
-          const contactPhoneList = (contactsRes.data || []).map(c => (c.phone || '').replace(/\D/g, ''));
-          
-          // Build board stages map for stage type classification
-          const boardStagesMap = new Map<string, { id: string }[]>();
-          for (const b of (boardsRes.data || [])) {
-            boardStagesMap.set(b.id, (b.stages as unknown as { id: string }[]) || []);
-          }
-
-          const CLOSED_IDS = ['closed', 'fechado', 'done'];
-          const REFUSED_IDS = ['recusado', 'not_qualified', 'lost'];
-          
-          // Map phone -> lead info
-          
-          for (const phone of uniquePhones) {
-            const suffix = phone.slice(-8);
-            const matchedLead = leadPhoneList.find(lp => lp.phone.endsWith(suffix));
-            if (matchedLead) {
-              leadPhones.add(phone);
-              let stageType: 'closed' | 'refused' | 'funnel' = 'funnel';
-              if (matchedLead.status) {
-                if (CLOSED_IDS.includes(matchedLead.status)) stageType = 'closed';
-                else if (REFUSED_IDS.includes(matchedLead.status)) stageType = 'refused';
-              }
-              leadInfoMap.set(phone, { name: matchedLead.name, stage_type: stageType });
-            }
-            if (contactPhoneList.some(cp => cp.endsWith(suffix))) contactPhones.add(phone);
-          }
-        }
-
-        // Only keep truly new conversations (no prior messages)
-        const trulyNewPhones = uniquePhones.filter(p => !oldPhones.has(p));
-
-        // Fetch outbound messages for these phones to check response status
-        const outboundMap = new Map<string, { count: number; first_at: string | null }>();
-        for (let i = 0; i < trulyNewPhones.length; i += 200) {
-          const batch = trulyNewPhones.slice(i, i + 200);
-          let outQ = supabase
-            .from('whatsapp_messages')
-            .select('phone, created_at')
-            .eq('direction', 'outbound')
-            .gte('created_at', todayStart)
-            .in('phone', batch)
-            .order('created_at', { ascending: true });
-          if (todayEnd) outQ = outQ.lte('created_at', todayEnd);
-          const { data: outMsgs } = await outQ;
-          for (const m of (outMsgs || [])) {
-            const existing = outboundMap.get(m.phone);
-            if (!existing) {
-              outboundMap.set(m.phone, { count: 1, first_at: m.created_at });
-            } else {
-              existing.count++;
-            }
-          }
-        }
-
-        // Also get last inbound message time for each phone
-        const lastInboundMap = new Map<string, string>();
-        for (const msg of inboundData) {
-          if (trulyNewPhones.includes(msg.phone)) {
-            const existing = lastInboundMap.get(msg.phone);
-            if (!existing || msg.created_at > existing) {
-              lastInboundMap.set(msg.phone, msg.created_at);
-            }
-          }
-        }
-
-
-        const trulyNew = trulyNewPhones.map(p => {
-          const convData = phoneMap.get(p)!;
-          const outbound = outboundMap.get(p);
-          const lastInbound = lastInboundMap.get(p) || null;
-          const wasResponded = !!outbound;
-          let responseTimeMinutes: number | null = null;
-          if (outbound?.first_at) {
-            responseTimeMinutes = differenceInMinutes(parseISO(outbound.first_at), parseISO(convData.first_message_at));
-          }
-          const leadInfo = leadInfoMap.get(p);
-          return {
-            ...convData,
-            has_lead: leadPhones.has(p),
-            has_contact: contactPhones.has(p),
-            was_responded: wasResponded,
-            response_time_minutes: responseTimeMinutes,
-            last_inbound_at: lastInbound,
-            outbound_count: outbound?.count || 0,
-            lead_stage_type: leadInfo?.stage_type || 'none' as 'closed' | 'refused' | 'funnel' | 'none',
-            lead_name: leadInfo?.name || null,
-          };
-        });
-
-        setTodayNewConvs(trulyNew);
-      } else {
-        setTodayNewConvs([]);
-      }
-    }
+    setTodayNewConvs(filteredRows.map(r => ({
+      phone: r.phone,
+      contact_name: r.contact_name,
+      first_message_at: r.first_message_at,
+      instance_name: r.instance_name,
+      has_lead: !!r.has_lead,
+      has_contact: !!r.has_contact,
+      was_responded: !!r.was_responded,
+      response_time_minutes: r.response_time_minutes,
+      last_inbound_at: r.last_inbound_at,
+      outbound_count: Number(r.outbound_count || 0),
+      lead_stage_type: (r.lead_stage_type || 'none') as 'closed' | 'refused' | 'funnel' | 'none',
+      lead_name: r.lead_name,
+    })));
 
     if (followupsRes.data) {
       const phoneMap = new Map<string, { phone: string; contact_name: string | null; outbound_count: number; last_outbound_at: string; instance_name: string | null }>();
