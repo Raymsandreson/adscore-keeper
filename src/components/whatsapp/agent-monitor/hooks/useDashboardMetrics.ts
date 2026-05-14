@@ -86,6 +86,13 @@ export function useDashboardMetrics() {
       // (memory: hybrid-routing-persistence-policy — dados de negócio vivem no Externo)
       const period = selectedPeriod || 'today';
       const isToday = period === 'today' || (!selectedPeriod);
+      // Janela de um único dia (hoje, ontem, ou qualquer data específica) →
+      // a RPC canônica entrega "Conversas Novas" usando o filtro global de
+      // primeira mensagem. Range com mais de um dia ainda usa snapshot do edge.
+      const sameDay = dateRange.from.toDateString() === dateRange.to.toDateString();
+      const rpcDate = sameDay
+        ? `${dateRange.from.getFullYear()}-${String(dateRange.from.getMonth()+1).padStart(2,'0')}-${String(dateRange.from.getDate()).padStart(2,'0')}`
+        : null;
       const ext: any = externalSupabase;
       const [kpiRes, docsResult, groupsResult, casesResult, processesResult, contactsResult, contactsCountResult, newConvRpc] = await Promise.all([
         monitorData('kpis', { period }),
