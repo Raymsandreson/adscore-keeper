@@ -136,6 +136,8 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const [locationLng, setLocationLng] = useState('');
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
   const [resyncingMsgId, setResyncingMsgId] = useState<string | null>(null);
+  const [bulkResyncing, setBulkResyncing] = useState(false);
+  const [bulkResyncProgress, setBulkResyncProgress] = useState<{ done: number; total: number } | null>(null);
 
   const isEncUrl = (u?: string | null) => !!u && /\.enc(?:\?|$)/i.test(u);
   const isMissingMedia = (m: any) =>
