@@ -86,6 +86,13 @@ export function useDashboardMetrics() {
       // (memory: hybrid-routing-persistence-policy — dados de negócio vivem no Externo)
       const period = selectedPeriod || 'today';
       const isToday = period === 'today' || (!selectedPeriod);
+      // Janela de um único dia (hoje, ontem, ou qualquer data específica) →
+      // a RPC canônica entrega "Conversas Novas" usando o filtro global de
+      // primeira mensagem. Range com mais de um dia ainda usa snapshot do edge.
+      const sameDay = dateRange.from.toDateString() === dateRange.to.toDateString();
+      const rpcDate = sameDay
+        ? `${dateRange.from.getFullYear()}-${String(dateRange.from.getMonth()+1).padStart(2,'0')}-${String(dateRange.from.getDate()).padStart(2,'0')}`
+        : null;
       const ext: any = externalSupabase;
       const [kpiRes, docsResult, groupsResult, casesResult, processesResult, contactsResult, contactsCountResult, newConvRpc] = await Promise.all([
         monitorData('kpis', { period }),
@@ -117,8 +124,8 @@ export function useDashboardMetrics() {
           .gte('created_at', startISO).lte('created_at', endISO),
         // Conversas NOVAS hoje + enriquecimento (RPC encapsula o SQL canônico).
         // Substitui o scan de 20k mensagens — só roda quando period = today.
-        isToday
-          ? ext.rpc('get_new_conversations_today')
+        rpcDate
+          ? ext.rpc('get_new_conversations_for_date', { p_date: rpcDate })
           : Promise.resolve({ data: [] as any[], error: null }),
       ]);
 
@@ -158,15 +165,16 @@ export function useDashboardMetrics() {
         has_lead: !!r.has_lead,
       }));
 
-      // Build conversation/closed metrics. Para "today" a RPC é fonte de verdade
-      // (newConvDetails + responseRate + avgResponseTimeMin). Para outros períodos,
-      // mantém snapshot do edge function de KPIs.
+      // Build conversation/closed metrics. Para qualquer dia único (hoje, ontem, etc)
+      // a RPC é fonte de verdade (newConvDetails + responseRate + avgResponseTimeMin).
+      // Para ranges com múltiplos dias, mantém snapshot do edge function de KPIs.
+      const useRpc = !!rpcDate;
       const convAndClosedMetrics: Partial<DashboardMetrics> = {
-        newConversations: isToday ? totalNewConvs : (kpiData.conversas_ativas || 0),
+        newConversations: useRpc ? totalNewConvs : (kpiData.conversas_ativas || 0),
         responseRate,
         avgResponseTimeMin,
         respondedCount,
-        totalInbound: isToday ? totalNewConvs : (kpiData.msgs_inbound || 0),
+        totalInbound: useRpc ? totalNewConvs : (kpiData.msgs_inbound || 0),
         closedByAgent: [],
         closedByAgentDetailed: [],
         closedByCampaign: [],
@@ -179,8 +187,8 @@ export function useDashboardMetrics() {
         newConvDetails,
       };
 
-      // Snapshot só sobrepõe quando NÃO é hoje (RPC manda em today).
-      if (!isToday && kpiRes?.conversation_metrics) {
+      // Snapshot só sobrepõe quando o range tem mais de um dia (sem RPC disponível).
+      if (!useRpc && kpiRes?.conversation_metrics) {
         const cm = kpiRes.conversation_metrics;
         convAndClosedMetrics.newConversations = cm.newConversations || convAndClosedMetrics.newConversations;
         convAndClosedMetrics.responseRate = cm.responseRate ?? convAndClosedMetrics.responseRate;
@@ -202,7 +210,7 @@ export function useDashboardMetrics() {
       if (kpiRes?.closed_lead_details) {
         convAndClosedMetrics.closedLeadDetails = kpiRes.closed_lead_details;
       }
-      if (!isToday && kpiRes?.new_conv_details) {
+      if (!useRpc && kpiRes?.new_conv_details) {
         convAndClosedMetrics.newConvDetails = kpiRes.new_conv_details;
       }
 
