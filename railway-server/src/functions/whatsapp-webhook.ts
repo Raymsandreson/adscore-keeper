@@ -222,10 +222,10 @@ async function downloadAndStoreMedia(
     }
 
     // Fallback: download .enc + decrypt locally with mediaKey
-    if ((downloadedEncryptedBytes || !fileBuffer || fileBuffer.byteLength < 50) && mediaKey && mediaUrl && isEncryptedWhatsAppUrl(mediaUrl)) {
+    if ((downloadedEncryptedBytes || !fileBuffer || fileBuffer.byteLength < 50) && mediaKey && encryptedDownloadUrl) {
       console.log('Trying local AES decrypt of .enc URL with mediaKey...');
       try {
-        const encResp = await fetch(mediaUrl);
+        const encResp = await fetch(encryptedDownloadUrl);
         if (encResp.ok) {
           const encBuf = Buffer.from(await encResp.arrayBuffer());
           const decrypted = decryptWhatsAppMedia(encBuf, mediaKey, messageType);
