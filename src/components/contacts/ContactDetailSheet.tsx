@@ -78,6 +78,11 @@ import type { Lead } from '@/hooks/useLeads';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { DashboardChatPreview } from '@/components/whatsapp/DashboardChatPreview';
 import { ContactGroupsList } from './ContactGroupsList';
+import { Settings2 } from 'lucide-react';
+import { ContactFieldsUnifiedEditor } from './ContactFieldsUnifiedEditor';
+import { ContactCustomFieldsInline } from './ContactCustomFieldsInline';
+import { useContactCustomFields, type ContactFieldType } from '@/hooks/useContactCustomFields';
+import { useContactTabLayout } from '@/hooks/useContactTabLayout';
 
 interface ContactDetailSheetProps {
   contact: Contact | null;
