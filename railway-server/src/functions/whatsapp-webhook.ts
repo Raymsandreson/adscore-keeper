@@ -9,9 +9,47 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { RequestHandler } from 'express';
+import * as nodeCrypto from 'crypto';
 import { geminiChat } from '../lib/gemini';
 import { getLocationFromDDD } from '../lib/ddd-mapping';
 import { transcribeAudio } from '../lib/stt';
+
+// ============================================================
+// WhatsApp media decryption (HKDF + AES-256-CBC)
+// Used as fallback when UazAPI /message/download fails to return
+// decrypted bytes. Requires the mediaKey from the original message
+// metadata. Without it, .enc files cannot be decoded.
+// ============================================================
+const WA_MEDIA_TYPE_INFO: Record<string, string> = {
+  document: 'WhatsApp Document Keys',
+  image: 'WhatsApp Image Keys',
+  video: 'WhatsApp Video Keys',
+  audio: 'WhatsApp Audio Keys',
+};
+
+function hkdfSha256(ikm: Buffer, salt: Buffer, info: Buffer, length: number): Buffer {
+  const prk = nodeCrypto.createHmac('sha256', salt).update(ikm).digest();
+  const blocks = Math.ceil(length / 32);
+  let prev = Buffer.alloc(0);
+  const out: Buffer[] = [];
+  for (let i = 1; i <= blocks; i++) {
+    prev = nodeCrypto.createHmac('sha256', prk).update(Buffer.concat([prev, info, Buffer.from([i])])).digest();
+    out.push(prev);
+  }
+  return Buffer.concat(out).slice(0, length);
+}
+
+function decryptWhatsAppMedia(encBuf: Buffer, mediaKeyB64: string, messageType: string): Buffer {
+  const info = WA_MEDIA_TYPE_INFO[messageType] || WA_MEDIA_TYPE_INFO.document;
+  const mediaKey = Buffer.from(mediaKeyB64, 'base64');
+  const expanded = hkdfSha256(mediaKey, Buffer.alloc(32), Buffer.from(info, 'utf8'), 112);
+  const iv = expanded.slice(0, 16);
+  const cipherKey = expanded.slice(16, 48);
+  // last 10 bytes are MAC
+  const ciphertext = encBuf.slice(0, encBuf.length - 10);
+  const decipher = nodeCrypto.createDecipheriv('aes-256-cbc', cipherKey, iv);
+  return Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+}
 
 // ============================================================
 // ENV CONFIG
@@ -39,6 +77,7 @@ async function downloadAndStoreMedia(
   messageType: string,
   baseUrl: string,
   instanceToken: string,
+  mediaKey?: string | null,
 ): Promise<{ publicUrl: string | null; transcription: string | null; contentType: string | null }> {
   try {
     console.log('Downloading media via UazAPI for message:', messageId, 'type:', messageType);
@@ -139,6 +178,24 @@ async function downloadAndStoreMedia(
       if (directResp.ok) {
         fileBuffer = await directResp.arrayBuffer();
         contentType = directResp.headers.get('content-type') || contentType;
+      }
+    }
+
+    // Fallback: download .enc + decrypt locally with mediaKey
+    if ((!fileBuffer || fileBuffer.byteLength < 50) && mediaKey && mediaUrl && mediaUrl.includes('.enc')) {
+      console.log('Trying local AES decrypt of .enc URL with mediaKey...');
+      try {
+        const encResp = await fetch(mediaUrl);
+        if (encResp.ok) {
+          const encBuf = Buffer.from(await encResp.arrayBuffer());
+          const decrypted = decryptWhatsAppMedia(encBuf, mediaKey, messageType);
+          fileBuffer = decrypted.buffer.slice(decrypted.byteOffset, decrypted.byteOffset + decrypted.byteLength) as ArrayBuffer;
+          console.log('Local AES decrypt OK, size:', decrypted.length);
+        } else {
+          console.log('Failed to fetch .enc URL:', encResp.status);
+        }
+      } catch (decErr) {
+        console.error('Local AES decrypt error:', decErr);
       }
     }
 
@@ -617,6 +674,7 @@ export const handler: RequestHandler = async (req, res) => {
     let messageType = 'text';
     let mediaUrl: string | null = null;
     let mediaType: string | null = null;
+    let mediaKey: string | null = null;
     let direction = 'inbound';
     let externalMessageId: string | null = null;
     let instanceName: string | null = null;
@@ -713,15 +771,20 @@ export const handler: RequestHandler = async (req, res) => {
         if (messageText && typeof messageText !== 'string') messageText = JSON.stringify(messageText);
       }
 
-      // Detect media type
+      // Detect media type + mediaKey (for local AES decrypt fallback)
+      const rawContentObj = (typeof msg.content === 'object' && msg.content !== null) ? msg.content : null;
       if (msg.imageMessage) {
         messageType = 'image'; mediaType = msg.imageMessage.mimetype || 'image/jpeg'; mediaUrl = mediaUrl || msg.imageMessage.url || null;
+        mediaKey = msg.imageMessage.mediaKey || mediaKey;
       } else if (msg.videoMessage) {
         messageType = 'video'; mediaType = msg.videoMessage.mimetype || 'video/mp4'; mediaUrl = mediaUrl || msg.videoMessage.url || null;
+        mediaKey = msg.videoMessage.mediaKey || mediaKey;
       } else if (msg.audioMessage) {
         messageType = 'audio'; mediaType = msg.audioMessage.mimetype || 'audio/ogg'; mediaUrl = mediaUrl || msg.audioMessage.url || null;
+        mediaKey = msg.audioMessage.mediaKey || mediaKey;
       } else if (msg.documentMessage) {
         messageType = 'document'; mediaType = msg.documentMessage.mimetype || null; mediaUrl = mediaUrl || msg.documentMessage.url || null;
+        mediaKey = msg.documentMessage.mediaKey || mediaKey;
       } else if (msg.mediaType || (typeof msg.content === 'object' && msg.content?.URL)) {
         const uazMediaType = (msg.mediaType || '').toLowerCase();
         const chatLastMsgType = (body.chat?.wa_lastMessageType || '').toLowerCase();
@@ -738,6 +801,7 @@ export const handler: RequestHandler = async (req, res) => {
         }
         if (!messageText && messageType !== 'text') messageText = null;
       }
+      if (!mediaKey && rawContentObj) mediaKey = rawContentObj.mediaKey || rawContentObj.media_key || null;
 
       // Direction
       const fromMeFlag = body.message?.fromMe === true || body.chat?.fromMe === true;
@@ -804,7 +868,7 @@ export const handler: RequestHandler = async (req, res) => {
         if (inst) { resolvedToken = resolvedToken || inst.instance_token; resolvedBaseUrl = resolvedBaseUrl || inst.base_url; }
       }
       if (resolvedToken && resolvedBaseUrl) {
-        const mediaDownload = await downloadAndStoreMedia(supabase, externalMessageId, instanceName || 'unknown', mediaUrl || '', mediaType || 'application/octet-stream', messageType, resolvedBaseUrl, resolvedToken);
+        const mediaDownload = await downloadAndStoreMedia(supabase, externalMessageId, instanceName || 'unknown', mediaUrl || '', mediaType || 'application/octet-stream', messageType, resolvedBaseUrl, resolvedToken, mediaKey);
         mediaTranscription = mediaDownload.transcription;
         if (mediaDownload.contentType) mediaType = mediaDownload.contentType;
         if (mediaDownload.publicUrl) { storedMediaUrl = mediaDownload.publicUrl; console.log('Media stored at:', mediaDownload.publicUrl); }
