@@ -572,6 +572,9 @@ export function ContactDetailSheet({
                   <MessageSquare className="h-4 w-4 text-green-600" />
                 </Button>
               )}
+              <Button variant="outline" size="sm" onClick={() => setShowCustomizer(true)} title="Personalizar campos e abas" className="h-8 gap-1">
+                <Settings2 className="h-3.5 w-3.5" /> Personalizar
+              </Button>
               <ShareMenu entityType="contact" entityId={contact.id} entityName={contact.full_name} />
               <TeamChatButton entityType="contact" entityId={contact.id} entityName={contact.full_name} variant="icon" className="h-8 w-8" />
               <Button
