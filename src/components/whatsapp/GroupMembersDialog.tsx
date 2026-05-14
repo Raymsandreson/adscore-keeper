@@ -107,6 +107,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
       const desc = data?.description ?? '';
       setGroupDescription(desc);
       setGroupDescriptionInitial(desc);
+      setDescriptionUpdatedAt(data?.description_updated_at ?? null);
       if (mode === 'pull') toast.success('Descrição atualizada do WhatsApp');
     } catch (e: any) {
       if (mode === 'pull') toast.error(`Erro ao buscar do WhatsApp: ${e.message}`);
