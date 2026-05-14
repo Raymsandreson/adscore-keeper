@@ -83,6 +83,7 @@ import { ContactFieldsUnifiedEditor } from './ContactFieldsUnifiedEditor';
 import { ContactCustomFieldsInline } from './ContactCustomFieldsInline';
 import { useContactCustomFields, type ContactFieldType } from '@/hooks/useContactCustomFields';
 import { useContactTabLayout } from '@/hooks/useContactTabLayout';
+import { useContactFieldLayout } from '@/hooks/useContactFieldLayout';
 
 interface ContactDetailSheetProps {
   contact: Contact | null;
@@ -161,6 +162,7 @@ export function ContactDetailSheet({
   const { boards: kanbanBoards } = useKanbanBoards();
   const { customFields: contactCustomFields, getFieldValues: getContactFieldValues, saveAllFieldValues: saveContactFieldValues } = useContactCustomFields();
   const { visibleTabs: contactVisibleTabs } = useContactTabLayout();
+  const { isHidden: isFieldHidden } = useContactFieldLayout();
   const [showCustomizer, setShowCustomizer] = useState(false);
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, { type: ContactFieldType; value: string | number | boolean | null }>>({});
 
@@ -606,40 +608,38 @@ export function ContactDetailSheet({
         </Header>
 
         <Tabs defaultValue="info" className="flex-1 flex flex-col overflow-hidden">
-          <TabsList className="grid w-full grid-cols-8">
-            <TabsTrigger value="info" className="text-xs px-1">
-              <User className="h-3 w-3 mr-1" />
-              Info
-            </TabsTrigger>
-            <TabsTrigger value="calls" className="text-xs px-1">
-              <PhoneCall className="h-3 w-3 mr-1" />
-              Chamadas
-            </TabsTrigger>
-            <TabsTrigger value="history" className="text-xs px-1">
-              <History className="h-3 w-3 mr-1" />
-              Histórico
-            </TabsTrigger>
-            <TabsTrigger value="location" className="text-xs px-1">
-              <MapPin className="h-3 w-3 mr-1" />
-              Local
-            </TabsTrigger>
-            <TabsTrigger value="groups" className="text-xs px-1">
-              <UsersRound className="h-3 w-3 mr-1" />
-              Grupos
-            </TabsTrigger>
-            <TabsTrigger value="relationships" className="text-xs px-1">
-              <Users className="h-3 w-3 mr-1" />
-              Vínculos
-            </TabsTrigger>
-            <TabsTrigger value="leads" className="text-xs px-1">
-              <Link2 className="h-3 w-3 mr-1" />
-              Leads
-            </TabsTrigger>
-            <TabsTrigger value="ai_chat" className="text-xs px-1">
-              <Sparkles className="h-3 w-3 mr-1" />
-              IA
-            </TabsTrigger>
-          </TabsList>
+          {(() => {
+            const tabIcons: Record<string, JSX.Element> = {
+              info: <User className="h-3 w-3 mr-1" />,
+              calls: <PhoneCall className="h-3 w-3 mr-1" />,
+              history: <History className="h-3 w-3 mr-1" />,
+              location: <MapPin className="h-3 w-3 mr-1" />,
+              groups: <UsersRound className="h-3 w-3 mr-1" />,
+              relationships: <Users className="h-3 w-3 mr-1" />,
+              leads: <Link2 className="h-3 w-3 mr-1" />,
+              ai_chat: <Sparkles className="h-3 w-3 mr-1" />,
+            };
+            const visible = contactVisibleTabs.length ? contactVisibleTabs : [
+              { key: 'info', label: 'Info' },
+              { key: 'calls', label: 'Chamadas' },
+              { key: 'history', label: 'Histórico' },
+              { key: 'location', label: 'Local' },
+              { key: 'groups', label: 'Grupos' },
+              { key: 'relationships', label: 'Vínculos' },
+              { key: 'leads', label: 'Leads' },
+              { key: 'ai_chat', label: 'IA' },
+            ] as any;
+            return (
+              <TabsList className="grid w-full" style={{ gridTemplateColumns: `repeat(${visible.length}, minmax(0, 1fr))` }}>
+                {visible.map((t: any) => (
+                  <TabsTrigger key={t.key} value={t.key} className="text-xs px-1">
+                    {tabIcons[t.key] || <Tag className="h-3 w-3 mr-1" />}
+                    {t.label}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            );
+          })()}
 
           <ScrollArea className="flex-1 mt-4 pr-4">
             {/* Info Tab */}
@@ -671,6 +671,7 @@ export function ContactDetailSheet({
 
               {isEditing ? (
                 <div className="space-y-4">
+                  {!isFieldHidden('full_name') && (
                   <div>
                     <Label className="flex items-center gap-1">
                       <User className="h-3 w-3" />
@@ -682,8 +683,10 @@ export function ContactDetailSheet({
                       placeholder="Nome completo"
                     />
                   </div>
+                  )}
 
                   <div className="grid grid-cols-2 gap-4">
+                    {!isFieldHidden('phone') && (
                     <div>
                       <Label className="flex items-center gap-1">
                         <Phone className="h-3 w-3" />
@@ -706,7 +709,9 @@ export function ContactDetailSheet({
                         )}
                       </div>
                     </div>
+                    )}
 
+                    {!isFieldHidden('whatsapp_group_id') && (
                     <div className="col-span-2">
                       <Label className="flex items-center gap-1">
                         👥 Grupo WhatsApp
@@ -718,7 +723,9 @@ export function ContactDetailSheet({
                       />
                       <p className="text-xs text-muted-foreground mt-1">Cole o link do grupo. O ID será extraído automaticamente.</p>
                     </div>
+                    )}
 
+                    {!isFieldHidden('email') && (
                     <div>
                       <Label className="flex items-center gap-1">
                         <Mail className="h-3 w-3" />
@@ -731,9 +738,11 @@ export function ContactDetailSheet({
                         placeholder="email@exemplo.com"
                       />
                     </div>
+                    )}
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
+                    {!isFieldHidden('instagram_username') && (
                     <div>
                       <Label className="flex items-center gap-1">
                         <Instagram className="h-3 w-3" />
@@ -745,7 +754,9 @@ export function ContactDetailSheet({
                         placeholder="@usuario"
                       />
                     </div>
+                    )}
 
+                    {!isFieldHidden('follower_status') && (
                     <div>
                       <Label>Status Seguidor</Label>
                       <Select value={followerStatus} onValueChange={setFollowerStatus}>
@@ -760,9 +771,10 @@ export function ContactDetailSheet({
                         </SelectContent>
                       </Select>
                     </div>
+                    )}
                   </div>
 
-                  {/* Profession field */}
+                  {!isFieldHidden('profession') && (
                   <div>
                     <Label className="flex items-center gap-1">
                       <Briefcase className="h-3 w-3" />
@@ -808,7 +820,9 @@ export function ContactDetailSheet({
                       )}
                     </div>
                   </div>
+                  )}
 
+                  {!isFieldHidden('classifications') && (
                   <div>
                     <Label className="flex items-center gap-1">
                       <Tag className="h-3 w-3" />
@@ -829,7 +843,9 @@ export function ContactDetailSheet({
                       }}
                     />
                   </div>
+                  )}
 
+                  {!isFieldHidden('notes') && (
                   <div>
                     <Label className="flex items-center gap-1">
                       <FileText className="h-3 w-3" />
@@ -842,6 +858,7 @@ export function ContactDetailSheet({
                       rows={3}
                     />
                   </div>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -973,6 +990,7 @@ export function ContactDetailSheet({
             <TabsContent value="location" className="space-y-4 mt-0">
               {isEditing ? (
                 <div className="space-y-4">
+                  {!isFieldHidden('cep') && (
                   <div>
                     <Label className="flex items-center gap-1">
                       <Globe className="h-3 w-3" />
@@ -988,8 +1006,10 @@ export function ContactDetailSheet({
                       Preencha o CEP para autocompletar endereço
                     </p>
                   </div>
+                  )}
 
                   <div className="grid grid-cols-2 gap-4">
+                    {!isFieldHidden('state') && (
                     <div>
                       <Label>Estado</Label>
                       <Select value={state} onValueChange={setState}>
@@ -1005,7 +1025,9 @@ export function ContactDetailSheet({
                         </SelectContent>
                       </Select>
                     </div>
+                    )}
 
+                    {!isFieldHidden('city') && (
                     <div>
                       <Label>Cidade</Label>
                       <Select 
@@ -1025,8 +1047,10 @@ export function ContactDetailSheet({
                         </SelectContent>
                       </Select>
                     </div>
+                    )}
                   </div>
 
+                  {!isFieldHidden('neighborhood') && (
                   <div>
                     <Label>Bairro</Label>
                     <Input
@@ -1035,7 +1059,9 @@ export function ContactDetailSheet({
                       placeholder="Bairro"
                     />
                   </div>
+                  )}
 
+                  {!isFieldHidden('street') && (
                   <div>
                     <Label>Rua</Label>
                     <Input
@@ -1044,6 +1070,7 @@ export function ContactDetailSheet({
                       placeholder="Rua, número..."
                     />
                   </div>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-3">
