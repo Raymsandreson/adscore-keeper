@@ -147,13 +147,23 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
     setGroupName(null);
     const normalizedPhone = phone.replace(/\D/g, '');
     const fetchMessages = async () => {
-      const { data } = await supabase
+      // whatsapp_messages vive no Supabase EXTERNO. Usar `supabase` (Cloud) aqui
+      // retornava sempre vazio → "nenhuma mensagem encontrada" mesmo com conversa real.
+      let query = (externalSupabase as any)
         .from('whatsapp_messages')
         .select('id, message_text, direction, created_at, message_type, media_url, media_type, instance_name')
-        .eq('phone', phone)
+        .eq('phone', phone);
+      if (instanceName) {
+        const variants = Array.from(new Set([instanceName, instanceName.toUpperCase(), instanceName.toLowerCase()]));
+        query = query.in('instance_name', variants);
+      }
+      const { data, error } = await query
         .order('created_at', { ascending: true })
-        .limit(200);
-      setMessages(data || []);
+        .limit(500);
+      if (error) {
+        console.warn('[DashboardChatPreview] fetchMessages error:', error.message);
+      }
+      setMessages((data as any) || []);
       setLoading(false);
       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'auto' }), 100);
     };
@@ -301,10 +311,10 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
 
   }, [open, phone]);
 
-  // Realtime
+  // Realtime — assinar no Externo, onde whatsapp_messages realmente mora.
   useEffect(() => {
     if (!open || !phone) return;
-    const channel = supabase
+    const channel = externalSupabase
       .channel(`dashboard-chat-${phone}`)
       .on('postgres_changes', {
         event: 'INSERT',
@@ -313,12 +323,13 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
         filter: `phone=eq.${phone}`,
       }, (payload) => {
         const msg = payload.new as any;
+        if (instanceName && msg.instance_name && msg.instance_name.toLowerCase() !== instanceName.toLowerCase()) return;
         setMessages(prev => [...prev, msg]);
         setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
       })
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [open, phone]);
+    return () => { externalSupabase.removeChannel(channel); };
+  }, [open, phone, instanceName]);
 
   const formatDateSeparator = (dateStr: string) => {
     const date = parseISO(dateStr);
