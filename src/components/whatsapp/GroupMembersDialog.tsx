@@ -495,6 +495,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
     : participants;
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg max-h-[85vh] flex flex-col">
         <DialogHeader>
