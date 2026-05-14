@@ -527,12 +527,16 @@ export function ContactDetailSheet({
 
   const contentClassName = mode === 'dialog'
     ? 'max-w-lg max-h-[90vh] overflow-hidden flex flex-col'
-    : 'w-full sm:max-w-lg overflow-hidden flex flex-col';
+    : side === 'bottom'
+      ? 'h-[92vh] max-h-[92vh] w-full overflow-hidden flex flex-col p-0'
+      : 'w-full sm:max-w-lg overflow-hidden flex flex-col';
+
+  const sheetSideProp = mode === 'sheet' && side === 'bottom' ? { side: 'bottom' as const } : {};
 
   return (
     <>
     <Wrapper open={open && !showClientLeadDialog} onOpenChange={onOpenChange}>
-      <Content className={contentClassName}>
+      <Content className={contentClassName} {...(sheetSideProp as any)}>
          <Header className="pb-4">
           <div className="flex items-center justify-between">
             <Title className="flex items-center gap-2 text-xl">
