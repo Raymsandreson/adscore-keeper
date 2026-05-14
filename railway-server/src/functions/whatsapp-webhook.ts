@@ -181,6 +181,24 @@ async function downloadAndStoreMedia(
       }
     }
 
+    // Fallback: download .enc + decrypt locally with mediaKey
+    if ((!fileBuffer || fileBuffer.byteLength < 50) && mediaKey && mediaUrl && mediaUrl.includes('.enc')) {
+      console.log('Trying local AES decrypt of .enc URL with mediaKey...');
+      try {
+        const encResp = await fetch(mediaUrl);
+        if (encResp.ok) {
+          const encBuf = Buffer.from(await encResp.arrayBuffer());
+          const decrypted = decryptWhatsAppMedia(encBuf, mediaKey, messageType);
+          fileBuffer = decrypted.buffer.slice(decrypted.byteOffset, decrypted.byteOffset + decrypted.byteLength) as ArrayBuffer;
+          console.log('Local AES decrypt OK, size:', decrypted.length);
+        } else {
+          console.log('Failed to fetch .enc URL:', encResp.status);
+        }
+      } catch (decErr) {
+        console.error('Local AES decrypt error:', decErr);
+      }
+    }
+
     if (!fileBuffer || fileBuffer.byteLength < 50) {
       console.log('Could not download media, buffer empty or too small, size:', fileBuffer?.byteLength || 0);
       return { publicUrl: null, transcription, contentType: null };
