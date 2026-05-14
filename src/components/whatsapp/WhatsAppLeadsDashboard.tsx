@@ -1144,6 +1144,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
             <div className="flex items-center gap-2 mb-1">
               <MessageSquare className="h-4 w-4 text-primary" />
               <span className="text-xs text-muted-foreground">Conversas Novas {periodLabel}</span>
+              <div className="ml-auto"><CompareBtn metric="new_convs" /></div>
             </div>
             <p className="text-2xl font-bold">{todayNewConvs.length}</p>
             <div className="flex items-center gap-2 text-[10px]">
