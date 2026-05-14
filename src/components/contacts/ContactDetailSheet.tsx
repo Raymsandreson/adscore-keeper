@@ -78,6 +78,11 @@ import type { Lead } from '@/hooks/useLeads';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { DashboardChatPreview } from '@/components/whatsapp/DashboardChatPreview';
 import { ContactGroupsList } from './ContactGroupsList';
+import { Settings2 } from 'lucide-react';
+import { ContactFieldsUnifiedEditor } from './ContactFieldsUnifiedEditor';
+import { ContactCustomFieldsInline } from './ContactCustomFieldsInline';
+import { useContactCustomFields, type ContactFieldType } from '@/hooks/useContactCustomFields';
+import { useContactTabLayout } from '@/hooks/useContactTabLayout';
 
 interface ContactDetailSheetProps {
   contact: Contact | null;
@@ -154,6 +159,10 @@ export function ContactDetailSheet({
   const { professions, searchProfessions } = useCboProfessions();
   const { fetchProfileNames, getDisplayName } = useProfileNames();
   const { boards: kanbanBoards } = useKanbanBoards();
+  const { customFields: contactCustomFields, getFieldValues: getContactFieldValues, saveAllFieldValues: saveContactFieldValues } = useContactCustomFields();
+  const { visibleTabs: contactVisibleTabs } = useContactTabLayout();
+  const [showCustomizer, setShowCustomizer] = useState(false);
+  const [customFieldValues, setCustomFieldValues] = useState<Record<string, { type: ContactFieldType; value: string | number | boolean | null }>>({});
 
   // State for auto lead creation when classified as client
   const [showClientLeadDialog, setShowClientLeadDialog] = useState(false);
@@ -310,6 +319,12 @@ export function ContactDetailSheet({
         .eq('id', contact.id);
 
       if (error) throw error;
+
+      // Save custom field values
+      if (contact && Object.keys(customFieldValues).length > 0) {
+        try { await saveContactFieldValues(contact.id, customFieldValues); }
+        catch (e) { console.error('save custom fields', e); }
+      }
 
       toast.success('Contato atualizado com sucesso!');
       onContactUpdated?.();
@@ -557,6 +572,9 @@ export function ContactDetailSheet({
                   <MessageSquare className="h-4 w-4 text-green-600" />
                 </Button>
               )}
+              <Button variant="outline" size="sm" onClick={() => setShowCustomizer(true)} title="Personalizar campos e abas" className="h-8 gap-1">
+                <Settings2 className="h-3.5 w-3.5" /> Personalizar
+              </Button>
               <ShareMenu entityType="contact" entityId={contact.id} entityName={contact.full_name} />
               <TeamChatButton entityType="contact" entityId={contact.id} entityName={contact.full_name} variant="icon" className="h-8 w-8" />
               <Button
@@ -929,6 +947,16 @@ export function ContactDetailSheet({
                   )}
                 </div>
               )}
+              {/* Custom fields (info + qualquer aba customizada agrupados aqui) */}
+              <div className="mt-6 border-t pt-4">
+                <Label className="text-sm font-semibold mb-2 block">Campos personalizados</Label>
+                <ContactCustomFieldsInline
+                  contactId={contact.id}
+                  customFields={contactCustomFields}
+                  getFieldValues={getContactFieldValues}
+                  onValuesChange={setCustomFieldValues}
+                />
+              </div>
             </TabsContent>
 
             {/* Calls Tab */}
@@ -1443,6 +1471,7 @@ export function ContactDetailSheet({
       wasResponded={false}
       responseTimeMinutes={null}
     />
+    <ContactFieldsUnifiedEditor open={showCustomizer} onOpenChange={setShowCustomizer} />
     </>
   );
 }

@@ -3,7 +3,7 @@ import { db } from '@/integrations/supabase';
 import { toast } from 'sonner';
 import type { LeadFieldTab } from '@/components/leads/leadFormFields';
 
-export type FieldType = 'text' | 'number' | 'date' | 'select' | 'checkbox' | 'url';
+export type FieldType = 'text' | 'number' | 'date' | 'select' | 'checkbox' | 'url' | 'password';
 
 export interface CustomField {
   id: string;

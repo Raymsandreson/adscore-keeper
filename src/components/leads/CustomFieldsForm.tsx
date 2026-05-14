@@ -3,7 +3,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ExternalLink, LinkIcon } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { ExternalLink, LinkIcon, Eye, EyeOff, Copy, Check } from 'lucide-react';
+import { toast } from 'sonner';
 import { CustomField, CustomFieldValue, FieldType } from '@/hooks/useLeadCustomFields';
 
 function normalizeUrl(raw: string | null | undefined): string | null {
@@ -16,6 +18,40 @@ function normalizeUrl(raw: string | null | undefined): string | null {
 
 function isImageUrl(u: string): boolean {
   return /\.(png|jpe?g|gif|webp|svg|avif)(\?|#|$)/i.test(u);
+}
+
+export function PasswordField({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
+  const [reveal, setReveal] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const handleCopy = async () => {
+    if (!value) { toast.error('Campo vazio — nada para copiar'); return; }
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      toast.success('Copiado! Cole no destino.');
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      toast.error('Não foi possível copiar');
+    }
+  };
+  return (
+    <div className="flex items-center gap-1 mt-1">
+      <Input
+        type={reveal ? 'text' : 'password'}
+        placeholder={placeholder || '••••••••'}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        autoComplete="new-password"
+        className="font-mono"
+      />
+      <Button type="button" variant="outline" size="icon" onClick={() => setReveal(r => !r)} title={reveal ? 'Ocultar' : 'Revelar'}>
+        {reveal ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+      </Button>
+      <Button type="button" variant="outline" size="icon" onClick={handleCopy} title="Copiar">
+        {copied ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
+      </Button>
+    </div>
+  );
 }
 
 interface CustomFieldInputProps {
@@ -34,6 +70,7 @@ export function CustomFieldInput({ field, value, localValue, onChange }: CustomF
       case 'text':
       case 'select':
       case 'url':
+      case 'password':
         return value.value_text;
       case 'number':
         return value.value_number;
@@ -66,6 +103,8 @@ export function CustomFieldInput({ field, value, localValue, onChange }: CustomF
         return 'Marque para confirmar (Sim/Não)';
       case 'url':
         return 'Link (URL) — abre em nova aba e mostra prévia';
+      case 'password':
+        return 'Valor sensível — fica oculto, copie para colar (ex: senha do gov.br)';
       default:
         return '';
     }
@@ -79,12 +118,13 @@ export function CustomFieldInput({ field, value, localValue, onChange }: CustomF
           {field.is_required && <span className="text-destructive ml-1">*</span>}
         </Label>
         <span className="text-xs text-muted-foreground px-2 py-0.5 rounded-full bg-muted capitalize">
-          {field.field_type === 'text' ? 'Texto' : 
+          {field.field_type === 'text' ? 'Texto' :
            field.field_type === 'number' ? 'Número' :
            field.field_type === 'date' ? 'Data' :
            field.field_type === 'select' ? 'Seleção' :
            field.field_type === 'checkbox' ? 'Checkbox' :
-           field.field_type === 'url' ? 'Link' : field.field_type}
+           field.field_type === 'url' ? 'Link' :
+           field.field_type === 'password' ? 'Senha' : field.field_type}
         </span>
       </div>
       
@@ -200,6 +240,14 @@ export function CustomFieldInput({ field, value, localValue, onChange }: CustomF
           </div>
         );
       })()}
+
+      {field.field_type === 'password' && (
+        <PasswordField
+          value={(currentValue as string) || ''}
+          onChange={(v) => handleChange(v || null)}
+          placeholder={`Digite ${field.field_name.toLowerCase()}`}
+        />
+      )}
     </div>
   );
 }
