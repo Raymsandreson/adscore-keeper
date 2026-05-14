@@ -212,7 +212,7 @@ async function downloadAndStoreMedia(
     }
 
     // Fallback: direct URL
-    if ((!fileBuffer || fileBuffer.byteLength < 50) && mediaUrl && !mediaUrl.includes('.enc')) {
+    if ((!fileBuffer || fileBuffer.byteLength < 50) && mediaUrl && !isEncryptedWhatsAppUrl(mediaUrl)) {
       console.log('Trying direct media URL...');
       const directResp = await fetch(mediaUrl);
       if (directResp.ok) {
@@ -306,7 +306,7 @@ async function downloadAndStoreMedia(
 
     if (uploadError) {
       console.error('Storage upload error:', uploadError);
-      return { publicUrl: null, transcription, contentType };
+      return { publicUrl: null, transcription, contentType, encryptedSource };
     }
 
     const { data: urlData } = supabase.storage.from('whatsapp-media').getPublicUrl(filePath);
