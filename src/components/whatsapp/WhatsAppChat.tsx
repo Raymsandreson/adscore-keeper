@@ -2500,6 +2500,19 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                 )}
                 {msg.message_type === 'image' && msg.media_url && !isEncUrl(msg.media_url) && (
                   <div className="mb-1 relative group/img">
+                    {driveSelectionMode && (
+                      <button
+                        type="button"
+                        onClick={() => toggleDriveSelection(msg.id)}
+                        className={cn(
+                          "absolute top-2 left-2 z-10 h-6 w-6 rounded-md border-2 flex items-center justify-center transition-colors",
+                          selectedDriveMsgIds.has(msg.id) ? "bg-blue-500 border-blue-500 text-white" : "bg-white/90 border-white"
+                        )}
+                        title={selectedDriveMsgIds.has(msg.id) ? 'Desmarcar' : 'Selecionar para Drive'}
+                      >
+                        {selectedDriveMsgIds.has(msg.id) && <span className="text-xs font-bold">✓</span>}
+                      </button>
+                    )}
                     <a href={msg.media_url} target="_blank" rel="noopener noreferrer">
                       <img
                         src={msg.media_url}
