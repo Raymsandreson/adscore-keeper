@@ -1190,6 +1190,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
             <div className="flex items-center gap-2 mb-1">
               <FileSignature className="h-4 w-4 text-amber-500" />
               <span className="text-xs text-muted-foreground">Documentos {periodLabel}</span>
+              <div className="ml-auto"><CompareBtn metric="documents" /></div>
             </div>
             <p className="text-2xl font-bold">{todayDocs.length}</p>
             <p className="text-xs text-muted-foreground">Clique para ver</p>
