@@ -86,6 +86,10 @@ function findMediaKeyDeep(value: any, depth = 0): string | null {
   return null;
 }
 
+function toExactArrayBuffer(buffer: Buffer): ArrayBuffer {
+  return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer;
+}
+
 async function downloadAndStoreMedia(
   supabase: any,
   messageId: string,
@@ -138,16 +142,20 @@ async function downloadAndStoreMedia(
             transcription = jsonData.transcription.trim();
           }
         } else if (jsonData.base64Data) {
-          fileBuffer = Buffer.from(jsonData.base64Data, 'base64').buffer;
+          fileBuffer = toExactArrayBuffer(Buffer.from(jsonData.base64Data, 'base64'));
           if (jsonData.mimetype) contentType = jsonData.mimetype;
         } else if (jsonData.data) {
-          fileBuffer = Buffer.from(jsonData.data, 'base64').buffer;
+          fileBuffer = toExactArrayBuffer(Buffer.from(jsonData.data, 'base64'));
           if (jsonData.mimetype) contentType = jsonData.mimetype;
         } else if (jsonData.url) {
           const mediaResp = await fetch(jsonData.url);
           if (mediaResp.ok) {
             fileBuffer = await mediaResp.arrayBuffer();
             contentType = mediaResp.headers.get('content-type') || contentType;
+            if (isEncryptedWhatsAppUrl(jsonData.url)) {
+              encryptedSource = true;
+              downloadedEncryptedBytes = true;
+            }
           }
         } else {
           console.log('downloadMediaMessage unexpected JSON:', JSON.stringify(jsonData).substring(0, 500));
