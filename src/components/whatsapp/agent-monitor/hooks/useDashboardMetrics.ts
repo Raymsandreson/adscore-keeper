@@ -158,13 +158,15 @@ export function useDashboardMetrics() {
         has_lead: !!r.has_lead,
       }));
 
-      // Build conversation/closed metrics from KPI snapshot data
+      // Build conversation/closed metrics. Para "today" a RPC é fonte de verdade
+      // (newConvDetails + responseRate + avgResponseTimeMin). Para outros períodos,
+      // mantém snapshot do edge function de KPIs.
       const convAndClosedMetrics: Partial<DashboardMetrics> = {
-        newConversations: kpiData.conversas_ativas || totalNewConvs || 0,
+        newConversations: isToday ? totalNewConvs : (kpiData.conversas_ativas || 0),
         responseRate,
         avgResponseTimeMin,
         respondedCount,
-        totalInbound: totalNewConvs || (kpiData.msgs_inbound || 0),
+        totalInbound: isToday ? totalNewConvs : (kpiData.msgs_inbound || 0),
         closedByAgent: [],
         closedByAgentDetailed: [],
         closedByCampaign: [],
@@ -174,11 +176,11 @@ export function useDashboardMetrics() {
         closedNoInteraction: kpiData.leads_fechados || 0,
         closedTotal: kpiData.leads_fechados || 0,
         closedLeadDetails: [],
-        newConvDetails: [],
+        newConvDetails,
       };
 
-      // If KPI response contains snapshot-level aggregates, use them (override fallback)
-      if (kpiRes?.conversation_metrics) {
+      // Snapshot só sobrepõe quando NÃO é hoje (RPC manda em today).
+      if (!isToday && kpiRes?.conversation_metrics) {
         const cm = kpiRes.conversation_metrics;
         convAndClosedMetrics.newConversations = cm.newConversations || convAndClosedMetrics.newConversations;
         convAndClosedMetrics.responseRate = cm.responseRate ?? convAndClosedMetrics.responseRate;
@@ -200,7 +202,7 @@ export function useDashboardMetrics() {
       if (kpiRes?.closed_lead_details) {
         convAndClosedMetrics.closedLeadDetails = kpiRes.closed_lead_details;
       }
-      if (kpiRes?.new_conv_details) {
+      if (!isToday && kpiRes?.new_conv_details) {
         convAndClosedMetrics.newConvDetails = kpiRes.new_conv_details;
       }
 
