@@ -168,7 +168,45 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
       setResyncingMsgId(null);
     }
   };
-  const [pastedImage, setPastedImage] = useState<{ file: File; previewUrl: string } | null>(null);
+
+  const handleBulkResyncMissingMedia = async () => {
+    if (bulkResyncing) return;
+    const missing = (conversation.messages || []).filter((m: any) => isMissingMedia(m) && m.external_message_id);
+    if (missing.length === 0) {
+      toast.info('Nenhuma mídia pendente nesta conversa');
+      return;
+    }
+    setBulkResyncing(true);
+    setBulkResyncProgress({ done: 0, total: missing.length });
+    const t = toast.loading(`Sincronizando ${missing.length} mídia(s) antiga(s)...`);
+    let ok = 0;
+    let fail = 0;
+    for (let i = 0; i < missing.length; i++) {
+      const msg = missing[i];
+      try {
+        const rawId = msg.external_message_id?.split(':').pop();
+        const { data, error } = await supabase.functions.invoke('whatsapp-fetch-history', {
+          body: {
+            phone: conversation.phone,
+            instance_name: conversation.instance_name,
+            mode: rawId ? 'exact' : 'history',
+            messageid: rawId,
+            count: 5,
+          },
+        });
+        if (error || data?.success === false) fail++;
+        else ok++;
+      } catch {
+        fail++;
+      }
+      setBulkResyncProgress({ done: i + 1, total: missing.length });
+      // Throttle: 350ms entre chamadas para não saturar a UazAPI
+      await new Promise((r) => setTimeout(r, 350));
+    }
+    toast.success(`Sync solicitado: ${ok} ok, ${fail} falha(s). As mídias chegam pelo webhook em alguns segundos.`, { id: t });
+    setBulkResyncing(false);
+    setBulkResyncProgress(null);
+  };
   const [pastedCaption, setPastedCaption] = useState('');
   const [inputMode, setInputMode] = useState<'message' | 'note' | 'chat'>('message');
   const [mentionUserId, setMentionUserId] = useState<string | null>(null);
