@@ -561,6 +561,11 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
               Este grupo ainda não tem descrição no WhatsApp.
             </p>
           )}
+          {descriptionUpdatedAt && (
+            <p className="text-[10px] text-muted-foreground">
+              Descrição atualizada em {formatUpdatedAt(descriptionUpdatedAt)}
+            </p>
+          )}
           <div className="flex items-center justify-between">
             <span className="text-[10px] text-muted-foreground">{groupDescription.length}/512</span>
             <Button
