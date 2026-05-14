@@ -69,7 +69,12 @@ const corsHeaders: Record<string, string> = {
 // ============================================================
 
 function isEncryptedWhatsAppUrl(url?: string | null): boolean {
-  return typeof url === 'string' && /\.enc(?:\?|$)/i.test(url);
+  if (typeof url !== 'string') return false;
+  if (/\.enc(?:\?|$)/i.test(url)) return true;
+  // WhatsApp CDN media URLs are AES-encrypted blobs even without .enc suffix.
+  // They cannot be played directly by the browser — require mediaKey decrypt.
+  if (/^https?:\/\/(?:[a-z0-9-]+\.)*whatsapp\.net\//i.test(url)) return true;
+  return false;
 }
 
 function findMediaKeyDeep(value: any, depth = 0): string | null {
