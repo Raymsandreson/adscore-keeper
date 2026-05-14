@@ -2179,7 +2179,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         </div>
       )}
 
-      {/* Dialog batch: modo + nome */}
+      {/* Dialog batch: modo + nome + reorder */}
       <Dialog open={showBatchDriveDialog} onOpenChange={setShowBatchDriveDialog}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -2207,6 +2207,49 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                 </button>
               </div>
             </div>
+
+            {/* Reorder thumbnails */}
+            {batchDriveOrder.length > 0 && (
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground">Ordem das mídias (arraste para reordenar)</label>
+                <div className="flex flex-wrap gap-2">
+                  {batchDriveOrder.map((item, idx) => (
+                    <div
+                      key={item.id}
+                      draggable
+                      onDragStart={(e) => { e.dataTransfer.setData('text/plain', String(idx)); e.dataTransfer.effectAllowed = 'move'; }}
+                      onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        const from = Number(e.dataTransfer.getData('text/plain'));
+                        if (from === idx) return;
+                        setBatchDriveOrder(prev => {
+                          const next = [...prev];
+                          const [removed] = next.splice(from, 1);
+                          next.splice(idx, 0, removed);
+                          return next;
+                        });
+                      }}
+                      className="relative h-16 w-16 rounded-md border bg-muted overflow-hidden cursor-grab active:cursor-grabbing transition-opacity hover:opacity-90"
+                      title={item.message_text || item.message_type}
+                    >
+                      {item.message_type === 'image' ? (
+                        <img src={item.media_url} alt="" className="h-full w-full object-cover" loading="lazy" />
+                      ) : (
+                        <div className="h-full w-full flex flex-col items-center justify-center gap-0.5">
+                          <FileText className="h-5 w-5 text-muted-foreground" />
+                          <span className="text-[8px] text-muted-foreground uppercase">{item.message_type}</span>
+                        </div>
+                      )}
+                      <span className="absolute top-0.5 left-0.5 bg-black/60 text-white text-[9px] font-bold rounded px-1">
+                        {idx + 1}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {batchDriveMode === 'merge' && (
               <div className="space-y-1">
                 <label className="text-xs font-medium text-muted-foreground">Nome do PDF</label>
