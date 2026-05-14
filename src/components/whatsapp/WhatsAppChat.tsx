@@ -135,6 +135,37 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const [locationLat, setLocationLat] = useState('');
   const [locationLng, setLocationLng] = useState('');
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
+  const [resyncingMsgId, setResyncingMsgId] = useState<string | null>(null);
+
+  const isEncUrl = (u?: string | null) => !!u && /\.enc(?:\?|$)/i.test(u);
+  const isMissingMedia = (m: any) =>
+    ['image', 'video', 'audio', 'document'].includes(m?.message_type) &&
+    (!m.media_url || isEncUrl(m.media_url));
+
+  const handleResyncMedia = async (msg: any) => {
+    if (resyncingMsgId) return;
+    setResyncingMsgId(msg.id);
+    const t = toast.loading('Sincronizando mídia...');
+    try {
+      const rawId = msg.external_message_id?.split(':').pop();
+      const { data, error } = await supabase.functions.invoke('whatsapp-fetch-history', {
+        body: {
+          phone: conversation.phone,
+          instance_name: conversation.instance_name,
+          mode: rawId ? 'exact' : 'history',
+          messageid: rawId,
+          count: 5,
+        },
+      });
+      if (error) throw error;
+      if (data?.success === false) throw new Error(data?.error || 'Falha ao sincronizar');
+      toast.success('Sync solicitado! A mídia chega em alguns segundos.', { id: t });
+    } catch (e: any) {
+      toast.error(e?.message || 'Erro ao sincronizar mídia', { id: t });
+    } finally {
+      setResyncingMsgId(null);
+    }
+  };
   const [pastedImage, setPastedImage] = useState<{ file: File; previewUrl: string } | null>(null);
   const [pastedCaption, setPastedCaption] = useState('');
   const [inputMode, setInputMode] = useState<'message' | 'note' | 'chat'>('message');
@@ -2026,11 +2057,9 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                   );
                 })()}
                 {/* Media rendering */}
-                {msg.message_type === 'audio' && msg.media_url && (
+                {msg.message_type === 'audio' && msg.media_url && !isEncUrl(msg.media_url) && (
                   <div className="mb-1">
                     <audio controls className="max-w-full" preload="metadata">
-                      {/* Mídias antigas vieram com media_type genérico (octet-stream) e o
-                          navegador recusa. Forçamos audio/ogg como dica padrão do WhatsApp. */}
                       <source
                         src={msg.media_url}
                         type={(!msg.media_type || msg.media_type === 'application/octet-stream') ? 'audio/ogg' : msg.media_type}
@@ -2044,7 +2073,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                     </a>
                   </div>
                 )}
-                {msg.message_type === 'image' && msg.media_url && (
+                {msg.message_type === 'image' && msg.media_url && !isEncUrl(msg.media_url) && (
                   <div className="mb-1 relative group/img">
                     <a href={msg.media_url} target="_blank" rel="noopener noreferrer">
                       <img
@@ -2069,7 +2098,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                     </a>
                   </div>
                 )}
-                {msg.message_type === 'video' && msg.media_url && (
+                {msg.message_type === 'video' && msg.media_url && !isEncUrl(msg.media_url) && (
                   <div className="mb-1">
                     <video controls className="max-w-full rounded-lg max-h-[320px]" preload="metadata">
                       <source src={msg.media_url} type={msg.media_type || 'video/mp4'} />
@@ -2079,7 +2108,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                     </a>
                   </div>
                 )}
-                {msg.message_type === 'document' && msg.media_url && (() => {
+                {msg.message_type === 'document' && msg.media_url && !isEncUrl(msg.media_url) && (() => {
                   const isPdf = (msg.media_type || '').includes('pdf') || /\.pdf($|\?)/i.test(msg.media_url);
                   const fileName = msg.message_text || (msg.media_url.split('/').pop()?.split('?')[0]) || 'Documento';
                   return (
@@ -2121,8 +2150,26 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                     {msg.message_text}
                   </p>
                 )}
-                {!msg.message_text && !msg.media_url && msg.message_type !== 'text' && (
-                  <p className="text-xs italic opacity-70">📎 {msg.message_type === 'image' ? 'Imagem ainda não baixada' : msg.message_type === 'document' ? 'Documento ainda não baixado' : msg.message_type === 'video' ? 'Vídeo ainda não baixado' : msg.message_type === 'audio' ? 'Áudio ainda não baixado' : msg.message_type} — sincronize para carregar</p>
+                {isMissingMedia(msg) && (
+                  <div className="mb-1 flex items-center gap-2 px-3 py-2 rounded-lg border border-dashed bg-muted/40">
+                    <span className="text-xs italic opacity-80 flex-1">
+                      📎 {msg.message_type === 'image' ? 'Imagem' : msg.message_type === 'document' ? 'Documento' : msg.message_type === 'video' ? 'Vídeo' : 'Áudio'} criptografado — clique para sincronizar
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      className="h-7 px-2 text-[11px] gap-1"
+                      disabled={resyncingMsgId === msg.id}
+                      onClick={() => handleResyncMedia(msg)}
+                    >
+                      {resyncingMsgId === msg.id ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <RefreshCw className="h-3 w-3" />
+                      )}
+                      Sincronizar
+                    </Button>
+                  </div>
                 )}
                 <p className={cn(
                   "text-[10px] mt-1",
