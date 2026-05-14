@@ -2017,6 +2017,71 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         </DialogContent>
       </Dialog>
 
+      {/* Salvar no Drive: escolher/criar lead alvo */}
+      <Dialog open={showDriveTargetDialog} onOpenChange={(o) => { setShowDriveTargetDialog(o); if (!o) setDriveTargetMsg(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Salvar no Drive — escolher lead</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground">
+              Esta conversa não está vinculada a nenhum lead. Escolha um existente ou crie um novo para receber o arquivo na pasta dele.
+            </p>
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Buscar lead por nome..."
+                value={leadSearchQuery}
+                onChange={(e) => { setLeadSearchQuery(e.target.value); fetchLeads(e.target.value); }}
+                className="pl-8 h-9"
+              />
+            </div>
+            <ScrollArea className="max-h-[220px]">
+              <div className="space-y-0.5">
+                {leads.map(lead => (
+                  <button
+                    key={lead.id}
+                    type="button"
+                    className={cn(
+                      "w-full flex items-center gap-2 p-2 rounded-md text-left text-sm transition-colors",
+                      selectedLeadId === lead.id ? "bg-primary/10 border border-primary/30" : "hover:bg-muted"
+                    )}
+                    onClick={() => setSelectedLeadId(lead.id)}
+                  >
+                    <span className="truncate flex-1">{lead.lead_name || 'Lead sem nome'}</span>
+                    {lead.lead_phone && <span className="text-xs text-muted-foreground ml-2 shrink-0">{lead.lead_phone}</span>}
+                  </button>
+                ))}
+                {leads.length === 0 && (
+                  <p className="text-xs text-muted-foreground text-center py-4">Digite para buscar ou crie um novo abaixo.</p>
+                )}
+              </div>
+            </ScrollArea>
+            <div className="flex gap-2 pt-2 border-t">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={handleCreateLeadForDrive}
+                disabled={creatingDriveLead || savingDriveMsgId !== null}
+              >
+                {creatingDriveLead ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Plus className="h-4 w-4 mr-1" />}
+                Criar lead novo
+              </Button>
+              <Button
+                className="flex-1"
+                onClick={handlePickExistingLeadForDrive}
+                disabled={!selectedLeadId || savingDriveMsgId !== null}
+              >
+                Salvar neste lead
+              </Button>
+            </div>
+            <p className="text-[10px] text-muted-foreground text-center">
+              {isGroup ? 'O grupo será vinculado ao lead escolhido.' : 'A conversa será vinculada ao lead escolhido.'}
+            </p>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Lead Preview - aba lateral */}
       {conversation.lead_id && onCreateActivity && (
         <Sheet open={showLeadPanel} onOpenChange={setShowLeadPanel}>
