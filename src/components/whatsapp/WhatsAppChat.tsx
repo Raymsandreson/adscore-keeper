@@ -238,18 +238,23 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   };
 
   const handlePickExistingLeadForDrive = async () => {
-    if (!selectedLeadId || !driveTargetMsg) return;
+    if (!selectedLeadId) return;
     const lead = leads.find(l => l.id === selectedLeadId);
-    const msg = driveTargetMsg;
+    const leadName = (lead as any)?.lead_name;
     setShowDriveTargetDialog(false);
-    setDriveTargetMsg(null);
-    // Vincula conversa em background (não bloqueia o upload)
     try { onLinkToLead(conversation.phone, selectedLeadId); } catch (e) { console.warn('link conversa falhou:', e); }
-    await runDriveUpload(msg, selectedLeadId, (lead as any)?.lead_name);
+    if (pendingBatchAfterLead) {
+      setPendingBatchAfterLead(false);
+      await runBatchDriveUpload(selectedLeadId, leadName);
+      return;
+    }
+    if (!driveTargetMsg) return;
+    const msg = driveTargetMsg;
+    setDriveTargetMsg(null);
+    await runDriveUpload(msg, selectedLeadId, leadName);
   };
 
   const handleCreateLeadForDrive = async () => {
-    if (!driveTargetMsg) return;
     setCreatingDriveLead(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -270,11 +275,17 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         .select('id, lead_name')
         .single();
       if (error) throw error;
-      const msg = driveTargetMsg;
       setShowDriveTargetDialog(false);
-      setDriveTargetMsg(null);
       try { onLinkToLead(conversation.phone, (newLead as any).id); } catch (e) { console.warn('link conversa falhou:', e); }
       toast.success(`Lead "${(newLead as any).lead_name}" criado`);
+      if (pendingBatchAfterLead) {
+        setPendingBatchAfterLead(false);
+        await runBatchDriveUpload((newLead as any).id, (newLead as any).lead_name);
+        return;
+      }
+      if (!driveTargetMsg) return;
+      const msg = driveTargetMsg;
+      setDriveTargetMsg(null);
       await runDriveUpload(msg, (newLead as any).id, (newLead as any).lead_name);
     } catch (e: any) {
       console.error('[saveToDrive] criar lead falhou:', e);
@@ -282,6 +293,139 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     } finally {
       setCreatingDriveLead(false);
     }
+  };
+
+  // ===== Seleção múltipla de mídias para Drive =====
+  const [driveSelectionMode, setDriveSelectionMode] = useState(false);
+  const [selectedDriveMsgIds, setSelectedDriveMsgIds] = useState<Set<string>>(new Set());
+  const [showBatchDriveDialog, setShowBatchDriveDialog] = useState(false);
+  const [batchDriveMode, setBatchDriveMode] = useState<'merge' | 'separate'>('merge');
+  const [batchFileName, setBatchFileName] = useState('');
+  const [batchUploading, setBatchUploading] = useState(false);
+  const [pendingBatchAfterLead, setPendingBatchAfterLead] = useState(false);
+
+  const toggleDriveSelection = (msgId: string) => {
+    setSelectedDriveMsgIds(prev => {
+      const next = new Set(prev);
+      if (next.has(msgId)) next.delete(msgId); else next.add(msgId);
+      return next;
+    });
+  };
+
+  const exitDriveSelection = () => {
+    setDriveSelectionMode(false);
+    setSelectedDriveMsgIds(new Set());
+  };
+
+  const openBatchDialogIfReady = () => {
+    if (selectedDriveMsgIds.size === 0) return;
+    const today = new Date().toISOString().slice(0, 10);
+    setBatchFileName(`Documentos ${conversation.contact_name || 'cliente'} ${today}`.replace(/[\\/:*?"<>|]/g, '_'));
+    setBatchDriveMode('merge');
+    setShowBatchDriveDialog(true);
+  };
+
+  const runBatchDriveUpload = async (leadId: string, leadNameInput?: string) => {
+    const ids = Array.from(selectedDriveMsgIds);
+    const selected = (messages || []).filter((m: any) => ids.includes(m.id) && m.media_url && !isEncUrl(m.media_url));
+    if (selected.length === 0) {
+      toast.error('Nenhuma mídia válida selecionada.');
+      return;
+    }
+    setBatchUploading(true);
+    const tId = toast.loading(`Enviando ${selected.length} arquivo(s) para o Drive…`);
+    try {
+      let leadName = leadNameInput;
+      if (!leadName) {
+        const { data: leadRow } = await externalSupabase
+          .from('leads').select('lead_name').eq('id', leadId).maybeSingle();
+        leadName = (leadRow as any)?.lead_name || conversation.contact_name || 'Lead';
+      }
+
+      if (batchDriveMode === 'merge') {
+        const sources = selected
+          .filter((m: any) => {
+            const mt = (m.media_type || '').toLowerCase();
+            return mt.includes('pdf') || mt.startsWith('image/');
+          })
+          .map((m: any) => ({ url: m.media_url, mime_type: m.media_type || undefined }));
+        if (sources.length === 0) {
+          toast.error('Selecione imagens ou PDFs para juntar (vídeo/áudio não viram PDF).', { id: tId });
+          return;
+        }
+        const finalName = batchFileName.trim() || `Documentos ${Date.now()}`;
+        const { data, error } = await supabase.functions.invoke('lead-drive', {
+          body: {
+            action: 'merge_pdf_upload',
+            lead_id: leadId,
+            lead_name: leadName,
+            file_name: finalName,
+            sources,
+          },
+        });
+        if (error) throw error;
+        if ((data as any)?.error) throw new Error((data as any).error);
+        const file = (data as any).file;
+        const skipped = ((data as any)?.skipped || []) as Array<{ url: string; reason: string }>;
+        toast.success(
+          `PDF salvo: ${file.name}${skipped.length ? ` (${skipped.length} ignorado${skipped.length > 1 ? 's' : ''})` : ''}`,
+          {
+            id: tId,
+            action: file.webViewLink ? { label: 'Abrir', onClick: () => window.open(file.webViewLink, '_blank') } : undefined,
+          },
+        );
+      } else {
+        let okCount = 0;
+        const errors: string[] = [];
+        for (const m of selected) {
+          try {
+            const urlBase = (m.media_url.split('/').pop()?.split('?')[0]) || '';
+            const hasExt = /\.[a-z0-9]{2,5}$/i.test(urlBase);
+            const mime = m.media_type || '';
+            const extFromMime = mime.includes('pdf') ? '.pdf'
+              : mime.startsWith('image/jpeg') ? '.jpg'
+              : mime.startsWith('image/png') ? '.png'
+              : mime.startsWith('image/webp') ? '.webp'
+              : mime.startsWith('video/') ? '.mp4'
+              : mime.startsWith('audio/') ? '.ogg' : '';
+            const baseName = (m.message_text && m.message_text.length < 100 ? m.message_text : urlBase || `whatsapp_${m.id}`).replace(/[\\/:*?"<>|]/g, '_');
+            const fileName = hasExt ? baseName : `${baseName}${extFromMime}`;
+            const { data, error } = await supabase.functions.invoke('lead-drive', {
+              body: { action: 'upload_url', lead_id: leadId, lead_name: leadName, file_name: fileName, source_url: m.media_url, mime_type: mime || undefined },
+            });
+            if (error || (data as any)?.error) throw new Error((data as any)?.error || error?.message);
+            okCount++;
+          } catch (e: any) {
+            errors.push(e?.message || String(e));
+          }
+        }
+        if (okCount > 0) {
+          toast.success(`${okCount} arquivo(s) salvos no Drive${errors.length ? ` — ${errors.length} falha(s)` : ''}`, { id: tId });
+        } else {
+          toast.error(`Falha ao salvar: ${errors[0] || 'erro desconhecido'}`, { id: tId });
+        }
+      }
+      setShowBatchDriveDialog(false);
+      exitDriveSelection();
+    } catch (err: any) {
+      console.error('[batchSaveToDrive] erro:', err);
+      toast.error(`Erro ao salvar no Drive: ${err.message || err}`, { id: tId });
+    } finally {
+      setBatchUploading(false);
+    }
+  };
+
+  const handleConfirmBatchDrive = async () => {
+    if (conversation.lead_id) {
+      await runBatchDriveUpload(conversation.lead_id);
+      return;
+    }
+    setShowBatchDriveDialog(false);
+    setPendingBatchAfterLead(true);
+    setLeadSearchQuery('');
+    setSelectedLeadId('');
+    setShowDriveTargetDialog(true);
+    fetchLeads('');
   };
 
   const isEncUrl = (u?: string | null) => !!u && /\.enc(?:\?|$)/i.test(u);
@@ -1653,6 +1797,9 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
               >
                 <RefreshCw className="h-4 w-4" /> Buscar histórico (msgs antigas)
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => { setDriveSelectionMode(true); setSelectedDriveMsgIds(new Set()); }} className="gap-2">
+                <Sparkles className="h-4 w-4 text-blue-500" /> Selecionar mídias p/ Drive
+              </DropdownMenuItem>
               <DropdownMenuSeparator />
               {!conversation.lead_id && contactLinkedLeadIds.length === 0 && (
                 <DropdownMenuItem onClick={() => { setShowLinkDialog(true); fetchLeads(); }} className="gap-2">
@@ -2018,6 +2165,59 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
       </Dialog>
 
       {/* Salvar no Drive: escolher/criar lead alvo */}
+      {/* Barra inferior de seleção de mídias para Drive */}
+      {driveSelectionMode && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 bg-background border shadow-lg rounded-full px-4 py-2 flex items-center gap-3">
+          <span className="text-sm font-medium">{selectedDriveMsgIds.size} selecionada(s)</span>
+          <Button size="sm" variant="outline" onClick={exitDriveSelection}>Cancelar</Button>
+          <Button size="sm" disabled={selectedDriveMsgIds.size === 0} onClick={openBatchDialogIfReady} className="gap-1">
+            <Sparkles className="h-3.5 w-3.5" /> Salvar no Drive
+          </Button>
+        </div>
+      )}
+
+      {/* Dialog batch: modo + nome */}
+      <Dialog open={showBatchDriveDialog} onOpenChange={setShowBatchDriveDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Salvar {selectedDriveMsgIds.size} mídia(s) no Drive</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-muted-foreground">Como salvar?</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setBatchDriveMode('merge')}
+                  className={cn("p-3 rounded-md border text-left text-sm transition-colors", batchDriveMode === 'merge' ? "bg-primary/10 border-primary" : "hover:bg-muted")}
+                >
+                  <div className="font-medium">Juntar em PDF</div>
+                  <div className="text-[11px] text-muted-foreground mt-1">1 arquivo único. Imagens viram páginas.</div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBatchDriveMode('separate')}
+                  className={cn("p-3 rounded-md border text-left text-sm transition-colors", batchDriveMode === 'separate' ? "bg-primary/10 border-primary" : "hover:bg-muted")}
+                >
+                  <div className="font-medium">Mandar separado</div>
+                  <div className="text-[11px] text-muted-foreground mt-1">Cada arquivo individual no Drive.</div>
+                </button>
+              </div>
+            </div>
+            {batchDriveMode === 'merge' && (
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground">Nome do PDF</label>
+                <Input value={batchFileName} onChange={(e) => setBatchFileName(e.target.value)} placeholder="Documentos do cliente" />
+              </div>
+            )}
+            <Button className="w-full" onClick={handleConfirmBatchDrive} disabled={batchUploading}>
+              {batchUploading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Sparkles className="h-4 w-4 mr-1" />}
+              {batchDriveMode === 'merge' ? 'Gerar PDF e enviar' : 'Enviar separados'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={showDriveTargetDialog} onOpenChange={(o) => { setShowDriveTargetDialog(o); if (!o) setDriveTargetMsg(null); }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -2353,6 +2553,19 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                 )}
                 {msg.message_type === 'image' && msg.media_url && !isEncUrl(msg.media_url) && (
                   <div className="mb-1 relative group/img">
+                    {driveSelectionMode && (
+                      <button
+                        type="button"
+                        onClick={() => toggleDriveSelection(msg.id)}
+                        className={cn(
+                          "absolute top-2 left-2 z-10 h-6 w-6 rounded-md border-2 flex items-center justify-center transition-colors",
+                          selectedDriveMsgIds.has(msg.id) ? "bg-blue-500 border-blue-500 text-white" : "bg-white/90 border-white"
+                        )}
+                        title={selectedDriveMsgIds.has(msg.id) ? 'Desmarcar' : 'Selecionar para Drive'}
+                      >
+                        {selectedDriveMsgIds.has(msg.id) && <span className="text-xs font-bold">✓</span>}
+                      </button>
+                    )}
                     <a href={msg.media_url} target="_blank" rel="noopener noreferrer">
                       <img
                         src={msg.media_url}
@@ -2412,6 +2625,19 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                         </div>
                       )}
                       <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-muted/40">
+                        {driveSelectionMode && (
+                          <button
+                            type="button"
+                            onClick={() => toggleDriveSelection(msg.id)}
+                            className={cn(
+                              "h-5 w-5 rounded border-2 flex items-center justify-center shrink-0 transition-colors",
+                              selectedDriveMsgIds.has(msg.id) ? "bg-blue-500 border-blue-500 text-white" : "bg-background border-muted-foreground/40"
+                            )}
+                            title={selectedDriveMsgIds.has(msg.id) ? 'Desmarcar' : 'Selecionar para Drive'}
+                          >
+                            {selectedDriveMsgIds.has(msg.id) && <span className="text-[10px] font-bold">✓</span>}
+                          </button>
+                        )}
                         <FileText className="h-4 w-4 text-orange-500 shrink-0" />
                         <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="flex-1 text-xs underline truncate">
                           {fileName}

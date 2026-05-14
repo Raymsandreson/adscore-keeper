@@ -288,6 +288,81 @@ Deno.serve(async (req) => {
       );
     }
 
+    if (action === "merge_pdf_upload") {
+      // Recebe array de URLs (imagens e/ou PDFs), monta UM PDF único e sobe pro Drive
+      const { file_name, sources } = body as { file_name: string; sources: Array<{ url: string; mime_type?: string }> };
+      if (!file_name || !Array.isArray(sources) || sources.length === 0) {
+        throw new Error("file_name and sources[] required");
+      }
+      const folderId = await getOrCreateLeadFolder(lead_id, lead_name, ext);
+      const { PDFDocument } = await import("https://esm.sh/pdf-lib@1.17.1?target=deno");
+      const outDoc = await PDFDocument.create();
+      const skipped: Array<{ url: string; reason: string }> = [];
+
+      for (const src of sources) {
+        try {
+          const dl = await fetch(src.url);
+          if (!dl.ok) { skipped.push({ url: src.url, reason: `download ${dl.status}` }); continue; }
+          const bytes = new Uint8Array(await dl.arrayBuffer());
+          const mime = (src.mime_type || dl.headers.get("content-type") || "").toLowerCase();
+
+          if (mime.includes("pdf")) {
+            const src1 = await PDFDocument.load(bytes, { ignoreEncryption: true });
+            const copied = await outDoc.copyPages(src1, src1.getPageIndices());
+            copied.forEach((p) => outDoc.addPage(p));
+          } else if (mime.includes("jpeg") || mime.includes("jpg")) {
+            const img = await outDoc.embedJpg(bytes);
+            const page = outDoc.addPage([img.width, img.height]);
+            page.drawImage(img, { x: 0, y: 0, width: img.width, height: img.height });
+          } else if (mime.includes("png")) {
+            const img = await outDoc.embedPng(bytes);
+            const page = outDoc.addPage([img.width, img.height]);
+            page.drawImage(img, { x: 0, y: 0, width: img.width, height: img.height });
+          } else if (mime.includes("webp") || mime.includes("heic") || mime.includes("gif")) {
+            // pdf-lib não suporta nativamente; tentamos forçar como JPG (alguns servidores aceitam mudar Accept)
+            skipped.push({ url: src.url, reason: `formato ${mime} não suportado para PDF` });
+          } else {
+            skipped.push({ url: src.url, reason: `mime não suportado: ${mime}` });
+          }
+        } catch (e) {
+          skipped.push({ url: src.url, reason: (e as Error).message });
+        }
+      }
+
+      if (outDoc.getPageCount() === 0) {
+        return new Response(
+          JSON.stringify({ ok: false, error: "Nenhum arquivo pôde ser convertido para PDF", skipped }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+
+      const pdfBytes = await outDoc.save();
+      const finalName = /\.pdf$/i.test(file_name) ? file_name : `${file_name}.pdf`;
+
+      const boundary = "----lovable-boundary-" + crypto.randomUUID();
+      const metadata = JSON.stringify({ name: finalName, parents: [folderId] });
+      const head = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n--${boundary}\r\nContent-Type: application/pdf\r\n\r\n`;
+      const tail = `\r\n--${boundary}--`;
+      const headBytes = new TextEncoder().encode(head);
+      const tailBytes = new TextEncoder().encode(tail);
+      const payload = new Uint8Array(headBytes.length + pdfBytes.length + tailBytes.length);
+      payload.set(headBytes, 0);
+      payload.set(pdfBytes, headBytes.length);
+      payload.set(tailBytes, headBytes.length + pdfBytes.length);
+
+      const res = await fetch(`${UPLOAD_GATEWAY}/files?uploadType=multipart&fields=id,name,webViewLink,mimeType,size,modifiedTime`, {
+        method: "POST",
+        headers: gwHeaders({ "Content-Type": `multipart/related; boundary=${boundary}` }),
+        body: payload,
+      });
+      if (!res.ok) throw new Error(`drive merge_pdf_upload failed [${res.status}]: ${await res.text()}`);
+      const file = await res.json();
+      return new Response(
+        JSON.stringify({ ok: true, file, folder_id: folderId, merged: outDoc.getPageCount(), skipped }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
     if (action === "analyze_file") {
       // Baixa um arquivo do Drive e usa Gemini Vision para identificar tipo + titular
       const { file_id } = body;
