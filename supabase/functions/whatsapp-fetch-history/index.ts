@@ -119,7 +119,7 @@ Deno.serve(async (req) => {
       had_local_anchor: !!messageid,
     }));
 
-    const resp = await fetch(`${baseUrl}/message/sync`, {
+    const resp = await fetch(`${baseUrl}/message/history-sync`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
