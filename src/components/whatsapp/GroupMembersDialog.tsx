@@ -494,7 +494,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
     const d = new Date(iso);
     if (isNaN(d.getTime())) return null;
     return d.toLocaleString('pt-BR', {
-      day: '2-digit', month '2-digit', year: 'numeric',
+      day: '2-digit', month: '2-digit', year: 'numeric',
       hour: '2-digit', minute: '2-digit'
     });
   };
