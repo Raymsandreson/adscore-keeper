@@ -9,7 +9,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
 import { WhatsAppCallRecorder } from '@/components/whatsapp/WhatsAppCallRecorder';
 import { toast } from 'sonner';
-import { Users, ExternalLink, Instagram, Phone, Mail, Plus, Search, Loader2, X, UserPlus, Heart, Mic, PhoneCall, Clock } from 'lucide-react';
+import { Users, ExternalLink, Instagram, Phone, Mail, Plus, Search, Loader2, X, UserPlus, Heart, Mic, PhoneCall, Clock, Trash2 } from 'lucide-react';
+import { logAudit } from '@/hooks/useAuditLog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface ContactCallStats {
