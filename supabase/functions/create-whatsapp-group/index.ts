@@ -1937,31 +1937,86 @@ Gere uma mensagem profissional e organizada com emojis, usando formatação do W
       } else if (!audioVoiceId) {
         console.log('Skipping audio: no voice ID configured')
       }
+    }
 
-      // Set group description
-      if (groupId) {
-        try {
-          const groupJidForDesc = groupId.includes('@g.us') ? groupId : `${groupId}@g.us`
-          const descriptionText = messageText.length > 2048 ? messageText.substring(0, 2045) + '...' : messageText
+    // ============================================================
+    // Set group description — INDEPENDENT step (runs even without messageText)
+    // ============================================================
+    if (groupId) {
+      try {
+        const groupJidForDesc = groupId.includes('@g.us') ? groupId : `${groupId}@g.us`
+
+        // Pick description source, in order:
+        // 1) explicit settings.group_description_template (if configured)
+        // 2) the initial message that was just sent
+        // 3) fallback: group name + short line
+        let rawDescription = ''
+        if (settings.group_description_template && typeof settings.group_description_template === 'string') {
+          rawDescription = settings.group_description_template
+          const replacements: Record<string, string> = {
+            '{lead_name}': leadData?.lead_name || lead_name || '',
+            '{victim_name}': leadData?.victim_name || '',
+            '{case_type}': leadData?.case_type || '',
+            '{case_number}': leadData?.case_number || '',
+            '{group_name}': groupName || '',
+            '{board_name}': boardName || '',
+            '{city}': leadData?.city || '',
+            '{state}': leadData?.state || '',
+          }
+          for (const [k, v] of Object.entries(replacements)) {
+            rawDescription = rawDescription.replaceAll(k, v)
+          }
+        } else if (messageText) {
+          rawDescription = messageText
+        } else {
+          rawDescription = `📋 ${groupName}\nGrupo de acompanhamento — ${lead_name || ''}`.trim()
+        }
+
+        const descriptionText = rawDescription.length > 2048
+          ? rawDescription.substring(0, 2045) + '...'
+          : rawDescription
+
+        console.log(`[group-description] Setting description for ${groupJidForDesc} (${descriptionText.length} chars)`)
+
+        let descOk = false
+        let lastStatus = 0
+        let lastBody = ''
+
+        // Tenta endpoint principal — com 2 retries em caso de rate-limit
+        for (let attempt = 0; attempt < 3 && !descOk; attempt++) {
+          if (attempt > 0) await sleep(1500 * attempt)
           const descRes = await fetch(`${baseUrl}/group/updateDescription`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
+            headers: { 'Content-Type': 'application/json', token: creatorInstance.instance_token },
             body: JSON.stringify({ groupjid: groupJidForDesc, description: descriptionText }),
           })
-          if (!descRes.ok) {
-            const descRes2 = await fetch(`${baseUrl}/group/description`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
-              body: JSON.stringify({ groupjid: groupJidForDesc, description: descriptionText }),
-            })
-            if (!descRes2.ok) {
-              console.warn('[initial-msg] Failed to set group description:', descRes2.status)
-            }
+          lastStatus = descRes.status
+          lastBody = await descRes.text().catch(() => '')
+          if (descRes.ok) {
+            descOk = true
+            console.log(`[group-description] OK on attempt ${attempt + 1}`)
+            break
           }
-          console.log('[initial-msg] Group description set')
-        } catch (descErr) {
-          console.warn('[initial-msg] Error setting group description:', descErr)
+          console.warn(`[group-description] attempt ${attempt + 1} failed: ${lastStatus} ${lastBody.slice(0, 300)}`)
         }
+
+        // Fallback: endpoint legado /group/description
+        if (!descOk) {
+          const descRes2 = await fetch(`${baseUrl}/group/description`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', token: creatorInstance.instance_token },
+            body: JSON.stringify({ groupjid: groupJidForDesc, description: descriptionText }),
+          })
+          if (descRes2.ok) {
+            descOk = true
+            console.log('[group-description] OK via fallback /group/description')
+          } else {
+            const fallbackBody = await descRes2.text().catch(() => '')
+            console.error(`[group-description] FAILED. main=${lastStatus} ${lastBody.slice(0, 200)} | fallback=${descRes2.status} ${fallbackBody.slice(0, 200)}`)
+          }
+        }
+      } catch (descErr) {
+        console.error('[group-description] Exception:', descErr)
       }
     }
   } catch (err) {
