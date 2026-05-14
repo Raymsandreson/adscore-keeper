@@ -21,6 +21,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { DashboardChatPreview } from './DashboardChatPreview';
 import { DashboardFunnelChecklist } from './DashboardFunnelChecklist';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
+import { InstanceComparisonDialog, InstanceRow } from './InstanceComparisonDialog';
+import { BarChart2 } from 'lucide-react';
 
 interface LeadWithMessages {
   id: string;
