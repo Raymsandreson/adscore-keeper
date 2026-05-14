@@ -557,6 +557,16 @@ export function LeadLinkedContacts({ leadId }: LeadLinkedContactsProps) {
                   >
                     <X className="h-3 w-3" />
                   </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                    onClick={() => handleDeleteContact(cl.contact.id, cl.contact.full_name)}
+                    title="Excluir contato (arquivar)"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
                 </div>
                 <div className="flex items-center gap-2 pl-11">
                   <Heart className="h-3 w-3 text-muted-foreground flex-shrink-0" />
