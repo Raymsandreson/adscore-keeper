@@ -69,6 +69,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
   const [descLoading, setDescLoading] = useState(false);
   const [descSaving, setDescSaving] = useState(false);
   const [descPulling, setDescPulling] = useState(false);
+  const [descriptionUpdatedAt, setDescriptionUpdatedAt] = useState<string | null>(null);
   const [quickContact, setQuickContact] = useState<Contact | null>(null);
   const [quickContactOpen, setQuickContactOpen] = useState(false);
   const [quickContactLoading, setQuickContactLoading] = useState<string | null>(null);
