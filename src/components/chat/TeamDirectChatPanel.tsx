@@ -42,6 +42,8 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [uploading, setUploading] = useState(false);
   const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const [mentionIndex, setMentionIndex] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messageInputRef = useRef<HTMLInputElement>(null);
@@ -49,6 +51,38 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const audioElementsRef = useRef<Map<string, HTMLAudioElement>>(new Map());
+
+  // Filtered members for @mention picker
+  const mentionCandidates = (() => {
+    if (mentionQuery === null) return [];
+    const q = mentionQuery.toLowerCase().trim();
+    return profiles
+      .filter(p => p.user_id !== user?.id)
+      .filter(p => !q || (p.full_name || '').toLowerCase().includes(q) || (p.email || '').toLowerCase().includes(q))
+      .slice(0, 6);
+  })();
+
+  const handleMessageChange = (value: string) => {
+    setMessageText(value);
+    // Detect @ token at the end of the text (allows letters/spaces until newline or boundary)
+    const m = value.match(/(?:^|\s)@([\wÀ-ÿ.\- ]{0,30})$/);
+    if (m) {
+      setMentionQuery(m[1]);
+      setMentionIndex(0);
+    } else {
+      setMentionQuery(null);
+    }
+  };
+
+  const insertMention = (name: string) => {
+    setMessageText(prev => prev.replace(/(?:^|\s)@([\wÀ-ÿ.\- ]{0,30})$/, (full, _q, offset) => {
+      const prefix = offset === 0 ? '' : full[0];
+      return `${prefix}@${name} `;
+    }));
+    setMentionQuery(null);
+    requestAnimationFrame(() => messageInputRef.current?.focus());
+  };
+
 
   useEffect(() => {
     if (scrollRef.current) {
