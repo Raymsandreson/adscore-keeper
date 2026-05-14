@@ -116,6 +116,11 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
   }, [open, isGroup, groupJid, instanceName]);
 
   useEffect(() => {
+    if (open && isGroup) {
+      fetchParticipants();
+      fetchClassificationsAndTypes();
+    }
+  }, [open, isGroup]);
 
   const fetchClassificationsAndTypes = async () => {
     const [classRes, relRes] = await Promise.all([
