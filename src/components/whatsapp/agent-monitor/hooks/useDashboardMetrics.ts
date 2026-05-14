@@ -210,7 +210,7 @@ export function useDashboardMetrics() {
       if (kpiRes?.closed_lead_details) {
         convAndClosedMetrics.closedLeadDetails = kpiRes.closed_lead_details;
       }
-      if (!isToday && kpiRes?.new_conv_details) {
+      if (!useRpc && kpiRes?.new_conv_details) {
         convAndClosedMetrics.newConvDetails = kpiRes.new_conv_details;
       }
 
