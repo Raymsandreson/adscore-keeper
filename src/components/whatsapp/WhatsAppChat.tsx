@@ -238,14 +238,20 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   };
 
   const handlePickExistingLeadForDrive = async () => {
-    if (!selectedLeadId || !driveTargetMsg) return;
+    if (!selectedLeadId) return;
     const lead = leads.find(l => l.id === selectedLeadId);
-    const msg = driveTargetMsg;
+    const leadName = (lead as any)?.lead_name;
     setShowDriveTargetDialog(false);
-    setDriveTargetMsg(null);
-    // Vincula conversa em background (não bloqueia o upload)
     try { onLinkToLead(conversation.phone, selectedLeadId); } catch (e) { console.warn('link conversa falhou:', e); }
-    await runDriveUpload(msg, selectedLeadId, (lead as any)?.lead_name);
+    if (pendingBatchAfterLead) {
+      setPendingBatchAfterLead(false);
+      await runBatchDriveUpload(selectedLeadId, leadName);
+      return;
+    }
+    if (!driveTargetMsg) return;
+    const msg = driveTargetMsg;
+    setDriveTargetMsg(null);
+    await runDriveUpload(msg, selectedLeadId, leadName);
   };
 
   const handleCreateLeadForDrive = async () => {
