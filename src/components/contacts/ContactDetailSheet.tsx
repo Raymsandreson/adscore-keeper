@@ -528,7 +528,7 @@ export function ContactDetailSheet({
   const contentClassName = mode === 'dialog'
     ? 'max-w-lg max-h-[90vh] overflow-hidden flex flex-col'
     : side === 'bottom'
-      ? 'h-[92vh] max-h-[92vh] w-full overflow-hidden flex flex-col p-0'
+      ? 'h-[92vh] max-h-[92vh] w-full max-w-full sm:max-w-full overflow-hidden flex flex-col rounded-t-2xl'
       : 'w-full sm:max-w-lg overflow-hidden flex flex-col';
 
   const sheetSideProp = mode === 'sheet' && side === 'bottom' ? { side: 'bottom' as const } : {};
