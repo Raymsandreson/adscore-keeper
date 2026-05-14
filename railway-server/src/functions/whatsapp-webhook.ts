@@ -129,6 +129,10 @@ async function downloadAndStoreMedia(
           if (mediaResp.ok) {
             fileBuffer = await mediaResp.arrayBuffer();
             contentType = jsonData.mimetype || mediaResp.headers.get('content-type') || contentType;
+            if (isEncryptedWhatsAppUrl(jsonData.fileURL)) {
+              encryptedSource = true;
+              downloadedEncryptedBytes = true;
+            }
           }
           if (typeof jsonData.transcription === 'string' && jsonData.transcription.trim()) {
             transcription = jsonData.transcription.trim();
@@ -182,6 +186,10 @@ async function downloadAndStoreMedia(
             if (dlResp.ok) {
               fileBuffer = await dlResp.arrayBuffer();
               contentType = fallbackData.mimetype || dlResp.headers.get('content-type') || contentType;
+              if (isEncryptedWhatsAppUrl(resolvedUrl)) {
+                encryptedSource = true;
+                downloadedEncryptedBytes = true;
+              }
             }
           }
         } else {
@@ -202,7 +210,7 @@ async function downloadAndStoreMedia(
     }
 
     // Fallback: download .enc + decrypt locally with mediaKey
-    if ((!fileBuffer || fileBuffer.byteLength < 50) && mediaKey && mediaUrl && mediaUrl.includes('.enc')) {
+    if ((downloadedEncryptedBytes || !fileBuffer || fileBuffer.byteLength < 50) && mediaKey && mediaUrl && isEncryptedWhatsAppUrl(mediaUrl)) {
       console.log('Trying local AES decrypt of .enc URL with mediaKey...');
       try {
         const encResp = await fetch(mediaUrl);
@@ -210,6 +218,7 @@ async function downloadAndStoreMedia(
           const encBuf = Buffer.from(await encResp.arrayBuffer());
           const decrypted = decryptWhatsAppMedia(encBuf, mediaKey, messageType);
           fileBuffer = decrypted.buffer.slice(decrypted.byteOffset, decrypted.byteOffset + decrypted.byteLength) as ArrayBuffer;
+          downloadedEncryptedBytes = false;
           console.log('Local AES decrypt OK, size:', decrypted.length);
         } else {
           console.log('Failed to fetch .enc URL:', encResp.status);
@@ -221,7 +230,17 @@ async function downloadAndStoreMedia(
 
     if (!fileBuffer || fileBuffer.byteLength < 50) {
       console.log('Could not download media, buffer empty or too small, size:', fileBuffer?.byteLength || 0);
-      return { publicUrl: null, transcription, contentType: null };
+      return { publicUrl: null, transcription, contentType: null, encryptedSource };
+    }
+
+    if (downloadedEncryptedBytes) {
+      console.error('Encrypted WhatsApp media was returned as a download but no valid mediaKey/decrypt result was available. Refusing to upload unreadable bytes.', {
+        messageId,
+        messageType,
+        hasMediaKey: !!mediaKey,
+        size: fileBuffer.byteLength,
+      });
+      return { publicUrl: null, transcription, contentType: null, encryptedSource: true };
     }
 
     // Normalize content type when UazAPI didn't tell us what it is.
@@ -280,10 +299,10 @@ async function downloadAndStoreMedia(
 
     const { data: urlData } = supabase.storage.from('whatsapp-media').getPublicUrl(filePath);
     console.log('Media uploaded successfully:', urlData.publicUrl);
-    return { publicUrl: urlData.publicUrl, transcription, contentType };
+    return { publicUrl: urlData.publicUrl, transcription, contentType, encryptedSource };
   } catch (e) {
     console.error('Media download/upload error:', e);
-    return { publicUrl: null, transcription: null, contentType: null };
+    return { publicUrl: null, transcription: null, contentType: null, encryptedSource: isEncryptedWhatsAppUrl(mediaUrl) };
   }
 }
 
