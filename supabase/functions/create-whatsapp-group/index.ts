@@ -1643,8 +1643,19 @@ Deno.serve(async (req) => {
 
   } catch (error: any) {
     console.error('Create group error:', error)
-    // Libera o sentinel pra permitir retry
-    try { await releaseSentinelIfOurs() } catch (_) { /* noop */ }
+    // Libera o sentinel pra permitir retry de uma próxima execução
+    if (claimedSentinelOuter && leadIdOuter) {
+      try {
+        const sb = createClient(RESOLVED_SUPABASE_URL, RESOLVED_SERVICE_ROLE_KEY)
+        await sb.from('leads')
+          .update({ whatsapp_group_id: null })
+          .eq('id', leadIdOuter)
+          .eq('whatsapp_group_id', claimedSentinelOuter)
+        console.log(`[create-group] sentinel released after error for lead=${leadIdOuter}`)
+      } catch (e) {
+        console.warn('[create-group] failed to release sentinel:', e)
+      }
+    }
     return new Response(JSON.stringify({ 
       success: false, 
       error: error.message,
