@@ -671,6 +671,7 @@ export function ContactDetailSheet({
 
               {isEditing ? (
                 <div className="space-y-4">
+                  {!isFieldHidden('full_name') && (
                   <div>
                     <Label className="flex items-center gap-1">
                       <User className="h-3 w-3" />
@@ -682,8 +683,10 @@ export function ContactDetailSheet({
                       placeholder="Nome completo"
                     />
                   </div>
+                  )}
 
                   <div className="grid grid-cols-2 gap-4">
+                    {!isFieldHidden('phone') && (
                     <div>
                       <Label className="flex items-center gap-1">
                         <Phone className="h-3 w-3" />
@@ -706,7 +709,9 @@ export function ContactDetailSheet({
                         )}
                       </div>
                     </div>
+                    )}
 
+                    {!isFieldHidden('whatsapp_group_id') && (
                     <div className="col-span-2">
                       <Label className="flex items-center gap-1">
                         👥 Grupo WhatsApp
@@ -718,7 +723,9 @@ export function ContactDetailSheet({
                       />
                       <p className="text-xs text-muted-foreground mt-1">Cole o link do grupo. O ID será extraído automaticamente.</p>
                     </div>
+                    )}
 
+                    {!isFieldHidden('email') && (
                     <div>
                       <Label className="flex items-center gap-1">
                         <Mail className="h-3 w-3" />
@@ -731,9 +738,11 @@ export function ContactDetailSheet({
                         placeholder="email@exemplo.com"
                       />
                     </div>
+                    )}
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
+                    {!isFieldHidden('instagram_username') && (
                     <div>
                       <Label className="flex items-center gap-1">
                         <Instagram className="h-3 w-3" />
@@ -745,7 +754,9 @@ export function ContactDetailSheet({
                         placeholder="@usuario"
                       />
                     </div>
+                    )}
 
+                    {!isFieldHidden('follower_status') && (
                     <div>
                       <Label>Status Seguidor</Label>
                       <Select value={followerStatus} onValueChange={setFollowerStatus}>
@@ -760,9 +771,10 @@ export function ContactDetailSheet({
                         </SelectContent>
                       </Select>
                     </div>
+                    )}
                   </div>
 
-                  {/* Profession field */}
+                  {!isFieldHidden('profession') && (
                   <div>
                     <Label className="flex items-center gap-1">
                       <Briefcase className="h-3 w-3" />
@@ -808,7 +820,9 @@ export function ContactDetailSheet({
                       )}
                     </div>
                   </div>
+                  )}
 
+                  {!isFieldHidden('classifications') && (
                   <div>
                     <Label className="flex items-center gap-1">
                       <Tag className="h-3 w-3" />
@@ -829,7 +843,9 @@ export function ContactDetailSheet({
                       }}
                     />
                   </div>
+                  )}
 
+                  {!isFieldHidden('notes') && (
                   <div>
                     <Label className="flex items-center gap-1">
                       <FileText className="h-3 w-3" />
@@ -842,6 +858,7 @@ export function ContactDetailSheet({
                       rows={3}
                     />
                   </div>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-4">
