@@ -947,6 +947,16 @@ export function ContactDetailSheet({
                   )}
                 </div>
               )}
+              {/* Custom fields (info + qualquer aba customizada agrupados aqui) */}
+              <div className="mt-6 border-t pt-4">
+                <Label className="text-sm font-semibold mb-2 block">Campos personalizados</Label>
+                <ContactCustomFieldsInline
+                  contactId={contact.id}
+                  customFields={contactCustomFields}
+                  getFieldValues={getContactFieldValues}
+                  onValuesChange={setCustomFieldValues}
+                />
+              </div>
             </TabsContent>
 
             {/* Calls Tab */}
