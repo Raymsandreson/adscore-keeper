@@ -284,6 +284,139 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     }
   };
 
+  // ===== Seleção múltipla de mídias para Drive =====
+  const [driveSelectionMode, setDriveSelectionMode] = useState(false);
+  const [selectedDriveMsgIds, setSelectedDriveMsgIds] = useState<Set<string>>(new Set());
+  const [showBatchDriveDialog, setShowBatchDriveDialog] = useState(false);
+  const [batchDriveMode, setBatchDriveMode] = useState<'merge' | 'separate'>('merge');
+  const [batchFileName, setBatchFileName] = useState('');
+  const [batchUploading, setBatchUploading] = useState(false);
+  const [pendingBatchAfterLead, setPendingBatchAfterLead] = useState(false);
+
+  const toggleDriveSelection = (msgId: string) => {
+    setSelectedDriveMsgIds(prev => {
+      const next = new Set(prev);
+      if (next.has(msgId)) next.delete(msgId); else next.add(msgId);
+      return next;
+    });
+  };
+
+  const exitDriveSelection = () => {
+    setDriveSelectionMode(false);
+    setSelectedDriveMsgIds(new Set());
+  };
+
+  const openBatchDialogIfReady = () => {
+    if (selectedDriveMsgIds.size === 0) return;
+    const today = new Date().toISOString().slice(0, 10);
+    setBatchFileName(`Documentos ${conversation.contact_name || 'cliente'} ${today}`.replace(/[\\/:*?"<>|]/g, '_'));
+    setBatchDriveMode('merge');
+    setShowBatchDriveDialog(true);
+  };
+
+  const runBatchDriveUpload = async (leadId: string, leadNameInput?: string) => {
+    const ids = Array.from(selectedDriveMsgIds);
+    const selected = (messages || []).filter((m: any) => ids.includes(m.id) && m.media_url && !isEncUrl(m.media_url));
+    if (selected.length === 0) {
+      toast.error('Nenhuma mídia válida selecionada.');
+      return;
+    }
+    setBatchUploading(true);
+    const tId = toast.loading(`Enviando ${selected.length} arquivo(s) para o Drive…`);
+    try {
+      let leadName = leadNameInput;
+      if (!leadName) {
+        const { data: leadRow } = await externalSupabase
+          .from('leads').select('lead_name').eq('id', leadId).maybeSingle();
+        leadName = (leadRow as any)?.lead_name || conversation.contact_name || 'Lead';
+      }
+
+      if (batchDriveMode === 'merge') {
+        const sources = selected
+          .filter((m: any) => {
+            const mt = (m.media_type || '').toLowerCase();
+            return mt.includes('pdf') || mt.startsWith('image/');
+          })
+          .map((m: any) => ({ url: m.media_url, mime_type: m.media_type || undefined }));
+        if (sources.length === 0) {
+          toast.error('Selecione imagens ou PDFs para juntar (vídeo/áudio não viram PDF).', { id: tId });
+          return;
+        }
+        const finalName = batchFileName.trim() || `Documentos ${Date.now()}`;
+        const { data, error } = await supabase.functions.invoke('lead-drive', {
+          body: {
+            action: 'merge_pdf_upload',
+            lead_id: leadId,
+            lead_name: leadName,
+            file_name: finalName,
+            sources,
+          },
+        });
+        if (error) throw error;
+        if ((data as any)?.error) throw new Error((data as any).error);
+        const file = (data as any).file;
+        const skipped = ((data as any)?.skipped || []) as Array<{ url: string; reason: string }>;
+        toast.success(
+          `PDF salvo: ${file.name}${skipped.length ? ` (${skipped.length} ignorado${skipped.length > 1 ? 's' : ''})` : ''}`,
+          {
+            id: tId,
+            action: file.webViewLink ? { label: 'Abrir', onClick: () => window.open(file.webViewLink, '_blank') } : undefined,
+          },
+        );
+      } else {
+        let okCount = 0;
+        const errors: string[] = [];
+        for (const m of selected) {
+          try {
+            const urlBase = (m.media_url.split('/').pop()?.split('?')[0]) || '';
+            const hasExt = /\.[a-z0-9]{2,5}$/i.test(urlBase);
+            const mime = m.media_type || '';
+            const extFromMime = mime.includes('pdf') ? '.pdf'
+              : mime.startsWith('image/jpeg') ? '.jpg'
+              : mime.startsWith('image/png') ? '.png'
+              : mime.startsWith('image/webp') ? '.webp'
+              : mime.startsWith('video/') ? '.mp4'
+              : mime.startsWith('audio/') ? '.ogg' : '';
+            const baseName = (m.message_text && m.message_text.length < 100 ? m.message_text : urlBase || `whatsapp_${m.id}`).replace(/[\\/:*?"<>|]/g, '_');
+            const fileName = hasExt ? baseName : `${baseName}${extFromMime}`;
+            const { data, error } = await supabase.functions.invoke('lead-drive', {
+              body: { action: 'upload_url', lead_id: leadId, lead_name: leadName, file_name: fileName, source_url: m.media_url, mime_type: mime || undefined },
+            });
+            if (error || (data as any)?.error) throw new Error((data as any)?.error || error?.message);
+            okCount++;
+          } catch (e: any) {
+            errors.push(e?.message || String(e));
+          }
+        }
+        if (okCount > 0) {
+          toast.success(`${okCount} arquivo(s) salvos no Drive${errors.length ? ` — ${errors.length} falha(s)` : ''}`, { id: tId });
+        } else {
+          toast.error(`Falha ao salvar: ${errors[0] || 'erro desconhecido'}`, { id: tId });
+        }
+      }
+      setShowBatchDriveDialog(false);
+      exitDriveSelection();
+    } catch (err: any) {
+      console.error('[batchSaveToDrive] erro:', err);
+      toast.error(`Erro ao salvar no Drive: ${err.message || err}`, { id: tId });
+    } finally {
+      setBatchUploading(false);
+    }
+  };
+
+  const handleConfirmBatchDrive = async () => {
+    if (conversation.lead_id) {
+      await runBatchDriveUpload(conversation.lead_id);
+      return;
+    }
+    setShowBatchDriveDialog(false);
+    setPendingBatchAfterLead(true);
+    setLeadSearchQuery('');
+    setSelectedLeadId('');
+    setShowDriveTargetDialog(true);
+    fetchLeads('');
+  };
+
   const isEncUrl = (u?: string | null) => !!u && /\.enc(?:\?|$)/i.test(u);
   const isMissingMedia = (m: any) =>
     ['image', 'video', 'audio', 'document'].includes(m?.message_type) &&
