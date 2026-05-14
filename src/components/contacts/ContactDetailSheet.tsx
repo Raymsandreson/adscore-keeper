@@ -990,6 +990,7 @@ export function ContactDetailSheet({
             <TabsContent value="location" className="space-y-4 mt-0">
               {isEditing ? (
                 <div className="space-y-4">
+                  {!isFieldHidden('cep') && (
                   <div>
                     <Label className="flex items-center gap-1">
                       <Globe className="h-3 w-3" />
@@ -1005,8 +1006,10 @@ export function ContactDetailSheet({
                       Preencha o CEP para autocompletar endereço
                     </p>
                   </div>
+                  )}
 
                   <div className="grid grid-cols-2 gap-4">
+                    {!isFieldHidden('state') && (
                     <div>
                       <Label>Estado</Label>
                       <Select value={state} onValueChange={setState}>
@@ -1022,7 +1025,9 @@ export function ContactDetailSheet({
                         </SelectContent>
                       </Select>
                     </div>
+                    )}
 
+                    {!isFieldHidden('city') && (
                     <div>
                       <Label>Cidade</Label>
                       <Select 
@@ -1042,8 +1047,10 @@ export function ContactDetailSheet({
                         </SelectContent>
                       </Select>
                     </div>
+                    )}
                   </div>
 
+                  {!isFieldHidden('neighborhood') && (
                   <div>
                     <Label>Bairro</Label>
                     <Input
@@ -1052,7 +1059,9 @@ export function ContactDetailSheet({
                       placeholder="Bairro"
                     />
                   </div>
+                  )}
 
+                  {!isFieldHidden('street') && (
                   <div>
                     <Label>Rua</Label>
                     <Input
@@ -1061,6 +1070,7 @@ export function ContactDetailSheet({
                       placeholder="Rua, número..."
                     />
                   </div>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-3">
