@@ -206,6 +206,14 @@ export function CustomFieldInput({ field, value, localValue, onChange }: CustomF
           </div>
         );
       })()}
+
+      {field.field_type === 'password' && (
+        <PasswordField
+          value={(currentValue as string) || ''}
+          onChange={(v) => handleChange(v || null)}
+          placeholder={`Digite ${field.field_name.toLowerCase()}`}
+        />
+      )}
     </div>
   );
 }
