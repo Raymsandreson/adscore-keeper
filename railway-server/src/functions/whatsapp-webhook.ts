@@ -68,6 +68,24 @@ const corsHeaders: Record<string, string> = {
 // HELPER FUNCTIONS
 // ============================================================
 
+function isEncryptedWhatsAppUrl(url?: string | null): boolean {
+  return typeof url === 'string' && /\.enc(?:\?|$)/i.test(url);
+}
+
+function findMediaKeyDeep(value: any, depth = 0): string | null {
+  if (!value || depth > 5) return null;
+  if (typeof value !== 'object') return null;
+
+  const direct = value.mediaKey || value.media_key;
+  if (typeof direct === 'string' && direct.length >= 32) return direct;
+
+  for (const child of Object.values(value)) {
+    const found = findMediaKeyDeep(child, depth + 1);
+    if (found) return found;
+  }
+  return null;
+}
+
 async function downloadAndStoreMedia(
   supabase: any,
   messageId: string,
@@ -78,13 +96,15 @@ async function downloadAndStoreMedia(
   baseUrl: string,
   instanceToken: string,
   mediaKey?: string | null,
-): Promise<{ publicUrl: string | null; transcription: string | null; contentType: string | null }> {
+): Promise<{ publicUrl: string | null; transcription: string | null; contentType: string | null; encryptedSource: boolean }> {
   try {
     console.log('Downloading media via UazAPI for message:', messageId, 'type:', messageType);
 
     let fileBuffer: ArrayBuffer | null = null;
     let contentType = mediaType || 'application/octet-stream';
     let transcription: string | null = null;
+    let encryptedSource = isEncryptedWhatsAppUrl(mediaUrl);
+    let downloadedEncryptedBytes = false;
 
     const downloadUrl = `${baseUrl}/message/download`;
     console.log('Calling /message/download at:', downloadUrl, 'with id:', messageId);
