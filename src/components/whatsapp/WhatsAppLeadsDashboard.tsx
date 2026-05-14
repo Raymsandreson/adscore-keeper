@@ -1176,6 +1176,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
             <div className="flex items-center gap-2 mb-1">
               <Phone className="h-4 w-4 text-blue-500" />
               <span className="text-xs text-muted-foreground">Contatos {periodLabel}</span>
+              <div className="ml-auto"><CompareBtn metric="followups" /></div>
             </div>
             <p className="text-2xl font-bold">{todayFollowups.length}</p>
             <p className="text-xs text-muted-foreground">telefones contatados</p>
