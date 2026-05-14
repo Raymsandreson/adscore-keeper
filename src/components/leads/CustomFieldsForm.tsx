@@ -20,6 +20,40 @@ function isImageUrl(u: string): boolean {
   return /\.(png|jpe?g|gif|webp|svg|avif)(\?|#|$)/i.test(u);
 }
 
+export function PasswordField({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
+  const [reveal, setReveal] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const handleCopy = async () => {
+    if (!value) { toast.error('Campo vazio — nada para copiar'); return; }
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      toast.success('Copiado! Cole no destino.');
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      toast.error('Não foi possível copiar');
+    }
+  };
+  return (
+    <div className="flex items-center gap-1 mt-1">
+      <Input
+        type={reveal ? 'text' : 'password'}
+        placeholder={placeholder || '••••••••'}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        autoComplete="new-password"
+        className="font-mono"
+      />
+      <Button type="button" variant="outline" size="icon" onClick={() => setReveal(r => !r)} title={reveal ? 'Ocultar' : 'Revelar'}>
+        {reveal ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+      </Button>
+      <Button type="button" variant="outline" size="icon" onClick={handleCopy} title="Copiar">
+        {copied ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
+      </Button>
+    </div>
+  );
+}
+
 interface CustomFieldInputProps {
   field: CustomField;
   value: CustomFieldValue | null;
