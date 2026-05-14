@@ -1342,6 +1342,12 @@ const ActivitiesPage = () => {
     const activityLink = selectedActivity ? `🔗 Ver atividade: ${window.location.origin}/?openActivity=${selectedActivity.id}` : '';
     const updatedInfo = updatedByName && updatedAtFmt ? `\n*Última atualização por:* ${updatedByName} em ${updatedAtFmt}` : '';
 
+    // Linked process info — "Referente ao processo n° "X" de "Y""
+    const linkedProcessForMsg = formProcessId ? caseProcesses.find(p => p.id === formProcessId) : null;
+    const processInfo = linkedProcessForMsg && (linkedProcessForMsg.process_number || linkedProcessForMsg.title)
+      ? `Referente ao processo n° "${linkedProcessForMsg.process_number || '—'}" de "${linkedProcessForMsg.title || '—'}"`
+      : '';
+
     // Try to use a saved template for this board/workflow
     const boardId = leadPreview?.board_id || undefined;
     const template = getTemplateForContext(boardId);
