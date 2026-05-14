@@ -319,6 +319,8 @@ Deno.serve(async (req) => {
   }
 
   const diagnostics: StepResult[] = []
+  let claimedSentinelOuter: string | null = null
+  let leadIdOuter: string | null = null
 
   try {
     const supabaseUrl = RESOLVED_SUPABASE_URL
