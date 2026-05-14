@@ -330,8 +330,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   };
 
   const runBatchDriveUpload = async (leadId: string, leadNameInput?: string) => {
-    const ids = Array.from(selectedDriveMsgIds);
-    const selected = (messages || []).filter((m: any) => ids.includes(m.id) && m.media_url && !isEncUrl(m.media_url));
+    const selected = batchDriveOrder;
     if (selected.length === 0) {
       toast.error('Nenhuma mídia válida selecionada.');
       return;
