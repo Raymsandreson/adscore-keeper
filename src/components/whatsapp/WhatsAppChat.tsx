@@ -207,6 +207,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     setBulkResyncing(false);
     setBulkResyncProgress(null);
   };
+  const [pastedImage, setPastedImage] = useState<{ file: File; previewUrl: string } | null>(null);
   const [pastedCaption, setPastedCaption] = useState('');
   const [inputMode, setInputMode] = useState<'message' | 'note' | 'chat'>('message');
   const [mentionUserId, setMentionUserId] = useState<string | null>(null);
