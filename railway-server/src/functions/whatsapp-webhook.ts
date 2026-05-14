@@ -927,7 +927,8 @@ export const handler: RequestHandler = async (req, res) => {
     let storedMediaUrl = mediaUrl;
     let mediaTranscription: string | null = null;
     const isMediaMessage = messageType === 'image' || messageType === 'audio' || messageType === 'video' || messageType === 'document';
-    if (!isGroup && (mediaUrl || isMediaMessage) && messageType !== 'text' && externalMessageId) {
+    // Baixa mídia de TODAS as conversas (incluindo grupos) — transcreve áudio e gera link permanente
+    if ((mediaUrl || isMediaMessage) && messageType !== 'text' && externalMessageId) {
       let resolvedToken = instanceToken;
       let resolvedBaseUrl = baseUrl;
       if (instanceName && (!resolvedToken || !resolvedBaseUrl)) {
