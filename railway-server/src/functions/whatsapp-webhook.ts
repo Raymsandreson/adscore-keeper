@@ -238,13 +238,21 @@ function resolveAgentControlCommand(text: string | null, messageType: string): '
 function getFileExtension(contentType: string, messageType: string): string {
   const map: Record<string, string> = {
     'audio/ogg': 'ogg', 'audio/mpeg': 'mp3', 'audio/mp4': 'm4a', 'audio/amr': 'amr', 'audio/aac': 'aac',
+    'audio/wav': 'wav', 'audio/webm': 'webm',
     'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif',
-    'video/mp4': 'mp4', 'video/3gpp': '3gp', 'application/pdf': 'pdf',
+    'video/mp4': 'mp4', 'video/3gpp': '3gp', 'video/quicktime': 'mov',
+    'application/pdf': 'pdf', 'application/zip': 'zip',
+    'application/msword': 'doc',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+    'application/vnd.ms-excel': 'xls',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
   };
-  if (map[contentType]) return map[contentType];
+  const ct = (contentType || '').split(';')[0].trim().toLowerCase();
+  if (map[ct]) return map[ct];
   if (messageType === 'audio') return 'ogg';
   if (messageType === 'image') return 'jpg';
   if (messageType === 'video') return 'mp4';
+  if (messageType === 'document') return 'pdf';
   return 'bin';
 }
 
