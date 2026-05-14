@@ -6,7 +6,8 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { Users, User, UserPlus, Loader2, MapPin, Briefcase, Tag, Heart, ChevronDown, ChevronUp, Check, Phone, Search, ExternalLink, Link2 } from 'lucide-react';
+import { Users, User, UserPlus, Loader2, MapPin, Briefcase, Tag, Heart, ChevronDown, ChevronUp, Check, Phone, Search, ExternalLink, Link2, FileText, RefreshCw, Save } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -61,6 +62,58 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
   const [linkingPhone, setLinkingPhone] = useState<string | null>(null);
   const [linkSearchQuery, setLinkSearchQuery] = useState('');
   const [linkSearchResults, setLinkSearchResults] = useState<Array<{ id: string; full_name: string; phone: string | null; notes: string | null }>>([]);
+  const [groupDescription, setGroupDescription] = useState<string>('');
+  const [groupDescriptionInitial, setGroupDescriptionInitial] = useState<string>('');
+  const [descLoading, setDescLoading] = useState(false);
+  const [descSaving, setDescSaving] = useState(false);
+  const [descPulling, setDescPulling] = useState(false);
+
+  const groupJid = isGroup && conversationPhone ? (conversationPhone.includes('@g.us') ? conversationPhone : `${conversationPhone}@g.us`) : null;
+
+  const loadDescription = async (mode: 'get' | 'pull' = 'get') => {
+    if (!groupJid || !instanceName) return;
+    if (mode === 'pull') setDescPulling(true); else setDescLoading(true);
+    try {
+      const { data, error } = await (supabase as any).functions.invoke('sync-whatsapp-group-description', {
+        body: { mode, group_jid: groupJid, instance_name: instanceName },
+      });
+      if (error) throw new Error(error.message);
+      if (data?.success === false) throw new Error(data.error || 'Falha');
+      const desc = data?.description ?? '';
+      setGroupDescription(desc);
+      setGroupDescriptionInitial(desc);
+      if (mode === 'pull') toast.success('Descrição atualizada do WhatsApp');
+    } catch (e: any) {
+      if (mode === 'pull') toast.error(`Erro ao buscar do WhatsApp: ${e.message}`);
+    } finally {
+      setDescLoading(false);
+      setDescPulling(false);
+    }
+  };
+
+  const saveDescription = async () => {
+    if (!groupJid || !instanceName) return;
+    setDescSaving(true);
+    try {
+      const { data, error } = await (supabase as any).functions.invoke('sync-whatsapp-group-description', {
+        body: { mode: 'push', group_jid: groupJid, instance_name: instanceName, description: groupDescription },
+      });
+      if (error) throw new Error(error.message);
+      if (data?.success === false) throw new Error(data.error || 'Falha');
+      setGroupDescriptionInitial(groupDescription);
+      toast.success('Descrição enviada para o WhatsApp');
+    } catch (e: any) {
+      toast.error(`Erro ao enviar: ${e.message}`);
+    } finally {
+      setDescSaving(false);
+    }
+  };
+
+  useEffect(() => {
+    if (open && isGroup && groupJid && instanceName) {
+      loadDescription('get');
+    }
+  }, [open, isGroup, groupJid, instanceName]);
 
   useEffect(() => {
     if (open && isGroup) {
@@ -436,6 +489,48 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-9 h-9"
           />
+        </div>
+
+        {/* Group description (sync with WhatsApp) */}
+        <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+              <FileText className="h-3.5 w-3.5" />
+              Descrição do grupo
+            </div>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 px-2 text-xs gap-1"
+              onClick={() => loadDescription('pull')}
+              disabled={descPulling || descSaving}
+              title="Buscar a descrição atual diretamente do WhatsApp"
+            >
+              {descPulling ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+              Buscar do WhatsApp
+            </Button>
+          </div>
+          <Textarea
+            value={groupDescription}
+            onChange={(e) => setGroupDescription(e.target.value)}
+            placeholder={descLoading ? 'Carregando…' : 'Sem descrição. Escreva e clique em Salvar para enviar ao WhatsApp.'}
+            disabled={descLoading || descSaving}
+            maxLength={512}
+            rows={3}
+            className="text-sm resize-none"
+          />
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] text-muted-foreground">{groupDescription.length}/512</span>
+            <Button
+              size="sm"
+              className="h-7 px-3 text-xs gap-1"
+              onClick={saveDescription}
+              disabled={descSaving || descLoading || groupDescription === groupDescriptionInitial}
+            >
+              {descSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+              Salvar no WhatsApp
+            </Button>
+          </div>
         </div>
 
         <ScrollArea className="flex-1 -mx-6 px-6">

@@ -1031,6 +1031,48 @@ Deno.serve(async (req) => {
       "chats",
     ];
     if (skippableEvents.includes(eventType) && !isCallEvent) {
+      // Antes de descartar, se for um evento de chat de GRUPO com descrição,
+      // espelha passivamente em whatsapp_groups_index (sentido WhatsApp -> Sistema).
+      try {
+        const chatObj = body.chat || {};
+        const jid: string = String(chatObj.wa_chatid || chatObj.id || "");
+        if (jid.includes("@g.us")) {
+          const desc =
+            chatObj.wa_description ?? chatObj.description ?? chatObj.wa_topic ??
+              chatObj.topic ?? null;
+          const groupName = chatObj.wa_chatName || chatObj.name || null;
+          if (desc !== null || groupName !== null) {
+            const externalUrl = Deno.env.get("EXTERNAL_SUPABASE_URL");
+            const externalKey = Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY");
+            const inst = webhookInstanceName || chatObj.instanceName;
+            if (externalUrl && externalKey && inst) {
+              const row: any = {
+                group_jid: jid,
+                instance_name: inst,
+                last_seen: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              };
+              if (desc !== null) {
+                row.description = String(desc);
+                row.description_updated_at = new Date().toISOString();
+              }
+              if (groupName) row.contact_name = groupName;
+              await fetch(`${externalUrl}/rest/v1/whatsapp_groups_index?on_conflict=group_jid,instance_name`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "apikey": externalKey,
+                  "Authorization": `Bearer ${externalKey}`,
+                  "Prefer": "resolution=merge-duplicates,return=minimal",
+                },
+                body: JSON.stringify(row),
+              }).catch((e) => console.warn("[wa-webhook] mirror group desc failed:", e));
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("[wa-webhook] passive group mirror error:", e);
+      }
       return new Response(
         JSON.stringify({
           success: true,
