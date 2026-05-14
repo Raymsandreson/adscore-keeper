@@ -52,6 +52,18 @@ export function LeadFieldsUnifiedEditor({ open, onOpenChange, boardId, boardName
   const { resolved: resolvedTabs, saveTabs, refetch: refetchTabs } = useLeadTabLayout(boardId);
   const { customFields, addCustomField, updateCustomField, deleteCustomField, fetchCustomFields } =
     useLeadCustomFields(adAccountId);
+  const { requirements, setFieldStages, getStagesForField, fetchRequirements } = useFieldStageRequirements(boardId);
+  const { boards } = useKanbanBoards(adAccountId);
+  const currentBoard = useMemo(() => boards.find(b => b.id === boardId), [boards, boardId]);
+  const stageList = currentBoard?.stages || [];
+  const funnelStages = useMemo(
+    () => stageList.filter((s, idx) => idx !== 0 && !isClosedStage(s.id) && !isRefusedStage(s.id)),
+    [stageList]
+  );
+  const resultStages = useMemo(
+    () => stageList.filter(s => isClosedStage(s.id) || isRefusedStage(s.id)),
+    [stageList]
+  );
 
   const [items, setItems] = useState<UnifiedItem[]>([]);
   const [tabs, setTabs] = useState<ResolvedTab[]>([]);
@@ -72,7 +84,8 @@ export function LeadFieldsUnifiedEditor({ open, onOpenChange, boardId, boardName
   const [cfName, setCfName] = useState('');
   const [cfType, setCfType] = useState<FieldType>('text');
   const [cfOptions, setCfOptions] = useState('');
-  const [cfRequired, setCfRequired] = useState(false);
+  const [cfRequiredMode, setCfRequiredMode] = useState<RequiredMode>('none');
+  const [cfRequiredStageIds, setCfRequiredStageIds] = useState<string[]>([]);
   const [cfTab, setCfTab] = useState<string>('basic');
 
   const relevantCustom = useMemo(
