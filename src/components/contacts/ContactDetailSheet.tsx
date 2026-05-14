@@ -85,6 +85,7 @@ interface ContactDetailSheetProps {
   onOpenChange: (open: boolean) => void;
   onContactUpdated?: () => void;
   mode?: 'sheet' | 'dialog';
+  side?: 'right' | 'bottom';
 }
 
 // ViaCEP integration
