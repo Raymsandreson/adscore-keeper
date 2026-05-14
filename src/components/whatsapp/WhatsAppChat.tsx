@@ -2165,6 +2165,59 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
       </Dialog>
 
       {/* Salvar no Drive: escolher/criar lead alvo */}
+      {/* Barra inferior de seleção de mídias para Drive */}
+      {driveSelectionMode && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 bg-background border shadow-lg rounded-full px-4 py-2 flex items-center gap-3">
+          <span className="text-sm font-medium">{selectedDriveMsgIds.size} selecionada(s)</span>
+          <Button size="sm" variant="outline" onClick={exitDriveSelection}>Cancelar</Button>
+          <Button size="sm" disabled={selectedDriveMsgIds.size === 0} onClick={openBatchDialogIfReady} className="gap-1">
+            <Sparkles className="h-3.5 w-3.5" /> Salvar no Drive
+          </Button>
+        </div>
+      )}
+
+      {/* Dialog batch: modo + nome */}
+      <Dialog open={showBatchDriveDialog} onOpenChange={setShowBatchDriveDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Salvar {selectedDriveMsgIds.size} mídia(s) no Drive</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-muted-foreground">Como salvar?</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setBatchDriveMode('merge')}
+                  className={cn("p-3 rounded-md border text-left text-sm transition-colors", batchDriveMode === 'merge' ? "bg-primary/10 border-primary" : "hover:bg-muted")}
+                >
+                  <div className="font-medium">Juntar em PDF</div>
+                  <div className="text-[11px] text-muted-foreground mt-1">1 arquivo único. Imagens viram páginas.</div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBatchDriveMode('separate')}
+                  className={cn("p-3 rounded-md border text-left text-sm transition-colors", batchDriveMode === 'separate' ? "bg-primary/10 border-primary" : "hover:bg-muted")}
+                >
+                  <div className="font-medium">Mandar separado</div>
+                  <div className="text-[11px] text-muted-foreground mt-1">Cada arquivo individual no Drive.</div>
+                </button>
+              </div>
+            </div>
+            {batchDriveMode === 'merge' && (
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground">Nome do PDF</label>
+                <Input value={batchFileName} onChange={(e) => setBatchFileName(e.target.value)} placeholder="Documentos do cliente" />
+              </div>
+            )}
+            <Button className="w-full" onClick={handleConfirmBatchDrive} disabled={batchUploading}>
+              {batchUploading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Sparkles className="h-4 w-4 mr-1" />}
+              {batchDriveMode === 'merge' ? 'Gerar PDF e enviar' : 'Enviar separados'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={showDriveTargetDialog} onOpenChange={(o) => { setShowDriveTargetDialog(o); if (!o) setDriveTargetMsg(null); }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
