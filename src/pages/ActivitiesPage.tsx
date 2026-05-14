@@ -2321,11 +2321,13 @@ const ActivitiesPage = () => {
             });
           };
 
+          // Toda atividade sem data cai no "Sem data" — independe de existir
+          // rotina para o tipo. Antes, atividades sem deadline cujo tipo tinha
+          // rotina configurada sumiam da tela inteira (não entram em bloco
+          // porque não têm dia, e eram excluídas daqui também).
           const unscheduled = displayedActivities.filter(a => {
             if (a.deadline || a.notification_date) return false;
-            const effectiveType = getEffectiveType(a);
-            const cfg = activeSettings.find(c => c.activityType === effectiveType);
-            return !cfg || cfg.days.length === 0;
+            return a.status !== 'concluida';
           });
 
           // Build type summary for left sidebar
