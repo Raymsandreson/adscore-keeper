@@ -1111,6 +1111,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
             <div className="flex items-center gap-2 mb-1">
               <Timer className="h-4 w-4 text-purple-500" />
               <span className="text-xs text-muted-foreground">Tempo Médio</span>
+              <div className="ml-auto"><CompareBtn metric="avg_time" /></div>
             </div>
             <p className="text-2xl font-bold">{formatResponseTime(responseMetrics.avgResponseTime)}</p>
             <p className="text-xs text-muted-foreground">1ª resposta</p>
