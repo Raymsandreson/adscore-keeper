@@ -1100,6 +1100,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
             <div className="flex items-center gap-2 mb-1">
               <MessageSquare className="h-4 w-4 text-orange-500" />
               <span className="text-xs text-muted-foreground">Taxa Resposta</span>
+              <div className="ml-auto"><CompareBtn metric="response_rate" /></div>
             </div>
             <p className="text-2xl font-bold">{responseMetrics.responseRate}%</p>
             <p className="text-xs text-muted-foreground">{responseMetrics.leadsWithResponse}/{responseMetrics.leadsWithInbound}</p>
