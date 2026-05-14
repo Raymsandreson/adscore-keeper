@@ -224,7 +224,7 @@ export function useTeamDirectChat() {
         },
         (payload) => {
           const newMsg = payload.new as TeamMessage;
-          setMessages((prev) => [...prev, newMsg]);
+          setMessages((prev) => prev.some(m => m.id === newMsg.id) ? prev : [...prev, newMsg]);
 
           if (user?.id && newMsg.sender_id !== user.id) {
             externalSupabase
