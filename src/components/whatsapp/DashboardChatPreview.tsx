@@ -311,10 +311,10 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
 
   }, [open, phone]);
 
-  // Realtime
+  // Realtime — assinar no Externo, onde whatsapp_messages realmente mora.
   useEffect(() => {
     if (!open || !phone) return;
-    const channel = supabase
+    const channel = externalSupabase
       .channel(`dashboard-chat-${phone}`)
       .on('postgres_changes', {
         event: 'INSERT',
@@ -323,12 +323,13 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
         filter: `phone=eq.${phone}`,
       }, (payload) => {
         const msg = payload.new as any;
+        if (instanceName && msg.instance_name && msg.instance_name.toLowerCase() !== instanceName.toLowerCase()) return;
         setMessages(prev => [...prev, msg]);
         setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
       })
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [open, phone]);
+    return () => { externalSupabase.removeChannel(channel); };
+  }, [open, phone, instanceName]);
 
   const formatDateSeparator = (dateStr: string) => {
     const date = parseISO(dateStr);
