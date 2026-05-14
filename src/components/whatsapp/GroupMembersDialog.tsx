@@ -69,6 +69,28 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
   const [descLoading, setDescLoading] = useState(false);
   const [descSaving, setDescSaving] = useState(false);
   const [descPulling, setDescPulling] = useState(false);
+  const [quickContact, setQuickContact] = useState<Contact | null>(null);
+  const [quickContactOpen, setQuickContactOpen] = useState(false);
+  const [quickContactLoading, setQuickContactLoading] = useState<string | null>(null);
+
+  const openQuickContact = async (contactId: string) => {
+    setQuickContactLoading(contactId);
+    try {
+      const { data, error } = await supabase
+        .from('contacts')
+        .select('*')
+        .eq('id', contactId)
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) { toast.error('Contato não encontrado'); return; }
+      setQuickContact(data as Contact);
+      setQuickContactOpen(true);
+    } catch (e: any) {
+      toast.error(e?.message || 'Erro ao abrir ficha');
+    } finally {
+      setQuickContactLoading(null);
+    }
+  };
 
   const groupJid = isGroup && conversationPhone ? (conversationPhone.includes('@g.us') ? conversationPhone : `${conversationPhone}@g.us`) : null;
 
