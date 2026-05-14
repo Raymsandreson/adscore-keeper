@@ -674,6 +674,7 @@ export const handler: RequestHandler = async (req, res) => {
     let messageType = 'text';
     let mediaUrl: string | null = null;
     let mediaType: string | null = null;
+    let mediaKey: string | null = null;
     let direction = 'inbound';
     let externalMessageId: string | null = null;
     let instanceName: string | null = null;
