@@ -243,6 +243,43 @@ export function LeadLinkedContacts({ leadId }: LeadLinkedContactsProps) {
     }
   };
 
+  const handleDeleteContact = async (contactId: string, contactName: string) => {
+    if (!window.confirm(`Excluir definitivamente o contato "${contactName}"?\n\nEle será arquivado (soft delete) e desvinculado de todos os leads.`)) {
+      return;
+    }
+    try {
+      await ensureExternalSession().catch(() => {});
+      // Snapshot para auditoria
+      const { data: snapshot } = await (externalSupabase as any)
+        .from('contacts')
+        .select('*')
+        .eq('id', contactId)
+        .maybeSingle();
+
+      if (snapshot) {
+        await logAudit({
+          action: 'delete',
+          entityType: 'contact',
+          entityId: contactId,
+          entityName: snapshot.full_name || 'Contato',
+          details: { snapshot, soft_delete: true, from: 'LeadLinkedContacts' },
+        }).catch(() => {});
+      }
+
+      const { error } = await (externalSupabase as any)
+        .from('contacts')
+        .update({ deleted_at: new Date().toISOString() })
+        .eq('id', contactId);
+
+      if (error) throw error;
+      toast.success('Contato arquivado');
+      fetchContacts(true);
+    } catch (err) {
+      console.error('Erro ao arquivar contato:', err);
+      toast.error('Erro ao arquivar contato');
+    }
+  };
+
   const handleCreateAndLink = async () => {
     if (!newName.trim()) {
       toast.error('Nome é obrigatório');
