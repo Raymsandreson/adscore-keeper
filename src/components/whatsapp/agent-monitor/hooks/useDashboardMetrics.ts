@@ -85,7 +85,9 @@ export function useDashboardMetrics() {
       // Fetch KPIs from edge function (header rápido) + dados detalhados direto do EXTERNO
       // (memory: hybrid-routing-persistence-policy — dados de negócio vivem no Externo)
       const period = selectedPeriod || 'today';
-      const [kpiRes, docsResult, groupsResult, casesResult, processesResult, contactsResult, contactsCountResult, firstMsgsResult] = await Promise.all([
+      const isToday = period === 'today' || (!selectedPeriod);
+      const ext: any = externalSupabase;
+      const [kpiRes, docsResult, groupsResult, casesResult, processesResult, contactsResult, contactsCountResult, newConvRpc] = await Promise.all([
         monitorData('kpis', { period }),
         externalSupabase
           .from('zapsign_documents')
@@ -113,13 +115,11 @@ export function useDashboardMetrics() {
           .from('contacts')
           .select('*', { count: 'exact', head: true })
           .gte('created_at', startISO).lte('created_at', endISO),
-        // 1ª resposta: pegar mensagens inbound+outbound do período pra calcular tempo médio até a 1ª outbound
-        externalSupabase
-          .from('whatsapp_messages')
-          .select('phone, instance_name, direction, created_at')
-          .gte('created_at', startISO).lte('created_at', endISO)
-          .order('created_at', { ascending: true })
-          .limit(20000),
+        // Conversas NOVAS hoje + enriquecimento (RPC encapsula o SQL canônico).
+        // Substitui o scan de 20k mensagens — só roda quando period = today.
+        isToday
+          ? ext.rpc('get_new_conversations_today')
+          : Promise.resolve({ data: [] as any[], error: null }),
       ]);
 
       setMetricsProgress(50);
@@ -127,35 +127,36 @@ export function useDashboardMetrics() {
       // Parse KPI response
       const kpiData = kpiRes?.data || {};
 
-      // === Cálculo de Tempo Médio de 1ª Resposta (a partir de whatsapp_messages do período) ===
-      // Para cada (phone+instance): pegar a 1ª inbound e a 1ª outbound POSTERIOR. Diferença = tempo de resposta.
-      const firstMsgs = (firstMsgsResult.data || []) as { phone: string; instance_name: string | null; direction: string; created_at: string }[];
-      const firstInboundByConv = new Map<string, number>();
-      const firstOutboundByConv = new Map<string, number>();
-      for (const m of firstMsgs) {
-        const k = `${m.phone}::${(m.instance_name || '').toLowerCase()}`;
-        const t = new Date(m.created_at).getTime();
-        if (m.direction === 'inbound') {
-          if (!firstInboundByConv.has(k)) firstInboundByConv.set(k, t);
-        } else if (m.direction === 'outbound') {
-          if (!firstOutboundByConv.has(k)) firstOutboundByConv.set(k, t);
-        }
-      }
-      const responseTimes: number[] = [];
-      let respondedCount = 0;
-      let totalNewConvs = 0;
-      for (const [k, inT] of firstInboundByConv.entries()) {
-        totalNewConvs++;
-        const outT = firstOutboundByConv.get(k);
-        if (outT && outT >= inT) {
-          respondedCount++;
-          responseTimes.push(Math.floor((outT - inT) / 60000));
-        }
-      }
+      // === Conversas novas + tempo de resposta vêm prontos da RPC ===
+      const newConvRows = (newConvRpc?.data || []) as Array<{
+        phone: string;
+        instance_name: string | null;
+        first_message_at: string;
+        contact_name: string | null;
+        lead_name: string | null;
+        has_lead: boolean;
+        was_responded: boolean;
+        response_time_minutes: number | null;
+      }>;
+      const totalNewConvs = newConvRows.length;
+      const respondedCount = newConvRows.filter(r => r.was_responded).length;
+      const responseTimes = newConvRows
+        .map(r => r.response_time_minutes)
+        .filter((v): v is number => typeof v === 'number');
       const avgResponseTimeMin = responseTimes.length > 0
         ? Math.round(responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length)
         : 0;
       const responseRate = totalNewConvs > 0 ? Math.round((respondedCount / totalNewConvs) * 100) : 0;
+      const newConvDetails: NewConvDetail[] = newConvRows.map(r => ({
+        phone: r.phone,
+        contact_name: r.contact_name,
+        instance_name: r.instance_name,
+        first_message_at: r.first_message_at,
+        was_responded: !!r.was_responded,
+        response_time_minutes: r.response_time_minutes,
+        lead_name: r.lead_name,
+        has_lead: !!r.has_lead,
+      }));
 
       // Build conversation/closed metrics from KPI snapshot data
       const convAndClosedMetrics: Partial<DashboardMetrics> = {
