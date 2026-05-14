@@ -1162,6 +1162,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
             <div className="flex items-center gap-2 mb-1">
               <PhoneForwarded className="h-4 w-4 text-emerald-500" />
               <span className="text-xs text-muted-foreground">Follow-ups</span>
+              <div className="ml-auto"><CompareBtn metric="lead_followups" /></div>
             </div>
             <p className="text-2xl font-bold">{totalFollowups}</p>
             <p className="text-xs text-muted-foreground">{leadFollowupDetails.length} leads contactados</p>
