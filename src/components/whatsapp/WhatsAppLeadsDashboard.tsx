@@ -1067,6 +1067,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
             <div className="flex items-center gap-2 mb-1">
               <Users className="h-4 w-4 text-primary" />
               <span className="text-xs text-muted-foreground">Conversas</span>
+              <div className="ml-auto"><CompareBtn metric="conversations" /></div>
             </div>
             <p className="text-2xl font-bold">{inboundConversations.length}</p>
             <p className="text-xs text-muted-foreground">{filteredMessages.length} msgs | {conversionMetrics.total} leads</p>
