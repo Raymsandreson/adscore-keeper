@@ -255,7 +255,6 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   };
 
   const handleCreateLeadForDrive = async () => {
-    if (!driveTargetMsg) return;
     setCreatingDriveLead(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -276,11 +275,17 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         .select('id, lead_name')
         .single();
       if (error) throw error;
-      const msg = driveTargetMsg;
       setShowDriveTargetDialog(false);
-      setDriveTargetMsg(null);
       try { onLinkToLead(conversation.phone, (newLead as any).id); } catch (e) { console.warn('link conversa falhou:', e); }
       toast.success(`Lead "${(newLead as any).lead_name}" criado`);
+      if (pendingBatchAfterLead) {
+        setPendingBatchAfterLead(false);
+        await runBatchDriveUpload((newLead as any).id, (newLead as any).lead_name);
+        return;
+      }
+      if (!driveTargetMsg) return;
+      const msg = driveTargetMsg;
+      setDriveTargetMsg(null);
       await runDriveUpload(msg, (newLead as any).id, (newLead as any).lead_name);
     } catch (e: any) {
       console.error('[saveToDrive] criar lead falhou:', e);
