@@ -1122,6 +1122,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
             <div className="flex items-center gap-2 mb-1">
               <Zap className="h-4 w-4 text-yellow-500" />
               <span className="text-xs text-muted-foreground">Resp. &lt; 5min</span>
+              <div className="ml-auto"><CompareBtn metric="fast_response" /></div>
             </div>
             <p className="text-2xl font-bold">
               {responseMetrics.responseTimes.length > 0
