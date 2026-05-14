@@ -662,6 +662,29 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
                           <TooltipContent>Criar contato{leadId ? ' e vincular ao lead' : ''}</TooltipContent>
                         </Tooltip>
                       )}
+                      {hasContact && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7"
+                              disabled={quickContactLoading === contact!.id}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openQuickContact(contact!.id);
+                              }}
+                            >
+                              {quickContactLoading === contact!.id ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <ArrowUpFromLine className="h-3.5 w-3.5 text-primary" />
+                              )}
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Abrir ficha aqui (deslizar de baixo)</TooltipContent>
+                        </Tooltip>
+                      )}
                       {hasContact && onViewContact && (
                         <Tooltip>
                           <TooltipTrigger asChild>
