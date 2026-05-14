@@ -491,6 +491,48 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
           />
         </div>
 
+        {/* Group description (sync with WhatsApp) */}
+        <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+              <FileText className="h-3.5 w-3.5" />
+              Descrição do grupo
+            </div>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 px-2 text-xs gap-1"
+              onClick={() => loadDescription('pull')}
+              disabled={descPulling || descSaving}
+              title="Buscar a descrição atual diretamente do WhatsApp"
+            >
+              {descPulling ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+              Buscar do WhatsApp
+            </Button>
+          </div>
+          <Textarea
+            value={groupDescription}
+            onChange={(e) => setGroupDescription(e.target.value)}
+            placeholder={descLoading ? 'Carregando…' : 'Sem descrição. Escreva e clique em Salvar para enviar ao WhatsApp.'}
+            disabled={descLoading || descSaving}
+            maxLength={512}
+            rows={3}
+            className="text-sm resize-none"
+          />
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] text-muted-foreground">{groupDescription.length}/512</span>
+            <Button
+              size="sm"
+              className="h-7 px-3 text-xs gap-1"
+              onClick={saveDescription}
+              disabled={descSaving || descLoading || groupDescription === groupDescriptionInitial}
+            >
+              {descSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+              Salvar no WhatsApp
+            </Button>
+          </div>
+        </div>
+
         <ScrollArea className="flex-1 -mx-6 px-6">
           {loading && (
             <div className="flex items-center justify-center py-8">
