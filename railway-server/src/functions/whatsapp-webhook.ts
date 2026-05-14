@@ -770,15 +770,20 @@ export const handler: RequestHandler = async (req, res) => {
         if (messageText && typeof messageText !== 'string') messageText = JSON.stringify(messageText);
       }
 
-      // Detect media type
+      // Detect media type + mediaKey (for local AES decrypt fallback)
+      const rawContentObj = (typeof msg.content === 'object' && msg.content !== null) ? msg.content : null;
       if (msg.imageMessage) {
         messageType = 'image'; mediaType = msg.imageMessage.mimetype || 'image/jpeg'; mediaUrl = mediaUrl || msg.imageMessage.url || null;
+        mediaKey = msg.imageMessage.mediaKey || mediaKey;
       } else if (msg.videoMessage) {
         messageType = 'video'; mediaType = msg.videoMessage.mimetype || 'video/mp4'; mediaUrl = mediaUrl || msg.videoMessage.url || null;
+        mediaKey = msg.videoMessage.mediaKey || mediaKey;
       } else if (msg.audioMessage) {
         messageType = 'audio'; mediaType = msg.audioMessage.mimetype || 'audio/ogg'; mediaUrl = mediaUrl || msg.audioMessage.url || null;
+        mediaKey = msg.audioMessage.mediaKey || mediaKey;
       } else if (msg.documentMessage) {
         messageType = 'document'; mediaType = msg.documentMessage.mimetype || null; mediaUrl = mediaUrl || msg.documentMessage.url || null;
+        mediaKey = msg.documentMessage.mediaKey || mediaKey;
       } else if (msg.mediaType || (typeof msg.content === 'object' && msg.content?.URL)) {
         const uazMediaType = (msg.mediaType || '').toLowerCase();
         const chatLastMsgType = (body.chat?.wa_lastMessageType || '').toLowerCase();
@@ -795,6 +800,7 @@ export const handler: RequestHandler = async (req, res) => {
         }
         if (!messageText && messageType !== 'text') messageText = null;
       }
+      if (!mediaKey && rawContentObj) mediaKey = rawContentObj.mediaKey || rawContentObj.media_key || null;
 
       // Direction
       const fromMeFlag = body.message?.fromMe === true || body.chat?.fromMe === true;
