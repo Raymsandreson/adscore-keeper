@@ -247,7 +247,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
     // (encapsula o SQL canônico baseado em primeira_mensagem_global por phone+instance,
     //  com filtro de grupo igual ao usado no painel SQL).
     // Substitui ~190 linhas de paginação manual + N+1 de leads/contacts.
-    const newConvsRpc = (selectedPeriod === 'today' || !selectedPeriod)
+    const newConvsRpc = (period === 'today' || !period)
       ? (externalSupabase as any).rpc('get_new_conversations_today')
       : Promise.resolve({ data: [] as any[], error: null });
 
