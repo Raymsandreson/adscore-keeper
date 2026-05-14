@@ -480,9 +480,43 @@ export function LeadFieldsUnifiedEditor({ open, onOpenChange, boardId, boardName
                 <Input value={cfOptions} onChange={(e) => setCfOptions(e.target.value)} placeholder="Opção 1, Opção 2" />
               </div>
             )}
-            <div className="flex items-center justify-between border rounded p-2">
-              <Label className="text-sm">Obrigatório</Label>
-              <Switch checked={cfRequired} onCheckedChange={setCfRequired} />
+            <div className="space-y-2 border rounded p-2">
+              <Label className="text-sm">Quando obrigatório?</Label>
+              <Select value={cfRequiredMode} onValueChange={(v) => { setCfRequiredMode(v as RequiredMode); setCfRequiredStageIds([]); }}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Nunca obrigatório</SelectItem>
+                  <SelectItem value="stage">Por etapa do lead</SelectItem>
+                  <SelectItem value="result">Por resultado do lead</SelectItem>
+                </SelectContent>
+              </Select>
+              {cfRequiredMode !== 'none' && (
+                <div className="space-y-1 max-h-40 overflow-y-auto pt-1">
+                  <p className="text-xs text-muted-foreground">
+                    {cfRequiredMode === 'stage'
+                      ? 'O campo se torna obrigatório ao mover o lead para estas etapas:'
+                      : 'O campo se torna obrigatório ao marcar o lead com estes resultados:'}
+                  </p>
+                  {(cfRequiredMode === 'stage' ? funnelStages : resultStages).map(s => (
+                    <label key={s.id} className="flex items-center gap-2 text-sm py-0.5 cursor-pointer">
+                      <Checkbox
+                        checked={cfRequiredStageIds.includes(s.id)}
+                        onCheckedChange={(c) => {
+                          setCfRequiredStageIds(prev =>
+                            c ? [...prev, s.id] : prev.filter(x => x !== s.id)
+                          );
+                        }}
+                      />
+                      <span>{s.name}</span>
+                    </label>
+                  ))}
+                  {(cfRequiredMode === 'stage' ? funnelStages : resultStages).length === 0 && (
+                    <p className="text-xs text-muted-foreground italic">
+                      Nenhuma {cfRequiredMode === 'stage' ? 'etapa' : 'opção de resultado'} disponível neste funil.
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           </div>
           <DialogFooter>
