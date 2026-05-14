@@ -108,6 +108,7 @@ async function downloadAndStoreMedia(
     let contentType = mediaType || 'application/octet-stream';
     let transcription: string | null = null;
     let encryptedSource = isEncryptedWhatsAppUrl(mediaUrl);
+    let encryptedDownloadUrl = encryptedSource ? mediaUrl : null;
     let downloadedEncryptedBytes = false;
 
     const downloadUrl = `${baseUrl}/message/download`;
@@ -135,6 +136,7 @@ async function downloadAndStoreMedia(
             contentType = jsonData.mimetype || mediaResp.headers.get('content-type') || contentType;
             if (isEncryptedWhatsAppUrl(jsonData.fileURL)) {
               encryptedSource = true;
+              encryptedDownloadUrl = jsonData.fileURL;
               downloadedEncryptedBytes = true;
             }
           }
@@ -154,6 +156,7 @@ async function downloadAndStoreMedia(
             contentType = mediaResp.headers.get('content-type') || contentType;
             if (isEncryptedWhatsAppUrl(jsonData.url)) {
               encryptedSource = true;
+              encryptedDownloadUrl = jsonData.url;
               downloadedEncryptedBytes = true;
             }
           }
@@ -196,6 +199,7 @@ async function downloadAndStoreMedia(
               contentType = fallbackData.mimetype || dlResp.headers.get('content-type') || contentType;
               if (isEncryptedWhatsAppUrl(resolvedUrl)) {
                 encryptedSource = true;
+                encryptedDownloadUrl = resolvedUrl;
                 downloadedEncryptedBytes = true;
               }
             }
