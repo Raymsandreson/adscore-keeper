@@ -1471,6 +1471,7 @@ export function ContactDetailSheet({
       wasResponded={false}
       responseTimeMinutes={null}
     />
+    <ContactFieldsUnifiedEditor open={showCustomizer} onOpenChange={setShowCustomizer} />
     </>
   );
 }
