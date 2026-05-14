@@ -147,13 +147,23 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
     setGroupName(null);
     const normalizedPhone = phone.replace(/\D/g, '');
     const fetchMessages = async () => {
-      const { data } = await supabase
+      // whatsapp_messages vive no Supabase EXTERNO. Usar `supabase` (Cloud) aqui
+      // retornava sempre vazio → "nenhuma mensagem encontrada" mesmo com conversa real.
+      let query = (externalSupabase as any)
         .from('whatsapp_messages')
         .select('id, message_text, direction, created_at, message_type, media_url, media_type, instance_name')
-        .eq('phone', phone)
+        .eq('phone', phone);
+      if (instanceName) {
+        const variants = Array.from(new Set([instanceName, instanceName.toUpperCase(), instanceName.toLowerCase()]));
+        query = query.in('instance_name', variants);
+      }
+      const { data, error } = await query
         .order('created_at', { ascending: true })
-        .limit(200);
-      setMessages(data || []);
+        .limit(500);
+      if (error) {
+        console.warn('[DashboardChatPreview] fetchMessages error:', error.message);
+      }
+      setMessages((data as any) || []);
       setLoading(false);
       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'auto' }), 100);
     };
