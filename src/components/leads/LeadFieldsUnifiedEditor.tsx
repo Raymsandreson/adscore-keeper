@@ -187,7 +187,9 @@ export function LeadFieldsUnifiedEditor({ open, onOpenChange, boardId, boardName
 
   const openNewCustom = (tab: string = 'basic') => {
     setEditing(null);
-    setCfName(''); setCfType('text'); setCfOptions(''); setCfRequired(false); setCfTab(tab);
+    setCfName(''); setCfType('text'); setCfOptions('');
+    setCfRequiredMode('none'); setCfRequiredStageIds([]);
+    setCfTab(tab);
     setCfDialogOpen(true);
   };
 
@@ -196,29 +198,48 @@ export function LeadFieldsUnifiedEditor({ open, onOpenChange, boardId, boardName
     setCfName(cf.field_name);
     setCfType(cf.field_type);
     setCfOptions(cf.field_options?.join(', ') || '');
-    setCfRequired(cf.is_required);
+    const stageIds = getStagesForField(cf.id);
+    if (stageIds.length === 0) {
+      setCfRequiredMode('none');
+      setCfRequiredStageIds([]);
+    } else {
+      const allResults = stageIds.every(id => isClosedStage(id) || isRefusedStage(id));
+      setCfRequiredMode(allResults ? 'result' : 'stage');
+      setCfRequiredStageIds(stageIds);
+    }
     setCfTab(tab);
     setCfDialogOpen(true);
   };
 
   const handleCustomSave = async () => {
     if (!cfName.trim()) { toast.error('Informe o nome do campo'); return; }
+    if (cfRequiredMode !== 'none' && cfRequiredStageIds.length === 0) {
+      toast.error('Selecione ao menos uma etapa/resultado');
+      return;
+    }
     const options = cfType === 'select' ? cfOptions.split(',').map(o => o.trim()).filter(Boolean) : [];
     try {
+      let fieldId: string | null = editing?.id || null;
       if (editing) {
         await updateCustomField(editing.id, {
           field_name: cfName, field_type: cfType, field_options: options,
-          is_required: cfRequired, tab: cfTab as any,
+          is_required: false, tab: cfTab as any,
         } as any);
       } else {
-        await addCustomField({
+        const created = await addCustomField({
           field_name: cfName, field_type: cfType, field_options: options,
-          is_required: cfRequired, board_id: boardId,
+          is_required: false, board_id: boardId,
           ad_account_id: adAccountId, tab: cfTab as any,
         } as any);
+        fieldId = (created as any)?.id || null;
+      }
+      if (fieldId) {
+        const ids = cfRequiredMode === 'none' ? [] : cfRequiredStageIds;
+        await setFieldStages(fieldId, boardId, ids);
       }
       setCfDialogOpen(false);
       await fetchCustomFields();
+      await fetchRequirements();
     } catch {/* toast handled */}
   };
 
