@@ -806,6 +806,7 @@ export const handler: RequestHandler = async (req, res) => {
       if (resolvedToken && resolvedBaseUrl) {
         const mediaDownload = await downloadAndStoreMedia(supabase, externalMessageId, instanceName || 'unknown', mediaUrl || '', mediaType || 'application/octet-stream', messageType, resolvedBaseUrl, resolvedToken);
         mediaTranscription = mediaDownload.transcription;
+        if (mediaDownload.contentType) mediaType = mediaDownload.contentType;
         if (mediaDownload.publicUrl) { storedMediaUrl = mediaDownload.publicUrl; console.log('Media stored at:', mediaDownload.publicUrl); }
         else console.log('Media download failed, keeping original URL');
       } else console.log('No instance token/baseUrl for media download');
