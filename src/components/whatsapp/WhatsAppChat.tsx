@@ -303,6 +303,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const [batchFileName, setBatchFileName] = useState('');
   const [batchUploading, setBatchUploading] = useState(false);
   const [pendingBatchAfterLead, setPendingBatchAfterLead] = useState(false);
+  const [batchDriveOrder, setBatchDriveOrder] = useState<Array<{ id: string; media_url: string; media_type: string; message_text: string; message_type: string }>>([]);
 
   const toggleDriveSelection = (msgId: string) => {
     setSelectedDriveMsgIds(prev => {
@@ -315,6 +316,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const exitDriveSelection = () => {
     setDriveSelectionMode(false);
     setSelectedDriveMsgIds(new Set());
+    setBatchDriveOrder([]);
   };
 
   const openBatchDialogIfReady = () => {
@@ -322,6 +324,8 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     const today = new Date().toISOString().slice(0, 10);
     setBatchFileName(`Documentos ${conversation.contact_name || 'cliente'} ${today}`.replace(/[\\/:*?"<>|]/g, '_'));
     setBatchDriveMode('merge');
+    const selected = (messages || []).filter((m: any) => selectedDriveMsgIds.has(m.id) && m.media_url && !isEncUrl(m.media_url));
+    setBatchDriveOrder(selected.map((m: any) => ({ id: m.id, media_url: m.media_url, media_type: m.media_type || '', message_text: m.message_text || '', message_type: m.message_type })));
     setShowBatchDriveDialog(true);
   };
 
