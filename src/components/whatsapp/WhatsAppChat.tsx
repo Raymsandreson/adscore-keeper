@@ -2122,7 +2122,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                   </p>
                 )}
                 {!msg.message_text && !msg.media_url && msg.message_type !== 'text' && (
-                  <p className="text-xs italic opacity-70">📎 {msg.message_type}</p>
+                  <p className="text-xs italic opacity-70">📎 {msg.message_type === 'image' ? 'Imagem ainda não baixada' : msg.message_type === 'document' ? 'Documento ainda não baixado' : msg.message_type === 'video' ? 'Vídeo ainda não baixado' : msg.message_type === 'audio' ? 'Áudio ainda não baixado' : msg.message_type} — sincronize para carregar</p>
                 )}
                 <p className={cn(
                   "text-[10px] mt-1",
