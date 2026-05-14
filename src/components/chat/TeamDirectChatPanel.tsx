@@ -42,6 +42,8 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [uploading, setUploading] = useState(false);
   const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const [mentionIndex, setMentionIndex] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messageInputRef = useRef<HTMLInputElement>(null);
@@ -49,6 +51,38 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const audioElementsRef = useRef<Map<string, HTMLAudioElement>>(new Map());
+
+  // Filtered members for @mention picker
+  const mentionCandidates = (() => {
+    if (mentionQuery === null) return [];
+    const q = mentionQuery.toLowerCase().trim();
+    return profiles
+      .filter(p => p.user_id !== user?.id)
+      .filter(p => !q || (p.full_name || '').toLowerCase().includes(q) || (p.email || '').toLowerCase().includes(q))
+      .slice(0, 6);
+  })();
+
+  const handleMessageChange = (value: string) => {
+    setMessageText(value);
+    // Detect @ token at the end of the text (allows letters/spaces until newline or boundary)
+    const m = value.match(/(?:^|\s)@([\wÀ-ÿ.\- ]{0,30})$/);
+    if (m) {
+      setMentionQuery(m[1]);
+      setMentionIndex(0);
+    } else {
+      setMentionQuery(null);
+    }
+  };
+
+  const insertMention = (name: string) => {
+    setMessageText(prev => prev.replace(/(?:^|\s)@([\wÀ-ÿ.\- ]{0,30})$/, (full, _q, offset) => {
+      const prefix = offset === 0 ? '' : full[0];
+      return `${prefix}@${name} `;
+    }));
+    setMentionQuery(null);
+    requestAnimationFrame(() => messageInputRef.current?.focus());
+  };
+
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -81,11 +115,23 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (mentionQuery !== null && mentionCandidates.length > 0) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); setMentionIndex(i => (i + 1) % mentionCandidates.length); return; }
+      if (e.key === 'ArrowUp') { e.preventDefault(); setMentionIndex(i => (i - 1 + mentionCandidates.length) % mentionCandidates.length); return; }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        const pick = mentionCandidates[mentionIndex];
+        if (pick) insertMention(pick.full_name || pick.email || 'membro');
+        return;
+      }
+      if (e.key === 'Escape') { setMentionQuery(null); return; }
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
     }
   };
+
 
   const getInitials = (name: string) =>
     name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
@@ -462,15 +508,44 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
                 onChange={handleFileUpload}
               />
 
-              <Input
-                ref={messageInputRef}
-                value={messageText}
-                onChange={(e) => setMessageText(e.target.value)}
-                onKeyDown={handleKeyDown}
-                onPaste={handlePaste}
-                placeholder="Digite sua mensagem..."
-                className="text-sm h-8 flex-1 min-w-0"
-              />
+              <div className="relative flex-1 min-w-0">
+                {mentionQuery !== null && mentionCandidates.length > 0 && (
+                  <div className="absolute bottom-full left-0 right-0 mb-1 bg-popover border rounded-md shadow-lg z-50 max-h-56 overflow-auto">
+                    {mentionCandidates.map((p, i) => (
+                      <button
+                        key={p.user_id}
+                        type="button"
+                        onMouseDown={(e) => { e.preventDefault(); insertMention(p.full_name || p.email || 'membro'); }}
+                        className={cn(
+                          'w-full flex items-center gap-2 px-2 py-1.5 text-left text-xs hover:bg-accent',
+                          i === mentionIndex && 'bg-accent'
+                        )}
+                      >
+                        <Avatar className="h-6 w-6">
+                          <AvatarFallback className="text-[10px] bg-primary/20 text-primary">
+                            {getInitials(p.full_name || p.email || '?')}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="min-w-0 flex-1">
+                          <div className="font-medium truncate">{p.full_name || p.email}</div>
+                          {p.full_name && p.email && (
+                            <div className="text-[10px] text-muted-foreground truncate">{p.email}</div>
+                          )}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <Input
+                  ref={messageInputRef}
+                  value={messageText}
+                  onChange={(e) => handleMessageChange(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  onPaste={handlePaste}
+                  placeholder="Digite sua mensagem... use @ para mencionar"
+                  className="text-sm h-8 w-full"
+                />
+              </div>
 
               {messageText.trim() ? (
                 <Button
