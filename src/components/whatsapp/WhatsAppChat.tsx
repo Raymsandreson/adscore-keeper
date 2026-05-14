@@ -2572,6 +2572,19 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                         </div>
                       )}
                       <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-muted/40">
+                        {driveSelectionMode && (
+                          <button
+                            type="button"
+                            onClick={() => toggleDriveSelection(msg.id)}
+                            className={cn(
+                              "h-5 w-5 rounded border-2 flex items-center justify-center shrink-0 transition-colors",
+                              selectedDriveMsgIds.has(msg.id) ? "bg-blue-500 border-blue-500 text-white" : "bg-background border-muted-foreground/40"
+                            )}
+                            title={selectedDriveMsgIds.has(msg.id) ? 'Desmarcar' : 'Selecionar para Drive'}
+                          >
+                            {selectedDriveMsgIds.has(msg.id) && <span className="text-[10px] font-bold">✓</span>}
+                          </button>
+                        )}
                         <FileText className="h-4 w-4 text-orange-500 shrink-0" />
                         <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="flex-1 text-xs underline truncate">
                           {fileName}
