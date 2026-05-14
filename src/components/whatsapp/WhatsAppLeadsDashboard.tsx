@@ -1943,6 +1943,24 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
         responseTimeMinutes={chatPreview?.responseTimeMinutes ?? null}
         onOpenChat={onOpenChat}
       />
+
+      {compareMetric && (() => {
+        const cfg = compareConfig[compareMetric];
+        const data = (instanceBreakdowns as any)[compareMetric];
+        return (
+          <InstanceComparisonDialog
+            open={!!compareMetric}
+            onClose={() => setCompareMetric(null)}
+            title={cfg.title}
+            valueLabel={cfg.valueLabel}
+            secondaryLabel={cfg.secondaryLabel}
+            rows={data.rows}
+            total={data.total}
+            totalSecondary={data.totalSecondary}
+            formatValue={cfg.format}
+          />
+        );
+      })()}
     </div>
   );
 }
