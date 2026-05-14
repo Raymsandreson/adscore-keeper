@@ -342,25 +342,92 @@ Deno.serve(async (req) => {
       })
     }
 
-    // DEDUP GUARD: If lead_id is provided, check if it already has a group.
-    // Skip when caller passes allow_rename or sync_participants so we can mutate existing group.
+    // ATOMIC CLAIM: Reservar o slot whatsapp_group_id ANTES de qualquer chamada UazAPI.
+    // Sentinel "PENDING:<uuid>:<ts>" garante que webhooks paralelos (ZapSign envia
+    // signer_signed + doc_signed em sequência) não consigam criar dois grupos para o
+    // mesmo lead. Apenas UMA execução vence o UPDATE; as outras retornam skipped.
+    // Em caso de falha, o catch externo libera o sentinel para permitir retry.
+    let claimedSentinel: string | null = null
     if (lead_id && !body.allow_rename && !body.sync_participants) {
-      const { data: existingLead } = await supabase
+      const sentinel = `PENDING:${crypto.randomUUID()}:${Date.now()}`
+      const STALE_MS = 2 * 60 * 1000 // 2 min — execução anterior travada vira lixo
+
+      // 1ª tentativa: claim quando whatsapp_group_id IS NULL
+      const { data: claimed1 } = await supabase
         .from('leads')
-        .select('whatsapp_group_id')
+        .update({ whatsapp_group_id: sentinel })
         .eq('id', lead_id)
-        .maybeSingle()
-      
-      if (existingLead?.whatsapp_group_id) {
-        console.log(`[create-group] DEDUP: Lead ${lead_id} already has group ${existingLead.whatsapp_group_id}. Skipping creation.`)
-        return new Response(JSON.stringify({ 
-          success: true, 
-          group_id: existingLead.whatsapp_group_id, 
-          skipped: true, 
-          reason: 'already_has_group' 
-        }), {
-          status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        })
+        .is('whatsapp_group_id', null)
+        .select('id')
+
+      if (claimed1 && claimed1.length > 0) {
+        claimedSentinel = sentinel
+        console.log(`[create-group] CLAIM ok (null→sentinel) lead=${lead_id}`)
+      } else {
+        // Já tem valor. Ler para decidir.
+        const { data: existingLead } = await supabase
+          .from('leads')
+          .select('whatsapp_group_id')
+          .eq('id', lead_id)
+          .maybeSingle()
+
+        const current = existingLead?.whatsapp_group_id || ''
+        if (current.startsWith('PENDING:')) {
+          // Existe sentinel de outra execução. Stale?
+          const parts = current.split(':')
+          const ts = Number(parts[2] || 0)
+          const ageMs = Date.now() - ts
+          if (ageMs < STALE_MS) {
+            console.log(`[create-group] DEDUP: lead ${lead_id} em criação por outra execução (age=${ageMs}ms). Skip.`)
+            return new Response(JSON.stringify({
+              success: true,
+              skipped: true,
+              reason: 'in_flight',
+            }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+          }
+          // Stale — tenta tomar o lugar atomicamente
+          const { data: claimed2 } = await supabase
+            .from('leads')
+            .update({ whatsapp_group_id: sentinel })
+            .eq('id', lead_id)
+            .eq('whatsapp_group_id', current)
+            .select('id')
+          if (claimed2 && claimed2.length > 0) {
+            claimedSentinel = sentinel
+            console.log(`[create-group] CLAIM ok (stale→sentinel) lead=${lead_id} previousAge=${ageMs}ms`)
+          } else {
+            console.log(`[create-group] DEDUP: outra execução tomou o slot stale antes. Skip.`)
+            return new Response(JSON.stringify({
+              success: true,
+              skipped: true,
+              reason: 'in_flight',
+            }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+          }
+        } else if (current) {
+          // Já tem grupo real
+          console.log(`[create-group] DEDUP: lead ${lead_id} já tem grupo ${current}. Skip.`)
+          return new Response(JSON.stringify({
+            success: true,
+            group_id: current,
+            skipped: true,
+            reason: 'already_has_group',
+          }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+        }
+      }
+    }
+
+    // Helper: libera sentinel se ainda for nosso (chamado em caso de erro)
+    const releaseSentinelIfOurs = async () => {
+      if (!claimedSentinel || !lead_id) return
+      try {
+        await supabase
+          .from('leads')
+          .update({ whatsapp_group_id: null })
+          .eq('id', lead_id)
+          .eq('whatsapp_group_id', claimedSentinel)
+        console.log(`[create-group] sentinel released for lead=${lead_id}`)
+      } catch (e) {
+        console.warn('[create-group] failed to release sentinel:', e)
       }
     }
 
