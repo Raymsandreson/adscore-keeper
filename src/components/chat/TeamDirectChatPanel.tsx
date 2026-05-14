@@ -508,15 +508,44 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
                 onChange={handleFileUpload}
               />
 
-              <Input
-                ref={messageInputRef}
-                value={messageText}
-                onChange={(e) => setMessageText(e.target.value)}
-                onKeyDown={handleKeyDown}
-                onPaste={handlePaste}
-                placeholder="Digite sua mensagem..."
-                className="text-sm h-8 flex-1 min-w-0"
-              />
+              <div className="relative flex-1 min-w-0">
+                {mentionQuery !== null && mentionCandidates.length > 0 && (
+                  <div className="absolute bottom-full left-0 right-0 mb-1 bg-popover border rounded-md shadow-lg z-50 max-h-56 overflow-auto">
+                    {mentionCandidates.map((p, i) => (
+                      <button
+                        key={p.user_id}
+                        type="button"
+                        onMouseDown={(e) => { e.preventDefault(); insertMention(p.full_name || p.email || 'membro'); }}
+                        className={cn(
+                          'w-full flex items-center gap-2 px-2 py-1.5 text-left text-xs hover:bg-accent',
+                          i === mentionIndex && 'bg-accent'
+                        )}
+                      >
+                        <Avatar className="h-6 w-6">
+                          <AvatarFallback className="text-[10px] bg-primary/20 text-primary">
+                            {getInitials(p.full_name || p.email || '?')}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="min-w-0 flex-1">
+                          <div className="font-medium truncate">{p.full_name || p.email}</div>
+                          {p.full_name && p.email && (
+                            <div className="text-[10px] text-muted-foreground truncate">{p.email}</div>
+                          )}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <Input
+                  ref={messageInputRef}
+                  value={messageText}
+                  onChange={(e) => handleMessageChange(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  onPaste={handlePaste}
+                  placeholder="Digite sua mensagem... use @ para mencionar"
+                  className="text-sm h-8 w-full"
+                />
+              </div>
 
               {messageText.trim() ? (
                 <Button
