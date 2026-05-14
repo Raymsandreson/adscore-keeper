@@ -285,7 +285,7 @@ export function useTeamDirectChat() {
         .eq('user_id', user.id)
         .maybeSingle();
 
-      const { error } = await externalSupabase.from('team_messages').insert({
+      const { data: inserted, error } = await externalSupabase.from('team_messages').insert({
         conversation_id: activeConversationId,
         sender_id: user.id,
         sender_name: profile?.full_name || user.email || 'Anônimo',
@@ -296,12 +296,17 @@ export function useTeamDirectChat() {
         file_size: options?.file_size || null,
         file_type: options?.file_type || null,
         audio_duration: options?.audio_duration || null,
-      });
+      }).select().single();
 
       if (error) {
         console.error('Error sending team message:', error);
         toast.error('Não foi possível enviar a mensagem.');
         return;
+      }
+
+      // Optimistic: não esperar Realtime
+      if (inserted) {
+        setMessages((prev) => prev.some(m => m.id === (inserted as TeamMessage).id) ? prev : [...prev, inserted as TeamMessage]);
       }
 
       await externalSupabase
