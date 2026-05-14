@@ -545,7 +545,7 @@ export function ContactDetailSheet({
                 {fullName || contact.full_name}
               </CopyableText>
             </Title>
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1 mr-8">
               {contact.phone && (
                 <Button
                   variant="ghost"
