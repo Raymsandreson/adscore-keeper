@@ -1402,6 +1402,18 @@ const ActivitiesPage = () => {
         }
       });
 
+      // Auto-inject processInfo if template doesn't reference it but a process is linked
+      if (processInfo && !template.includes('process_info') && !result.includes('Referente ao processo')) {
+        const lines = result.split('\n');
+        // Insert after first non-empty line (greeting)
+        let insertAt = 0;
+        for (let i = 0; i < lines.length; i++) {
+          if (lines[i].trim()) { insertAt = i + 1; break; }
+        }
+        lines.splice(insertAt, 0, '', processInfo);
+        result = lines.join('\n');
+      }
+
       return result
         .replace(/\n{3,}/g, '\n\n')
         .trim();
