@@ -122,6 +122,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
   const [sendingReport, setSendingReport] = useState(false);
   const [leadFollowupDetails, setLeadFollowupDetails] = useState<LeadFollowupDetail[]>([]);
   const [chatPreview, setChatPreview] = useState<{ phone: string; contactName: string | null; instanceName: string | null; hasLead: boolean; hasContact: boolean; wasResponded: boolean; responseTimeMinutes: number | null } | null>(null);
+  const [compareMetric, setCompareMetric] = useState<null | 'conversations' | 'qualified' | 'converted' | 'response_rate' | 'avg_time' | 'fast_response' | 'new_convs' | 'lead_followups' | 'followups' | 'documents'>(null);
 
   // Stage info map for reuse
   const [stageInfoMap, setStageInfoMap] = useState<Map<string, { name: string; color: string }>>(new Map());
