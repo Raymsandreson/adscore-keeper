@@ -1516,8 +1516,9 @@ Deno.serve(async (req) => {
     let mediaTranscription: string | null = null;
     const isMediaMessage = messageType === "image" || messageType === "audio" ||
       messageType === "video" || messageType === "document";
+    // Baixa mídia de TODAS as conversas (incluindo grupos) para evitar links .enc expirados
     if (
-      !isGroup && (mediaUrl || isMediaMessage) && messageType !== "text" &&
+      (mediaUrl || isMediaMessage) && messageType !== "text" &&
       externalMessageId
     ) {
       // Look up instance token from DB if not in payload
