@@ -122,6 +122,7 @@ export function ContactDetailSheet({
   onOpenChange,
   onContactUpdated,
   mode = 'sheet',
+  side = 'right',
 }: ContactDetailSheetProps) {
   const [isEditing, setIsEditing] = useState(true);
   const [saving, setSaving] = useState(false);
