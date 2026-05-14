@@ -2478,7 +2478,7 @@ const ActivitiesPage = () => {
                                     <div
                                       className="font-extrabold leading-none tabular-nums drop-shadow-sm"
                                       style={{ fontSize: numberSize }}
-                                    >{count}</div>
+                                    >{doneCount > 0 ? `${doneCount}/${count}` : count}</div>
                                     {count > 0 && (
                                       <div
                                         className="flex items-center gap-1.5 font-bold mt-0.5"
