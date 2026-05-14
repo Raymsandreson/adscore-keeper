@@ -29,6 +29,14 @@ function buildJid(phone: string): string {
   return digits.length > 15 ? `${digits}@g.us` : `${digits}@s.whatsapp.net`;
 }
 
+function toProviderMessageId(messageId?: string): string | undefined {
+  const raw = String(messageId || "").trim();
+  if (!raw) return undefined;
+  // Internamente algumas mensagens são salvas como "telefone:id" para evitar
+  // colisão entre instâncias. A UazAPI espera só o id real da mensagem.
+  return raw.includes(":") ? raw.split(":").pop() || raw : raw;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -106,16 +114,17 @@ Deno.serve(async (req) => {
     }
 
     const number = buildJid(phone);
+    const providerMessageId = toProviderMessageId(messageid);
     const payload: Record<string, unknown> = { number, mode };
     if (mode === "history") payload.count = count;
-    if (messageid) payload.messageid = messageid;
+    if (providerMessageId) payload.messageid = providerMessageId;
 
     console.log("[whatsapp-fetch-history] →", JSON.stringify({
       instance: inst.instance_name,
       number,
       mode,
       count: mode === "history" ? count : undefined,
-      messageid: messageid || null,
+      messageid: providerMessageId || null,
       had_local_anchor: !!messageid,
     }));
 
@@ -147,7 +156,7 @@ Deno.serve(async (req) => {
       success: true,
       mode,
       count: mode === "history" ? count : undefined,
-      anchor_message_id: messageid || null,
+      anchor_message_id: providerMessageId || null,
       message:
         "Sync solicitado. As mensagens antigas chegarão via webhook nos próximos segundos. Pode ser necessário abrir o WhatsApp no celular.",
       upstream: data,
