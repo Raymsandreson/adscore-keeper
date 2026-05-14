@@ -136,6 +136,8 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const [locationLng, setLocationLng] = useState('');
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
   const [resyncingMsgId, setResyncingMsgId] = useState<string | null>(null);
+  const [bulkResyncing, setBulkResyncing] = useState(false);
+  const [bulkResyncProgress, setBulkResyncProgress] = useState<{ done: number; total: number } | null>(null);
 
   const isEncUrl = (u?: string | null) => !!u && /\.enc(?:\?|$)/i.test(u);
   const isMissingMedia = (m: any) =>
@@ -165,6 +167,45 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     } finally {
       setResyncingMsgId(null);
     }
+  };
+
+  const handleBulkResyncMissingMedia = async () => {
+    if (bulkResyncing) return;
+    const missing = (conversation.messages || []).filter((m: any) => isMissingMedia(m) && m.external_message_id);
+    if (missing.length === 0) {
+      toast.info('Nenhuma mídia pendente nesta conversa');
+      return;
+    }
+    setBulkResyncing(true);
+    setBulkResyncProgress({ done: 0, total: missing.length });
+    const t = toast.loading(`Sincronizando ${missing.length} mídia(s) antiga(s)...`);
+    let ok = 0;
+    let fail = 0;
+    for (let i = 0; i < missing.length; i++) {
+      const msg = missing[i];
+      try {
+        const rawId = msg.external_message_id?.split(':').pop();
+        const { data, error } = await supabase.functions.invoke('whatsapp-fetch-history', {
+          body: {
+            phone: conversation.phone,
+            instance_name: conversation.instance_name,
+            mode: rawId ? 'exact' : 'history',
+            messageid: rawId,
+            count: 5,
+          },
+        });
+        if (error || data?.success === false) fail++;
+        else ok++;
+      } catch {
+        fail++;
+      }
+      setBulkResyncProgress({ done: i + 1, total: missing.length });
+      // Throttle: 350ms entre chamadas para não saturar a UazAPI
+      await new Promise((r) => setTimeout(r, 350));
+    }
+    toast.success(`Sync solicitado: ${ok} ok, ${fail} falha(s). As mídias chegam pelo webhook em alguns segundos.`, { id: t });
+    setBulkResyncing(false);
+    setBulkResyncProgress(null);
   };
   const [pastedImage, setPastedImage] = useState<{ file: File; previewUrl: string } | null>(null);
   const [pastedCaption, setPastedCaption] = useState('');
@@ -1631,6 +1672,33 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
           />
           <WhatsAppConversationShareDialog phone={conversation.phone} instanceName={conversation.instance_name} />
           <WhatsAppMediaGallery messages={conversation.messages} />
+          {(() => {
+            const missingCount = (conversation.messages || []).filter((m: any) => isMissingMedia(m) && m.external_message_id).length;
+            if (missingCount === 0) return null;
+            return (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8 relative"
+                    onClick={handleBulkResyncMissingMedia}
+                    disabled={bulkResyncing}
+                  >
+                    {bulkResyncing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                    <span className="absolute -top-0.5 -right-0.5 bg-amber-500 text-white text-[9px] font-bold rounded-full h-4 w-4 flex items-center justify-center">
+                      {missingCount > 99 ? '99+' : missingCount}
+                    </span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {bulkResyncing && bulkResyncProgress
+                    ? `Sincronizando ${bulkResyncProgress.done}/${bulkResyncProgress.total}...`
+                    : `Sincronizar ${missingCount} mídia(s) antiga(s)`}
+                </TooltipContent>
+              </Tooltip>
+            );
+          })()}
           {isGroup && (
             <>
               <Tooltip>
