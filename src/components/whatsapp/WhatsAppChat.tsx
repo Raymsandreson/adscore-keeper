@@ -2276,9 +2276,22 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                         <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="flex-1 text-xs underline truncate">
                           {fileName}
                         </a>
-                        <a href={msg.media_url} download target="_blank" rel="noopener noreferrer" className="opacity-70 hover:opacity-100">
+                        <a href={msg.media_url} download target="_blank" rel="noopener noreferrer" className="opacity-70 hover:opacity-100" title="Baixar">
                           <Download className="h-3.5 w-3.5" />
                         </a>
+                        <button
+                          type="button"
+                          onClick={() => handleSaveToDrive(msg)}
+                          disabled={savingDriveMsgId === msg.id || !conversation.lead_id}
+                          className="opacity-70 hover:opacity-100 disabled:opacity-40"
+                          title={conversation.lead_id ? 'Salvar na pasta do lead no Google Drive (com classificação por IA)' : 'Vincule a conversa a um lead para salvar no Drive'}
+                        >
+                          {savingDriveMsgId === msg.id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Sparkles className="h-3.5 w-3.5 text-blue-500" />
+                          )}
+                        </button>
                       </div>
                     </div>
                   );
