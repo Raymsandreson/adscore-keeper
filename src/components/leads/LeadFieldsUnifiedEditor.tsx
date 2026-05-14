@@ -11,7 +11,13 @@ import { LEAD_FIELD_REGISTRY, TAB_DEFS, type LeadFieldTab } from './leadFormFiel
 import { useLeadFieldLayout, type ResolvedField } from '@/hooks/useLeadFieldLayout';
 import { useLeadTabLayout, type ResolvedTab } from '@/hooks/useLeadTabLayout';
 import { useLeadCustomFields, type CustomField, type FieldType } from '@/hooks/useLeadCustomFields';
+import { useFieldStageRequirements } from '@/hooks/useFieldStageRequirements';
+import { useKanbanBoards } from '@/hooks/useKanbanBoards';
+import { isClosedStage, isRefusedStage } from '@/utils/kanbanStageTypes';
+import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
+
+type RequiredMode = 'none' | 'stage' | 'result';
 
 interface Props {
   open: boolean;
@@ -46,6 +52,18 @@ export function LeadFieldsUnifiedEditor({ open, onOpenChange, boardId, boardName
   const { resolved: resolvedTabs, saveTabs, refetch: refetchTabs } = useLeadTabLayout(boardId);
   const { customFields, addCustomField, updateCustomField, deleteCustomField, fetchCustomFields } =
     useLeadCustomFields(adAccountId);
+  const { requirements, setFieldStages, getStagesForField, fetchRequirements } = useFieldStageRequirements(boardId);
+  const { boards } = useKanbanBoards(adAccountId);
+  const currentBoard = useMemo(() => boards.find(b => b.id === boardId), [boards, boardId]);
+  const stageList = currentBoard?.stages || [];
+  const funnelStages = useMemo(
+    () => stageList.filter((s, idx) => idx !== 0 && !isClosedStage(s.id) && !isRefusedStage(s.id)),
+    [stageList]
+  );
+  const resultStages = useMemo(
+    () => stageList.filter(s => isClosedStage(s.id) || isRefusedStage(s.id)),
+    [stageList]
+  );
 
   const [items, setItems] = useState<UnifiedItem[]>([]);
   const [tabs, setTabs] = useState<ResolvedTab[]>([]);
@@ -66,7 +84,8 @@ export function LeadFieldsUnifiedEditor({ open, onOpenChange, boardId, boardName
   const [cfName, setCfName] = useState('');
   const [cfType, setCfType] = useState<FieldType>('text');
   const [cfOptions, setCfOptions] = useState('');
-  const [cfRequired, setCfRequired] = useState(false);
+  const [cfRequiredMode, setCfRequiredMode] = useState<RequiredMode>('none');
+  const [cfRequiredStageIds, setCfRequiredStageIds] = useState<string[]>([]);
   const [cfTab, setCfTab] = useState<string>('basic');
 
   const relevantCustom = useMemo(
@@ -168,7 +187,9 @@ export function LeadFieldsUnifiedEditor({ open, onOpenChange, boardId, boardName
 
   const openNewCustom = (tab: string = 'basic') => {
     setEditing(null);
-    setCfName(''); setCfType('text'); setCfOptions(''); setCfRequired(false); setCfTab(tab);
+    setCfName(''); setCfType('text'); setCfOptions('');
+    setCfRequiredMode('none'); setCfRequiredStageIds([]);
+    setCfTab(tab);
     setCfDialogOpen(true);
   };
 
@@ -177,29 +198,48 @@ export function LeadFieldsUnifiedEditor({ open, onOpenChange, boardId, boardName
     setCfName(cf.field_name);
     setCfType(cf.field_type);
     setCfOptions(cf.field_options?.join(', ') || '');
-    setCfRequired(cf.is_required);
+    const stageIds = getStagesForField(cf.id);
+    if (stageIds.length === 0) {
+      setCfRequiredMode('none');
+      setCfRequiredStageIds([]);
+    } else {
+      const allResults = stageIds.every(id => isClosedStage(id) || isRefusedStage(id));
+      setCfRequiredMode(allResults ? 'result' : 'stage');
+      setCfRequiredStageIds(stageIds);
+    }
     setCfTab(tab);
     setCfDialogOpen(true);
   };
 
   const handleCustomSave = async () => {
     if (!cfName.trim()) { toast.error('Informe o nome do campo'); return; }
+    if (cfRequiredMode !== 'none' && cfRequiredStageIds.length === 0) {
+      toast.error('Selecione ao menos uma etapa/resultado');
+      return;
+    }
     const options = cfType === 'select' ? cfOptions.split(',').map(o => o.trim()).filter(Boolean) : [];
     try {
+      let fieldId: string | null = editing?.id || null;
       if (editing) {
         await updateCustomField(editing.id, {
           field_name: cfName, field_type: cfType, field_options: options,
-          is_required: cfRequired, tab: cfTab as any,
+          is_required: false, tab: cfTab as any,
         } as any);
       } else {
-        await addCustomField({
+        const created = await addCustomField({
           field_name: cfName, field_type: cfType, field_options: options,
-          is_required: cfRequired, board_id: boardId,
+          is_required: false, board_id: boardId,
           ad_account_id: adAccountId, tab: cfTab as any,
         } as any);
+        fieldId = (created as any)?.id || null;
+      }
+      if (fieldId) {
+        const ids = cfRequiredMode === 'none' ? [] : cfRequiredStageIds;
+        await setFieldStages(fieldId, boardId, ids);
       }
       setCfDialogOpen(false);
       await fetchCustomFields();
+      await fetchRequirements();
     } catch {/* toast handled */}
   };
 
@@ -440,9 +480,43 @@ export function LeadFieldsUnifiedEditor({ open, onOpenChange, boardId, boardName
                 <Input value={cfOptions} onChange={(e) => setCfOptions(e.target.value)} placeholder="Opção 1, Opção 2" />
               </div>
             )}
-            <div className="flex items-center justify-between border rounded p-2">
-              <Label className="text-sm">Obrigatório</Label>
-              <Switch checked={cfRequired} onCheckedChange={setCfRequired} />
+            <div className="space-y-2 border rounded p-2">
+              <Label className="text-sm">Quando obrigatório?</Label>
+              <Select value={cfRequiredMode} onValueChange={(v) => { setCfRequiredMode(v as RequiredMode); setCfRequiredStageIds([]); }}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Nunca obrigatório</SelectItem>
+                  <SelectItem value="stage">Por etapa do lead</SelectItem>
+                  <SelectItem value="result">Por resultado do lead</SelectItem>
+                </SelectContent>
+              </Select>
+              {cfRequiredMode !== 'none' && (
+                <div className="space-y-1 max-h-40 overflow-y-auto pt-1">
+                  <p className="text-xs text-muted-foreground">
+                    {cfRequiredMode === 'stage'
+                      ? 'O campo se torna obrigatório ao mover o lead para estas etapas:'
+                      : 'O campo se torna obrigatório ao marcar o lead com estes resultados:'}
+                  </p>
+                  {(cfRequiredMode === 'stage' ? funnelStages : resultStages).map(s => (
+                    <label key={s.id} className="flex items-center gap-2 text-sm py-0.5 cursor-pointer">
+                      <Checkbox
+                        checked={cfRequiredStageIds.includes(s.id)}
+                        onCheckedChange={(c) => {
+                          setCfRequiredStageIds(prev =>
+                            c ? [...prev, s.id] : prev.filter(x => x !== s.id)
+                          );
+                        }}
+                      />
+                      <span>{s.name}</span>
+                    </label>
+                  ))}
+                  {(cfRequiredMode === 'stage' ? funnelStages : resultStages).length === 0 && (
+                    <p className="text-xs text-muted-foreground italic">
+                      Nenhuma {cfRequiredMode === 'stage' ? 'etapa' : 'opção de resultado'} disponível neste funil.
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           </div>
           <DialogFooter>
