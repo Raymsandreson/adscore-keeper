@@ -538,12 +538,17 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
           <Textarea
             value={groupDescription}
             onChange={(e) => setGroupDescription(e.target.value)}
-            placeholder={descLoading ? 'Carregando…' : 'Sem descrição. Escreva e clique em Salvar para enviar ao WhatsApp.'}
+            placeholder={descLoading ? 'Carregando…' : 'Este grupo não tem descrição. Escreva aqui e clique em Salvar para enviar ao WhatsApp.'}
             disabled={descLoading || descSaving}
             maxLength={512}
             rows={3}
             className="text-sm resize-none"
           />
+          {!descLoading && !descPulling && groupDescription.trim() === '' && (
+            <p className="text-[11px] text-muted-foreground italic">
+              Este grupo ainda não tem descrição no WhatsApp.
+            </p>
+          )}
           <div className="flex items-center justify-between">
             <span className="text-[10px] text-muted-foreground">{groupDescription.length}/512</span>
             <Button
