@@ -6,12 +6,14 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { Users, User, UserPlus, Loader2, MapPin, Briefcase, Tag, Heart, ChevronDown, ChevronUp, Check, Phone, Search, ExternalLink, Link2, FileText, RefreshCw, Save } from 'lucide-react';
+import { Users, User, UserPlus, Loader2, MapPin, Briefcase, Tag, Heart, ChevronDown, ChevronUp, Check, Phone, Search, ExternalLink, Link2, FileText, RefreshCw, Save, ArrowUpFromLine } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
+import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
+import type { Contact } from '@/hooks/useContacts';
 
 interface GroupParticipant {
   phone: string;
@@ -67,6 +69,28 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
   const [descLoading, setDescLoading] = useState(false);
   const [descSaving, setDescSaving] = useState(false);
   const [descPulling, setDescPulling] = useState(false);
+  const [quickContact, setQuickContact] = useState<Contact | null>(null);
+  const [quickContactOpen, setQuickContactOpen] = useState(false);
+  const [quickContactLoading, setQuickContactLoading] = useState<string | null>(null);
+
+  const openQuickContact = async (contactId: string) => {
+    setQuickContactLoading(contactId);
+    try {
+      const { data, error } = await supabase
+        .from('contacts')
+        .select('*')
+        .eq('id', contactId)
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) { toast.error('Contato não encontrado'); return; }
+      setQuickContact(data as Contact);
+      setQuickContactOpen(true);
+    } catch (e: any) {
+      toast.error(e?.message || 'Erro ao abrir ficha');
+    } finally {
+      setQuickContactLoading(null);
+    }
+  };
 
   const groupJid = isGroup && conversationPhone ? (conversationPhone.includes('@g.us') ? conversationPhone : `${conversationPhone}@g.us`) : null;
 
@@ -471,6 +495,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
     : participants;
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg max-h-[85vh] flex flex-col">
         <DialogHeader>
@@ -636,6 +661,29 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
                             </Button>
                           </TooltipTrigger>
                           <TooltipContent>Criar contato{leadId ? ' e vincular ao lead' : ''}</TooltipContent>
+                        </Tooltip>
+                      )}
+                      {hasContact && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7"
+                              disabled={quickContactLoading === contact!.id}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openQuickContact(contact!.id);
+                              }}
+                            >
+                              {quickContactLoading === contact!.id ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <ArrowUpFromLine className="h-3.5 w-3.5 text-primary" />
+                              )}
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Abrir ficha aqui (deslizar de baixo)</TooltipContent>
                         </Tooltip>
                       )}
                       {hasContact && onViewContact && (
@@ -882,5 +930,14 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
         </ScrollArea>
       </DialogContent>
     </Dialog>
+
+    <ContactDetailSheet
+      contact={quickContact}
+      open={quickContactOpen}
+      onOpenChange={(o) => { setQuickContactOpen(o); if (!o) setQuickContact(null); }}
+      mode="sheet"
+      side="bottom"
+    />
+    </>
   );
 }
