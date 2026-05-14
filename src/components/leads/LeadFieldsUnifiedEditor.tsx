@@ -11,7 +11,13 @@ import { LEAD_FIELD_REGISTRY, TAB_DEFS, type LeadFieldTab } from './leadFormFiel
 import { useLeadFieldLayout, type ResolvedField } from '@/hooks/useLeadFieldLayout';
 import { useLeadTabLayout, type ResolvedTab } from '@/hooks/useLeadTabLayout';
 import { useLeadCustomFields, type CustomField, type FieldType } from '@/hooks/useLeadCustomFields';
+import { useFieldStageRequirements } from '@/hooks/useFieldStageRequirements';
+import { useKanbanBoards } from '@/hooks/useKanbanBoards';
+import { isClosedStage, isRefusedStage } from '@/utils/kanbanStageTypes';
+import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
+
+type RequiredMode = 'none' | 'stage' | 'result';
 
 interface Props {
   open: boolean;
