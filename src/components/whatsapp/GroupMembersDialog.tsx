@@ -489,6 +489,16 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
     return phone;
   };
 
+  const formatUpdatedAt = (iso: string | null) => {
+    if (!iso) return null;
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return null;
+    return d.toLocaleString('pt-BR', {
+      day: '2-digit', month '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit'
+    });
+  };
+
   const filteredParticipants = searchQuery
     ? participants.filter(p =>
         p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
