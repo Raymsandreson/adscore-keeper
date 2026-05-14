@@ -83,6 +83,7 @@ import { ContactFieldsUnifiedEditor } from './ContactFieldsUnifiedEditor';
 import { ContactCustomFieldsInline } from './ContactCustomFieldsInline';
 import { useContactCustomFields, type ContactFieldType } from '@/hooks/useContactCustomFields';
 import { useContactTabLayout } from '@/hooks/useContactTabLayout';
+import { useContactFieldLayout } from '@/hooks/useContactFieldLayout';
 
 interface ContactDetailSheetProps {
   contact: Contact | null;
@@ -161,6 +162,7 @@ export function ContactDetailSheet({
   const { boards: kanbanBoards } = useKanbanBoards();
   const { customFields: contactCustomFields, getFieldValues: getContactFieldValues, saveAllFieldValues: saveContactFieldValues } = useContactCustomFields();
   const { visibleTabs: contactVisibleTabs } = useContactTabLayout();
+  const { isHidden: isFieldHidden } = useContactFieldLayout();
   const [showCustomizer, setShowCustomizer] = useState(false);
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, { type: ContactFieldType; value: string | number | boolean | null }>>({});
 
