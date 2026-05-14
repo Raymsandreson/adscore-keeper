@@ -9,7 +9,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
 import { WhatsAppCallRecorder } from '@/components/whatsapp/WhatsAppCallRecorder';
 import { toast } from 'sonner';
-import { Users, ExternalLink, Instagram, Phone, Mail, Plus, Search, Loader2, X, UserPlus, Heart, Mic, PhoneCall, Clock } from 'lucide-react';
+import { Users, ExternalLink, Instagram, Phone, Mail, Plus, Search, Loader2, X, UserPlus, Heart, Mic, PhoneCall, Clock, Trash2 } from 'lucide-react';
+import { logAudit } from '@/hooks/useAuditLog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface ContactCallStats {
@@ -239,6 +240,43 @@ export function LeadLinkedContacts({ leadId }: LeadLinkedContactsProps) {
       fetchContacts(true);
     } catch {
       toast.error('Erro ao desvincular');
+    }
+  };
+
+  const handleDeleteContact = async (contactId: string, contactName: string) => {
+    if (!window.confirm(`Excluir definitivamente o contato "${contactName}"?\n\nEle será arquivado (soft delete) e desvinculado de todos os leads.`)) {
+      return;
+    }
+    try {
+      await ensureExternalSession().catch(() => {});
+      // Snapshot para auditoria
+      const { data: snapshot } = await (externalSupabase as any)
+        .from('contacts')
+        .select('*')
+        .eq('id', contactId)
+        .maybeSingle();
+
+      if (snapshot) {
+        await logAudit({
+          action: 'delete',
+          entityType: 'contact',
+          entityId: contactId,
+          entityName: snapshot.full_name || 'Contato',
+          details: { snapshot, soft_delete: true, from: 'LeadLinkedContacts' },
+        }).catch(() => {});
+      }
+
+      const { error } = await (externalSupabase as any)
+        .from('contacts')
+        .update({ deleted_at: new Date().toISOString() })
+        .eq('id', contactId);
+
+      if (error) throw error;
+      toast.success('Contato arquivado');
+      fetchContacts(true);
+    } catch (err) {
+      console.error('Erro ao arquivar contato:', err);
+      toast.error('Erro ao arquivar contato');
     }
   };
 
@@ -518,6 +556,16 @@ export function LeadLinkedContacts({ leadId }: LeadLinkedContactsProps) {
                     title="Desvincular contato"
                   >
                     <X className="h-3 w-3" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                    onClick={() => handleDeleteContact(cl.contact.id, cl.contact.full_name)}
+                    title="Excluir contato (arquivar)"
+                  >
+                    <Trash2 className="h-3 w-3" />
                   </Button>
                 </div>
                 <div className="flex items-center gap-2 pl-11">
