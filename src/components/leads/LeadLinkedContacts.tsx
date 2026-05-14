@@ -244,12 +244,13 @@ export function LeadLinkedContacts({ leadId }: LeadLinkedContactsProps) {
   };
 
   const handleDeleteContact = async (contactId: string, contactName: string) => {
-    if (!window.confirm(`Excluir definitivamente o contato "${contactName}"?\n\nEle será arquivado (soft delete) e desvinculado de todos os leads.`)) {
+    if (!window.confirm(`Excluir DEFINITIVAMENTE o contato "${contactName}"?\n\nEsta ação não pode ser desfeita. Ele será removido de todos os leads e do banco de contatos.`)) {
       return;
     }
     try {
       await ensureExternalSession().catch(() => {});
-      // Snapshot para auditoria
+
+      // Snapshot para auditoria antes de apagar
       const { data: snapshot } = await (externalSupabase as any)
         .from('contacts')
         .select('*')
@@ -262,21 +263,29 @@ export function LeadLinkedContacts({ leadId }: LeadLinkedContactsProps) {
           entityType: 'contact',
           entityId: contactId,
           entityName: snapshot.full_name || 'Contato',
-          details: { snapshot, soft_delete: true, from: 'LeadLinkedContacts' },
+          details: { snapshot, hard_delete: true, from: 'LeadLinkedContacts' },
         }).catch(() => {});
       }
 
+      // Remove vínculos primeiro (FK)
+      await (externalSupabase as any).from('contact_leads').delete().eq('contact_id', contactId);
+
+      // Hard delete do contato
       const { error } = await (externalSupabase as any)
         .from('contacts')
-        .update({ deleted_at: new Date().toISOString() })
+        .delete()
         .eq('id', contactId);
 
       if (error) throw error;
-      toast.success('Contato arquivado');
+
+      // Atualiza UI imediatamente
+      setContacts(prev => prev.filter(c => c.contact_id !== contactId));
+      contactsCache.delete(leadId);
+      toast.success('Contato excluído');
       fetchContacts(true);
-    } catch (err) {
-      console.error('Erro ao arquivar contato:', err);
-      toast.error('Erro ao arquivar contato');
+    } catch (err: any) {
+      console.error('Erro ao excluir contato:', err);
+      toast.error(`Erro ao excluir contato: ${err?.message || 'desconhecido'}`);
     }
   };
 
