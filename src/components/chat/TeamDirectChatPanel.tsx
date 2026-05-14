@@ -51,6 +51,8 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const audioElementsRef = useRef<Map<string, HTMLAudioElement>>(new Map());
+  // Track which user_ids were @mentioned in the current draft
+  const mentionedUsersRef = useRef<Map<string, string>>(new Map()); // name -> user_id
 
   // Filtered members for @mention picker
   const mentionCandidates = (() => {
@@ -64,7 +66,6 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
 
   const handleMessageChange = (value: string) => {
     setMessageText(value);
-    // Detect @ token at the end of the text (allows letters/spaces until newline or boundary)
     const m = value.match(/(?:^|\s)@([\wÀ-ÿ.\- ]{0,30})$/);
     if (m) {
       setMentionQuery(m[1]);
@@ -74,13 +75,25 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
     }
   };
 
-  const insertMention = (name: string) => {
+  const insertMention = (name: string, userId: string) => {
+    mentionedUsersRef.current.set(name, userId);
     setMessageText(prev => prev.replace(/(?:^|\s)@([\wÀ-ÿ.\- ]{0,30})$/, (full, _q, offset) => {
       const prefix = offset === 0 ? '' : full[0];
       return `${prefix}@${name} `;
     }));
     setMentionQuery(null);
     requestAnimationFrame(() => messageInputRef.current?.focus());
+  };
+
+  // Resolve mentioned user_ids by scanning final text against the tracked map
+  const resolveMentionedUserIds = (text: string): string[] => {
+    const ids = new Set<string>();
+    for (const [name, uid] of mentionedUsersRef.current.entries()) {
+      // word boundary match for "@Name"
+      const re = new RegExp(`@${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`);
+      if (re.test(text)) ids.add(uid);
+    }
+    return Array.from(ids);
   };
 
 
@@ -98,6 +111,7 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
     if (typeof intent.draft === 'string') {
       setMessageText(intent.draft);
     }
+
 
     if (intent.focusComposer) {
       requestAnimationFrame(() => {
