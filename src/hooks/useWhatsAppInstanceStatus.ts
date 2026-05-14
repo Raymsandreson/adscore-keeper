@@ -155,9 +155,9 @@ export function useWhatsAppInstanceStatus(enabled: boolean = true) {
 
   useEffect(() => {
     if (enabled) {
+      // Detector de status roda 1x ao montar. Polling de 1min foi removido
+      // a pedido — reconexão agora depende de webhook/refresh manual.
       checkStatus();
-      const interval = setInterval(checkStatus, 60000);
-      return () => clearInterval(interval);
     }
   }, [checkStatus, enabled]);
 
