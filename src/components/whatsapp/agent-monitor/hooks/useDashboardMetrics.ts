@@ -165,15 +165,16 @@ export function useDashboardMetrics() {
         has_lead: !!r.has_lead,
       }));
 
-      // Build conversation/closed metrics. Para "today" a RPC é fonte de verdade
-      // (newConvDetails + responseRate + avgResponseTimeMin). Para outros períodos,
-      // mantém snapshot do edge function de KPIs.
+      // Build conversation/closed metrics. Para qualquer dia único (hoje, ontem, etc)
+      // a RPC é fonte de verdade (newConvDetails + responseRate + avgResponseTimeMin).
+      // Para ranges com múltiplos dias, mantém snapshot do edge function de KPIs.
+      const useRpc = !!rpcDate;
       const convAndClosedMetrics: Partial<DashboardMetrics> = {
-        newConversations: isToday ? totalNewConvs : (kpiData.conversas_ativas || 0),
+        newConversations: useRpc ? totalNewConvs : (kpiData.conversas_ativas || 0),
         responseRate,
         avgResponseTimeMin,
         respondedCount,
-        totalInbound: isToday ? totalNewConvs : (kpiData.msgs_inbound || 0),
+        totalInbound: useRpc ? totalNewConvs : (kpiData.msgs_inbound || 0),
         closedByAgent: [],
         closedByAgentDetailed: [],
         closedByCampaign: [],
@@ -186,8 +187,8 @@ export function useDashboardMetrics() {
         newConvDetails,
       };
 
-      // Snapshot só sobrepõe quando NÃO é hoje (RPC manda em today).
-      if (!isToday && kpiRes?.conversation_metrics) {
+      // Snapshot só sobrepõe quando o range tem mais de um dia (sem RPC disponível).
+      if (!useRpc && kpiRes?.conversation_metrics) {
         const cm = kpiRes.conversation_metrics;
         convAndClosedMetrics.newConversations = cm.newConversations || convAndClosedMetrics.newConversations;
         convAndClosedMetrics.responseRate = cm.responseRate ?? convAndClosedMetrics.responseRate;
