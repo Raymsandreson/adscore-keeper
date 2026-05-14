@@ -538,7 +538,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
           <Textarea
             value={groupDescription}
             onChange={(e) => setGroupDescription(e.target.value)}
-            placeholder={descLoading ? 'Carregando…' : 'Sem descrição. Escreva e clique em Salvar para enviar ao WhatsApp.'}
+            placeholder={descLoading ? 'Carregando…' : 'Este grupo não tem descrição. Escreva aqui e clique em Salvar para enviar ao WhatsApp.'}
             disabled={descLoading || descSaving}
             maxLength={512}
             rows={3}
