@@ -137,7 +137,7 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
       if (e.key === 'Enter' || e.key === 'Tab') {
         e.preventDefault();
         const pick = mentionCandidates[mentionIndex];
-        if (pick) insertMention(pick.full_name || pick.email || 'membro');
+        if (pick) insertMention(pick.full_name || pick.email || 'membro', pick.user_id);
         return;
       }
       if (e.key === 'Escape') { setMentionQuery(null); return; }
