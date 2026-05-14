@@ -144,7 +144,33 @@ async function downloadAndStoreMedia(
 
     if (!fileBuffer || fileBuffer.byteLength < 50) {
       console.log('Could not download media, buffer empty or too small, size:', fileBuffer?.byteLength || 0);
-      return { publicUrl: null, transcription };
+      return { publicUrl: null, transcription, contentType: null };
+    }
+
+    // Normalize content type when UazAPI didn't tell us what it is.
+    // Sem essa etiqueta, o navegador trata áudio como binário cego (duração 0,
+    // não toca) e arquivo vira .bin. Inferimos pelo messageType + sniffing.
+    const isGeneric = !contentType || contentType === 'application/octet-stream' || contentType.startsWith('text/');
+    if (isGeneric) {
+      const head = new Uint8Array(fileBuffer.slice(0, 16));
+      const sniff = (sig: number[], offset = 0) => sig.every((b, i) => head[offset + i] === b);
+      if (messageType === 'audio') {
+        if (sniff([0x4f, 0x67, 0x67, 0x53])) contentType = 'audio/ogg';           // OggS
+        else if (sniff([0x49, 0x44, 0x33]) || sniff([0xff, 0xfb])) contentType = 'audio/mpeg'; // ID3 / MP3
+        else if (sniff([0x66, 0x74, 0x79, 0x70], 4)) contentType = 'audio/mp4';   // ftyp
+        else contentType = 'audio/ogg';
+      } else if (messageType === 'image') {
+        if (sniff([0x89, 0x50, 0x4e, 0x47])) contentType = 'image/png';
+        else if (sniff([0xff, 0xd8, 0xff])) contentType = 'image/jpeg';
+        else if (sniff([0x52, 0x49, 0x46, 0x46]) && sniff([0x57, 0x45, 0x42, 0x50], 8)) contentType = 'image/webp';
+        else contentType = 'image/jpeg';
+      } else if (messageType === 'video') {
+        contentType = 'video/mp4';
+      } else if (messageType === 'document') {
+        if (sniff([0x25, 0x50, 0x44, 0x46])) contentType = 'application/pdf';      // %PDF
+        else if (sniff([0x50, 0x4b, 0x03, 0x04])) contentType = 'application/zip'; // PK (also docx/xlsx)
+      }
+      console.log('Normalized contentType to:', contentType);
     }
 
     console.log('Downloaded media:', fileBuffer.byteLength, 'bytes, type:', contentType);
@@ -172,15 +198,15 @@ async function downloadAndStoreMedia(
 
     if (uploadError) {
       console.error('Storage upload error:', uploadError);
-      return { publicUrl: null, transcription };
+      return { publicUrl: null, transcription, contentType };
     }
 
     const { data: urlData } = supabase.storage.from('whatsapp-media').getPublicUrl(filePath);
     console.log('Media uploaded successfully:', urlData.publicUrl);
-    return { publicUrl: urlData.publicUrl, transcription };
+    return { publicUrl: urlData.publicUrl, transcription, contentType };
   } catch (e) {
     console.error('Media download/upload error:', e);
-    return { publicUrl: null, transcription: null };
+    return { publicUrl: null, transcription: null, contentType: null };
   }
 }
 
