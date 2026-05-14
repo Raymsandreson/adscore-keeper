@@ -21,6 +21,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { DashboardChatPreview } from './DashboardChatPreview';
 import { DashboardFunnelChecklist } from './DashboardFunnelChecklist';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
+import { InstanceComparisonDialog, InstanceRow } from './InstanceComparisonDialog';
+import { BarChart2 } from 'lucide-react';
 
 interface LeadWithMessages {
   id: string;
@@ -120,6 +122,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
   const [sendingReport, setSendingReport] = useState(false);
   const [leadFollowupDetails, setLeadFollowupDetails] = useState<LeadFollowupDetail[]>([]);
   const [chatPreview, setChatPreview] = useState<{ phone: string; contactName: string | null; instanceName: string | null; hasLead: boolean; hasContact: boolean; wasResponded: boolean; responseTimeMinutes: number | null } | null>(null);
+  const [compareMetric, setCompareMetric] = useState<null | 'conversations' | 'qualified' | 'converted' | 'response_rate' | 'avg_time' | 'fast_response' | 'new_convs' | 'lead_followups' | 'followups' | 'documents'>(null);
 
   // Stage info map for reuse
   const [stageInfoMap, setStageInfoMap] = useState<Map<string, { name: string; color: string }>>(new Map());
@@ -878,7 +881,127 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
     return buckets.map(b => ({ name: b.label, value: b.count }));
   }, [responseMetrics]);
 
-  // Clickable lead row component
+  // Breakdown por instância — alimenta a tabela comparativa de cada card
+  const instanceBreakdowns = useMemo(() => {
+    const byInst = new Map<string, {
+      msgs: number;
+      conversations: Map<string, { hasInbound: boolean; hasOutbound: boolean; firstInboundAt: string | null; firstOutboundAt: string | null }>;
+    }>();
+    messages.forEach(m => {
+      const inst = m.instance_name || '—';
+      let bucket = byInst.get(inst);
+      if (!bucket) { bucket = { msgs: 0, conversations: new Map() }; byInst.set(inst, bucket); }
+      bucket.msgs++;
+      let conv = bucket.conversations.get(m.phone);
+      if (!conv) { conv = { hasInbound: false, hasOutbound: false, firstInboundAt: null, firstOutboundAt: null }; bucket.conversations.set(m.phone, conv); }
+      if (m.direction === 'inbound') { conv.hasInbound = true; if (!conv.firstInboundAt) conv.firstInboundAt = m.created_at; }
+      else { conv.hasOutbound = true; if (!conv.firstOutboundAt) conv.firstOutboundAt = m.created_at; }
+    });
+
+    const conversations: InstanceRow[] = [];
+    const responseRate: InstanceRow[] = [];
+    const avgTime: InstanceRow[] = [];
+    const fastResp: InstanceRow[] = [];
+    let totConv = 0, totReplied = 0;
+    const allTimes: number[] = [];
+
+    byInst.forEach((b, inst) => {
+      const convs = Array.from(b.conversations.values());
+      const inbound = convs.filter(c => c.hasInbound);
+      const replied = inbound.filter(c => c.hasOutbound).length;
+      const times: number[] = [];
+      inbound.forEach(c => {
+        if (c.firstInboundAt && c.firstOutboundAt) {
+          const d = differenceInMinutes(parseISO(c.firstOutboundAt), parseISO(c.firstInboundAt));
+          if (d >= 0 && d < 1440) times.push(d);
+        }
+      });
+      const avg = times.length ? Math.round(times.reduce((a, b) => a + b, 0) / times.length) : 0;
+      const fastPct = times.length ? Math.round((times.filter(t => t < 5).length / times.length) * 100) : 0;
+      conversations.push({ instance: inst, value: inbound.length, secondary: `${b.msgs} msgs` });
+      responseRate.push({ instance: inst, value: inbound.length ? Math.round((replied / inbound.length) * 100) : 0, secondary: `${replied}/${inbound.length}` });
+      avgTime.push({ instance: inst, value: avg, secondary: `${times.length} resp.` });
+      fastResp.push({ instance: inst, value: fastPct, secondary: `${times.filter(t => t < 5).length}/${times.length}` });
+      totConv += inbound.length; totReplied += replied; allTimes.push(...times);
+    });
+
+    const totalAvg = allTimes.length ? Math.round(allTimes.reduce((a, b) => a + b, 0) / allTimes.length) : 0;
+    const totalFastPct = allTimes.length ? Math.round((allTimes.filter(t => t < 5).length / allTimes.length) * 100) : 0;
+
+    const leadInstance = new Map<string, string>();
+    messages.forEach(m => { if (m.lead_id && m.instance_name && !leadInstance.has(m.lead_id)) leadInstance.set(m.lead_id, m.instance_name); });
+    const qByInst = new Map<string, { qualified: number; converted: number; total: number }>();
+    leads.forEach(l => {
+      const inst = leadInstance.get(l.id) || '— sem msg';
+      const cur = qByInst.get(inst) || { qualified: 0, converted: 0, total: 0 };
+      cur.total++;
+      if (l.status === 'qualified' || l.status === 'converted') cur.qualified++;
+      if (l.status === 'converted') cur.converted++;
+      qByInst.set(inst, cur);
+    });
+    const qualified: InstanceRow[] = [];
+    const converted: InstanceRow[] = [];
+    qByInst.forEach((v, inst) => {
+      qualified.push({ instance: inst, value: v.qualified, secondary: `${v.total} leads` });
+      converted.push({ instance: inst, value: v.converted, secondary: `${v.total} leads` });
+    });
+
+    const groupCount = <T extends { instance_name: string | null }>(arr: T[]): InstanceRow[] => {
+      const m = new Map<string, number>();
+      arr.forEach(x => { const k = x.instance_name || '—'; m.set(k, (m.get(k) || 0) + 1); });
+      return Array.from(m.entries()).map(([instance, value]) => ({ instance, value }));
+    };
+    const newConvs = groupCount(todayNewConvs);
+    const followups = groupCount(todayFollowups);
+
+    const lfMap = new Map<string, { out: number; leads: number }>();
+    leadFollowupDetails.forEach(l => {
+      const k = l.instanceName || '—';
+      const cur = lfMap.get(k) || { out: 0, leads: 0 };
+      cur.out += l.outboundCount; cur.leads++;
+      lfMap.set(k, cur);
+    });
+    const leadFollowups: InstanceRow[] = Array.from(lfMap.entries()).map(([instance, v]) => ({ instance, value: v.out, secondary: `${v.leads} leads` }));
+
+    return {
+      conversations: { rows: conversations, total: totConv, totalSecondary: `${messages.length} msgs` },
+      qualified: { rows: qualified, total: conversionMetrics.qualified, totalSecondary: `${conversionMetrics.total} leads` },
+      converted: { rows: converted, total: conversionMetrics.converted, totalSecondary: `${conversionMetrics.total} leads` },
+      response_rate: { rows: responseRate, total: totConv ? Math.round((totReplied / totConv) * 100) : 0, totalSecondary: `${totReplied}/${totConv}` },
+      avg_time: { rows: avgTime, total: totalAvg, totalSecondary: `${allTimes.length} resp.` },
+      fast_response: { rows: fastResp, total: totalFastPct, totalSecondary: `${allTimes.filter(t => t < 5).length}/${allTimes.length}` },
+      new_convs: { rows: newConvs, total: todayNewConvs.length, totalSecondary: '' },
+      lead_followups: { rows: leadFollowups, total: totalFollowups, totalSecondary: `${leadFollowupDetails.length} leads` },
+      followups: { rows: followups, total: todayFollowups.length, totalSecondary: '' },
+      documents: { rows: [] as InstanceRow[], total: todayDocs.length, totalSecondary: '' },
+    };
+  }, [messages, leads, todayNewConvs, todayFollowups, todayDocs, leadFollowupDetails, conversionMetrics, totalFollowups]);
+
+  const compareConfig: Record<string, { title: string; valueLabel: string; secondaryLabel?: string; format?: (v: number | string) => string }> = {
+    conversations: { title: 'Conversas', valueLabel: 'Conversas', secondaryLabel: 'Mensagens' },
+    qualified: { title: 'Qualificados', valueLabel: 'Qualificados', secondaryLabel: 'Total leads' },
+    converted: { title: 'Convertidos', valueLabel: 'Convertidos', secondaryLabel: 'Total leads' },
+    response_rate: { title: 'Taxa de Resposta', valueLabel: 'Taxa', secondaryLabel: 'Resp/Recebidas', format: (v) => `${v}%` },
+    avg_time: { title: 'Tempo Médio de 1ª Resposta', valueLabel: 'Tempo médio', secondaryLabel: 'Amostra', format: (v) => formatResponseTime(Number(v)) },
+    fast_response: { title: 'Resposta < 5min', valueLabel: '% < 5min', secondaryLabel: 'Rápidas/Total', format: (v) => `${v}%` },
+    new_convs: { title: 'Conversas Novas', valueLabel: 'Conversas novas' },
+    lead_followups: { title: 'Follow-ups', valueLabel: 'Mensagens enviadas', secondaryLabel: 'Leads' },
+    followups: { title: 'Contatos', valueLabel: 'Telefones únicos' },
+    documents: { title: 'Documentos', valueLabel: 'Documentos' },
+  };
+
+  const CompareBtn = ({ metric }: { metric: keyof typeof compareConfig }) => (
+    <button
+      type="button"
+      onClick={(e) => { e.stopPropagation(); setCompareMetric(metric as any); }}
+      className="inline-flex items-center justify-center h-6 w-6 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+      title="Comparar por instância"
+    >
+      <BarChart2 className="h-3.5 w-3.5" />
+    </button>
+  );
+
+
   const LeadRow = ({ lead, extra }: { lead: { id: string; name?: string; lead_name?: string; phone?: string | null; lead_phone?: string | null }; extra?: React.ReactNode }) => (
     <div
       className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors cursor-pointer group"
@@ -944,6 +1067,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
             <div className="flex items-center gap-2 mb-1">
               <Users className="h-4 w-4 text-primary" />
               <span className="text-xs text-muted-foreground">Conversas</span>
+              <div className="ml-auto"><CompareBtn metric="conversations" /></div>
             </div>
             <p className="text-2xl font-bold">{inboundConversations.length}</p>
             <p className="text-xs text-muted-foreground">{filteredMessages.length} msgs | {conversionMetrics.total} leads</p>
@@ -954,6 +1078,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
             <div className="flex items-center gap-2 mb-1">
               <Target className="h-4 w-4 text-green-500" />
               <span className="text-xs text-muted-foreground">Qualificados</span>
+              <div className="ml-auto"><CompareBtn metric="qualified" /></div>
             </div>
             <p className="text-2xl font-bold">{conversionMetrics.qualified}</p>
             <Badge variant="outline" className="text-xs">{conversionMetrics.qualificationRate}%</Badge>
@@ -964,6 +1089,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
             <div className="flex items-center gap-2 mb-1">
               <TrendingUp className="h-4 w-4 text-blue-500" />
               <span className="text-xs text-muted-foreground">Convertidos</span>
+              <div className="ml-auto"><CompareBtn metric="converted" /></div>
             </div>
             <p className="text-2xl font-bold">{conversionMetrics.converted}</p>
             <Badge variant="outline" className="text-xs">{conversionMetrics.conversionRate}%</Badge>
@@ -974,6 +1100,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
             <div className="flex items-center gap-2 mb-1">
               <MessageSquare className="h-4 w-4 text-orange-500" />
               <span className="text-xs text-muted-foreground">Taxa Resposta</span>
+              <div className="ml-auto"><CompareBtn metric="response_rate" /></div>
             </div>
             <p className="text-2xl font-bold">{responseMetrics.responseRate}%</p>
             <p className="text-xs text-muted-foreground">{responseMetrics.leadsWithResponse}/{responseMetrics.leadsWithInbound}</p>
@@ -984,6 +1111,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
             <div className="flex items-center gap-2 mb-1">
               <Timer className="h-4 w-4 text-purple-500" />
               <span className="text-xs text-muted-foreground">Tempo Médio</span>
+              <div className="ml-auto"><CompareBtn metric="avg_time" /></div>
             </div>
             <p className="text-2xl font-bold">{formatResponseTime(responseMetrics.avgResponseTime)}</p>
             <p className="text-xs text-muted-foreground">1ª resposta</p>
@@ -994,6 +1122,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
             <div className="flex items-center gap-2 mb-1">
               <Zap className="h-4 w-4 text-yellow-500" />
               <span className="text-xs text-muted-foreground">Resp. &lt; 5min</span>
+              <div className="ml-auto"><CompareBtn metric="fast_response" /></div>
             </div>
             <p className="text-2xl font-bold">
               {responseMetrics.responseTimes.length > 0
@@ -1015,6 +1144,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
             <div className="flex items-center gap-2 mb-1">
               <MessageSquare className="h-4 w-4 text-primary" />
               <span className="text-xs text-muted-foreground">Conversas Novas {periodLabel}</span>
+              <div className="ml-auto"><CompareBtn metric="new_convs" /></div>
             </div>
             <p className="text-2xl font-bold">{todayNewConvs.length}</p>
             <div className="flex items-center gap-2 text-[10px]">
@@ -1032,6 +1162,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
             <div className="flex items-center gap-2 mb-1">
               <PhoneForwarded className="h-4 w-4 text-emerald-500" />
               <span className="text-xs text-muted-foreground">Follow-ups</span>
+              <div className="ml-auto"><CompareBtn metric="lead_followups" /></div>
             </div>
             <p className="text-2xl font-bold">{totalFollowups}</p>
             <p className="text-xs text-muted-foreground">{leadFollowupDetails.length} leads contactados</p>
@@ -1045,6 +1176,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
             <div className="flex items-center gap-2 mb-1">
               <Phone className="h-4 w-4 text-blue-500" />
               <span className="text-xs text-muted-foreground">Contatos {periodLabel}</span>
+              <div className="ml-auto"><CompareBtn metric="followups" /></div>
             </div>
             <p className="text-2xl font-bold">{todayFollowups.length}</p>
             <p className="text-xs text-muted-foreground">telefones contatados</p>
@@ -1058,6 +1190,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
             <div className="flex items-center gap-2 mb-1">
               <FileSignature className="h-4 w-4 text-amber-500" />
               <span className="text-xs text-muted-foreground">Documentos {periodLabel}</span>
+              <div className="ml-auto"><CompareBtn metric="documents" /></div>
             </div>
             <p className="text-2xl font-bold">{todayDocs.length}</p>
             <p className="text-xs text-muted-foreground">Clique para ver</p>
@@ -1820,6 +1953,24 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
         responseTimeMinutes={chatPreview?.responseTimeMinutes ?? null}
         onOpenChat={onOpenChat}
       />
+
+      {compareMetric && (() => {
+        const cfg = compareConfig[compareMetric];
+        const data = (instanceBreakdowns as any)[compareMetric];
+        return (
+          <InstanceComparisonDialog
+            open={!!compareMetric}
+            onClose={() => setCompareMetric(null)}
+            title={cfg.title}
+            valueLabel={cfg.valueLabel}
+            secondaryLabel={cfg.secondaryLabel}
+            rows={data.rows}
+            total={data.total}
+            totalSecondary={data.totalSecondary}
+            formatValue={cfg.format}
+          />
+        );
+      })()}
     </div>
   );
 }
