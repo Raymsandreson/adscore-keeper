@@ -531,7 +531,7 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
                       <button
                         key={p.user_id}
                         type="button"
-                        onMouseDown={(e) => { e.preventDefault(); insertMention(p.full_name || p.email || 'membro'); }}
+                        onMouseDown={(e) => { e.preventDefault(); insertMention(p.full_name || p.email || 'membro', p.user_id); }}
                         className={cn(
                           'w-full flex items-center gap-2 px-2 py-1.5 text-left text-xs hover:bg-accent',
                           i === mentionIndex && 'bg-accent'
