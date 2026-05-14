@@ -138,6 +138,89 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const [resyncingMsgId, setResyncingMsgId] = useState<string | null>(null);
   const [bulkResyncing, setBulkResyncing] = useState(false);
   const [bulkResyncProgress, setBulkResyncProgress] = useState<{ done: number; total: number } | null>(null);
+  const [savingDriveMsgId, setSavingDriveMsgId] = useState<string | null>(null);
+
+  const handleSaveToDrive = async (msg: any) => {
+    if (!conversation.lead_id) {
+      toast.error('Vincule esta conversa a um lead antes de salvar no Drive.');
+      return;
+    }
+    if (!msg.media_url) {
+      toast.error('Mensagem sem mídia para salvar.');
+      return;
+    }
+    setSavingDriveMsgId(msg.id);
+    const tId = toast.loading('Enviando para o Google Drive…');
+    try {
+      // Busca nome do lead
+      const { data: leadRow } = await externalSupabase
+        .from('leads')
+        .select('lead_name')
+        .eq('id', conversation.lead_id)
+        .maybeSingle();
+      const leadName = (leadRow as any)?.lead_name || conversation.contact_name || 'Lead';
+
+      // Define nome inicial do arquivo
+      const urlBase = (msg.media_url.split('/').pop()?.split('?')[0]) || '';
+      const hasExt = /\.[a-z0-9]{2,5}$/i.test(urlBase);
+      const mime = msg.media_type || '';
+      const extFromMime = mime.includes('pdf') ? '.pdf'
+        : mime.startsWith('image/jpeg') ? '.jpg'
+        : mime.startsWith('image/png') ? '.png'
+        : mime.startsWith('image/webp') ? '.webp'
+        : mime.startsWith('video/') ? '.mp4'
+        : mime.startsWith('audio/') ? '.ogg'
+        : '';
+      const baseName = (msg.message_text && msg.message_text.length < 120 ? msg.message_text : urlBase || `whatsapp_${msg.id}`).replace(/[\\/:*?"<>|]/g, '_');
+      const fileName = hasExt ? baseName : `${baseName}${extFromMime}`;
+
+      // Upload
+      const { data: upData, error: upErr } = await supabase.functions.invoke('lead-drive', {
+        body: {
+          action: 'upload_url',
+          lead_id: conversation.lead_id,
+          lead_name: leadName,
+          file_name: fileName,
+          source_url: msg.media_url,
+          mime_type: mime || undefined,
+        },
+      });
+      if (upErr) throw upErr;
+      if ((upData as any)?.error) throw new Error((upData as any).error);
+      const file = (upData as any).file;
+
+      // Classifica + renomeia via IA (não bloqueia se falhar)
+      let analyzedName: string | null = null;
+      try {
+        const { data: anData } = await supabase.functions.invoke('lead-drive', {
+          body: {
+            action: 'analyze_file',
+            lead_id: conversation.lead_id,
+            lead_name: leadName,
+            file_id: file.id,
+          },
+        });
+        analyzedName = ((anData as any)?.renamed as string) || null;
+      } catch (e) {
+        console.warn('[saveToDrive] analyze_file falhou:', e);
+      }
+
+      toast.success(
+        `Salvo no Drive: ${analyzedName || file.name}`,
+        {
+          id: tId,
+          action: file.webViewLink
+            ? { label: 'Abrir', onClick: () => window.open(file.webViewLink, '_blank') }
+            : undefined,
+        },
+      );
+    } catch (err: any) {
+      console.error('[saveToDrive] erro:', err);
+      toast.error(`Erro ao salvar no Drive: ${err.message || err}`, { id: tId });
+    } finally {
+      setSavingDriveMsgId(null);
+    }
+  };
 
   const isEncUrl = (u?: string | null) => !!u && /\.enc(?:\?|$)/i.test(u);
   const isMissingMedia = (m: any) =>
