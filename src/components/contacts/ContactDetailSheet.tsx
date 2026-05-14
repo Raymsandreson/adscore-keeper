@@ -159,6 +159,10 @@ export function ContactDetailSheet({
   const { professions, searchProfessions } = useCboProfessions();
   const { fetchProfileNames, getDisplayName } = useProfileNames();
   const { boards: kanbanBoards } = useKanbanBoards();
+  const { customFields: contactCustomFields, getFieldValues: getContactFieldValues, saveAllFieldValues: saveContactFieldValues } = useContactCustomFields();
+  const { visibleTabs: contactVisibleTabs } = useContactTabLayout();
+  const [showCustomizer, setShowCustomizer] = useState(false);
+  const [customFieldValues, setCustomFieldValues] = useState<Record<string, { type: ContactFieldType; value: string | number | boolean | null }>>({});
 
   // State for auto lead creation when classified as client
   const [showClientLeadDialog, setShowClientLeadDialog] = useState(false);
