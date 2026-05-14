@@ -139,28 +139,28 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const [bulkResyncing, setBulkResyncing] = useState(false);
   const [bulkResyncProgress, setBulkResyncProgress] = useState<{ done: number; total: number } | null>(null);
   const [savingDriveMsgId, setSavingDriveMsgId] = useState<string | null>(null);
+  const [driveTargetMsg, setDriveTargetMsg] = useState<any | null>(null);
+  const [showDriveTargetDialog, setShowDriveTargetDialog] = useState(false);
+  const [creatingDriveLead, setCreatingDriveLead] = useState(false);
 
-  const handleSaveToDrive = async (msg: any) => {
-    if (!conversation.lead_id) {
-      toast.error('Vincule esta conversa a um lead antes de salvar no Drive.');
-      return;
-    }
-    if (!msg.media_url) {
+  const runDriveUpload = async (msg: any, leadId: string, leadNameInput?: string) => {
+    if (!msg?.media_url) {
       toast.error('Mensagem sem mídia para salvar.');
       return;
     }
     setSavingDriveMsgId(msg.id);
     const tId = toast.loading('Enviando para o Google Drive…');
     try {
-      // Busca nome do lead
-      const { data: leadRow } = await externalSupabase
-        .from('leads')
-        .select('lead_name')
-        .eq('id', conversation.lead_id)
-        .maybeSingle();
-      const leadName = (leadRow as any)?.lead_name || conversation.contact_name || 'Lead';
+      let leadName = leadNameInput;
+      if (!leadName) {
+        const { data: leadRow } = await externalSupabase
+          .from('leads')
+          .select('lead_name')
+          .eq('id', leadId)
+          .maybeSingle();
+        leadName = (leadRow as any)?.lead_name || conversation.contact_name || 'Lead';
+      }
 
-      // Define nome inicial do arquivo
       const urlBase = (msg.media_url.split('/').pop()?.split('?')[0]) || '';
       const hasExt = /\.[a-z0-9]{2,5}$/i.test(urlBase);
       const mime = msg.media_type || '';
@@ -174,11 +174,10 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
       const baseName = (msg.message_text && msg.message_text.length < 120 ? msg.message_text : urlBase || `whatsapp_${msg.id}`).replace(/[\\/:*?"<>|]/g, '_');
       const fileName = hasExt ? baseName : `${baseName}${extFromMime}`;
 
-      // Upload
       const { data: upData, error: upErr } = await supabase.functions.invoke('lead-drive', {
         body: {
           action: 'upload_url',
-          lead_id: conversation.lead_id,
+          lead_id: leadId,
           lead_name: leadName,
           file_name: fileName,
           source_url: msg.media_url,
@@ -189,13 +188,12 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
       if ((upData as any)?.error) throw new Error((upData as any).error);
       const file = (upData as any).file;
 
-      // Classifica + renomeia via IA (não bloqueia se falhar)
       let analyzedName: string | null = null;
       try {
         const { data: anData } = await supabase.functions.invoke('lead-drive', {
           body: {
             action: 'analyze_file',
-            lead_id: conversation.lead_id,
+            lead_id: leadId,
             lead_name: leadName,
             file_id: file.id,
           },
@@ -219,6 +217,70 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
       toast.error(`Erro ao salvar no Drive: ${err.message || err}`, { id: tId });
     } finally {
       setSavingDriveMsgId(null);
+    }
+  };
+
+  const handleSaveToDrive = async (msg: any) => {
+    if (!msg.media_url) {
+      toast.error('Mensagem sem mídia para salvar.');
+      return;
+    }
+    if (conversation.lead_id) {
+      await runDriveUpload(msg, conversation.lead_id);
+      return;
+    }
+    // Sem lead vinculado: abre seletor / criação
+    setDriveTargetMsg(msg);
+    setLeadSearchQuery('');
+    setSelectedLeadId('');
+    setShowDriveTargetDialog(true);
+    fetchLeads('');
+  };
+
+  const handlePickExistingLeadForDrive = async () => {
+    if (!selectedLeadId || !driveTargetMsg) return;
+    const lead = leads.find(l => l.id === selectedLeadId);
+    const msg = driveTargetMsg;
+    setShowDriveTargetDialog(false);
+    setDriveTargetMsg(null);
+    // Vincula conversa em background (não bloqueia o upload)
+    try { onLinkToLead(conversation.phone, selectedLeadId); } catch (e) { console.warn('link conversa falhou:', e); }
+    await runDriveUpload(msg, selectedLeadId, (lead as any)?.lead_name);
+  };
+
+  const handleCreateLeadForDrive = async () => {
+    if (!driveTargetMsg) return;
+    setCreatingDriveLead(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const fallbackName = isGroup
+        ? (conversation.contact_name || `Grupo ${conversation.phone}`)
+        : (conversation.contact_name || `Contato ${conversation.phone}`);
+      const extCreatedBy = user?.id || null;
+      const { data: newLead, error } = await externalSupabase
+        .from('leads')
+        .insert({
+          lead_name: fallbackName,
+          lead_phone: isGroup ? null : conversation.phone,
+          source: 'whatsapp',
+          lead_status: 'new',
+          created_by: extCreatedBy,
+          notes: 'Lead criado automaticamente para salvar documento no Drive.',
+        } as any)
+        .select('id, lead_name')
+        .single();
+      if (error) throw error;
+      const msg = driveTargetMsg;
+      setShowDriveTargetDialog(false);
+      setDriveTargetMsg(null);
+      try { onLinkToLead(conversation.phone, (newLead as any).id); } catch (e) { console.warn('link conversa falhou:', e); }
+      toast.success(`Lead "${(newLead as any).lead_name}" criado`);
+      await runDriveUpload(msg, (newLead as any).id, (newLead as any).lead_name);
+    } catch (e: any) {
+      console.error('[saveToDrive] criar lead falhou:', e);
+      toast.error(`Erro ao criar lead: ${e?.message || e}`);
+    } finally {
+      setCreatingDriveLead(false);
     }
   };
 
@@ -1955,6 +2017,71 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         </DialogContent>
       </Dialog>
 
+      {/* Salvar no Drive: escolher/criar lead alvo */}
+      <Dialog open={showDriveTargetDialog} onOpenChange={(o) => { setShowDriveTargetDialog(o); if (!o) setDriveTargetMsg(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Salvar no Drive — escolher lead</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground">
+              Esta conversa não está vinculada a nenhum lead. Escolha um existente ou crie um novo para receber o arquivo na pasta dele.
+            </p>
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Buscar lead por nome..."
+                value={leadSearchQuery}
+                onChange={(e) => { setLeadSearchQuery(e.target.value); fetchLeads(e.target.value); }}
+                className="pl-8 h-9"
+              />
+            </div>
+            <ScrollArea className="max-h-[220px]">
+              <div className="space-y-0.5">
+                {leads.map(lead => (
+                  <button
+                    key={lead.id}
+                    type="button"
+                    className={cn(
+                      "w-full flex items-center gap-2 p-2 rounded-md text-left text-sm transition-colors",
+                      selectedLeadId === lead.id ? "bg-primary/10 border border-primary/30" : "hover:bg-muted"
+                    )}
+                    onClick={() => setSelectedLeadId(lead.id)}
+                  >
+                    <span className="truncate flex-1">{lead.lead_name || 'Lead sem nome'}</span>
+                    {lead.lead_phone && <span className="text-xs text-muted-foreground ml-2 shrink-0">{lead.lead_phone}</span>}
+                  </button>
+                ))}
+                {leads.length === 0 && (
+                  <p className="text-xs text-muted-foreground text-center py-4">Digite para buscar ou crie um novo abaixo.</p>
+                )}
+              </div>
+            </ScrollArea>
+            <div className="flex gap-2 pt-2 border-t">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={handleCreateLeadForDrive}
+                disabled={creatingDriveLead || savingDriveMsgId !== null}
+              >
+                {creatingDriveLead ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Plus className="h-4 w-4 mr-1" />}
+                Criar lead novo
+              </Button>
+              <Button
+                className="flex-1"
+                onClick={handlePickExistingLeadForDrive}
+                disabled={!selectedLeadId || savingDriveMsgId !== null}
+              >
+                Salvar neste lead
+              </Button>
+            </div>
+            <p className="text-[10px] text-muted-foreground text-center">
+              {isGroup ? 'O grupo será vinculado ao lead escolhido.' : 'A conversa será vinculada ao lead escolhido.'}
+            </p>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Lead Preview - aba lateral */}
       {conversation.lead_id && onCreateActivity && (
         <Sheet open={showLeadPanel} onOpenChange={setShowLeadPanel}>
@@ -2250,9 +2377,9 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                     <button
                       type="button"
                       onClick={() => handleSaveToDrive(msg)}
-                      disabled={savingDriveMsgId === msg.id || !conversation.lead_id}
+                      disabled={savingDriveMsgId === msg.id}
                       className="absolute top-2 right-11 bg-black/60 text-white rounded-full p-1.5 opacity-0 group-hover/img:opacity-100 transition-opacity disabled:opacity-30"
-                      title={conversation.lead_id ? 'Salvar na pasta do lead no Google Drive (com classificação por IA)' : 'Vincule a conversa a um lead para salvar no Drive'}
+                      title={conversation.lead_id ? 'Salvar na pasta do lead no Google Drive (com classificação por IA)' : 'Salvar no Drive (escolha ou crie um lead)'}
                     >
                       {savingDriveMsgId === msg.id ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -2295,9 +2422,9 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                         <button
                           type="button"
                           onClick={() => handleSaveToDrive(msg)}
-                          disabled={savingDriveMsgId === msg.id || !conversation.lead_id}
+                          disabled={savingDriveMsgId === msg.id}
                           className="opacity-70 hover:opacity-100 disabled:opacity-40"
-                          title={conversation.lead_id ? 'Salvar na pasta do lead no Google Drive (com classificação por IA)' : 'Vincule a conversa a um lead para salvar no Drive'}
+                          title={conversation.lead_id ? 'Salvar na pasta do lead no Google Drive (com classificação por IA)' : 'Salvar no Drive (escolha ou crie um lead)'}
                         >
                           {savingDriveMsgId === msg.id ? (
                             <Loader2 className="h-3.5 w-3.5 animate-spin" />
