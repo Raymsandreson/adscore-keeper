@@ -2357,9 +2357,9 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                         <button
                           type="button"
                           onClick={() => handleSaveToDrive(msg)}
-                          disabled={savingDriveMsgId === msg.id || !conversation.lead_id}
+                          disabled={savingDriveMsgId === msg.id}
                           className="opacity-70 hover:opacity-100 disabled:opacity-40"
-                          title={conversation.lead_id ? 'Salvar na pasta do lead no Google Drive (com classificação por IA)' : 'Vincule a conversa a um lead para salvar no Drive'}
+                          title={conversation.lead_id ? 'Salvar na pasta do lead no Google Drive (com classificação por IA)' : 'Salvar no Drive (escolha ou crie um lead)'}
                         >
                           {savingDriveMsgId === msg.id ? (
                             <Loader2 className="h-3.5 w-3.5 animate-spin" />
