@@ -929,5 +929,14 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
         </ScrollArea>
       </DialogContent>
     </Dialog>
+
+    <ContactDetailSheet
+      contact={quickContact}
+      open={quickContactOpen}
+      onOpenChange={(o) => { setQuickContactOpen(o); if (!o) setQuickContact(null); }}
+      mode="sheet"
+      side="bottom"
+    />
+    </>
   );
 }
