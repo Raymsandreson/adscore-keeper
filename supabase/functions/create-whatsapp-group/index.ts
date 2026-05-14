@@ -608,6 +608,10 @@ Deno.serve(async (req) => {
     if (lead_id) {
       const { data } = await supabase.from('leads').select('*').eq('id', lead_id).maybeSingle()
       leadData = data
+      // Neutraliza o sentinel de claim para o resto do fluxo enxergar como "sem grupo"
+      if (leadData && typeof leadData.whatsapp_group_id === 'string' && leadData.whatsapp_group_id.startsWith('PENDING:')) {
+        leadData = { ...leadData, whatsapp_group_id: null }
+      }
     }
     if (leadData && explicitExistingGroupJid && leadData.whatsapp_group_id !== explicitExistingGroupJid) {
       leadData = { ...leadData, whatsapp_group_id: explicitExistingGroupJid }
