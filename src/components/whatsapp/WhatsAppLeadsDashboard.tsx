@@ -1089,6 +1089,7 @@ export function WhatsAppLeadsDashboard({ onOpenChat }: WhatsAppLeadsDashboardPro
             <div className="flex items-center gap-2 mb-1">
               <TrendingUp className="h-4 w-4 text-blue-500" />
               <span className="text-xs text-muted-foreground">Convertidos</span>
+              <div className="ml-auto"><CompareBtn metric="converted" /></div>
             </div>
             <p className="text-2xl font-bold">{conversionMetrics.converted}</p>
             <Badge variant="outline" className="text-xs">{conversionMetrics.conversionRate}%</Badge>
