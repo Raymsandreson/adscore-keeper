@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,6 +9,8 @@ import { Badge } from '@/components/ui/badge';
 import { GripVertical, EyeOff, Eye, Pencil, Trash2, Plus, Lock, Check, X } from 'lucide-react';
 import { useContactTabLayout, type ResolvedContactTab } from '@/hooks/useContactTabLayout';
 import { useContactCustomFields, type ContactCustomField, type ContactFieldType } from '@/hooks/useContactCustomFields';
+import { useContactFieldLayout, type ResolvedContactField } from '@/hooks/useContactFieldLayout';
+import { CONTACT_FIELDS_BY_KEY } from './contactFormFields';
 import { toast } from 'sonner';
 
 interface Props {
@@ -18,12 +20,13 @@ interface Props {
 
 type UnifiedItem = {
   key: string;
+  kind: 'fixed' | 'custom';
   refKey: string;
   label: string;
   tab: string;
   display_order: number;
   hidden: boolean;
-  custom: ContactCustomField;
+  custom?: ContactCustomField;
 };
 
 const fieldTypeLabels: Record<ContactFieldType, string> = {
@@ -38,6 +41,7 @@ const slugify = (s: string) =>
 export function ContactFieldsUnifiedEditor({ open, onOpenChange }: Props) {
   const { resolved: resolvedTabs, saveTabs, refetch: refetchTabs } = useContactTabLayout();
   const { customFields, addCustomField, updateCustomField, deleteCustomField, fetchCustomFields } = useContactCustomFields();
+  const { resolved: resolvedFields, saveLayout: saveFieldLayout, refetch: refetchFieldLayout } = useContactFieldLayout();
 
   const [items, setItems] = useState<UnifiedItem[]>([]);
   const [tabs, setTabs] = useState<ResolvedContactTab[]>([]);
@@ -60,18 +64,28 @@ export function ContactFieldsUnifiedEditor({ open, onOpenChange }: Props) {
 
   useEffect(() => {
     if (!open) return;
+    const fixed: UnifiedItem[] = resolvedFields.map(r => ({
+      key: 'fixed:' + r.field_key,
+      kind: 'fixed',
+      refKey: r.field_key,
+      label: CONTACT_FIELDS_BY_KEY[r.field_key]?.label || r.field_key,
+      tab: r.tab,
+      display_order: r.display_order,
+      hidden: r.hidden,
+    }));
     const custom: UnifiedItem[] = customFields.map((cf, idx) => ({
       key: 'custom:' + cf.id,
+      kind: 'custom',
       refKey: cf.id,
       label: cf.field_name,
       tab: cf.tab || 'info',
-      display_order: cf.display_order ?? idx,
+      display_order: 1000 + (cf.display_order ?? idx),
       hidden: false,
       custom: cf,
     }));
-    setItems(custom);
+    setItems([...fixed, ...custom]);
     setTabs(resolvedTabs);
-  }, [open, customFields, resolvedTabs]);
+  }, [open, customFields, resolvedTabs, resolvedFields]);
 
   const fieldsOf = (tabKey: string) =>
     items.filter(i => i.tab === tabKey).sort((a, b) => a.display_order - b.display_order);
@@ -91,6 +105,10 @@ export function ContactFieldsUnifiedEditor({ open, onOpenChange }: Props) {
       return [...others.filter(f => f.tab !== targetTab), ...reindex(tabFields)];
     });
     setDragKey(null);
+  };
+
+  const toggleFieldHidden = (key: string) => {
+    setItems(prev => prev.map(f => f.key === key ? { ...f, hidden: !f.hidden } : f));
   };
 
   const toggleTabHidden = (tabKey: string) => {
@@ -171,13 +189,22 @@ export function ContactFieldsUnifiedEditor({ open, onOpenChange }: Props) {
     setSaving(true);
     try {
       await saveTabs(tabs);
-      for (const it of items) {
-        const cf = it.custom;
+
+      // Save fixed-field layout
+      const fixedPayload: ResolvedContactField[] = items
+        .filter(i => i.kind === 'fixed')
+        .map(i => ({ field_key: i.refKey, tab: i.tab, display_order: i.display_order, hidden: i.hidden }));
+      if (fixedPayload.length) await saveFieldLayout(fixedPayload);
+
+      // Save custom field tab/order
+      for (const it of items.filter(i => i.kind === 'custom')) {
+        const cf = it.custom!;
         if ((cf.tab || 'info') !== it.tab || (cf.display_order ?? 0) !== it.display_order) {
           await updateCustomField(cf.id, { tab: it.tab, display_order: it.display_order }, { silent: true, refetch: false });
         }
       }
       await refetchTabs();
+      await refetchFieldLayout();
       await fetchCustomFields();
       toast.success('Layout salvo!');
       onOpenChange(false);
@@ -199,7 +226,8 @@ export function ContactFieldsUnifiedEditor({ open, onOpenChange }: Props) {
           </DialogHeader>
 
           <p className="text-xs text-muted-foreground">
-            Crie abas e campos personalizados para os contatos. As abas fixas (Info, Chamadas, etc.) não podem ser excluídas, mas podem ser ocultadas.
+            Arraste campos entre as abas. Use o olho para ocultar campos ou abas inteiras (não aparecem no formulário).
+            As abas fixas não podem ser excluídas, mas podem ser renomeadas e ocultadas.
           </p>
 
           <div className="flex items-center justify-between mt-3 mb-2">
@@ -237,17 +265,14 @@ export function ContactFieldsUnifiedEditor({ open, onOpenChange }: Props) {
                     ) : (
                       <>
                         <span className="text-xs font-semibold uppercase text-muted-foreground truncate flex-1" title={tab.label}>
-                          {tab.label} <span className="text-muted-foreground/60">({list.length})</span>
+                          {tab.label} <span className="text-muted-foreground/60">({list.filter(i => !i.hidden).length})</span>
                           {tab.is_custom && <Badge variant="outline" className="ml-1 text-[8px] py-0 px-1">custom</Badge>}
-                          {!tab.is_custom && <Lock className="inline h-2.5 w-2.5 ml-1 text-muted-foreground/60" />}
                         </span>
                         <div className="flex items-center gap-0.5 shrink-0">
-                          {tab.is_custom && (
-                            <button type="button" onClick={() => startRenameTab(tab)} className="text-muted-foreground hover:text-foreground p-0.5" title="Renomear">
-                              <Pencil className="h-3 w-3" />
-                            </button>
-                          )}
-                          <button type="button" onClick={() => toggleTabHidden(tab.key)} className="text-muted-foreground hover:text-foreground p-0.5" title={tab.hidden ? 'Mostrar' : 'Ocultar'}>
+                          <button type="button" onClick={() => startRenameTab(tab)} className="text-muted-foreground hover:text-foreground p-0.5" title="Renomear">
+                            <Pencil className="h-3 w-3" />
+                          </button>
+                          <button type="button" onClick={() => toggleTabHidden(tab.key)} className="text-muted-foreground hover:text-foreground p-0.5" title={tab.hidden ? 'Mostrar aba' : 'Ocultar aba'}>
                             {tab.hidden ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
                           </button>
                           {tab.is_custom && (
@@ -267,18 +292,31 @@ export function ContactFieldsUnifiedEditor({ open, onOpenChange }: Props) {
                         onDragStart={() => setDragKey(f.key)}
                         onDragOver={(e) => e.preventDefault()}
                         onDrop={(e) => { e.stopPropagation(); handleDrop(tab.key, f.key); }}
-                        className="flex items-center gap-1 p-1.5 rounded border bg-background text-xs cursor-grab active:cursor-grabbing group"
+                        className={`flex items-center gap-1 p-1.5 rounded border bg-background text-xs cursor-grab active:cursor-grabbing group ${f.hidden ? 'opacity-50' : ''}`}
                       >
                         <GripVertical className="h-3 w-3 text-muted-foreground shrink-0" />
                         <span className="flex-1 truncate" title={f.label}>{f.label}</span>
-                        <Badge variant="outline" className="text-[9px] py-0 px-1">{fieldTypeLabels[f.custom.field_type]}</Badge>
-                        {f.custom.is_required && <Badge variant="destructive" className="text-[9px] py-0 px-1">obr</Badge>}
-                        <button type="button" onClick={() => openEditCustom(f.custom, tab.key)} className="text-muted-foreground hover:text-foreground p-0.5" title="Editar">
-                          <Pencil className="h-3 w-3" />
-                        </button>
-                        <button type="button" onClick={() => handleCustomDelete(f.custom)} className="text-muted-foreground hover:text-destructive p-0.5" title="Excluir">
-                          <Trash2 className="h-3 w-3" />
-                        </button>
+                        {f.kind === 'fixed' ? (
+                          <>
+                            <Badge variant="outline" className="text-[9px] py-0 px-1 hidden group-hover:inline-flex" title="Campo fixo do sistema">
+                              <Lock className="h-2.5 w-2.5" />
+                            </Badge>
+                            <button type="button" onClick={() => toggleFieldHidden(f.key)} className="text-muted-foreground hover:text-foreground p-0.5" title={f.hidden ? 'Mostrar' : 'Ocultar'}>
+                              {f.hidden ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <Badge variant="outline" className="text-[9px] py-0 px-1">{fieldTypeLabels[f.custom!.field_type]}</Badge>
+                            {f.custom!.is_required && <Badge variant="destructive" className="text-[9px] py-0 px-1">obr</Badge>}
+                            <button type="button" onClick={() => openEditCustom(f.custom!, tab.key)} className="text-muted-foreground hover:text-foreground p-0.5" title="Editar">
+                              <Pencil className="h-3 w-3" />
+                            </button>
+                            <button type="button" onClick={() => handleCustomDelete(f.custom!)} className="text-muted-foreground hover:text-destructive p-0.5" title="Excluir">
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          </>
+                        )}
                       </div>
                     ))}
                     {list.length === 0 && (
