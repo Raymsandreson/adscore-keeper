@@ -269,6 +269,7 @@ export function useTeamDirectChat() {
       file_size?: number;
       file_type?: string;
       audio_duration?: number;
+      mentionedUserIds?: string[];
     }
   ) => {
     if (!activeConversationId || !user?.id) return;
