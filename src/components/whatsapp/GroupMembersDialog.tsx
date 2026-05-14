@@ -544,6 +544,11 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
             rows={3}
             className="text-sm resize-none"
           />
+          {!descLoading && !descPulling && groupDescription.trim() === '' && (
+            <p className="text-[11px] text-muted-foreground italic">
+              Este grupo ainda não tem descrição no WhatsApp.
+            </p>
+          )}
           <div className="flex items-center justify-between">
             <span className="text-[10px] text-muted-foreground">{groupDescription.length}/512</span>
             <Button
