@@ -62,13 +62,60 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
   const [linkingPhone, setLinkingPhone] = useState<string | null>(null);
   const [linkSearchQuery, setLinkSearchQuery] = useState('');
   const [linkSearchResults, setLinkSearchResults] = useState<Array<{ id: string; full_name: string; phone: string | null; notes: string | null }>>([]);
+  const [groupDescription, setGroupDescription] = useState<string>('');
+  const [groupDescriptionInitial, setGroupDescriptionInitial] = useState<string>('');
+  const [descLoading, setDescLoading] = useState(false);
+  const [descSaving, setDescSaving] = useState(false);
+  const [descPulling, setDescPulling] = useState(false);
+
+  const groupJid = isGroup && conversationPhone ? (conversationPhone.includes('@g.us') ? conversationPhone : `${conversationPhone}@g.us`) : null;
+
+  const loadDescription = async (mode: 'get' | 'pull' = 'get') => {
+    if (!groupJid || !instanceName) return;
+    if (mode === 'pull') setDescPulling(true); else setDescLoading(true);
+    try {
+      const { data, error } = await (supabase as any).functions.invoke('sync-whatsapp-group-description', {
+        body: { mode, group_jid: groupJid, instance_name: instanceName },
+      });
+      if (error) throw new Error(error.message);
+      if (data?.success === false) throw new Error(data.error || 'Falha');
+      const desc = data?.description ?? '';
+      setGroupDescription(desc);
+      setGroupDescriptionInitial(desc);
+      if (mode === 'pull') toast.success('Descrição atualizada do WhatsApp');
+    } catch (e: any) {
+      if (mode === 'pull') toast.error(`Erro ao buscar do WhatsApp: ${e.message}`);
+    } finally {
+      setDescLoading(false);
+      setDescPulling(false);
+    }
+  };
+
+  const saveDescription = async () => {
+    if (!groupJid || !instanceName) return;
+    setDescSaving(true);
+    try {
+      const { data, error } = await (supabase as any).functions.invoke('sync-whatsapp-group-description', {
+        body: { mode: 'push', group_jid: groupJid, instance_name: instanceName, description: groupDescription },
+      });
+      if (error) throw new Error(error.message);
+      if (data?.success === false) throw new Error(data.error || 'Falha');
+      setGroupDescriptionInitial(groupDescription);
+      toast.success('Descrição enviada para o WhatsApp');
+    } catch (e: any) {
+      toast.error(`Erro ao enviar: ${e.message}`);
+    } finally {
+      setDescSaving(false);
+    }
+  };
 
   useEffect(() => {
-    if (open && isGroup) {
-      fetchParticipants();
-      fetchClassificationsAndTypes();
+    if (open && isGroup && groupJid && instanceName) {
+      loadDescription('get');
     }
-  }, [open, isGroup]);
+  }, [open, isGroup, groupJid, instanceName]);
+
+  useEffect(() => {
 
   const fetchClassificationsAndTypes = async () => {
     const [classRes, relRes] = await Promise.all([
