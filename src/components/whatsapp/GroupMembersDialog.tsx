@@ -69,6 +69,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
   const [descLoading, setDescLoading] = useState(false);
   const [descSaving, setDescSaving] = useState(false);
   const [descPulling, setDescPulling] = useState(false);
+  const [descriptionUpdatedAt, setDescriptionUpdatedAt] = useState<string | null>(null);
   const [quickContact, setQuickContact] = useState<Contact | null>(null);
   const [quickContactOpen, setQuickContactOpen] = useState(false);
   const [quickContactLoading, setQuickContactLoading] = useState<string | null>(null);
@@ -106,6 +107,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
       const desc = data?.description ?? '';
       setGroupDescription(desc);
       setGroupDescriptionInitial(desc);
+      setDescriptionUpdatedAt(data?.description_updated_at ?? null);
       if (mode === 'pull') toast.success('Descrição atualizada do WhatsApp');
     } catch (e: any) {
       if (mode === 'pull') toast.error(`Erro ao buscar do WhatsApp: ${e.message}`);
@@ -487,6 +489,16 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
     return phone;
   };
 
+  const formatUpdatedAt = (iso: string | null) => {
+    if (!iso) return null;
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return null;
+    return d.toLocaleString('pt-BR', {
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit'
+    });
+  };
+
   const filteredParticipants = searchQuery
     ? participants.filter(p =>
         p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -547,6 +559,11 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
           {!descLoading && !descPulling && groupDescription.trim() === '' && (
             <p className="text-[11px] text-muted-foreground italic">
               Este grupo ainda não tem descrição no WhatsApp.
+            </p>
+          )}
+          {descriptionUpdatedAt && (
+            <p className="text-[10px] text-muted-foreground">
+              Descrição atualizada em {formatUpdatedAt(descriptionUpdatedAt)}
             </p>
           )}
           <div className="flex items-center justify-between">
