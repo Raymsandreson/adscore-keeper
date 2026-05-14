@@ -135,6 +135,37 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const [locationLat, setLocationLat] = useState('');
   const [locationLng, setLocationLng] = useState('');
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
+  const [resyncingMsgId, setResyncingMsgId] = useState<string | null>(null);
+
+  const isEncUrl = (u?: string | null) => !!u && /\.enc(?:\?|$)/i.test(u);
+  const isMissingMedia = (m: any) =>
+    ['image', 'video', 'audio', 'document'].includes(m?.message_type) &&
+    (!m.media_url || isEncUrl(m.media_url));
+
+  const handleResyncMedia = async (msg: any) => {
+    if (resyncingMsgId) return;
+    setResyncingMsgId(msg.id);
+    const t = toast.loading('Sincronizando mídia...');
+    try {
+      const rawId = msg.external_message_id?.split(':').pop();
+      const { data, error } = await supabase.functions.invoke('whatsapp-fetch-history', {
+        body: {
+          phone: conversation.phone,
+          instance_name: conversation.instance_name,
+          mode: rawId ? 'exact' : 'history',
+          messageid: rawId,
+          count: 5,
+        },
+      });
+      if (error) throw error;
+      if (data?.success === false) throw new Error(data?.error || 'Falha ao sincronizar');
+      toast.success('Sync solicitado! A mídia chega em alguns segundos.', { id: t });
+    } catch (e: any) {
+      toast.error(e?.message || 'Erro ao sincronizar mídia', { id: t });
+    } finally {
+      setResyncingMsgId(null);
+    }
+  };
   const [pastedImage, setPastedImage] = useState<{ file: File; previewUrl: string } | null>(null);
   const [pastedCaption, setPastedCaption] = useState('');
   const [inputMode, setInputMode] = useState<'message' | 'note' | 'chat'>('message');
