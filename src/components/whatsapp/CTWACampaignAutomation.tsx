@@ -990,15 +990,19 @@ export function CTWACampaignAutomation() {
                   <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleDelete(link.id)} title="Remover vínculo">
                     <X className="h-3.5 w-3.5 text-destructive" />
                   </Button>
-                  <div className="w-px h-5 bg-border mx-1" />
-                  <div className="h-7 w-7 flex items-center justify-center text-muted-foreground">
-                    {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                  </div>
+                </div>
+                {/* Chevron FORA do stopPropagation — o clique propaga para o <button> pai e alterna */}
+                <div
+                  className="h-7 w-7 flex items-center justify-center text-muted-foreground shrink-0"
+                  title={isExpanded ? 'Recolher' : 'Expandir'}
+                >
+                  {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                 </div>
               </button>
 
-              {/* EXPANDED — full config, grouped in numbered sections */}
-              {isExpanded && isActive && (
+              {/* EXPANDED — full config, grouped in numbered sections (abre mesmo se pausado) */}
+              {isExpanded && (
+
                 <div className="border-t bg-muted/20 px-5 py-4 space-y-5">
                   {/* SECTION 1 — Roteamento */}
                   <section className="space-y-2">
