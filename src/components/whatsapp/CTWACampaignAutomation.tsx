@@ -836,134 +836,259 @@ export function CTWACampaignAutomation() {
           </p>
         )}
 
-        {links.map(link => {
+        {links.map((link, idx) => {
           const linkAny = link as any;
           const selectedBoard = boards.find(b => b.id === linkAny.board_id);
           const boardStages = selectedBoard?.stages || [];
           const isActive = linkAny.is_active !== false;
           const convCount = conversationCounts[link.id] || 0;
+          const isExpanded = expandedLinks.has(link.id);
+
+          const camp = metaCampaigns.find(c => c.campaign_id === link.campaign_id);
+          const metaInactive = camp && camp.status && camp.status !== 'ACTIVE';
+          const matchedInst = camp?.destination_phone ? findInstanceByPhone(camp.destination_phone) : null;
+          const selectedInstance = instances.find(i => i.id === linkAny.instance_id);
+          const selectedAgent = agents.find(a => a.id === link.agent_id);
+          const selectedStage = boardStages.find((s: any) => s.id === linkAny.stage_id);
+
+          // Configuration completeness (reduces friction by signaling what's missing)
+          const checks = [
+            { ok: !!linkAny.instance_id, label: 'Instância' },
+            { ok: !!link.agent_id, label: 'Agente' },
+            { ok: !!linkAny.board_id, label: 'Funil' },
+            { ok: !!linkAny.stage_id, label: 'Etapa' },
+          ];
+          const missing = checks.filter(c => !c.ok);
+          const isComplete = missing.length === 0;
+
+          // Visual differentiation: stable accent hue per campaign
+          const hashHue = (str: string) => {
+            let h = 0;
+            for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) >>> 0;
+            return h % 360;
+          };
+          const hue = hashHue(link.campaign_id || link.id);
+          const accentBar = isActive
+            ? `linear-gradient(180deg, hsl(${hue} 70% 55%), hsl(${(hue + 30) % 360} 70% 50%))`
+            : 'hsl(var(--muted-foreground) / 0.3)';
 
           return (
-            <div key={link.id} className={`border rounded-lg p-4 space-y-3 transition-opacity ${!isActive ? 'opacity-60 border-dashed' : ''}`}>
-              <div className="flex items-center justify-between">
-                <div className="flex flex-col gap-0.5 flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <Megaphone className="h-4 w-4 text-primary shrink-0" />
-                    <span className="text-sm font-medium truncate">{link.campaign_name || link.campaign_id}</span>
-                    {!isActive && (
-                      <Badge variant="secondary" className="text-[10px] px-1.5 py-0 shrink-0">Pausado</Badge>
-                    )}
-                    {(() => {
-                      const camp = metaCampaigns.find(c => c.campaign_id === link.campaign_id);
-                      if (camp && camp.status && camp.status !== 'ACTIVE') {
-                        return (
-                          <Badge variant="destructive" className="text-[9px] px-1.5 py-0 shrink-0">
-                            ⚠ Campanha desativada na Meta
-                          </Badge>
-                        );
-                      }
-                      return null;
-                    })()}
-                  </div>
-                  {(() => {
-                    const camp = metaCampaigns.find(c => c.campaign_id === link.campaign_id);
-                    if (!camp?.destination_phone) return null;
-                    const matchedInst = findInstanceByPhone(camp.destination_phone);
-                    return (
-                      <div className="ml-6 space-y-0.5">
-                        <span className="text-[10px] text-muted-foreground flex items-center gap-1">
-                          <Phone className="h-3 w-3" /> {camp.destination_phone}
-                        </span>
-                        {matchedInst && (
-                          <span className="text-[10px] text-green-600 flex items-center gap-1">
-                            ✅ Instância detectada: {matchedInst.instance_name}
-                          </span>
-                        )}
-                      </div>
-                    );
-                  })()}
+            <div
+              key={link.id}
+              className={`relative border rounded-xl bg-card overflow-hidden transition-all ${
+                !isActive ? 'opacity-70' : 'hover:shadow-md'
+              } ${isExpanded ? 'shadow-md ring-1 ring-primary/20' : ''}`}
+            >
+              {/* Colored accent bar (per-campaign visual ID) */}
+              <div
+                className="absolute left-0 top-0 bottom-0 w-1.5"
+                style={{ background: accentBar }}
+                aria-hidden
+              />
+
+              {/* HEADER (always visible — summary view) */}
+              <button
+                type="button"
+                onClick={() => toggleExpanded(link.id)}
+                className="w-full text-left pl-5 pr-3 py-3 flex items-start gap-3 hover:bg-muted/30 transition-colors"
+              >
+                {/* Index number — gives each card a unique anchor */}
+                <div className="shrink-0 mt-0.5 flex flex-col items-center gap-1">
+                  <span className="h-6 w-6 rounded-full bg-muted text-[10px] font-bold flex items-center justify-center text-muted-foreground">
+                    {idx + 1}
+                  </span>
                 </div>
-                <div className="flex items-center gap-1 shrink-0">
-                  {/* Conversations button */}
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
+
+                <div className="flex-1 min-w-0 space-y-1.5">
+                  {/* Title row */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Megaphone className="h-3.5 w-3.5 text-primary shrink-0" />
+                    <span className="text-sm font-semibold truncate">
+                      {link.campaign_name || link.campaign_id}
+                    </span>
+                    {!isActive && (
+                      <Badge variant="secondary" className="text-[9px] px-1.5 py-0 h-4">Pausado</Badge>
+                    )}
+                    {metaInactive && (
+                      <Badge variant="destructive" className="text-[9px] px-1.5 py-0 h-4">⚠ Meta inativa</Badge>
+                    )}
+                    {isComplete ? (
+                      <Badge variant="outline" className="text-[9px] px-1.5 py-0 h-4 border-green-500/40 text-green-600 gap-1">
+                        <CheckCircle2 className="h-2.5 w-2.5" /> Configurado
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-[9px] px-1.5 py-0 h-4 border-amber-500/40 text-amber-600 gap-1">
+                        <AlertCircle className="h-2.5 w-2.5" /> Falta: {missing.map(m => m.label).join(', ')}
+                      </Badge>
+                    )}
+                  </div>
+
+                  {/* Summary chips — at-a-glance config (reduces need to expand) */}
+                  <div className="flex items-center gap-1.5 flex-wrap text-[10px] text-muted-foreground">
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-muted/60">
+                      <Phone className="h-2.5 w-2.5" />
+                      {selectedInstance?.instance_name || <span className="text-amber-600">sem instância</span>}
+                    </span>
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-muted/60">
+                      <Sparkles className="h-2.5 w-2.5" />
+                      {selectedAgent ? `#${selectedAgent.shortcut_name}` : <span className="text-amber-600">sem agente</span>}
+                    </span>
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-muted/60">
+                      <FolderKanban className="h-2.5 w-2.5" />
+                      {selectedBoard?.name || <span className="text-amber-600">sem funil</span>}
+                      {selectedStage && <span className="opacity-60">→ {selectedStage.name}</span>}
+                    </span>
+                    {linkAny.auto_create_lead && (
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600">
+                        <Zap className="h-2.5 w-2.5" /> auto-lead
+                      </span>
+                    )}
+                    {camp?.destination_phone && (
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-muted/60">
+                        📞 {camp.destination_phone}
+                        {matchedInst && <CheckCircle2 className="h-2.5 w-2.5 text-green-500" />}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Action buttons — kept outside expansion to avoid double-clicks */}
+                <div
+                  className="flex items-center gap-0.5 shrink-0"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     className="h-7 px-2 text-[10px] gap-1"
                     onClick={() => handleOpenConversations(link)}
+                    title="Ver conversas"
                   >
                     <MessageSquare className="h-3 w-3" />
                     {convCount > 0 && <span>{convCount}</span>}
                   </Button>
-                  {/* Pause/Resume */}
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    className="h-7 w-7" 
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
                     onClick={() => handleTogglePause(link)}
                     title={isActive ? 'Pausar vínculo' : 'Reativar vínculo'}
                   >
                     {isActive ? <Pause className="h-3.5 w-3.5 text-amber-500" /> : <Play className="h-3.5 w-3.5 text-green-500" />}
                   </Button>
-                  {/* Swap campaign id (when Meta recreates the ad with a new ID) */}
                   <Button
                     variant="ghost"
                     size="icon"
                     className="h-7 w-7"
                     onClick={() => { setSwapLink(link); setSwapTargetCampaignId(''); setSwapManualId(''); setSwapManualName(''); }}
-                    title="Trocar ID da campanha (preserva todas as configurações)"
+                    title="Trocar ID da campanha"
                   >
                     <Repeat className="h-3.5 w-3.5 text-blue-500" />
                   </Button>
-                  {/* Delete */}
-                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleDelete(link.id)}>
+                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleDelete(link.id)} title="Remover vínculo">
                     <X className="h-3.5 w-3.5 text-destructive" />
                   </Button>
-                </div>
-              </div>
-
-              {isActive && (
-                <>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <Label className="text-[10px] text-muted-foreground flex items-center gap-1">
-                        <Phone className="h-3 w-3" /> Instância
-                      </Label>
-                      <Select value={linkAny.instance_id || ''} onValueChange={v => handleUpdate(link.id, { instance_id: v || null } as any)}>
-                        <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecionar..." /></SelectTrigger>
-                        <SelectContent>
-                          {instances.map(inst => (
-                            <SelectItem key={inst.id} value={inst.id}>
-                              {inst.instance_name} {inst.owner_phone ? `(${inst.owner_phone})` : ''}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="space-y-1">
-                      <Label className="text-[10px] text-muted-foreground flex items-center gap-1">
-                        <Sparkles className="h-3 w-3" /> Agente IA
-                      </Label>
-                      <Select value={link.agent_id} onValueChange={v => handleUpdate(link.id, { agent_id: v })}>
-                        <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          {agents.map(a => <SelectItem key={a.id} value={a.id}>#{a.shortcut_name}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                  <div className="w-px h-5 bg-border mx-1" />
+                  <div className="h-7 w-7 flex items-center justify-center text-muted-foreground">
+                    {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                   </div>
+                </div>
+              </button>
 
-                  {/* Agentes pós-classificação */}
-                  <div className="space-y-2">
-                    <Label className="text-[10px] text-muted-foreground flex items-center gap-1">
-                      <Sparkles className="h-3 w-3 text-emerald-500" /> Agentes IA pós-classificação do lead
-                    </Label>
+              {/* EXPANDED — full config, grouped in numbered sections */}
+              {isExpanded && isActive && (
+                <div className="border-t bg-muted/20 px-5 py-4 space-y-5">
+                  {/* SECTION 1 — Roteamento */}
+                  <section className="space-y-2">
+                    <h4 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                      <span className="h-4 w-4 rounded bg-primary/10 text-primary flex items-center justify-center text-[9px]">1</span>
+                      Roteamento da conversa
+                    </h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <Label className="text-[10px] text-muted-foreground flex items-center gap-1">
+                          <Phone className="h-3 w-3" /> Instância
+                        </Label>
+                        <Select value={linkAny.instance_id || ''} onValueChange={v => handleUpdate(link.id, { instance_id: v || null } as any)}>
+                          <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecionar..." /></SelectTrigger>
+                          <SelectContent>
+                            {instances.map(inst => (
+                              <SelectItem key={inst.id} value={inst.id}>
+                                {inst.instance_name} {inst.owner_phone ? `(${inst.owner_phone})` : ''}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[10px] text-muted-foreground flex items-center gap-1">
+                          <Sparkles className="h-3 w-3" /> Agente IA
+                        </Label>
+                        <Select value={link.agent_id} onValueChange={v => handleUpdate(link.id, { agent_id: v })}>
+                          <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            {agents.map(a => <SelectItem key={a.id} value={a.id}>#{a.shortcut_name}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  </section>
+
+                  {/* SECTION 2 — Funil */}
+                  <section className="space-y-2">
+                    <h4 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                      <span className="h-4 w-4 rounded bg-primary/10 text-primary flex items-center justify-center text-[9px]">2</span>
+                      Funil de destino
+                    </h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <Label className="text-[10px] text-muted-foreground flex items-center gap-1">
+                          <FolderKanban className="h-3 w-3" /> Funil
+                        </Label>
+                        <Select value={linkAny.board_id || ''} onValueChange={v => handleUpdate(link.id, { board_id: v || null, stage_id: null } as any)}>
+                          <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecionar..." /></SelectTrigger>
+                          <SelectContent>
+                            {boards.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[10px] text-muted-foreground">Etapa inicial</Label>
+                        <Select
+                          value={linkAny.stage_id || ''}
+                          onValueChange={v => handleUpdate(link.id, { stage_id: v || null } as any)}
+                          disabled={!linkAny.board_id}
+                        >
+                          <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecionar..." /></SelectTrigger>
+                          <SelectContent>
+                            {boardStages.map((s: any) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 pt-1">
+                      <Switch
+                        id={`auto-lead-${link.id}`}
+                        checked={linkAny.auto_create_lead || false}
+                        onCheckedChange={v => handleUpdate(link.id, { auto_create_lead: v } as any)}
+                      />
+                      <Label htmlFor={`auto-lead-${link.id}`} className="text-xs">
+                        Criar lead automaticamente quando mensagem chegar desta campanha
+                      </Label>
+                    </div>
+                  </section>
+
+                  {/* SECTION 3 — Pós-classificação */}
+                  <section className="space-y-2">
+                    <h4 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                      <span className="h-4 w-4 rounded bg-primary/10 text-primary flex items-center justify-center text-[9px]">3</span>
+                      Agentes pós-classificação
+                    </h4>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                      {/* Fechado */}
                       <div className="space-y-1">
                         <span className="text-[9px] font-medium text-green-600">✅ Fechado</span>
-                        <Select 
-                          value={linkAny.closed_agent_id || 'none'} 
+                        <Select
+                          value={linkAny.closed_agent_id || 'none'}
                           onValueChange={v => handleUpdate(link.id, { closed_agent_id: v === 'none' ? null : v } as any)}
                         >
                           <SelectTrigger className="h-7 text-[10px]"><SelectValue placeholder="Mesmo agente" /></SelectTrigger>
@@ -973,11 +1098,10 @@ export function CTWACampaignAutomation() {
                           </SelectContent>
                         </Select>
                       </div>
-                      {/* Recusado */}
                       <div className="space-y-1">
                         <span className="text-[9px] font-medium text-red-500">❌ Recusado</span>
-                        <Select 
-                          value={linkAny.refused_agent_id || 'none'} 
+                        <Select
+                          value={linkAny.refused_agent_id || 'none'}
                           onValueChange={v => handleUpdate(link.id, { refused_agent_id: v === 'none' ? null : v } as any)}
                         >
                           <SelectTrigger className="h-7 text-[10px]"><SelectValue placeholder="Mesmo agente" /></SelectTrigger>
@@ -987,11 +1111,10 @@ export function CTWACampaignAutomation() {
                           </SelectContent>
                         </Select>
                       </div>
-                      {/* Inviável */}
                       <div className="space-y-1">
                         <span className="text-[9px] font-medium text-orange-500">⚠️ Inviável</span>
-                        <Select 
-                          value={linkAny.inviavel_agent_id || 'none'} 
+                        <Select
+                          value={linkAny.inviavel_agent_id || 'none'}
                           onValueChange={v => handleUpdate(link.id, { inviavel_agent_id: v === 'none' ? null : v } as any)}
                         >
                           <SelectTrigger className="h-7 text-[10px]"><SelectValue placeholder="Mesmo agente" /></SelectTrigger>
@@ -1005,13 +1128,14 @@ export function CTWACampaignAutomation() {
                     <p className="text-[10px] text-muted-foreground">
                       Quando o lead mudar de status, o agente correspondente assumirá a conversa automaticamente.
                     </p>
-                  </div>
+                  </section>
 
-                  {/* Max unanswered messages → auto inviável */}
-                  <div className="space-y-1">
-                    <Label className="text-[10px] text-muted-foreground flex items-center gap-1">
-                      <MessageSquare className="h-3 w-3 text-orange-500" /> Limite de mensagens sem resposta
-                    </Label>
+                  {/* SECTION 4 — Limite de mensagens */}
+                  <section className="space-y-2">
+                    <h4 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                      <span className="h-4 w-4 rounded bg-primary/10 text-primary flex items-center justify-center text-[9px]">4</span>
+                      Limite de mensagens sem resposta
+                    </h4>
                     <div className="flex items-center gap-2">
                       <Input
                         type="number"
@@ -1025,50 +1149,8 @@ export function CTWACampaignAutomation() {
                         msgs sem resposta → classifica como <strong className="text-orange-500">Inviável</strong> (0 = desativado)
                       </span>
                     </div>
-                    <p className="text-[10px] text-muted-foreground">
-                      Se o agente enviar esse número de mensagens consecutivas sem resposta do lead, ele será automaticamente classificado como inviável e sinalizado para a Meta.
-                    </p>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <Label className="text-[10px] text-muted-foreground flex items-center gap-1">
-                        <FolderKanban className="h-3 w-3" /> Funil
-                      </Label>
-                      <Select value={linkAny.board_id || ''} onValueChange={v => handleUpdate(link.id, { board_id: v || null, stage_id: null } as any)}>
-                        <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecionar..." /></SelectTrigger>
-                        <SelectContent>
-                          {boards.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="space-y-1">
-                      <Label className="text-[10px] text-muted-foreground">Etapa inicial</Label>
-                      <Select
-                        value={linkAny.stage_id || ''}
-                        onValueChange={v => handleUpdate(link.id, { stage_id: v || null } as any)}
-                        disabled={!linkAny.board_id}
-                      >
-                        <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecionar..." /></SelectTrigger>
-                        <SelectContent>
-                          {boardStages.map((s: any) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 pt-1">
-                    <Switch
-                      id={`auto-lead-${link.id}`}
-                      checked={linkAny.auto_create_lead || false}
-                      onCheckedChange={v => handleUpdate(link.id, { auto_create_lead: v } as any)}
-                    />
-                    <Label htmlFor={`auto-lead-${link.id}`} className="text-xs">
-                      Criar lead automaticamente quando mensagem chegar desta campanha
-                    </Label>
-                  </div>
-                </>
+                  </section>
+                </div>
               )}
             </div>
           );
