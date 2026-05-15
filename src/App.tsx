@@ -15,6 +15,7 @@ import { AppSidebar } from "@/components/AppSidebar";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { GlobalDatabaseSearch } from "@/components/GlobalDatabaseSearch";
 import { UserProductivityBanner } from "@/components/UserProductivityBanner";
+import { useLocation } from "react-router-dom";
 import { CallFieldSuggestionsBanner } from "@/components/CallFieldSuggestionsBanner";
 import { FloatingWhatsAppCall } from "@/components/FloatingWhatsAppCall";
 import { PWAInstallBanner } from "@/components/PWAInstallBanner";
