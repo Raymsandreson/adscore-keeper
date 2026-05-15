@@ -138,51 +138,69 @@ export const handler: RequestHandler = async (req, res) => {
     let contentType = msg.media_type || msg.metadata?.message?.content?.mimetype || 'application/octet-stream';
     let usedId: string | null = null;
     let transcription: string | null = null;
+    const debugSteps: string[] = [];
 
-    for (const candidate of candidates) {
-      const dl = await fetch(`${baseUrl}/message/download`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', token: inst.instance_token },
-        body: JSON.stringify({ id: candidate, return_link: true, return_base64: false, generate_mp3: true }),
-      });
-      const raw = await dl.text();
-      if (!dl.ok) continue;
-      let data: any = null;
-      try { data = JSON.parse(raw); } catch { data = null; }
-      if (typeof data?.transcription === 'string' && data.transcription.trim()) transcription = data.transcription.trim();
-      if (data?.mimetype) contentType = data.mimetype;
-      if (typeof data?.base64Data === 'string' && data.base64Data) {
-        bytes = Buffer.from(data.base64Data, 'base64');
-        usedId = candidate;
-        break;
-      }
-      const fileUrl = data?.fileURL || data?.url;
-      if (typeof fileUrl === 'string' && fileUrl.startsWith('http')) {
-        const fileResp = await fetch(fileUrl);
-        if (!fileResp.ok) continue;
-        const downloaded = Buffer.from(await fileResp.arrayBuffer());
-        if (isEncryptedWhatsAppUrl(fileUrl)) {
-          if (!mediaKey) continue;
-          bytes = decryptWhatsAppMedia(downloaded, mediaKey, messageType);
-        } else {
-          bytes = downloaded;
+    const WA_HEADERS = {
+      'User-Agent': 'WhatsApp/2.24.20.85 A',
+      'Accept': '*/*',
+    } as Record<string, string>;
+
+    // STEP 1 (preferido): se temos a URL .enc + mediaKey, decifrar direto.
+    // Isso funciona para qualquer instância do grupo, sem depender da UazAPI conhecer o ID.
+    if (msg.media_url && isEncryptedWhatsAppUrl(msg.media_url) && mediaKey) {
+      try {
+        const enc = await fetch(msg.media_url, { headers: WA_HEADERS });
+        debugSteps.push(`enc-direct:${enc.status}`);
+        if (enc.ok) {
+          const buf = Buffer.from(await enc.arrayBuffer());
+          bytes = decryptWhatsAppMedia(buf, mediaKey, messageType);
+          usedId = 'enc-direct';
         }
-        contentType = data?.mimetype || fileResp.headers.get('content-type') || contentType;
-        usedId = candidate;
-        break;
+      } catch (e) {
+        debugSteps.push(`enc-direct-err:${e instanceof Error ? e.message : String(e)}`);
       }
     }
 
-    if (!bytes && msg.media_url && isEncryptedWhatsAppUrl(msg.media_url) && mediaKey) {
-      const enc = await fetch(msg.media_url);
-      if (enc.ok) {
-        bytes = decryptWhatsAppMedia(Buffer.from(await enc.arrayBuffer()), mediaKey, messageType);
-        usedId = 'local-media-key';
+    // STEP 2 (fallback): pedir para UazAPI baixar/decifrar
+    if (!bytes) {
+      for (const candidate of candidates) {
+        const dl = await fetch(`${baseUrl}/message/download`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', token: inst.instance_token },
+          body: JSON.stringify({ id: candidate, return_link: true, return_base64: true, generate_mp3: true }),
+        });
+        debugSteps.push(`uazapi[${candidate}]:${dl.status}`);
+        const raw = await dl.text();
+        if (!dl.ok) continue;
+        let data: any = null;
+        try { data = JSON.parse(raw); } catch { data = null; }
+        if (typeof data?.transcription === 'string' && data.transcription.trim()) transcription = data.transcription.trim();
+        if (data?.mimetype) contentType = data.mimetype;
+        if (typeof data?.base64Data === 'string' && data.base64Data) {
+          bytes = Buffer.from(data.base64Data, 'base64');
+          usedId = `uazapi:${candidate}`;
+          break;
+        }
+        const fileUrl = data?.fileURL || data?.url;
+        if (typeof fileUrl === 'string' && fileUrl.startsWith('http')) {
+          const fileResp = await fetch(fileUrl, { headers: WA_HEADERS });
+          if (!fileResp.ok) continue;
+          const downloaded = Buffer.from(await fileResp.arrayBuffer());
+          if (isEncryptedWhatsAppUrl(fileUrl)) {
+            if (!mediaKey) continue;
+            bytes = decryptWhatsAppMedia(downloaded, mediaKey, messageType);
+          } else {
+            bytes = downloaded;
+          }
+          contentType = data?.mimetype || fileResp.headers.get('content-type') || contentType;
+          usedId = `uazapi-link:${candidate}`;
+          break;
+        }
       }
     }
 
     if (!bytes || bytes.length < 50) {
-      return ok({ success: false, error: 'A UazAPI não retornou arquivo legível para essa mensagem.' });
+      return ok({ success: false, error: `Não consegui baixar a mídia. Tentativas: ${debugSteps.join(' | ') || 'nenhuma'}` });
     }
 
     contentType = normalizeContentType(contentType, messageType, bytes);
@@ -195,16 +213,44 @@ export const handler: RequestHandler = async (req, res) => {
     if (uploadErr) return ok({ success: false, error: uploadErr.message });
 
     const { data: publicData } = ext.storage.from('whatsapp-media').getPublicUrl(filePath);
+    const publicUrl = publicData.publicUrl;
     const metadata = {
       ...(msg.metadata || {}),
-      media_sync: { synced_at: new Date().toISOString(), source: 'message/download', id_used: usedId, content_type: contentType },
+      media_sync: { synced_at: new Date().toISOString(), source: usedId, content_type: contentType, steps: debugSteps },
     };
-    const updates: Record<string, unknown> = { media_url: publicData.publicUrl, media_type: contentType, metadata };
+    const updates: Record<string, unknown> = { media_url: publicUrl, media_type: contentType, metadata };
     if (messageType === 'audio' && transcription && !msg.message_text) updates.message_text = transcription;
     const { error: updateErr } = await ext.from('whatsapp_messages').update(updates).eq('id', rowId);
     if (updateErr) return ok({ success: false, error: updateErr.message });
 
-    return ok({ success: true, media_url: publicData.publicUrl, media_type: contentType, id_used: usedId });
+    // Replica para todas as outras cópias da mesma mensagem (mesmo phone + mesmo bareId)
+    // que ainda estejam com URL .enc — assim Andressa, João Pedro etc. ganham a mídia decifrada.
+    let replicated = 0;
+    try {
+      const { data: phoneRow } = await ext.from('whatsapp_messages').select('phone').eq('id', rowId).maybeSingle();
+      const phone = phoneRow?.phone;
+      if (bareId && phone) {
+        const { data: siblings } = await ext
+          .from('whatsapp_messages')
+          .select('id, media_url')
+          .eq('phone', phone)
+          .like('external_message_id', `%${bareId}`)
+          .neq('id', rowId);
+        for (const sib of siblings || []) {
+          if (!sib.media_url || isEncryptedWhatsAppUrl(sib.media_url)) {
+            const { error: repErr } = await ext.from('whatsapp_messages').update({
+              media_url: publicUrl,
+              media_type: contentType,
+            }).eq('id', sib.id);
+            if (!repErr) replicated++;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('replicate siblings failed', e);
+    }
+
+    return ok({ success: true, media_url: publicUrl, media_type: contentType, id_used: usedId, replicated, steps: debugSteps });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return ok({ success: false, error: msg });
