@@ -1933,9 +1933,20 @@ Deno.serve(async (req) => {
               }
 
               if (!leadId) {
-                // Resolve instance owner name for acolhedor assignment
+                // Resolve acolhedor: 1º) usuário escolhido no vínculo (assigned_user_id)
+                //                    2º) fallback dono da instância (owner_name)
                 let resolvedAcolhedor: string | null = null;
-                if (autoLink.instance_id) {
+                if (autoLink.assigned_user_id) {
+                  const { data: assignedProfile } = await supabase
+                    .from("profiles")
+                    .select("full_name")
+                    .eq("user_id", autoLink.assigned_user_id)
+                    .maybeSingle();
+                  if (assignedProfile?.full_name) {
+                    resolvedAcolhedor = assignedProfile.full_name;
+                  }
+                }
+                if (!resolvedAcolhedor && autoLink.instance_id) {
                   const { data: linkInstance } = await supabase
                     .from("whatsapp_instances")
                     .select("owner_name, instance_name")
@@ -1962,6 +1973,10 @@ Deno.serve(async (req) => {
                 };
                 if (resolvedAcolhedor) {
                   insertPayload.acolhedor = resolvedAcolhedor;
+                }
+                if (autoLink.assigned_user_id) {
+                  insertPayload.assigned_to = autoLink.assigned_user_id;
+                  insertPayload.created_by = autoLink.assigned_user_id;
                 }
 
                 const { data: newLead, error: leadErr } = await supabase
