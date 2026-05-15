@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { db as supabase, ensureExternalSession } from '@/integrations/supabase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -220,6 +220,9 @@ export function CTWACampaignAutomation() {
 
   const fetchData = async () => {
     setLoading(true);
+    await ensureExternalSession().catch((err) => {
+      console.warn('[CTWA] sessão externa não iniciada:', err?.message || err);
+    });
     const [linksRes, agentsRes, boardsRes, instancesRes]: any[] = await Promise.all([
       supabase.from('whatsapp_agent_campaign_links' as any).select('*'),
       supabase.from('wjia_command_shortcuts').select('id, shortcut_name, description').eq('is_active', true).order('shortcut_name'),
