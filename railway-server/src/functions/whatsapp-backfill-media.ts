@@ -144,9 +144,17 @@ async function runBackfill(authHeader: string) {
             const fakeRes: any = { _body: null, _status: 200, status(c: number) { this._status = c; return this; }, json(b: any) { this._body = b; return this; } };
             await downloadMedia(fakeReq, fakeRes, () => {});
             if (fakeRes._body?.success) { state.ok++; state.decrypted++; }
-            else state.fail++;
-          } catch {
+            else {
+              state.fail++;
+              const msg = String(fakeRes._body?.error || 'unknown');
+              state.errors[classifyError(msg)]++;
+              if (state.sampleErrors.length < 8) state.sampleErrors.push(msg.slice(0, 200));
+            }
+          } catch (e) {
             state.fail++;
+            const msg = e instanceof Error ? e.message : String(e);
+            state.errors[classifyError(msg)]++;
+            if (state.sampleErrors.length < 8) state.sampleErrors.push(msg.slice(0, 200));
           } finally {
             state.processed++;
           }
