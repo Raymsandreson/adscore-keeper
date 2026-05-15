@@ -1854,7 +1854,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
               >
                 <RefreshCw className="h-4 w-4" /> Buscar histórico (msgs antigas)
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => { setDriveSelectionMode(true); setSelectedDriveMsgIds(new Set()); }} className="gap-2">
+              <DropdownMenuItem onClick={() => { setDriveSelectionMode(true); setSelectionOrder([]); }} className="gap-2">
                 <Sparkles className="h-4 w-4 text-blue-500" /> Selecionar mídias p/ Drive
               </DropdownMenuItem>
               <DropdownMenuSeparator />
