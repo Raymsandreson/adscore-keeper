@@ -17,6 +17,7 @@ import { handler as regenerateLeadName } from './functions/regenerate-lead-name'
 import { handler as leadCloseSequenceInfo } from './functions/lead-close-sequence-info';
 import { handler as onboardingCheckpointReprocess } from './functions/onboarding-checkpoint-reprocess';
 import { handler as whatsappCloudWebhook } from './functions/whatsapp-cloud-webhook';
+import { handler as whatsappGroupExit } from './functions/whatsapp-group-exit';
 
 const functionHandlers: Record<string, express.RequestHandler> = {
   'whatsapp-webhook': whatsappWebhook,
@@ -27,6 +28,7 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'regenerate-lead-name': regenerateLeadName,
   'lead-close-sequence-info': leadCloseSequenceInfo,
   'onboarding-checkpoint-reprocess': onboardingCheckpointReprocess,
+  'whatsapp-group-exit': whatsappGroupExit,
 };
 
 const app = express();
