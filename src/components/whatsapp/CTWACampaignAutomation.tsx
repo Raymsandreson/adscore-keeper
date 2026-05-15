@@ -1621,6 +1621,66 @@ export function CTWACampaignAutomation() {
         campaignBoardId={(sheetLink as any)?.board_id || null}
         campaignStageId={(sheetLink as any)?.stage_id || null}
       />
+      <Dialog open={!!swapLink} onOpenChange={(o) => { if (!o) setSwapLink(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Trocar campanha vinculada</DialogTitle>
+            <DialogDescription>
+              A Meta gera um novo ID quando você duplica ou recria uma campanha. Use isto para apontar este vínculo
+              para a nova campanha sem perder agente, funil, etapa ou instância.
+            </DialogDescription>
+          </DialogHeader>
+          {swapLink && (
+            <div className="space-y-3">
+              <div className="text-xs text-muted-foreground">
+                <strong>Vínculo atual:</strong> {swapLink.campaign_name || swapLink.campaign_id}
+                <div className="font-mono text-[10px] opacity-60">{swapLink.campaign_id}</div>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Nova campanha</Label>
+                <Select value={swapTargetCampaignId} onValueChange={setSwapTargetCampaignId}>
+                  <SelectTrigger className="h-9 text-xs">
+                    <SelectValue placeholder="Selecione a nova campanha..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {metaCampaigns
+                      .filter(c => c.campaign_id !== swapLink.campaign_id)
+                      .map(c => (
+                        <SelectItem key={c.campaign_id} value={c.campaign_id}>
+                          {c.campaign_name} {c.status && c.status !== 'ACTIVE' ? `(${c.status})` : ''}
+                        </SelectItem>
+                      ))}
+                    <SelectItem value="__manual__">✎ Informar ID manualmente…</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {swapTargetCampaignId === '__manual__' && (
+                <div className="grid grid-cols-1 gap-2">
+                  <Input
+                    placeholder="ID da nova campanha (ex: 1234567890)"
+                    value={swapManualId}
+                    onChange={(e) => setSwapManualId(e.target.value)}
+                    className="h-9 text-xs"
+                  />
+                  <Input
+                    placeholder="Nome da campanha (opcional)"
+                    value={swapManualName}
+                    onChange={(e) => setSwapManualName(e.target.value)}
+                    className="h-9 text-xs"
+                  />
+                </div>
+              )}
+              <div className="text-[11px] text-muted-foreground bg-muted/50 rounded p-2">
+                ✓ Mantém: instância, agente IA, agentes pós-classificação, funil, etapa, limite de mensagens e auto-criação de leads.
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSwapLink(null)}>Cancelar</Button>
+            <Button onClick={handleSwapCampaign}>Trocar campanha</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
