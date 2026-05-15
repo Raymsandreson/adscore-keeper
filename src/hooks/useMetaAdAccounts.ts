@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { db, ensureExternalSession } from '@/integrations/supabase';
 import { useToast } from '@/hooks/use-toast';
 
 export interface MetaAdAccount {
@@ -49,10 +49,11 @@ export function useMetaAdAccounts() {
 
   const fetchAccounts = useCallback(async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      await ensureExternalSession();
+      const { data: { user } } = await db.auth.getUser();
       if (!user) { setLoading(false); return; }
 
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('meta_ad_accounts')
         .select('*')
         .order('created_at', { ascending: true });
@@ -80,7 +81,7 @@ export function useMetaAdAccounts() {
                 access_token: a.accessToken,
                 account_id: a.accountId,
               }));
-              const { data: inserted, error: insertError } = await supabase
+              const { data: inserted, error: insertError } = await db
                 .from('meta_ad_accounts')
                 .insert(rows)
                 .select('*');
@@ -115,7 +116,8 @@ export function useMetaAdAccounts() {
   useEffect(() => { fetchAccounts(); }, [fetchAccounts]);
 
   const addAccount = useCallback(async (account: Omit<MetaAdAccount, 'id'>): Promise<MetaAdAccount | null> => {
-    const { data: { user } } = await supabase.auth.getUser();
+    await ensureExternalSession();
+    const { data: { user } } = await db.auth.getUser();
     if (!user) return null;
 
     // Try to auto-detect WABA ID
@@ -135,7 +137,7 @@ export function useMetaAdAccounts() {
     };
     if (wabaId) insertData.waba_id = wabaId;
 
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('meta_ad_accounts')
       .insert(insertData)
       .select('*')
@@ -163,7 +165,8 @@ export function useMetaAdAccounts() {
   }, [toast]);
 
   const deleteAccount = useCallback(async (id: string) => {
-    const { error } = await supabase.from('meta_ad_accounts').delete().eq('id', id);
+    await ensureExternalSession();
+    const { error } = await db.from('meta_ad_accounts').delete().eq('id', id);
     if (error) {
       toast({ title: 'Erro ao remover conta', description: error.message, variant: 'destructive' });
       return;
@@ -178,7 +181,8 @@ export function useMetaAdAccounts() {
     if (updates.accountId !== undefined) payload.account_id = updates.accountId;
     if (updates.wabaId !== undefined) payload.waba_id = updates.wabaId;
 
-    const { error } = await supabase.from('meta_ad_accounts').update(payload).eq('id', id);
+    await ensureExternalSession();
+    const { error } = await db.from('meta_ad_accounts').update(payload).eq('id', id);
     if (error) {
       toast({ title: 'Erro ao atualizar conta', description: error.message, variant: 'destructive' });
       return;

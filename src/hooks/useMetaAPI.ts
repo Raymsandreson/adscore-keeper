@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { metaAPIService, MetaAPIConfig, AdInsights, CampaignInsight, DailyInsight, PlacementInsight } from '@/services/metaAPI';
-import { supabase } from '@/integrations/supabase/client';
+import { db, ensureExternalSession } from '@/integrations/supabase';
 
 export type DateRangeOption = 
   | 'today' 
@@ -193,10 +193,11 @@ export const useMetaAPI = () => {
 
     (async () => {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
+        await ensureExternalSession();
+        const { data: { user } } = await db.auth.getUser();
         if (!user) return;
 
-        const { data } = await supabase
+        const { data } = await db
           .from('meta_ad_accounts')
           .select('access_token, account_id')
           .order('created_at', { ascending: true })

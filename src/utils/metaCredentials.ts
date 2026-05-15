@@ -1,4 +1,4 @@
-import { supabase } from "@/integrations/supabase/client";
+import { db, ensureExternalSession } from "@/integrations/supabase";
 
 type LegacyMetaAccount = {
   id?: string;
@@ -52,7 +52,8 @@ export async function getMetaCredentials(): Promise<MetaCredentials> {
     : null;
 
   try {
-    const { data, error } = await supabase
+    await ensureExternalSession();
+    const { data, error } = await db
       .from("meta_ad_accounts")
       .select("id, access_token, account_id")
       .order("created_at", { ascending: true });
