@@ -38,9 +38,31 @@ function bareIdOf(extId: string | null | undefined): string {
   return s.includes(':') ? s.split(':').pop()! : s;
 }
 
-const state: { running: boolean; total: number; processed: number; ok: number; fail: number; siblingCopied: number; decrypted: number; startedAt?: string; lastError?: string; phase?: string } = {
-  running: false, total: 0, processed: 0, ok: 0, fail: 0, siblingCopied: 0, decrypted: 0,
+type ErrorBuckets = {
+  expired_404: number;   // .enc devolveu 404/410 (mídia velha, irrecuperável)
+  network_err: number;   // erro de rede ao baixar .enc ou UazAPI
+  uazapi_fail: number;   // UazAPI não conhece mais o id (4xx/5xx)
+  decrypt_err: number;   // baixou mas não decifrou / bytes inválidos
+  no_candidate: number;  // sem mediaKey ou sem url
+  other: number;
 };
+
+const state: { running: boolean; total: number; processed: number; ok: number; fail: number; siblingCopied: number; decrypted: number; errors: ErrorBuckets; sampleErrors: string[]; startedAt?: string; lastError?: string; phase?: string } = {
+  running: false, total: 0, processed: 0, ok: 0, fail: 0, siblingCopied: 0, decrypted: 0,
+  errors: { expired_404: 0, network_err: 0, uazapi_fail: 0, decrypt_err: 0, no_candidate: 0, other: 0 },
+  sampleErrors: [],
+};
+
+function classifyError(errMsg: string): keyof ErrorBuckets {
+  const m = String(errMsg || '').toLowerCase();
+  // padrões: "enc-direct:404", "enc-direct:410", "uazapi[xxx]:404"
+  if (/enc-direct:(404|410|403)/.test(m)) return 'expired_404';
+  if (/enc-direct-err:/.test(m) || /fetch failed|network|timeout|econnreset/.test(m)) return 'network_err';
+  if (/uazapi\[[^\]]*\]:(4\d\d|5\d\d)/.test(m)) return 'uazapi_fail';
+  if (/decrypt|hkdf|mac|sha|invalid/.test(m)) return 'decrypt_err';
+  if (/sem token|nenhuma/.test(m)) return 'no_candidate';
+  return 'other';
+}
 
 async function runBackfill(authHeader: string) {
   state.running = true;
