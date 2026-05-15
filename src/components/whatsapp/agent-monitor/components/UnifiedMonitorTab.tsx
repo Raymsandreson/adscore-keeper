@@ -161,6 +161,7 @@ export function UnifiedMonitorTab({
           }} />
         </TabsContent>
         <TabsContent value="ai-data"><AIEnrichmentMonitorPanel /></TabsContent>
+        <TabsContent value="group-exits"><GroupExitsPanel /></TabsContent>
       </Tabs>
     </div>
   );
