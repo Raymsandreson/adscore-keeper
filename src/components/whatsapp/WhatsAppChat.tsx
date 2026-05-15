@@ -2734,8 +2734,18 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                 {msg.message_type === 'document' && msg.media_url && !isEncUrl(msg.media_url) && (() => {
                   const isPdf = (msg.media_type || '').includes('pdf') || /\.pdf($|\?)/i.test(msg.media_url);
                   const fileName = msg.message_text || (msg.media_url.split('/').pop()?.split('?')[0]) || 'Documento';
-                  return (
-                    <div className="mb-1 space-y-1">
+                    <div
+                      className="mb-1 space-y-1"
+                      onTouchStart={() => startLongPress(msg.id)}
+                      onTouchEnd={cancelLongPress}
+                      onTouchMove={cancelLongPress}
+                      onTouchCancel={cancelLongPress}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        setDriveSelectionMode(true);
+                        toggleDriveSelection(msg.id);
+                      }}
+                    >
                       {isPdf && (
                         <div className="rounded-lg overflow-hidden border bg-white">
                           <object data={msg.media_url} type="application/pdf" className="w-full h-[360px]">
@@ -2749,12 +2759,12 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                             type="button"
                             onClick={() => toggleDriveSelection(msg.id)}
                             className={cn(
-                              "h-5 w-5 rounded border-2 flex items-center justify-center shrink-0 transition-colors",
-                              selectedDriveMsgIds.has(msg.id) ? "bg-blue-500 border-blue-500 text-white" : "bg-background border-muted-foreground/40"
+                              "h-6 w-6 rounded border-2 flex items-center justify-center shrink-0 transition-colors text-[11px] font-bold",
+                              selectedDriveMsgIds.has(msg.id) ? "bg-blue-500 border-blue-500 text-white" : "bg-background border-muted-foreground/40 text-transparent"
                             )}
-                            title={selectedDriveMsgIds.has(msg.id) ? 'Desmarcar' : 'Selecionar para Drive'}
+                            title={selectedDriveMsgIds.has(msg.id) ? `Posição #${getSelectionIndex(msg.id)} — toque p/ desmarcar` : 'Selecionar para Drive'}
                           >
-                            {selectedDriveMsgIds.has(msg.id) && <span className="text-[10px] font-bold">✓</span>}
+                            {selectedDriveMsgIds.has(msg.id) ? getSelectionIndex(msg.id) : '✓'}
                           </button>
                         )}
                         <FileText className="h-4 w-4 text-orange-500 shrink-0" />
