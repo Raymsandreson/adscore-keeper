@@ -225,7 +225,7 @@ function SidebarLayout() {
           <main className="flex-1">
             <PageTracker />
             <GlobalDatabaseSearch />
-            <UserProductivityBanner />
+            <ConditionalProductivityBanner />
             <CallFieldSuggestionsBanner />
             <FloatingWhatsAppCall />
             <PWAInstallBanner />
