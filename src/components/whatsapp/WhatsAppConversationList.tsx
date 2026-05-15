@@ -119,8 +119,9 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
         return;
       }
 
-      const [leadsRes, stageRes, checklistInstancesRes, templatesRes, docsRes] = await Promise.all([
+      const [leadsRes, leadsExtRes, stageRes, checklistInstancesRes, templatesRes, docsRes] = await Promise.all([
         supabase.from('leads').select('id, board_id').in('id', leadIds),
+        externalSupabase.from('leads').select('id, lead_name').in('id', leadIds),
         externalSupabase.from('lead_stage_history')
           .select('lead_id, to_stage, changed_at')
           .in('lead_id', leadIds)
@@ -133,6 +134,11 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
           .select('lead_id, status, signed_at')
           .in('lead_id', leadIds),
       ]);
+
+      const leadNameById = new Map<string, string>();
+      for (const l of (leadsExtRes.data || [])) {
+        if (l?.id && l?.lead_name) leadNameById.set(l.id, l.lead_name);
+      }
 
       // Build doc status map
       const docMap = new Map<string, 'signed' | 'unsigned'>();
