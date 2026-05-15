@@ -373,7 +373,8 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
           pages_label: a.pages_label,
         });
         if (a.title) {
-          const composed = String(a.title).replace(/[\\/:*?"<>|]/g, '_').slice(0, 120);
+          const holder = a.holder_name ? ` - ${String(a.holder_name).trim()}` : '';
+          const composed = `${String(a.title)}${holder}`.replace(/[\\/:*?"<>|]/g, '_').slice(0, 120);
           setBatchFileName(composed);
         }
       }
