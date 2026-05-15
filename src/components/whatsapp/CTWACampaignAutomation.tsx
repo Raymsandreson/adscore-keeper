@@ -174,30 +174,54 @@ export function CTWACampaignAutomation() {
         .select('id, name, access_token, account_id')
         .order('created_at', { ascending: true });
       if (error) throw error;
-      const list = (data || []) as any[];
-      setMetaAccounts(list);
-      if (list.length > 0 && !selectedAccountId) {
-        // Try to mirror the "connected" account from the Marketing > Anúncios tab.
-        // The Marketing tab stores the selected account IDs in localStorage under
-        // `meta_selected_account_ids` (referring to entries in `meta_saved_accounts`),
-        // and the Meta account_id is what we can match against our DB rows.
-        let preferred: any = null;
-        try {
-          const savedAccountsRaw = localStorage.getItem('meta_saved_accounts');
-          const selectedIdsRaw = localStorage.getItem('meta_selected_account_ids');
-          if (savedAccountsRaw && selectedIdsRaw) {
-            const savedAccounts = JSON.parse(savedAccountsRaw) as Array<{ id: string; accountId?: string; adAccountId?: string }>;
-            const selectedIds = JSON.parse(selectedIdsRaw) as string[];
-            const firstSelected = savedAccounts.find(a => selectedIds.includes(a.id));
-            const targetAccountId = (firstSelected?.accountId || firstSelected?.adAccountId || '').replace(/^act_/, '');
-            if (targetAccountId) {
-              preferred = list.find(a => String(a.account_id).replace(/^act_/, '') === targetAccountId) || null;
-            }
-          }
-        } catch (e) {
-          console.warn('CTWA: could not read marketing-selected account from localStorage', e);
+      const dbList = ((data || []) as any[]).map(a => ({
+        id: a.id,
+        name: a.name,
+        access_token: a.access_token,
+        account_id: String(a.account_id).replace(/^act_/, ''),
+      }));
+
+      // Merge in accounts that are saved/connected in the Marketing > Anúncios tab
+      // (localStorage), even if they were never persisted to meta_ad_accounts.
+      // This ensures the account marked "Conectado" in Marketing actually appears here.
+      const lsList: Array<{ id: string; name: string; access_token: string; account_id: string }> = [];
+      let marketingSelectedAccountId: string | null = null;
+      try {
+        const savedAccountsRaw = localStorage.getItem('meta_saved_accounts');
+        const selectedIdsRaw = localStorage.getItem('meta_selected_account_ids');
+        const savedAccounts = savedAccountsRaw ? JSON.parse(savedAccountsRaw) as any[] : [];
+        const selectedIds = selectedIdsRaw ? JSON.parse(selectedIdsRaw) as string[] : [];
+
+        for (const sa of savedAccounts) {
+          const acctId = String(sa.accountId || sa.adAccountId || sa.ad_account_id || '').replace(/^act_/, '');
+          const token = sa.accessToken || sa.access_token;
+          if (!acctId || !token) continue;
+          // Skip if already present in DB list
+          if (dbList.some(d => d.account_id === acctId)) continue;
+          lsList.push({
+            id: `ls_${acctId}`,
+            name: sa.name || sa.accountName || `Conta ${acctId}`,
+            access_token: token,
+            account_id: acctId,
+          });
         }
-        setSelectedAccountId((preferred || list[0]).id);
+
+        const firstSelected = savedAccounts.find((a: any) => selectedIds.includes(a.id));
+        if (firstSelected) {
+          marketingSelectedAccountId = String(firstSelected.accountId || firstSelected.adAccountId || '').replace(/^act_/, '') || null;
+        }
+      } catch (e) {
+        console.warn('CTWA: could not read marketing-saved accounts from localStorage', e);
+      }
+
+      const merged = [...dbList, ...lsList];
+      setMetaAccounts(merged);
+
+      if (merged.length > 0 && !selectedAccountId) {
+        const preferred = marketingSelectedAccountId
+          ? merged.find(a => a.account_id === marketingSelectedAccountId)
+          : null;
+        setSelectedAccountId((preferred || merged[0]).id);
       }
     } catch (e) {
       console.error('CTWA: Error fetching meta accounts list:', e);
