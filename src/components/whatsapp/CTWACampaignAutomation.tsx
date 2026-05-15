@@ -177,7 +177,27 @@ export function CTWACampaignAutomation() {
       const list = (data || []) as any[];
       setMetaAccounts(list);
       if (list.length > 0 && !selectedAccountId) {
-        setSelectedAccountId(list[0].id);
+        // Try to mirror the "connected" account from the Marketing > Anúncios tab.
+        // The Marketing tab stores the selected account IDs in localStorage under
+        // `meta_selected_account_ids` (referring to entries in `meta_saved_accounts`),
+        // and the Meta account_id is what we can match against our DB rows.
+        let preferred: any = null;
+        try {
+          const savedAccountsRaw = localStorage.getItem('meta_saved_accounts');
+          const selectedIdsRaw = localStorage.getItem('meta_selected_account_ids');
+          if (savedAccountsRaw && selectedIdsRaw) {
+            const savedAccounts = JSON.parse(savedAccountsRaw) as Array<{ id: string; accountId?: string; adAccountId?: string }>;
+            const selectedIds = JSON.parse(selectedIdsRaw) as string[];
+            const firstSelected = savedAccounts.find(a => selectedIds.includes(a.id));
+            const targetAccountId = (firstSelected?.accountId || firstSelected?.adAccountId || '').replace(/^act_/, '');
+            if (targetAccountId) {
+              preferred = list.find(a => String(a.account_id).replace(/^act_/, '') === targetAccountId) || null;
+            }
+          }
+        } catch (e) {
+          console.warn('CTWA: could not read marketing-selected account from localStorage', e);
+        }
+        setSelectedAccountId((preferred || list[0]).id);
       }
     } catch (e) {
       console.error('CTWA: Error fetching meta accounts list:', e);
