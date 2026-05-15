@@ -533,7 +533,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     fetchLeads('');
   };
 
-  const isEncUrl = (u?: string | null) => !!u && /\.enc(?:\?|$)/i.test(u);
+  const isEncUrl = (u?: string | null) => !!u && (/\.enc(?:\?|$)/i.test(u) || /^https?:\/\/(?:[a-z0-9-]+\.)*whatsapp\.net\//i.test(u));
   const isMissingMedia = (m: any) =>
     ['image', 'video', 'audio', 'document'].includes(m?.message_type) &&
     (!m.media_url || isEncUrl(m.media_url));
