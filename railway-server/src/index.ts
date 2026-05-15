@@ -19,6 +19,7 @@ import { handler as onboardingCheckpointReprocess } from './functions/onboarding
 import { handler as whatsappCloudWebhook } from './functions/whatsapp-cloud-webhook';
 import { handler as whatsappGroupExit } from './functions/whatsapp-group-exit';
 import { handler as whatsappDownloadMedia } from './functions/whatsapp-download-media';
+import { handler as whatsappBackfillMedia } from './functions/whatsapp-backfill-media';
 
 const functionHandlers: Record<string, express.RequestHandler> = {
   'whatsapp-webhook': whatsappWebhook,
@@ -31,6 +32,7 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'onboarding-checkpoint-reprocess': onboardingCheckpointReprocess,
   'whatsapp-group-exit': whatsappGroupExit,
   'whatsapp-download-media': whatsappDownloadMedia,
+  'whatsapp-backfill-media': whatsappBackfillMedia,
 };
 
 const app = express();
