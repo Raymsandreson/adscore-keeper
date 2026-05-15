@@ -128,7 +128,7 @@ Deno.serve(async (req) => {
       had_local_anchor: !!messageid,
     }));
 
-    const resp = await fetch(`${baseUrl}/message/history-sync`, {
+    let resp = await fetch(`${baseUrl}/message/history-sync`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -138,11 +138,35 @@ Deno.serve(async (req) => {
       signal: AbortSignal.timeout(20000),
     });
 
-    const text = await resp.text();
+    let text = await resp.text();
     let data: unknown = null;
     try { data = JSON.parse(text); } catch { data = { raw: text }; }
 
     console.log("[whatsapp-fetch-history] ← upstream", resp.status, text.slice(0, 300));
+
+    if (!resp.ok && mode === "exact" && /not found in local history|use mode=history/i.test(text)) {
+      const fallbackPayload: Record<string, unknown> = { number, mode: "history", count };
+      if (providerMessageId) fallbackPayload.messageid = providerMessageId;
+      console.log("[whatsapp-fetch-history] exact not in local cache; retrying history", JSON.stringify({
+        instance: inst.instance_name,
+        number,
+        count,
+        messageid: providerMessageId || null,
+      }));
+
+      resp = await fetch(`${baseUrl}/message/history-sync`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          token: inst.instance_token,
+        },
+        body: JSON.stringify(fallbackPayload),
+        signal: AbortSignal.timeout(20000),
+      });
+      text = await resp.text();
+      try { data = JSON.parse(text); } catch { data = { raw: text }; }
+      console.log("[whatsapp-fetch-history] ← history fallback", resp.status, text.slice(0, 300));
+    }
 
     if (!resp.ok) {
       return jsonResponse(200, {
@@ -154,7 +178,7 @@ Deno.serve(async (req) => {
 
     return jsonResponse(200, {
       success: true,
-      mode,
+      mode: mode === "exact" && String(JSON.stringify(data)).includes("history") ? "history" : mode,
       count: mode === "history" ? count : undefined,
       anchor_message_id: providerMessageId || null,
       message:
