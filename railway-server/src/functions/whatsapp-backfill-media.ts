@@ -19,59 +19,99 @@ async function verifyCloudJwt(authHeader?: string): Promise<boolean> {
   }
 }
 
-function isEnc(u?: string | null) {
-  if (typeof u !== 'string') return false;
-  return /\.enc(?:\?|$)/i.test(u) || /^https?:\/\/(?:[a-z0-9-]+\.)*whatsapp\.net\//i.test(u);
+function isStorageOk(u?: string | null) {
+  if (typeof u !== 'string' || !u) return false;
+  if (/\.enc(?:\?|$)/i.test(u)) return false;
+  if (/^https?:\/\/(?:[a-z0-9-]+\.)*whatsapp\.net\//i.test(u)) return false;
+  return /\/storage\/v1\/object\/public\//i.test(u);
 }
 
-// Estado em memória: progresso da última varredura por usuário (single-tenant simples)
-const state: { running: boolean; total: number; processed: number; ok: number; fail: number; startedAt?: string; lastError?: string } = {
-  running: false, total: 0, processed: 0, ok: 0, fail: 0,
+function isBroken(u?: string | null) {
+  if (!u) return true;
+  if (/\.enc(?:\?|$)/i.test(u)) return true;
+  if (/^https?:\/\/(?:[a-z0-9-]+\.)*whatsapp\.net\//i.test(u)) return true;
+  return false;
+}
+
+function bareIdOf(extId: string | null | undefined): string {
+  const s = String(extId || '');
+  return s.includes(':') ? s.split(':').pop()! : s;
+}
+
+const state: { running: boolean; total: number; processed: number; ok: number; fail: number; siblingCopied: number; decrypted: number; startedAt?: string; lastError?: string; phase?: string } = {
+  running: false, total: 0, processed: 0, ok: 0, fail: 0, siblingCopied: 0, decrypted: 0,
 };
 
 async function runBackfill(authHeader: string) {
   state.running = true;
   state.total = 0; state.processed = 0; state.ok = 0; state.fail = 0;
+  state.siblingCopied = 0; state.decrypted = 0;
   state.startedAt = new Date().toISOString();
   state.lastError = undefined;
+  state.phase = 'scanning';
 
   try {
-    // 1. Pega todas as mensagens com mídia faltante ou criptografada + mediaKey
+    // Pega últimos 8000 registros de mídia
     const { data: rows, error } = await ext
       .from('whatsapp_messages')
-      .select('id, phone, external_message_id, media_url, metadata, message_type, created_at')
+      .select('id, phone, external_message_id, media_url, media_type, metadata, message_type, instance_name, created_at')
       .in('message_type', ['image', 'video', 'audio', 'document'])
       .order('created_at', { ascending: false })
-      .limit(5000);
+      .limit(8000);
 
     if (error) { state.lastError = error.message; return; }
 
-    // 2. Filtra os que precisam de reparo + têm mediaKey + agrupa por bareId+phone
-    const seen = new Set<string>();
-    const toRepair: Array<{ id: string; bareKey: string }> = [];
-    for (const r of rows || []) {
-      if (r.media_url && !isEnc(r.media_url)) continue; // já OK
-      const mk = (r.metadata as any)?.message?.content?.mediaKey || (r.metadata as any)?.message?.content?.media_key;
-      if (typeof mk !== 'string' || mk.length < 32) continue;
-      const ext_id = String(r.external_message_id || '');
-      const bare = ext_id.includes(':') ? ext_id.split(':').pop()! : ext_id;
+    // Agrupa por phone + bareId
+    type Row = { id: string; phone: string; external_message_id: string | null; media_url: string | null; media_type: string | null; metadata: any; message_type: string; instance_name: string | null };
+    const groups = new Map<string, Row[]>();
+    for (const r of (rows || []) as Row[]) {
+      const bare = bareIdOf(r.external_message_id);
+      if (!bare || !r.phone) continue;
       const key = `${r.phone}|${bare}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      toRepair.push({ id: r.id, bareKey: key });
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(r);
     }
 
-    state.total = toRepair.length;
+    // FASE 1: cópia entre irmãos (rápido, sem rede WA)
+    state.phase = 'sibling-copy';
+    const needsRepair: Row[] = [];
+    for (const [, sibs] of groups) {
+      const good = sibs.find(s => isStorageOk(s.media_url));
+      if (good) {
+        // Copia para todos os irmãos quebrados
+        for (const s of sibs) {
+          if (s.id === good.id) continue;
+          if (isBroken(s.media_url) || !s.media_url) {
+            const { error: upErr } = await ext.from('whatsapp_messages').update({
+              media_url: good.media_url,
+              media_type: good.media_type || s.media_type,
+            }).eq('id', s.id);
+            if (!upErr) state.siblingCopied++;
+          }
+        }
+      } else {
+        // Nenhum irmão tem storage OK — precisa decifrar.
+        // Pega o primeiro com mediaKey + URL .enc
+        const candidate = sibs.find(s => {
+          const mk = s.metadata?.message?.content?.mediaKey || s.metadata?.message?.content?.media_key;
+          return typeof mk === 'string' && mk.length >= 32 && isBroken(s.media_url) && s.media_url;
+        });
+        if (candidate) needsRepair.push(candidate);
+      }
+    }
 
-    // 3. Chama whatsapp-download-media uma vez por grupo (a função replica para irmãos)
+    state.total = needsRepair.length;
+
+    // FASE 2: decifrar via whatsapp-download-media (mais lento)
+    state.phase = 'decrypting';
     const CONCURRENCY = 3;
     let cursor = 0;
     const workers: Promise<void>[] = [];
     for (let w = 0; w < CONCURRENCY; w++) {
       workers.push((async () => {
-        while (cursor < toRepair.length) {
+        while (cursor < needsRepair.length) {
           const idx = cursor++;
-          const item = toRepair[idx];
+          const item = needsRepair[idx];
           try {
             const fakeReq: any = {
               headers: { authorization: authHeader },
@@ -79,7 +119,7 @@ async function runBackfill(authHeader: string) {
             };
             const fakeRes: any = { _body: null, _status: 200, status(c: number) { this._status = c; return this; }, json(b: any) { this._body = b; return this; } };
             await downloadMedia(fakeReq, fakeRes, () => {});
-            if (fakeRes._body?.success) state.ok++;
+            if (fakeRes._body?.success) { state.ok++; state.decrypted++; }
             else state.fail++;
           } catch {
             state.fail++;
@@ -90,6 +130,7 @@ async function runBackfill(authHeader: string) {
       })());
     }
     await Promise.all(workers);
+    state.phase = 'done';
   } catch (e) {
     state.lastError = e instanceof Error ? e.message : String(e);
   } finally {

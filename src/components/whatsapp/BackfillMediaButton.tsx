@@ -12,6 +12,9 @@ type Status = {
   processed?: number;
   ok?: number;
   fail?: number;
+  siblingCopied?: number;
+  decrypted?: number;
+  phase?: string;
   startedAt?: string;
   lastError?: string;
 };
@@ -28,9 +31,9 @@ export function BackfillMediaButton() {
       if (!s.running && pollRef.current) {
         window.clearInterval(pollRef.current);
         pollRef.current = null;
-        if (typeof s.total === 'number' && s.total > 0) {
-          toast.success(`Reparo concluído: ${s.ok}/${s.total} mídias recuperadas` + (s.fail ? ` (${s.fail} falhas)` : ''));
-        }
+        const copied = s.siblingCopied ?? 0;
+        const decoded = s.decrypted ?? 0;
+        toast.success(`Reparo concluído: ${copied} copiadas de irmãos + ${decoded} decifradas` + (s.fail ? ` (${s.fail} falhas)` : ''));
       }
     } catch {/* silencioso */}
   };
@@ -58,8 +61,9 @@ export function BackfillMediaButton() {
   }, []);
 
   const running = !!status.running;
+  const phase = status.phase === 'sibling-copy' ? 'copiando entre irmãos' : status.phase === 'decrypting' ? `decifrando ${status.processed ?? 0}/${status.total ?? '?'}` : 'iniciando';
   const label = running
-    ? `Reparando mídias antigas: ${status.processed ?? 0}/${status.total ?? '?'}`
+    ? `Reparando mídias (${phase})`
     : 'Reparar todas as mídias antigas (varredura no banco)';
 
   return (
