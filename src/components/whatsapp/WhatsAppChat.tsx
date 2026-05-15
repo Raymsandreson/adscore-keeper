@@ -340,28 +340,45 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     setDriveSelectionMode(false);
     setSelectionOrder([]);
     setBatchDriveOrder([]);
+    setBatchAnalysis(null);
   };
 
-  // Pede pra IA classificar a 1ª mídia e monta nome "{tipo/titulo} - {titular}"
-  const generateAiFileName = async (selected: Array<any>) => {
-    const first = selected.find((m: any) => {
+  // Pede pra IA analisar TODAS as mídias selecionadas (imagens) e devolver
+  // título + titular + descrição. Filename = só o título (titular já está dentro do doc).
+  const analyzeBatchWithAi = async (selected: Array<any>) => {
+    const imgs = selected.filter((m: any) => {
       const mt = (m.media_type || '').toLowerCase();
-      return mt.includes('pdf') || mt.startsWith('image/');
+      return mt.startsWith('image/'); // PDFs não dá pra mandar como image_url
     });
-    if (!first) return;
+    if (imgs.length === 0) return;
     setAiNamingFile(true);
+    setBatchAnalysis(null);
     try {
+      const total = imgs.length;
+      const urls = imgs.map((m: any, i: number) => ({
+        url: m.media_url,
+        label: `página ${i + 1} de ${total}`,
+      }));
       const { data } = await supabase.functions.invoke('classify-document', {
-        body: { url: first.media_url, name: first.message_text || '' },
+        body: { urls, name: imgs[0].message_text || '' },
       });
-      const title = (data as any)?.title;
-      if (title) {
-        const titular = conversation.contact_name || 'Cliente';
-        const composed = `${title} - ${titular}`.replace(/[\\/:*?"<>|]/g, '_').slice(0, 120);
-        setBatchFileName(composed);
+      const a = data as any;
+      if (a?.success) {
+        setBatchAnalysis({
+          type: a.type,
+          title: a.title,
+          holder_name: a.holder_name,
+          holder_cpf: a.holder_cpf,
+          description: a.description,
+          pages_label: a.pages_label,
+        });
+        if (a.title) {
+          const composed = String(a.title).replace(/[\\/:*?"<>|]/g, '_').slice(0, 120);
+          setBatchFileName(composed);
+        }
       }
     } catch (e) {
-      console.warn('[ai-name] falhou:', e);
+      console.warn('[ai-analyze-batch] falhou:', e);
     } finally {
       setAiNamingFile(false);
     }
@@ -376,12 +393,13 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
       .filter((m: any) => m && m.media_url && !isEncUrl(m.media_url));
     if (selected.length === 0) return;
     const today = new Date().toISOString().slice(0, 10);
-    setBatchFileName(`Documentos ${conversation.contact_name || 'cliente'} ${today}`.replace(/[\\/:*?"<>|]/g, '_'));
+    setBatchFileName(`Documentos ${today}`.replace(/[\\/:*?"<>|]/g, '_'));
     setBatchDriveMode('merge');
+    setBatchAnalysis(null);
     setBatchDriveOrder(selected.map((m: any) => ({ id: m.id, media_url: m.media_url, media_type: m.media_type || '', message_text: m.message_text || '', message_type: m.message_type })));
     setShowBatchDriveDialog(true);
-    // Dispara IA p/ sugerir nome com base no conteúdo
-    void generateAiFileName(selected);
+    // Dispara IA p/ analisar conteúdo + sugerir título
+    void analyzeBatchWithAi(selected);
   };
 
   const runBatchDriveUpload = async (leadId: string, leadNameInput?: string) => {
