@@ -770,9 +770,14 @@ export function CTWACampaignAutomation() {
     if (addingBoard) payload.board_id = addingBoard;
     if (addingStage) payload.stage_id = addingStage;
 
+    console.log('[CTWA] upsert payload:', payload);
     const { error } = await supabase.from('whatsapp_agent_campaign_links').upsert(payload, { onConflict: 'campaign_id' });
 
-    if (error) { toast.error('Erro ao vincular'); return; }
+    if (error) {
+      console.error('[CTWA] upsert error:', error);
+      toast.error(`Erro ao vincular: ${error.message || error.code || 'desconhecido'}`);
+      return;
+    }
 
     // If apply to existing, assign agent to existing conversations from this campaign
     if (applyToExisting && addingAgent) {
