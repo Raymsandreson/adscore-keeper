@@ -18,6 +18,7 @@ import { handler as leadCloseSequenceInfo } from './functions/lead-close-sequenc
 import { handler as onboardingCheckpointReprocess } from './functions/onboarding-checkpoint-reprocess';
 import { handler as whatsappCloudWebhook } from './functions/whatsapp-cloud-webhook';
 import { handler as whatsappGroupExit } from './functions/whatsapp-group-exit';
+import { handler as whatsappDownloadMedia } from './functions/whatsapp-download-media';
 
 const functionHandlers: Record<string, express.RequestHandler> = {
   'whatsapp-webhook': whatsappWebhook,
@@ -29,6 +30,7 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'lead-close-sequence-info': leadCloseSequenceInfo,
   'onboarding-checkpoint-reprocess': onboardingCheckpointReprocess,
   'whatsapp-group-exit': whatsappGroupExit,
+  'whatsapp-download-media': whatsappDownloadMedia,
 };
 
 const app = express();
