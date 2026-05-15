@@ -674,6 +674,13 @@ export function CTWACampaignAutomation() {
       agent_id: addingAgent || null,
       campaign_id: campaignId,
       campaign_name: campaignName,
+      assigned_user_id: addingAcolhedor || null,
+      auto_create_lead: addingAutoCreateLead,
+      in_progress_agent_id: addingInProgressAgent || null,
+      closed_agent_id: addingClosedAgent || null,
+      refused_agent_id: addingRefusedAgent || null,
+      inviavel_agent_id: addingInviavelAgent || null,
+      max_unanswered_messages: addingMaxUnanswered || 0,
     };
     if (detectedInstance) payload.instance_id = detectedInstance.id;
     else if (addingInstance) payload.instance_id = addingInstance;
@@ -700,6 +707,13 @@ export function CTWACampaignAutomation() {
     setManualCampaignId('');
     setManualCampaignName('');
     setApplyToExisting(false);
+    setAddingAcolhedor('');
+    setAddingAutoCreateLead(true);
+    setAddingInProgressAgent('');
+    setAddingClosedAgent('');
+    setAddingRefusedAgent('');
+    setAddingInviavelAgent('');
+    setAddingMaxUnanswered(0);
     fetchData();
   };
 
