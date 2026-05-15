@@ -27,6 +27,7 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
   'regenerate-lead-name': 'railway',
   'lead-close-sequence-info': 'railway',
   'whatsapp-download-media': 'railway',
+  'whatsapp-backfill-media': 'railway',
 
   // --- Todas as demais ficam no Cloud por padrão ---
 };
