@@ -20,6 +20,7 @@ import {
 
 import { WhatsAppSetupGuide } from './WhatsAppSetupGuide';
 import { WhatsAppSettingsPage } from './WhatsAppSettingsPage';
+import { BackfillMediaButton } from './BackfillMediaButton';
 import { WhatsAppReconnectDialog } from './WhatsAppReconnectDialog';
 import { WhatsAppActivitySheet } from './WhatsAppActivitySheet';
 import { WhatsAppLeadsDashboard } from './WhatsAppLeadsDashboard';
