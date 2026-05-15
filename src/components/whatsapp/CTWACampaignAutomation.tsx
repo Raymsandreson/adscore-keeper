@@ -1586,6 +1586,7 @@ export function CTWACampaignAutomation() {
             <Plus className="h-3.5 w-3.5 mr-1" /> Vincular
           </Button>
         </div>
+        )}
       </CardContent>
 
       {/* Conversations Sheet */}
