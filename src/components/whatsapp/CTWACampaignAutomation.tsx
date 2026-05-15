@@ -84,6 +84,7 @@ export function CTWACampaignAutomation() {
   const [instances, setInstances] = useState<Instance[]>([]);
   const [metaCampaigns, setMetaCampaigns] = useState<MetaCampaign[]>([]);
   const [loading, setLoading] = useState(true);
+  const profiles = useProfilesList();
   const [loadingCampaigns, setLoadingCampaigns] = useState(false);
   const [addingAgent, setAddingAgent] = useState('');
   const [addingCampaign, setAddingCampaign] = useState('');
