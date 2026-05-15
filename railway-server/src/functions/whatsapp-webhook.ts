@@ -303,7 +303,13 @@ async function downloadAndStoreMedia(
 
     const ext = getFileExtension(contentType, messageType);
     const timestamp = Date.now();
-    const filePath = `${instanceName.replace(/\s+/g, '_')}/${timestamp}_${messageId.substring(0, 8)}.${ext}`;
+    // Sanitize: remove acentos/cedilha + troca tudo que não é [a-zA-Z0-9_] por _
+    // Supabase Storage rejeita keys com caracteres especiais (StorageApiError: Invalid key)
+    const safeInstance = String(instanceName || 'unknown')
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-zA-Z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '') || 'unknown';
+    const filePath = `${safeInstance}/${timestamp}_${messageId.substring(0, 8)}.${ext}`;
 
     const { error: uploadError } = await supabase.storage
       .from('whatsapp-media')
