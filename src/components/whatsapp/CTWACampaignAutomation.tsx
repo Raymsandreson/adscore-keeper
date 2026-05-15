@@ -99,6 +99,13 @@ export function CTWACampaignAutomation() {
   const [addingAdset, setAddingAdset] = useState('');
   const [showPaused, setShowPaused] = useState(false);
   const [applyToExisting, setApplyToExisting] = useState(false);
+  const [addingAcolhedor, setAddingAcolhedor] = useState('');
+  const [addingAutoCreateLead, setAddingAutoCreateLead] = useState(true);
+  const [addingInProgressAgent, setAddingInProgressAgent] = useState('');
+  const [addingClosedAgent, setAddingClosedAgent] = useState('');
+  const [addingRefusedAgent, setAddingRefusedAgent] = useState('');
+  const [addingInviavelAgent, setAddingInviavelAgent] = useState('');
+  const [addingMaxUnanswered, setAddingMaxUnanswered] = useState(0);
   
   const [linkConversations, setLinkConversations] = useState<Record<string, ConversationInfo[]>>({});
   const [conversationCounts, setConversationCounts] = useState<Record<string, number>>({});
