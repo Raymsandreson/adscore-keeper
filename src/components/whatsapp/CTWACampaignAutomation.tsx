@@ -501,8 +501,19 @@ export function CTWACampaignAutomation() {
 
   useEffect(() => {
     fetchData();
-    fetchMetaCampaigns();
+    fetchMetaAccounts();
   }, []);
+
+  // Refetch campaigns whenever the selected ad account changes
+  useEffect(() => {
+    if (selectedAccountId) {
+      setMetaCampaigns([]);
+      setAddingCampaign('');
+      setAdsets([]);
+      fetchMetaCampaigns();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedAccountId]);
 
   const handleOpenConversations = (link: CampaignLink) => {
     setSheetLink(link);
