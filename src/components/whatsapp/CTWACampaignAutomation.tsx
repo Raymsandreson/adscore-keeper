@@ -1553,16 +1553,28 @@ export function CTWACampaignAutomation() {
               </div>
             </div>
 
-            {/* Apply to existing conversations toggle */}
-            <div className="flex items-center gap-2 bg-muted/50 rounded-md p-2">
-              <Switch
-                id="apply-existing"
-                checked={applyToExisting}
-                onCheckedChange={setApplyToExisting}
-              />
-              <Label htmlFor="apply-existing" className="text-xs leading-tight">
-                Aplicar também às conversas antigas que vieram desta campanha
-              </Label>
+            {/* Auto-create lead + apply to existing — pareados */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="flex items-center gap-2 bg-muted/50 rounded-md p-2">
+                <Switch
+                  id="add-auto-lead"
+                  checked={addingAutoCreateLead}
+                  onCheckedChange={setAddingAutoCreateLead}
+                />
+                <Label htmlFor="add-auto-lead" className="text-xs leading-tight">
+                  Criar lead automaticamente ao receber mensagem
+                </Label>
+              </div>
+              <div className="flex items-center gap-2 bg-muted/50 rounded-md p-2">
+                <Switch
+                  id="apply-existing"
+                  checked={applyToExisting}
+                  onCheckedChange={setApplyToExisting}
+                />
+                <Label htmlFor="apply-existing" className="text-xs leading-tight">
+                  Aplicar também às conversas antigas desta campanha
+                </Label>
+              </div>
             </div>
           </div>
           <Button
