@@ -1059,6 +1059,7 @@ export function WhatsAppInbox() {
           >
             <RefreshCw className={"h-4 w-4" + (loading ? " animate-spin" : "")} />
           </Button>
+          <BackfillMediaButton />
           <Button variant="ghost" size="icon" onClick={() => { setSettingsTab('integration'); setShowSetup(true); }} title="Configuração">
             <Settings className="h-4 w-4" />
           </Button>
