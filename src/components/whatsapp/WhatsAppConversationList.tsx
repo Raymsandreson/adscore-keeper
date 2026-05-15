@@ -22,6 +22,7 @@ interface LeadInfo {
   current_stage: string | null;
   completed_checklist_ids: string[];
   checkedItemIds: string[]; // individual item IDs that are checked across all instances
+  lead_name?: string | null;
 }
 
 interface Props {
@@ -118,8 +119,9 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
         return;
       }
 
-      const [leadsRes, stageRes, checklistInstancesRes, templatesRes, docsRes] = await Promise.all([
+      const [leadsRes, leadsExtRes, stageRes, checklistInstancesRes, templatesRes, docsRes] = await Promise.all([
         supabase.from('leads').select('id, board_id').in('id', leadIds),
+        externalSupabase.from('leads').select('id, lead_name').in('id', leadIds),
         externalSupabase.from('lead_stage_history')
           .select('lead_id, to_stage, changed_at')
           .in('lead_id', leadIds)
@@ -132,6 +134,11 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
           .select('lead_id, status, signed_at')
           .in('lead_id', leadIds),
       ]);
+
+      const leadNameById = new Map<string, string>();
+      for (const l of (leadsExtRes.data || [])) {
+        if (l?.id && l?.lead_name) leadNameById.set(l.id, l.lead_name);
+      }
 
       // Build doc status map
       const docMap = new Map<string, 'signed' | 'unsigned'>();
@@ -147,14 +154,18 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
       setLeadDocStatus(docMap);
 
       const map = new Map<string, LeadInfo>();
-      for (const lead of (leadsRes.data || [])) {
-        const latestStage = stageRes.data?.find(s => s.lead_id === lead.id);
-        const leadInstances = (checklistInstancesRes.data || []).filter(c => c.lead_id === lead.id);
+      const boardById = new Map<string, string | null>();
+      for (const l of (leadsRes.data || [])) boardById.set(l.id, l.board_id ?? null);
+
+      // Iterate all known lead ids (union of Cloud + External results)
+      const allIds = new Set<string>([...boardById.keys(), ...leadNameById.keys()]);
+      for (const id of allIds) {
+        const latestStage = stageRes.data?.find(s => s.lead_id === id);
+        const leadInstances = (checklistInstancesRes.data || []).filter(c => c.lead_id === id);
         const completedIds = leadInstances
           .filter(c => c.is_completed)
           .map(c => c.checklist_template_id);
-        
-        // Collect all individually checked item IDs
+
         const checkedItemIds: string[] = [];
         for (const inst of leadInstances) {
           const items = (inst.items as any[]) || [];
@@ -163,12 +174,13 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
           }
         }
 
-        map.set(lead.id, {
-          id: lead.id,
-          board_id: lead.board_id,
+        map.set(id, {
+          id,
+          board_id: boardById.get(id) ?? null,
           current_stage: latestStage?.to_stage || null,
           completed_checklist_ids: completedIds,
           checkedItemIds,
+          lead_name: leadNameById.get(id) ?? null,
         });
       }
       setLeadInfoMap(map);
@@ -222,11 +234,16 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
 
   const filtered = useMemo(() => conversations.filter(c => {
     const term = search.toLowerCase();
+    const leadName = c.lead_id ? leadInfoMap.get(c.lead_id)?.lead_name : undefined;
+    // Normalize whitespace so "PREV 888" matches "PREV  888"
+    const normalize = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
+    const nTerm = normalize(term);
     if (term && !(
       c.phone.includes(term) ||
-      c.contact_name?.toLowerCase().includes(term) ||
-      c.last_message?.toLowerCase().includes(term) ||
-      c.instance_name?.toLowerCase().includes(term)
+      normalize(c.contact_name || '').includes(nTerm) ||
+      normalize(c.last_message || '').includes(nTerm) ||
+      c.instance_name?.toLowerCase().includes(term) ||
+      normalize(leadName || '').includes(nTerm)
     )) return false;
 
     if (quickFilter === 'has_lead' && !c.lead_id) return false;
