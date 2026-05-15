@@ -1090,7 +1090,20 @@ export function CTWACampaignAutomation() {
                       <span className="h-4 w-4 rounded bg-primary/10 text-primary flex items-center justify-center text-[9px]">3</span>
                       Agentes pós-classificação
                     </h4>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      <div className="space-y-1">
+                        <span className="text-[9px] font-medium text-blue-600">🔄 Em andamento</span>
+                        <Select
+                          value={linkAny.in_progress_agent_id || 'none'}
+                          onValueChange={v => handleUpdate(link.id, { in_progress_agent_id: v === 'none' ? null : v } as any)}
+                        >
+                          <SelectTrigger className="h-7 text-[10px]"><SelectValue placeholder="Mesmo agente" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none" className="text-xs">Sem agente específico</SelectItem>
+                            {agents.map(a => <SelectItem key={a.id} value={a.id} className="text-xs">#{a.shortcut_name}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
                       <div className="space-y-1">
                         <span className="text-[9px] font-medium text-green-600">✅ Fechado</span>
                         <Select
