@@ -297,36 +297,90 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
 
   // ===== Seleção múltipla de mídias para Drive =====
   const [driveSelectionMode, setDriveSelectionMode] = useState(false);
-  const [selectedDriveMsgIds, setSelectedDriveMsgIds] = useState<Set<string>>(new Set());
+  // Ordem da seleção segue a sequência de cliques (1º clique = #1, 2º = #2…)
+  const [selectionOrder, setSelectionOrder] = useState<string[]>([]);
+  const selectedDriveMsgIds = useMemo(() => new Set(selectionOrder), [selectionOrder]);
+  const getSelectionIndex = (msgId: string) => {
+    const i = selectionOrder.indexOf(msgId);
+    return i === -1 ? null : i + 1;
+  };
   const [showBatchDriveDialog, setShowBatchDriveDialog] = useState(false);
   const [batchDriveMode, setBatchDriveMode] = useState<'merge' | 'separate'>('merge');
   const [batchFileName, setBatchFileName] = useState('');
+  const [aiNamingFile, setAiNamingFile] = useState(false);
   const [batchUploading, setBatchUploading] = useState(false);
   const [pendingBatchAfterLead, setPendingBatchAfterLead] = useState(false);
   const [batchDriveOrder, setBatchDriveOrder] = useState<Array<{ id: string; media_url: string; media_type: string; message_text: string; message_type: string }>>([]);
 
+  // Long-press p/ ativar seleção (mobile) — usa um único timer compartilhado
+  const longPressTimerRef = useRef<number | null>(null);
+  const longPressFiredRef = useRef(false);
+  const startLongPress = (msgId: string) => {
+    longPressFiredRef.current = false;
+    if (longPressTimerRef.current) window.clearTimeout(longPressTimerRef.current);
+    longPressTimerRef.current = window.setTimeout(() => {
+      longPressFiredRef.current = true;
+      setDriveSelectionMode(true);
+      setSelectionOrder(prev => prev.includes(msgId) ? prev : [...prev, msgId]);
+    }, 450);
+  };
+  const cancelLongPress = () => {
+    if (longPressTimerRef.current) {
+      window.clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
   const toggleDriveSelection = (msgId: string) => {
-    setSelectedDriveMsgIds(prev => {
-      const next = new Set(prev);
-      if (next.has(msgId)) next.delete(msgId); else next.add(msgId);
-      return next;
-    });
+    setSelectionOrder(prev => prev.includes(msgId) ? prev.filter(x => x !== msgId) : [...prev, msgId]);
   };
 
   const exitDriveSelection = () => {
     setDriveSelectionMode(false);
-    setSelectedDriveMsgIds(new Set());
+    setSelectionOrder([]);
     setBatchDriveOrder([]);
   };
 
+  // Pede pra IA classificar a 1ª mídia e monta nome "{tipo/titulo} - {titular}"
+  const generateAiFileName = async (selected: Array<any>) => {
+    const first = selected.find((m: any) => {
+      const mt = (m.media_type || '').toLowerCase();
+      return mt.includes('pdf') || mt.startsWith('image/');
+    });
+    if (!first) return;
+    setAiNamingFile(true);
+    try {
+      const { data } = await supabase.functions.invoke('classify-document', {
+        body: { url: first.media_url, name: first.message_text || '' },
+      });
+      const title = (data as any)?.title;
+      if (title) {
+        const titular = conversation.contact_name || 'Cliente';
+        const composed = `${title} - ${titular}`.replace(/[\\/:*?"<>|]/g, '_').slice(0, 120);
+        setBatchFileName(composed);
+      }
+    } catch (e) {
+      console.warn('[ai-name] falhou:', e);
+    } finally {
+      setAiNamingFile(false);
+    }
+  };
+
   const openBatchDialogIfReady = () => {
-    if (selectedDriveMsgIds.size === 0) return;
+    if (selectionOrder.length === 0) return;
+    // Mantém ordem de clique
+    const msgMap = new Map((messages || []).map((m: any) => [m.id, m]));
+    const selected = selectionOrder
+      .map((id) => msgMap.get(id))
+      .filter((m: any) => m && m.media_url && !isEncUrl(m.media_url));
+    if (selected.length === 0) return;
     const today = new Date().toISOString().slice(0, 10);
     setBatchFileName(`Documentos ${conversation.contact_name || 'cliente'} ${today}`.replace(/[\\/:*?"<>|]/g, '_'));
     setBatchDriveMode('merge');
-    const selected = (messages || []).filter((m: any) => selectedDriveMsgIds.has(m.id) && m.media_url && !isEncUrl(m.media_url));
     setBatchDriveOrder(selected.map((m: any) => ({ id: m.id, media_url: m.media_url, media_type: m.media_type || '', message_text: m.message_text || '', message_type: m.message_type })));
     setShowBatchDriveDialog(true);
+    // Dispara IA p/ sugerir nome com base no conteúdo
+    void generateAiFileName(selected);
   };
 
   const runBatchDriveUpload = async (leadId: string, leadNameInput?: string) => {
