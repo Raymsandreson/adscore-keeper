@@ -68,6 +68,8 @@ async function runBackfill(authHeader: string) {
   state.running = true;
   state.total = 0; state.processed = 0; state.ok = 0; state.fail = 0;
   state.siblingCopied = 0; state.decrypted = 0;
+  state.errors = { expired_404: 0, network_err: 0, uazapi_fail: 0, decrypt_err: 0, no_candidate: 0, other: 0 };
+  state.sampleErrors = [];
   state.startedAt = new Date().toISOString();
   state.lastError = undefined;
   state.phase = 'scanning';
