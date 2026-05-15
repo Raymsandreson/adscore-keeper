@@ -330,6 +330,7 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
     { key: 'unanswered', label: 'Não respondidas', icon: <Clock className="h-3 w-3" /> },
     { key: 'calls', label: 'Ligações', icon: <PhoneCall className="h-3 w-3" /> },
     { key: 'groups', label: 'Grupos', icon: <Users className="h-3 w-3" /> },
+    { key: 'shared', label: 'Compartilhadas', icon: <Share2 className="h-3 w-3" /> },
   ];
 
   const counts: Record<QuickFilter, number> = {
@@ -339,6 +340,7 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
     unanswered: conversations.filter(c => isUnanswered(c)).length,
     calls: conversations.filter(c => hasCalls(c)).length,
     groups: conversations.filter(c => isGroupConversation(c)).length,
+    shared: conversations.filter(c => sharedPhonesAll.has(c.phone)).length,
   };
 
   if (loading) {
