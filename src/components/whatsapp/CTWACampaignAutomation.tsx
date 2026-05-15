@@ -98,6 +98,8 @@ export function CTWACampaignAutomation() {
   const [loadingAdsets, setLoadingAdsets] = useState(false);
   const [addingAdset, setAddingAdset] = useState('');
   const [showPaused, setShowPaused] = useState(false);
+  const [metaAccounts, setMetaAccounts] = useState<Array<{ id: string; name: string; access_token: string; account_id: string }>>([]);
+  const [selectedAccountId, setSelectedAccountId] = useState<string>('');
   const [applyToExisting, setApplyToExisting] = useState(false);
   const [addingAcolhedor, setAddingAcolhedor] = useState('');
   const [addingAutoCreateLead, setAddingAutoCreateLead] = useState(true);
@@ -134,6 +136,11 @@ export function CTWACampaignAutomation() {
 
   const getMetaCredentials = async () => {
     try {
+      // If a specific account is selected, prefer it
+      if (selectedAccountId) {
+        const acc = metaAccounts.find(a => a.id === selectedAccountId);
+        if (acc) return { accessToken: acc.access_token, adAccountId: acc.account_id };
+      }
       const { data } = await supabase
         .from('meta_ad_accounts')
         .select('access_token, account_id')
@@ -158,6 +165,23 @@ export function CTWACampaignAutomation() {
       } catch (e) { console.error('CTWA: Error parsing saved accounts:', e); }
     }
     return { accessToken: null, adAccountId: null };
+  };
+
+  const fetchMetaAccounts = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('meta_ad_accounts')
+        .select('id, name, access_token, account_id')
+        .order('created_at', { ascending: true });
+      if (error) throw error;
+      const list = (data || []) as any[];
+      setMetaAccounts(list);
+      if (list.length > 0 && !selectedAccountId) {
+        setSelectedAccountId(list[0].id);
+      }
+    } catch (e) {
+      console.error('CTWA: Error fetching meta accounts list:', e);
+    }
   };
 
   const fetchMetaCampaigns = async () => {
@@ -477,8 +501,19 @@ export function CTWACampaignAutomation() {
 
   useEffect(() => {
     fetchData();
-    fetchMetaCampaigns();
+    fetchMetaAccounts();
   }, []);
+
+  // Refetch campaigns whenever the selected ad account changes
+  useEffect(() => {
+    if (selectedAccountId) {
+      setMetaCampaigns([]);
+      setAddingCampaign('');
+      setAdsets([]);
+      fetchMetaCampaigns();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedAccountId]);
 
   const handleOpenConversations = (link: CampaignLink) => {
     setSheetLink(link);
@@ -1239,6 +1274,31 @@ export function CTWACampaignAutomation() {
         {showAddForm && (
         <div className="space-y-3 pt-1">
           <div className="space-y-3">
+            {/* Ad account selector — only when there are multiple accounts */}
+            {metaAccounts.length > 1 && (
+              <div className="space-y-1">
+                <Label className="text-[10px]">Conta de anúncios</Label>
+                <Select value={selectedAccountId} onValueChange={setSelectedAccountId}>
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue placeholder="Selecionar conta..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {metaAccounts.map(a => (
+                      <SelectItem key={a.id} value={a.id}>
+                        <span className="flex flex-col">
+                          <span className="text-xs">{a.name || a.account_id}</span>
+                          <span className="text-[10px] text-muted-foreground">act_{a.account_id}</span>
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-[10px] text-muted-foreground">
+                  As campanhas listadas vêm desta conta. Troque para ver campanhas de outra conta.
+                </p>
+              </div>
+            )}
+
             {/* Campaign selector */}
             {useManualInput ? (
               <div className="space-y-1">
