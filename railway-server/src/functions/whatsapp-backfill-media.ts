@@ -53,8 +53,8 @@ async function runBackfill(authHeader: string) {
       if (r.media_url && !isEnc(r.media_url)) continue; // já OK
       const mk = (r.metadata as any)?.message?.content?.mediaKey || (r.metadata as any)?.message?.content?.media_key;
       if (typeof mk !== 'string' || mk.length < 32) continue;
-      const ext = String(r.external_message_id || '');
-      const bare = ext.includes(':') ? ext.split(':').pop()! : ext;
+      const ext_id = String(r.external_message_id || '');
+      const bare = ext_id.includes(':') ? ext_id.split(':').pop()! : ext_id;
       const key = `${r.phone}|${bare}`;
       if (seen.has(key)) continue;
       seen.add(key);
