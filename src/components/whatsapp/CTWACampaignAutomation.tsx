@@ -110,6 +110,10 @@ export function CTWACampaignAutomation() {
   const [dateTo, setDateTo] = useState('');
   const [chatPreviewPhone, setChatPreviewPhone] = useState<string | null>(null);
   const [chatPreviewConv, setChatPreviewConv] = useState<ConversationInfo | null>(null);
+  const [swapLink, setSwapLink] = useState<CampaignLink | null>(null);
+  const [swapTargetCampaignId, setSwapTargetCampaignId] = useState<string>('');
+  const [swapManualId, setSwapManualId] = useState('');
+  const [swapManualName, setSwapManualName] = useState('');
 
   const getMetaCredentials = async () => {
     try {
