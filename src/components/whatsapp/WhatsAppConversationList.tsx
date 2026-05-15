@@ -154,14 +154,18 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
       setLeadDocStatus(docMap);
 
       const map = new Map<string, LeadInfo>();
-      for (const lead of (leadsRes.data || [])) {
-        const latestStage = stageRes.data?.find(s => s.lead_id === lead.id);
-        const leadInstances = (checklistInstancesRes.data || []).filter(c => c.lead_id === lead.id);
+      const boardById = new Map<string, string | null>();
+      for (const l of (leadsRes.data || [])) boardById.set(l.id, l.board_id ?? null);
+
+      // Iterate all known lead ids (union of Cloud + External results)
+      const allIds = new Set<string>([...boardById.keys(), ...leadNameById.keys()]);
+      for (const id of allIds) {
+        const latestStage = stageRes.data?.find(s => s.lead_id === id);
+        const leadInstances = (checklistInstancesRes.data || []).filter(c => c.lead_id === id);
         const completedIds = leadInstances
           .filter(c => c.is_completed)
           .map(c => c.checklist_template_id);
-        
-        // Collect all individually checked item IDs
+
         const checkedItemIds: string[] = [];
         for (const inst of leadInstances) {
           const items = (inst.items as any[]) || [];
@@ -170,12 +174,13 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
           }
         }
 
-        map.set(lead.id, {
-          id: lead.id,
-          board_id: lead.board_id,
+        map.set(id, {
+          id,
+          board_id: boardById.get(id) ?? null,
           current_stage: latestStage?.to_stage || null,
           completed_checklist_ids: completedIds,
           checkedItemIds,
+          lead_name: leadNameById.get(id) ?? null,
         });
       }
       setLeadInfoMap(map);
