@@ -114,6 +114,12 @@ export function CTWACampaignAutomation() {
   const [swapLink, setSwapLink] = useState<CampaignLink | null>(null);
   const [swapTargetCampaignId, setSwapTargetCampaignId] = useState<string>('');
   const [swapManualId, setSwapManualId] = useState('');
+  const [expandedLinks, setExpandedLinks] = useState<Set<string>>(new Set());
+  const toggleExpanded = (id: string) => setExpandedLinks(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
   const [swapManualName, setSwapManualName] = useState('');
 
   const getMetaCredentials = async () => {
