@@ -13,6 +13,8 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { KanbanBoard } from '@/hooks/useKanbanBoards';
+import { useSharedWithMe } from '@/hooks/useSharedWithMe';
+import { Share2 } from 'lucide-react';
 
 interface LeadInfo {
   id: string;
@@ -39,13 +41,33 @@ interface Props {
   privatePhones?: Set<string>;
 }
 
-type QuickFilter = 'all' | 'has_lead' | 'no_lead' | 'unanswered' | 'calls' | 'groups';
+type QuickFilter = 'all' | 'has_lead' | 'no_lead' | 'unanswered' | 'calls' | 'groups' | 'shared';
 type SortMode = 'alpha' | 'last_activity';
 type DirectionFilter = 'all' | 'inbound' | 'outbound';
 type DocFilter = 'all' | 'has_doc' | 'signed' | 'unsigned' | 'no_doc';
 
 export function WhatsAppConversationList({ conversations, loading, instanceSwitching, switchProgress, selectedPhone, selectedInstanceName, onSelect, boards, selectedInstanceId, bulkMode, selectedPhones, onToggleBulkPhone, onSelectAllFiltered, privatePhones }: Props) {
   const [search, setSearch] = useState('');
+  const { items: sharedWithMe } = useSharedWithMe();
+
+  // Phones (current instance) shared with me + unread set
+  const sharedPhonesAll = useMemo(() => {
+    const inst = (selectedInstanceName || '').trim().toLowerCase();
+    return new Set(
+      sharedWithMe
+        .filter(s => !inst || (s.instance_name || '').trim().toLowerCase() === inst)
+        .map(s => s.phone)
+    );
+  }, [sharedWithMe, selectedInstanceName]);
+
+  const sharedUnreadPhones = useMemo(() => {
+    const inst = (selectedInstanceName || '').trim().toLowerCase();
+    return new Set(
+      sharedWithMe
+        .filter(s => !s.acknowledged_at && (!inst || (s.instance_name || '').trim().toLowerCase() === inst))
+        .map(s => s.phone)
+    );
+  }, [sharedWithMe, selectedInstanceName]);
 
   useEffect(() => {
     setSearch('');
@@ -211,6 +233,7 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
     if (quickFilter === 'unanswered' && !isUnanswered(c)) return false;
     if (quickFilter === 'calls' && !hasCalls(c)) return false;
     if (quickFilter === 'groups' && !isGroupConversation(c)) return false;
+    if (quickFilter === 'shared' && !sharedPhonesAll.has(c.phone)) return false;
 
     // Direction filter: only show conversations that have messages in the selected direction
     if (directionFilter === 'inbound' && !c.messages.some(m => m.direction === 'inbound')) return false;
@@ -246,7 +269,7 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
     }
 
     return true;
-  }), [conversations, search, quickFilter, directionFilter, docFilter, selectedBoardId, selectedStageId, selectedChecklistItemIds, leadInfoMap, leadDocStatus, phonesWithCalls]);
+  }), [conversations, search, quickFilter, directionFilter, docFilter, selectedBoardId, selectedStageId, selectedChecklistItemIds, leadInfoMap, leadDocStatus, phonesWithCalls, sharedPhonesAll]);
 
   // Sort conversations based on mode
   const sortedFiltered = useMemo(() => {
@@ -307,6 +330,7 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
     { key: 'unanswered', label: 'Não respondidas', icon: <Clock className="h-3 w-3" /> },
     { key: 'calls', label: 'Ligações', icon: <PhoneCall className="h-3 w-3" /> },
     { key: 'groups', label: 'Grupos', icon: <Users className="h-3 w-3" /> },
+    { key: 'shared', label: 'Compartilhadas', icon: <Share2 className="h-3 w-3" /> },
   ];
 
   const counts: Record<QuickFilter, number> = {
@@ -316,6 +340,7 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
     unanswered: conversations.filter(c => isUnanswered(c)).length,
     calls: conversations.filter(c => hasCalls(c)).length,
     groups: conversations.filter(c => isGroupConversation(c)).length,
+    shared: conversations.filter(c => sharedPhonesAll.has(c.phone)).length,
   };
 
   if (loading) {
@@ -367,12 +392,13 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
             key={f.key}
             onClick={() => setQuickFilter(f.key)}
             className={cn(
-              "inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium transition-colors",
+              "relative inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium transition-colors",
               quickFilter === f.key
                 ? "bg-primary text-primary-foreground"
                 : "bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground"
             )}
           >
+            {f.icon}
             {f.label}
             <span className={cn(
               "rounded-full px-1 text-[9px]",
@@ -380,6 +406,9 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
             )}>
               {counts[f.key]}
             </span>
+            {f.key === 'shared' && sharedUnreadPhones.size > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-destructive ring-2 ring-background animate-pulse" />
+            )}
           </button>
         ))}
         <span className="text-muted-foreground/30">|</span>
