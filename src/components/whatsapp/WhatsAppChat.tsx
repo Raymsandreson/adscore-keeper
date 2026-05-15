@@ -2323,13 +2323,52 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
               </div>
             )}
 
+            {/* Análise IA do conteúdo (igual à aba Documentos do lead) */}
+            {(aiNamingFile || batchAnalysis) && (
+              <div className="rounded-md border bg-muted/30 p-3 space-y-2">
+                <div className="flex items-center gap-2 text-xs font-medium">
+                  <Sparkles className="h-3.5 w-3.5 text-primary" />
+                  Análise IA do documento
+                  {aiNamingFile && <Loader2 className="h-3 w-3 animate-spin text-blue-500" />}
+                </div>
+                {batchAnalysis && (
+                  <>
+                    <div className="flex flex-wrap gap-1.5">
+                      {batchAnalysis.title && <Badge variant="default" className="text-[10px]">{batchAnalysis.title}</Badge>}
+                      {batchAnalysis.pages_label && (
+                        <Badge variant="secondary" className="text-[10px] font-normal">{batchAnalysis.pages_label}</Badge>
+                      )}
+                    </div>
+                    {batchAnalysis.holder_name && (
+                      <div>
+                        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Titular</div>
+                        <div className="text-sm font-medium">{batchAnalysis.holder_name}</div>
+                      </div>
+                    )}
+                    {batchAnalysis.holder_cpf && (
+                      <div>
+                        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">CPF</div>
+                        <div className="text-sm font-mono">{batchAnalysis.holder_cpf}</div>
+                      </div>
+                    )}
+                    {batchAnalysis.description && (
+                      <div>
+                        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Descrição</div>
+                        <div className="text-xs leading-relaxed">{batchAnalysis.description}</div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+
             {batchDriveMode === 'merge' && (
               <div className="space-y-1">
                 <label className="text-xs font-medium text-muted-foreground flex items-center gap-1">
                   Nome do PDF
                   {aiNamingFile && (
                     <span className="inline-flex items-center gap-1 text-[10px] text-blue-500">
-                      <Loader2 className="h-3 w-3 animate-spin" /> IA analisando conteúdo…
+                      <Loader2 className="h-3 w-3 animate-spin" /> IA analisando…
                     </span>
                   )}
                 </label>
