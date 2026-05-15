@@ -784,6 +784,8 @@ export function CTWACampaignAutomation() {
     setSwapTargetCampaignId('');
     setSwapManualId('');
     setSwapManualName('');
+    fetchData();
+  };
 
   if (loading) {
     return (
