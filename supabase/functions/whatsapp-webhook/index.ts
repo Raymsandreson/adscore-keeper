@@ -1561,9 +1561,18 @@ Deno.serve(async (req) => {
         if (mediaDownload.publicUrl) {
           storedMediaUrl = mediaDownload.publicUrl;
           console.log("Media stored at:", mediaDownload.publicUrl);
+        } else if (isEncryptedWhatsAppUrl(storedMediaUrl)) {
+          // Não grava URL criptografada do WhatsApp (.enc/whatsapp.net) —
+          // o navegador não consegue tocar. Marca null e o frontend mostra "Sincronizar".
+          console.error(
+            "Media download failed for encrypted source; nulling URL instead of saving .enc",
+            { externalMessageId, messageType, instanceName },
+          );
+          storedMediaUrl = null;
         } else {
           console.log("Media download failed, keeping original URL");
         }
+
       } else {
         console.log("No instance token/baseUrl for media download");
       }
