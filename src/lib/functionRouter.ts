@@ -26,6 +26,7 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
   'onboarding-checkpoint-reprocess': 'railway',
   'regenerate-lead-name': 'railway',
   'lead-close-sequence-info': 'railway',
+  'whatsapp-download-media': 'railway',
 
   // --- Todas as demais ficam no Cloud por padrão ---
 };
