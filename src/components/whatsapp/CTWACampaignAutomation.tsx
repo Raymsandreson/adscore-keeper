@@ -1012,7 +1012,7 @@ export function CTWACampaignAutomation() {
                       <span className="h-4 w-4 rounded bg-primary/10 text-primary flex items-center justify-center text-[9px]">1</span>
                       Roteamento da conversa
                     </h4>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <div className="space-y-1">
                         <Label className="text-[10px] text-muted-foreground flex items-center gap-1">
                           <Phone className="h-3 w-3" /> Instância
@@ -1036,6 +1036,29 @@ export function CTWACampaignAutomation() {
                           <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
                           <SelectContent>
                             {agents.map(a => <SelectItem key={a.id} value={a.id}>#{a.shortcut_name}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[10px] text-muted-foreground flex items-center gap-1">
+                          <User className="h-3 w-3" /> Acolhedor (dono dos leads)
+                        </Label>
+                        <Select
+                          value={linkAny.assigned_user_id || 'auto'}
+                          onValueChange={v => handleUpdate(link.id, { assigned_user_id: v === 'auto' ? null : v } as any)}
+                        >
+                          <SelectTrigger className="h-8 text-xs">
+                            <SelectValue placeholder="Automático (dono da instância)" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="auto" className="text-xs">
+                              Automático (dono da instância)
+                            </SelectItem>
+                            {profiles.map(p => (
+                              <SelectItem key={p.user_id} value={p.user_id} className="text-xs">
+                                {p.full_name || p.email}
+                              </SelectItem>
+                            ))}
                           </SelectContent>
                         </Select>
                       </div>
