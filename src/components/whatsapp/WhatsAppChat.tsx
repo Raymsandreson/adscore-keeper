@@ -533,7 +533,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     fetchLeads('');
   };
 
-  const isEncUrl = (u?: string | null) => !!u && /\.enc(?:\?|$)/i.test(u);
+  const isEncUrl = (u?: string | null) => !!u && (/\.enc(?:\?|$)/i.test(u) || /^https?:\/\/(?:[a-z0-9-]+\.)*whatsapp\.net\//i.test(u));
   const isMissingMedia = (m: any) =>
     ['image', 'video', 'audio', 'document'].includes(m?.message_type) &&
     (!m.media_url || isEncUrl(m.media_url));
@@ -541,21 +541,16 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const handleResyncMedia = async (msg: any) => {
     if (resyncingMsgId) return;
     setResyncingMsgId(msg.id);
-    const t = toast.loading('Sincronizando mídia...');
+    const t = toast.loading('Baixando mídia original...');
     try {
-      const rawId = msg.external_message_id?.split(':').pop();
-      const { data, error } = await supabase.functions.invoke('whatsapp-fetch-history', {
+      const { data, error } = await cloudFunctions.invoke('whatsapp-download-media', {
         body: {
-          phone: conversation.phone,
-          instance_name: conversation.instance_name,
-          mode: rawId ? 'exact' : 'history',
-          messageid: rawId,
-          count: 5,
+          message_row_id: msg.id,
         },
       });
       if (error) throw error;
-      if (data?.success === false) throw new Error(data?.error || 'Falha ao sincronizar');
-      toast.success('Sync solicitado! A mídia chega em alguns segundos.', { id: t });
+      if ((data as any)?.success === false) throw new Error((data as any)?.error || 'Falha ao baixar mídia');
+      toast.success('Mídia baixada e salva no banco externo.', { id: t });
     } catch (e: any) {
       toast.error(e?.message || 'Erro ao sincronizar mídia', { id: t });
     } finally {
@@ -578,17 +573,12 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     for (let i = 0; i < missing.length; i++) {
       const msg = missing[i];
       try {
-        const rawId = msg.external_message_id?.split(':').pop();
-        const { data, error } = await supabase.functions.invoke('whatsapp-fetch-history', {
+        const { data, error } = await cloudFunctions.invoke('whatsapp-download-media', {
           body: {
-            phone: conversation.phone,
-            instance_name: conversation.instance_name,
-            mode: rawId ? 'exact' : 'history',
-            messageid: rawId,
-            count: 5,
+            message_row_id: msg.id,
           },
         });
-        if (error || data?.success === false) fail++;
+        if (error || (data as any)?.success === false) fail++;
         else ok++;
       } catch {
         fail++;
@@ -597,7 +587,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
       // Throttle: 350ms entre chamadas para não saturar a UazAPI
       await new Promise((r) => setTimeout(r, 350));
     }
-    toast.success(`Sync solicitado: ${ok} ok, ${fail} falha(s). As mídias chegam pelo webhook em alguns segundos.`, { id: t });
+    toast.success(`Download concluído: ${ok} ok, ${fail} falha(s).`, { id: t });
     setBulkResyncing(false);
     setBulkResyncProgress(null);
   };
