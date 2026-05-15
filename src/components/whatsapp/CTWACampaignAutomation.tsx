@@ -99,6 +99,13 @@ export function CTWACampaignAutomation() {
   const [addingAdset, setAddingAdset] = useState('');
   const [showPaused, setShowPaused] = useState(false);
   const [applyToExisting, setApplyToExisting] = useState(false);
+  const [addingAcolhedor, setAddingAcolhedor] = useState('');
+  const [addingAutoCreateLead, setAddingAutoCreateLead] = useState(true);
+  const [addingInProgressAgent, setAddingInProgressAgent] = useState('');
+  const [addingClosedAgent, setAddingClosedAgent] = useState('');
+  const [addingRefusedAgent, setAddingRefusedAgent] = useState('');
+  const [addingInviavelAgent, setAddingInviavelAgent] = useState('');
+  const [addingMaxUnanswered, setAddingMaxUnanswered] = useState(0);
   
   const [linkConversations, setLinkConversations] = useState<Record<string, ConversationInfo[]>>({});
   const [conversationCounts, setConversationCounts] = useState<Record<string, number>>({});
@@ -667,6 +674,13 @@ export function CTWACampaignAutomation() {
       agent_id: addingAgent || null,
       campaign_id: campaignId,
       campaign_name: campaignName,
+      assigned_user_id: addingAcolhedor || null,
+      auto_create_lead: addingAutoCreateLead,
+      in_progress_agent_id: addingInProgressAgent || null,
+      closed_agent_id: addingClosedAgent || null,
+      refused_agent_id: addingRefusedAgent || null,
+      inviavel_agent_id: addingInviavelAgent || null,
+      max_unanswered_messages: addingMaxUnanswered || 0,
     };
     if (detectedInstance) payload.instance_id = detectedInstance.id;
     else if (addingInstance) payload.instance_id = addingInstance;
@@ -693,6 +707,13 @@ export function CTWACampaignAutomation() {
     setManualCampaignId('');
     setManualCampaignName('');
     setApplyToExisting(false);
+    setAddingAcolhedor('');
+    setAddingAutoCreateLead(true);
+    setAddingInProgressAgent('');
+    setAddingClosedAgent('');
+    setAddingRefusedAgent('');
+    setAddingInviavelAgent('');
+    setAddingMaxUnanswered(0);
     fetchData();
   };
 
@@ -1389,20 +1410,40 @@ export function CTWACampaignAutomation() {
               ) : null;
             })()}
 
-            {/* Agent selector */}
-            <div className="space-y-1">
-              <Label className="text-[10px]">Agente IA (opcional - exclusivo para leads desta campanha)</Label>
-              <Select value={addingAgent || 'none'} onValueChange={(v) => setAddingAgent(v === 'none' ? '' : v)}>
-                <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Sem agente" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Sem agente IA</SelectItem>
-                  {agents.length > 0 ? (
-                    agents.map(a => <SelectItem key={a.id} value={a.id}>#{a.shortcut_name}</SelectItem>)
-                  ) : (
-                    <div className="px-2 py-1.5 text-xs text-muted-foreground">Nenhum agente ativo</div>
-                  )}
-                </SelectContent>
-              </Select>
+            {/* Agent IA + Acolhedor */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-[10px] flex items-center gap-1">
+                  <Sparkles className="h-3 w-3" /> Agente IA (opcional)
+                </Label>
+                <Select value={addingAgent || 'none'} onValueChange={(v) => setAddingAgent(v === 'none' ? '' : v)}>
+                  <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Sem agente" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Sem agente IA</SelectItem>
+                    {agents.length > 0 ? (
+                      agents.map(a => <SelectItem key={a.id} value={a.id}>#{a.shortcut_name}</SelectItem>)
+                    ) : (
+                      <div className="px-2 py-1.5 text-xs text-muted-foreground">Nenhum agente ativo</div>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[10px] flex items-center gap-1">
+                  <User className="h-3 w-3" /> Acolhedor (dono dos leads)
+                </Label>
+                <Select value={addingAcolhedor || 'auto'} onValueChange={(v) => setAddingAcolhedor(v === 'auto' ? '' : v)}>
+                  <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Automático (dono da instância)" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="auto" className="text-xs">Automático (dono da instância)</SelectItem>
+                    {profiles.map(p => (
+                      <SelectItem key={p.user_id} value={p.user_id} className="text-xs">
+                        {p.full_name || p.email}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             {/* Board / Stage selectors */}
@@ -1428,6 +1469,87 @@ export function CTWACampaignAutomation() {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+            </div>
+
+            {/* Auto-create lead toggle */}
+            <div className="flex items-center gap-2 bg-muted/50 rounded-md p-2">
+              <Switch
+                id="add-auto-lead"
+                checked={addingAutoCreateLead}
+                onCheckedChange={setAddingAutoCreateLead}
+              />
+              <Label htmlFor="add-auto-lead" className="text-xs leading-tight">
+                Criar lead automaticamente quando mensagem chegar desta campanha
+              </Label>
+            </div>
+
+            {/* Post-classification agents */}
+            <div className="space-y-2 border-t pt-3">
+              <Label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                Agentes pós-classificação (opcional)
+              </Label>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div className="space-y-1">
+                  <span className="text-[9px] font-medium text-blue-600">🔄 Em andamento</span>
+                  <Select value={addingInProgressAgent || 'none'} onValueChange={(v) => setAddingInProgressAgent(v === 'none' ? '' : v)}>
+                    <SelectTrigger className="h-7 text-[10px]"><SelectValue placeholder="Mesmo agente" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none" className="text-xs">Sem agente específico</SelectItem>
+                      {agents.map(a => <SelectItem key={a.id} value={a.id} className="text-xs">#{a.shortcut_name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <span className="text-[9px] font-medium text-green-600">✅ Fechado</span>
+                  <Select value={addingClosedAgent || 'none'} onValueChange={(v) => setAddingClosedAgent(v === 'none' ? '' : v)}>
+                    <SelectTrigger className="h-7 text-[10px]"><SelectValue placeholder="Mesmo agente" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none" className="text-xs">Sem agente específico</SelectItem>
+                      {agents.map(a => <SelectItem key={a.id} value={a.id} className="text-xs">#{a.shortcut_name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <span className="text-[9px] font-medium text-red-500">❌ Recusado</span>
+                  <Select value={addingRefusedAgent || 'none'} onValueChange={(v) => setAddingRefusedAgent(v === 'none' ? '' : v)}>
+                    <SelectTrigger className="h-7 text-[10px]"><SelectValue placeholder="Mesmo agente" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none" className="text-xs">Sem agente específico</SelectItem>
+                      {agents.map(a => <SelectItem key={a.id} value={a.id} className="text-xs">#{a.shortcut_name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <span className="text-[9px] font-medium text-orange-500">⚠️ Inviável</span>
+                  <Select value={addingInviavelAgent || 'none'} onValueChange={(v) => setAddingInviavelAgent(v === 'none' ? '' : v)}>
+                    <SelectTrigger className="h-7 text-[10px]"><SelectValue placeholder="Mesmo agente" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none" className="text-xs">Sem agente específico</SelectItem>
+                      {agents.map(a => <SelectItem key={a.id} value={a.id} className="text-xs">#{a.shortcut_name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+
+            {/* Limite de mensagens sem resposta */}
+            <div className="space-y-1 border-t pt-3">
+              <Label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                Limite de mensagens sem resposta
+              </Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="number"
+                  min={0}
+                  max={50}
+                  value={addingMaxUnanswered}
+                  onChange={e => setAddingMaxUnanswered(parseInt(e.target.value) || 0)}
+                  className="h-7 w-20 text-xs"
+                />
+                <span className="text-[10px] text-muted-foreground">
+                  msgs sem resposta → classifica como <strong className="text-orange-500">Inviável</strong> (0 = desativado)
+                </span>
               </div>
             </div>
 
