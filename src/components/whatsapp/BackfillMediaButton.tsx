@@ -12,6 +12,9 @@ type Status = {
   processed?: number;
   ok?: number;
   fail?: number;
+  siblingCopied?: number;
+  decrypted?: number;
+  phase?: string;
   startedAt?: string;
   lastError?: string;
 };
