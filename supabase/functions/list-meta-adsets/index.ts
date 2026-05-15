@@ -114,7 +114,7 @@ serve(async (req) => {
 
     console.log(`[list-meta-adsets] ✅ Meta returned ${(data.data || []).length} adsets (raw). Paging: ${data.paging?.next ? 'has next page' : 'no more pages'}`);
 
-    const adsets = (data.data || []).map((a: any) => ({
+    const rawAdsets = (data.data || []).map((a: any) => ({
       id: a.id,
       name: a.name,
       status: a.status,
@@ -124,6 +124,35 @@ serve(async (req) => {
       destination_phone: a.promoted_object?.whatsapp_phone_number || null,
       page_id: a.promoted_object?.page_id || null,
       destination_type: a.destination_type || null,
+    }));
+
+    // Para conjuntos sem whatsapp_phone_number direto, resolver via Page
+    const pageIdsToResolve = Array.from(new Set(
+      rawAdsets.filter((a: any) => !a.destination_phone && a.page_id).map((a: any) => a.page_id)
+    )) as string[];
+    const pagePhoneMap = new Map<string, string>();
+    await Promise.all(pageIdsToResolve.map(async (pageId) => {
+      try {
+        const pageUrl = `https://graph.facebook.com/v25.0/${pageId}?fields=connected_whatsapp_business_phone_number{display_phone_number},whatsapp_number&access_token=${accessToken}`;
+        const pr = await fetch(pageUrl);
+        const pj = await pr.json();
+        const phone = pj?.connected_whatsapp_business_phone_number?.display_phone_number
+          || pj?.whatsapp_number
+          || null;
+        if (phone) {
+          pagePhoneMap.set(pageId, String(phone).replace(/\D/g, ''));
+          console.log(`[list-meta-adsets] 📞 Page ${pageId} → ${phone}`);
+        } else {
+          console.log(`[list-meta-adsets] ⚠️ Page ${pageId} sem telefone WA: ${JSON.stringify(pj).slice(0, 200)}`);
+        }
+      } catch (e) {
+        console.warn(`[list-meta-adsets] Falha resolvendo page ${pageId}: ${e instanceof Error ? e.message : e}`);
+      }
+    }));
+
+    const adsets = rawAdsets.map((a: any) => ({
+      ...a,
+      destination_phone: a.destination_phone || (a.page_id ? pagePhoneMap.get(a.page_id) || null : null),
     }));
 
     cache.set(cacheKey, { data: adsets, expiresAt: Date.now() + CACHE_TTL_MS, storedAt: Date.now() });
