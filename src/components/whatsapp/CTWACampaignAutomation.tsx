@@ -990,10 +990,18 @@ export function CTWACampaignAutomation() {
                   <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleDelete(link.id)} title="Remover vínculo">
                     <X className="h-3.5 w-3.5 text-destructive" />
                   </Button>
-                  <div className="w-px h-5 bg-border mx-1" />
-                  <div className="h-7 w-7 flex items-center justify-center text-muted-foreground">
-                    {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                  </div>
+                </div>
+                {/* Chevron FORA do stopPropagation — clique nele agora propaga e alterna o expand */}
+                <button
+                  type="button"
+                  className="h-7 w-7 flex items-center justify-center text-muted-foreground hover:text-foreground shrink-0"
+                  onClick={(e) => { e.stopPropagation(); toggleExpanded(link.id); }}
+                  title={isExpanded ? 'Recolher' : 'Expandir'}
+                >
+                  {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                </button>
+                <div className="hidden">
+
                 </div>
               </button>
 
