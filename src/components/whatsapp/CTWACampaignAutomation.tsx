@@ -98,6 +98,8 @@ export function CTWACampaignAutomation() {
   const [loadingAdsets, setLoadingAdsets] = useState(false);
   const [addingAdset, setAddingAdset] = useState('');
   const [showPaused, setShowPaused] = useState(false);
+  const [metaAccounts, setMetaAccounts] = useState<Array<{ id: string; name: string; access_token: string; account_id: string }>>([]);
+  const [selectedAccountId, setSelectedAccountId] = useState<string>('');
   const [applyToExisting, setApplyToExisting] = useState(false);
   const [addingAcolhedor, setAddingAcolhedor] = useState('');
   const [addingAutoCreateLead, setAddingAutoCreateLead] = useState(true);
