@@ -136,6 +136,11 @@ export function CTWACampaignAutomation() {
 
   const getMetaCredentials = async () => {
     try {
+      // If a specific account is selected, prefer it
+      if (selectedAccountId) {
+        const acc = metaAccounts.find(a => a.id === selectedAccountId);
+        if (acc) return { accessToken: acc.access_token, adAccountId: acc.account_id };
+      }
       const { data } = await supabase
         .from('meta_ad_accounts')
         .select('access_token, account_id')
@@ -160,6 +165,23 @@ export function CTWACampaignAutomation() {
       } catch (e) { console.error('CTWA: Error parsing saved accounts:', e); }
     }
     return { accessToken: null, adAccountId: null };
+  };
+
+  const fetchMetaAccounts = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('meta_ad_accounts')
+        .select('id, name, access_token, account_id')
+        .order('created_at', { ascending: true });
+      if (error) throw error;
+      const list = (data || []) as any[];
+      setMetaAccounts(list);
+      if (list.length > 0 && !selectedAccountId) {
+        setSelectedAccountId(list[0].id);
+      }
+    } catch (e) {
+      console.error('CTWA: Error fetching meta accounts list:', e);
+    }
   };
 
   const fetchMetaCampaigns = async () => {
