@@ -1484,18 +1484,6 @@ export function CTWACampaignAutomation() {
               </div>
             </div>
 
-            {/* Auto-create lead toggle */}
-            <div className="flex items-center gap-2 bg-muted/50 rounded-md p-2">
-              <Switch
-                id="add-auto-lead"
-                checked={addingAutoCreateLead}
-                onCheckedChange={setAddingAutoCreateLead}
-              />
-              <Label htmlFor="add-auto-lead" className="text-xs leading-tight">
-                Criar lead automaticamente quando mensagem chegar desta campanha
-              </Label>
-            </div>
-
             {/* Post-classification agents */}
             <div className="space-y-2 border-t pt-3">
               <Label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
