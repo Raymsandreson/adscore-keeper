@@ -2671,26 +2671,34 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                       toggleDriveSelection(msg.id);
                     }}
                   >
-                    {driveSelectionMode && (
-                      <button
-                        type="button"
-                        onClick={() => toggleDriveSelection(msg.id)}
-                        className={cn(
-                          "absolute top-2 left-2 z-10 h-7 w-7 rounded-md border-2 flex items-center justify-center transition-colors text-sm font-bold",
-                          selectedDriveMsgIds.has(msg.id) ? "bg-blue-500 border-blue-500 text-white" : "bg-white/90 border-white text-transparent"
-                        )}
-                        title={selectedDriveMsgIds.has(msg.id) ? `Posição #${getSelectionIndex(msg.id)} — toque p/ desmarcar` : 'Selecionar para Drive'}
-                      >
-                        {selectedDriveMsgIds.has(msg.id) ? getSelectionIndex(msg.id) : '✓'}
-                      </button>
-                    )}
+                    {/* Checkbox: visível se em modo seleção, ou ao passar o mouse (desktop) */}
+                    <button
+                      type="button"
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); setDriveSelectionMode(true); toggleDriveSelection(msg.id); }}
+                      className={cn(
+                        "absolute top-2 left-2 z-10 h-7 w-7 rounded-md border-2 flex items-center justify-center transition-all text-sm font-bold",
+                        selectedDriveMsgIds.has(msg.id)
+                          ? "bg-blue-500 border-blue-500 text-white opacity-100"
+                          : driveSelectionMode
+                            ? "bg-white/90 border-white text-transparent opacity-100"
+                            : "bg-white/90 border-white text-transparent opacity-0 group-hover/img:opacity-100"
+                      )}
+                      title={selectedDriveMsgIds.has(msg.id) ? `Posição #${getSelectionIndex(msg.id)} — clique p/ desmarcar` : 'Selecionar para Drive (Shift+clique também funciona)'}
+                    >
+                      {selectedDriveMsgIds.has(msg.id) ? getSelectionIndex(msg.id) : '✓'}
+                    </button>
                     <a
                       href={msg.media_url}
                       target="_blank"
                       rel="noopener noreferrer"
                       onClick={(e) => {
                         if (longPressFiredRef.current) { e.preventDefault(); longPressFiredRef.current = false; return; }
-                        if (driveSelectionMode) { e.preventDefault(); toggleDriveSelection(msg.id); }
+                        // Shift+clique no PC = entra no modo seleção e marca/desmarca
+                        if (e.shiftKey || driveSelectionMode) {
+                          e.preventDefault();
+                          setDriveSelectionMode(true);
+                          toggleDriveSelection(msg.id);
+                        }
                       }}
                     >
                       <img
@@ -2761,22 +2769,36 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                           </object>
                         </div>
                       )}
-                      <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-muted/40">
-                        {driveSelectionMode && (
-                          <button
-                            type="button"
-                            onClick={() => toggleDriveSelection(msg.id)}
-                            className={cn(
-                              "h-6 w-6 rounded border-2 flex items-center justify-center shrink-0 transition-colors text-[11px] font-bold",
-                              selectedDriveMsgIds.has(msg.id) ? "bg-blue-500 border-blue-500 text-white" : "bg-background border-muted-foreground/40 text-transparent"
-                            )}
-                            title={selectedDriveMsgIds.has(msg.id) ? `Posição #${getSelectionIndex(msg.id)} — toque p/ desmarcar` : 'Selecionar para Drive'}
-                          >
-                            {selectedDriveMsgIds.has(msg.id) ? getSelectionIndex(msg.id) : '✓'}
-                          </button>
-                        )}
+                      <div className="group/doc flex items-center gap-2 px-2 py-1.5 rounded-md bg-muted/40">
+                        <button
+                          type="button"
+                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); setDriveSelectionMode(true); toggleDriveSelection(msg.id); }}
+                          className={cn(
+                            "h-6 w-6 rounded border-2 flex items-center justify-center shrink-0 transition-all text-[11px] font-bold",
+                            selectedDriveMsgIds.has(msg.id)
+                              ? "bg-blue-500 border-blue-500 text-white opacity-100"
+                              : driveSelectionMode
+                                ? "bg-background border-muted-foreground/40 text-transparent opacity-100"
+                                : "bg-background border-muted-foreground/40 text-transparent opacity-0 group-hover/doc:opacity-100"
+                          )}
+                          title={selectedDriveMsgIds.has(msg.id) ? `Posição #${getSelectionIndex(msg.id)} — clique p/ desmarcar` : 'Selecionar para Drive (Shift+clique também funciona)'}
+                        >
+                          {selectedDriveMsgIds.has(msg.id) ? getSelectionIndex(msg.id) : '✓'}
+                        </button>
                         <FileText className="h-4 w-4 text-orange-500 shrink-0" />
-                        <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="flex-1 text-xs underline truncate">
+                        <a
+                          href={msg.media_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => {
+                            if (e.shiftKey || driveSelectionMode) {
+                              e.preventDefault();
+                              setDriveSelectionMode(true);
+                              toggleDriveSelection(msg.id);
+                            }
+                          }}
+                          className="flex-1 text-xs underline truncate"
+                        >
                           {fileName}
                         </a>
                         <a href={msg.media_url} download target="_blank" rel="noopener noreferrer" className="opacity-70 hover:opacity-100" title="Baixar">
