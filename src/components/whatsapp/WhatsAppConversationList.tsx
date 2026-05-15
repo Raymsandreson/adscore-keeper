@@ -13,6 +13,8 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { KanbanBoard } from '@/hooks/useKanbanBoards';
+import { useSharedWithMe } from '@/hooks/useSharedWithMe';
+import { Share2 } from 'lucide-react';
 
 interface LeadInfo {
   id: string;
