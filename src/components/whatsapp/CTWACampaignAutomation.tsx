@@ -753,6 +753,38 @@ export function CTWACampaignAutomation() {
     fetchData();
   };
 
+  const handleSwapCampaign = async () => {
+    if (!swapLink) return;
+    let newId = '';
+    let newName = '';
+    if (swapTargetCampaignId === '__manual__') {
+      if (!swapManualId.trim()) { toast.error('Informe o novo ID da campanha'); return; }
+      newId = swapManualId.trim();
+      newName = swapManualName.trim() || newId;
+    } else {
+      if (!swapTargetCampaignId) { toast.error('Selecione a nova campanha'); return; }
+      newId = swapTargetCampaignId;
+      const camp = metaCampaigns.find(c => c.campaign_id === newId);
+      newName = camp?.campaign_name || newId;
+    }
+    if (newId === swapLink.campaign_id) { toast.error('Selecione uma campanha diferente'); return; }
+    // Make sure the new id is not already taken by another link
+    const conflict = links.find(l => l.id !== swapLink.id && l.campaign_id === newId);
+    if (conflict) {
+      toast.error('Já existe outro vínculo usando essa campanha. Apague-o primeiro ou escolha outra.');
+      return;
+    }
+    const { error } = await supabase
+      .from('whatsapp_agent_campaign_links' as any)
+      .update({ campaign_id: newId, campaign_name: newName } as any)
+      .eq('id', swapLink.id);
+    if (error) { toast.error('Erro ao trocar campanha: ' + error.message); return; }
+    toast.success('Campanha trocada — todas as configurações foram preservadas');
+    setSwapLink(null);
+    setSwapTargetCampaignId('');
+    setSwapManualId('');
+    setSwapManualName('');
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-8 gap-2 text-muted-foreground">
