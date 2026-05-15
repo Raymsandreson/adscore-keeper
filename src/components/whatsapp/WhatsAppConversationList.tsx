@@ -48,6 +48,26 @@ type DocFilter = 'all' | 'has_doc' | 'signed' | 'unsigned' | 'no_doc';
 
 export function WhatsAppConversationList({ conversations, loading, instanceSwitching, switchProgress, selectedPhone, selectedInstanceName, onSelect, boards, selectedInstanceId, bulkMode, selectedPhones, onToggleBulkPhone, onSelectAllFiltered, privatePhones }: Props) {
   const [search, setSearch] = useState('');
+  const { items: sharedWithMe } = useSharedWithMe();
+
+  // Phones (current instance) shared with me + unread set
+  const sharedPhonesAll = useMemo(() => {
+    const inst = (selectedInstanceName || '').trim().toLowerCase();
+    return new Set(
+      sharedWithMe
+        .filter(s => !inst || (s.instance_name || '').trim().toLowerCase() === inst)
+        .map(s => s.phone)
+    );
+  }, [sharedWithMe, selectedInstanceName]);
+
+  const sharedUnreadPhones = useMemo(() => {
+    const inst = (selectedInstanceName || '').trim().toLowerCase();
+    return new Set(
+      sharedWithMe
+        .filter(s => !s.acknowledged_at && (!inst || (s.instance_name || '').trim().toLowerCase() === inst))
+        .map(s => s.phone)
+    );
+  }, [sharedWithMe, selectedInstanceName]);
 
   useEffect(() => {
     setSearch('');
