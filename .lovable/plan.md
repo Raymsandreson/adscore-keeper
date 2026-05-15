@@ -1,82 +1,85 @@
-## Escopo
+# Painel "Foco Agora" — topo do WhatsApp
 
-Duas entregas independentes:
+## O que é (em palavras simples)
 
-### 1) Tipo de campo "Senha" para campos personalizados do lead
-Tipo novo que mostra `••••••••` por padrão, com botão de olho pra revelar e botão de copiar pra colar no gov.br sem precisar enxergar. Armazenado em `value_text` (sem mudança de schema). Funciona em qualquer aba/funil.
+Hoje, em cima do WhatsApp aparece uma "tira fina" de produtividade (a barra vermelha que você marcou). Vamos trocar essa tira por um **painel grande e visível** com 4 KPIs e 3 cards de ação imediata — exatamente como o primeiro print que você enviou.
 
-### 2) "Personalizar" no formulário do contato (igual ao do lead)
-Botão "Personalizar" no `ContactDetailSheet` abrindo um editor espelho do `LeadFieldsUnifiedEditor`, com:
-- Criar / editar / excluir abas customizadas (além das fixas Info, Chamadas, Histórico, Local, Grupos, Vínculos, Leads, IA)
-- Criar / editar / excluir campos por aba, com todos os tipos (texto, número, data, seleção, checkbox, link, **senha**)
-- Reordenar abas e campos
-- Renderizar os campos customizados na aba correspondente do contato
+Pensa assim: a tira fina é um painel de carro com 1 ponteirinho. Vamos trocar por um painel completo de avião — com instrumentos grandes que mostram, num olhar, o que você precisa atacar agora.
 
-## O que vai mudar
+## Onde vai aparecer
 
-### Banco (Supabase Externo, via `run-external-migration`)
+- **Só dentro da rota `/whatsapp`** — nas outras telas (Leads, Atividades, etc.) a barra fina antiga continua igual.
+- O global `UserProductivityBanner` será escondido quando a rota for `/whatsapp`, e o novo painel ocupa esse espaço.
 
-```sql
-CREATE TABLE contact_custom_fields (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  field_name text NOT NULL,
-  field_type text NOT NULL,       -- text|number|date|select|checkbox|url|password
-  field_options jsonb DEFAULT '[]',
-  is_required boolean DEFAULT false,
-  display_order int DEFAULT 0,
-  tab text DEFAULT 'info',
-  created_at timestamptz DEFAULT now(),
-  updated_at timestamptz DEFAULT now()
-);
+## Estrutura visual (espelha o print)
 
-CREATE TABLE contact_custom_field_values (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  contact_id uuid NOT NULL,
-  field_id uuid NOT NULL REFERENCES contact_custom_fields(id) ON DELETE CASCADE,
-  value_text text,
-  value_number numeric,
-  value_date date,
-  value_boolean boolean,
-  created_at timestamptz DEFAULT now(),
-  updated_at timestamptz DEFAULT now(),
-  UNIQUE(contact_id, field_id)
-);
-
-CREATE TABLE contact_tab_layouts (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  tab_key text NOT NULL UNIQUE,
-  label text NOT NULL,
-  display_order int DEFAULT 0,
-  hidden boolean DEFAULT false,
-  is_custom boolean DEFAULT false,
-  created_at timestamptz DEFAULT now()
-);
-
-CREATE INDEX idx_contact_custom_field_values_contact ON contact_custom_field_values(contact_id);
+```text
+┌─────────────────────────────────────────────────────────────────┐
+│  KA  Karolyne · visão pessoal       [Ontem][Hoje][Semana]...   │
+│      ⏱ 4h 28min online              [👥 Equipe / 🙋 Pessoal]    │
+├─────────────────────────────────────────────────────────────────┤
+│  Leads      │  Fechados   │  Conversão  │  Inviáveis           │
+│  12         │  3 / 5      │  25%        │  2                   │
+│  recebidos  │  meta 5     │  3 de 12    │  descartados         │
+│  ↗ +3 em 2h │  ▰▰▰░░ 60%  │  ↗ +7pp     │  Top: sem docs       │
+├─────────────────────────────────────────────────────────────────┤
+│  🔥 FOCO AGORA                                                  │
+│  ┌─────────────┬────────────────┬────────────────────────────┐ │
+│  │ Faltam docs │ Pend. assinat. │ Sem resposta               │ │
+│  │ 4 leads     │ 6 no ZapSign   │ Eu devo (12) Cliente sumiu │ │
+│  │ [Cobrar]    │ [Reenviar]     │ 12 aguardando você [Resp.] │ │
+│  └─────────────┴────────────────┴────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-Sem `board_id` (contato é global). Sem RLS extra (mesmo padrão das tabelas atuais de contato no Externo).
+## Origem dos dados (tudo do Externo)
 
-### Código
+| KPI | Fonte | Filtro |
+|---|---|---|
+| Leads recebidos | `leads` | `created_at` no período + `created_by`/equipe |
+| Fechados / meta | `leads` | `lead_status='closed'` no período; meta de `routine_process_goals` (steps=closed) |
+| Conversão | calc | fechados ÷ recebidos |
+| Inviáveis | `leads` | `lead_status='discarded'`; top motivo via `details->>'discard_reason'` |
+| Faltam docs | `leads` join `lead_processes` | leads no estágio "documentos" sem anexo |
+| Pendentes ZapSign | `zapsign_signatures` | `status='sent'` AND `last_clicked_at IS NULL` AND `created_at < now()-48h` |
+| Sem resposta | `whatsapp_messages` (snapshot via `useWhatsAppMessages`) | última msg `direction='inbound'` há +30min |
+| Online (4h28min) | `user_session_log` (Cloud) | soma da sessão de hoje |
 
-**Senha (lead, mudança pequena):**
-- `src/hooks/useLeadCustomFields.ts` — adicionar `'password'` ao type `FieldType`.
-- `src/components/leads/CustomFieldsForm.tsx` — render `password` (input `type="password"` + olho + copiar via `navigator.clipboard`).
-- `src/components/leads/LeadFieldsUnifiedEditor.tsx` — opção "Senha" no seletor de tipo.
+## Modo Pessoal vs Equipe
 
-**Contato (novo):**
-- `src/hooks/useContactCustomFields.ts` — espelho do hook do lead, sem `board_id`.
-- `src/hooks/useContactTabLayout.ts` — espelho do `useLeadTabLayout`.
-- `src/components/contacts/ContactFieldsUnifiedEditor.tsx` — espelho do `LeadFieldsUnifiedEditor` adaptado pra contato.
-- `src/components/contacts/ContactCustomFieldsForm.tsx` — render dos campos por aba (reusa `CustomFieldInput` do lead, que ganha suporte a `password`).
-- `src/components/contacts/ContactDetailSheet.tsx` — botão "Personalizar" no header + render das abas customizadas + persistência dos valores ao salvar.
+- Toggle no header. **Pessoal** = filtra por `created_by = user.id` (e mensagens das instâncias do usuário). **Equipe** = todos os membros do(s) time(s) do usuário (via `team_members` no Cloud + lista de `user_id` aplicada nos filtros do Externo).
+- O título muda: "Karolyne · visão pessoal" ↔ "Equipe Vendas · visão do time".
 
-### O que NÃO vai mudar
-- Layout das abas fixas atuais do contato (Info / Chamadas / Histórico / Local / Grupos / Vínculos / Leads / IA) — só ganham companhia das customizadas.
-- Banco Lovable Cloud (proibido por política — tudo no Externo).
-- Forms do lead (nada além do tipo senha).
-- Schema de `lead_custom_fields` (senha cabe em `value_text`).
+## Seletor de período
 
-### Risco / rollback
-- Tabelas novas isoladas; rollback = `DROP TABLE contact_custom_fields, contact_custom_field_values, contact_tab_layouts CASCADE;`.
-- "Senha" é só máscara visual — quem tem acesso ao registro tem acesso ao valor. Não é criptografia real (não dá pra ser, porque o gov.br precisa do valor em claro pra colar). Vou deixar isso explícito no tooltip do campo pra você não confundir com cofre de senhas.
+`Ontem | Hoje | Semana | Mês | Ano | 📅 Personalizado` — segue o mesmo padrão do `MonitorHeader` que já existe.
+
+## Arquivos novos
+
+- `src/components/whatsapp/FocusDashboard/FocusDashboard.tsx` — componente principal
+- `src/components/whatsapp/FocusDashboard/KpiCard.tsx` — card colorido reutilizável (Leads/Fechados/Conversão/Inviáveis)
+- `src/components/whatsapp/FocusDashboard/FocusActionCard.tsx` — card de ação (Faltam docs / Pendentes / Sem resposta)
+- `src/hooks/useFocusDashboardData.ts` — busca tudo do Externo, retorna `{ kpis, focus, loading, refetch }`
+
+## Arquivos alterados
+
+- `src/components/whatsapp/WhatsAppInbox.tsx` — renderiza `<FocusDashboard />` no topo, antes do header atual do WhatsApp.
+- `src/App.tsx` — esconde `<UserProductivityBanner />` quando `pathname === '/whatsapp'`.
+
+## Ações dos botões
+
+- **Cobrar documentos** → abre `WhatsAppLeadsDashboard` filtrado em "faltam docs"
+- **Reenviar / cobrar** → abre lista ZapSign pendentes (já existe `ZapSignDialogHost`)
+- **Responder agora** → ativa filtro "Não respondidas" + tab "Eu devo" na lista de conversas (já existe `quickFilter`)
+
+## O que NÃO vai mudar
+
+- Funcionalidade do WhatsApp (lista/chat/share).
+- A barra fina global continua nas outras rotas.
+- Nada de schema novo no banco — só leitura.
+- Nenhum endpoint novo — só queries via `db` (barrel) no Externo.
+
+## Risco / rollback
+
+- Risco baixo: feature aditiva visual.
+- Rollback: remover o import do `FocusDashboard` no `WhatsAppInbox` e a condição em `App.tsx`. 1 commit, reversível em <1min.

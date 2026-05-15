@@ -38,6 +38,7 @@ import { Label } from '@/components/ui/label';
 import { MessageSquare, Settings, RefreshCw, Smartphone, BarChart3, Chrome, ListChecks, AlertTriangle, WifiOff, X, Sparkles, Check, Loader2, Download, Users, List, Contact2, Share2 } from 'lucide-react';
 import { SharedConversationsPanel } from './SharedConversationsPanel';
 import { useSharedWithMe } from '@/hooks/useSharedWithMe';
+import { FocusDashboard } from './FocusDashboard/FocusDashboard';
 
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
@@ -878,6 +879,16 @@ export function WhatsAppInbox() {
         height: 'calc(100dvh - var(--app-header-offset, 0px))',
       }}
     >
+      {/* Painel "Foco Agora" — substitui a barra fina global */}
+      <div className={selectedPhone ? 'hidden md:block' : 'block'}>
+        <FocusDashboard
+          onOpenMissingDocs={() => toast.info('Filtro "faltam documentos" em breve')}
+          onOpenZapsignPending={() => toast.info('Lista de pendentes ZapSign em breve')}
+          onOpenUnanswered={() => {
+            window.dispatchEvent(new CustomEvent('wa:set-quick-filter', { detail: { filter: 'unanswered' } }));
+          }}
+        />
+      </div>
       {/* Header */}
       <div className={`flex items-center gap-2 md:gap-3 p-3 md:p-4 border-b bg-card shrink-0 flex-wrap md:flex-nowrap ${selectedPhone ? 'hidden md:flex' : 'flex'}`}>
         <MessageSquare className="h-6 w-6 text-green-600" />

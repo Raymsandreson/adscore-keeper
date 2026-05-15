@@ -15,6 +15,7 @@ import { AppSidebar } from "@/components/AppSidebar";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { GlobalDatabaseSearch } from "@/components/GlobalDatabaseSearch";
 import { UserProductivityBanner } from "@/components/UserProductivityBanner";
+import { useLocation } from "react-router-dom";
 import { CallFieldSuggestionsBanner } from "@/components/CallFieldSuggestionsBanner";
 import { FloatingWhatsAppCall } from "@/components/FloatingWhatsAppCall";
 import { PWAInstallBanner } from "@/components/PWAInstallBanner";
@@ -213,6 +214,12 @@ function AppRoutes() {
   );
 }
 
+function ConditionalProductivityBanner() {
+  const { pathname } = useLocation();
+  if (pathname.startsWith('/whatsapp')) return null;
+  return <UserProductivityBanner />;
+}
+
 function SidebarLayout() {
   return (
     <SidebarProvider>
@@ -224,7 +231,7 @@ function SidebarLayout() {
           <main className="flex-1">
             <PageTracker />
             <GlobalDatabaseSearch />
-            <UserProductivityBanner />
+            <ConditionalProductivityBanner />
             <CallFieldSuggestionsBanner />
             <FloatingWhatsAppCall />
             <PWAInstallBanner />
