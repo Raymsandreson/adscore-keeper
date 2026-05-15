@@ -233,6 +233,7 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
     if (quickFilter === 'unanswered' && !isUnanswered(c)) return false;
     if (quickFilter === 'calls' && !hasCalls(c)) return false;
     if (quickFilter === 'groups' && !isGroupConversation(c)) return false;
+    if (quickFilter === 'shared' && !sharedPhonesAll.has(c.phone)) return false;
 
     // Direction filter: only show conversations that have messages in the selected direction
     if (directionFilter === 'inbound' && !c.messages.some(m => m.direction === 'inbound')) return false;
