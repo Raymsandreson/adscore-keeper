@@ -200,7 +200,7 @@ export const handler: RequestHandler = async (req, res) => {
     }
 
     if (!bytes || bytes.length < 50) {
-      return ok({ success: false, error: 'A UazAPI não retornou arquivo legível para essa mensagem.' });
+      return ok({ success: false, error: `Não consegui baixar a mídia. Tentativas: ${debugSteps.join(' | ') || 'nenhuma'}` });
     }
 
     contentType = normalizeContentType(contentType, messageType, bytes);
@@ -213,16 +213,44 @@ export const handler: RequestHandler = async (req, res) => {
     if (uploadErr) return ok({ success: false, error: uploadErr.message });
 
     const { data: publicData } = ext.storage.from('whatsapp-media').getPublicUrl(filePath);
+    const publicUrl = publicData.publicUrl;
     const metadata = {
       ...(msg.metadata || {}),
-      media_sync: { synced_at: new Date().toISOString(), source: 'message/download', id_used: usedId, content_type: contentType },
+      media_sync: { synced_at: new Date().toISOString(), source: usedId, content_type: contentType, steps: debugSteps },
     };
-    const updates: Record<string, unknown> = { media_url: publicData.publicUrl, media_type: contentType, metadata };
+    const updates: Record<string, unknown> = { media_url: publicUrl, media_type: contentType, metadata };
     if (messageType === 'audio' && transcription && !msg.message_text) updates.message_text = transcription;
     const { error: updateErr } = await ext.from('whatsapp_messages').update(updates).eq('id', rowId);
     if (updateErr) return ok({ success: false, error: updateErr.message });
 
-    return ok({ success: true, media_url: publicData.publicUrl, media_type: contentType, id_used: usedId });
+    // Replica para todas as outras cópias da mesma mensagem (mesmo phone + mesmo bareId)
+    // que ainda estejam com URL .enc — assim Andressa, João Pedro etc. ganham a mídia decifrada.
+    let replicated = 0;
+    try {
+      const { data: phoneRow } = await ext.from('whatsapp_messages').select('phone').eq('id', rowId).maybeSingle();
+      const phone = phoneRow?.phone;
+      if (bareId && phone) {
+        const { data: siblings } = await ext
+          .from('whatsapp_messages')
+          .select('id, media_url')
+          .eq('phone', phone)
+          .like('external_message_id', `%${bareId}`)
+          .neq('id', rowId);
+        for (const sib of siblings || []) {
+          if (!sib.media_url || isEncryptedWhatsAppUrl(sib.media_url)) {
+            const { error: repErr } = await ext.from('whatsapp_messages').update({
+              media_url: publicUrl,
+              media_type: contentType,
+            }).eq('id', sib.id);
+            if (!repErr) replicated++;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('replicate siblings failed', e);
+    }
+
+    return ok({ success: true, media_url: publicUrl, media_type: contentType, id_used: usedId, replicated, steps: debugSteps });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return ok({ success: false, error: msg });
