@@ -311,6 +311,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const [batchUploading, setBatchUploading] = useState(false);
   const [pendingBatchAfterLead, setPendingBatchAfterLead] = useState(false);
   const [batchDriveOrder, setBatchDriveOrder] = useState<Array<{ id: string; media_url: string; media_type: string; message_text: string; message_type: string }>>([]);
+  const [batchAnalysis, setBatchAnalysis] = useState<{ type?: string; title?: string; holder_name?: string | null; holder_cpf?: string | null; description?: string | null; pages_label?: string | null } | null>(null);
 
   // Long-press p/ ativar seleção (mobile) — usa um único timer compartilhado
   const longPressTimerRef = useRef<number | null>(null);
