@@ -103,16 +103,26 @@ export const useMetaAPI = () => {
         throw new Error(accountValidation.error || 'Account ID inválido ou conta inativa');
       }
 
-      const { insightData, campaignData, adSetData, creativeData, dailyInsights, placementInsights } = await fetchData(apiConfig, dateRange);
-      
+      // Token + conta OK = conexão válida. A partir daqui, falha em buscar
+      // métricas (rate limit, conta sem campanhas, soluço de rede) NÃO derruba
+      // a conexão — só registra o erro. Antes isso causava flicker
+      // "Conectado → Desconectado → Conectado" toda vez que a Meta API hiccup.
       setConfig(apiConfig);
-      setMetrics(insightData);
-      setCampaigns(campaignData);
-      setAdSets(adSetData);
-      setCreatives(creativeData);
-      setDailyData(dailyInsights);
-      setPlacementData(placementInsights);
       setIsConnected(true);
+
+      try {
+        const { insightData, campaignData, adSetData, creativeData, dailyInsights, placementInsights } = await fetchData(apiConfig, dateRange);
+        setMetrics(insightData);
+        setCampaigns(campaignData);
+        setAdSets(adSetData);
+        setCreatives(creativeData);
+        setDailyData(dailyInsights);
+        setPlacementData(placementInsights);
+      } catch (fetchErr) {
+        console.warn('⚠️ Conectado, mas falhou ao buscar métricas iniciais:', fetchErr);
+        setError(fetchErr instanceof Error ? fetchErr.message : 'Não foi possível carregar métricas agora');
+      }
+
       return true;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
