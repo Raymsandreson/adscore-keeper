@@ -214,6 +214,12 @@ function AppRoutes() {
   );
 }
 
+function ConditionalProductivityBanner() {
+  const { pathname } = useLocation();
+  if (pathname.startsWith('/whatsapp')) return null;
+  return <UserProductivityBanner />;
+}
+
 function SidebarLayout() {
   return (
     <SidebarProvider>
