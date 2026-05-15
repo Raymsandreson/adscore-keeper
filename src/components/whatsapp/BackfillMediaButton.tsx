@@ -5,6 +5,15 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { toast } from 'sonner';
 import { cloudFunctions } from '@/lib/functionRouter';
 
+type ErrorBuckets = {
+  expired_404?: number;
+  network_err?: number;
+  uazapi_fail?: number;
+  decrypt_err?: number;
+  no_candidate?: number;
+  other?: number;
+};
+
 type Status = {
   success?: boolean;
   running?: boolean;
@@ -14,9 +23,20 @@ type Status = {
   fail?: number;
   siblingCopied?: number;
   decrypted?: number;
+  errors?: ErrorBuckets;
+  sampleErrors?: string[];
   phase?: string;
   startedAt?: string;
   lastError?: string;
+};
+
+const BUCKET_LABEL: Record<keyof ErrorBuckets, string> = {
+  expired_404: 'expiradas (404/410)',
+  network_err: 'erro de rede',
+  uazapi_fail: 'UazAPI sem o id',
+  decrypt_err: 'falha ao decifrar',
+  no_candidate: 'sem chave/url',
+  other: 'outros',
 };
 
 export function BackfillMediaButton() {
@@ -33,7 +53,20 @@ export function BackfillMediaButton() {
         pollRef.current = null;
         const copied = s.siblingCopied ?? 0;
         const decoded = s.decrypted ?? 0;
-        toast.success(`Reparo concluído: ${copied} copiadas de irmãos + ${decoded} decifradas` + (s.fail ? ` (${s.fail} falhas)` : ''));
+        const buckets = s.errors || {};
+        const breakdown = (Object.keys(BUCKET_LABEL) as (keyof ErrorBuckets)[])
+          .filter(k => (buckets[k] ?? 0) > 0)
+          .map(k => `${buckets[k]} ${BUCKET_LABEL[k]}`)
+          .join(', ');
+        const failPart = s.fail
+          ? ` — ${s.fail} falhas${breakdown ? `: ${breakdown}` : ''}`
+          : '';
+        toast.success(
+          `Reparo: ${copied} copiadas + ${decoded} decifradas${failPart}`,
+          s.sampleErrors?.length
+            ? { description: `Exemplo: ${s.sampleErrors[0]}`, duration: 12000 }
+            : { duration: 8000 }
+        );
       }
     } catch {/* silencioso */}
   };
