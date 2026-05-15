@@ -2652,21 +2652,40 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                   </div>
                 )}
                 {msg.message_type === 'image' && msg.media_url && !isEncUrl(msg.media_url) && (
-                  <div className="mb-1 relative group/img">
+                  <div
+                    className="mb-1 relative group/img"
+                    onTouchStart={() => startLongPress(msg.id)}
+                    onTouchEnd={cancelLongPress}
+                    onTouchMove={cancelLongPress}
+                    onTouchCancel={cancelLongPress}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      setDriveSelectionMode(true);
+                      toggleDriveSelection(msg.id);
+                    }}
+                  >
                     {driveSelectionMode && (
                       <button
                         type="button"
                         onClick={() => toggleDriveSelection(msg.id)}
                         className={cn(
-                          "absolute top-2 left-2 z-10 h-6 w-6 rounded-md border-2 flex items-center justify-center transition-colors",
-                          selectedDriveMsgIds.has(msg.id) ? "bg-blue-500 border-blue-500 text-white" : "bg-white/90 border-white"
+                          "absolute top-2 left-2 z-10 h-7 w-7 rounded-md border-2 flex items-center justify-center transition-colors text-sm font-bold",
+                          selectedDriveMsgIds.has(msg.id) ? "bg-blue-500 border-blue-500 text-white" : "bg-white/90 border-white text-transparent"
                         )}
-                        title={selectedDriveMsgIds.has(msg.id) ? 'Desmarcar' : 'Selecionar para Drive'}
+                        title={selectedDriveMsgIds.has(msg.id) ? `Posição #${getSelectionIndex(msg.id)} — toque p/ desmarcar` : 'Selecionar para Drive'}
                       >
-                        {selectedDriveMsgIds.has(msg.id) && <span className="text-xs font-bold">✓</span>}
+                        {selectedDriveMsgIds.has(msg.id) ? getSelectionIndex(msg.id) : '✓'}
                       </button>
                     )}
-                    <a href={msg.media_url} target="_blank" rel="noopener noreferrer">
+                    <a
+                      href={msg.media_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => {
+                        if (longPressFiredRef.current) { e.preventDefault(); longPressFiredRef.current = false; return; }
+                        if (driveSelectionMode) { e.preventDefault(); toggleDriveSelection(msg.id); }
+                      }}
+                    >
                       <img
                         src={msg.media_url}
                         alt="Imagem"
