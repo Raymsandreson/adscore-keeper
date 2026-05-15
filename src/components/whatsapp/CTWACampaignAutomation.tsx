@@ -1571,9 +1571,29 @@ export function CTWACampaignAutomation() {
                   checked={applyToExisting}
                   onCheckedChange={setApplyToExisting}
                 />
-                <Label htmlFor="apply-existing" className="text-xs leading-tight">
+                <Label htmlFor="apply-existing" className="text-xs leading-tight flex-1">
                   Aplicar também às conversas antigas desta campanha
                 </Label>
+                {(() => {
+                  const cid = useManualInput ? manualCampaignId : addingCampaign;
+                  if (!cid) return null;
+                  const cname = useManualInput
+                    ? (manualCampaignName || manualCampaignId)
+                    : (metaCampaigns.find(c => c.campaign_id === addingCampaign)?.campaign_name || addingCampaign);
+                  return (
+                    <button
+                      type="button"
+                      className="text-[10px] text-primary hover:underline whitespace-nowrap shrink-0"
+                      onClick={() => handleOpenConversations({
+                        id: `preview-${cid}`,
+                        campaign_id: cid,
+                        campaign_name: cname,
+                      } as any)}
+                    >
+                      Ver conversas →
+                    </button>
+                  );
+                })()}
               </div>
             </div>
           </div>
