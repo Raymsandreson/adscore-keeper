@@ -214,6 +214,32 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
             : undefined,
         },
       );
+
+      // Marca local imediato p/ exibir badge no balão
+      setDriveSavedById(prev => ({
+        ...prev,
+        [msg.id]: { link: file.webViewLink, name: analyzedName || file.name },
+      }));
+
+      // Persiste em whatsapp_messages.metadata.drive p/ sobreviver reload
+      try {
+        const newMetadata = {
+          ...(msg.metadata || {}),
+          drive: {
+            saved_at: new Date().toISOString(),
+            file_id: file.id,
+            web_view_link: file.webViewLink,
+            file_name: analyzedName || file.name,
+            lead_id: leadId,
+          },
+        };
+        await externalSupabase
+          .from('whatsapp_messages')
+          .update({ metadata: newMetadata })
+          .eq('id', msg.id);
+      } catch (persistErr) {
+        console.warn('[saveToDrive] persist metadata.drive falhou:', persistErr);
+      }
     } catch (err: any) {
       console.error('[saveToDrive] erro:', err);
       toast.error(`Erro ao salvar no Drive: ${err.message || err}`, { id: tId });
