@@ -205,7 +205,11 @@ export const handler: RequestHandler = async (req, res) => {
 
     contentType = normalizeContentType(contentType, messageType, bytes);
     const extName = extensionFor(contentType, messageType);
-    const safeInstance = String(inst.instance_name || msg.instance_name || 'unknown').replace(/\s+/g, '_');
+    // Sanitize key (remove acentos, cedilha, hífen, espaços) — Supabase Storage rejeita
+    const safeInstance = String(inst.instance_name || msg.instance_name || 'unknown')
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-zA-Z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '') || 'unknown';
     const filePath = `${safeInstance}/repair_${Date.now()}_${String(rowId).slice(0, 8)}.${extName}`;
     const { error: uploadErr } = await ext.storage
       .from('whatsapp-media')
