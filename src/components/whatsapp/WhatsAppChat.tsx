@@ -2306,8 +2306,15 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
 
             {batchDriveMode === 'merge' && (
               <div className="space-y-1">
-                <label className="text-xs font-medium text-muted-foreground">Nome do PDF</label>
-                <Input value={batchFileName} onChange={(e) => setBatchFileName(e.target.value)} placeholder="Documentos do cliente" />
+                <label className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+                  Nome do PDF
+                  {aiNamingFile && (
+                    <span className="inline-flex items-center gap-1 text-[10px] text-blue-500">
+                      <Loader2 className="h-3 w-3 animate-spin" /> IA analisando conteúdo…
+                    </span>
+                  )}
+                </label>
+                <Input value={batchFileName} onChange={(e) => setBatchFileName(e.target.value)} placeholder="Aguardando IA classificar…" disabled={aiNamingFile} />
               </div>
             )}
             <Button className="w-full" onClick={handleConfirmBatchDrive} disabled={batchUploading}>
