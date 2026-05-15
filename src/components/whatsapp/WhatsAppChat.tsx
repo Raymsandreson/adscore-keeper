@@ -311,6 +311,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const [batchUploading, setBatchUploading] = useState(false);
   const [pendingBatchAfterLead, setPendingBatchAfterLead] = useState(false);
   const [batchDriveOrder, setBatchDriveOrder] = useState<Array<{ id: string; media_url: string; media_type: string; message_text: string; message_type: string }>>([]);
+  const [batchAnalysis, setBatchAnalysis] = useState<{ type?: string; title?: string; holder_name?: string | null; holder_cpf?: string | null; description?: string | null; pages_label?: string | null } | null>(null);
 
   // Long-press p/ ativar seleção (mobile) — usa um único timer compartilhado
   const longPressTimerRef = useRef<number | null>(null);
@@ -339,28 +340,45 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     setDriveSelectionMode(false);
     setSelectionOrder([]);
     setBatchDriveOrder([]);
+    setBatchAnalysis(null);
   };
 
-  // Pede pra IA classificar a 1ª mídia e monta nome "{tipo/titulo} - {titular}"
-  const generateAiFileName = async (selected: Array<any>) => {
-    const first = selected.find((m: any) => {
+  // Pede pra IA analisar TODAS as mídias selecionadas (imagens) e devolver
+  // título + titular + descrição. Filename = só o título (titular já está dentro do doc).
+  const analyzeBatchWithAi = async (selected: Array<any>) => {
+    const imgs = selected.filter((m: any) => {
       const mt = (m.media_type || '').toLowerCase();
-      return mt.includes('pdf') || mt.startsWith('image/');
+      return mt.startsWith('image/'); // PDFs não dá pra mandar como image_url
     });
-    if (!first) return;
+    if (imgs.length === 0) return;
     setAiNamingFile(true);
+    setBatchAnalysis(null);
     try {
+      const total = imgs.length;
+      const urls = imgs.map((m: any, i: number) => ({
+        url: m.media_url,
+        label: `página ${i + 1} de ${total}`,
+      }));
       const { data } = await supabase.functions.invoke('classify-document', {
-        body: { url: first.media_url, name: first.message_text || '' },
+        body: { urls, name: imgs[0].message_text || '' },
       });
-      const title = (data as any)?.title;
-      if (title) {
-        const titular = conversation.contact_name || 'Cliente';
-        const composed = `${title} - ${titular}`.replace(/[\\/:*?"<>|]/g, '_').slice(0, 120);
-        setBatchFileName(composed);
+      const a = data as any;
+      if (a?.success) {
+        setBatchAnalysis({
+          type: a.type,
+          title: a.title,
+          holder_name: a.holder_name,
+          holder_cpf: a.holder_cpf,
+          description: a.description,
+          pages_label: a.pages_label,
+        });
+        if (a.title) {
+          const composed = String(a.title).replace(/[\\/:*?"<>|]/g, '_').slice(0, 120);
+          setBatchFileName(composed);
+        }
       }
     } catch (e) {
-      console.warn('[ai-name] falhou:', e);
+      console.warn('[ai-analyze-batch] falhou:', e);
     } finally {
       setAiNamingFile(false);
     }
@@ -375,12 +393,13 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
       .filter((m: any) => m && m.media_url && !isEncUrl(m.media_url));
     if (selected.length === 0) return;
     const today = new Date().toISOString().slice(0, 10);
-    setBatchFileName(`Documentos ${conversation.contact_name || 'cliente'} ${today}`.replace(/[\\/:*?"<>|]/g, '_'));
+    setBatchFileName(`Documentos ${today}`.replace(/[\\/:*?"<>|]/g, '_'));
     setBatchDriveMode('merge');
+    setBatchAnalysis(null);
     setBatchDriveOrder(selected.map((m: any) => ({ id: m.id, media_url: m.media_url, media_type: m.media_type || '', message_text: m.message_text || '', message_type: m.message_type })));
     setShowBatchDriveDialog(true);
-    // Dispara IA p/ sugerir nome com base no conteúdo
-    void generateAiFileName(selected);
+    // Dispara IA p/ analisar conteúdo + sugerir título
+    void analyzeBatchWithAi(selected);
   };
 
   const runBatchDriveUpload = async (leadId: string, leadNameInput?: string) => {
@@ -2304,13 +2323,52 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
               </div>
             )}
 
+            {/* Análise IA do conteúdo (igual à aba Documentos do lead) */}
+            {(aiNamingFile || batchAnalysis) && (
+              <div className="rounded-md border bg-muted/30 p-3 space-y-2">
+                <div className="flex items-center gap-2 text-xs font-medium">
+                  <Sparkles className="h-3.5 w-3.5 text-primary" />
+                  Análise IA do documento
+                  {aiNamingFile && <Loader2 className="h-3 w-3 animate-spin text-blue-500" />}
+                </div>
+                {batchAnalysis && (
+                  <>
+                    <div className="flex flex-wrap gap-1.5">
+                      {batchAnalysis.title && <Badge variant="default" className="text-[10px]">{batchAnalysis.title}</Badge>}
+                      {batchAnalysis.pages_label && (
+                        <Badge variant="secondary" className="text-[10px] font-normal">{batchAnalysis.pages_label}</Badge>
+                      )}
+                    </div>
+                    {batchAnalysis.holder_name && (
+                      <div>
+                        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Titular</div>
+                        <div className="text-sm font-medium">{batchAnalysis.holder_name}</div>
+                      </div>
+                    )}
+                    {batchAnalysis.holder_cpf && (
+                      <div>
+                        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">CPF</div>
+                        <div className="text-sm font-mono">{batchAnalysis.holder_cpf}</div>
+                      </div>
+                    )}
+                    {batchAnalysis.description && (
+                      <div>
+                        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Descrição</div>
+                        <div className="text-xs leading-relaxed">{batchAnalysis.description}</div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+
             {batchDriveMode === 'merge' && (
               <div className="space-y-1">
                 <label className="text-xs font-medium text-muted-foreground flex items-center gap-1">
                   Nome do PDF
                   {aiNamingFile && (
                     <span className="inline-flex items-center gap-1 text-[10px] text-blue-500">
-                      <Loader2 className="h-3 w-3 animate-spin" /> IA analisando conteúdo…
+                      <Loader2 className="h-3 w-3 animate-spin" /> IA analisando…
                     </span>
                   )}
                 </label>
