@@ -897,6 +897,16 @@ export function CTWACampaignAutomation() {
                   >
                     {isActive ? <Pause className="h-3.5 w-3.5 text-amber-500" /> : <Play className="h-3.5 w-3.5 text-green-500" />}
                   </Button>
+                  {/* Swap campaign id (when Meta recreates the ad with a new ID) */}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={() => { setSwapLink(link); setSwapTargetCampaignId(''); setSwapManualId(''); setSwapManualName(''); }}
+                    title="Trocar ID da campanha (preserva todas as configurações)"
+                  >
+                    <Repeat className="h-3.5 w-3.5 text-blue-500" />
+                  </Button>
                   {/* Delete */}
                   <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleDelete(link.id)}>
                     <X className="h-3.5 w-3.5 text-destructive" />
