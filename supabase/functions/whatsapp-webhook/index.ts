@@ -2094,7 +2094,7 @@ Deno.serve(async (req) => {
 
       const { data: existingMatches, error: dedupeError } = await supabase
         .from("whatsapp_messages")
-        .select("id, instance_name, phone, external_message_id")
+        .select("id, instance_name, phone, external_message_id, media_url, media_type, message_text")
         .in("external_message_id", candidateExternalIds)
         .limit(10);
 
@@ -2114,6 +2114,61 @@ Deno.serve(async (req) => {
       });
 
       if (sameConversationExisting) {
+        // MEDIA REPAIR: se a mensagem existente está com URL .enc e a nova
+        // chegou com URL boa (storage público), atualiza em vez de pular.
+        const existingUrl = (sameConversationExisting as any).media_url || null;
+        const existingMissingMedia = isMediaMessage &&
+          (!existingUrl || isEncryptedWhatsAppUrl(existingUrl));
+        const updates: Record<string, any> = {};
+        if (
+          existingMissingMedia && storedMediaUrl &&
+          !isEncryptedWhatsAppUrl(storedMediaUrl)
+        ) {
+          updates.media_url = storedMediaUrl;
+        }
+        if (
+          mediaType &&
+          mediaType !== (sameConversationExisting as any).media_type
+        ) {
+          updates.media_type = mediaType;
+        }
+        if (
+          messageType === "audio" && mediaTranscription &&
+          !(sameConversationExisting as any).message_text
+        ) {
+          updates.message_text = mediaTranscription;
+        }
+
+        if (Object.keys(updates).length > 0) {
+          const { error: repairErr } = await supabase
+            .from("whatsapp_messages")
+            .update(updates)
+            .eq("id", (sameConversationExisting as any).id);
+          if (repairErr) {
+            console.error("Duplicate media repair failed:", repairErr);
+          } else {
+            console.log(
+              "Duplicate message repaired with media:",
+              externalMessageId,
+              Object.keys(updates),
+            );
+            return new Response(
+              JSON.stringify({
+                success: true,
+                repaired: true,
+                existing_id: (sameConversationExisting as any).id,
+                updates: Object.keys(updates),
+              }),
+              {
+                headers: {
+                  ...corsHeaders,
+                  "Content-Type": "application/json",
+                },
+              },
+            );
+          }
+        }
+
         console.log(
           "Duplicate message detected, skipping insert:",
           externalMessageId,
@@ -2133,6 +2188,7 @@ Deno.serve(async (req) => {
           { headers: { ...corsHeaders, "Content-Type": "application/json" } },
         );
       }
+
 
       const rawCollision = matches.find((row: any) =>
         row.external_message_id === externalMessageId
