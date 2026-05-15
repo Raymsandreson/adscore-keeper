@@ -1052,14 +1052,44 @@ export const handler: RequestHandler = async (req, res) => {
       } catch (ctwaErr) { console.error('CTWA extraction error:', ctwaErr); }
     }
 
-    // ========== DEDUPLICATION ==========
+    // ========== DEDUPLICATION / MEDIA REPAIR ==========
     if (externalMessageId) {
-      const dedupeQuery = supabase.from('whatsapp_messages').select('id, instance_name').eq('external_message_id', externalMessageId).limit(1);
+      const dedupeQuery = supabase
+        .from('whatsapp_messages')
+        .select('id, instance_name, media_url, media_type, message_text')
+        .eq('external_message_id', externalMessageId)
+        .limit(1);
       const scopedQuery = instanceName ? dedupeQuery.eq('instance_name', instanceName) : dedupeQuery;
       const { data: existing } = await scopedQuery.maybeSingle();
       if (existing) {
+        const updates: Record<string, any> = {};
+        const existingMediaUrl = (existing as any).media_url || null;
+        const existingMissingMedia = isMediaMessage && (!existingMediaUrl || isEncryptedWhatsAppUrl(existingMediaUrl));
+
+        // History/media re-sync replays the same message id. In that case the
+        // webhook must repair the existing row instead of skipping it as a dup.
+        if (existingMissingMedia && storedMediaUrl && !isEncryptedWhatsAppUrl(storedMediaUrl)) {
+          updates.media_url = storedMediaUrl;
+        }
+        if (mediaType && mediaType !== (existing as any).media_type) {
+          updates.media_type = mediaType;
+        }
+        if (messageType === 'audio' && mediaTranscription && !(existing as any).message_text) {
+          updates.message_text = mediaTranscription;
+        }
+
+        if (Object.keys(updates).length > 0) {
+          const { error: repairErr } = await supabase.from('whatsapp_messages').update(updates).eq('id', (existing as any).id);
+          if (repairErr) {
+            console.error('Duplicate media repair failed:', repairErr);
+            return res.json({ success: false, error: repairErr.message, existing_id: (existing as any).id });
+          }
+          console.log('Duplicate message repaired with media:', externalMessageId, updates);
+          return res.json({ success: true, repaired: true, existing_id: (existing as any).id, updates: Object.keys(updates) });
+        }
+
         console.log('Duplicate message detected, skipping:', externalMessageId);
-        return res.json({ success: true, skipped: true, reason: 'duplicate', existing_id: existing.id });
+        return res.json({ success: true, skipped: true, reason: 'duplicate', existing_id: (existing as any).id });
       }
     }
 
