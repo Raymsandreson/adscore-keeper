@@ -751,13 +751,15 @@ export function CTWACampaignAutomation() {
   };
 
   const handleUpdate = async (id: string, updates: Partial<CampaignLink>) => {
+    // Optimistic update — atualiza estado local na hora, sem refetch (evita "piscar")
+    const prev = links;
+    setLinks(curr => curr.map(l => (l.id === id ? ({ ...l, ...(updates as any) }) : l)));
     const { error } = await supabase.from('whatsapp_agent_campaign_links').update(updates as any).eq('id', id);
     if (error) {
       console.error('Update error:', error);
       toast.error('Erro ao atualizar: ' + error.message);
-      return;
+      setLinks(prev); // reverte se falhar
     }
-    fetchData();
   };
 
   const handleSwapCampaign = async () => {
