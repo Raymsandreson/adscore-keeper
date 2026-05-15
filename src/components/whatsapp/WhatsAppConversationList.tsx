@@ -234,11 +234,16 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
 
   const filtered = useMemo(() => conversations.filter(c => {
     const term = search.toLowerCase();
+    const leadName = c.lead_id ? leadInfoMap.get(c.lead_id)?.lead_name : undefined;
+    // Normalize whitespace so "PREV 888" matches "PREV  888"
+    const normalize = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
+    const nTerm = normalize(term);
     if (term && !(
       c.phone.includes(term) ||
-      c.contact_name?.toLowerCase().includes(term) ||
-      c.last_message?.toLowerCase().includes(term) ||
-      c.instance_name?.toLowerCase().includes(term)
+      normalize(c.contact_name || '').includes(nTerm) ||
+      normalize(c.last_message || '').includes(nTerm) ||
+      c.instance_name?.toLowerCase().includes(term) ||
+      normalize(leadName || '').includes(nTerm)
     )) return false;
 
     if (quickFilter === 'has_lead' && !c.lead_id) return false;
