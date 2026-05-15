@@ -38,6 +38,7 @@ import { Label } from '@/components/ui/label';
 import { MessageSquare, Settings, RefreshCw, Smartphone, BarChart3, Chrome, ListChecks, AlertTriangle, WifiOff, X, Sparkles, Check, Loader2, Download, Users, List, Contact2, Share2 } from 'lucide-react';
 import { SharedConversationsPanel } from './SharedConversationsPanel';
 import { useSharedWithMe } from '@/hooks/useSharedWithMe';
+import { FocusDashboard } from './FocusDashboard/FocusDashboard';
 
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
