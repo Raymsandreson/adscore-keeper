@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { WhatsAppConversation } from '@/hooks/useWhatsAppMessages';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -297,36 +297,90 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
 
   // ===== Seleção múltipla de mídias para Drive =====
   const [driveSelectionMode, setDriveSelectionMode] = useState(false);
-  const [selectedDriveMsgIds, setSelectedDriveMsgIds] = useState<Set<string>>(new Set());
+  // Ordem da seleção segue a sequência de cliques (1º clique = #1, 2º = #2…)
+  const [selectionOrder, setSelectionOrder] = useState<string[]>([]);
+  const selectedDriveMsgIds = useMemo(() => new Set(selectionOrder), [selectionOrder]);
+  const getSelectionIndex = (msgId: string) => {
+    const i = selectionOrder.indexOf(msgId);
+    return i === -1 ? null : i + 1;
+  };
   const [showBatchDriveDialog, setShowBatchDriveDialog] = useState(false);
   const [batchDriveMode, setBatchDriveMode] = useState<'merge' | 'separate'>('merge');
   const [batchFileName, setBatchFileName] = useState('');
+  const [aiNamingFile, setAiNamingFile] = useState(false);
   const [batchUploading, setBatchUploading] = useState(false);
   const [pendingBatchAfterLead, setPendingBatchAfterLead] = useState(false);
   const [batchDriveOrder, setBatchDriveOrder] = useState<Array<{ id: string; media_url: string; media_type: string; message_text: string; message_type: string }>>([]);
 
+  // Long-press p/ ativar seleção (mobile) — usa um único timer compartilhado
+  const longPressTimerRef = useRef<number | null>(null);
+  const longPressFiredRef = useRef(false);
+  const startLongPress = (msgId: string) => {
+    longPressFiredRef.current = false;
+    if (longPressTimerRef.current) window.clearTimeout(longPressTimerRef.current);
+    longPressTimerRef.current = window.setTimeout(() => {
+      longPressFiredRef.current = true;
+      setDriveSelectionMode(true);
+      setSelectionOrder(prev => prev.includes(msgId) ? prev : [...prev, msgId]);
+    }, 450);
+  };
+  const cancelLongPress = () => {
+    if (longPressTimerRef.current) {
+      window.clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
   const toggleDriveSelection = (msgId: string) => {
-    setSelectedDriveMsgIds(prev => {
-      const next = new Set(prev);
-      if (next.has(msgId)) next.delete(msgId); else next.add(msgId);
-      return next;
-    });
+    setSelectionOrder(prev => prev.includes(msgId) ? prev.filter(x => x !== msgId) : [...prev, msgId]);
   };
 
   const exitDriveSelection = () => {
     setDriveSelectionMode(false);
-    setSelectedDriveMsgIds(new Set());
+    setSelectionOrder([]);
     setBatchDriveOrder([]);
   };
 
+  // Pede pra IA classificar a 1ª mídia e monta nome "{tipo/titulo} - {titular}"
+  const generateAiFileName = async (selected: Array<any>) => {
+    const first = selected.find((m: any) => {
+      const mt = (m.media_type || '').toLowerCase();
+      return mt.includes('pdf') || mt.startsWith('image/');
+    });
+    if (!first) return;
+    setAiNamingFile(true);
+    try {
+      const { data } = await supabase.functions.invoke('classify-document', {
+        body: { url: first.media_url, name: first.message_text || '' },
+      });
+      const title = (data as any)?.title;
+      if (title) {
+        const titular = conversation.contact_name || 'Cliente';
+        const composed = `${title} - ${titular}`.replace(/[\\/:*?"<>|]/g, '_').slice(0, 120);
+        setBatchFileName(composed);
+      }
+    } catch (e) {
+      console.warn('[ai-name] falhou:', e);
+    } finally {
+      setAiNamingFile(false);
+    }
+  };
+
   const openBatchDialogIfReady = () => {
-    if (selectedDriveMsgIds.size === 0) return;
+    if (selectionOrder.length === 0) return;
+    // Mantém ordem de clique
+    const msgMap = new Map((messages || []).map((m: any) => [m.id, m]));
+    const selected = selectionOrder
+      .map((id) => msgMap.get(id))
+      .filter((m: any) => m && m.media_url && !isEncUrl(m.media_url));
+    if (selected.length === 0) return;
     const today = new Date().toISOString().slice(0, 10);
     setBatchFileName(`Documentos ${conversation.contact_name || 'cliente'} ${today}`.replace(/[\\/:*?"<>|]/g, '_'));
     setBatchDriveMode('merge');
-    const selected = (messages || []).filter((m: any) => selectedDriveMsgIds.has(m.id) && m.media_url && !isEncUrl(m.media_url));
     setBatchDriveOrder(selected.map((m: any) => ({ id: m.id, media_url: m.media_url, media_type: m.media_type || '', message_text: m.message_text || '', message_type: m.message_type })));
     setShowBatchDriveDialog(true);
+    // Dispara IA p/ sugerir nome com base no conteúdo
+    void generateAiFileName(selected);
   };
 
   const runBatchDriveUpload = async (leadId: string, leadNameInput?: string) => {
@@ -1800,7 +1854,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
               >
                 <RefreshCw className="h-4 w-4" /> Buscar histórico (msgs antigas)
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => { setDriveSelectionMode(true); setSelectedDriveMsgIds(new Set()); }} className="gap-2">
+              <DropdownMenuItem onClick={() => { setDriveSelectionMode(true); setSelectionOrder([]); }} className="gap-2">
                 <Sparkles className="h-4 w-4 text-blue-500" /> Selecionar mídias p/ Drive
               </DropdownMenuItem>
               <DropdownMenuSeparator />
@@ -2252,8 +2306,15 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
 
             {batchDriveMode === 'merge' && (
               <div className="space-y-1">
-                <label className="text-xs font-medium text-muted-foreground">Nome do PDF</label>
-                <Input value={batchFileName} onChange={(e) => setBatchFileName(e.target.value)} placeholder="Documentos do cliente" />
+                <label className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+                  Nome do PDF
+                  {aiNamingFile && (
+                    <span className="inline-flex items-center gap-1 text-[10px] text-blue-500">
+                      <Loader2 className="h-3 w-3 animate-spin" /> IA analisando conteúdo…
+                    </span>
+                  )}
+                </label>
+                <Input value={batchFileName} onChange={(e) => setBatchFileName(e.target.value)} placeholder="Aguardando IA classificar…" disabled={aiNamingFile} />
               </div>
             )}
             <Button className="w-full" onClick={handleConfirmBatchDrive} disabled={batchUploading}>
@@ -2598,21 +2659,40 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                   </div>
                 )}
                 {msg.message_type === 'image' && msg.media_url && !isEncUrl(msg.media_url) && (
-                  <div className="mb-1 relative group/img">
+                  <div
+                    className="mb-1 relative group/img"
+                    onTouchStart={() => startLongPress(msg.id)}
+                    onTouchEnd={cancelLongPress}
+                    onTouchMove={cancelLongPress}
+                    onTouchCancel={cancelLongPress}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      setDriveSelectionMode(true);
+                      toggleDriveSelection(msg.id);
+                    }}
+                  >
                     {driveSelectionMode && (
                       <button
                         type="button"
                         onClick={() => toggleDriveSelection(msg.id)}
                         className={cn(
-                          "absolute top-2 left-2 z-10 h-6 w-6 rounded-md border-2 flex items-center justify-center transition-colors",
-                          selectedDriveMsgIds.has(msg.id) ? "bg-blue-500 border-blue-500 text-white" : "bg-white/90 border-white"
+                          "absolute top-2 left-2 z-10 h-7 w-7 rounded-md border-2 flex items-center justify-center transition-colors text-sm font-bold",
+                          selectedDriveMsgIds.has(msg.id) ? "bg-blue-500 border-blue-500 text-white" : "bg-white/90 border-white text-transparent"
                         )}
-                        title={selectedDriveMsgIds.has(msg.id) ? 'Desmarcar' : 'Selecionar para Drive'}
+                        title={selectedDriveMsgIds.has(msg.id) ? `Posição #${getSelectionIndex(msg.id)} — toque p/ desmarcar` : 'Selecionar para Drive'}
                       >
-                        {selectedDriveMsgIds.has(msg.id) && <span className="text-xs font-bold">✓</span>}
+                        {selectedDriveMsgIds.has(msg.id) ? getSelectionIndex(msg.id) : '✓'}
                       </button>
                     )}
-                    <a href={msg.media_url} target="_blank" rel="noopener noreferrer">
+                    <a
+                      href={msg.media_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => {
+                        if (longPressFiredRef.current) { e.preventDefault(); longPressFiredRef.current = false; return; }
+                        if (driveSelectionMode) { e.preventDefault(); toggleDriveSelection(msg.id); }
+                      }}
+                    >
                       <img
                         src={msg.media_url}
                         alt="Imagem"
@@ -2662,7 +2742,18 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                   const isPdf = (msg.media_type || '').includes('pdf') || /\.pdf($|\?)/i.test(msg.media_url);
                   const fileName = msg.message_text || (msg.media_url.split('/').pop()?.split('?')[0]) || 'Documento';
                   return (
-                    <div className="mb-1 space-y-1">
+                    <div
+                      className="mb-1 space-y-1"
+                      onTouchStart={() => startLongPress(msg.id)}
+                      onTouchEnd={cancelLongPress}
+                      onTouchMove={cancelLongPress}
+                      onTouchCancel={cancelLongPress}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        setDriveSelectionMode(true);
+                        toggleDriveSelection(msg.id);
+                      }}
+                    >
                       {isPdf && (
                         <div className="rounded-lg overflow-hidden border bg-white">
                           <object data={msg.media_url} type="application/pdf" className="w-full h-[360px]">
@@ -2676,12 +2767,12 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                             type="button"
                             onClick={() => toggleDriveSelection(msg.id)}
                             className={cn(
-                              "h-5 w-5 rounded border-2 flex items-center justify-center shrink-0 transition-colors",
-                              selectedDriveMsgIds.has(msg.id) ? "bg-blue-500 border-blue-500 text-white" : "bg-background border-muted-foreground/40"
+                              "h-6 w-6 rounded border-2 flex items-center justify-center shrink-0 transition-colors text-[11px] font-bold",
+                              selectedDriveMsgIds.has(msg.id) ? "bg-blue-500 border-blue-500 text-white" : "bg-background border-muted-foreground/40 text-transparent"
                             )}
-                            title={selectedDriveMsgIds.has(msg.id) ? 'Desmarcar' : 'Selecionar para Drive'}
+                            title={selectedDriveMsgIds.has(msg.id) ? `Posição #${getSelectionIndex(msg.id)} — toque p/ desmarcar` : 'Selecionar para Drive'}
                           >
-                            {selectedDriveMsgIds.has(msg.id) && <span className="text-[10px] font-bold">✓</span>}
+                            {selectedDriveMsgIds.has(msg.id) ? getSelectionIndex(msg.id) : '✓'}
                           </button>
                         )}
                         <FileText className="h-4 w-4 text-orange-500 shrink-0" />
