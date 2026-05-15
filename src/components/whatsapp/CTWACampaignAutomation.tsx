@@ -106,6 +106,7 @@ export function CTWACampaignAutomation() {
   const [addingRefusedAgent, setAddingRefusedAgent] = useState('');
   const [addingInviavelAgent, setAddingInviavelAgent] = useState('');
   const [addingMaxUnanswered, setAddingMaxUnanswered] = useState(0);
+  const [showAddForm, setShowAddForm] = useState(false);
   
   const [linkConversations, setLinkConversations] = useState<Record<string, ConversationInfo[]>>({});
   const [conversationCounts, setConversationCounts] = useState<Record<string, number>>({});
