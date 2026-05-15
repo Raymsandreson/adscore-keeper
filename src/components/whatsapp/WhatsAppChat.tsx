@@ -142,6 +142,8 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const [driveTargetMsg, setDriveTargetMsg] = useState<any | null>(null);
   const [showDriveTargetDialog, setShowDriveTargetDialog] = useState(false);
   const [creatingDriveLead, setCreatingDriveLead] = useState(false);
+  // Marca local de mensagens salvas no Drive nesta sessão (id -> link)
+  const [driveSavedById, setDriveSavedById] = useState<Record<string, { link?: string; name?: string }>>({});
 
   const runDriveUpload = async (msg: any, leadId: string, leadNameInput?: string) => {
     if (!msg?.media_url) {
@@ -212,6 +214,32 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
             : undefined,
         },
       );
+
+      // Marca local imediato p/ exibir badge no balão
+      setDriveSavedById(prev => ({
+        ...prev,
+        [msg.id]: { link: file.webViewLink, name: analyzedName || file.name },
+      }));
+
+      // Persiste em whatsapp_messages.metadata.drive p/ sobreviver reload
+      try {
+        const newMetadata = {
+          ...(msg.metadata || {}),
+          drive: {
+            saved_at: new Date().toISOString(),
+            file_id: file.id,
+            web_view_link: file.webViewLink,
+            file_name: analyzedName || file.name,
+            lead_id: leadId,
+          },
+        };
+        await externalSupabase
+          .from('whatsapp_messages')
+          .update({ metadata: newMetadata })
+          .eq('id', msg.id);
+      } catch (persistErr) {
+        console.warn('[saveToDrive] persist metadata.drive falhou:', persistErr);
+      }
     } catch (err: any) {
       console.error('[saveToDrive] erro:', err);
       toast.error(`Erro ao salvar no Drive: ${err.message || err}`, { id: tId });
@@ -2806,8 +2834,12 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                   </div>
                 )}
                 {msg.message_type === 'document' && msg.media_url && !isEncUrl(msg.media_url) && (() => {
-                  const isPdf = (msg.media_type || '').includes('pdf') || /\.pdf($|\?)/i.test(msg.media_url);
+                  const mt = (msg.media_type || '').toLowerCase();
+                  const urlLower = msg.media_url.toLowerCase();
+                  const isPdf = mt.includes('pdf') || /\.pdf($|\?)/i.test(urlLower);
+                  const isImage = mt.startsWith('image/') || /\.(jpe?g|png|webp|gif)($|\?)/i.test(urlLower);
                   const fileName = msg.message_text || (msg.media_url.split('/').pop()?.split('?')[0]) || 'Documento';
+                  const driveInfo = driveSavedById[msg.id] || (msg.metadata?.drive ? { link: msg.metadata.drive.web_view_link, name: msg.metadata.drive.file_name } : null);
                   return (
                     <div
                       className="mb-1 space-y-1"
@@ -2823,10 +2855,20 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                     >
                       {isPdf && (
                         <div className="rounded-lg overflow-hidden border bg-white">
-                          <object data={msg.media_url} type="application/pdf" className="w-full h-[360px]">
-                            <iframe src={msg.media_url} className="w-full h-[360px]" title={fileName} />
+                          <object data={msg.media_url} type="application/pdf" className="w-full h-[420px]">
+                            <iframe src={msg.media_url} className="w-full h-[420px]" title={fileName} />
                           </object>
                         </div>
+                      )}
+                      {!isPdf && isImage && (
+                        <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="block rounded-lg overflow-hidden border bg-white">
+                          <img
+                            src={msg.media_url}
+                            alt={fileName}
+                            loading="lazy"
+                            className="w-full max-h-[420px] object-contain bg-muted/30"
+                          />
+                        </a>
                       )}
                       <div className="group/doc flex items-center gap-2 px-2 py-1.5 rounded-md bg-muted/40">
                         <button
@@ -2877,6 +2919,26 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                           )}
                         </button>
                       </div>
+                      {driveInfo && (
+                        <a
+                          href={driveInfo.link || '#'}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-emerald-500/10 border border-emerald-500/30 text-[11px] text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20 transition-colors"
+                          title={driveInfo.name ? `Salvo no Drive como: ${driveInfo.name}` : 'Salvo no Google Drive'}
+                        >
+                          <svg className="h-3 w-3" viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg" fill="currentColor">
+                            <path d="M6.6 66.85l3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z"/>
+                            <path d="M43.65 25l-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0-1.2 4.5h27.5z"/>
+                            <path d="M73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.5l5.85 11.5z"/>
+                            <path d="M43.65 25l13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z"/>
+                            <path d="M59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z"/>
+                            <path d="M73.4 26.5l-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 28h27.45c0-1.55-.4-3.1-1.2-4.5z"/>
+                          </svg>
+                          <span className="font-medium">Salvo no Drive</span>
+                          {driveInfo.link && <span className="ml-auto opacity-70">Abrir →</span>}
+                        </a>
+                      )}
                     </div>
                   );
                 })()}
