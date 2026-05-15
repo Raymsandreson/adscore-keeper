@@ -128,6 +128,7 @@ Deno.serve(async (req) => {
       had_local_anchor: !!messageid,
     }));
 
+    let effectiveMode: "history" | "exact" = mode;
     let resp = await fetch(`${baseUrl}/message/history-sync`, {
       method: "POST",
       headers: {
@@ -165,6 +166,7 @@ Deno.serve(async (req) => {
       });
       text = await resp.text();
       try { data = JSON.parse(text); } catch { data = { raw: text }; }
+      effectiveMode = "history";
       console.log("[whatsapp-fetch-history] ← history fallback", resp.status, text.slice(0, 300));
     }
 
@@ -178,8 +180,8 @@ Deno.serve(async (req) => {
 
     return jsonResponse(200, {
       success: true,
-      mode: mode === "exact" && String(JSON.stringify(data)).includes("history") ? "history" : mode,
-      count: mode === "history" ? count : undefined,
+      mode: effectiveMode,
+      count: effectiveMode === "history" ? count : undefined,
       anchor_message_id: providerMessageId || null,
       message:
         "Sync solicitado. As mensagens antigas chegarão via webhook nos próximos segundos. Pode ser necessário abrir o WhatsApp no celular.",
