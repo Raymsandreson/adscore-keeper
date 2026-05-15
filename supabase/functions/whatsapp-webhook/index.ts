@@ -20,6 +20,14 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-request-id",
 };
 
+// Detecta URLs que o navegador NÃO consegue tocar direto (precisam de mediaKey).
+function isEncryptedWhatsAppUrl(url?: string | null): boolean {
+  if (typeof url !== "string") return false;
+  if (/\.enc(?:\?|$)/i.test(url)) return true;
+  if (/^https?:\/\/(?:[a-z0-9-]+\.)*whatsapp\.net\//i.test(url)) return true;
+  return false;
+}
+
 async function downloadAndStoreMedia(
   supabase: any,
   messageId: string,
