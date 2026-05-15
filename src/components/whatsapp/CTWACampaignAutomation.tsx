@@ -1319,7 +1319,7 @@ export function CTWACampaignAutomation() {
         <div className="space-y-3 pt-1">
           <div className="space-y-3">
             {/* Ad account selector — only when there are multiple accounts */}
-            {metaAccounts.length > 1 && (
+            {metaAccounts.length >= 1 && (
               <div className="space-y-1">
                 <Label className="text-[10px]">Conta de anúncios</Label>
                 <Select value={selectedAccountId} onValueChange={setSelectedAccountId}>
@@ -1330,7 +1330,14 @@ export function CTWACampaignAutomation() {
                     {metaAccounts.map(a => (
                       <SelectItem key={a.id} value={a.id}>
                         <span className="flex flex-col">
-                          <span className="text-xs">{a.name || a.account_id}</span>
+                          <span className="text-xs flex items-center gap-1.5">
+                            {a.name || a.account_id}
+                            {a.id.startsWith('ls_') && (
+                              <Badge variant="secondary" className="h-4 text-[9px] px-1 bg-emerald-100 text-emerald-700 border-emerald-200">
+                                Conectada (Marketing)
+                              </Badge>
+                            )}
+                          </span>
                           <span className="text-[10px] text-muted-foreground">act_{a.account_id}</span>
                         </span>
                       </SelectItem>
