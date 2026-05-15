@@ -991,22 +991,18 @@ export function CTWACampaignAutomation() {
                     <X className="h-3.5 w-3.5 text-destructive" />
                   </Button>
                 </div>
-                {/* Chevron FORA do stopPropagation — clique nele agora propaga e alterna o expand */}
-                <button
-                  type="button"
-                  className="h-7 w-7 flex items-center justify-center text-muted-foreground hover:text-foreground shrink-0"
-                  onClick={(e) => { e.stopPropagation(); toggleExpanded(link.id); }}
+                {/* Chevron FORA do stopPropagation — o clique propaga para o <button> pai e alterna */}
+                <div
+                  className="h-7 w-7 flex items-center justify-center text-muted-foreground shrink-0"
                   title={isExpanded ? 'Recolher' : 'Expandir'}
                 >
                   {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                </button>
-                <div className="hidden">
-
                 </div>
               </button>
 
-              {/* EXPANDED — full config, grouped in numbered sections */}
-              {isExpanded && isActive && (
+              {/* EXPANDED — full config, grouped in numbered sections (abre mesmo se pausado) */}
+              {isExpanded && (
+
                 <div className="border-t bg-muted/20 px-5 py-4 space-y-5">
                   {/* SECTION 1 — Roteamento */}
                   <section className="space-y-2">
