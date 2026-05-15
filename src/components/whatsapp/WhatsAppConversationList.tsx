@@ -269,7 +269,7 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
     }
 
     return true;
-  }), [conversations, search, quickFilter, directionFilter, docFilter, selectedBoardId, selectedStageId, selectedChecklistItemIds, leadInfoMap, leadDocStatus, phonesWithCalls]);
+  }), [conversations, search, quickFilter, directionFilter, docFilter, selectedBoardId, selectedStageId, selectedChecklistItemIds, leadInfoMap, leadDocStatus, phonesWithCalls, sharedPhonesAll]);
 
   // Sort conversations based on mode
   const sortedFiltered = useMemo(() => {
