@@ -142,6 +142,8 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const [driveTargetMsg, setDriveTargetMsg] = useState<any | null>(null);
   const [showDriveTargetDialog, setShowDriveTargetDialog] = useState(false);
   const [creatingDriveLead, setCreatingDriveLead] = useState(false);
+  // Marca local de mensagens salvas no Drive nesta sessão (id -> link)
+  const [driveSavedById, setDriveSavedById] = useState<Record<string, { link?: string; name?: string }>>({});
 
   const runDriveUpload = async (msg: any, leadId: string, leadNameInput?: string) => {
     if (!msg?.media_url) {
