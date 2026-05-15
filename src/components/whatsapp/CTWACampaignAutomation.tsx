@@ -1274,6 +1274,31 @@ export function CTWACampaignAutomation() {
         {showAddForm && (
         <div className="space-y-3 pt-1">
           <div className="space-y-3">
+            {/* Ad account selector — only when there are multiple accounts */}
+            {metaAccounts.length > 1 && (
+              <div className="space-y-1">
+                <Label className="text-[10px]">Conta de anúncios</Label>
+                <Select value={selectedAccountId} onValueChange={setSelectedAccountId}>
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue placeholder="Selecionar conta..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {metaAccounts.map(a => (
+                      <SelectItem key={a.id} value={a.id}>
+                        <span className="flex flex-col">
+                          <span className="text-xs">{a.name || a.account_id}</span>
+                          <span className="text-[10px] text-muted-foreground">act_{a.account_id}</span>
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-[10px] text-muted-foreground">
+                  As campanhas listadas vêm desta conta. Troque para ver campanhas de outra conta.
+                </p>
+              </div>
+            )}
+
             {/* Campaign selector */}
             {useManualInput ? (
               <div className="space-y-1">
