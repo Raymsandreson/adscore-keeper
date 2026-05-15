@@ -61,8 +61,9 @@ export function BackfillMediaButton() {
   }, []);
 
   const running = !!status.running;
+  const phase = status.phase === 'sibling-copy' ? 'copiando entre irmãos' : status.phase === 'decrypting' ? `decifrando ${status.processed ?? 0}/${status.total ?? '?'}` : 'iniciando';
   const label = running
-    ? `Reparando mídias antigas: ${status.processed ?? 0}/${status.total ?? '?'}`
+    ? `Reparando mídias (${phase})`
     : 'Reparar todas as mídias antigas (varredura no banco)';
 
   return (
