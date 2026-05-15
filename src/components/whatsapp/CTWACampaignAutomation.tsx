@@ -106,6 +106,7 @@ export function CTWACampaignAutomation() {
   const [addingRefusedAgent, setAddingRefusedAgent] = useState('');
   const [addingInviavelAgent, setAddingInviavelAgent] = useState('');
   const [addingMaxUnanswered, setAddingMaxUnanswered] = useState(0);
+  const [showAddForm, setShowAddForm] = useState(false);
   
   const [linkConversations, setLinkConversations] = useState<Record<string, ConversationInfo[]>>({});
   const [conversationCounts, setConversationCounts] = useState<Record<string, number>>({});
@@ -1224,11 +1225,19 @@ export function CTWACampaignAutomation() {
           );
         })}
 
-        {/* Add new link form */}
-        <div className="border border-dashed rounded-lg p-4 space-y-3">
-          <p className="text-xs font-medium flex items-center gap-1.5">
-            <Plus className="h-3.5 w-3.5" /> Vincular nova campanha
-          </p>
+        {/* Add new link form (collapsible) */}
+        <div className="pt-2">
+          <button
+            type="button"
+            onClick={() => setShowAddForm(v => !v)}
+            className="w-full flex items-center justify-center gap-1.5 text-xs font-medium text-primary hover:bg-primary/5 rounded-md py-2 transition-colors border border-dashed border-primary/30"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            {showAddForm ? 'Cancelar' : 'Vincular nova campanha'}
+          </button>
+        </div>
+        {showAddForm && (
+        <div className="space-y-3 pt-1">
           <div className="space-y-3">
             {/* Campaign selector */}
             {useManualInput ? (
@@ -1577,6 +1586,7 @@ export function CTWACampaignAutomation() {
             <Plus className="h-3.5 w-3.5 mr-1" /> Vincular
           </Button>
         </div>
+        )}
       </CardContent>
 
       {/* Conversations Sheet */}
