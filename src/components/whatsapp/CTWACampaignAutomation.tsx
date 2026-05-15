@@ -12,13 +12,14 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { 
   Megaphone, Target, Sparkles, FolderKanban, Plus, X, Loader2, RefreshCw, Phone, 
   Pause, Play, MessageSquare, Users, UserPlus, Brain, ExternalLink, Zap, Repeat,
-  ChevronDown, ChevronUp, Bot, Settings2, CheckCircle2, AlertCircle
+  ChevronDown, ChevronUp, Bot, Settings2, CheckCircle2, AlertCircle, User
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { DashboardChatPreview } from './DashboardChatPreview';
 import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
+import { useProfilesList } from '@/hooks/useProfilesList';
 
 interface CampaignLink {
   id: string;
