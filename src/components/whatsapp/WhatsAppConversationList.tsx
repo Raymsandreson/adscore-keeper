@@ -392,12 +392,13 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
             key={f.key}
             onClick={() => setQuickFilter(f.key)}
             className={cn(
-              "inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium transition-colors",
+              "relative inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium transition-colors",
               quickFilter === f.key
                 ? "bg-primary text-primary-foreground"
                 : "bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground"
             )}
           >
+            {f.icon}
             {f.label}
             <span className={cn(
               "rounded-full px-1 text-[9px]",
@@ -405,6 +406,9 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
             )}>
               {counts[f.key]}
             </span>
+            {f.key === 'shared' && sharedUnreadPhones.size > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-destructive ring-2 ring-background animate-pulse" />
+            )}
           </button>
         ))}
         <span className="text-muted-foreground/30">|</span>
