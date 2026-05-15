@@ -31,9 +31,9 @@ export function BackfillMediaButton() {
       if (!s.running && pollRef.current) {
         window.clearInterval(pollRef.current);
         pollRef.current = null;
-        if (typeof s.total === 'number' && s.total > 0) {
-          toast.success(`Reparo concluído: ${s.ok}/${s.total} mídias recuperadas` + (s.fail ? ` (${s.fail} falhas)` : ''));
-        }
+        const copied = s.siblingCopied ?? 0;
+        const decoded = s.decrypted ?? 0;
+        toast.success(`Reparo concluído: ${copied} copiadas de irmãos + ${decoded} decifradas` + (s.fail ? ` (${s.fail} falhas)` : ''));
       }
     } catch {/* silencioso */}
   };
