@@ -4,7 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Bot, Zap, PhoneCall, Sparkles, Radio } from 'lucide-react';
+import { Bot, Zap, PhoneCall, Sparkles, Radio, UserMinus } from 'lucide-react';
+import { GroupExitsPanel } from './GroupExitsPanel';
 import type { AgentStats, AgentData, BoardData, ConversationDetail, CaseStatus, UserData } from '../types';
 import type { DashboardMetrics } from '../hooks/useDashboardMetrics';
 import { PipelineCards } from './PipelineCards';
@@ -82,12 +83,13 @@ export function UnifiedMonitorTab({
 
       {/* Sub-tabs */}
       <Tabs defaultValue="feed" className="space-y-3">
-        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-5 max-w-2xl">
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-6 max-w-3xl">
           <TabsTrigger value="feed" className="text-xs"><Radio className="h-3 w-3 mr-1" />Tempo Real</TabsTrigger>
           <TabsTrigger value="overview" className="text-xs"><Bot className="h-3 w-3 mr-1" />Por Agente</TabsTrigger>
           <TabsTrigger value="followups" className="text-xs"><Zap className="h-3 w-3 mr-1" />Follow-ups</TabsTrigger>
           <TabsTrigger value="call-queue" className="text-xs"><PhoneCall className="h-3 w-3 mr-1" />Ligações</TabsTrigger>
           <TabsTrigger value="ai-data" className="text-xs"><Sparkles className="h-3 w-3 mr-1" />IA Dados</TabsTrigger>
+          <TabsTrigger value="group-exits" className="text-xs"><UserMinus className="h-3 w-3 mr-1" />Saídas</TabsTrigger>
         </TabsList>
 
         <TabsContent value="feed">
@@ -159,6 +161,7 @@ export function UnifiedMonitorTab({
           }} />
         </TabsContent>
         <TabsContent value="ai-data"><AIEnrichmentMonitorPanel /></TabsContent>
+        <TabsContent value="group-exits"><GroupExitsPanel /></TabsContent>
       </Tabs>
     </div>
   );
