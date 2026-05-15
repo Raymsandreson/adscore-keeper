@@ -78,6 +78,18 @@ const clearInvalidAuthStorage = () => {
 logAppInit();
 clearInvalidAuthStorage();
 
+// One-time cleanup: remove legacy localStorage Meta accounts (now in DB)
+try {
+  if (!localStorage.getItem("meta_legacy_accounts_purged_v1")) {
+    localStorage.removeItem("meta_saved_accounts");
+    localStorage.removeItem("meta_selected_account_ids");
+    localStorage.removeItem("meta_selected_account");
+    localStorage.setItem("meta_legacy_accounts_purged_v1", "1");
+  }
+} catch {
+  // no-op
+}
+
 // In preview/dev, clear old SW/cache to prevent stale module fetches.
 if (import.meta.env.DEV || isPreviewHost) {
   const shouldForceReload = isPreviewHost && sessionStorage.getItem(PREVIEW_CACHE_BUST_KEY) !== "1";
