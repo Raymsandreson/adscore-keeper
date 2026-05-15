@@ -2734,6 +2734,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                 {msg.message_type === 'document' && msg.media_url && !isEncUrl(msg.media_url) && (() => {
                   const isPdf = (msg.media_type || '').includes('pdf') || /\.pdf($|\?)/i.test(msg.media_url);
                   const fileName = msg.message_text || (msg.media_url.split('/').pop()?.split('?')[0]) || 'Documento';
+                  return (
                     <div
                       className="mb-1 space-y-1"
                       onTouchStart={() => startLongPress(msg.id)}
