@@ -109,7 +109,7 @@ export const useLeadContacts = (leadId?: string) => {
           cep: contact.cep || null,
           profession: contact.profession || null,
           lead_id: leadId,
-          created_by: currentUser?.id || null,
+          created_by: createdBy,
         }])
         .select()
         .single();
