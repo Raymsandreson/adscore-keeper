@@ -978,6 +978,15 @@ export function ContactsListPage() {
           });
         }}
       />
+
+      <CreateContactDialog
+        open={showCreateContact}
+        onOpenChange={setShowCreateContact}
+        onContactCreated={() => {
+          setShowCreateContact(false);
+          fetchContacts();
+        }}
+      />
     </div>
   );
 }
