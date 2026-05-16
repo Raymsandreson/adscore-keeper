@@ -92,6 +92,7 @@ export const useLeadContacts = (leadId?: string) => {
 
     try {
       const { data: { user: currentUser } } = await supabase.auth.getUser();
+      const createdBy = await remapToExternal(currentUser?.id);
       const { data, error } = await externalSupabase
         .from('contacts')
         .insert([{
