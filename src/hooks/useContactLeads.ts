@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/integrations/supabase';
 import { toast } from 'sonner';
 
 export interface ContactLead {
@@ -40,7 +40,7 @@ export const useContactLeads = (contactId?: string) => {
     setLoading(true);
     try {
       // First get the contact_leads entries
-      const { data: linkData, error: linkError } = await supabase
+      const { data: linkData, error: linkError } = await db
         .from('contact_leads' as any)
         .select('*')
         .eq('contact_id', contactId)
@@ -58,7 +58,7 @@ export const useContactLeads = (contactId?: string) => {
         return;
       }
 
-      const { data: leadsData, error: leadsError } = await supabase
+      const { data: leadsData, error: leadsError } = await db
         .from('leads')
         .select('id, lead_name, lead_phone, lead_email, status, city, state, board_id')
         .in('id', leadIds);
@@ -88,7 +88,7 @@ export const useContactLeads = (contactId?: string) => {
     if (!contactId) return;
 
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from('contact_leads' as any)
         .insert({
           contact_id: contactId,
@@ -116,7 +116,7 @@ export const useContactLeads = (contactId?: string) => {
     if (!contactId) return;
 
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from('contact_leads' as any)
         .delete()
         .eq('contact_id', contactId)
@@ -159,7 +159,7 @@ export const useContactLeadCounts = (contactIds: string[]) => {
 
       setLoading(true);
       try {
-        const { data, error } = await supabase
+        const { data, error } = await db
           .from('contact_leads' as any)
           .select('contact_id')
           .in('contact_id', contactIds);
@@ -197,7 +197,7 @@ export const useSearchLeads = () => {
 
     setLoading(true);
     try {
-      let queryBuilder = supabase
+      let queryBuilder = db
         .from('leads')
         .select('id, lead_name, lead_phone, lead_email, status, city, state')
         .or(`lead_name.ilike.%${query}%,lead_phone.ilike.%${query}%,lead_email.ilike.%${query}%`)
