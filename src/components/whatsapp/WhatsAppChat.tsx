@@ -1830,7 +1830,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
               <VolumeX className="h-3 w-3" /> Mudo
             </Badge>
           )}
-          {conversation.lead_id && (
+          {primaryLeadId && (
             <Badge
               className="text-[10px] gap-1 px-2 py-0.5 cursor-pointer bg-blue-600 hover:bg-blue-700 text-white border-0 shadow-sm"
               onClick={handleOpenLeadEdit}
@@ -1898,12 +1898,12 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                 <Sparkles className="h-4 w-4 text-blue-500" /> Selecionar mídias p/ Drive
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              {!conversation.lead_id && contactLinkedLeadIds.length === 0 && (
+              {!primaryLeadId && contactLinkedLeadIds.length === 0 && (
                 <DropdownMenuItem onClick={() => { setShowLinkDialog(true); fetchLeads(); }} className="gap-2">
                   <Link2 className="h-4 w-4" /> Vincular Lead
                 </DropdownMenuItem>
               )}
-              {!conversation.lead_id && contactLinkedLeadIds.length === 0 && (
+              {!primaryLeadId && contactLinkedLeadIds.length === 0 && (
                 <DropdownMenuItem onClick={onCreateLead} className="gap-2">
                   <Plus className="h-4 w-4" /> Criar Lead + Contato
                 </DropdownMenuItem>
@@ -1916,7 +1916,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                   <Scale className="h-4 w-4" /> Criar Caso Jurídico
                 </DropdownMenuItem>
               )}
-              {(conversation.lead_id || conversation.contact_id) && (
+              {(primaryLeadId || conversation.contact_id) && (
                 <DropdownMenuItem onClick={onUpdateWithAI} disabled={extractingData} className="gap-2">
                   {extractingData ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} Atualizar com IA
                 </DropdownMenuItem>
