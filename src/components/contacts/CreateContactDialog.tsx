@@ -15,6 +15,7 @@ import { toast } from 'sonner';
 import { Loader2, Link2, Plus, UserPlus, UserMinus, Users2, UserCheck, Users, Handshake, Package, X } from 'lucide-react';
 import type { ContactClassification, FollowerStatus } from '@/hooks/useContacts';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
+import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 
 interface CreateContactDialogProps {
   open: boolean;
