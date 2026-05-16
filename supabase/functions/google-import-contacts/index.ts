@@ -112,7 +112,7 @@ serve(async (req) => {
   } while (nextPageToken);
 
   // Get existing contacts to avoid duplicates (by phone)
-  const { data: existingContacts } = await serviceSupabase
+  const { data: existingContacts } = await externalService
     .from('contacts')
     .select('id, phone, email, full_name');
 
