@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
+import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { toast } from 'sonner';
 import { logAudit } from '@/hooks/useAuditLog';
 import { Lead } from '@/hooks/useLeads';
@@ -91,6 +92,7 @@ export const useLeadContacts = (leadId?: string) => {
 
     try {
       const { data: { user: currentUser } } = await supabase.auth.getUser();
+      const createdBy = await remapToExternal(currentUser?.id);
       const { data, error } = await externalSupabase
         .from('contacts')
         .insert([{
@@ -107,7 +109,7 @@ export const useLeadContacts = (leadId?: string) => {
           cep: contact.cep || null,
           profession: contact.profession || null,
           lead_id: leadId,
-          created_by: currentUser?.id || null,
+          created_by: createdBy,
         }])
         .select()
         .single();

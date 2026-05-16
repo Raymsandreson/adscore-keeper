@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { db, authClient } from '@/integrations/supabase';
+import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { toast } from 'sonner';
 import { logAudit } from '@/hooks/useAuditLog';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
@@ -256,8 +257,9 @@ export const useContacts = () => {
       // Determine follower_status from tags
       const followerStatus = contact.follower_status || getFollowerStatusFromTags(contact.tags);
 
-      // Get current user for created_by attribution
+      // Get current user for created_by attribution (remapped para UUID do Externo)
       const { data: { user: currentUser } } = await authClient.auth.getUser();
+      const createdBy = await remapToExternal(currentUser?.id);
 
       const { data, error } = await db
         .from('contacts')
@@ -277,7 +279,7 @@ export const useContacts = () => {
           cep: contact.cep || null,
           profession: contact.profession || null,
           follower_status: followerStatus,
-          created_by: currentUser?.id || null,
+          created_by: createdBy,
         }])
         .select()
         .single();
@@ -447,9 +449,9 @@ export const useContacts = () => {
     let errors = 0;
     let duplicates = 0;
 
-    // Get current user for created_by attribution
+    // Get current user for created_by attribution (remapped para Externo)
     const { data: { user: currentUser } } = await authClient.auth.getUser();
-    const currentUserId = currentUser?.id || null;
+    const currentUserId = await remapToExternal(currentUser?.id);
 
     for (const contact of csvData) {
       try {
@@ -526,9 +528,9 @@ export const useContacts = () => {
     let upgradedToMutual = 0;
     const total = data.length;
 
-    // Get current user for created_by attribution
+    // Get current user for created_by attribution (remapped para Externo)
     const { data: { user: currentUser } } = await authClient.auth.getUser();
-    const currentUserId = currentUser?.id || null;
+    const currentUserId = await remapToExternal(currentUser?.id);
 
     for (let i = 0; i < data.length; i++) {
       const item = data[i];

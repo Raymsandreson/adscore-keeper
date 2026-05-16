@@ -15,6 +15,7 @@ import { toast } from 'sonner';
 import { Loader2, Link2, Plus, UserPlus, UserMinus, Users2, UserCheck, Users, Handshake, Package, X } from 'lucide-react';
 import type { ContactClassification, FollowerStatus } from '@/hooks/useContacts';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
+import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 
 interface CreateContactDialogProps {
   open: boolean;
@@ -111,6 +112,7 @@ export function CreateContactDialog({ open, onOpenChange, defaultPhone, defaultN
     setSaving(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
+      const createdByExt = await remapToExternal(user?.id);
 
       // Check for duplicate phone
       if (form.phone.trim()) {
@@ -163,7 +165,7 @@ export function CreateContactDialog({ open, onOpenChange, defaultPhone, defaultN
           follower_status: form.follower_status !== 'none' ? form.follower_status : null,
           profession: primaryProf?.title || null,
           profession_cbo_code: primaryProf?.cbo_code || null,
-          created_by: user?.id || null,
+          created_by: createdByExt,
         })
         .select()
         .single();

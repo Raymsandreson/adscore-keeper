@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useContacts, Contact } from '@/hooks/useContacts';
 import { ContactDetailSheet } from './ContactDetailSheet';
+import { CreateContactDialog } from './CreateContactDialog';
 import { useBroadcastLists, BroadcastList, BroadcastListMember } from '@/hooks/useBroadcastLists';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
@@ -51,6 +52,7 @@ export function ContactsListPage() {
   
   // Broadcast list dialogs
   const [showCreateList, setShowCreateList] = useState(false);
+  const [showCreateContact, setShowCreateContact] = useState(false);
   const [newListName, setNewListName] = useState('');
   const [newListDesc, setNewListDesc] = useState('');
   const [viewingList, setViewingList] = useState<BroadcastList | null>(null);
@@ -426,6 +428,10 @@ export function ContactsListPage() {
         <Button variant="outline" size="sm" onClick={handleClassifyClosedAsClients} disabled={classifyingClients} title="Classificar contatos em grupos fechados como Cliente">
           {classifyingClients ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Wand2 className="h-3.5 w-3.5 mr-1" />}
           Classificar Clientes
+        </Button>
+        <Button size="sm" onClick={() => setShowCreateContact(true)}>
+          <UserPlus className="h-3.5 w-3.5 mr-1" />
+          Novo Contato
         </Button>
         <div className="ml-auto flex gap-2">
           {selectedContacts.size > 0 && (
@@ -970,6 +976,15 @@ export function ContactsListPage() {
             ...(classificationFilter !== 'all' ? { classification: classificationFilter } : {}),
             groupFilter: groupFilter !== 'all' ? groupFilter : 'without_group',
           });
+        }}
+      />
+
+      <CreateContactDialog
+        open={showCreateContact}
+        onOpenChange={setShowCreateContact}
+        onContactCreated={() => {
+          setShowCreateContact(false);
+          fetchContacts();
         }}
       />
     </div>
