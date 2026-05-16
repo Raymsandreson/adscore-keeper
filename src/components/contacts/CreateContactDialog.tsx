@@ -115,7 +115,7 @@ export function CreateContactDialog({ open, onOpenChange, defaultPhone, defaultN
       // Check for duplicate phone
       if (form.phone.trim()) {
         const normalizedPhone = form.phone.replace(/\D/g, '');
-        const { data: existingContacts } = await supabase
+        const { data: existingContacts } = await externalSupabase
           .from('contacts')
           .select('id, full_name, phone')
           .or(`phone.eq.${normalizedPhone},phone.eq.${form.phone.trim()}`)
@@ -148,7 +148,7 @@ export function CreateContactDialog({ open, onOpenChange, defaultPhone, defaultN
       const primaryProf = form.professions.find(p => p.is_primary);
 
       // 1. Create contact
-      const { data: contact, error } = await supabase
+      const { data: contact, error } = await externalSupabase
         .from('contacts')
         .insert({
           full_name: form.full_name,

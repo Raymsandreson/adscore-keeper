@@ -299,7 +299,7 @@ export function ContactDetailSheet({
         }
       }
 
-      const { error } = await supabase
+      const { error } = await externalSupabase
         .from('contacts')
         .update({
           full_name: fullName.trim(),

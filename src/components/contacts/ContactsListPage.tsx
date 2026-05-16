@@ -109,7 +109,7 @@ export function ContactsListPage() {
           }
         }
         // Count contacts per group
-        const { data: contactCounts } = await supabase
+        const { data: contactCounts } = await externalSupabase
           .from('contacts')
           .select('whatsapp_group_id')
           .not('whatsapp_group_id', 'is', null)
@@ -134,7 +134,7 @@ export function ContactsListPage() {
     setSelectedGroup(groupJid);
     setGroupContactsLoading(true);
     try {
-      const { data } = await supabase
+      const { data } = await externalSupabase
         .from('contacts')
         .select('*')
         .eq('whatsapp_group_id', groupJid)
@@ -169,7 +169,7 @@ export function ContactsListPage() {
         return;
       }
 
-      const { data: updated, error } = await supabase
+      const { data: updated, error } = await externalSupabase
         .from('contacts')
         .update({ classification: 'client', updated_at: new Date().toISOString() } as any)
         .in('whatsapp_group_id', closedJids)

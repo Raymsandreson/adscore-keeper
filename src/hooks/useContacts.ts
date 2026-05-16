@@ -77,7 +77,7 @@ export const useContacts = () => {
     try {
       // Helper to build a query with filters (without pagination)
       const buildQuery = () => {
-        let query = authClient
+        let query = db
           .from('contacts')
           .select('*', { count: 'exact' })
           .is('deleted_at', null)
@@ -259,7 +259,7 @@ export const useContacts = () => {
       // Get current user for created_by attribution
       const { data: { user: currentUser } } = await authClient.auth.getUser();
 
-      const { data, error } = await authClient
+      const { data, error } = await db
         .from('contacts')
         .insert([{
           full_name: contact.full_name,
@@ -321,7 +321,7 @@ export const useContacts = () => {
         }
       }
 
-      const { data, error } = await authClient
+      const { data, error } = await db
         .from('contacts')
         .update({
           ...updates,
@@ -346,7 +346,7 @@ export const useContacts = () => {
   const deleteContact = async (id: string) => {
     try {
       // Fetch full snapshot before archiving
-      const { data: snapshot } = await authClient
+      const { data: snapshot } = await db
         .from('contacts')
         .select('*')
         .eq('id', id)
@@ -364,7 +364,7 @@ export const useContacts = () => {
       }
 
       // Soft delete
-      const { error } = await authClient
+      const { error } = await db
         .from('contacts')
         .update({ deleted_at: new Date().toISOString() } as any)
         .eq('id', id);
@@ -422,7 +422,7 @@ export const useContacts = () => {
       if (linkError) throw linkError;
 
       // Update contact with lead reference (legacy support)
-      const { error: updateError } = await authClient
+      const { error: updateError } = await db
         .from('contacts')
         .update({
           lead_id: leadResult.id,
@@ -480,7 +480,7 @@ export const useContacts = () => {
           }
         }
 
-        const { error } = await authClient
+        const { error } = await db
           .from('contacts')
           .insert({
             full_name: contact.full_name || 'Sem nome',
@@ -568,7 +568,7 @@ export const useContacts = () => {
 
         // Check for existing contact with this username (check both with and without @)
         const normalizedUsername = username.toLowerCase().replace('@', '');
-        const { data: existing } = await authClient
+        const { data: existing } = await db
           .from('contacts')
           .select('id, follower_status, tags')
           .or(`instagram_username.eq.${normalizedUsername},instagram_username.eq.@${normalizedUsername}`)
@@ -591,7 +591,7 @@ export const useContacts = () => {
             const newTag = importType === 'followers' ? 'seguidor' : 'seguindo';
             const updatedTags = currentTags.includes(newTag) ? currentTags : [...currentTags, newTag];
             
-            const { error: updateError } = await authClient
+            const { error: updateError } = await db
               .from('contacts')
               .update({ 
                 follower_status: 'mutual',
@@ -621,7 +621,7 @@ export const useContacts = () => {
         const tags = [importType === 'followers' ? 'seguidor' : importType === 'following' ? 'seguindo' : 'instagram'];
         const followerStatus: FollowerStatus = importType === 'followers' ? 'follower' : importType === 'following' ? 'following' : 'none';
 
-        const { error } = await authClient
+        const { error } = await db
           .from('contacts')
           .insert({
             full_name: displayName || `@${username}`,
@@ -664,7 +664,7 @@ export const useContacts = () => {
       let hasMore = true;
       
       while (hasMore) {
-        const { data, error } = await authClient
+        const { data, error } = await db
           .from('contacts')
           .select('*')
           .not('instagram_username', 'is', null)
@@ -835,7 +835,7 @@ export const useContacts = () => {
 
           // Update primary contact if there are changes
           if (Object.keys(mergedData).length > 0) {
-            await authClient
+            await db
               .from('contacts')
               .update(mergedData)
               .eq('id', primary.id);
@@ -860,7 +860,7 @@ export const useContacts = () => {
             .in('related_contact_id', duplicateIds);
 
           // Delete duplicate contacts
-          const { error: deleteError } = await authClient
+          const { error: deleteError } = await db
             .from('contacts')
             .delete()
             .in('id', duplicateIds);
