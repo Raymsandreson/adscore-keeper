@@ -347,7 +347,7 @@ export const useContacts = () => {
 
   const deleteContact = async (id: string) => {
     try {
-      // Fetch full snapshot for audit log before deleting
+      // Fetch full snapshot for audit log + undo before deleting
       const { data: snapshot } = await db
         .from('contacts')
         .select('*')
@@ -372,7 +372,28 @@ export const useContacts = () => {
 
       if (error) throw error;
 
-      toast.success('Contato excluído');
+      // Toast with "Desfazer" action — re-inserts the snapshot if clicked within 10s
+      toast.success('Contato excluído', {
+        duration: 10000,
+        action: snapshot
+          ? {
+              label: 'Desfazer',
+              onClick: async () => {
+                try {
+                  const { error: restoreErr } = await db
+                    .from('contacts')
+                    .insert(snapshot as any);
+                  if (restoreErr) throw restoreErr;
+                  toast.success('Contato restaurado');
+                  fetchContacts();
+                } catch (err) {
+                  console.error('Error restoring contact:', err);
+                  toast.error('Não foi possível restaurar o contato');
+                }
+              },
+            }
+          : undefined,
+      });
       fetchContacts();
     } catch (error) {
       console.error('Error deleting contact:', error);
