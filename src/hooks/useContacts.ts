@@ -528,9 +528,9 @@ export const useContacts = () => {
     let upgradedToMutual = 0;
     const total = data.length;
 
-    // Get current user for created_by attribution
+    // Get current user for created_by attribution (remapped para Externo)
     const { data: { user: currentUser } } = await authClient.auth.getUser();
-    const currentUserId = currentUser?.id || null;
+    const currentUserId = await remapToExternal(currentUser?.id);
 
     for (let i = 0; i < data.length; i++) {
       const item = data[i];
