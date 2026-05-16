@@ -52,6 +52,7 @@ export function ContactsListPage() {
   
   // Broadcast list dialogs
   const [showCreateList, setShowCreateList] = useState(false);
+  const [showCreateContact, setShowCreateContact] = useState(false);
   const [newListName, setNewListName] = useState('');
   const [newListDesc, setNewListDesc] = useState('');
   const [viewingList, setViewingList] = useState<BroadcastList | null>(null);
