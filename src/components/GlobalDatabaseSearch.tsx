@@ -78,7 +78,10 @@ export function GlobalDatabaseSearch() {
     }
     setSearching(true);
     try {
-      const searchTerm = `%${term}%`;
+      // Normaliza qualquer sequência de espaços/tabs em curinga `%`
+      // pra que "Prev 888" case com "PREV  888" (espaço duplo), "PREV-888", etc.
+      const normalized = term.trim().replace(/\s+/g, '%');
+      const searchTerm = `%${normalized}%`;
 
       // Helper: roda uma query no Cloud e no Externo, mescla resultados, deduplica por id (Cloud ganha)
       const dual = async (
