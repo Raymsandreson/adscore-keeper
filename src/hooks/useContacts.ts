@@ -257,8 +257,9 @@ export const useContacts = () => {
       // Determine follower_status from tags
       const followerStatus = contact.follower_status || getFollowerStatusFromTags(contact.tags);
 
-      // Get current user for created_by attribution
+      // Get current user for created_by attribution (remapped para UUID do Externo)
       const { data: { user: currentUser } } = await authClient.auth.getUser();
+      const createdBy = await remapToExternal(currentUser?.id);
 
       const { data, error } = await db
         .from('contacts')
@@ -278,7 +279,7 @@ export const useContacts = () => {
           cep: contact.cep || null,
           profession: contact.profession || null,
           follower_status: followerStatus,
-          created_by: currentUser?.id || null,
+          created_by: createdBy,
         }])
         .select()
         .single();
