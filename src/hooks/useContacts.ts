@@ -347,37 +347,36 @@ export const useContacts = () => {
 
   const deleteContact = async (id: string) => {
     try {
-      // Fetch full snapshot before archiving
+      // Fetch full snapshot for audit log before deleting
       const { data: snapshot } = await db
         .from('contacts')
         .select('*')
         .eq('id', id)
         .single();
 
-      // Save snapshot to audit log
       if (snapshot) {
         await logAudit({
           action: 'delete',
           entityType: 'contact',
           entityId: id,
           entityName: snapshot.full_name || 'Contato',
-          details: { snapshot, soft_delete: true },
+          details: { snapshot, hard_delete: true },
         });
       }
 
-      // Soft delete
+      // Hard delete
       const { error } = await db
         .from('contacts')
-        .update({ deleted_at: new Date().toISOString() } as any)
+        .delete()
         .eq('id', id);
 
       if (error) throw error;
 
-      toast.success('Contato arquivado');
+      toast.success('Contato excluído');
       fetchContacts();
     } catch (error) {
-      console.error('Error archiving contact:', error);
-      toast.error('Erro ao arquivar contato');
+      console.error('Error deleting contact:', error);
+      toast.error('Erro ao excluir contato');
       throw error;
     }
   };
