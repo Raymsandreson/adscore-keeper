@@ -206,7 +206,7 @@ export function CreateContactDialog({ open, onOpenChange, defaultPhone, defaultN
           ...(selectedRelationship ? { relationship_to_victim: selectedRelationship } : {}),
         } as any);
         // Also update contacts.lead_id
-        await supabase.from('contacts').update({ lead_id: selectedLeadId }).eq('id', contact.id);
+        await externalSupabase.from('contacts').update({ lead_id: selectedLeadId }).eq('id', contact.id);
         linkedLeadId = selectedLeadId;
       } else if (leadLinkMode === 'new') {
         const leadName = newLeadName.trim() || form.full_name;
@@ -228,7 +228,7 @@ export function CreateContactDialog({ open, onOpenChange, defaultPhone, defaultN
             lead_id: lead.id,
             ...(selectedRelationship ? { relationship_to_victim: selectedRelationship } : {}),
           } as any);
-          await supabase.from('contacts').update({ lead_id: lead.id }).eq('id', contact.id);
+          await externalSupabase.from('contacts').update({ lead_id: lead.id }).eq('id', contact.id);
           linkedLeadId = lead.id;
         }
       }

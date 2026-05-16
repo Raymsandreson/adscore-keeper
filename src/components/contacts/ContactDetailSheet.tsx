@@ -425,7 +425,7 @@ export function ContactDetailSheet({
           await externalSupabase.from('contact_leads').insert({ contact_id: contact.id, lead_id: selectedExistingLeadId });
         }
 
-        await supabase.from('contacts').update({
+        await externalSupabase.from('contacts').update({
           lead_id: selectedExistingLeadId,
           converted_to_lead_at: new Date().toISOString(),
         }).eq('id', contact.id);
@@ -480,7 +480,7 @@ export function ContactDetailSheet({
           lead_id: leadResult.id,
         });
 
-        await supabase.from('contacts').update({
+        await externalSupabase.from('contacts').update({
           lead_id: leadResult.id,
           converted_to_lead_at: new Date().toISOString(),
         }).eq('id', contact.id);

@@ -180,14 +180,14 @@ export const useContacts = () => {
     try {
       // Use individual count queries to bypass the 1000 row limit
       const [totalRes, clientsRes, nonClientsRes, prospectsRes, partnersRes, suppliersRes, withInstagramRes, leadsRes] = await Promise.all([
-        authClient.from('contacts').select('*', { count: 'exact', head: true }).is('deleted_at', null).is('whatsapp_group_id', null),
-        authClient.from('contacts').select('*', { count: 'exact', head: true }).eq('classification', 'client'),
-        authClient.from('contacts').select('*', { count: 'exact', head: true }).eq('classification', 'non_client'),
-        authClient.from('contacts').select('*', { count: 'exact', head: true }).eq('classification', 'prospect'),
-        authClient.from('contacts').select('*', { count: 'exact', head: true }).eq('classification', 'partner'),
-        authClient.from('contacts').select('*', { count: 'exact', head: true }).eq('classification', 'supplier'),
-        authClient.from('contacts').select('*', { count: 'exact', head: true }).not('instagram_username', 'is', null),
-        authClient.from('contacts').select('*', { count: 'exact', head: true }).not('lead_id', 'is', null),
+        db.from('contacts').select('*', { count: 'exact', head: true }).is('deleted_at', null).is('whatsapp_group_id', null),
+        db.from('contacts').select('*', { count: 'exact', head: true }).eq('classification', 'client'),
+        db.from('contacts').select('*', { count: 'exact', head: true }).eq('classification', 'non_client'),
+        db.from('contacts').select('*', { count: 'exact', head: true }).eq('classification', 'prospect'),
+        db.from('contacts').select('*', { count: 'exact', head: true }).eq('classification', 'partner'),
+        db.from('contacts').select('*', { count: 'exact', head: true }).eq('classification', 'supplier'),
+        db.from('contacts').select('*', { count: 'exact', head: true }).not('instagram_username', 'is', null),
+        db.from('contacts').select('*', { count: 'exact', head: true }).not('lead_id', 'is', null),
       ]);
 
       setStats({
@@ -216,9 +216,9 @@ export const useContacts = () => {
     try {
       // Use count queries to bypass the 1000 row limit
       const [followersRes, followingRes, mutualRes] = await Promise.all([
-        authClient.from('contacts').select('*', { count: 'exact', head: true }).in('follower_status', ['follower', 'mutual']),
-        authClient.from('contacts').select('*', { count: 'exact', head: true }).in('follower_status', ['following', 'mutual']),
-        authClient.from('contacts').select('*', { count: 'exact', head: true }).eq('follower_status', 'mutual'),
+        db.from('contacts').select('*', { count: 'exact', head: true }).in('follower_status', ['follower', 'mutual']),
+        db.from('contacts').select('*', { count: 'exact', head: true }).in('follower_status', ['following', 'mutual']),
+        db.from('contacts').select('*', { count: 'exact', head: true }).eq('follower_status', 'mutual'),
       ]);
 
       setTagStats({
@@ -454,7 +454,7 @@ export const useContacts = () => {
     for (const contact of csvData) {
       try {
         // Check for duplicates by phone or email or instagram
-        let duplicateQuery = authClient.from('contacts').select('id');
+        let duplicateQuery = db.from('contacts').select('id');
         
         if (contact.phone) {
           duplicateQuery = duplicateQuery.eq('phone', contact.phone);
