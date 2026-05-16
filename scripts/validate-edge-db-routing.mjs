@@ -28,6 +28,13 @@ const CLOUD_DB_ALLOWED = new Set([
   'db-drift-monitor',
   'sync-new-user-mapping',
   'zapsign-enrich-lead',
+  // Google integrations: precisam do Cloud só para validar o JWT do usuário (portaria).
+  // Dados de negócio (contatos sincronizados) continuam indo para o Externo.
+  'google-calendar-event',
+  'google-check-connection',
+  'google-import-contacts',
+  'google-oauth-callback',
+  'google-save-contact',
 ]);
 
 const LEGACY_REVIEWED = new Set([
