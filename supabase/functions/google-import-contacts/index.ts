@@ -45,17 +45,20 @@ serve(async (req) => {
   if (!authHeader) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders });
 
   const supabase = createClient(
-    RESOLVED_SUPABASE_URL,
-    RESOLVED_ANON_KEY,
+    CLOUD_URL,
+    CLOUD_ANON_KEY,
     { global: { headers: { Authorization: authHeader } } }
   );
 
   const { data: { user }, error: userError } = await supabase.auth.getUser();
   if (userError || !user) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders });
 
-  // Get tokens
-  const serviceSupabase = createClient(RESOLVED_SUPABASE_URL, RESOLVED_SERVICE_ROLE_KEY);
-  const { data: tokenRow } = await serviceSupabase
+  // Cloud client for Google tokens; External client for business `contacts` table.
+  const cloudService = createClient(CLOUD_URL, CLOUD_SERVICE_KEY);
+  const externalService = createClient(EXTERNAL_URL, EXTERNAL_SERVICE_KEY);
+  const externalUserId = await remapToExternal(externalService, user.id);
+
+  const { data: tokenRow } = await cloudService
     .from('google_oauth_tokens')
     .select('*')
     .eq('user_id', user.id)
