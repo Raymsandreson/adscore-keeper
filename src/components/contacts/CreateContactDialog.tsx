@@ -115,7 +115,7 @@ export function CreateContactDialog({ open, onOpenChange, defaultPhone, defaultN
       // Check for duplicate phone
       if (form.phone.trim()) {
         const normalizedPhone = form.phone.replace(/\D/g, '');
-        const { data: existingContacts } = await supabase
+        const { data: existingContacts } = await externalSupabase
           .from('contacts')
           .select('id, full_name, phone')
           .or(`phone.eq.${normalizedPhone},phone.eq.${form.phone.trim()}`)
@@ -148,7 +148,7 @@ export function CreateContactDialog({ open, onOpenChange, defaultPhone, defaultN
       const primaryProf = form.professions.find(p => p.is_primary);
 
       // 1. Create contact
-      const { data: contact, error } = await supabase
+      const { data: contact, error } = await externalSupabase
         .from('contacts')
         .insert({
           full_name: form.full_name,
@@ -206,7 +206,7 @@ export function CreateContactDialog({ open, onOpenChange, defaultPhone, defaultN
           ...(selectedRelationship ? { relationship_to_victim: selectedRelationship } : {}),
         } as any);
         // Also update contacts.lead_id
-        await supabase.from('contacts').update({ lead_id: selectedLeadId }).eq('id', contact.id);
+        await externalSupabase.from('contacts').update({ lead_id: selectedLeadId }).eq('id', contact.id);
         linkedLeadId = selectedLeadId;
       } else if (leadLinkMode === 'new') {
         const leadName = newLeadName.trim() || form.full_name;
@@ -228,7 +228,7 @@ export function CreateContactDialog({ open, onOpenChange, defaultPhone, defaultN
             lead_id: lead.id,
             ...(selectedRelationship ? { relationship_to_victim: selectedRelationship } : {}),
           } as any);
-          await supabase.from('contacts').update({ lead_id: lead.id }).eq('id', contact.id);
+          await externalSupabase.from('contacts').update({ lead_id: lead.id }).eq('id', contact.id);
           linkedLeadId = lead.id;
         }
       }

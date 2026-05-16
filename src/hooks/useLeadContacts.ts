@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { toast } from 'sonner';
 import { logAudit } from '@/hooks/useAuditLog';
 import { Lead } from '@/hooks/useLeads';
@@ -41,7 +42,7 @@ export const useLeadContacts = (leadId?: string) => {
       const contactIds = ((linkData || []) as unknown as { contact_id: string }[]).map(l => l.contact_id);
       
       // Also check for legacy lead_id column
-      const { data: legacyData, error: legacyError } = await supabase
+      const { data: legacyData, error: legacyError } = await externalSupabase
         .from('contacts')
         .select('id')
         .eq('lead_id', leadId);
@@ -57,7 +58,7 @@ export const useLeadContacts = (leadId?: string) => {
         return;
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await externalSupabase
         .from('contacts')
         .select('*')
         .in('id', allIds)
@@ -90,7 +91,7 @@ export const useLeadContacts = (leadId?: string) => {
 
     try {
       const { data: { user: currentUser } } = await supabase.auth.getUser();
-      const { data, error } = await supabase
+      const { data, error } = await externalSupabase
         .from('contacts')
         .insert([{
           full_name: contact.full_name,
@@ -166,7 +167,7 @@ export const useLeadContacts = (leadId?: string) => {
       if (error) throw error;
       
       // Also clear legacy lead_id if exists
-      await supabase
+      await externalSupabase
         .from('contacts')
         .update({ lead_id: null })
         .eq('id', contactId)
@@ -183,7 +184,7 @@ export const useLeadContacts = (leadId?: string) => {
 
   const updateContact = async (contactId: string, updates: Partial<LeadContact>) => {
     try {
-      const { error } = await supabase
+      const { error } = await externalSupabase
         .from('contacts')
         .update(updates)
         .eq('id', contactId);
@@ -202,7 +203,7 @@ export const useLeadContacts = (leadId?: string) => {
   const deleteContact = async (contactId: string) => {
     try {
       // Fetch full snapshot before archiving
-      const { data: snapshot } = await supabase
+      const { data: snapshot } = await externalSupabase
         .from('contacts')
         .select('*')
         .eq('id', contactId)
@@ -220,7 +221,7 @@ export const useLeadContacts = (leadId?: string) => {
       }
 
       // Soft delete
-      const { error } = await supabase
+      const { error } = await externalSupabase
         .from('contacts')
         .update({ deleted_at: new Date().toISOString() } as any)
         .eq('id', contactId);
@@ -239,7 +240,7 @@ export const useLeadContacts = (leadId?: string) => {
   // Fetch unlinked contacts for linking
   const fetchUnlinkedContacts = async (searchQuery?: string) => {
     try {
-      let query = supabase
+      let query = externalSupabase
         .from('contacts')
         .select('*')
         .is('lead_id', null)

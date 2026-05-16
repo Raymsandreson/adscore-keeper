@@ -77,7 +77,7 @@ export const MergeDuplicatesDialog: React.FC<MergeDuplicatesDialogProps> = ({
       let hasMore = true;
       
       while (hasMore) {
-        const { data, error } = await supabase
+        const { data, error } = await externalSupabase
           .from('contacts')
           .select('*')
           .not('instagram_username', 'is', null)
@@ -303,7 +303,7 @@ export const MergeDuplicatesDialog: React.FC<MergeDuplicatesDialogProps> = ({
 
         // Update primary contact
         if (Object.keys(mergedData).length > 0) {
-          await supabase
+          await externalSupabase
             .from('contacts')
             .update(mergedData)
             .eq('id', primary.id);
@@ -328,7 +328,7 @@ export const MergeDuplicatesDialog: React.FC<MergeDuplicatesDialogProps> = ({
           .in('related_contact_id', duplicateIds);
 
         // Delete duplicate contacts
-        const { error: deleteError } = await supabase
+        const { error: deleteError } = await externalSupabase
           .from('contacts')
           .delete()
           .in('id', duplicateIds);
