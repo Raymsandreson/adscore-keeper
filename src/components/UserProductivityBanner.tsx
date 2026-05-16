@@ -372,9 +372,9 @@ export function UserProductivityBanner() {
         .order('created_at', { ascending: false }).limit(20),
       supabase.from('call_records').select('id, call_result')
         .eq('user_id', userId).gte('created_at', bStart).lte('created_at', bEnd),
-      supabase.from('leads').select('id, lead_name')
+      externalSupabase.from('leads').select('id, lead_name')
         .eq('created_by', userId).gte('created_at', bStart).lte('created_at', bEnd),
-      supabase.from('contacts').select('id')
+      externalSupabase.from('contacts').select('id')
         .eq('created_by', userId).gte('created_at', bStart).lte('created_at', bEnd),
       supabase.from('dm_history').select('id')
         .eq('user_id', userId).neq('action_type', 'received')

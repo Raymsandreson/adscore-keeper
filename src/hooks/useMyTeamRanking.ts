@@ -92,10 +92,10 @@ export function useMyTeamRanking() {
       const endDate = endOfDay(now).toISOString();
 
       const [contactsRes, leadsRes, activityRes, stageRes, callsRes, dmsRes] = await Promise.all([
-        supabase.from('contacts').select('id, created_by')
+        externalSupabase.from('contacts').select('id, created_by')
           .in('created_by', memberIds)
           .gte('created_at', startDate).lte('created_at', endDate),
-        supabase.from('leads').select('id, created_by, status')
+        externalSupabase.from('leads').select('id, created_by, status')
           .in('created_by', memberIds)
           .gte('created_at', startDate).lte('created_at', endDate),
         supabase.from('user_activity_log').select('user_id, action_type')

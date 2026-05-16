@@ -192,7 +192,7 @@ const createContactAndParty = async (
       updates.classifications = [classification];
     }
     if (Object.keys(updates).length > 0) {
-      await supabase.from('contacts').update(updates).eq('id', contactId);
+      await externalSupabase.from('contacts').update(updates).eq('id', contactId);
     }
   } else {
     // Build new contact data

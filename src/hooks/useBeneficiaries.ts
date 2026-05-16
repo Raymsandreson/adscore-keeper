@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { toast } from 'sonner';
 
 export interface Beneficiary {
@@ -46,14 +47,14 @@ export function useBeneficiaries() {
   }, [fetchBeneficiaries]);
 
   const updateBeneficiary = useCallback(async (id: string, updates: Partial<Beneficiary>) => {
-    const { error } = await supabase.from('beneficiaries').update(updates).eq('id', id);
+    const { error } = await externalSupabase.from('beneficiaries').update(updates).eq('id', id);
     if (error) throw error;
     toast.success('Beneficiário atualizado');
     await fetchBeneficiaries();
   }, [fetchBeneficiaries]);
 
   const deleteBeneficiary = useCallback(async (id: string) => {
-    const { error } = await supabase.from('beneficiaries').delete().eq('id', id);
+    const { error } = await externalSupabase.from('beneficiaries').delete().eq('id', id);
     if (error) throw error;
     toast.success('Beneficiário removido');
     await fetchBeneficiaries();

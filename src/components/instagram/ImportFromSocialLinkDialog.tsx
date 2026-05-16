@@ -232,7 +232,7 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
   useEffect(() => {
     if (step === 'review') {
       if (boards.length === 0) {
-        supabase.from('kanban_boards').select('id, name, stages, board_type').order('display_order').then(({ data }) => {
+        externalSupabase.from('kanban_boards').select('id, name, stages, board_type').order('display_order').then(({ data }) => {
           if (data) {
             setBoards(data.filter(b => b.board_type === 'funnel' || !b.board_type).map(b => ({ id: b.id, name: b.name, stages: Array.isArray((b as any).stages) ? (b as any).stages : [] })));
           }
@@ -331,7 +331,7 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
         const city = extracted.cidade || '';
         const state = extracted.estado || '';
         if (victimName.trim() && (accidentDate.trim() || city.trim())) {
-          let query = supabase.from('leads').select('id, lead_name').limit(5);
+          let query = externalSupabase.from('leads').select('id, lead_name').limit(5);
           if (victimName.trim()) query = query.ilike('victim_name', `%${victimName.trim()}%`);
           if (accidentDate.trim()) query = query.eq('accident_date', accidentDate.trim());
           if (city.trim()) query = query.ilike('visit_city', `%${city.trim()}%`);
@@ -382,7 +382,7 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
         const stages = Array.isArray(board?.stages) ? board.stages : [];
         const firstStageId = stages[0]?.id || null;
 
-        const { data: newLead, error } = await supabase.from('leads').insert({
+        const { data: newLead, error } = await externalSupabase.from('leads').insert({
           lead_name: formData.lead_name,
           lead_phone: formData.lead_phone || null,
           lead_email: formData.lead_email || null,
@@ -524,7 +524,7 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
                       })}`.trim()
                     : victim.victim_name;
 
-                  const { data: extraLead } = await supabase.from('leads').insert({
+                  const { data: extraLead } = await externalSupabase.from('leads').insert({
                     lead_name: victimLeadName,
                     source: bgFormData.source || detectPlatform(bgUrl).toLowerCase(),
                     notes: bgFormData.notes || null,
@@ -585,7 +585,7 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
 
         return; // Save concluído do ponto de vista do usuário
       } else if (targetType === 'contact') {
-        const { error } = await supabase.from('contacts').insert({
+        const { error } = await externalSupabase.from('contacts').insert({
           full_name: formData.lead_name || `Contato ${detectPlatform(url)}`,
           phone: formData.lead_phone || null,
           email: formData.lead_email || null,
@@ -692,7 +692,7 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
     setSavingContact(username);
     try {
       const { data: { user: currentUser } } = await supabase.auth.getUser();
-      const { error } = await supabase.from('contacts').insert({
+      const { error } = await externalSupabase.from('contacts').insert({
         full_name: username,
         instagram_username: username,
         instagram_url: `https://instagram.com/${username}`,

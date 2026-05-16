@@ -19,6 +19,7 @@ import {
   Globe,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { toast } from 'sonner';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
@@ -171,7 +172,7 @@ export function ProfileSearchEngine() {
           continue;
         }
 
-        const { error } = await supabase.from('contacts').insert({
+        const { error } = await externalSupabase.from('contacts').insert({
           full_name: profile.fullName || profile.username,
           instagram_username: profile.username,
           instagram_url: profile.profileUrl,

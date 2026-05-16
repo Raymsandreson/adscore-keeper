@@ -238,7 +238,7 @@ export function WhatsAppInbox() {
       searchParams.delete('openChat');
       setSearchParams(searchParams, { replace: true });
     } else if (contactId) {
-      supabase.from('contacts').select('phone').eq('id', contactId).single().then(({ data }) => {
+      externalSupabase.from('contacts').select('phone').eq('id', contactId).single().then(({ data }) => {
         if (data?.phone) {
           const normalized = data.phone.replace(/\D/g, '');
           const match = conversations.find(c => c.phone.replace(/\D/g, '').endsWith(normalized.slice(-8)));
@@ -725,11 +725,11 @@ export function WhatsAppInbox() {
     try {
       const updates: string[] = [];
       if (Object.keys(aiPreview.leadFields).length > 0 && selectedConversation.lead_id) {
-        const { error } = await supabase.from('leads').update(aiPreview.leadFields).eq('id', selectedConversation.lead_id);
+        const { error } = await externalSupabase.from('leads').update(aiPreview.leadFields).eq('id', selectedConversation.lead_id);
         if (!error) updates.push('Lead');
       }
       if (Object.keys(aiPreview.contactFields).length > 0 && selectedConversation.contact_id) {
-        const { error } = await supabase.from('contacts').update(aiPreview.contactFields).eq('id', selectedConversation.contact_id);
+        const { error } = await externalSupabase.from('contacts').update(aiPreview.contactFields).eq('id', selectedConversation.contact_id);
         if (!error) updates.push('Contato');
       }
       if (updates.length > 0) {
@@ -809,7 +809,7 @@ export function WhatsAppInbox() {
   };
 
   const handleNavigateToLead = async (leadId: string) => {
-    const { data } = await supabase.from('leads').select('*').eq('id', leadId).single();
+    const { data } = await externalSupabase.from('leads').select('*').eq('id', leadId).single();
     if (data) {
       setEditingLead(data as Lead);
       setShowLeadPanel(true);
@@ -817,7 +817,7 @@ export function WhatsAppInbox() {
   };
 
   const handleViewContact = async (contactId: string) => {
-    const { data } = await supabase.from('contacts').select('*').eq('id', contactId).single();
+    const { data } = await externalSupabase.from('contacts').select('*').eq('id', contactId).single();
     if (data) {
       setEditingContact(data as Contact);
       setShowContactPanel(true);

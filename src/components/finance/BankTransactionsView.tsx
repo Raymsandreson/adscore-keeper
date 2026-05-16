@@ -28,6 +28,7 @@ import {
 import { exportBankTransactions } from '@/utils/financeExport';
 import { ExportFormatMenu } from '@/components/finance/ExportFormatMenu';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { useAuth } from '@/hooks/useAuth';
 import { buildExpenseFormUrl } from '@/utils/publicAppUrl';
 import { useExpenseCategories } from '@/hooks/useExpenseCategories';
@@ -186,8 +187,8 @@ export function BankTransactionsView({ startDate, endDate, searchTerm: externalS
 
   const fetchLeadsAndContacts = async () => {
     const [leadsRes, contactsRes] = await Promise.all([
-      supabase.from('leads').select('id, lead_name, city, state, acolhedor').order('created_at', { ascending: false }).limit(200),
-      supabase.from('contacts').select('id, full_name, city, state').order('full_name').limit(200),
+      externalSupabase.from('leads').select('id, lead_name, city, state, acolhedor').order('created_at', { ascending: false }).limit(200),
+      externalSupabase.from('contacts').select('id, full_name, city, state').order('full_name').limit(200),
     ]);
     setLeads(leadsRes.data || []);
     setContacts(contactsRes.data || []);
@@ -446,7 +447,7 @@ export function BankTransactionsView({ startDate, endDate, searchTerm: externalS
   const openViewSheet = async (type: 'lead' | 'contact', id: string) => {
     setSheetType(type); setSheetMode('view');
     if (type === 'lead') {
-      const { data } = await supabase.from('leads').select('*').eq('id', id).single();
+      const { data } = await externalSupabase.from('leads').select('*').eq('id', id).single();
       if (data) {
         setLeadSheetId(data.id);
         setLeadFormData({
@@ -464,7 +465,7 @@ export function BankTransactionsView({ startDate, endDate, searchTerm: externalS
         });
       }
     } else {
-      const { data } = await supabase.from('contacts').select('*').eq('id', id).single();
+      const { data } = await externalSupabase.from('contacts').select('*').eq('id', id).single();
       if (data) setContactSheetData({ id: data.id, name: data.full_name, phone: data.phone || '', email: data.email || '', city: data.city || '', state: data.state || '', notes: data.notes || '', instagram: data.instagram_username || '' });
     }
     setSheetOpen(true);
@@ -513,7 +514,7 @@ export function BankTransactionsView({ startDate, endDate, searchTerm: externalS
           city: leadFormData.visit_city || null, state: leadFormData.visit_state || null,
         };
         if (sheetMode === 'create') {
-          const { data, error } = await supabase.from('leads').insert({
+          const { data, error } = await externalSupabase.from('leads').insert({
             ...payload,
             created_by: user?.id || null,
             updated_by: user?.id || null,
@@ -523,7 +524,7 @@ export function BankTransactionsView({ startDate, endDate, searchTerm: externalS
           setEditData(prev => ({ ...prev, linkType: 'lead', linkId: data.id }));
           toast.success('Lead criado!');
         } else {
-          const { error } = await supabase.from('leads').update(payload).eq('id', leadSheetId);
+          const { error } = await externalSupabase.from('leads').update(payload).eq('id', leadSheetId);
           if (error) throw error;
           setLeads(prev => prev.map(l => l.id === leadSheetId ? { ...l, lead_name: leadFormData.lead_name, city: leadFormData.visit_city, state: leadFormData.visit_state } : l));
           toast.success('Lead atualizado!');
@@ -538,13 +539,13 @@ export function BankTransactionsView({ startDate, endDate, searchTerm: externalS
           created_by: currentUser?.id || null,
         };
         if (sheetMode === 'create') {
-          const { data, error } = await supabase.from('contacts').insert(payload).select('id, full_name, city, state').single();
+          const { data, error } = await externalSupabase.from('contacts').insert(payload).select('id, full_name, city, state').single();
           if (error) throw error;
           setContacts(prev => [...prev, data]);
           setEditData(prev => ({ ...prev, linkType: 'contact', linkId: data.id }));
           toast.success('Contato criado!');
         } else {
-          const { error } = await supabase.from('contacts').update(payload).eq('id', contactSheetData.id);
+          const { error } = await externalSupabase.from('contacts').update(payload).eq('id', contactSheetData.id);
           if (error) throw error;
           setContacts(prev => prev.map(c => c.id === contactSheetData.id ? { ...c, full_name: contactSheetData.name, city: contactSheetData.city, state: contactSheetData.state } : c));
           toast.success('Contato atualizado!');

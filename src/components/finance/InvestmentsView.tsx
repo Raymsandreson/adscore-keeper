@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
 import { TrendingUp, PiggyBank, Calendar, Edit2, Save, X, User, Users, Tag, CheckCircle2, AlertCircle, LayoutGrid, Settings, ChevronDown, ChevronUp, Plus, Eye, MapPin } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { exportInvestments } from '@/utils/financeExport';
 import { ExportFormatMenu } from '@/components/finance/ExportFormatMenu';
 import { ExpenseCategoryManager } from '@/components/finance/ExpenseCategoryManager';
@@ -85,8 +86,8 @@ export function InvestmentsView({ searchTerm, filterCategories, filterSubcategor
 
   const fetchLeadsAndContacts = async () => {
     const [leadsRes, contactsRes] = await Promise.all([
-      supabase.from('leads').select('id, lead_name, city, state').order('created_at', { ascending: false }).limit(200),
-      supabase.from('contacts').select('id, full_name, city, state').order('full_name').limit(200),
+      externalSupabase.from('leads').select('id, lead_name, city, state').order('created_at', { ascending: false }).limit(200),
+      externalSupabase.from('contacts').select('id, full_name, city, state').order('full_name').limit(200),
     ]);
     setLeads(leadsRes.data || []);
     setContacts(contactsRes.data || []);

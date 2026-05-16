@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -93,7 +94,7 @@ export function WhatsAppNotificationSettings() {
   const loadData = async () => {
     setLoading(true);
     const [instRes, configRes, profilesRes] = await Promise.all([
-      supabase.from('whatsapp_instances').select('instance_name').order('instance_name'),
+      externalSupabase.from('whatsapp_instances').select('instance_name').order('instance_name'),
       supabase.from('whatsapp_notification_config').select('*').limit(1).maybeSingle(),
       supabase.from('profiles').select('id, user_id, full_name, email, phone').order('full_name'),
     ]);

@@ -37,6 +37,7 @@ import {
   Loader2
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { useAuth } from '@/hooks/useAuth';
 import { buildExpenseFormUrl } from '@/utils/publicAppUrl';
 import { format } from 'date-fns';
@@ -197,7 +198,7 @@ export function PendingTransactionsList({
     setSheetMode('view');
     
     if (type === 'lead') {
-      const { data } = await supabase.from('leads').select('*').eq('id', id).single();
+      const { data } = await externalSupabase.from('leads').select('*').eq('id', id).single();
       if (data) {
         setLeadSheetId(data.id);
         setLeadFormData({
@@ -215,7 +216,7 @@ export function PendingTransactionsList({
         });
       }
     } else {
-      const { data } = await supabase.from('contacts').select('*').eq('id', id).single();
+      const { data } = await externalSupabase.from('contacts').select('*').eq('id', id).single();
       if (data) setContactSheetData({ id: data.id, name: data.full_name, phone: data.phone || '', email: data.email || '', city: data.city || '', state: data.state || '', notes: data.notes || '', instagram: data.instagram_username || '' });
     }
     setSheetOpen(true);
@@ -293,7 +294,7 @@ export function PendingTransactionsList({
           state: leadFormData.visit_state || null,
         };
         if (sheetMode === 'create') {
-          const { data, error } = await supabase.from('leads').insert({
+          const { data, error } = await externalSupabase.from('leads').insert({
             ...payload,
             created_by: user?.id || null,
             updated_by: user?.id || null,
@@ -303,7 +304,7 @@ export function PendingTransactionsList({
           setEditData(prev => ({ ...prev, linkType: 'lead', linkId: data.id }));
           toast.success('Lead criado!');
         } else {
-          const { error } = await supabase.from('leads').update(payload).eq('id', leadSheetId);
+          const { error } = await externalSupabase.from('leads').update(payload).eq('id', leadSheetId);
           if (error) throw error;
           setLocalLeads(prev => prev.map(l => l.id === leadSheetId ? { ...l, lead_name: leadFormData.lead_name, city: leadFormData.visit_city, state: leadFormData.visit_state } : l));
           toast.success('Lead atualizado!');
@@ -326,13 +327,13 @@ export function PendingTransactionsList({
           created_by: currentUser?.id || null,
         };
         if (sheetMode === 'create') {
-          const { data, error } = await supabase.from('contacts').insert(payload).select('id, full_name, city, state').single();
+          const { data, error } = await externalSupabase.from('contacts').insert(payload).select('id, full_name, city, state').single();
           if (error) throw error;
           setLocalContacts(prev => [...prev, data]);
           setEditData(prev => ({ ...prev, linkType: 'contact', linkId: data.id }));
           toast.success('Contato criado!');
         } else {
-          const { error } = await supabase.from('contacts').update(payload).eq('id', contactSheetData.id);
+          const { error } = await externalSupabase.from('contacts').update(payload).eq('id', contactSheetData.id);
           if (error) throw error;
           setLocalContacts(prev => prev.map(c => c.id === contactSheetData.id ? { ...c, full_name: contactSheetData.name, city: contactSheetData.city, state: contactSheetData.state } : c));
           toast.success('Contato atualizado!');

@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -288,10 +289,10 @@ export function WhatsAppCallRecorder({ phone, contactName, contactId, leadId, le
 
     try {
       if (target === 'contact' && contactId) {
-        const { data: existing } = await supabase.from('contacts').select('notes').eq('id', contactId).single();
+        const { data: existing } = await externalSupabase.from('contacts').select('notes').eq('id', contactId).single();
         const currentNotes = existing?.notes || '';
         const newNotes = currentNotes ? `${currentNotes}\n\n${fullText}` : fullText;
-        await supabase.from('contacts').update({ notes: newNotes }).eq('id', contactId);
+        await externalSupabase.from('contacts').update({ notes: newNotes }).eq('id', contactId);
         toast.success('Salvo no contato!');
       } else if (target === 'lead' && leadId) {
         // Save as call_record notes + ai_transcript

@@ -12,6 +12,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { FileText, Plus, Trash2, Sparkles, Copy, Save, Loader2 } from 'lucide-react';
 import { useActivityMessageTemplates, TEMPLATE_VARIABLES, ActivityMessageTemplate } from '@/hooks/useActivityMessageTemplates';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { toast } from 'sonner';
 
 interface Board {
@@ -42,7 +43,7 @@ export function ActivityMessageTemplateSettings() {
   }, [open]);
 
   const fetchBoards = async () => {
-    const { data } = await supabase.from('kanban_boards').select('id, name, board_type').order('name');
+    const { data } = await externalSupabase.from('kanban_boards').select('id, name, board_type').order('name');
     if (data) {
       setBoards(data.filter(b => b.board_type !== 'workflow'));
       setWorkflows(data.filter(b => b.board_type === 'workflow'));

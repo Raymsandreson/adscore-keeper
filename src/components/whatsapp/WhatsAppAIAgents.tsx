@@ -5,6 +5,7 @@ import { AgentAutomationRules } from './AgentAutomationRules';
 import { AgentStageConfig } from './AgentStageConfig';
 
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { logAudit } from '@/hooks/useAuditLog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -158,12 +159,12 @@ export function WhatsAppAIAgents() {
   };
 
   const fetchInstances = async () => {
-    const { data } = await supabase.from('whatsapp_instances').select('id, instance_name').eq('is_active', true);
+    const { data } = await externalSupabase.from('whatsapp_instances').select('id, instance_name').eq('is_active', true);
     setInstances((data as any[]) || []);
   };
 
   const fetchBoards = async () => {
-    const { data } = await (supabase.from('kanban_boards') as any).select('id, name, stages').eq('is_active', true).order('display_order');
+    const { data } = await (externalSupabase.from('kanban_boards') as any).select('id, name, stages').eq('is_active', true).order('display_order');
     setBoards((data as any[]) || []);
   };
 

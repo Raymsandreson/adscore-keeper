@@ -903,7 +903,7 @@ function ProcessCard({ process, statusColors, statusLabels, onEdit, onStatusChan
           .from('contacts').select('id').ilike('full_name', extracted.vitima.nome).limit(1);
         
         if (!existingVictim?.length) {
-          const { data: newContact } = await supabase.from('contacts').insert(victimData as any).select('id').single();
+          const { data: newContact } = await externalSupabase.from('contacts').insert(victimData as any).select('id').single();
           if (newContact) {
             await externalSupabase.from('process_parties').insert({
               process_id: process.id,
@@ -941,7 +941,7 @@ function ProcessCard({ process, statusColors, statusLabels, onEdit, onStatusChan
         if (existing?.length) {
           contactId = existing[0].id;
         } else {
-          const { data: newC } = await supabase.from('contacts').insert(contactData as any).select('id').single();
+          const { data: newC } = await externalSupabase.from('contacts').insert(contactData as any).select('id').single();
           if (!newC) continue;
           contactId = newC.id;
         }

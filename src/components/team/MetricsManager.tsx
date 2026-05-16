@@ -13,6 +13,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Plus, Trash2, Pencil, Zap, TrendingUp, Trophy, Users, Settings2, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import {
   useCompanyAreas,
   useMetricDefinitions,
@@ -69,7 +70,7 @@ export function MetricsManager() {
   const [selectedArea, setSelectedArea] = useState<CompanyArea | null>(null);
 
   useEffect(() => {
-    supabase.from('kanban_boards').select('id, name').order('display_order').then(({ data }) => setBoards(data || []));
+    externalSupabase.from('kanban_boards').select('id, name').order('display_order').then(({ data }) => setBoards(data || []));
     supabase.from('profiles').select('user_id, full_name').then(({ data }) => setProfiles(data || []));
   }, []);
 

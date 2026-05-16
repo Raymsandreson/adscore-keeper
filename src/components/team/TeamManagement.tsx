@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -107,7 +108,7 @@ export function TeamManagement() {
 
   useEffect(() => {
     Promise.all([
-      supabase.from('whatsapp_instances').select('id, instance_name').eq('is_active', true).order('instance_name'),
+      externalSupabase.from('whatsapp_instances').select('id, instance_name').eq('is_active', true).order('instance_name'),
       supabase.from('access_profiles').select('id, name, description, module_permissions, whatsapp_instance_ids, is_system').eq('is_active', true).order('name'),
     ]).then(([instRes, profRes]) => {
       setWhatsappInstances((instRes.data || []) as WhatsAppInstanceOption[]);

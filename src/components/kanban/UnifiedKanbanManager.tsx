@@ -684,7 +684,7 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
                 updatePayload.inviavel_date = null;
               }
 
-              await supabase.from('leads').update(updatePayload).eq('id', leadId);
+              await externalSupabase.from('leads').update(updatePayload).eq('id', leadId);
 
               // Record in lead_stage_history so productivity metrics track it
               await externalSupabase.from('lead_stage_history').insert({
@@ -709,7 +709,7 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
               // Auto-create legal case when closing
               if (newStatus === 'closed') {
                 // Set became_client_date
-                await supabase.from('leads').update({
+                await externalSupabase.from('leads').update({
                   became_client_date: new Date().toISOString().slice(0, 10),
                 } as any).eq('id', leadId);
 
@@ -809,7 +809,7 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
                   toast.success('Lead marcado como Fechado');
                 }
               } else if (newStatus === 'inviavel') {
-                await supabase.from('leads').update({
+                await externalSupabase.from('leads').update({
                   inviavel_date: new Date().toISOString().slice(0, 10),
                 } as any).eq('id', leadId);
                 toast.success('Lead marcado como Inviável');

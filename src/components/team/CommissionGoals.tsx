@@ -174,7 +174,7 @@ export function CommissionGoals() {
         supabase.from('teams').select('id, name, color').order('name'),
         supabase.from('profiles').select('user_id, full_name, email'),
         supabase.from('team_members').select('team_id, user_id'),
-        supabase.from('kanban_boards').select('id, name, color').order('display_order'),
+        externalSupabase.from('kanban_boards').select('id, name, color').order('display_order'),
       ]);
 
       const goalsData = goalsRes.data || [];
@@ -411,7 +411,7 @@ export function CommissionGoals() {
 
       switch (metricKey) {
         case 'deals_closed': {
-          const { data } = await supabase.from('leads')
+          const { data } = await externalSupabase.from('leads')
             .select('id, lead_name, status, created_at, converted_at')
             .eq('created_by', userId)
             .in('status', ['converted', 'won', 'closed'])
@@ -421,7 +421,7 @@ export function CommissionGoals() {
           break;
         }
         case 'leads_created': {
-          const { data } = await supabase.from('leads')
+          const { data } = await externalSupabase.from('leads')
             .select('id, lead_name, status, created_at')
             .eq('created_by', userId)
             .gte('created_at', startDate).lte('created_at', endDate)
@@ -430,7 +430,7 @@ export function CommissionGoals() {
           break;
         }
         case 'contacts_created': {
-          const { data } = await supabase.from('contacts')
+          const { data } = await externalSupabase.from('contacts')
             .select('id, full_name, classification, created_at')
             .eq('created_by', userId)
             .gte('created_at', startDate).lte('created_at', endDate)

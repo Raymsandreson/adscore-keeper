@@ -61,6 +61,7 @@ import {
   Users,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { toast } from 'sonner';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { CaseSearchResultCard } from './CaseSearchResultCard';
@@ -646,7 +647,7 @@ export function CaseSearchEngine() {
 
   const handleCreateLead = async (result: SearchResult, comment?: CommentData) => {
     try {
-      const { error } = await supabase.from('leads').insert({
+      const { error } = await externalSupabase.from('leads').insert({
         lead_name: comment?.ownerUsername || result.username,
         instagram_username: comment?.ownerUsername || result.username,
         source: 'case_search',

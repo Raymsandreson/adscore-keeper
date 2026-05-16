@@ -1170,7 +1170,7 @@ ${scrapeData.content || ''}
        if (leadOutcome === 'closed') {
          if (!wasAlreadyClosed) {
            // Also update lead_status
-           await supabase.from('leads').update({ lead_status: 'closed' } as any).eq('id', currentLead.id);
+           await externalSupabase.from('leads').update({ lead_status: 'closed' } as any).eq('id', currentLead.id);
            // Send conversion event to Meta CAPI
            sendLeadConversionEvent({
              id: currentLead.id,
@@ -1273,7 +1273,7 @@ ${scrapeData.content || ''}
           // Don't block the save
         }
        } else if (leadOutcome === 'refused') {
-         await supabase.from('leads').update({ lead_status: 'refused' } as any).eq('id', currentLead.id);
+         await externalSupabase.from('leads').update({ lead_status: 'refused' } as any).eq('id', currentLead.id);
          // Send conversion event to Meta CAPI
          sendLeadConversionEvent({
            id: currentLead.id,
@@ -1283,7 +1283,7 @@ ${scrapeData.content || ''}
            campaign_id: (currentLead as any).campaign_id,
          }, 'refused');
        } else if (leadOutcome === 'inviavel') {
-         await supabase.from('leads').update({ lead_status: 'inviavel' } as any).eq('id', currentLead.id);
+         await externalSupabase.from('leads').update({ lead_status: 'inviavel' } as any).eq('id', currentLead.id);
          // Send conversion event to Meta CAPI
          sendLeadConversionEvent({
            id: currentLead.id,
@@ -1298,7 +1298,7 @@ ${scrapeData.content || ''}
          ['closed', 'refused', 'inviavel'].includes((currentLead as any).lead_status)
        ) {
          // Was closed/refused/inviável, now reopened (or status drifted)
-         await supabase.from('leads').update({ lead_status: 'active' } as any).eq('id', currentLead.id);
+         await externalSupabase.from('leads').update({ lead_status: 'active' } as any).eq('id', currentLead.id);
        }
 
       toast.success('Lead atualizado com sucesso!');

@@ -72,12 +72,12 @@ export function DailyReportDialog({
           .eq('changed_by', userId)
           .gte('changed_at', startDate).lte('changed_at', endDate)
           .order('changed_at', { ascending: false }),
-        supabase.from('contacts')
+        externalSupabase.from('contacts')
           .select('id, full_name, instagram_username, created_at')
           .eq('created_by', userId)
           .gte('created_at', startDate).lte('created_at', endDate)
           .order('created_at', { ascending: false }),
-        supabase.from('leads')
+        externalSupabase.from('leads')
           .select('id, lead_name, status, created_at')
           .eq('created_by', userId)
           .gte('created_at', startDate).lte('created_at', endDate)
@@ -117,7 +117,7 @@ export function DailyReportDialog({
       const leadIds = [...new Set(stageData.map(s => s.lead_id).filter(Boolean))];
       let leadNameMap = new Map<string, string>();
       if (leadIds.length > 0) {
-        const { data: names } = await supabase.from('leads').select('id, lead_name').in('id', leadIds);
+        const { data: names } = await externalSupabase.from('leads').select('id, lead_name').in('id', leadIds);
         (names || []).forEach(l => leadNameMap.set(l.id, l.lead_name || 'Sem nome'));
       }
 

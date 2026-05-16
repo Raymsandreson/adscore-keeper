@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -21,7 +22,7 @@ export function AgentStageConfig({ agentId }: Props) {
 
   useEffect(() => {
     const fetchBoards = async () => {
-      const { data } = await supabase.from('kanban_boards').select('*').order('display_order');
+      const { data } = await externalSupabase.from('kanban_boards').select('*').order('display_order');
       const parsed = (data || []).map(b => ({
         ...b,
         stages: (b.stages as unknown as KanbanStage[]) || [],

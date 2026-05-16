@@ -1,3 +1,4 @@
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { db as supabase } from '@/integrations/supabase';
 import { toast } from 'sonner';
@@ -61,14 +62,14 @@ export function useActivityStepContext(
       try {
         // Carrega o board (para nomes de fases) e todas as instâncias do lead nesse board
         const [boardRes, instancesRes, leadRes] = await Promise.all([
-          supabase.from('kanban_boards').select('stages').eq('id', boardId).maybeSingle(),
+          externalSupabase.from('kanban_boards').select('stages').eq('id', boardId).maybeSingle(),
           supabase
             .from('lead_checklist_instances')
             .select('items, checklist_template_id, stage_id, id')
             .eq('lead_id', leadId)
             .eq('board_id', boardId)
             .order('created_at', { ascending: true }),
-          supabase.from('leads').select('status').eq('id', leadId).maybeSingle(),
+          externalSupabase.from('leads').select('status').eq('id', leadId).maybeSingle(),
         ]);
 
         const stages = ((boardRes.data as any)?.stages || []) as Array<{ id: string; name: string }>;

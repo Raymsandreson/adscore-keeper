@@ -13,6 +13,7 @@ import { useProfilesList } from '@/hooks/useProfilesList';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { ExtractedAccidentData } from '@/components/leads/AccidentDataExtractor';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { toast } from 'sonner';
 import { Loader2, Sparkles, FileText, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
@@ -365,7 +366,7 @@ export function CreateLeadFromSearchDialog({
     setIsSubmitting(true);
 
     try {
-      const { error } = await supabase.from('leads').insert({
+      const { error } = await externalSupabase.from('leads').insert({
         lead_name: formData.lead_name,
         lead_phone: formData.lead_phone || null,
         lead_email: formData.lead_email || null,

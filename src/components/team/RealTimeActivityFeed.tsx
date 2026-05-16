@@ -152,8 +152,8 @@ export function RealTimeActivityFeed() {
       const allItems: FeedItem[] = [];
 
       const [leadsRes, contactsRes, callsRes, activityLogRes, casesRes] = await Promise.all([
-        supabase.from('leads').select('id, lead_name, created_by, updated_by, lead_status, created_at, updated_at, action_source_detail').gte('created_at', since).order('created_at', { ascending: false }).limit(50),
-        supabase.from('contacts').select('id, full_name, created_by, created_at').gte('created_at', since).order('created_at', { ascending: false }).limit(50),
+        externalSupabase.from('leads').select('id, lead_name, created_by, updated_by, lead_status, created_at, updated_at, action_source_detail').gte('created_at', since).order('created_at', { ascending: false }).limit(50),
+        externalSupabase.from('contacts').select('id, full_name, created_by, created_at').gte('created_at', since).order('created_at', { ascending: false }).limit(50),
         supabase.from('call_records').select('id, user_id, contact_name, lead_name, call_result, created_at').gte('created_at', since).order('created_at', { ascending: false }).limit(50),
         supabase.from('user_activity_log').select('id, user_id, action_type, entity_type, metadata, created_at').gte('created_at', since).in('action_type', ['checklist_item_checked', 'comment_reply', 'dm_sent', 'lead_moved', 'lead_created', 'lead_updated', 'contact_created']).order('created_at', { ascending: false }).limit(50),
         externalSupabase.from('case_process_tracking').select('id, acolhedor, cliente, status_processo, created_at, updated_at').gte('created_at', since).order('created_at', { ascending: false }).limit(30),

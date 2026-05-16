@@ -1,3 +1,4 @@
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { useState, useEffect } from 'react';
 import { db as supabase, ensureExternalSession } from '@/integrations/supabase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -295,8 +296,8 @@ export function CTWACampaignAutomation() {
     const [linksRes, agentsRes, boardsRes, instancesRes]: any[] = await Promise.all([
       supabase.from('whatsapp_agent_campaign_links' as any).select('*'),
       supabase.from('wjia_command_shortcuts').select('id, shortcut_name, description').eq('is_active', true).order('shortcut_name'),
-      supabase.from('kanban_boards' as any).select('id, name, stages'),
-      supabase.from('whatsapp_instances').select('id, instance_name, owner_phone').eq('is_active', true).order('instance_name'),
+      externalSupabase.from('kanban_boards' as any).select('id, name, stages'),
+      externalSupabase.from('whatsapp_instances').select('id, instance_name, owner_phone').eq('is_active', true).order('instance_name'),
     ]);
 
     setLinks((linksRes.data as any[]) || []);
@@ -837,7 +838,7 @@ export function CTWACampaignAutomation() {
         if (existing?.length) continue;
 
         // Assign agent
-        await supabase.from('whatsapp_conversation_agents' as any).insert({
+        await externalSupabase.from('whatsapp_conversation_agents' as any).insert({
           phone,
           agent_id: agentId,
           instance_name: instanceName,
