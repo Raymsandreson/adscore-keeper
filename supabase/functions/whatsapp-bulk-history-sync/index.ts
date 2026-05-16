@@ -40,11 +40,8 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const url =
-      Deno.env.get("EXTERNAL_SUPABASE_URL") || Deno.env.get("SUPABASE_URL")!;
-    const key =
-      Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY") ||
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const url = Deno.env.get("EXTERNAL_SUPABASE_URL")!;
+    const key = Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(url, key);
 
     const body = await req.json().catch(() => ({}));

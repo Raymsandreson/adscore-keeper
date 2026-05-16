@@ -94,14 +94,12 @@ Deno.serve(async (req) => {
     if (!group_jid.includes("@g.us")) return fail("group_jid inválido");
     if (!instance_name) return fail("instance_name obrigatório");
 
-    const cloud = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-    );
     const external = createClient(
       Deno.env.get("EXTERNAL_SUPABASE_URL")!,
       Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY")!,
     );
+    // `whatsapp_instances` também vive no Externo, então reusamos o mesmo client.
+    const cloud = external;
 
     if (mode === "get") {
       const { data, error } = await external
