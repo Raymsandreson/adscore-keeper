@@ -165,7 +165,7 @@ export function CreateContactDialog({ open, onOpenChange, defaultPhone, defaultN
           follower_status: form.follower_status !== 'none' ? form.follower_status : null,
           profession: primaryProf?.title || null,
           profession_cbo_code: primaryProf?.cbo_code || null,
-          created_by: user?.id || null,
+          created_by: createdByExt,
         })
         .select()
         .single();
