@@ -253,7 +253,7 @@ export function ContactsListPage() {
   useEffect(() => {
     const loadExtras = async () => {
       const [instancesRes, creatorsRes] = await Promise.all([
-        supabase.from('whatsapp_instances').select('id, instance_name').eq('is_active', true),
+        externalSupabase.from('whatsapp_instances').select('id, instance_name').eq('is_active', true),
         supabase.from('profiles').select('user_id, full_name').order('full_name'),
       ]);
       setInstances(instancesRes.data || []);

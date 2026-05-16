@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
@@ -122,7 +123,7 @@ export function MemberAssistantSettings({ shortcuts = [], profiles = [], onReloa
     setLoading(true);
     const [configRes, instRes] = await Promise.all([
       supabase.from('member_assistant_config').select('*').limit(1).maybeSingle(),
-      supabase.from('whatsapp_instances').select('id, instance_name').eq('is_active', true).order('instance_name'),
+      externalSupabase.from('whatsapp_instances').select('id, instance_name').eq('is_active', true).order('instance_name'),
     ]);
     setInstances(instRes.data || []);
     if (configRes.data) {

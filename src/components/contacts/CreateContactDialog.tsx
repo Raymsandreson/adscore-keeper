@@ -95,11 +95,11 @@ export function CreateContactDialog({ open, onOpenChange, defaultPhone, defaultN
   useEffect(() => {
     if (leadLinkMode === 'existing') {
       setLoadingLeads(true);
-      supabase.from('leads').select('id, lead_name').order('created_at', { ascending: false }).limit(200)
+      externalSupabase.from('leads').select('id, lead_name').order('created_at', { ascending: false }).limit(200)
         .then(({ data }) => { setExistingLeads(data || []); setLoadingLeads(false); });
     }
     if (leadLinkMode === 'new') {
-      supabase.from('kanban_boards').select('id, name').order('created_at')
+      externalSupabase.from('kanban_boards').select('id, name').order('created_at')
         .then(({ data }) => {
           setBoards(data || []);
           if (data && data.length === 1) setSelectedBoardId(data[0].id);
@@ -175,7 +175,7 @@ export function CreateContactDialog({ open, onOpenChange, defaultPhone, defaultN
       // Add professions
       if (form.professions.length > 0) {
         for (const prof of form.professions) {
-          await supabase.from('contact_professions' as any).insert({
+          await externalSupabase.from('contact_professions' as any).insert({
             contact_id: contact.id,
             cbo_code: prof.cbo_code,
             profession_title: prof.title,

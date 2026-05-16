@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -44,8 +45,8 @@ const WorkflowProgressPage = () => {
     setLoading(true);
     try {
       const [leadsRes, boardsRes] = await Promise.all([
-        supabase.from('leads').select('id, lead_name, status, board_id').order('lead_name'),
-        supabase.from('kanban_boards').select('*').order('display_order'),
+        externalSupabase.from('leads').select('id, lead_name, status, board_id').order('lead_name'),
+        externalSupabase.from('kanban_boards').select('*').order('display_order'),
       ]);
 
       if (leadsRes.error) throw leadsRes.error;
@@ -167,7 +168,7 @@ const WorkflowProgressPage = () => {
 
             const handleDeleteWorkflow = async (boardId: string) => {
               if (!confirm('Tem certeza que deseja excluir este fluxo?')) return;
-              const { error } = await supabase.from('kanban_boards').delete().eq('id', boardId);
+              const { error } = await externalSupabase.from('kanban_boards').delete().eq('id', boardId);
               if (error) { toast.error('Erro ao excluir'); return; }
               toast.success('Fluxo excluído');
               fetchData();

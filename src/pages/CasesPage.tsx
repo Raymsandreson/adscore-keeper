@@ -336,7 +336,7 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
     Promise.all([
       externalSupabase.from('lead_processes').select('*').eq('case_id', legalCase.id).order('created_at'),
       legalCase.lead_id
-        ? supabase.from('leads').select('id, lead_name, lead_phone, status, board_id, became_client_date').eq('id', legalCase.lead_id).maybeSingle()
+        ? externalSupabase.from('leads').select('id, lead_name, lead_phone, status, board_id, became_client_date').eq('id', legalCase.lead_id).maybeSingle()
         : Promise.resolve({ data: null }),
     ]).then(([procRes, leadRes]) => {
       setProcesses(procRes.data || []);

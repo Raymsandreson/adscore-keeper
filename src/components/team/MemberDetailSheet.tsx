@@ -41,6 +41,7 @@ import {
   X,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { toast } from 'sonner';
 import { format, formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -115,7 +116,7 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
   useEffect(() => {
     const fetchInstances = async () => {
       const [instRes, presetRes, customRes, profilesRes] = await Promise.all([
-        supabase.from('whatsapp_instances').select('id, instance_name').eq('is_active', true).order('instance_name'),
+        externalSupabase.from('whatsapp_instances').select('id, instance_name').eq('is_active', true).order('instance_name'),
         Promise.resolve([
           { id: 'FGY2WhTYpPnrIDTdsKH5', name: 'Laura' },
           { id: 'CwhRBWXzGAHq8TQ4Fs17', name: 'Roger' },

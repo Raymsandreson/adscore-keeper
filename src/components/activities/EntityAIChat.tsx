@@ -192,7 +192,7 @@ export function EntityAIChat({
       let activityHistory: any[] = [];
 
       if (leadId) {
-        const { data: ld } = await supabase.from('leads').select('*').eq('id', leadId).single();
+        const { data: ld } = await externalSupabase.from('leads').select('*').eq('id', leadId).single();
         leadData = ld;
 
         const { data: histData } = await supabase
@@ -205,7 +205,7 @@ export function EntityAIChat({
       }
 
       if (contactId) {
-        const { data: cd } = await supabase.from('contacts').select('*').eq('id', contactId).single();
+        const { data: cd } = await externalSupabase.from('contacts').select('*').eq('id', contactId).single();
         contactData = cd;
       }
 
@@ -213,7 +213,7 @@ export function EntityAIChat({
         const { data: ad } = await externalSupabase.from('lead_activities').select('*').eq('id', activityId).single();
         activityData = ad;
         if (ad?.contact_id && !contactData) {
-          const { data: cd } = await supabase.from('contacts').select('*').eq('id', (ad as any).contact_id).single();
+          const { data: cd } = await externalSupabase.from('contacts').select('*').eq('id', (ad as any).contact_id).single();
           contactData = cd;
         }
         // If no lead but has activity, fetch sibling activities

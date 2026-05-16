@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { MessageSquare, Smartphone, Search, X } from 'lucide-react';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -44,7 +45,7 @@ export function WhatsAppInstancePermissions() {
   const fetchData = useCallback(async () => {
     try {
       const [instRes, iuRes, profilesRes] = await Promise.all([
-        supabase.from('whatsapp_instances').select('id, instance_name').eq('is_active', true).order('instance_name'),
+        externalSupabase.from('whatsapp_instances').select('id, instance_name').eq('is_active', true).order('instance_name'),
         supabase.from('whatsapp_instance_users').select('id, instance_id, user_id'),
         supabase.from('profiles').select('user_id, default_instance_id'),
       ]);

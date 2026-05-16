@@ -309,7 +309,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
 
   useEffect(() => {
     const fetchInstances = async () => {
-      const { data } = await supabase.from('whatsapp_instances').select('id, instance_name').order('instance_name');
+      const { data } = await externalSupabase.from('whatsapp_instances').select('id, instance_name').order('instance_name');
       setInstances(data || []);
     };
     const fetchBoards = async () => {

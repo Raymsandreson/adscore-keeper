@@ -309,7 +309,7 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
 
   const handleOpenLead = async (leadId: string) => {
     if (!leadId) return;
-    const { data } = await supabase.from('leads').select('*').eq('id', leadId).maybeSingle();
+    const { data } = await externalSupabase.from('leads').select('*').eq('id', leadId).maybeSingle();
     if (data) {
       setEditingLead(data as Lead);
       setShowLeadEdit(true);
@@ -318,7 +318,7 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
 
   const handleOpenContact = async (contactId: string) => {
     if (!contactId) return;
-    const { data } = await supabase.from('contacts').select('*').eq('id', contactId).maybeSingle();
+    const { data } = await externalSupabase.from('contacts').select('*').eq('id', contactId).maybeSingle();
     if (data) setEditingContact(data as Contact);
   };
 
@@ -710,7 +710,7 @@ export function OperationalDetailSheet({ open, onClose, metricType, dateRange, f
         }}
         lead={editingLead}
         onSave={async (leadId, updates) => {
-          await supabase.from('leads').update(updates).eq('id', leadId);
+          await externalSupabase.from('leads').update(updates).eq('id', leadId);
           setShowLeadEdit(false);
           setEditingLead(null);
         }}

@@ -746,7 +746,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     const fetchAgentState = async () => {
       const [{ data: agentsData }, { data: assignment }] = await Promise.all([
         supabase.from('whatsapp_ai_agents').select('id, name').eq('is_active', true).order('name'),
-        supabase.from('whatsapp_conversation_agents').select('agent_id, is_active, human_paused_until')
+        externalSupabase.from('whatsapp_conversation_agents').select('agent_id, is_active, human_paused_until')
           .eq('phone', conversation.phone).eq('instance_name', conversation.instance_name).maybeSingle()
       ]);
       setAvailableAgents((agentsData as any[]) || []);
@@ -802,7 +802,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     setAgentLoading(true);
     try {
       const newState = !agentEnabled;
-      await supabase.from('whatsapp_conversation_agents')
+      await externalSupabase.from('whatsapp_conversation_agents')
         .update({ is_active: newState, human_paused_until: newState ? null : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString() } as any)
         .eq('phone', conversation.phone).eq('instance_name', conversation.instance_name);
       setAgentEnabled(newState);
@@ -842,7 +842,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     setAgentLoading(true);
     try {
       const agent = availableAgents.find(a => a.id === agentId);
-      await supabase.from('whatsapp_conversation_agents')
+      await externalSupabase.from('whatsapp_conversation_agents')
         .upsert({ phone: conversation.phone, instance_name: conversation.instance_name, agent_id: agentId, is_active: true } as any, { onConflict: 'phone,instance_name' });
       setActiveAgentId(agentId);
       setActiveAgentName(agent?.name || null);
@@ -855,7 +855,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const handleRemoveAgent = async () => {
     setAgentLoading(true);
     try {
-      await supabase.from('whatsapp_conversation_agents')
+      await externalSupabase.from('whatsapp_conversation_agents')
         .delete().eq('phone', conversation.phone).eq('instance_name', conversation.instance_name);
       setActiveAgentId(null); setActiveAgentName(null); setAgentEnabled(false);
       toast.success('Agente removido');
@@ -1192,9 +1192,9 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         await (supabase as any).from('leads').update(updates).eq('id', leadId);
       }
       if (data.group_id) {
-        const { data: contact } = await supabase.from('contacts').select('id').eq('phone', normalizedPhone).maybeSingle();
+        const { data: contact } = await externalSupabase.from('contacts').select('id').eq('phone', normalizedPhone).maybeSingle();
         if (contact) {
-          await supabase.from('contacts').update({ whatsapp_group_id: data.group_id } as any).eq('id', contact.id);
+          await externalSupabase.from('contacts').update({ whatsapp_group_id: data.group_id } as any).eq('id', contact.id);
         }
       }
 
@@ -1851,7 +1851,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
               title="Clique para interromper a pausa e reativar o agente"
               onClick={async () => {
                 try {
-                  await supabase.from('whatsapp_conversation_agents')
+                  await externalSupabase.from('whatsapp_conversation_agents')
                     .update({ human_paused_until: null } as any)
                     .eq('phone', conversation.phone).eq('instance_name', conversation.instance_name);
                   setHumanPausedUntil(null);
@@ -2501,7 +2501,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
           }}
           lead={editingLeadData}
           onSave={async (leadId, updates) => {
-            await supabase.from('leads').update(updates as any).eq('id', leadId);
+            await externalSupabase.from('leads').update(updates as any).eq('id', leadId);
             setShowLeadEdit(false);
             setEditingLeadData(null);
             toast.success('Lead atualizado');

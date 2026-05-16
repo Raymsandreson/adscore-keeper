@@ -56,13 +56,13 @@ export function MemberProductivitySheet({ member, open, onOpenChange, dateRange 
     if (item.entityType === 'lead' || item.entityType === 'comment') {
       // For leads, stage changes, closed, refused, calls - fetch lead and open sheet
       const entityId = item.entityId;
-      const { data } = await supabase.from('leads').select('*').eq('id', entityId).maybeSingle();
+      const { data } = await externalSupabase.from('leads').select('*').eq('id', entityId).maybeSingle();
       if (data) {
         setSelectedLead(data as Lead);
         setLeadSheetOpen(true);
       }
     } else if (item.entityType === 'contact') {
-      const { data } = await supabase.from('contacts').select('*').eq('id', item.entityId).maybeSingle();
+      const { data } = await externalSupabase.from('contacts').select('*').eq('id', item.entityId).maybeSingle();
       if (data) {
         setSelectedContact(data as Contact);
         setContactSheetOpen(true);
@@ -71,7 +71,7 @@ export function MemberProductivitySheet({ member, open, onOpenChange, dateRange 
   };
 
   const handleLeadSave = async (leadId: string, updates: Partial<Lead>) => {
-    await supabase.from('leads').update(updates).eq('id', leadId);
+    await externalSupabase.from('leads').update(updates).eq('id', leadId);
     setLeadSheetOpen(false);
     setSelectedLead(null);
   };
@@ -97,12 +97,12 @@ export function MemberProductivitySheet({ member, open, onOpenChange, dateRange 
           .eq('user_id', userId)
           .gte('created_at', startDate).lte('created_at', endDate)
           .order('created_at', { ascending: false }),
-        supabase.from('contacts')
+        externalSupabase.from('contacts')
           .select('id, full_name, instagram_username, created_at')
           .eq('created_by', userId)
           .gte('created_at', startDate).lte('created_at', endDate)
           .order('created_at', { ascending: false }),
-        supabase.from('leads')
+        externalSupabase.from('leads')
           .select('id, lead_name, status, created_at')
           .eq('created_by', userId)
           .gte('created_at', startDate).lte('created_at', endDate)
@@ -178,7 +178,7 @@ export function MemberProductivitySheet({ member, open, onOpenChange, dateRange 
 
       let leadNameMap = new Map<string, string>();
       if (allNeededIds.length > 0) {
-        const { data: leadNames } = await supabase.from('leads').select('id, lead_name').in('id', allNeededIds);
+        const { data: leadNames } = await externalSupabase.from('leads').select('id, lead_name').in('id', allNeededIds);
         (leadNames || []).forEach(l => leadNameMap.set(l.id, l.lead_name || 'Sem nome'));
       }
 

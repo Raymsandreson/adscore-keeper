@@ -235,7 +235,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
 
         if (groupLink) {
           if (groupLink.group_name) setGroupName(groupLink.group_name);
-          const { data: ld } = await supabase.from('leads').select('*').eq('id', groupLink.lead_id).maybeSingle();
+          const { data: ld } = await externalSupabase.from('leads').select('*').eq('id', groupLink.lead_id).maybeSingle();
           if (ld) leadData = ld;
         }
 
@@ -277,7 +277,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
           .limit(1)
           .maybeSingle();
         if (contactLink) {
-          const { data: cd } = await supabase.from('contacts').select('*').eq('id', contactLink.contact_id).maybeSingle();
+          const { data: cd } = await externalSupabase.from('contacts').select('*').eq('id', contactLink.contact_id).maybeSingle();
           if (cd) setLinkedContact(cd as any);
         }
       } else {
@@ -467,7 +467,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
           .maybeSingle();
         if (shortcut) {
           // Activate agent for this conversation
-          await supabase.from('whatsapp_conversation_agents').upsert({
+          await externalSupabase.from('whatsapp_conversation_agents').upsert({
             phone,
             instance_name: msgInstanceName,
             agent_id: shortcut.id,
@@ -677,7 +677,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
         if (contactExtracted.cpf) contactUpdates.cpf = contactExtracted.cpf;
         if (contactExtracted.birth_date) contactUpdates.birth_date = contactExtracted.birth_date;
         if (Object.keys(contactUpdates).length > 0) {
-          await supabase.from('contacts').update(contactUpdates).eq('id', contactId);
+          await externalSupabase.from('contacts').update(contactUpdates).eq('id', contactId);
         }
       } else {
         const contactInsert: Record<string, any> = {
@@ -1019,8 +1019,8 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
     if (!confirm('Tem certeza que deseja limpar todos os dados desta conversa? Esta ação não pode ser desfeita.')) return;
     const normalizedPhone = phone.replace(/\D/g, '');
     try {
-      await supabase.from('whatsapp_messages').delete().eq('phone', normalizedPhone);
-      await supabase.from('whatsapp_conversation_agents').delete()
+      await externalSupabase.from('whatsapp_messages').delete().eq('phone', normalizedPhone);
+      await externalSupabase.from('whatsapp_conversation_agents').delete()
         .or(`phone.eq.${normalizedPhone},phone.ilike.%${normalizedPhone.slice(-8)}%`);
       setMessages([]);
       setAgentInfo(null);
@@ -1268,7 +1268,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
                             <DropdownMenuItem onClick={async () => {
                               if (!phone) return;
                               const normalizedPhone = phone.replace(/\D/g, '');
-                              await supabase.from('whatsapp_conversation_agents').delete().or(`phone.eq.${normalizedPhone},phone.ilike.%${normalizedPhone.slice(-8)}%`);
+                              await externalSupabase.from('whatsapp_conversation_agents').delete().or(`phone.eq.${normalizedPhone},phone.ilike.%${normalizedPhone.slice(-8)}%`);
                               setAgentInfo(null);
                               onConversationUpdated?.();
                               toast.success('Agente removido');
@@ -1358,7 +1358,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
                 </Button>
                 <Button variant="ghost" size="icon" className="h-7 w-7 text-primary-foreground hover:bg-primary-foreground/20" onClick={async () => {
                   if (selectedMsg) {
-                    await supabase.from('whatsapp_messages').delete().eq('id', selectedMsg.id);
+                    await externalSupabase.from('whatsapp_messages').delete().eq('id', selectedMsg.id);
                     setMessages(prev => prev.filter(m => m.id !== selectedMsg.id));
                     toast.success('Mensagem apagada');
                   }
@@ -1626,7 +1626,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
           // Refresh lead data
           const normalizedPhone = phone.replace(/\D/g, '');
           const last8 = normalizedPhone.slice(-8);
-          supabase.from('leads').select('*')
+          externalSupabase.from('leads').select('*')
             .or(`lead_phone.eq.${normalizedPhone},lead_phone.ilike.%${last8}%`)
             .order('created_at', { ascending: false })
             .limit(1)
@@ -1636,7 +1636,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
       }}
       lead={linkedLead}
       onSave={async (leadId, updates) => {
-        const { error } = await supabase.from('leads').update(updates as any).eq('id', leadId);
+        const { error } = await externalSupabase.from('leads').update(updates as any).eq('id', leadId);
         if (error) {
           console.error('[DashboardChatPreview] Lead save error:', JSON.stringify(error));
           throw error;
@@ -1656,7 +1656,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
           // Refresh contact data
           const normalizedPhone = phone.replace(/\D/g, '');
           const last8 = normalizedPhone.slice(-8);
-          supabase.from('contacts').select('*')
+          externalSupabase.from('contacts').select('*')
             .or(`phone.eq.${phone},phone.eq.${normalizedPhone},phone.ilike.%${last8}%`)
             .limit(1)
             .maybeSingle()
@@ -1667,7 +1667,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
         if (phone) {
           const normalizedPhone = phone.replace(/\D/g, '');
           const last8 = normalizedPhone.slice(-8);
-          supabase.from('contacts').select('*')
+          externalSupabase.from('contacts').select('*')
             .or(`phone.eq.${phone},phone.eq.${normalizedPhone},phone.ilike.%${last8}%`)
             .limit(1)
             .maybeSingle()

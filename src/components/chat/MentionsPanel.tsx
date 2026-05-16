@@ -70,10 +70,10 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
         const { data } = await (externalSupabase as any).from('lead_activities').select('id').eq('id', mention.entity_id).maybeSingle();
         entityExists = !!data;
       } else if (mention.entity_type === 'lead') {
-        const { data } = await supabase.from('leads').select('id').eq('id', mention.entity_id).maybeSingle();
+        const { data } = await externalSupabase.from('leads').select('id').eq('id', mention.entity_id).maybeSingle();
         entityExists = !!data;
       } else if (mention.entity_type === 'contact') {
-        const { data } = await supabase.from('contacts').select('id').eq('id', mention.entity_id).maybeSingle();
+        const { data } = await externalSupabase.from('contacts').select('id').eq('id', mention.entity_id).maybeSingle();
         entityExists = !!data;
       }
       if (!entityExists) {

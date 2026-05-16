@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -53,10 +54,10 @@ export function ReferralSearchPage() {
   const loadData = async () => {
     setLoading(true);
     const [contactsRes, productsRes, boardsRes, leadsRes] = await Promise.all([
-      supabase.from('contacts').select('id, full_name, phone, email, city, state, neighborhood, profession, classification, classifications, lead_id'),
+      externalSupabase.from('contacts').select('id, full_name, phone, email, city, state, neighborhood, profession, classification, classifications, lead_id'),
       supabase.from('products_services').select('id, name').eq('is_active', true).order('display_order'),
-      supabase.from('kanban_boards').select('id, name, product_service_id'),
-      supabase.from('leads').select('id, city, state, neighborhood, product_service_id, board_id'),
+      externalSupabase.from('kanban_boards').select('id, name, product_service_id'),
+      externalSupabase.from('leads').select('id, city, state, neighborhood, product_service_id, board_id'),
     ]);
     
     // Enrich contacts with lead location data

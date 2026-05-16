@@ -111,7 +111,7 @@ function LinkContactButton({ leadId, onLinked }: { leadId: string; onLinked: () 
 
   const doSearch = useCallback(async (q: string) => {
     setSearching(true);
-    let query = supabase.from('contacts').select('id, full_name, phone, email').order('full_name').limit(15);
+    let query = externalSupabase.from('contacts').select('id, full_name, phone, email').order('full_name').limit(15);
     if (q.trim()) {
       query = query.or(`full_name.ilike.%${q}%,phone.ilike.%${q}%,email.ilike.%${q}%`);
     }
@@ -206,7 +206,7 @@ export function ActivityDetailPanel({ leadId, leadName, currentActivityId, onNav
     setLoading(true);
     try {
       const [leadRes, contactLinksRes, historyRes, activitiesRes] = await Promise.all([
-        supabase.from('leads').select('*').eq('id', leadId).single(),
+        externalSupabase.from('leads').select('*').eq('id', leadId).single(),
         externalSupabase.from('contact_leads').select('contact_id, relationship_to_victim').eq('lead_id', leadId),
         externalSupabase.from('lead_stage_history').select('*').eq('lead_id', leadId).order('changed_at', { ascending: false }),
         (externalSupabase as any).from('lead_activities').select('id, title, activity_type, status, deadline, created_at, assigned_to_name, completed_at').eq('lead_id', leadId).order('created_at', { ascending: false }),
@@ -617,7 +617,7 @@ export function ActivityDetailPanel({ leadId, leadName, currentActivityId, onNav
           onOpenChange={setShowLeadSheet}
           lead={lead as any}
           onSave={async (leadId, updates) => {
-            const { error } = await supabase.from('leads').update(updates as any).eq('id', leadId);
+            const { error } = await externalSupabase.from('leads').update(updates as any).eq('id', leadId);
             if (error) throw error;
             setShowLeadSheet(false);
             fetchLeadData();

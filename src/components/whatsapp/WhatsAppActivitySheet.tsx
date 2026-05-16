@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { useLeadActivities } from '@/hooks/useLeadActivities';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
@@ -230,7 +231,7 @@ export function WhatsAppActivitySheet({
   }, [open, defaultLeadId, defaultLeadName, defaultContactId, defaultContactName]);
 
   const fetchLeads = async () => {
-    const { data } = await supabase.from('leads').select('id, lead_name').order('created_at', { ascending: false }).limit(200);
+    const { data } = await externalSupabase.from('leads').select('id, lead_name').order('created_at', { ascending: false }).limit(200);
     setLeads(data || []);
   };
 
@@ -246,7 +247,7 @@ export function WhatsAppActivitySheet({
   };
 
   const fetchContacts = async () => {
-    const { data } = await supabase.from('contacts').select('id, full_name').order('full_name').limit(200);
+    const { data } = await externalSupabase.from('contacts').select('id, full_name').order('full_name').limit(200);
     setContacts(data || []);
   };
 

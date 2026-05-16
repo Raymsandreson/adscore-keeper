@@ -13,6 +13,7 @@ import { ExportFormatMenu } from '@/components/finance/ExportFormatMenu';
 import { ExpenseCategoryManager } from '@/components/finance/ExpenseCategoryManager';
 import { CategorySelector } from '@/components/finance/CategorySelector';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { useAuth } from '@/hooks/useAuth';
 import { useExpenseCategories } from '@/hooks/useExpenseCategories';
 import { format } from 'date-fns';
@@ -85,8 +86,8 @@ export function LoansView({ searchTerm, filterCategories, filterSubcategory }: L
 
   const fetchLeadsAndContacts = async () => {
     const [leadsRes, contactsRes] = await Promise.all([
-      supabase.from('leads').select('id, lead_name').order('created_at', { ascending: false }).limit(200),
-      supabase.from('contacts').select('id, full_name').order('full_name').limit(200),
+      externalSupabase.from('leads').select('id, lead_name').order('created_at', { ascending: false }).limit(200),
+      externalSupabase.from('contacts').select('id, full_name').order('full_name').limit(200),
     ]);
     setLeads(leadsRes.data || []);
     setContacts(contactsRes.data || []);

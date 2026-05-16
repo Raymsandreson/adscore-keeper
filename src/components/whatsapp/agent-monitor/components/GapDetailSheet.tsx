@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { format, parseISO } from 'date-fns';
 import { AlertTriangle, Users, Briefcase, Scale, FileText, ExternalLink, MessageSquare, UsersRound } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import type { Lead } from '@/hooks/useLeads';
 import type { GapItem, GapType } from '../hooks/useOperationalGaps';
@@ -35,7 +36,7 @@ export function GapDetailSheet({ open, onClose, gapType, items, onOpenChat }: Pr
 
   const handleOpenLead = async (leadId: string) => {
     if (!leadId) return;
-    const { data } = await supabase.from('leads').select('*').eq('id', leadId).maybeSingle();
+    const { data } = await externalSupabase.from('leads').select('*').eq('id', leadId).maybeSingle();
     if (data) {
       setEditingLead(data as Lead);
       setShowLeadEdit(true);
@@ -116,7 +117,7 @@ export function GapDetailSheet({ open, onClose, gapType, items, onOpenChat }: Pr
           }}
           lead={editingLead}
           onSave={async (leadId, updates) => {
-            await supabase.from('leads').update(updates).eq('id', leadId);
+            await externalSupabase.from('leads').update(updates).eq('id', leadId);
             setShowLeadEdit(false);
             setEditingLead(null);
           }}

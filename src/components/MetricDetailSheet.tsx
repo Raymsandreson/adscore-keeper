@@ -193,7 +193,7 @@ export function MetricDetailSheet({ open, onOpenChange, metricKey, targetUserId,
       let result: ListItem[] = [];
       switch (key) {
         case 'contactsCreated': {
-          const { data } = await supabase.from('contacts').select('id, full_name, instagram_username, phone, created_at')
+          const { data } = await externalSupabase.from('contacts').select('id, full_name, instagram_username, phone, created_at')
             .eq('created_by', userId).gte('created_at', startDate).lte('created_at', endDate)
             .order('created_at', { ascending: false });
           result = (data || []).map(c => ({
@@ -205,7 +205,7 @@ export function MetricDetailSheet({ open, onOpenChange, metricKey, targetUserId,
           break;
         }
         case 'leadsCreated': {
-          const { data } = await supabase.from('leads').select('id, lead_name, status, board_id, created_at')
+          const { data } = await externalSupabase.from('leads').select('id, lead_name, status, board_id, created_at')
             .eq('created_by', userId).gte('created_at', startDate).lte('created_at', endDate)
             .order('created_at', { ascending: false });
           result = (data || []).map(l => ({
@@ -218,7 +218,7 @@ export function MetricDetailSheet({ open, onOpenChange, metricKey, targetUserId,
         }
         case 'leadsClosed': {
           // Query leads that are currently closed, filtered by became_client_date (actual closing date)
-          let closedQuery = supabase.from('leads')
+          let closedQuery = externalSupabase.from('leads')
             .select('id, lead_name, board_id, updated_at, lead_status, source, became_client_date, acolhedor')
             .eq('lead_status', 'closed')
             .not('became_client_date', 'is', null)
@@ -307,7 +307,7 @@ export function MetricDetailSheet({ open, onOpenChange, metricKey, targetUserId,
           const leadIds = [...new Set((data || []).map(s => s.lead_id))];
           let leadNames: Record<string, string> = {};
           if (leadIds.length > 0) {
-            const { data: leads } = await supabase.from('leads').select('id, lead_name').in('id', leadIds);
+            const { data: leads } = await externalSupabase.from('leads').select('id, lead_name').in('id', leadIds);
             leadNames = Object.fromEntries((leads || []).map(l => [l.id, l.lead_name || 'Sem nome']));
           }
           result = (data || []).map(s => ({
@@ -326,7 +326,7 @@ export function MetricDetailSheet({ open, onOpenChange, metricKey, targetUserId,
             .order('changed_at', { ascending: false });
           const uniqueLeadIds = [...new Set((data || []).map(s => s.lead_id))];
           if (uniqueLeadIds.length > 0) {
-            const { data: leads } = await supabase.from('leads').select('id, lead_name, status, board_id').in('id', uniqueLeadIds);
+            const { data: leads } = await externalSupabase.from('leads').select('id, lead_name, status, board_id').in('id', uniqueLeadIds);
             result = (leads || []).map(l => ({
               id: l.id, title: l.lead_name || 'Sem nome', subtitle: l.status || undefined,
               navigateTo: l.board_id ? `/leads?board=${l.board_id}&openLead=${l.id}` : `/leads?openLead=${l.id}`,

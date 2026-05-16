@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 
@@ -97,7 +98,7 @@ export function useAmbassadors() {
 
   /** Create a new contact already classified as ambassador */
   const createAmbassadorContact = useCallback(async (data: { full_name: string; phone?: string; email?: string; city?: string; state?: string; notes?: string }) => {
-    const { error } = await supabase.from('contacts').insert({
+    const { error } = await externalSupabase.from('contacts').insert({
       full_name: data.full_name,
       phone: data.phone || null,
       email: data.email || null,

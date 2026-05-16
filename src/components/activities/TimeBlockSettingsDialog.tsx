@@ -182,7 +182,7 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave, t
   // Fetch boards with stages
   useEffect(() => {
     if (!open) return;
-    supabase.from('kanban_boards').select('id, name, stages').order('display_order').then(({ data }) => {
+    externalSupabase.from('kanban_boards').select('id, name, stages').order('display_order').then(({ data }) => {
       if (data) {
         setBoards(data.map((b: any) => ({
           id: b.id,

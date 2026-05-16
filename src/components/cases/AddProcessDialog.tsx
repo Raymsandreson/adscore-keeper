@@ -132,7 +132,7 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
 
   useEffect(() => {
     if (open && boards.length === 0) {
-      supabase.from('kanban_boards').select('*').order('display_order').then(({ data }) => {
+      externalSupabase.from('kanban_boards').select('*').order('display_order').then(({ data }) => {
         if (data) {
           setLoadedBoards(data.map(b => ({
             ...b,

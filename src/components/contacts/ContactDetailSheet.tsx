@@ -366,7 +366,7 @@ export function ContactDetailSheet({
     const searchLeads = async () => {
       if (clientLeadMode !== 'link') return;
       try {
-        let query = supabase.from('leads').select('id, lead_name, board_id, status, created_at').order('created_at', { ascending: false }).limit(20);
+        let query = externalSupabase.from('leads').select('id, lead_name, board_id, status, created_at').order('created_at', { ascending: false }).limit(20);
         if (existingLeadSearch.trim()) {
           query = query.ilike('lead_name', `%${existingLeadSearch.trim()}%`);
         }
@@ -416,7 +416,7 @@ export function ContactDetailSheet({
           }
         }
 
-        await supabase.from('leads').update(updates).eq('id', selectedExistingLeadId);
+        await externalSupabase.from('leads').update(updates).eq('id', selectedExistingLeadId);
 
         // Create link if not already linked
         const { data: existingLink } = await externalSupabase.from('contact_leads')
@@ -1181,7 +1181,7 @@ export function ContactDetailSheet({
                       className="flex items-center gap-3 p-3 rounded-lg border bg-card hover:bg-muted/50 transition-colors cursor-pointer"
                       onClick={async () => {
                         if (contactLead.lead?.id) {
-                          const { data } = await supabase.from('leads').select('*').eq('id', contactLead.lead.id).single();
+                          const { data } = await externalSupabase.from('leads').select('*').eq('id', contactLead.lead.id).single();
                           if (data) {
                             setNewCreatedLead(data as Lead);
                             setShowLeadEditDialog(true);
@@ -1233,7 +1233,7 @@ export function ContactDetailSheet({
                               // Remove link first
                               await unlinkLead(contactLead.lead_id);
                               // Delete the lead itself
-                              const { error } = await supabase.from('leads').update({ deleted_at: new Date().toISOString() } as any).eq('id', contactLead.lead_id);
+                              const { error } = await externalSupabase.from('leads').update({ deleted_at: new Date().toISOString() } as any).eq('id', contactLead.lead_id);
                               if (error) throw error;
                               toast.success('Lead arquivado');
                               refetchLeads();
@@ -1480,7 +1480,7 @@ export function ContactDetailSheet({
       }}
       lead={newCreatedLead}
       onSave={async (leadId, updates) => {
-        const { error } = await supabase.from('leads').update(updates as any).eq('id', leadId);
+        const { error } = await externalSupabase.from('leads').update(updates as any).eq('id', leadId);
         if (error) throw error;
       }}
       boards={kanbanBoards}

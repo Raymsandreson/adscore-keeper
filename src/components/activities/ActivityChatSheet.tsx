@@ -236,16 +236,16 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
         actData = data;
 
         if (actData?.lead_id) {
-          const { data: ld } = await supabase.from('leads').select('*').eq('id', actData.lead_id).single();
+          const { data: ld } = await externalSupabase.from('leads').select('*').eq('id', actData.lead_id).single();
           leadData = ld;
         }
         if (actData?.contact_id) {
-          const { data: cd } = await supabase.from('contacts').select('*').eq('id', actData.contact_id).single();
+          const { data: cd } = await externalSupabase.from('contacts').select('*').eq('id', actData.contact_id).single();
           contactData = cd;
         }
       } else if (leadId) {
         // Opened from lead tab without a specific activity
-        const { data: ld } = await supabase.from('leads').select('*').eq('id', leadId).single();
+        const { data: ld } = await externalSupabase.from('leads').select('*').eq('id', leadId).single();
         leadData = ld;
       }
 

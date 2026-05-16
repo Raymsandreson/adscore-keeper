@@ -48,7 +48,7 @@ export function useMonitorData() {
         externalSupabase.from('agent_group_redirections')
           .select('id, agent_name, phone, instance_name, group_jid, notify_instance_name, group_message, private_notification, created_at')
           .gte('created_at', startISO).lte('created_at', endISO).order('created_at', { ascending: false }),
-        supabase.from('whatsapp_conversation_agents')
+        externalSupabase.from('whatsapp_conversation_agents')
           .select('id, phone, instance_name, agent_id, is_active, is_blocked, activated_by, created_at, human_paused_until')
           .order('created_at', { ascending: false })
           .limit(2000),

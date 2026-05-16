@@ -21,6 +21,7 @@ import {
   X
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { 
   BarChart, 
   Bar, 
@@ -129,8 +130,8 @@ export function GeographicDistributionMap() {
   const fetchFilterOptions = async () => {
     try {
       const [classRes, profRes] = await Promise.all([
-        supabase.from('contact_classifications').select('name').order('display_order'),
-        supabase.from('contacts').select('profession').not('profession', 'is', null),
+        externalSupabase.from('contact_classifications').select('name').order('display_order'),
+        externalSupabase.from('contacts').select('profession').not('profession', 'is', null),
       ]);
       
       setAvailableClassifications((classRes.data || []).map((c: any) => c.name));
