@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
+import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { toast } from 'sonner';
 import { logAudit } from '@/hooks/useAuditLog';
 import { Lead } from '@/hooks/useLeads';
