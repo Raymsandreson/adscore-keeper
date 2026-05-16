@@ -449,9 +449,9 @@ export const useContacts = () => {
     let errors = 0;
     let duplicates = 0;
 
-    // Get current user for created_by attribution
+    // Get current user for created_by attribution (remapped para Externo)
     const { data: { user: currentUser } } = await authClient.auth.getUser();
-    const currentUserId = currentUser?.id || null;
+    const currentUserId = await remapToExternal(currentUser?.id);
 
     for (const contact of csvData) {
       try {
