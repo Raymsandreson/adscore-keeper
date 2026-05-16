@@ -112,6 +112,7 @@ export function CreateContactDialog({ open, onOpenChange, defaultPhone, defaultN
     setSaving(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
+      const createdByExt = await remapToExternal(user?.id);
 
       // Check for duplicate phone
       if (form.phone.trim()) {
