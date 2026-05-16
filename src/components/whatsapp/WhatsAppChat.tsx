@@ -640,14 +640,16 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     return () => { cancelled = true; };
   }, [conversation.contact_id]);
 
+  const primaryLeadId = conversation.lead_id || contactLinkedLeadIds[0] || null;
+
   const handleOpenLeadEdit = async () => {
-    if (!conversation.lead_id) return;
-    const { data, error } = await externalSupabase.from('leads').select('*').eq('id', conversation.lead_id).maybeSingle();
+    if (!primaryLeadId) return;
+    const { data, error } = await externalSupabase.from('leads').select('*').eq('id', primaryLeadId).maybeSingle();
     if (data) {
       setEditingLeadData(data);
       setShowLeadEdit(true);
     } else {
-      console.error('Lead não encontrado no banco externo', { lead_id: conversation.lead_id, error });
+      console.error('Lead não encontrado no banco externo', { lead_id: primaryLeadId, error });
       toast.error('Lead não encontrado');
     }
   };
