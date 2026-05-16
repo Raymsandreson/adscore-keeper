@@ -429,6 +429,10 @@ export function ContactsListPage() {
           {classifyingClients ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Wand2 className="h-3.5 w-3.5 mr-1" />}
           Classificar Clientes
         </Button>
+        <Button size="sm" onClick={() => setShowCreateContact(true)}>
+          <UserPlus className="h-3.5 w-3.5 mr-1" />
+          Novo Contato
+        </Button>
         <div className="ml-auto flex gap-2">
           {selectedContacts.size > 0 && (
             <>
