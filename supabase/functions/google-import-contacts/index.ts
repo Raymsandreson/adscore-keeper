@@ -75,7 +75,7 @@ serve(async (req) => {
     const newToken = await refreshAccessToken(tokenRow.refresh_token);
     if (newToken) {
       accessToken = newToken;
-      await serviceSupabase.from('google_oauth_tokens').update({
+      await cloudService.from('google_oauth_tokens').update({
         access_token: newToken,
         expires_at: new Date(Date.now() + 3600 * 1000).toISOString(),
       }).eq('user_id', user.id);
@@ -160,13 +160,13 @@ serve(async (req) => {
     }
 
     // Insert new contact
-    const { error: insertError } = await serviceSupabase.from('contacts').insert({
+    const { error: insertError } = await externalService.from('contacts').insert({
       full_name: name,
       phone: phone || null,
       email: email || null,
       instagram_username: instagram_username,
       notes: bio || null,
-      created_by: user.id,
+      created_by: externalUserId,
     });
 
     if (!insertError) {
