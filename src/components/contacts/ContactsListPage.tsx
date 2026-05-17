@@ -80,6 +80,7 @@ export function ContactsListPage() {
   const [groupsLoading, setGroupsLoading] = useState(false);
   const [groupSearch, setGroupSearch] = useState('');
   const [groupSort, setGroupSort] = useState<'alpha' | 'number' | 'prefix'>('alpha');
+  const [groupSearchScope, setGroupSearchScope] = useState<'group' | 'group_lead'>('group');
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
   const [groupContacts, setGroupContacts] = useState<Contact[]>([]);
   const [groupContactsLoading, setGroupContactsLoading] = useState(false);
@@ -690,16 +691,25 @@ export function ContactsListPage() {
         {/* Groups Tab */}
         {activeTab === 'groups' && (
         <div className="flex-1 flex flex-col overflow-hidden min-h-0 mt-2 px-4 pb-4">
-          <div className="flex items-center gap-2 py-3 shrink-0">
-            <div className="relative flex-1 max-w-md">
+          <div className="flex items-center gap-2 py-3 shrink-0 flex-wrap">
+            <div className="relative flex-1 max-w-md min-w-[180px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Buscar grupo por nome..."
+                placeholder={groupSearchScope === 'group' ? 'Buscar grupo por nome...' : 'Buscar grupo ou lead...'}
                 value={groupSearch}
                 onChange={e => setGroupSearch(e.target.value)}
                 className="pl-9"
               />
             </div>
+            <Select value={groupSearchScope} onValueChange={(v) => setGroupSearchScope(v as any)}>
+              <SelectTrigger className="w-[160px] shrink-0">
+                <SelectValue placeholder="Buscar em" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="group">Só nome do grupo</SelectItem>
+                <SelectItem value="group_lead">Grupo + lead</SelectItem>
+              </SelectContent>
+            </Select>
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -708,7 +718,7 @@ export function ContactsListPage() {
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="bottom" className="max-w-xs">
-                  <p className="text-xs">A busca e a ordenação usam apenas o nome do grupo. O lead aparece apenas como detalhe abaixo de cada grupo.</p>
+                  <p className="text-xs">Por padrão a busca e a ordenação usam apenas o nome do grupo. Troque para "Grupo + lead" para também encontrar pelo nome do lead vinculado.</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
@@ -771,11 +781,25 @@ export function ContactsListPage() {
               <div className="space-y-1">
                 {groupsLoading ? (
                   <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
-                ) : groups.filter(g => !groupSearch || g.group_name.toLowerCase().includes(groupSearch.toLowerCase())).length === 0 ? (
+                ) : groups.filter(g => {
+                    if (!groupSearch) return true;
+                    const q = groupSearch.toLowerCase();
+                    if (groupSearchScope === 'group_lead') {
+                      return g.group_name.toLowerCase().includes(q) || (g.lead_name || '').toLowerCase().includes(q);
+                    }
+                    return g.group_name.toLowerCase().includes(q);
+                  }).length === 0 ? (
                   <p className="text-center text-muted-foreground py-8">Nenhum grupo encontrado</p>
                 ) : (
                   [...groups]
-                    .filter(g => !groupSearch || g.group_name.toLowerCase().includes(groupSearch.toLowerCase()))
+                    .filter(g => {
+                      if (!groupSearch) return true;
+                      const q = groupSearch.toLowerCase();
+                      if (groupSearchScope === 'group_lead') {
+                        return g.group_name.toLowerCase().includes(q) || (g.lead_name || '').toLowerCase().includes(q);
+                      }
+                      return g.group_name.toLowerCase().includes(q);
+                    })
                     .sort((a, b) => {
                       const na = (a.group_name || '').trim();
                       const nb = (b.group_name || '').trim();
