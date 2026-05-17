@@ -117,11 +117,11 @@ export function ContactsListPage() {
           .map((g) => g.group_jid);
 
         if (needNameJids.length > 0) {
-          const { data: idx } = await externalSupabase
+          const { data: idx } = await (externalSupabase as any)
             .from('whatsapp_groups_index')
             .select('group_jid, contact_name')
             .in('group_jid', needNameJids);
-          idx?.forEach((r: any) => {
+          (idx as any[] | null)?.forEach((r: any) => {
             const g = groupMap.get(r.group_jid);
             if (g && r.contact_name) g.group_name = String(r.contact_name).trim();
           });
