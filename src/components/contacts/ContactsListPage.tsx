@@ -926,6 +926,19 @@ export function ContactsListPage() {
                   </button>
                 </Badge>
               )}
+              {auditMode && (
+                <Badge variant="default" className="gap-1 pl-2 pr-1">
+                  <ClipboardCheck className="h-3 w-3" />
+                  Auditoria{auditOnlyMismatch ? ' · só divergentes' : ''}
+                  <button
+                    onClick={() => { setAuditMode(false); setAuditOnlyMismatch(false); }}
+                    className="ml-1 rounded-full hover:bg-primary-foreground/20 p-0.5"
+                    aria-label="Sair do modo auditoria"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              )}
             </div>
           )}
 
