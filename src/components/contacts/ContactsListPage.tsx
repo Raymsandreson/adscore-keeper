@@ -817,6 +817,37 @@ export function ContactsListPage() {
                     </div>
                   )}
 
+                  <div className="rounded-lg border p-3 space-y-3">
+                    <div className="flex items-start gap-2">
+                      <ClipboardCheck className="h-4 w-4 mt-0.5 text-primary shrink-0" />
+                      <div className="flex-1">
+                        <Label htmlFor="audit-mode" className="text-sm font-medium cursor-pointer">
+                          Modo auditoria (caso fechado)
+                        </Label>
+                        <p className="text-xs text-muted-foreground">
+                          Mostra só leads fechados, ordenados pelo nº do caso, lado a lado com o nome do grupo. Aponta quando não bate.
+                        </p>
+                      </div>
+                      <Checkbox
+                        id="audit-mode"
+                        checked={auditMode}
+                        onCheckedChange={(v) => setAuditMode(!!v)}
+                      />
+                    </div>
+                    {auditMode && (
+                      <div className="flex items-center gap-2 pl-6">
+                        <Checkbox
+                          id="audit-only-mismatch"
+                          checked={auditOnlyMismatch}
+                          onCheckedChange={(v) => setAuditOnlyMismatch(!!v)}
+                        />
+                        <Label htmlFor="audit-only-mismatch" className="text-xs cursor-pointer">
+                          Mostrar só os divergentes
+                        </Label>
+                      </div>
+                    )}
+                  </div>
+
                   <Button
                     variant="outline"
                     className="w-full"
@@ -825,6 +856,8 @@ export function ContactsListPage() {
                       setGroupSort('alpha');
                       setGroupSortDir('asc');
                       setExcludedGroups(new Set());
+                      setAuditMode(false);
+                      setAuditOnlyMismatch(false);
                     }}
                   >
                     Restaurar padrões
