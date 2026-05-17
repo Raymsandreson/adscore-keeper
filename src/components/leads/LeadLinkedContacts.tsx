@@ -574,8 +574,8 @@ export function LeadLinkedContacts({ leadId }: LeadLinkedContactsProps) {
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
-                    onClick={() => handleUnlinkContact(cl.id)}
+                    className="h-6 w-6 flex-shrink-0 text-muted-foreground hover:text-foreground"
+                    onClick={() => handleUnlinkContact(cl.id, cl.contact.full_name)}
                     title="Desvincular contato"
                   >
                     <X className="h-3 w-3" />
@@ -584,9 +584,9 @@ export function LeadLinkedContacts({ leadId }: LeadLinkedContactsProps) {
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                    className="h-6 w-6 flex-shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10"
                     onClick={() => handleDeleteContact(cl.contact.id, cl.contact.full_name)}
-                    title="Excluir contato (arquivar)"
+                    title="Excluir contato definitivamente"
                   >
                     <Trash2 className="h-3 w-3" />
                   </Button>
