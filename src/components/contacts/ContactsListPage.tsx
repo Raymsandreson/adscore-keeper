@@ -781,11 +781,25 @@ export function ContactsListPage() {
               <div className="space-y-1">
                 {groupsLoading ? (
                   <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
-                ) : groups.filter(g => !groupSearch || g.group_name.toLowerCase().includes(groupSearch.toLowerCase())).length === 0 ? (
+                ) : groups.filter(g => {
+                    if (!groupSearch) return true;
+                    const q = groupSearch.toLowerCase();
+                    if (groupSearchScope === 'group_lead') {
+                      return g.group_name.toLowerCase().includes(q) || (g.lead_name || '').toLowerCase().includes(q);
+                    }
+                    return g.group_name.toLowerCase().includes(q);
+                  }).length === 0 ? (
                   <p className="text-center text-muted-foreground py-8">Nenhum grupo encontrado</p>
                 ) : (
                   [...groups]
-                    .filter(g => !groupSearch || g.group_name.toLowerCase().includes(groupSearch.toLowerCase()))
+                    .filter(g => {
+                      if (!groupSearch) return true;
+                      const q = groupSearch.toLowerCase();
+                      if (groupSearchScope === 'group_lead') {
+                        return g.group_name.toLowerCase().includes(q) || (g.lead_name || '').toLowerCase().includes(q);
+                      }
+                      return g.group_name.toLowerCase().includes(q);
+                    })
                     .sort((a, b) => {
                       const na = (a.group_name || '').trim();
                       const nb = (b.group_name || '').trim();
