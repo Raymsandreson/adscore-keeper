@@ -711,7 +711,7 @@ export function ContactsListPage() {
                 )}
               </div>
             )}
-          </ScrollArea>
+          </div>
         </TabsContent>
 
         <TabsContent value="lists" className="flex-1 flex flex-col overflow-hidden min-h-0 mt-0 px-4 pb-4">
