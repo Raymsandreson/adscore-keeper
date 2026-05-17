@@ -13,12 +13,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 // (Removido Tabs do Radix — usando renderização condicional simples)
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { toast } from 'sonner';
 import {
   Search, Users, Send, Plus, Trash2, Radio, UserPlus,
-  Phone, Loader2, X, ImagePlus, Bot, BotOff, Filter, UsersRound, Wand2
+  Phone, Loader2, X, ImagePlus, Bot, BotOff, Filter, UsersRound, Wand2, Info
 } from 'lucide-react';
 
 export function ContactsListPage() {
@@ -699,6 +700,18 @@ export function ContactsListPage() {
                 className="pl-9"
               />
             </div>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="icon" className="shrink-0 text-muted-foreground">
+                    <Info className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="max-w-xs">
+                  <p className="text-xs">A busca e a ordenação usam apenas o nome do grupo. O lead aparece apenas como detalhe abaixo de cada grupo.</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
             <Select value={groupSort} onValueChange={(v) => setGroupSort(v as any)}>
               <SelectTrigger className="w-[170px] shrink-0">
                 <SelectValue placeholder="Ordenar" />
