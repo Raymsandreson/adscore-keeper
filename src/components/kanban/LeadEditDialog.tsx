@@ -965,6 +965,14 @@ ${scrapeData.content || ''}
       return;
     }
 
+    // Validação obrigatória: Nº do Caso só pode ficar vazio se o lead não está fechado.
+    // Quem fecha o lead PRECISA digitar o número do caso manualmente.
+    if (leadOutcome === 'closed' && !caseNumber.trim()) {
+      toast.error('Nº do Caso é obrigatório ao fechar um lead. Preencha manualmente antes de salvar.');
+      setActiveTab('dados');
+      return;
+    }
+
     console.log('[handleSave] Starting save for lead:', currentLead.id);
     setSaving(true);
     try {
