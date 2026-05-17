@@ -1163,7 +1163,7 @@ export function ContactsListPage() {
               }
               if (visible.length === 0) {
                 return <p className="text-center text-muted-foreground py-8">
-                  {auditMode ? 'Nenhum caso fechado encontrado' : 'Nenhum grupo encontrado'}
+                  {'Nenhum grupo encontrado'}
                 </p>;
               }
 
