@@ -801,8 +801,9 @@ export function ContactsListPage() {
                       return g.group_name.toLowerCase().includes(q);
                     })
                     .sort((a, b) => {
-                      const na = (a.group_name || '').trim();
-                      const nb = (b.group_name || '').trim();
+                      const sortField = groupSearchScope === 'lead' ? 'lead_name' : 'group_name';
+                      const na = ((a as any)[sortField] || '').trim();
+                      const nb = ((b as any)[sortField] || '').trim();
                       if (groupSort === 'number') {
                         const numA = parseInt(na.match(/\d+/)?.[0] || '', 10);
                         const numB = parseInt(nb.match(/\d+/)?.[0] || '', 10);
