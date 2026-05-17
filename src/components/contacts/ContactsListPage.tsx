@@ -714,13 +714,14 @@ export function ContactsListPage() {
                 <Button variant="outline" size="sm" className="shrink-0 gap-2">
                   <SlidersHorizontal className="h-4 w-4" />
                   Filtrar e ordenar
-                  {(excludedGroups.size > 0 || groupSort !== 'alpha' || groupSortDir !== 'asc' || groupSearchScope !== 'group') && (
+                  {(excludedGroups.size > 0 || groupSort !== 'alpha' || groupSortDir !== 'asc' || groupSearchScope !== 'group' || auditMode) && (
                     <Badge variant="secondary" className="h-5 px-1.5 text-[10px] rounded-full">
                       {[
                         groupSearchScope !== 'group',
                         groupSort !== 'alpha',
                         groupSortDir !== 'asc',
                         excludedGroups.size > 0,
+                        auditMode,
                       ].filter(Boolean).length}
                     </Badge>
                   )}
