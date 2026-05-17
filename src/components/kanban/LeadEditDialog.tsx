@@ -64,6 +64,7 @@ const LeadActivitiesTab = lazy(() => import('@/components/leads/LeadActivitiesTa
 import { LinkOrphanWhatsAppButton } from '@/components/leads/LinkOrphanWhatsAppButton';
 const AccidentDataExtractor = lazy(() => import('@/components/leads/AccidentDataExtractor').then(m => ({ default: m.AccidentDataExtractor })));
 import { ExtractedAccidentData, CurrentLeadData } from '@/components/leads/AccidentDataExtractor';
+import { LeadAIChatExtractor } from '@/components/leads/LeadAIChatExtractor';
 import { KanbanBoard } from '@/hooks/useKanbanBoards';
 import { 
   User, 
