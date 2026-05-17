@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+// (Removido Tabs do Radix — usando renderização condicional simples)
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { toast } from 'sonner';
 import {
@@ -450,25 +450,38 @@ export function ContactsListPage() {
         </div>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden min-h-0">
+      <div className="flex-1 flex flex-col overflow-hidden min-h-0">
         <div className="px-4 pt-3 shrink-0">
-          <TabsList className="grid w-full max-w-lg grid-cols-3">
-            <TabsTrigger value="contacts">
+          <div className="grid w-full max-w-lg grid-cols-3 h-10 items-center rounded-md bg-muted p-1 text-muted-foreground">
+            <button
+              type="button"
+              onClick={() => setActiveTab('contacts')}
+              className={`inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium transition-all ${activeTab === 'contacts' ? 'bg-background text-foreground shadow-sm' : ''}`}
+            >
               <Users className="h-4 w-4 mr-1.5" />
               Contatos ({totalCount})
-            </TabsTrigger>
-            <TabsTrigger value="groups">
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('groups')}
+              className={`inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium transition-all ${activeTab === 'groups' ? 'bg-background text-foreground shadow-sm' : ''}`}
+            >
               <UsersRound className="h-4 w-4 mr-1.5" />
               Grupos ({groups.length})
-            </TabsTrigger>
-            <TabsTrigger value="lists">
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('lists')}
+              className={`inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium transition-all ${activeTab === 'lists' ? 'bg-background text-foreground shadow-sm' : ''}`}
+            >
               <Radio className="h-4 w-4 mr-1.5" />
               Listas ({lists.length})
-            </TabsTrigger>
-          </TabsList>
+            </button>
+          </div>
         </div>
 
-        <TabsContent value="contacts" className="flex-1 flex flex-col overflow-hidden min-h-0 mt-0 px-4 pb-4">
+        {activeTab === 'contacts' && (
+        <div className="flex-1 flex flex-col overflow-hidden min-h-0 mt-2 px-4 pb-4">
           <div className="flex items-center gap-2 py-3 shrink-0">
             <div className="relative flex-1 max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -622,11 +635,12 @@ export function ContactsListPage() {
               )}
             </div>
           </div>
-        </TabsContent>
+        </div>
+        )}
 
         {/* Groups Tab */}
-        <TabsContent value="groups" className="flex-1 flex flex-col overflow-hidden min-h-0 mt-0 px-4 pb-4">
-          <div style={{background: 'red', padding: 10, color: 'white'}}>DEBUG GRUPOS RENDERED {groups.length}</div>
+        {activeTab === 'groups' && (
+        <div className="flex-1 flex flex-col overflow-hidden min-h-0 mt-2 px-4 pb-4">
           <div className="flex items-center gap-2 py-3 shrink-0">
             <div className="relative flex-1 max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -713,9 +727,11 @@ export function ContactsListPage() {
               </div>
             )}
           </div>
-        </TabsContent>
+        </div>
+        )}
 
-        <TabsContent value="lists" className="flex-1 flex flex-col overflow-hidden min-h-0 mt-0 px-4 pb-4">
+        {activeTab === 'lists' && (
+        <div className="flex-1 flex flex-col overflow-hidden min-h-0 mt-2 px-4 pb-4">
           <div className="flex items-center gap-2 py-3 shrink-0">
             <Button size="sm" onClick={() => setShowCreateList(true)}>
               <Plus className="h-3.5 w-3.5 mr-1" />
@@ -805,8 +821,9 @@ export function ContactsListPage() {
               )}
             </div>
           </div>
-        </TabsContent>
-      </Tabs>
+        </div>
+        )}
+      </div>
 
       {/* Create List Dialog */}
       <Dialog open={showCreateList} onOpenChange={setShowCreateList}>
