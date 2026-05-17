@@ -707,37 +707,129 @@ export function ContactsListPage() {
                 className="pl-9"
               />
             </div>
-            <Select value={groupSearchScope} onValueChange={(v) => setGroupSearchScope(v as any)}>
-              <SelectTrigger className="w-[160px] shrink-0">
-                <SelectValue placeholder="Buscar em" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="group">Grupo</SelectItem>
-                <SelectItem value="lead">Lead</SelectItem>
-              </SelectContent>
-            </Select>
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" className="shrink-0 text-muted-foreground">
-                    <Info className="h-4 w-4" />
+            <Sheet open={showGroupFilters} onOpenChange={setShowGroupFilters}>
+              <SheetTrigger asChild>
+                <Button variant="outline" size="sm" className="shrink-0 gap-2">
+                  <SlidersHorizontal className="h-4 w-4" />
+                  Filtrar e ordenar
+                  {(excludedGroups.size > 0 || groupSort !== 'alpha' || groupSortDir !== 'asc' || groupSearchScope !== 'group') && (
+                    <Badge variant="secondary" className="h-5 px-1.5 text-[10px] rounded-full">
+                      {[
+                        groupSearchScope !== 'group',
+                        groupSort !== 'alpha',
+                        groupSortDir !== 'asc',
+                        excludedGroups.size > 0,
+                      ].filter(Boolean).length}
+                    </Badge>
+                  )}
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="right" className="w-full sm:max-w-md">
+                <SheetHeader>
+                  <SheetTitle>Filtrar e ordenar grupos</SheetTitle>
+                  <SheetDescription>
+                    Funciona como o filtro do Google Planilhas: escolha onde buscar, como ordenar e em qual direção.
+                  </SheetDescription>
+                </SheetHeader>
+
+                <div className="mt-6 space-y-6">
+                  <div>
+                    <Label className="text-sm font-medium mb-2 block">Buscar e ordenar por</Label>
+                    <RadioGroup value={groupSearchScope} onValueChange={(v) => setGroupSearchScope(v as any)} className="space-y-2">
+                      <div className="flex items-center gap-2 p-3 rounded-lg border hover:bg-muted/50">
+                        <RadioGroupItem value="group" id="scope-group" />
+                        <Label htmlFor="scope-group" className="flex-1 cursor-pointer">
+                          <p className="text-sm font-medium">Nome do grupo</p>
+                          <p className="text-xs text-muted-foreground">Padrão. O lead aparece apenas como detalhe.</p>
+                        </Label>
+                      </div>
+                      <div className="flex items-center gap-2 p-3 rounded-lg border hover:bg-muted/50">
+                        <RadioGroupItem value="lead" id="scope-lead" />
+                        <Label htmlFor="scope-lead" className="flex-1 cursor-pointer">
+                          <p className="text-sm font-medium">Nome do lead vinculado</p>
+                          <p className="text-xs text-muted-foreground">Útil pra conferir se o nome do grupo bate com o do lead.</p>
+                        </Label>
+                      </div>
+                    </RadioGroup>
+                  </div>
+
+                  <div>
+                    <Label className="text-sm font-medium mb-2 block">Ordenar por</Label>
+                    <RadioGroup value={groupSort} onValueChange={(v) => setGroupSort(v as any)} className="space-y-2">
+                      <div className="flex items-center gap-2 p-3 rounded-lg border hover:bg-muted/50">
+                        <RadioGroupItem value="alpha" id="sort-alpha" />
+                        <Label htmlFor="sort-alpha" className="flex-1 cursor-pointer text-sm">Ordem alfabética</Label>
+                      </div>
+                      <div className="flex items-center gap-2 p-3 rounded-lg border hover:bg-muted/50">
+                        <RadioGroupItem value="number" id="sort-number" />
+                        <Label htmlFor="sort-number" className="flex-1 cursor-pointer text-sm">
+                          <p>Por numeração</p>
+                          <p className="text-xs text-muted-foreground">Ex.: "Caso 12" antes de "Caso 100".</p>
+                        </Label>
+                      </div>
+                      <div className="flex items-center gap-2 p-3 rounded-lg border hover:bg-muted/50">
+                        <RadioGroupItem value="prefix" id="sort-prefix" />
+                        <Label htmlFor="sort-prefix" className="flex-1 cursor-pointer text-sm">
+                          <p>Por prefixo</p>
+                          <p className="text-xs text-muted-foreground">Agrupa pelo início do nome (letras antes do número).</p>
+                        </Label>
+                      </div>
+                    </RadioGroup>
+                  </div>
+
+                  <div>
+                    <Label className="text-sm font-medium mb-2 block">Direção</Label>
+                    <div className="flex gap-2">
+                      <Button
+                        variant={groupSortDir === 'asc' ? 'default' : 'outline'}
+                        size="sm"
+                        className="flex-1 gap-2"
+                        onClick={() => setGroupSortDir('asc')}
+                      >
+                        <ArrowDownAZ className="h-4 w-4" />
+                        Crescente (A→Z / 1→9)
+                      </Button>
+                      <Button
+                        variant={groupSortDir === 'desc' ? 'default' : 'outline'}
+                        size="sm"
+                        className="flex-1 gap-2"
+                        onClick={() => setGroupSortDir('desc')}
+                      >
+                        <ArrowUpAZ className="h-4 w-4" />
+                        Decrescente (Z→A / 9→1)
+                      </Button>
+                    </div>
+                  </div>
+
+                  {excludedGroups.size > 0 && (
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <Label className="text-sm font-medium">Grupos ocultos manualmente</Label>
+                        <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setExcludedGroups(new Set())}>
+                          Restaurar todos
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground mb-2">
+                        {excludedGroups.size} grupo(s) ocultos. Desmarque na lista para esconder mais.
+                      </p>
+                    </div>
+                  )}
+
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => {
+                      setGroupSearchScope('group');
+                      setGroupSort('alpha');
+                      setGroupSortDir('asc');
+                      setExcludedGroups(new Set());
+                    }}
+                  >
+                    Restaurar padrões
                   </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom" className="max-w-xs">
-                  <p className="text-xs">Escolha onde buscar e ordenar: pelo nome do grupo (padrão) ou pelo nome do lead vinculado.</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-            <Select value={groupSort} onValueChange={(v) => setGroupSort(v as any)}>
-              <SelectTrigger className="w-[170px] shrink-0">
-                <SelectValue placeholder="Ordenar" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="alpha">Ordem alfabética</SelectItem>
-                <SelectItem value="number">Por numeração</SelectItem>
-                <SelectItem value="prefix">Por prefixo</SelectItem>
-              </SelectContent>
-            </Select>
+                </div>
+              </SheetContent>
+            </Sheet>
             {selectedGroup && (
               <Button variant="outline" size="sm" onClick={() => { setSelectedGroup(null); setGroupContacts([]); }}>
                 <X className="h-3.5 w-3.5 mr-1" />
@@ -745,6 +837,61 @@ export function ContactsListPage() {
               </Button>
             )}
           </div>
+
+          {/* Chips de critério ativo */}
+          {!selectedGroup && (
+            <div className="flex items-center gap-2 flex-wrap pb-2 shrink-0">
+              <Badge variant="secondary" className="gap-1 pl-2 pr-1">
+                Busca: {groupSearchScope === 'group' ? 'Grupo' : 'Lead'}
+                {groupSearchScope !== 'group' && (
+                  <button
+                    onClick={() => setGroupSearchScope('group')}
+                    className="ml-1 rounded-full hover:bg-muted p-0.5"
+                    aria-label="Voltar para busca por grupo"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
+              </Badge>
+              <Badge variant="secondary" className="gap-1 pl-2 pr-1">
+                Ordem: {groupSort === 'alpha' ? 'Alfabética' : groupSort === 'number' ? 'Numérica' : 'Prefixo'} ·
+                {groupSortDir === 'asc' ? ' ↑' : ' ↓'}
+                {(groupSort !== 'alpha' || groupSortDir !== 'asc') && (
+                  <button
+                    onClick={() => { setGroupSort('alpha'); setGroupSortDir('asc'); }}
+                    className="ml-1 rounded-full hover:bg-muted p-0.5"
+                    aria-label="Restaurar ordem padrão"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
+              </Badge>
+              {groupSearch && (
+                <Badge variant="secondary" className="gap-1 pl-2 pr-1">
+                  Termo: "{groupSearch}"
+                  <button
+                    onClick={() => setGroupSearch('')}
+                    className="ml-1 rounded-full hover:bg-muted p-0.5"
+                    aria-label="Limpar termo"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              )}
+              {excludedGroups.size > 0 && (
+                <Badge variant="secondary" className="gap-1 pl-2 pr-1">
+                  {excludedGroups.size} oculto(s)
+                  <button
+                    onClick={() => setExcludedGroups(new Set())}
+                    className="ml-1 rounded-full hover:bg-muted p-0.5"
+                    aria-label="Restaurar grupos ocultos"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              )}
+            </div>
+          )}
 
           <div className="flex-1 min-h-0 overflow-y-auto">
             {selectedGroup ? (
@@ -783,74 +930,98 @@ export function ContactsListPage() {
                   ))
                 )}
               </div>
-            ) : (
-              <div className="space-y-1">
-                {groupsLoading ? (
-                  <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
-                ) : groups.filter(g => {
-                    if (!groupSearch) return true;
-                    const q = groupSearch.toLowerCase();
-                    if (groupSearchScope === 'lead') {
-                      return (g.lead_name || '').toLowerCase().includes(q);
-                    }
-                    return g.group_name.toLowerCase().includes(q);
-                  }).length === 0 ? (
-                  <p className="text-center text-muted-foreground py-8">Nenhum grupo encontrado</p>
-                ) : (
-                  [...groups]
-                    .filter(g => {
-                      if (!groupSearch) return true;
-                      const q = groupSearch.toLowerCase();
-                      if (groupSearchScope === 'lead') {
-                        return (g.lead_name || '').toLowerCase().includes(q);
-                      }
-                      return g.group_name.toLowerCase().includes(q);
-                    })
-                    .sort((a, b) => {
-                      const sortField = groupSearchScope === 'lead' ? 'lead_name' : 'group_name';
-                      const na = ((a as any)[sortField] || '').trim();
-                      const nb = ((b as any)[sortField] || '').trim();
-                      if (groupSort === 'number') {
-                        const numA = parseInt(na.match(/\d+/)?.[0] || '', 10);
-                        const numB = parseInt(nb.match(/\d+/)?.[0] || '', 10);
-                        const aHas = !isNaN(numA);
-                        const bHas = !isNaN(numB);
-                        if (aHas && bHas && numA !== numB) return numA - numB;
-                        if (aHas && !bHas) return -1;
-                        if (!aHas && bHas) return 1;
-                        return na.localeCompare(nb, 'pt-BR', { sensitivity: 'base' });
-                      }
-                      if (groupSort === 'prefix') {
-                        // Prefixo = primeira "palavra" (letras/símbolos antes de número ou espaço)
-                        const pa = (na.match(/^[^\s\d]+/)?.[0] || na).toLowerCase();
-                        const pb = (nb.match(/^[^\s\d]+/)?.[0] || nb).toLowerCase();
-                        const cmp = pa.localeCompare(pb, 'pt-BR', { sensitivity: 'base' });
-                        if (cmp !== 0) return cmp;
-                        return na.localeCompare(nb, 'pt-BR', { sensitivity: 'base' });
-                      }
-                      return na.localeCompare(nb, 'pt-BR', { sensitivity: 'base' });
-                    })
-                    .map(group => (
+            ) : (() => {
+              const matchesSearch = (g: typeof groups[number]) => {
+                if (!groupSearch) return true;
+                const q = groupSearch.toLowerCase();
+                if (groupSearchScope === 'lead') return (g.lead_name || '').toLowerCase().includes(q);
+                return g.group_name.toLowerCase().includes(q);
+              };
+              const visible = [...groups]
+                .filter(g => !excludedGroups.has(g.group_jid) && matchesSearch(g))
+                .sort((a, b) => {
+                  const sortField = groupSearchScope === 'lead' ? 'lead_name' : 'group_name';
+                  const na = ((a as any)[sortField] || '').trim();
+                  const nb = ((b as any)[sortField] || '').trim();
+                  let cmp = 0;
+                  if (groupSort === 'number') {
+                    const numA = parseInt(na.match(/\d+/)?.[0] || '', 10);
+                    const numB = parseInt(nb.match(/\d+/)?.[0] || '', 10);
+                    const aHas = !isNaN(numA);
+                    const bHas = !isNaN(numB);
+                    if (aHas && bHas && numA !== numB) cmp = numA - numB;
+                    else if (aHas && !bHas) cmp = -1;
+                    else if (!aHas && bHas) cmp = 1;
+                    else cmp = na.localeCompare(nb, 'pt-BR', { sensitivity: 'base' });
+                  } else if (groupSort === 'prefix') {
+                    const pa = (na.match(/^[^\s\d]+/)?.[0] || na).toLowerCase();
+                    const pb = (nb.match(/^[^\s\d]+/)?.[0] || nb).toLowerCase();
+                    cmp = pa.localeCompare(pb, 'pt-BR', { sensitivity: 'base' });
+                    if (cmp === 0) cmp = na.localeCompare(nb, 'pt-BR', { sensitivity: 'base' });
+                  } else {
+                    cmp = na.localeCompare(nb, 'pt-BR', { sensitivity: 'base' });
+                  }
+                  return groupSortDir === 'desc' ? -cmp : cmp;
+                });
+
+              const highlight = (text: string | null | undefined, shouldHighlight: boolean) => {
+                const value = text || '';
+                if (!groupSearch || !shouldHighlight) return value;
+                const escaped = groupSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                const parts = value.split(new RegExp(`(${escaped})`, 'ig'));
+                return parts.map((p, i) =>
+                  p.toLowerCase() === groupSearch.toLowerCase()
+                    ? <mark key={i} className="bg-primary/20 text-foreground rounded px-0.5">{p}</mark>
+                    : <span key={i}>{p}</span>
+                );
+              };
+
+              if (groupsLoading) {
+                return <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
+              }
+              if (visible.length === 0) {
+                return <p className="text-center text-muted-foreground py-8">Nenhum grupo encontrado</p>;
+              }
+              return (
+                <div className="space-y-1">
+                  {visible.map(group => (
+                    <div
+                      key={group.group_jid}
+                      className="flex items-center gap-3 p-3 rounded-lg hover:bg-accent/50 transition-colors border"
+                    >
+                      <Checkbox
+                        checked={!excludedGroups.has(group.group_jid)}
+                        onCheckedChange={(checked) => {
+                          setExcludedGroups(prev => {
+                            const next = new Set(prev);
+                            if (checked) next.delete(group.group_jid);
+                            else next.add(group.group_jid);
+                            return next;
+                          });
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        aria-label="Incluir grupo no filtro"
+                      />
+                      <UsersRound className="h-5 w-5 text-primary shrink-0" />
                       <div
-                        key={group.group_jid}
-                        className="flex items-center gap-3 p-3 rounded-lg hover:bg-accent/50 cursor-pointer transition-colors border"
+                        className="flex-1 min-w-0 cursor-pointer"
                         onClick={() => handleSelectGroup(group.group_jid)}
                       >
-                        <UsersRound className="h-5 w-5 text-primary shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-sm truncate">{group.group_name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            Lead: {group.lead_name} • {group.contact_count} contato(s)
-                          </p>
-                        </div>
-                        <Badge variant={group.lead_status === 'closed' ? 'default' : 'outline'} className="text-[10px] shrink-0">
-                          {group.lead_status || 'N/A'}
-                        </Badge>
+                        <p className="font-medium text-sm truncate">
+                          {highlight(group.group_name, groupSearchScope === 'group')}
+                        </p>
+                        <p className="text-xs text-muted-foreground truncate">
+                          Lead: {highlight(group.lead_name, groupSearchScope === 'lead')} • {group.contact_count} contato(s)
+                        </p>
                       </div>
-                    ))
-                )}
-              </div>
-            )}
+                      <Badge variant={group.lead_status === 'closed' ? 'default' : 'outline'} className="text-[10px] shrink-0">
+                        {group.lead_status || 'N/A'}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
           </div>
         </div>
         )}
