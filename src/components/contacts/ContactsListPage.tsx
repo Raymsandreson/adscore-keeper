@@ -707,7 +707,7 @@ export function ContactsListPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="group">Só nome do grupo</SelectItem>
-                <SelectItem value="group_lead">Grupo + lead</SelectItem>
+                <SelectItem value="lead">Só nome do lead</SelectItem>
               </SelectContent>
             </Select>
             <TooltipProvider>
