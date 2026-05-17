@@ -706,8 +706,8 @@ export function ContactsListPage() {
                 <SelectValue placeholder="Buscar em" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="group">Só nome do grupo</SelectItem>
-                <SelectItem value="lead">Só nome do lead</SelectItem>
+                <SelectItem value="group">Grupo</SelectItem>
+                <SelectItem value="lead">Lead</SelectItem>
               </SelectContent>
             </Select>
             <TooltipProvider>
