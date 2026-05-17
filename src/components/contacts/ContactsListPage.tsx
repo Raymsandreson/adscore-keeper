@@ -1004,6 +1004,34 @@ export function ContactsListPage() {
                   </button>
                 </Badge>
               )}
+              {leadLinkFilter !== 'all' && (
+                <Badge variant="secondary" className="gap-1 pl-2 pr-1">
+                  {leadLinkFilter === 'with' ? 'Com lead' : 'Sem lead'}
+                  <button
+                    onClick={() => setLeadLinkFilter('all')}
+                    className="ml-1 rounded-full hover:bg-muted p-0.5"
+                    aria-label="Limpar filtro de vínculo"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              )}
+              {Array.from(leadStatusFilter).map(st => (
+                <Badge key={st} variant="secondary" className="gap-1 pl-2 pr-1 capitalize">
+                  Status: {st}
+                  <button
+                    onClick={() => setLeadStatusFilter(prev => {
+                      const next = new Set(prev);
+                      next.delete(st);
+                      return next;
+                    })}
+                    className="ml-1 rounded-full hover:bg-muted p-0.5"
+                    aria-label={`Remover filtro ${st}`}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              ))}
             </div>
           )}
 
