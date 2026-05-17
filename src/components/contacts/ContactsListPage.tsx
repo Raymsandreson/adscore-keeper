@@ -80,7 +80,7 @@ export function ContactsListPage() {
   const [groupsLoading, setGroupsLoading] = useState(false);
   const [groupSearch, setGroupSearch] = useState('');
   const [groupSort, setGroupSort] = useState<'alpha' | 'number' | 'prefix'>('alpha');
-  const [groupSearchScope, setGroupSearchScope] = useState<'group' | 'group_lead'>('group');
+  const [groupSearchScope, setGroupSearchScope] = useState<'group' | 'lead'>('group');
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
   const [groupContacts, setGroupContacts] = useState<Contact[]>([]);
   const [groupContactsLoading, setGroupContactsLoading] = useState(false);
@@ -695,7 +695,7 @@ export function ContactsListPage() {
             <div className="relative flex-1 max-w-md min-w-[180px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder={groupSearchScope === 'group' ? 'Buscar grupo por nome...' : 'Buscar grupo ou lead...'}
+                placeholder={groupSearchScope === 'group' ? 'Buscar grupo por nome...' : 'Buscar pelo nome do lead...'}
                 value={groupSearch}
                 onChange={e => setGroupSearch(e.target.value)}
                 className="pl-9"
@@ -707,7 +707,7 @@ export function ContactsListPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="group">Só nome do grupo</SelectItem>
-                <SelectItem value="group_lead">Grupo + lead</SelectItem>
+                <SelectItem value="lead">Só nome do lead</SelectItem>
               </SelectContent>
             </Select>
             <TooltipProvider>
@@ -718,7 +718,7 @@ export function ContactsListPage() {
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="bottom" className="max-w-xs">
-                  <p className="text-xs">Por padrão a busca e a ordenação usam apenas o nome do grupo. Troque para "Grupo + lead" para também encontrar pelo nome do lead vinculado.</p>
+                  <p className="text-xs">Escolha onde buscar: só pelo nome do grupo (padrão) ou só pelo nome do lead vinculado. A ordenação sempre usa o nome do grupo.</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
@@ -784,8 +784,8 @@ export function ContactsListPage() {
                 ) : groups.filter(g => {
                     if (!groupSearch) return true;
                     const q = groupSearch.toLowerCase();
-                    if (groupSearchScope === 'group_lead') {
-                      return g.group_name.toLowerCase().includes(q) || (g.lead_name || '').toLowerCase().includes(q);
+                    if (groupSearchScope === 'lead') {
+                      return (g.lead_name || '').toLowerCase().includes(q);
                     }
                     return g.group_name.toLowerCase().includes(q);
                   }).length === 0 ? (
@@ -795,8 +795,8 @@ export function ContactsListPage() {
                     .filter(g => {
                       if (!groupSearch) return true;
                       const q = groupSearch.toLowerCase();
-                      if (groupSearchScope === 'group_lead') {
-                        return g.group_name.toLowerCase().includes(q) || (g.lead_name || '').toLowerCase().includes(q);
+                      if (groupSearchScope === 'lead') {
+                        return (g.lead_name || '').toLowerCase().includes(q);
                       }
                       return g.group_name.toLowerCase().includes(q);
                     })
