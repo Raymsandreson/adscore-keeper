@@ -582,7 +582,7 @@ export function ContactsListPage() {
             </div>
           )}
 
-          <ScrollArea className="flex-1">
+          <div className="flex-1 min-h-0 overflow-y-auto">
             <div className="space-y-1">
               {contactsLoading ? (
                 <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
@@ -621,11 +621,12 @@ export function ContactsListPage() {
                 ))
               )}
             </div>
-          </ScrollArea>
+          </div>
         </TabsContent>
 
         {/* Groups Tab */}
         <TabsContent value="groups" className="flex-1 flex flex-col overflow-hidden min-h-0 mt-0 px-4 pb-4">
+          <div style={{background: 'red', padding: 10, color: 'white'}}>DEBUG GRUPOS RENDERED {groups.length}</div>
           <div className="flex items-center gap-2 py-3 shrink-0">
             <div className="relative flex-1 max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -644,7 +645,7 @@ export function ContactsListPage() {
             )}
           </div>
 
-          <ScrollArea className="flex-1">
+          <div className="flex-1 min-h-0 overflow-y-auto">
             {selectedGroup ? (
               <div className="space-y-1">
                 <div className="p-3 mb-2 rounded-lg bg-muted/50 border">
@@ -711,7 +712,7 @@ export function ContactsListPage() {
                 )}
               </div>
             )}
-          </ScrollArea>
+          </div>
         </TabsContent>
 
         <TabsContent value="lists" className="flex-1 flex flex-col overflow-hidden min-h-0 mt-0 px-4 pb-4">
@@ -722,7 +723,7 @@ export function ContactsListPage() {
             </Button>
           </div>
 
-          <ScrollArea className="flex-1">
+          <div className="flex-1 min-h-0 overflow-y-auto">
             <div className="space-y-2">
               {listsLoading ? (
                 <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
@@ -803,7 +804,7 @@ export function ContactsListPage() {
                 })
               )}
             </div>
-          </ScrollArea>
+          </div>
         </TabsContent>
       </Tabs>
 
