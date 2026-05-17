@@ -1100,7 +1100,6 @@ export function ContactsListPage() {
               });
 
               if (auditMode) {
-                visible = visible.filter(g => g.lead_status === 'closed');
                 if (auditOnlyMismatch) {
                   visible = visible.filter(g => {
                     const ng = normalizeName(g.group_name);
