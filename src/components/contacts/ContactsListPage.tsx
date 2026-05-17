@@ -103,13 +103,60 @@ export function ContactsListPage() {
             const lead = g.leads as any;
             groupMap.set(g.group_jid, {
               group_jid: g.group_jid,
-              group_name: g.group_name || g.group_jid,
+              group_name: g.group_name || '',
               lead_name: lead?.lead_name || '',
               lead_status: lead?.lead_status || '',
               contact_count: 0,
             });
           }
         }
+
+        // Enrich names: para grupos sem nome, busca em whatsapp_groups_index e whatsapp_messages
+        const needNameJids = Array.from(groupMap.values())
+          .filter((g) => !g.group_name)
+          .map((g) => g.group_jid);
+
+        if (needNameJids.length > 0) {
+          const { data: idx } = await externalSupabase
+            .from('whatsapp_groups_index')
+            .select('group_jid, contact_name')
+            .in('group_jid', needNameJids);
+          idx?.forEach((r: any) => {
+            const g = groupMap.get(r.group_jid);
+            if (g && r.contact_name) g.group_name = String(r.contact_name).trim();
+          });
+
+          const stillMissing = Array.from(groupMap.values())
+            .filter((g) => !g.group_name)
+            .map((g) => g.group_jid);
+          if (stillMissing.length > 0) {
+            const { data: msgs } = await externalSupabase
+              .from('whatsapp_messages')
+              .select('phone, contact_name, created_at')
+              .in('phone', stillMissing)
+              .not('contact_name', 'is', null)
+              .order('created_at', { ascending: false })
+              .limit(stillMissing.length * 5);
+            const nameByJid = new Map<string, string>();
+            msgs?.forEach((m: any) => {
+              if (m.phone && m.contact_name && !nameByJid.has(m.phone)) {
+                nameByJid.set(m.phone, String(m.contact_name).trim());
+              }
+            });
+            nameByJid.forEach((name, jid) => {
+              const g = groupMap.get(jid);
+              if (g) g.group_name = name;
+            });
+          }
+        }
+
+        // Fallback final: rótulo curto em vez do JID inteiro
+        groupMap.forEach((g) => {
+          if (!g.group_name) {
+            g.group_name = `Grupo ${String(g.group_jid).slice(-6)}`;
+          }
+        });
+
         // Count contacts per group
         const { data: contactCounts } = await externalSupabase
           .from('contacts')
