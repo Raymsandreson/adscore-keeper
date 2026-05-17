@@ -229,7 +229,7 @@ export function LeadLinkedContacts({ leadId }: LeadLinkedContactsProps) {
     }
   };
 
-  const handleUnlinkContact = async (linkId: string) => {
+  const performUnlink = async (linkId: string) => {
     try {
       await ensureExternalSession().catch(() => {});
       const { error } = await (externalSupabase as any)
@@ -245,10 +245,15 @@ export function LeadLinkedContacts({ leadId }: LeadLinkedContactsProps) {
     }
   };
 
-  const handleDeleteContact = async (contactId: string, contactName: string) => {
-    if (!window.confirm(`Excluir DEFINITIVAMENTE o contato "${contactName}"?\n\nEsta ação não pode ser desfeita. Ele será removido de todos os leads e do banco de contatos.`)) {
-      return;
-    }
+  const handleUnlinkContact = (linkId: string, contactName: string) => {
+    confirmDelete(
+      'Desvincular contato',
+      `Desvincular "${contactName}" deste lead? O contato continua existindo no banco e em outros leads onde estiver vinculado.`,
+      () => performUnlink(linkId),
+    );
+  };
+
+  const performDeleteContact = async (contactId: string) => {
     try {
       await ensureExternalSession().catch(() => {});
 
@@ -280,7 +285,6 @@ export function LeadLinkedContacts({ leadId }: LeadLinkedContactsProps) {
 
       if (error) throw error;
 
-      // Atualiza UI imediatamente
       setContacts(prev => prev.filter(c => c.contact_id !== contactId));
       contactsCache.delete(leadId);
       toast.success('Contato excluído');
@@ -289,6 +293,14 @@ export function LeadLinkedContacts({ leadId }: LeadLinkedContactsProps) {
       console.error('Erro ao excluir contato:', err);
       toast.error(`Erro ao excluir contato: ${err?.message || 'desconhecido'}`);
     }
+  };
+
+  const handleDeleteContact = (contactId: string, contactName: string) => {
+    confirmDelete(
+      'Excluir contato DEFINITIVAMENTE',
+      `Excluir "${contactName}" do banco de contatos? Ele será removido deste lead e de TODOS os outros leads em que esteja vinculado. Esta ação não pode ser desfeita.`,
+      () => performDeleteContact(contactId),
+    );
   };
 
   const handleCreateAndLink = async () => {
