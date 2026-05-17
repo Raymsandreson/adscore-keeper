@@ -727,9 +727,11 @@ export function ContactsListPage() {
               </div>
             )}
           </div>
-        </TabsContent>
+        </div>
+        )}
 
-        <TabsContent value="lists" className="flex-1 flex flex-col overflow-hidden min-h-0 mt-0 px-4 pb-4">
+        {activeTab === 'lists' && (
+        <div className="flex-1 flex flex-col overflow-hidden min-h-0 mt-2 px-4 pb-4">
           <div className="flex items-center gap-2 py-3 shrink-0">
             <Button size="sm" onClick={() => setShowCreateList(true)}>
               <Plus className="h-3.5 w-3.5 mr-1" />
