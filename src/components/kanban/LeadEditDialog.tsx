@@ -2339,24 +2339,29 @@ ${scrapeData.content || ''}
                     </>
                   )}
                   <div>
-                    <Label className="flex items-center gap-1">Nº do Caso <span className="text-xs text-muted-foreground font-normal">(auto)</span></Label>
+                    <Label className="flex items-center gap-1">
+                      Nº do Caso {leadOutcome === 'closed' && <span className="text-destructive">*</span>}
+                    </Label>
                     <Input
-                      value={caseNumber || '—'}
-                      readOnly
-                      className="bg-muted font-mono"
-                      title="Atualizado automaticamente pela ordem de assinatura da procuração"
+                      value={caseNumber}
+                      onChange={(e) => setCaseNumber(e.target.value)}
+                      placeholder={leadOutcome === 'closed' ? 'Digite o número (obrigatório)' : 'Ex: 1095'}
+                      className="font-mono"
                     />
-                    <p className="text-[11px] text-muted-foreground mt-1">Sincronizado com a ordem de assinatura da procuração.</p>
+                    <p className="text-[11px] text-muted-foreground mt-1">
+                      Preenchimento <strong>manual</strong>. Esta é a numeração oficial do caso e não é mais gerada automaticamente — confira a ordem real antes de salvar.
+                    </p>
                     {caseSyncCheck?.needsUpdate && (
                       <div className="mt-2 rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800 p-2 text-xs flex items-start gap-2">
                         <div className="flex-1">
-                          <p className="font-medium text-amber-900 dark:text-amber-200">Nº do caso desatualizado</p>
+                          <p className="font-medium text-amber-900 dark:text-amber-200">Sugestão de Nº do caso</p>
                           <p className="text-amber-800 dark:text-amber-300 mt-0.5">
-                            Posição atual na fila: <span className="font-mono font-semibold">{caseSyncCheck.expectedCaseNumber || '—'}</span>
+                            Posição na fila de assinatura: <span className="font-mono font-semibold">{caseSyncCheck.expectedCaseNumber || '—'}</span>
                             {caseSyncCheck.expectedLeadName && (
-                              <> · novo nome: <span className="font-mono">{caseSyncCheck.expectedLeadName}</span></>
+                              <> · sugestão de nome: <span className="font-mono">{caseSyncCheck.expectedLeadName}</span></>
                             )}
                           </p>
+                          <p className="text-[10px] text-amber-700 dark:text-amber-400 mt-0.5">Apenas sugestão — confirme antes de aplicar.</p>
                         </div>
                         <Button
                           type="button"
@@ -2366,7 +2371,7 @@ ${scrapeData.content || ''}
                           onClick={applyCaseSync}
                           disabled={caseSyncApplying}
                         >
-                          {caseSyncApplying ? 'Atualizando...' : 'Atualizar agora'}
+                          {caseSyncApplying ? 'Aplicando...' : 'Usar sugestão'}
                         </Button>
                       </div>
                     )}
