@@ -922,6 +922,8 @@ export function ContactsListPage() {
                       setExcludedGroups(new Set());
                       setAuditMode(false);
                       setAuditOnlyMismatch(false);
+                      setLeadStatusFilter(new Set());
+                      setLeadLinkFilter('all');
                     }}
                   >
                     Restaurar padrões
