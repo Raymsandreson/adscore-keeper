@@ -78,6 +78,7 @@ export function ContactsListPage() {
   const [groups, setGroups] = useState<{ group_jid: string; group_name: string; lead_name: string; lead_status: string; contact_count: number }[]>([]);
   const [groupsLoading, setGroupsLoading] = useState(false);
   const [groupSearch, setGroupSearch] = useState('');
+  const [groupSort, setGroupSort] = useState<'alpha' | 'number' | 'prefix'>('alpha');
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
   const [groupContacts, setGroupContacts] = useState<Contact[]>([]);
   const [groupContactsLoading, setGroupContactsLoading] = useState(false);
@@ -698,6 +699,16 @@ export function ContactsListPage() {
                 className="pl-9"
               />
             </div>
+            <Select value={groupSort} onValueChange={(v) => setGroupSort(v as any)}>
+              <SelectTrigger className="w-[170px] shrink-0">
+                <SelectValue placeholder="Ordenar" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="alpha">Ordem alfabética</SelectItem>
+                <SelectItem value="number">Por numeração</SelectItem>
+                <SelectItem value="prefix">Por prefixo</SelectItem>
+              </SelectContent>
+            </Select>
             {selectedGroup && (
               <Button variant="outline" size="sm" onClick={() => { setSelectedGroup(null); setGroupContacts([]); }}>
                 <X className="h-3.5 w-3.5 mr-1" />
@@ -750,8 +761,31 @@ export function ContactsListPage() {
                 ) : groups.filter(g => !groupSearch || g.group_name.toLowerCase().includes(groupSearch.toLowerCase()) || g.lead_name.toLowerCase().includes(groupSearch.toLowerCase())).length === 0 ? (
                   <p className="text-center text-muted-foreground py-8">Nenhum grupo encontrado</p>
                 ) : (
-                  groups
+                  [...groups]
                     .filter(g => !groupSearch || g.group_name.toLowerCase().includes(groupSearch.toLowerCase()) || g.lead_name.toLowerCase().includes(groupSearch.toLowerCase()))
+                    .sort((a, b) => {
+                      const na = (a.group_name || '').trim();
+                      const nb = (b.group_name || '').trim();
+                      if (groupSort === 'number') {
+                        const numA = parseInt(na.match(/\d+/)?.[0] || '', 10);
+                        const numB = parseInt(nb.match(/\d+/)?.[0] || '', 10);
+                        const aHas = !isNaN(numA);
+                        const bHas = !isNaN(numB);
+                        if (aHas && bHas && numA !== numB) return numA - numB;
+                        if (aHas && !bHas) return -1;
+                        if (!aHas && bHas) return 1;
+                        return na.localeCompare(nb, 'pt-BR', { sensitivity: 'base' });
+                      }
+                      if (groupSort === 'prefix') {
+                        // Prefixo = primeira "palavra" (letras/símbolos antes de número ou espaço)
+                        const pa = (na.match(/^[^\s\d]+/)?.[0] || na).toLowerCase();
+                        const pb = (nb.match(/^[^\s\d]+/)?.[0] || nb).toLowerCase();
+                        const cmp = pa.localeCompare(pb, 'pt-BR', { sensitivity: 'base' });
+                        if (cmp !== 0) return cmp;
+                        return na.localeCompare(nb, 'pt-BR', { sensitivity: 'base' });
+                      }
+                      return na.localeCompare(nb, 'pt-BR', { sensitivity: 'base' });
+                    })
                     .map(group => (
                       <div
                         key={group.group_jid}
