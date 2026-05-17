@@ -718,7 +718,7 @@ export function ContactsListPage() {
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="bottom" className="max-w-xs">
-                  <p className="text-xs">Por padrão a busca e a ordenação usam apenas o nome do grupo. Troque para "Grupo + lead" para também encontrar pelo nome do lead vinculado.</p>
+                  <p className="text-xs">Escolha onde buscar: só pelo nome do grupo (padrão) ou só pelo nome do lead vinculado. A ordenação sempre usa o nome do grupo.</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
