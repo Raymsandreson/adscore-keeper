@@ -785,7 +785,7 @@ export function ContactsListPage() {
                     if (!groupSearch) return true;
                     const q = groupSearch.toLowerCase();
                     if (groupSearchScope === 'lead') {
-                      return g.group_name.toLowerCase().includes(q) || (g.lead_name || '').toLowerCase().includes(q);
+                      return (g.lead_name || '').toLowerCase().includes(q);
                     }
                     return g.group_name.toLowerCase().includes(q);
                   }).length === 0 ? (
@@ -796,7 +796,7 @@ export function ContactsListPage() {
                       if (!groupSearch) return true;
                       const q = groupSearch.toLowerCase();
                       if (groupSearchScope === 'lead') {
-                        return g.group_name.toLowerCase().includes(q) || (g.lead_name || '').toLowerCase().includes(q);
+                        return (g.lead_name || '').toLowerCase().includes(q);
                       }
                       return g.group_name.toLowerCase().includes(q);
                     })
