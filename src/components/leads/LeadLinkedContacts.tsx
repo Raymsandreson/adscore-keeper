@@ -143,6 +143,7 @@ export function LeadLinkedContacts({ leadId }: LeadLinkedContactsProps) {
   const [selectedContact, setSelectedContact] = useState<any>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [callStats, setCallStats] = useState<Record<string, ContactCallStats>>(() => cached?.callStats || {});
+  const { confirmDelete, ConfirmDeleteDialog } = useConfirmDelete();
 
   // Search & link existing contact
   const [showSearch, setShowSearch] = useState(false);
