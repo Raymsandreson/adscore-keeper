@@ -89,6 +89,8 @@ export function ContactsListPage() {
   const [showGroupFilters, setShowGroupFilters] = useState(false);
   const [auditMode, setAuditMode] = useState(false);
   const [auditOnlyMismatch, setAuditOnlyMismatch] = useState(false);
+  const [leadStatusFilter, setLeadStatusFilter] = useState<Set<string>>(new Set());
+  const [leadLinkFilter, setLeadLinkFilter] = useState<'all' | 'with' | 'without'>('all');
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
   const [groupContacts, setGroupContacts] = useState<Contact[]>([]);
   const [groupContactsLoading, setGroupContactsLoading] = useState(false);
@@ -714,7 +716,7 @@ export function ContactsListPage() {
                 <Button variant="outline" size="sm" className="shrink-0 gap-2">
                   <SlidersHorizontal className="h-4 w-4" />
                   Filtrar e ordenar
-                  {(excludedGroups.size > 0 || groupSort !== 'alpha' || groupSortDir !== 'asc' || groupSearchScope !== 'group' || auditMode) && (
+                  {(excludedGroups.size > 0 || groupSort !== 'alpha' || groupSortDir !== 'asc' || groupSearchScope !== 'group' || auditMode || leadStatusFilter.size > 0 || leadLinkFilter !== 'all') && (
                     <Badge variant="secondary" className="h-5 px-1.5 text-[10px] rounded-full">
                       {[
                         groupSearchScope !== 'group',
@@ -722,6 +724,8 @@ export function ContactsListPage() {
                         groupSortDir !== 'asc',
                         excludedGroups.size > 0,
                         auditMode,
+                        leadStatusFilter.size > 0,
+                        leadLinkFilter !== 'all',
                       ].filter(Boolean).length}
                     </Badge>
                   )}
@@ -804,6 +808,65 @@ export function ContactsListPage() {
                     </div>
                   </div>
 
+                  <div>
+                    <Label className="text-sm font-medium mb-2 block">Vínculo com lead</Label>
+                    <RadioGroup value={leadLinkFilter} onValueChange={(v) => setLeadLinkFilter(v as any)} className="space-y-2">
+                      <div className="flex items-center gap-2 p-3 rounded-lg border hover:bg-muted/50">
+                        <RadioGroupItem value="all" id="link-all" />
+                        <Label htmlFor="link-all" className="flex-1 cursor-pointer text-sm">Todos os grupos</Label>
+                      </div>
+                      <div className="flex items-center gap-2 p-3 rounded-lg border hover:bg-muted/50">
+                        <RadioGroupItem value="with" id="link-with" />
+                        <Label htmlFor="link-with" className="flex-1 cursor-pointer text-sm">Somente com lead vinculado</Label>
+                      </div>
+                      <div className="flex items-center gap-2 p-3 rounded-lg border hover:bg-muted/50">
+                        <RadioGroupItem value="without" id="link-without" />
+                        <Label htmlFor="link-without" className="flex-1 cursor-pointer text-sm">Somente sem lead vinculado</Label>
+                      </div>
+                    </RadioGroup>
+                  </div>
+
+                  {(() => {
+                    const statuses = Array.from(new Set(groups.map(g => g.lead_status).filter(Boolean))).sort();
+                    if (statuses.length === 0) return null;
+                    return (
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <Label className="text-sm font-medium">Status do lead</Label>
+                          {leadStatusFilter.size > 0 && (
+                            <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setLeadStatusFilter(new Set())}>
+                              Limpar
+                            </Button>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground mb-2">
+                          {leadStatusFilter.size === 0 ? 'Mostrando todos os status.' : `Mostrando: ${Array.from(leadStatusFilter).join(', ')}`}
+                        </p>
+                        <div className="space-y-1">
+                          {statuses.map(st => (
+                            <div key={st} className="flex items-center gap-2 p-2 rounded-lg border hover:bg-muted/50">
+                              <Checkbox
+                                id={`status-${st}`}
+                                checked={leadStatusFilter.has(st)}
+                                onCheckedChange={(v) => {
+                                  setLeadStatusFilter(prev => {
+                                    const next = new Set(prev);
+                                    if (v) next.add(st); else next.delete(st);
+                                    return next;
+                                  });
+                                }}
+                              />
+                              <Label htmlFor={`status-${st}`} className="flex-1 cursor-pointer text-sm capitalize">{st}</Label>
+                              <Badge variant="outline" className="text-[10px]">
+                                {groups.filter(g => g.lead_status === st).length}
+                              </Badge>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
                   {excludedGroups.size > 0 && (
                     <div>
                       <div className="flex items-center justify-between mb-2">
@@ -859,6 +922,8 @@ export function ContactsListPage() {
                       setExcludedGroups(new Set());
                       setAuditMode(false);
                       setAuditOnlyMismatch(false);
+                      setLeadStatusFilter(new Set());
+                      setLeadLinkFilter('all');
                     }}
                   >
                     Restaurar padrões
@@ -939,6 +1004,34 @@ export function ContactsListPage() {
                   </button>
                 </Badge>
               )}
+              {leadLinkFilter !== 'all' && (
+                <Badge variant="secondary" className="gap-1 pl-2 pr-1">
+                  {leadLinkFilter === 'with' ? 'Com lead' : 'Sem lead'}
+                  <button
+                    onClick={() => setLeadLinkFilter('all')}
+                    className="ml-1 rounded-full hover:bg-muted p-0.5"
+                    aria-label="Limpar filtro de vínculo"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              )}
+              {Array.from(leadStatusFilter).map(st => (
+                <Badge key={st} variant="secondary" className="gap-1 pl-2 pr-1 capitalize">
+                  Status: {st}
+                  <button
+                    onClick={() => setLeadStatusFilter(prev => {
+                      const next = new Set(prev);
+                      next.delete(st);
+                      return next;
+                    })}
+                    className="ml-1 rounded-full hover:bg-muted p-0.5"
+                    aria-label={`Remover filtro ${st}`}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              ))}
             </div>
           )}
 
@@ -997,7 +1090,14 @@ export function ContactsListPage() {
                 return g.group_name.toLowerCase().includes(q);
               };
 
-              let visible = [...groups].filter(g => !excludedGroups.has(g.group_jid) && matchesSearch(g));
+              let visible = [...groups].filter(g => {
+                if (excludedGroups.has(g.group_jid)) return false;
+                if (!matchesSearch(g)) return false;
+                if (leadLinkFilter === 'with' && !g.lead_name) return false;
+                if (leadLinkFilter === 'without' && g.lead_name) return false;
+                if (leadStatusFilter.size > 0 && !leadStatusFilter.has(g.lead_status)) return false;
+                return true;
+              });
 
               if (auditMode) {
                 visible = visible.filter(g => g.lead_status === 'closed');
