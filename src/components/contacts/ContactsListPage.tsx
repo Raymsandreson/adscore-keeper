@@ -821,8 +821,9 @@ export function ContactsListPage() {
               )}
             </div>
           </div>
-        </TabsContent>
-      </Tabs>
+        </div>
+        )}
+      </div>
 
       {/* Create List Dialog */}
       <Dialog open={showCreateList} onOpenChange={setShowCreateList}>
