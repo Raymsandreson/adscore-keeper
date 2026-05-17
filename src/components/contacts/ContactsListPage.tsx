@@ -691,16 +691,25 @@ export function ContactsListPage() {
         {/* Groups Tab */}
         {activeTab === 'groups' && (
         <div className="flex-1 flex flex-col overflow-hidden min-h-0 mt-2 px-4 pb-4">
-          <div className="flex items-center gap-2 py-3 shrink-0">
-            <div className="relative flex-1 max-w-md">
+          <div className="flex items-center gap-2 py-3 shrink-0 flex-wrap">
+            <div className="relative flex-1 max-w-md min-w-[180px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Buscar grupo por nome..."
+                placeholder={groupSearchScope === 'group' ? 'Buscar grupo por nome...' : 'Buscar grupo ou lead...'}
                 value={groupSearch}
                 onChange={e => setGroupSearch(e.target.value)}
                 className="pl-9"
               />
             </div>
+            <Select value={groupSearchScope} onValueChange={(v) => setGroupSearchScope(v as any)}>
+              <SelectTrigger className="w-[160px] shrink-0">
+                <SelectValue placeholder="Buscar em" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="group">Só nome do grupo</SelectItem>
+                <SelectItem value="group_lead">Grupo + lead</SelectItem>
+              </SelectContent>
+            </Select>
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -709,7 +718,7 @@ export function ContactsListPage() {
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="bottom" className="max-w-xs">
-                  <p className="text-xs">A busca e a ordenação usam apenas o nome do grupo. O lead aparece apenas como detalhe abaixo de cada grupo.</p>
+                  <p className="text-xs">Por padrão a busca e a ordenação usam apenas o nome do grupo. Troque para "Grupo + lead" para também encontrar pelo nome do lead vinculado.</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
