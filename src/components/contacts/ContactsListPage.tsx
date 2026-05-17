@@ -699,6 +699,16 @@ export function ContactsListPage() {
                 className="pl-9"
               />
             </div>
+            <Select value={groupSort} onValueChange={(v) => setGroupSort(v as any)}>
+              <SelectTrigger className="w-[170px] shrink-0">
+                <SelectValue placeholder="Ordenar" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="alpha">Ordem alfabética</SelectItem>
+                <SelectItem value="number">Por numeração</SelectItem>
+                <SelectItem value="prefix">Por prefixo</SelectItem>
+              </SelectContent>
+            </Select>
             {selectedGroup && (
               <Button variant="outline" size="sm" onClick={() => { setSelectedGroup(null); setGroupContacts([]); }}>
                 <X className="h-3.5 w-3.5 mr-1" />
