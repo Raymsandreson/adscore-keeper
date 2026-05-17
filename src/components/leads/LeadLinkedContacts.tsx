@@ -619,6 +619,7 @@ export function LeadLinkedContacts({ leadId }: LeadLinkedContactsProps) {
         onOpenChange={setSheetOpen}
         onContactUpdated={fetchContacts}
       />
+      <ConfirmDeleteDialog />
     </>
   );
 }
