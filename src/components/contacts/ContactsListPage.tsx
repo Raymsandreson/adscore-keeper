@@ -621,7 +621,7 @@ export function ContactsListPage() {
                 ))
               )}
             </div>
-          </ScrollArea>
+          </div>
         </TabsContent>
 
         {/* Groups Tab */}
