@@ -969,7 +969,7 @@ ${scrapeData.content || ''}
     // Quem fecha o lead PRECISA digitar o número do caso manualmente.
     if (leadOutcome === 'closed' && !caseNumber.trim()) {
       toast.error('Nº do Caso é obrigatório ao fechar um lead. Preencha manualmente antes de salvar.');
-      setActiveTab('dados');
+      setActiveTab('basic');
       return;
     }
 
