@@ -803,7 +803,7 @@ export function ContactsListPage() {
                 })
               )}
             </div>
-          </ScrollArea>
+          </div>
         </TabsContent>
       </Tabs>
 
