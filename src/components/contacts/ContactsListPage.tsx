@@ -22,7 +22,7 @@ import { toast } from 'sonner';
 import {
   Search, Users, Send, Plus, Trash2, Radio, UserPlus,
   Phone, Loader2, X, ImagePlus, Bot, BotOff, Filter, UsersRound, Wand2, Info,
-  SlidersHorizontal, ArrowDownAZ, ArrowUpAZ
+  SlidersHorizontal, ArrowDownAZ, ArrowUpAZ, AlertTriangle, CheckCircle2, ClipboardCheck
 } from 'lucide-react';
 
 export function ContactsListPage() {
@@ -87,6 +87,8 @@ export function ContactsListPage() {
   const [groupSearchScope, setGroupSearchScope] = useState<'group' | 'lead'>('group');
   const [excludedGroups, setExcludedGroups] = useState<Set<string>>(new Set());
   const [showGroupFilters, setShowGroupFilters] = useState(false);
+  const [auditMode, setAuditMode] = useState(false);
+  const [auditOnlyMismatch, setAuditOnlyMismatch] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
   const [groupContacts, setGroupContacts] = useState<Contact[]>([]);
   const [groupContactsLoading, setGroupContactsLoading] = useState(false);
@@ -712,13 +714,14 @@ export function ContactsListPage() {
                 <Button variant="outline" size="sm" className="shrink-0 gap-2">
                   <SlidersHorizontal className="h-4 w-4" />
                   Filtrar e ordenar
-                  {(excludedGroups.size > 0 || groupSort !== 'alpha' || groupSortDir !== 'asc' || groupSearchScope !== 'group') && (
+                  {(excludedGroups.size > 0 || groupSort !== 'alpha' || groupSortDir !== 'asc' || groupSearchScope !== 'group' || auditMode) && (
                     <Badge variant="secondary" className="h-5 px-1.5 text-[10px] rounded-full">
                       {[
                         groupSearchScope !== 'group',
                         groupSort !== 'alpha',
                         groupSortDir !== 'asc',
                         excludedGroups.size > 0,
+                        auditMode,
                       ].filter(Boolean).length}
                     </Badge>
                   )}
@@ -815,6 +818,37 @@ export function ContactsListPage() {
                     </div>
                   )}
 
+                  <div className="rounded-lg border p-3 space-y-3">
+                    <div className="flex items-start gap-2">
+                      <ClipboardCheck className="h-4 w-4 mt-0.5 text-primary shrink-0" />
+                      <div className="flex-1">
+                        <Label htmlFor="audit-mode" className="text-sm font-medium cursor-pointer">
+                          Modo auditoria (caso fechado)
+                        </Label>
+                        <p className="text-xs text-muted-foreground">
+                          Mostra só leads fechados, ordenados pelo nº do caso, lado a lado com o nome do grupo. Aponta quando não bate.
+                        </p>
+                      </div>
+                      <Checkbox
+                        id="audit-mode"
+                        checked={auditMode}
+                        onCheckedChange={(v) => setAuditMode(!!v)}
+                      />
+                    </div>
+                    {auditMode && (
+                      <div className="flex items-center gap-2 pl-6">
+                        <Checkbox
+                          id="audit-only-mismatch"
+                          checked={auditOnlyMismatch}
+                          onCheckedChange={(v) => setAuditOnlyMismatch(!!v)}
+                        />
+                        <Label htmlFor="audit-only-mismatch" className="text-xs cursor-pointer">
+                          Mostrar só os divergentes
+                        </Label>
+                      </div>
+                    )}
+                  </div>
+
                   <Button
                     variant="outline"
                     className="w-full"
@@ -823,6 +857,8 @@ export function ContactsListPage() {
                       setGroupSort('alpha');
                       setGroupSortDir('asc');
                       setExcludedGroups(new Set());
+                      setAuditMode(false);
+                      setAuditOnlyMismatch(false);
                     }}
                   >
                     Restaurar padrões
@@ -890,6 +926,19 @@ export function ContactsListPage() {
                   </button>
                 </Badge>
               )}
+              {auditMode && (
+                <Badge variant="default" className="gap-1 pl-2 pr-1">
+                  <ClipboardCheck className="h-3 w-3" />
+                  Auditoria{auditOnlyMismatch ? ' · só divergentes' : ''}
+                  <button
+                    onClick={() => { setAuditMode(false); setAuditOnlyMismatch(false); }}
+                    className="ml-1 rounded-full hover:bg-primary-foreground/20 p-0.5"
+                    aria-label="Sair do modo auditoria"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              )}
             </div>
           )}
 
@@ -931,15 +980,48 @@ export function ContactsListPage() {
                 )}
               </div>
             ) : (() => {
+              const extractCaseNum = (s: string | null | undefined): number | null => {
+                if (!s) return null;
+                const m = String(s).match(/caso\s*0*(\d+)/i) || String(s).match(/\b0*(\d{1,6})\b/);
+                if (!m) return null;
+                const n = parseInt(m[1], 10);
+                return isNaN(n) ? null : n;
+              };
+              const normalizeName = (s: string | null | undefined) =>
+                (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
+
               const matchesSearch = (g: typeof groups[number]) => {
                 if (!groupSearch) return true;
                 const q = groupSearch.toLowerCase();
                 if (groupSearchScope === 'lead') return (g.lead_name || '').toLowerCase().includes(q);
                 return g.group_name.toLowerCase().includes(q);
               };
-              const visible = [...groups]
-                .filter(g => !excludedGroups.has(g.group_jid) && matchesSearch(g))
-                .sort((a, b) => {
+
+              let visible = [...groups].filter(g => !excludedGroups.has(g.group_jid) && matchesSearch(g));
+
+              if (auditMode) {
+                visible = visible.filter(g => g.lead_status === 'closed');
+                if (auditOnlyMismatch) {
+                  visible = visible.filter(g => {
+                    const ng = normalizeName(g.group_name);
+                    const nl = normalizeName(g.lead_name);
+                    if (!ng || !nl) return true;
+                    return !ng.includes(nl) && !nl.includes(ng);
+                  });
+                }
+                visible.sort((a, b) => {
+                  const ca = extractCaseNum(a.group_name) ?? extractCaseNum(a.lead_name);
+                  const cb = extractCaseNum(b.group_name) ?? extractCaseNum(b.lead_name);
+                  if (ca == null && cb == null) {
+                    return (a.group_name || '').localeCompare(b.group_name || '', 'pt-BR');
+                  }
+                  if (ca == null) return 1;
+                  if (cb == null) return -1;
+                  const cmp = ca - cb;
+                  return groupSortDir === 'desc' ? -cmp : cmp;
+                });
+              } else {
+                visible.sort((a, b) => {
                   const sortField = groupSearchScope === 'lead' ? 'lead_name' : 'group_name';
                   const na = ((a as any)[sortField] || '').trim();
                   const nb = ((b as any)[sortField] || '').trim();
@@ -963,6 +1045,7 @@ export function ContactsListPage() {
                   }
                   return groupSortDir === 'desc' ? -cmp : cmp;
                 });
+              }
 
               const highlight = (text: string | null | undefined, shouldHighlight: boolean) => {
                 const value = text || '';
@@ -980,8 +1063,87 @@ export function ContactsListPage() {
                 return <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
               }
               if (visible.length === 0) {
-                return <p className="text-center text-muted-foreground py-8">Nenhum grupo encontrado</p>;
+                return <p className="text-center text-muted-foreground py-8">
+                  {auditMode ? 'Nenhum caso fechado encontrado' : 'Nenhum grupo encontrado'}
+                </p>;
               }
+
+              if (auditMode) {
+                const total = visible.length;
+                const mismatched = visible.filter(g => {
+                  const ng = normalizeName(g.group_name);
+                  const nl = normalizeName(g.lead_name);
+                  if (!ng || !nl) return true;
+                  return !ng.includes(nl) && !nl.includes(ng);
+                }).length;
+                return (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-3 px-1 text-xs text-muted-foreground">
+                      <span>{total} caso(s) fechado(s)</span>
+                      <span className="flex items-center gap-1">
+                        <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+                        {mismatched} divergente(s)
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-[40px_60px_1fr_1fr_24px] gap-2 px-3 py-2 text-[11px] font-medium text-muted-foreground border-b">
+                      <span></span>
+                      <span>Nº caso</span>
+                      <span>Nome do grupo</span>
+                      <span>Nome do lead</span>
+                      <span></span>
+                    </div>
+                    {visible.map(group => {
+                      const caseNum = extractCaseNum(group.group_name) ?? extractCaseNum(group.lead_name);
+                      const ng = normalizeName(group.group_name);
+                      const nl = normalizeName(group.lead_name);
+                      const hasBoth = !!ng && !!nl;
+                      const matches = hasBoth && (ng.includes(nl) || nl.includes(ng));
+                      return (
+                        <div
+                          key={group.group_jid}
+                          className={`grid grid-cols-[40px_60px_1fr_1fr_24px] gap-2 items-center p-3 rounded-lg border transition-colors hover:bg-accent/50 ${!matches ? 'border-amber-500/40 bg-amber-500/5' : ''}`}
+                        >
+                          <Checkbox
+                            checked={!excludedGroups.has(group.group_jid)}
+                            onCheckedChange={(checked) => {
+                              setExcludedGroups(prev => {
+                                const next = new Set(prev);
+                                if (checked) next.delete(group.group_jid);
+                                else next.add(group.group_jid);
+                                return next;
+                              });
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                            aria-label="Incluir grupo no filtro"
+                          />
+                          <span className="text-sm font-mono font-semibold tabular-nums">
+                            {caseNum != null ? caseNum : <span className="text-muted-foreground">—</span>}
+                          </span>
+                          <span
+                            className="text-sm truncate cursor-pointer"
+                            title={group.group_name || ''}
+                            onClick={() => handleSelectGroup(group.group_jid)}
+                          >
+                            {highlight(group.group_name, groupSearchScope === 'group')}
+                          </span>
+                          <span className="text-sm truncate" title={group.lead_name || ''}>
+                            {highlight(group.lead_name, groupSearchScope === 'lead')}
+                          </span>
+                          {matches ? (
+                            <CheckCircle2 className="h-4 w-4 text-emerald-500" aria-label="Bate" />
+                          ) : (
+                            <AlertTriangle
+                              className="h-4 w-4 text-amber-500"
+                              aria-label={hasBoth ? 'Nomes diferentes' : 'Faltando nome'}
+                            />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              }
+
               return (
                 <div className="space-y-1">
                   {visible.map(group => (
