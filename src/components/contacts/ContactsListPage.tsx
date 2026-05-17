@@ -1062,7 +1062,14 @@ export function ContactsListPage() {
                 return g.group_name.toLowerCase().includes(q);
               };
 
-              let visible = [...groups].filter(g => !excludedGroups.has(g.group_jid) && matchesSearch(g));
+              let visible = [...groups].filter(g => {
+                if (excludedGroups.has(g.group_jid)) return false;
+                if (!matchesSearch(g)) return false;
+                if (leadLinkFilter === 'with' && !g.lead_name) return false;
+                if (leadLinkFilter === 'without' && g.lead_name) return false;
+                if (leadStatusFilter.size > 0 && !leadStatusFilter.has(g.lead_status)) return false;
+                return true;
+              });
 
               if (auditMode) {
                 visible = visible.filter(g => g.lead_status === 'closed');
