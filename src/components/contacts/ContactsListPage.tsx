@@ -103,10 +103,37 @@ export function ContactsListPage() {
   const fetchGroups = async () => {
     setGroupsLoading(true);
     try {
-      // Paginação: PostgREST corta em 1000 linhas por padrão. Sem isso, grupos
-      // mais antigos (Prev 02, 03, 08...) ficavam de fora silenciosamente.
       const pageSize = 1000;
-      const data: any[] = [];
+      const groupMap = new Map<string, any>();
+
+      // 1) Fonte primária: whatsapp_groups_index (TODOS os grupos do WhatsApp
+      //    capturados pela sync diária — ~4.8k grupos). Antes a tela lia só
+      //    de lead_whatsapp_groups (~532), por isso aparecia bem menos.
+      for (let from = 0; ; from += pageSize) {
+        const to = from + pageSize - 1;
+        const { data: page, error } = await (externalSupabase as any)
+          .from('whatsapp_groups_index')
+          .select('group_jid, contact_name, last_seen')
+          .order('last_seen', { ascending: false })
+          .range(from, to);
+        if (error) { console.error('fetchGroups index page error:', error); break; }
+        const rows = (page as any[]) || [];
+        for (const r of rows) {
+          if (!groupMap.has(r.group_jid)) {
+            groupMap.set(r.group_jid, {
+              group_jid: r.group_jid,
+              group_name: r.contact_name ? String(r.contact_name).trim() : '',
+              lead_name: '',
+              lead_status: '',
+              contact_count: 0,
+            });
+          }
+        }
+        if (rows.length < pageSize) break;
+      }
+
+      // 2) Enriquecimento: vínculo com lead (nome + status). LEFT JOIN feito em JS.
+      //    Também garante grupos que existem só em lead_whatsapp_groups e não no index.
       for (let from = 0; ; from += pageSize) {
         const to = from + pageSize - 1;
         const { data: page, error } = await externalSupabase
@@ -114,18 +141,16 @@ export function ContactsListPage() {
           .select('group_jid, group_name, lead_id, leads!lead_whatsapp_groups_lead_id_fkey(lead_name, lead_status)')
           .order('created_at', { ascending: false })
           .range(from, to);
-        if (error) { console.error('fetchGroups page error:', error); break; }
-        const rows = page || [];
-        data.push(...rows);
-        if (rows.length < pageSize) break;
-      }
-
-      if (data) {
-        // Deduplicate by group_jid and count contacts
-        const groupMap = new Map<string, any>();
-        for (const g of data) {
-          if (!groupMap.has(g.group_jid)) {
-            const lead = g.leads as any;
+        if (error) { console.error('fetchGroups lwg page error:', error); break; }
+        const rows = (page as any[]) || [];
+        for (const g of rows) {
+          const lead = g.leads as any;
+          const existing = groupMap.get(g.group_jid);
+          if (existing) {
+            if (!existing.group_name && g.group_name) existing.group_name = g.group_name;
+            if (!existing.lead_name && lead?.lead_name) existing.lead_name = lead.lead_name;
+            if (!existing.lead_status && lead?.lead_status) existing.lead_status = lead.lead_status;
+          } else {
             groupMap.set(g.group_jid, {
               group_jid: g.group_jid,
               group_name: g.group_name || '',
@@ -135,68 +160,62 @@ export function ContactsListPage() {
             });
           }
         }
+        if (rows.length < pageSize) break;
+      }
 
-        // Enrich names: para grupos sem nome, busca em whatsapp_groups_index e whatsapp_messages
-        const needNameJids = Array.from(groupMap.values())
-          .filter((g) => !g.group_name)
-          .map((g) => g.group_jid);
-
-        if (needNameJids.length > 0) {
-          const { data: idx } = await (externalSupabase as any)
-            .from('whatsapp_groups_index')
-            .select('group_jid, contact_name')
-            .in('group_jid', needNameJids);
-          (idx as any[] | null)?.forEach((r: any) => {
-            const g = groupMap.get(r.group_jid);
-            if (g && r.contact_name) g.group_name = String(r.contact_name).trim();
+      // 3) Fallback de nome via whatsapp_messages para os que ainda não têm nome
+      const stillMissing = Array.from(groupMap.values())
+        .filter((g) => !g.group_name)
+        .map((g) => g.group_jid);
+      if (stillMissing.length > 0) {
+        // chunk pra não estourar URL no .in()
+        const chunkSize = 200;
+        for (let i = 0; i < stillMissing.length; i += chunkSize) {
+          const chunk = stillMissing.slice(i, i + chunkSize);
+          const { data: msgs } = await externalSupabase
+            .from('whatsapp_messages')
+            .select('phone, contact_name, created_at')
+            .in('phone', chunk)
+            .not('contact_name', 'is', null)
+            .order('created_at', { ascending: false })
+            .limit(chunk.length * 5);
+          const nameByJid = new Map<string, string>();
+          msgs?.forEach((m: any) => {
+            if (m.phone && m.contact_name && !nameByJid.has(m.phone)) {
+              nameByJid.set(m.phone, String(m.contact_name).trim());
+            }
           });
-
-          const stillMissing = Array.from(groupMap.values())
-            .filter((g) => !g.group_name)
-            .map((g) => g.group_jid);
-          if (stillMissing.length > 0) {
-            const { data: msgs } = await externalSupabase
-              .from('whatsapp_messages')
-              .select('phone, contact_name, created_at')
-              .in('phone', stillMissing)
-              .not('contact_name', 'is', null)
-              .order('created_at', { ascending: false })
-              .limit(stillMissing.length * 5);
-            const nameByJid = new Map<string, string>();
-            msgs?.forEach((m: any) => {
-              if (m.phone && m.contact_name && !nameByJid.has(m.phone)) {
-                nameByJid.set(m.phone, String(m.contact_name).trim());
-              }
-            });
-            nameByJid.forEach((name, jid) => {
-              const g = groupMap.get(jid);
-              if (g) g.group_name = name;
-            });
-          }
+          nameByJid.forEach((name, jid) => {
+            const g = groupMap.get(jid);
+            if (g) g.group_name = name;
+          });
         }
+      }
 
-        // Fallback final: rótulo curto em vez do JID inteiro
-        groupMap.forEach((g) => {
-          if (!g.group_name) {
-            g.group_name = `Grupo ${String(g.group_jid).slice(-6)}`;
-          }
-        });
+      // Fallback final: rótulo curto em vez do JID inteiro
+      groupMap.forEach((g) => {
+        if (!g.group_name) g.group_name = `Grupo ${String(g.group_jid).slice(-6)}`;
+      });
 
-        // Count contacts per group
-        const { data: contactCounts } = await externalSupabase
+      // 4) Contagem de contatos por grupo (paginado também)
+      for (let from = 0; ; from += pageSize) {
+        const to = from + pageSize - 1;
+        const { data: page, error } = await externalSupabase
           .from('contacts')
           .select('whatsapp_group_id')
           .not('whatsapp_group_id', 'is', null)
-          .is('deleted_at', null);
-
-        if (contactCounts) {
-          for (const c of contactCounts) {
-            const g = groupMap.get(c.whatsapp_group_id as string);
-            if (g) g.contact_count++;
-          }
+          .is('deleted_at', null)
+          .range(from, to);
+        if (error) { console.error('fetchGroups counts page error:', error); break; }
+        const rows = (page as any[]) || [];
+        for (const c of rows) {
+          const g = groupMap.get(c.whatsapp_group_id as string);
+          if (g) g.contact_count++;
         }
-        setGroups(Array.from(groupMap.values()));
+        if (rows.length < pageSize) break;
       }
+
+      setGroups(Array.from(groupMap.values()));
     } catch (err) {
       console.error('Error fetching groups:', err);
     } finally {
