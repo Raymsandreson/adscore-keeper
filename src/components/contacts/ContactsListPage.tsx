@@ -761,8 +761,31 @@ export function ContactsListPage() {
                 ) : groups.filter(g => !groupSearch || g.group_name.toLowerCase().includes(groupSearch.toLowerCase()) || g.lead_name.toLowerCase().includes(groupSearch.toLowerCase())).length === 0 ? (
                   <p className="text-center text-muted-foreground py-8">Nenhum grupo encontrado</p>
                 ) : (
-                  groups
+                  [...groups]
                     .filter(g => !groupSearch || g.group_name.toLowerCase().includes(groupSearch.toLowerCase()) || g.lead_name.toLowerCase().includes(groupSearch.toLowerCase()))
+                    .sort((a, b) => {
+                      const na = (a.group_name || '').trim();
+                      const nb = (b.group_name || '').trim();
+                      if (groupSort === 'number') {
+                        const numA = parseInt(na.match(/\d+/)?.[0] || '', 10);
+                        const numB = parseInt(nb.match(/\d+/)?.[0] || '', 10);
+                        const aHas = !isNaN(numA);
+                        const bHas = !isNaN(numB);
+                        if (aHas && bHas && numA !== numB) return numA - numB;
+                        if (aHas && !bHas) return -1;
+                        if (!aHas && bHas) return 1;
+                        return na.localeCompare(nb, 'pt-BR', { sensitivity: 'base' });
+                      }
+                      if (groupSort === 'prefix') {
+                        // Prefixo = primeira "palavra" (letras/símbolos antes de número ou espaço)
+                        const pa = (na.match(/^[^\s\d]+/)?.[0] || na).toLowerCase();
+                        const pb = (nb.match(/^[^\s\d]+/)?.[0] || nb).toLowerCase();
+                        const cmp = pa.localeCompare(pb, 'pt-BR', { sensitivity: 'base' });
+                        if (cmp !== 0) return cmp;
+                        return na.localeCompare(nb, 'pt-BR', { sensitivity: 'base' });
+                      }
+                      return na.localeCompare(nb, 'pt-BR', { sensitivity: 'base' });
+                    })
                     .map(group => (
                       <div
                         key={group.group_jid}
