@@ -806,6 +806,65 @@ export function ContactsListPage() {
                     </div>
                   </div>
 
+                  <div>
+                    <Label className="text-sm font-medium mb-2 block">Vínculo com lead</Label>
+                    <RadioGroup value={leadLinkFilter} onValueChange={(v) => setLeadLinkFilter(v as any)} className="space-y-2">
+                      <div className="flex items-center gap-2 p-3 rounded-lg border hover:bg-muted/50">
+                        <RadioGroupItem value="all" id="link-all" />
+                        <Label htmlFor="link-all" className="flex-1 cursor-pointer text-sm">Todos os grupos</Label>
+                      </div>
+                      <div className="flex items-center gap-2 p-3 rounded-lg border hover:bg-muted/50">
+                        <RadioGroupItem value="with" id="link-with" />
+                        <Label htmlFor="link-with" className="flex-1 cursor-pointer text-sm">Somente com lead vinculado</Label>
+                      </div>
+                      <div className="flex items-center gap-2 p-3 rounded-lg border hover:bg-muted/50">
+                        <RadioGroupItem value="without" id="link-without" />
+                        <Label htmlFor="link-without" className="flex-1 cursor-pointer text-sm">Somente sem lead vinculado</Label>
+                      </div>
+                    </RadioGroup>
+                  </div>
+
+                  {(() => {
+                    const statuses = Array.from(new Set(groups.map(g => g.lead_status).filter(Boolean))).sort();
+                    if (statuses.length === 0) return null;
+                    return (
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <Label className="text-sm font-medium">Status do lead</Label>
+                          {leadStatusFilter.size > 0 && (
+                            <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setLeadStatusFilter(new Set())}>
+                              Limpar
+                            </Button>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground mb-2">
+                          {leadStatusFilter.size === 0 ? 'Mostrando todos os status.' : `Mostrando: ${Array.from(leadStatusFilter).join(', ')}`}
+                        </p>
+                        <div className="space-y-1">
+                          {statuses.map(st => (
+                            <div key={st} className="flex items-center gap-2 p-2 rounded-lg border hover:bg-muted/50">
+                              <Checkbox
+                                id={`status-${st}`}
+                                checked={leadStatusFilter.has(st)}
+                                onCheckedChange={(v) => {
+                                  setLeadStatusFilter(prev => {
+                                    const next = new Set(prev);
+                                    if (v) next.add(st); else next.delete(st);
+                                    return next;
+                                  });
+                                }}
+                              />
+                              <Label htmlFor={`status-${st}`} className="flex-1 cursor-pointer text-sm capitalize">{st}</Label>
+                              <Badge variant="outline" className="text-[10px]">
+                                {groups.filter(g => g.lead_status === st).length}
+                              </Badge>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
                   {excludedGroups.size > 0 && (
                     <div>
                       <div className="flex items-center justify-between mb-2">
