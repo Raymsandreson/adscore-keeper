@@ -700,6 +700,18 @@ export function ContactsListPage() {
                 className="pl-9"
               />
             </div>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="icon" className="shrink-0 text-muted-foreground">
+                    <Info className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="max-w-xs">
+                  <p className="text-xs">A busca e a ordenação usam apenas o nome do grupo. O lead aparece apenas como detalhe abaixo de cada grupo.</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
             <Select value={groupSort} onValueChange={(v) => setGroupSort(v as any)}>
               <SelectTrigger className="w-[170px] shrink-0">
                 <SelectValue placeholder="Ordenar" />
