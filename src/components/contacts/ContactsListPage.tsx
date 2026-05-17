@@ -926,7 +926,7 @@ export function ContactsListPage() {
                       setLeadLinkFilter('all');
                     }}
                   >
-                    Restaurar padrões
+                    Limpar filtros
                   </Button>
                 </div>
               </SheetContent>
