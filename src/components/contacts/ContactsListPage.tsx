@@ -718,7 +718,7 @@ export function ContactsListPage() {
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="bottom" className="max-w-xs">
-                  <p className="text-xs">Escolha onde buscar: só pelo nome do grupo (padrão) ou só pelo nome do lead vinculado. A ordenação sempre usa o nome do grupo.</p>
+                  <p className="text-xs">Escolha onde buscar e ordenar: pelo nome do grupo (padrão) ou pelo nome do lead vinculado.</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
@@ -801,8 +801,9 @@ export function ContactsListPage() {
                       return g.group_name.toLowerCase().includes(q);
                     })
                     .sort((a, b) => {
-                      const na = (a.group_name || '').trim();
-                      const nb = (b.group_name || '').trim();
+                      const sortField = groupSearchScope === 'lead' ? 'lead_name' : 'group_name';
+                      const na = ((a as any)[sortField] || '').trim();
+                      const nb = ((b as any)[sortField] || '').trim();
                       if (groupSort === 'number') {
                         const numA = parseInt(na.match(/\d+/)?.[0] || '', 10);
                         const numB = parseInt(nb.match(/\d+/)?.[0] || '', 10);
