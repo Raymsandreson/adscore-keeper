@@ -1244,14 +1244,14 @@ ${scrapeData.content || ''}
               }
             }
 
-            // Use case_number from UI if provided, otherwise generate
-            let finalCaseNumber = caseNumber?.trim() || null;
+            // Nº do caso é manual obrigatório no fechamento — não geramos mais automaticamente.
+            // A validação no início do handleSave garante que caseNumber não está vazio aqui.
+            const finalCaseNumber = caseNumber?.trim();
             if (!finalCaseNumber) {
-              const { data: generatedNumber } = await supabase
-                .rpc('generate_case_number', { p_nucleus_id: matchedNucleusId });
-              finalCaseNumber = generatedNumber || 'CASO-0001';
+              toast.error('Nº do Caso ausente. Preencha manualmente.');
+              setSaving(false);
+              return;
             }
-            
             const { data: insertedCase, error: insertError } = await externalSupabase
               .from('legal_cases')
                 .insert({
