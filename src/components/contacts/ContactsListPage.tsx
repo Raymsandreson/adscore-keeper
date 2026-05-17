@@ -886,10 +886,10 @@ export function ContactsListPage() {
                       <ClipboardCheck className="h-4 w-4 mt-0.5 text-primary shrink-0" />
                       <div className="flex-1">
                         <Label htmlFor="audit-mode" className="text-sm font-medium cursor-pointer">
-                          Modo auditoria (caso fechado)
+                          Modo auditoria
                         </Label>
                         <p className="text-xs text-muted-foreground">
-                          Mostra só leads fechados, ordenados pelo nº do caso, lado a lado com o nome do grupo. Aponta quando não bate.
+                          Ordena pelo nº do caso e destaca quando o nome do grupo não bate com o nome do lead. Não filtra por status.
                         </p>
                       </div>
                       <Checkbox
@@ -1100,7 +1100,6 @@ export function ContactsListPage() {
               });
 
               if (auditMode) {
-                visible = visible.filter(g => g.lead_status === 'closed');
                 if (auditOnlyMismatch) {
                   visible = visible.filter(g => {
                     const ng = normalizeName(g.group_name);
@@ -1164,7 +1163,7 @@ export function ContactsListPage() {
               }
               if (visible.length === 0) {
                 return <p className="text-center text-muted-foreground py-8">
-                  {auditMode ? 'Nenhum caso fechado encontrado' : 'Nenhum grupo encontrado'}
+                  {'Nenhum grupo encontrado'}
                 </p>;
               }
 
