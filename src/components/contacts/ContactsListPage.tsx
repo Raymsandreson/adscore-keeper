@@ -83,7 +83,10 @@ export function ContactsListPage() {
   const [groupsLoading, setGroupsLoading] = useState(false);
   const [groupSearch, setGroupSearch] = useState('');
   const [groupSort, setGroupSort] = useState<'alpha' | 'number' | 'prefix'>('alpha');
+  const [groupSortDir, setGroupSortDir] = useState<'asc' | 'desc'>('asc');
   const [groupSearchScope, setGroupSearchScope] = useState<'group' | 'lead'>('group');
+  const [excludedGroups, setExcludedGroups] = useState<Set<string>>(new Set());
+  const [showGroupFilters, setShowGroupFilters] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
   const [groupContacts, setGroupContacts] = useState<Contact[]>([]);
   const [groupContactsLoading, setGroupContactsLoading] = useState(false);
