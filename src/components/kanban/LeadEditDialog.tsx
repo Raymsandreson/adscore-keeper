@@ -64,6 +64,7 @@ const LeadActivitiesTab = lazy(() => import('@/components/leads/LeadActivitiesTa
 import { LinkOrphanWhatsAppButton } from '@/components/leads/LinkOrphanWhatsAppButton';
 const AccidentDataExtractor = lazy(() => import('@/components/leads/AccidentDataExtractor').then(m => ({ default: m.AccidentDataExtractor })));
 import { ExtractedAccidentData, CurrentLeadData } from '@/components/leads/AccidentDataExtractor';
+import { LeadAIChatExtractor } from '@/components/leads/LeadAIChatExtractor';
 import { KanbanBoard } from '@/hooks/useKanbanBoards';
 import { 
   User, 
@@ -1400,16 +1401,26 @@ ${scrapeData.content || ''}
           </div>
         </div>
 
-        {/* AI Extraction Button - opens dialog directly */}
-        <Button 
-          type="button" 
-          variant="outline" 
-          onClick={() => setShowExtractor(true)}
-          className="w-full gap-2 border-dashed border-primary/50 hover:border-primary"
-        >
-          <Sparkles className="h-4 w-4 text-primary" />
-          Extrair dados de notícia ou documento com IA
-        </Button>
+        {/* AI Extraction Buttons */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setShowExtractor(true)}
+            className="w-full gap-2 border-dashed border-primary/50 hover:border-primary"
+          >
+            <Sparkles className="h-4 w-4 text-primary" />
+            Extrair de notícia/documento
+          </Button>
+          {currentLead && (
+            <LeadAIChatExtractor
+              leadId={currentLead.id}
+              leadPhone={(currentLead as any).lead_phone}
+              whatsappGroups={whatsappGroups}
+              onDataExtracted={handleExtractedData}
+            />
+          )}
+        </div>
 
         {/* AI Extraction Dialog */}
         {showExtractor && (
