@@ -450,7 +450,7 @@ export function ContactsListPage() {
         </div>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden min-h-0">
         <div className="px-4 pt-3 shrink-0">
           <TabsList className="grid w-full max-w-lg grid-cols-3">
             <TabsTrigger value="contacts">
@@ -468,7 +468,7 @@ export function ContactsListPage() {
           </TabsList>
         </div>
 
-        <TabsContent value="contacts" className="flex-1 flex flex-col overflow-hidden mt-0 px-4 pb-4">
+        <TabsContent value="contacts" className="flex-1 flex flex-col overflow-hidden min-h-0 mt-0 px-4 pb-4">
           <div className="flex items-center gap-2 py-3 shrink-0">
             <div className="relative flex-1 max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -625,7 +625,7 @@ export function ContactsListPage() {
         </TabsContent>
 
         {/* Groups Tab */}
-        <TabsContent value="groups" className="flex-1 flex flex-col overflow-hidden mt-0 px-4 pb-4">
+        <TabsContent value="groups" className="flex-1 flex flex-col overflow-hidden min-h-0 mt-0 px-4 pb-4">
           <div className="flex items-center gap-2 py-3 shrink-0">
             <div className="relative flex-1 max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -714,7 +714,7 @@ export function ContactsListPage() {
           </ScrollArea>
         </TabsContent>
 
-        <TabsContent value="lists" className="flex-1 flex flex-col overflow-hidden mt-0 px-4 pb-4">
+        <TabsContent value="lists" className="flex-1 flex flex-col overflow-hidden min-h-0 mt-0 px-4 pb-4">
           <div className="flex items-center gap-2 py-3 shrink-0">
             <Button size="sm" onClick={() => setShowCreateList(true)}>
               <Plus className="h-3.5 w-3.5 mr-1" />
