@@ -450,7 +450,8 @@ export function ContactsListPage() {
         </div>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden min-h-0">
+      {(() => { console.log('[DEBUG-CONTACTS] activeTab =', activeTab); return null; })()}
+      <Tabs value={activeTab} onValueChange={(v) => { console.log('[DEBUG-CONTACTS] setActiveTab', v); setActiveTab(v); }} className="flex-1 flex flex-col overflow-hidden min-h-0">
         <div className="px-4 pt-3 shrink-0">
           <TabsList className="grid w-full max-w-lg grid-cols-3">
             <TabsTrigger value="contacts">
