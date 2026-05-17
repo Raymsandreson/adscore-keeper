@@ -103,10 +103,22 @@ export function ContactsListPage() {
   const fetchGroups = async () => {
     setGroupsLoading(true);
     try {
-      const { data } = await externalSupabase
-        .from('lead_whatsapp_groups')
-        .select('group_jid, group_name, lead_id, leads!lead_whatsapp_groups_lead_id_fkey(lead_name, lead_status)')
-        .order('created_at', { ascending: false });
+      // Paginação: PostgREST corta em 1000 linhas por padrão. Sem isso, grupos
+      // mais antigos (Prev 02, 03, 08...) ficavam de fora silenciosamente.
+      const pageSize = 1000;
+      const data: any[] = [];
+      for (let from = 0; ; from += pageSize) {
+        const to = from + pageSize - 1;
+        const { data: page, error } = await externalSupabase
+          .from('lead_whatsapp_groups')
+          .select('group_jid, group_name, lead_id, leads!lead_whatsapp_groups_lead_id_fkey(lead_name, lead_status)')
+          .order('created_at', { ascending: false })
+          .range(from, to);
+        if (error) { console.error('fetchGroups page error:', error); break; }
+        const rows = page || [];
+        data.push(...rows);
+        if (rows.length < pageSize) break;
+      }
 
       if (data) {
         // Deduplicate by group_jid and count contacts
