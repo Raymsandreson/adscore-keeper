@@ -80,7 +80,7 @@ export function ContactsListPage() {
   const [groupsLoading, setGroupsLoading] = useState(false);
   const [groupSearch, setGroupSearch] = useState('');
   const [groupSort, setGroupSort] = useState<'alpha' | 'number' | 'prefix'>('alpha');
-  const [groupSearchScope, setGroupSearchScope] = useState<'group' | 'group_lead'>('group');
+  const [groupSearchScope, setGroupSearchScope] = useState<'group' | 'lead'>('group');
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
   const [groupContacts, setGroupContacts] = useState<Contact[]>([]);
   const [groupContactsLoading, setGroupContactsLoading] = useState(false);
@@ -695,7 +695,7 @@ export function ContactsListPage() {
             <div className="relative flex-1 max-w-md min-w-[180px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder={groupSearchScope === 'group' ? 'Buscar grupo por nome...' : 'Buscar grupo ou lead...'}
+                placeholder={groupSearchScope === 'group' ? 'Buscar grupo por nome...' : 'Buscar pelo nome do lead...'}
                 value={groupSearch}
                 onChange={e => setGroupSearch(e.target.value)}
                 className="pl-9"
@@ -784,7 +784,7 @@ export function ContactsListPage() {
                 ) : groups.filter(g => {
                     if (!groupSearch) return true;
                     const q = groupSearch.toLowerCase();
-                    if (groupSearchScope === 'group_lead') {
+                    if (groupSearchScope === 'lead') {
                       return g.group_name.toLowerCase().includes(q) || (g.lead_name || '').toLowerCase().includes(q);
                     }
                     return g.group_name.toLowerCase().includes(q);
@@ -795,7 +795,7 @@ export function ContactsListPage() {
                     .filter(g => {
                       if (!groupSearch) return true;
                       const q = groupSearch.toLowerCase();
-                      if (groupSearchScope === 'group_lead') {
+                      if (groupSearchScope === 'lead') {
                         return g.group_name.toLowerCase().includes(q) || (g.lead_name || '').toLowerCase().includes(q);
                       }
                       return g.group_name.toLowerCase().includes(q);
