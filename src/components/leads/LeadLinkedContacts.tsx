@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 import { Users, ExternalLink, Instagram, Phone, Mail, Plus, Search, Loader2, X, UserPlus, Heart, Mic, PhoneCall, Clock, Trash2 } from 'lucide-react';
 import { logAudit } from '@/hooks/useAuditLog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useConfirmDelete } from '@/hooks/useConfirmDelete';
 
 interface ContactCallStats {
   totalCalls: number;
@@ -142,6 +143,7 @@ export function LeadLinkedContacts({ leadId }: LeadLinkedContactsProps) {
   const [selectedContact, setSelectedContact] = useState<any>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [callStats, setCallStats] = useState<Record<string, ContactCallStats>>(() => cached?.callStats || {});
+  const { confirmDelete, ConfirmDeleteDialog } = useConfirmDelete();
 
   // Search & link existing contact
   const [showSearch, setShowSearch] = useState(false);
@@ -227,7 +229,7 @@ export function LeadLinkedContacts({ leadId }: LeadLinkedContactsProps) {
     }
   };
 
-  const handleUnlinkContact = async (linkId: string) => {
+  const performUnlink = async (linkId: string) => {
     try {
       await ensureExternalSession().catch(() => {});
       const { error } = await (externalSupabase as any)
@@ -243,10 +245,15 @@ export function LeadLinkedContacts({ leadId }: LeadLinkedContactsProps) {
     }
   };
 
-  const handleDeleteContact = async (contactId: string, contactName: string) => {
-    if (!window.confirm(`Excluir DEFINITIVAMENTE o contato "${contactName}"?\n\nEsta ação não pode ser desfeita. Ele será removido de todos os leads e do banco de contatos.`)) {
-      return;
-    }
+  const handleUnlinkContact = (linkId: string, contactName: string) => {
+    confirmDelete(
+      'Desvincular contato',
+      `Desvincular "${contactName}" deste lead? O contato continua existindo no banco e em outros leads onde estiver vinculado.`,
+      () => performUnlink(linkId),
+    );
+  };
+
+  const performDeleteContact = async (contactId: string) => {
     try {
       await ensureExternalSession().catch(() => {});
 
@@ -278,7 +285,6 @@ export function LeadLinkedContacts({ leadId }: LeadLinkedContactsProps) {
 
       if (error) throw error;
 
-      // Atualiza UI imediatamente
       setContacts(prev => prev.filter(c => c.contact_id !== contactId));
       contactsCache.delete(leadId);
       toast.success('Contato excluído');
@@ -287,6 +293,14 @@ export function LeadLinkedContacts({ leadId }: LeadLinkedContactsProps) {
       console.error('Erro ao excluir contato:', err);
       toast.error(`Erro ao excluir contato: ${err?.message || 'desconhecido'}`);
     }
+  };
+
+  const handleDeleteContact = (contactId: string, contactName: string) => {
+    confirmDelete(
+      'Excluir contato DEFINITIVAMENTE',
+      `Excluir "${contactName}" do banco de contatos? Ele será removido deste lead e de TODOS os outros leads em que esteja vinculado. Esta ação não pode ser desfeita.`,
+      () => performDeleteContact(contactId),
+    );
   };
 
   const handleCreateAndLink = async () => {
@@ -560,8 +574,8 @@ export function LeadLinkedContacts({ leadId }: LeadLinkedContactsProps) {
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
-                    onClick={() => handleUnlinkContact(cl.id)}
+                    className="h-6 w-6 flex-shrink-0 text-muted-foreground hover:text-foreground"
+                    onClick={() => handleUnlinkContact(cl.id, cl.contact.full_name)}
                     title="Desvincular contato"
                   >
                     <X className="h-3 w-3" />
@@ -570,9 +584,9 @@ export function LeadLinkedContacts({ leadId }: LeadLinkedContactsProps) {
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                    className="h-6 w-6 flex-shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10"
                     onClick={() => handleDeleteContact(cl.contact.id, cl.contact.full_name)}
-                    title="Excluir contato (arquivar)"
+                    title="Excluir contato definitivamente"
                   >
                     <Trash2 className="h-3 w-3" />
                   </Button>
@@ -605,6 +619,7 @@ export function LeadLinkedContacts({ leadId }: LeadLinkedContactsProps) {
         onOpenChange={setSheetOpen}
         onContactUpdated={fetchContacts}
       />
+      <ConfirmDeleteDialog />
     </>
   );
 }
