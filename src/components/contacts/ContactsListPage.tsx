@@ -716,7 +716,7 @@ export function ContactsListPage() {
                 <Button variant="outline" size="sm" className="shrink-0 gap-2">
                   <SlidersHorizontal className="h-4 w-4" />
                   Filtrar e ordenar
-                  {(excludedGroups.size > 0 || groupSort !== 'alpha' || groupSortDir !== 'asc' || groupSearchScope !== 'group' || auditMode) && (
+                  {(excludedGroups.size > 0 || groupSort !== 'alpha' || groupSortDir !== 'asc' || groupSearchScope !== 'group' || auditMode || leadStatusFilter.size > 0 || leadLinkFilter !== 'all') && (
                     <Badge variant="secondary" className="h-5 px-1.5 text-[10px] rounded-full">
                       {[
                         groupSearchScope !== 'group',
@@ -724,6 +724,8 @@ export function ContactsListPage() {
                         groupSortDir !== 'asc',
                         excludedGroups.size > 0,
                         auditMode,
+                        leadStatusFilter.size > 0,
+                        leadLinkFilter !== 'all',
                       ].filter(Boolean).length}
                     </Badge>
                   )}
