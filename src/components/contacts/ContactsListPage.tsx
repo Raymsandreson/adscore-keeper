@@ -87,6 +87,8 @@ export function ContactsListPage() {
   const [groupSearchScope, setGroupSearchScope] = useState<'group' | 'lead'>('group');
   const [excludedGroups, setExcludedGroups] = useState<Set<string>>(new Set());
   const [showGroupFilters, setShowGroupFilters] = useState(false);
+  const [auditMode, setAuditMode] = useState(false);
+  const [auditOnlyMismatch, setAuditOnlyMismatch] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
   const [groupContacts, setGroupContacts] = useState<Contact[]>([]);
   const [groupContactsLoading, setGroupContactsLoading] = useState(false);
