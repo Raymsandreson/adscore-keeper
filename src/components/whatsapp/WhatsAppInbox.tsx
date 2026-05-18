@@ -1059,10 +1059,10 @@ export function WhatsAppInbox() {
     const { data: { user } } = await supabase.auth.getUser();
     const payload = { ...updates } as any;
     if (user?.id) {
-      payload.updated_by = user.id;
+      payload.updated_by = await remapToExternal(user.id);
     }
     
-    const { error } = await supabase
+    const { error } = await externalSupabase
       .from('leads')
       .update(payload)
       .eq('id', leadId);
