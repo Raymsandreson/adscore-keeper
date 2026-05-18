@@ -272,6 +272,24 @@ export const handler: RequestHandler = async (req, res) => {
       if (Object.keys(cleanCustom).length > 0) data.custom_fields = cleanCustom;
     }
 
+    if (target === 'lead' && Array.isArray(raw?.identified_contacts)) {
+      const identified = raw.identified_contacts
+        .filter((p: any) => p && typeof p === 'object')
+        .map((p: any) => {
+          const clean: Record<string, any> = {};
+          for (const k of [...IDENTIFIED_CONTACT_FIELDS, 'relationship']) {
+            const v = p?.[k];
+            if (v === undefined || v === null) continue;
+            const s = typeof v === 'string' ? v.trim() : v;
+            if (s === '' || s === 'N/A' || s === 'null' || s === 'undefined') continue;
+            clean[k] = s;
+          }
+          return clean;
+        })
+        .filter((p: Record<string, any>) => p.full_name || p.phone);
+      if (identified.length > 0) data.identified_contacts = identified;
+    }
+
     return ok({ success: true, data, model: MODEL, target, message_count: transcript ? transcript.split('\n').length : 0, source: { visible_messages: Array.isArray(visible_messages) ? visible_messages.length : 0, db: dbTranscript ? dbTranscript.split('\n').length : 0 } });
   } catch (e: any) {
     console.error('[extract-conversation-data] error:', e);
