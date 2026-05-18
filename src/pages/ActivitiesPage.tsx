@@ -3102,32 +3102,17 @@ const ActivitiesPage = () => {
               </div>
               {/* Funnel or Process Workflow progress bar */}
               {formLeadId && (() => {
+                const isLeadClosed = leadPreview?.lead_status === 'closed';
                 const linkedProcess = formProcessId ? caseProcesses.find(p => p.id === formProcessId) : null;
                 const processWorkflowId = linkedProcess?.workflow_id;
-                const isLeadClosed = leadPreview?.lead_status === 'closed';
-                const wfName = (linkedProcess as any)?.workflow_name || null;
-                const showFunnel = !!leadPreview?.board_id && !isLeadClosed;
 
-                return (
-                  <>
-                    {processWorkflowId && (
-                      <div>
-                        <div className="text-[10px] font-medium text-muted-foreground mt-1.5 mb-0.5 uppercase tracking-wide">
-                          Fluxo do Processo{wfName ? ` · ${wfName}` : ''}
-                        </div>
-                        <LeadFunnelProgressBar leadId={formLeadId} boardId={processWorkflowId} />
-                      </div>
-                    )}
-                    {showFunnel && (
-                      <div>
-                        <div className="text-[10px] font-medium text-muted-foreground mt-1.5 mb-0.5 uppercase tracking-wide">
-                          Funil de Vendas
-                        </div>
-                        <LeadFunnelProgressBar leadId={formLeadId} boardId={leadPreview.board_id} />
-                      </div>
-                    )}
-                  </>
-                );
+                if (isLeadClosed && processWorkflowId) {
+                  return <LeadFunnelProgressBar leadId={formLeadId} boardId={processWorkflowId} />;
+                }
+                if (leadPreview?.board_id) {
+                  return <LeadFunnelProgressBar leadId={formLeadId} boardId={leadPreview.board_id} />;
+                }
+                return null;
               })()}
               </div>
               {/* Botão fixar/desafixar cabeçalho */}
