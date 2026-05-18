@@ -3381,6 +3381,22 @@ const ActivitiesPage = () => {
         />
       )}
 
+      {/* Process Detail Sheet — Últimas movimentações */}
+      {showProcessSheetId && (() => {
+        const proc = caseProcesses.find(p => p.id === showProcessSheetId);
+        if (!proc) return null;
+        const ProcessDetailSheet = lazy(() => import('@/components/cases/ProcessDetailSheet'));
+        return (
+          <Suspense fallback={null}>
+            <ProcessDetailSheet
+              open={!!showProcessSheetId}
+              onOpenChange={(o) => { if (!o) setShowProcessSheetId(null); }}
+              process={proc}
+            />
+          </Suspense>
+        );
+      })()}
+
       <CompleteAndNotifyDialog
         open={completeNotifyOpen}
         onClose={() => setCompleteNotifyOpen(false)}
