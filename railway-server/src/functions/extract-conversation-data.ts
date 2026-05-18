@@ -25,12 +25,23 @@ const CONTACT_FIELDS = [
   'notes', 'instagram_url', 'profession',
 ];
 
-function buildSchemaPrompt(targetType: 'lead' | 'contact'): string {
+type CustomFieldSpec = { id: string; label: string; type?: string; options?: string[] };
+
+function buildSchemaPrompt(targetType: 'lead' | 'contact', customFields: CustomFieldSpec[] = []): string {
   const fields = targetType === 'lead' ? LEAD_FIELDS : CONTACT_FIELDS;
-  return `Retorne APENAS um objeto JSON puro (sem markdown, sem \`\`\`) com as chaves: ${fields.join(', ')}.
+  let prompt = `Retorne APENAS um objeto JSON puro (sem markdown, sem \`\`\`) com as chaves padrão: ${fields.join(', ')}.
 Inclua somente as chaves cujo valor você conseguiu inferir COM CONFIANÇA da conversa/contexto.
 Omita chaves desconhecidas — NÃO chute, NÃO use "N/A", NÃO use null.
 Datas no formato YYYY-MM-DD. Telefones somente dígitos.`;
+
+  if (customFields.length > 0) {
+    const list = customFields.map(f => {
+      const opt = f.options && f.options.length ? ` opções: [${f.options.join(' | ')}]` : '';
+      return `  - id="${f.id}" rótulo="${f.label}" tipo=${f.type || 'text'}${opt}`;
+    }).join('\n');
+    prompt += `\n\nALÉM disso, inclua a chave "custom_fields" como um OBJETO mapeando o id do campo personalizado ao valor inferido. Campos personalizados disponíveis para este lead:\n${list}\n\nUse EXATAMENTE o id como chave dentro de custom_fields. Omita os ids que você não conseguiu inferir.`;
+  }
+  return prompt;
 }
 
 function normalizeInstance(s: string): string {
