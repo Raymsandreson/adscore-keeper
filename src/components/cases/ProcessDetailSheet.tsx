@@ -512,10 +512,19 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
   const innerContent = (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="p-4 pb-2 flex flex-row items-center justify-between shrink-0">
-        <div className="text-sm font-semibold flex items-center gap-2">
-          <Pencil className="h-4 w-4 text-primary" />
-          Detalhes do Processo
+      <div className="p-4 pb-2 flex flex-row items-center justify-between shrink-0 gap-2">
+        <div className="text-sm font-semibold flex items-center gap-2 min-w-0 flex-1">
+          <Pencil className="h-4 w-4 text-primary shrink-0" />
+          <span className="truncate">
+            {form.process_number ? (
+              <>
+                Nº {form.process_number}
+                {form.title && <span className="text-muted-foreground font-normal"> ("{form.title}")</span>}
+              </>
+            ) : (
+              <>Detalhes do Processo{form.title && <span className="text-muted-foreground font-normal"> ("{form.title}")</span>}</>
+            )}
+          </span>
         </div>
         <div className="flex items-center gap-2">
           <div className="flex flex-col items-end">
