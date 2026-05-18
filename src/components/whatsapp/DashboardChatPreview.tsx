@@ -317,13 +317,14 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
   // Realtime — assinar no Externo, onde whatsapp_messages realmente mora.
   useEffect(() => {
     if (!open || !phone) return;
+    const normalizedPhone = phone.replace(/\D/g, '');
     const channel = externalSupabase
-      .channel(`dashboard-chat-${phone}`)
+      .channel(`dashboard-chat-${normalizedPhone}`)
       .on('postgres_changes', {
         event: 'INSERT',
         schema: 'public',
         table: 'whatsapp_messages',
-        filter: `phone=eq.${phone}`,
+        filter: `phone=eq.${normalizedPhone}`,
       }, (payload) => {
         const msg = payload.new as any;
         if (instanceName && msg.instance_name && msg.instance_name.toLowerCase() !== instanceName.toLowerCase()) return;
