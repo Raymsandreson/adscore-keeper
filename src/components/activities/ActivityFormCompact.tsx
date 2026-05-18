@@ -328,15 +328,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
 
   return (
     <div className="space-y-3">
-      {/* === ROW 1: Title === */}
-      <div>
-        <Input
-          value={props.formTitle}
-          onChange={e => props.handleTitleChange(e.target.value)}
-          placeholder="Assunto da atividade *"
-          className="h-9 text-sm font-medium border-0 border-b rounded-none px-0 focus-visible:ring-0 focus-visible:border-primary placeholder:text-muted-foreground/60"
-        />
-      </div>
+      {/* Título foi movido para o cabeçalho fixo (editável inline com ícone de lápis). */}
 
       {/* Vínculos (Lead/Caso/Processo/Contato/Sistema) ficam APENAS no cabeçalho fixo da atividade
           para evitar duplicação visual. Só mostramos os botões de seleção aqui quando NADA está vinculado,
