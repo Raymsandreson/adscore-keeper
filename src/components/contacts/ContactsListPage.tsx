@@ -1312,8 +1312,8 @@ export function ContactsListPage() {
                     <div className="grid grid-cols-[40px_60px_1fr_1fr_64px] gap-2 px-3 py-2 text-[11px] font-medium text-muted-foreground border-b">
                       <span></span>
                       <span>Nº caso</span>
-                      <span>Nome do grupo</span>
-                      <span>Nome do lead</span>
+                      <span className="pr-3">Nome do grupo</span>
+                      <span className="pl-3 border-l border-border/40">Nome do lead</span>
                       <span></span>
                     </div>
                     {capped.map(group => {
