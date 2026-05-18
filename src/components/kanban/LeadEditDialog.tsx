@@ -1954,6 +1954,10 @@ ${scrapeData.content || ''}
                                       const { data: profile } = await supabase.from('profiles').select('default_instance_id').eq('user_id', user.id).single();
                                       instId = (profile as any)?.default_instance_id || null;
                                     }
+                                    if (!currentLead.board_id) {
+                                      toast.error('Lead sem funil definido. Defina o funil antes de adicionar as instâncias do funil.');
+                                      return;
+                                    }
                                     const { data, error } = await supabase.functions.invoke('repair-whatsapp-group', {
                                       body: { group_jid: g.group_jid, instance_id: instId, action: 'add_instances', board_id: currentLead.board_id },
                                     });
