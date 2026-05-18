@@ -269,7 +269,8 @@ export function ActivityNotesField({ value, onChange, activityId, placeholder, l
         value={value}
         onChange={onChange}
         placeholder={placeholder || 'Notas adicionais... (cole com Ctrl+V ou arraste arquivos)'}
-        minHeight="clamp(120px, 28vh, 360px)"
+        minHeight="clamp(160px, 38vh, 480px)"
+
       />
 
       {isDragging && (
