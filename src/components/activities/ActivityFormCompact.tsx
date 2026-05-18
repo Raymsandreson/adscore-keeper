@@ -336,16 +336,22 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
         />
       </div>
 
-      {/* === ROW 2a: Lead/Caso link buttons (only when nothing linked yet) ===
-          Vínculos confirmados de Lead/Caso/Processo vivem no cabeçalho da atividade. */}
-      {!props.formLeadName && !props.formCaseTitle && !props.formProcessTitle && (
+      {/* === ROW 2a: Lead/Caso link buttons ===
+          Cada botão some apenas quando o vínculo correspondente já existe;
+          permitir vincular Lead E Caso na mesma atividade.
+          Vínculos confirmados vivem no cabeçalho da atividade. */}
+      {(!props.formLeadName || !props.formCaseTitle) && !props.formProcessTitle && (
         <div className="flex flex-wrap items-center gap-1.5">
-          <Button type="button" variant="outline" size="sm" className="h-6 px-2 text-[10px] gap-1" onClick={() => setLinkLeadOpen(true)}>
-            <Building2 className="h-3 w-3" /> Lead
-          </Button>
-          <Button type="button" variant="outline" size="sm" className="h-6 px-2 text-[10px] gap-1" onClick={() => setLinkCaseOpen(true)}>
-            <Briefcase className="h-3 w-3" /> Caso
-          </Button>
+          {!props.formLeadName && (
+            <Button type="button" variant="outline" size="sm" className="h-6 px-2 text-[10px] gap-1" onClick={() => setLinkLeadOpen(true)}>
+              <Building2 className="h-3 w-3" /> Lead
+            </Button>
+          )}
+          {!props.formCaseTitle && (
+            <Button type="button" variant="outline" size="sm" className="h-6 px-2 text-[10px] gap-1" onClick={() => setLinkCaseOpen(true)}>
+              <Briefcase className="h-3 w-3" /> Caso
+            </Button>
+          )}
         </div>
       )}
 
