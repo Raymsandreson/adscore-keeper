@@ -1253,7 +1253,7 @@ export function ContactsListPage() {
                       <span>Nome do lead</span>
                       <span></span>
                     </div>
-                    {visible.map(group => {
+                    {capped.map(group => {
                       const caseNum = extractCaseNum(group.group_name) ?? extractCaseNum(group.lead_name);
                       const ng = normalizeName(group.group_name);
                       const nl = normalizeName(group.lead_name);
