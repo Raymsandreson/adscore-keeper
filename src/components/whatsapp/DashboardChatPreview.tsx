@@ -43,6 +43,7 @@ interface Message {
   media_url: string | null;
   media_type: string | null;
   instance_name: string | null;
+  external_message_id?: string | null;
 }
 
 interface CallRecord {
@@ -167,12 +168,14 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
         console.warn('[DashboardChatPreview] fetchMessages error:', error.message);
       }
       // Grupos: a mesma mensagem é gravada por cada instância que está no grupo.
-      // Deduplicar por external_message_id (mesma lógica do useWhatsAppMessages).
+      // O created_at muda entre espelhos, então a chave real é o tail do external_message_id.
       const rows = (data as any[]) || [];
       const seen = new Set<string>();
       const deduped = rows.filter((m) => {
-        const msgId = m.external_message_id?.split(':').pop();
-        const key = msgId ? `${msgId}_${m.created_at}` : m.id;
+        const msgId = typeof m.external_message_id === 'string' ? m.external_message_id.split(':').pop() : null;
+        const key = msgId
+          ? `ext:${msgId}`
+          : `fallback:${m.direction}|${m.created_at}|${(m.message_text || '').trim()}|${m.media_url || ''}`;
         if (seen.has(key)) return false;
         seen.add(key);
         return true;
