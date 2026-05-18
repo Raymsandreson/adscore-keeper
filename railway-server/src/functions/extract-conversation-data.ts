@@ -23,7 +23,14 @@ const LEAD_FIELDS = [
 
 const CONTACT_FIELDS = [
   'full_name', 'phone', 'email', 'city', 'state', 'neighborhood',
-  'notes', 'instagram_url', 'profession',
+  'notes', 'instagram_url', 'instagram_username', 'profession',
+  'cpf', 'rg', 'cep', 'street', 'street_number', 'complement', 'birth_date',
+];
+
+const IDENTIFIED_CONTACT_FIELDS = [
+  'full_name', 'phone', 'role', 'cpf', 'rg', 'birth_date',
+  'cep', 'state', 'city', 'neighborhood', 'street', 'street_number', 'complement',
+  'email', 'profession', 'notes',
 ];
 
 type CustomFieldSpec = { id: string; label: string; type?: string; options?: string[] };
