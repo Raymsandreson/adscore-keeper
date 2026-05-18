@@ -61,9 +61,43 @@ const FIELD_LABELS: Record<string, string> = {
   damage_description: 'Descrição do Dano', case_number: 'Nº do Processo', case_type: 'Tipo do Caso',
   notes: 'Observações', sector: 'Setor', visit_city: 'Cidade (Visita)', visit_state: 'Estado (Visita)',
   visit_address: 'Endereço (Visita)', liability_type: 'Tipo de Responsabilidade', news_link: 'Link da Notícia',
+  expected_birth_date: 'Previsão do Parto', client_classification: 'Classificação',
   full_name: 'Nome Completo', phone: 'Telefone', email: 'E-mail', instagram_url: 'Instagram', profession: 'Profissão',
 };
 const fieldLabel = (key: string) => FIELD_LABELS[key] || key.replace(/_/g, ' ');
+
+const PT_MONTHS: Record<string, number> = {
+  janeiro: 0, fevereiro: 1, marco: 2, março: 2, abril: 3, maio: 4, junho: 5,
+  julho: 6, agosto: 7, setembro: 8, outubro: 9, novembro: 10, dezembro: 11,
+};
+
+const toIsoDate = (date: Date) => date.toISOString().slice(0, 10);
+
+const extractNearestExpectedBirthDate = (messages: WhatsAppConversation['messages'] = []) => {
+  const text = messages.map((m) => m.message_text || '').join('\n');
+  if (!/(parto|gesta[cç][aã]o|beb[eê]|nasciment|maternidade)/i.test(text)) return null;
+  const now = new Date();
+  const candidates: Date[] = [];
+  const push = (day: number, month: number, year?: number) => {
+    if (!day || month < 0 || day > 31) return;
+    let y = year || now.getFullYear();
+    let d = new Date(Date.UTC(y, month, day));
+    if (!year && d.getTime() < now.getTime() - 30 * 86400000) d = new Date(Date.UTC(y + 1, month, day));
+    if (d.getUTCDate() === day && d.getUTCMonth() === month) candidates.push(d);
+  };
+  for (const m of text.matchAll(/\b(\d{1,2})\s*(?:de\s*)?(janeiro|fevereiro|mar[cç]o|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)(?:\s*(?:de)?\s*(20\d{2}))?/gi)) {
+    const monthName = m[2].toLowerCase().replace('ç', 'c');
+    push(Number(m[1]), PT_MONTHS[monthName] ?? PT_MONTHS[m[2].toLowerCase()], m[3] ? Number(m[3]) : undefined);
+  }
+  for (const m of text.matchAll(/\b(\d{1,2})[/-](\d{1,2})(?:[/-](20\d{2}))?\b/g)) {
+    push(Number(m[1]), Number(m[2]) - 1, m[3] ? Number(m[3]) : undefined);
+  }
+  if (candidates.length === 0) return null;
+  const future = candidates.filter((d) => d.getTime() >= now.getTime() - 86400000);
+  const pool = future.length > 0 ? future : candidates;
+  pool.sort((a, b) => a.getTime() - b.getTime());
+  return toIsoDate(pool[0]);
+};
 
 interface PrivateConv {
   phone: string;
@@ -573,6 +607,19 @@ export function WhatsAppInbox() {
       setExtracting(true);
       setExtractionStep(targetType === 'lead' ? 'Extraindo dados do lead...' : 'Extraindo dados do contato...');
       const callContext = await fetchCallContext(selectedConversation.lead_id, selectedConversation.contact_id);
+      const visibleMessages = (selectedConversation.messages || [])
+        .slice()
+        .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+        .slice(-300)
+        .map((m) => ({
+          direction: m.direction,
+          sender_name: (m as any).sender_name,
+          contact_name: m.contact_name,
+          message_text: m.message_text,
+          message_type: m.message_type,
+          media_type: m.media_type,
+          created_at: m.created_at,
+        }));
       const { data, error } = await cloudFunctions.invoke('extract-conversation-data', {
         body: {
           phone: selectedConversation.phone,
@@ -581,6 +628,7 @@ export function WhatsAppInbox() {
           extra_context: callContext || undefined,
           call_summaries: callContext || undefined,
           custom_fields: customFields && customFields.length > 0 ? customFields : undefined,
+          visible_messages: visibleMessages,
         },
       });
       if (error) throw error;
@@ -752,7 +800,7 @@ export function WhatsAppInbox() {
             const { data: cfs } = await (externalSupabase as any)
               .from('lead_custom_fields')
               .select('id, field_name, field_type, field_options')
-              .eq('board_id', boardId);
+                .or(`board_id.eq.${boardId},board_id.is.null`);
             customSpecs = (cfs || []).map((f: any) => ({
               id: f.id,
               label: f.field_name,
@@ -772,9 +820,17 @@ export function WhatsAppInbox() {
           'main_company', 'contractor_company', 'accident_address', 'accident_date',
           'damage_description', 'case_number', 'case_type', 'notes', 'sector',
           'visit_city', 'visit_state', 'visit_address', 'liability_type', 'news_link',
+          'expected_birth_date', 'client_classification',
         ];
         for (const field of allowedLeadFields) {
           if (extracted[field]) leadFields[field] = extracted[field];
+        }
+        if (!leadFields.expected_birth_date) {
+          const deterministicDate = extractNearestExpectedBirthDate(selectedConversation.messages || []);
+          if (deterministicDate) leadFields.expected_birth_date = deterministicDate;
+        }
+        if (leadFields.expected_birth_date && !leadFields.client_classification) {
+          leadFields.client_classification = 'parto';
         }
         const extractedCustom = (extracted && extracted.custom_fields) || {};
         for (const [fieldId, value] of Object.entries(extractedCustom)) {
