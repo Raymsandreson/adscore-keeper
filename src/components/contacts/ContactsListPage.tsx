@@ -1218,16 +1218,26 @@ export function ContactsListPage() {
                 </p>;
               }
 
-              // Renderizar 4.8k linhas de uma vez trava a UI. Limitamos a 300 e
-              // mostramos contador — usuário usa busca/filtros pra ver mais.
-              const RENDER_CAP = 300;
+              // Renderizar 4.8k linhas de uma vez trava a UI. Quando NÃO há
+              // busca/filtro ativo, limitamos a 300. Quando o usuário busca ou
+              // filtra, mostramos todos os matches (até 2000 como teto duro).
+              const hasActiveFilter =
+                !!groupSearch.trim() ||
+                leadLinkFilter !== 'all' ||
+                leadStatusFilter.size > 0 ||
+                (auditMode && auditOnlyMismatch);
+              const RENDER_CAP = hasActiveFilter ? 2000 : 300;
               const totalAll = visible.length;
               const capped = visible.slice(0, RENDER_CAP);
               const truncatedNotice = totalAll > RENDER_CAP ? (
                 <div className="text-[11px] text-center text-muted-foreground py-2 border-t mt-2">
-                  Mostrando {RENDER_CAP} de {totalAll} grupos. Use a busca ou filtros para refinar.
+                  Mostrando {RENDER_CAP} de {totalAll} grupos. Refine a busca para ver mais.
                 </div>
-              ) : null;
+              ) : (!hasActiveFilter && totalAll > 0 ? (
+                <div className="text-[11px] text-center text-muted-foreground py-2 border-t mt-2">
+                  Mostrando {totalAll} grupos. Use a busca para encontrar grupos específicos.
+                </div>
+              ) : null);
 
               if (auditMode) {
                 const total = visible.length;
