@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
+import { remapToExternal, ensureRemapCache } from '@/integrations/supabase/uuid-remap';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -99,16 +101,42 @@ export function ContactCallHistory({ contactId, contactPhone }: Props) {
 
       setCalls(data || []);
 
-      // Fetch user names
-      const userIds = [...new Set((data || []).map(c => c.user_id).filter(Boolean))];
+      // Fetch user names — tenta Cloud direto + fallback Externo via remap
+      const userIds = [...new Set((data || []).map(c => c.user_id).filter(Boolean))] as string[];
       if (userIds.length > 0) {
-        const { data: profileData } = await supabase
-          .from('profiles')
-          .select('user_id, full_name')
-          .in('user_id', userIds);
-        
         const map: Record<string, string> = {};
-        profileData?.forEach(p => { map[p.user_id] = p.full_name || 'Usuário'; });
+
+        // 1) Cloud profiles
+        const { data: cloudProfiles } = await supabase
+          .from('profiles')
+          .select('user_id, full_name, email')
+          .in('user_id', userIds);
+        for (const p of cloudProfiles || []) {
+          const name = (p as any).full_name || (p as any).email?.split('@')[0];
+          if (name) map[(p as any).user_id] = name;
+        }
+
+        // 2) Para quem ficou sem nome: tenta Externo (fonte de verdade)
+        const missing = userIds.filter(id => !map[id]);
+        if (missing.length > 0) {
+          await ensureRemapCache();
+          const remapped = await Promise.all(missing.map(async (id) => ({ cloud: id, ext: await remapToExternal(id) })));
+          const extIds = remapped.map(r => r.ext).filter(Boolean) as string[];
+          if (extIds.length > 0) {
+            const { data: extProfiles } = await externalSupabase
+              .from('profiles')
+              .select('user_id, full_name, email')
+              .in('user_id', extIds);
+            for (const p of extProfiles || []) {
+              const name = (p as any).full_name || (p as any).email?.split('@')[0];
+              if (!name) continue;
+              // associa o ext_uuid de volta ao cloud_uuid original
+              const back = remapped.find(r => r.ext === (p as any).user_id);
+              if (back) map[back.cloud] = name;
+            }
+          }
+        }
+
         setProfiles(map);
       }
     } catch (err) {
