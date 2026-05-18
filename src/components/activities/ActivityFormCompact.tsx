@@ -863,7 +863,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
 
             {/* Process selection within case sheet */}
             {props.formCaseId && props.caseProcesses.length > 0 && (
-              <div className="border-t pt-3">
+              <div className="border-t shrink-0 px-6 pt-3 pb-2 max-h-[45%] overflow-y-auto bg-muted/30">
                 <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Processos do caso</span>
                 <div className="mt-2 space-y-0.5">
                   {props.caseProcesses.map(p => {
@@ -876,7 +876,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
                       <button
                         key={p.id}
                         className={cn(
-                          "w-full text-left px-3 py-2.5 text-sm rounded-md hover:bg-accent transition-colors",
+                          "w-full text-left px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors",
                           props.formProcessId === p.id && "bg-accent font-medium"
                         )}
                         onClick={() => {
@@ -943,20 +943,21 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
                     <button type="button" onClick={() => { props.setFormProcessId(''); props.setFormProcessTitle(''); }} className="text-muted-foreground hover:text-foreground">
                       <X className="h-3 w-3" />
                     </button>
-              </div>
-            )}
-            {props.formCaseId && (
-              <div className="border-t pt-3 mt-3">
-                <Button type="button" size="sm" className="w-full" onClick={() => setLinkCaseOpen(false)}>
-                  Confirmar
-                </Button>
-              </div>
+                  </div>
                 )}
               </div>
             )}
           </div>
+          {props.formCaseId && (
+            <div className="border-t px-6 py-3 shrink-0">
+              <Button type="button" size="sm" className="w-full" onClick={() => setLinkCaseOpen(false)}>
+                Confirmar
+              </Button>
+            </div>
+          )}
         </SheetContent>
       </Sheet>
+
 
       <Suspense fallback={null}>
         {editProcessData && (
