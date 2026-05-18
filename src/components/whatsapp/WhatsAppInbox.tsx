@@ -993,6 +993,58 @@ export function WhatsAppInbox() {
     }
   };
 
+  const handleCreateIdentifiedContact = async (idx: number) => {
+    if (!aiPreview?.identifiedContacts || !selectedConversation?.lead_id) return;
+    const person = aiPreview.identifiedContacts[idx];
+    if (!person) return;
+    setCreatingIdentified(idx);
+    try {
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      const phoneDigits = person.phone ? String(person.phone).replace(/\D/g, '') : null;
+      const insertPayload: Record<string, any> = {
+        full_name: person.full_name || person.relationship || 'Contato identificado',
+        phone: phoneDigits || null,
+        cpf: person.cpf || null,
+        rg: person.rg || null,
+        birth_date: person.birth_date || null,
+        cep: person.cep || null,
+        street: person.street || null,
+        street_number: person.street_number || null,
+        complement: person.complement || null,
+        neighborhood: person.neighborhood || null,
+        city: person.city || null,
+        state: person.state || null,
+        email: person.email || null,
+        profession: person.profession || null,
+        notes: [person.relationship ? `Relação: ${person.relationship}` : '', person.notes || ''].filter(Boolean).join('\n') || null,
+        created_by: currentUser?.id || null,
+      };
+      const { data: created, error: insertError } = await externalSupabase
+        .from('contacts')
+        .insert(insertPayload)
+        .select('id')
+        .single();
+      if (insertError) throw insertError;
+      // Vincular ao lead atual
+      const { error: linkError } = await supabase
+        .from('contact_leads' as any)
+        .insert({ contact_id: created.id, lead_id: selectedConversation.lead_id });
+      if (linkError && linkError.code !== '23505') throw linkError;
+      toast.success(`Contato "${insertPayload.full_name}" criado e vinculado`);
+      // Remove da lista do preview
+      setAiPreview(prev => prev ? {
+        ...prev,
+        identifiedContacts: prev.identifiedContacts?.filter((_, i) => i !== idx),
+      } : prev);
+    } catch (e: any) {
+      console.error('Create identified contact error:', e);
+      toast.error('Erro ao criar contato: ' + (e?.message || ''));
+    } finally {
+      setCreatingIdentified(null);
+    }
+  };
+
+
   const handleContactCreated = async (contact: { id: string; full_name: string; phone: string | null; lead_id?: string | null }) => {
     if (selectedConversation) {
       await linkToContact(selectedConversation.phone, contact.id, selectedConversation.instance_name);
