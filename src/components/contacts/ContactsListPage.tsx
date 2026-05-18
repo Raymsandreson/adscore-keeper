@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useContacts, Contact } from '@/hooks/useContacts';
 import { ContactDetailSheet } from './ContactDetailSheet';
 import { CreateContactDialog } from './CreateContactDialog';
