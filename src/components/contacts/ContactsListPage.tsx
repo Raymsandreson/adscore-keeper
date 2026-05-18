@@ -29,9 +29,15 @@ import {
 
 export function ContactsListPage() {
   const navigate = useNavigate();
+  const [chatPreview, setChatPreview] = useState<{ phone: string; instance_name: string | null; contact_name: string | null } | null>(null);
   const openGroupChat = (jid: string) => {
     if (!jid) return;
-    navigate(`/whatsapp?openChat=${encodeURIComponent(jid)}`);
+    const g = groups.find(x => x.group_jid === jid);
+    setChatPreview({
+      phone: jid,
+      instance_name: g?.instance_name || null,
+      contact_name: g?.group_name || null,
+    });
   };
   const { contacts, loading: contactsLoading, fetchContacts, totalCount, stats } = useContacts();
   const {
