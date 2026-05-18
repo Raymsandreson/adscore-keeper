@@ -1351,7 +1351,7 @@ export function ContactsListPage() {
                             {highlight(group.group_name, groupSearchScope === 'group')}
                           </span>
                           <span
-                            className={`text-sm truncate pl-3 border-l border-border/40 ${group.lead_id ? 'cursor-pointer hover:underline' : 'text-muted-foreground'}`}
+                            className={`relative text-sm truncate pl-3 text-center before:content-[''] before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-3/5 before:w-px before:bg-border/50 ${group.lead_id ? 'cursor-pointer hover:underline' : 'text-muted-foreground'}`}
                             title={group.lead_id ? 'Abrir lead' : 'Sem lead vinculado'}
                             onClick={() => group.lead_id && openGroupLead(group.group_jid)}
                           >
