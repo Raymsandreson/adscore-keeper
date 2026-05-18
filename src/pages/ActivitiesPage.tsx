@@ -2924,6 +2924,18 @@ const ActivitiesPage = () => {
                       Lead
                     </Button>
                   )}
+                  {formProcessId && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs gap-1"
+                      onClick={() => setShowProcessSheetId(formProcessId)}
+                      title="Ver últimas movimentações do processo"
+                    >
+                      <FileText className="h-3 w-3" />
+                      Últimas movimentações
+                    </Button>
+                  )}
                   <Button variant="ghost" size="icon" className="h-7 w-7" onClick={closeSheet}>
                     <X className="h-4 w-4" />
                   </Button>
