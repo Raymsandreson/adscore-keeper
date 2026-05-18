@@ -27,6 +27,11 @@ import {
 } from 'lucide-react';
 
 export function ContactsListPage() {
+  const navigate = useNavigate();
+  const openGroupChat = (jid: string) => {
+    if (!jid) return;
+    navigate(`/whatsapp?openChat=${encodeURIComponent(jid)}`);
+  };
   const { contacts, loading: contactsLoading, fetchContacts, totalCount, stats } = useContacts();
   const {
     lists, loading: listsLoading, createList, deleteList,
