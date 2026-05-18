@@ -1496,6 +1496,8 @@ const ActivitiesPage = () => {
       formWhatWasDone={formWhatWasDone} setFormWhatWasDone={setFormWhatWasDone}
       formCurrentStatus={formCurrentStatus} setFormCurrentStatus={setFormCurrentStatus}
       formNextSteps={formNextSteps} setFormNextSteps={setFormNextSteps}
+      formSolicitacao={formSolicitacao} setFormSolicitacao={setFormSolicitacao}
+      formRespostaJuizo={formRespostaJuizo} setFormRespostaJuizo={setFormRespostaJuizo}
       formNotes={formNotes} setFormNotes={setFormNotes}
       teamMembers={teamMembers}
       routineActivityTypes={routineActivityTypes}
