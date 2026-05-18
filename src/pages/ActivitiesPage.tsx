@@ -2928,6 +2928,23 @@ const ActivitiesPage = () => {
                   Nenhum lead vinculado. Vincule um lead existente no formulário ou crie um novo.
                 </p>
               )}
+              {/* Nome do cliente (override) — acima da barra de progresso */}
+              <div className="flex items-center gap-1.5 mt-1.5 text-[11px] text-muted-foreground">
+                <User className="h-3 w-3 shrink-0" />
+                <span className="uppercase tracking-wider text-[9px] whitespace-nowrap">Cliente</span>
+                <Input
+                  value={formClientNameOverride || ''}
+                  onChange={(e) => setFormClientNameOverride(e.target.value)}
+                  placeholder={formLeadName ? `Auto: ${formLeadName}` : '—'}
+                  className="h-6 text-[11px] px-1.5 border-0 border-b rounded-none bg-transparent focus-visible:ring-0 focus-visible:border-primary flex-1 min-w-0"
+                  title="Se vazio, usa o nome do lead. Se preenchido, este nome aparece nos templates."
+                />
+                {formClientNameOverride && (
+                  <button type="button" onClick={() => setFormClientNameOverride('')} className="text-muted-foreground hover:text-foreground shrink-0" title="Limpar">
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
               {/* Funnel or Process Workflow progress bar */}
               {formLeadId && (() => {
                 const linkedProcess = formProcessId ? caseProcesses.find(p => p.id === formProcessId) : null;
@@ -2960,23 +2977,6 @@ const ActivitiesPage = () => {
                 }
                 return null;
               })()}
-              {/* Nome do cliente (override) — compacto no cabeçalho */}
-              <div className="flex items-center gap-1.5 mt-1.5 text-[11px] text-muted-foreground">
-                <User className="h-3 w-3 shrink-0" />
-                <span className="uppercase tracking-wider text-[9px] whitespace-nowrap">Cliente</span>
-                <Input
-                  value={formClientNameOverride || ''}
-                  onChange={(e) => setFormClientNameOverride(e.target.value)}
-                  placeholder={formLeadName ? `Auto: ${formLeadName}` : '—'}
-                  className="h-6 text-[11px] px-1.5 border-0 border-b rounded-none bg-transparent focus-visible:ring-0 focus-visible:border-primary flex-1 min-w-0"
-                  title="Se vazio, usa o nome do lead. Se preenchido, este nome aparece nos templates."
-                />
-                {formClientNameOverride && (
-                  <button type="button" onClick={() => setFormClientNameOverride('')} className="text-muted-foreground hover:text-foreground shrink-0" title="Limpar">
-                    <X className="h-3 w-3" />
-                  </button>
-                )}
-              </div>
               </div>
               {/* Botão fixar/desafixar cabeçalho */}
               <button
