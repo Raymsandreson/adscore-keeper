@@ -626,17 +626,17 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
                 );
               }
               return (
-                <div key={field.field_key} className="min-w-0">
+                <div key={field.field_key} className="min-w-0 flex flex-col">
                   <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{field.label}</span>
                   <StepTemplatesHub {...hubProps} />
-                  <div className={expandedFieldKey === field.field_key ? 'hidden' : ''}>
+                  <div className={cn('flex-1 min-h-0', expandedFieldKey === field.field_key ? 'hidden' : '')}>
                     <RichTextEditor
                       value={value}
                       onChange={setter}
                       placeholder={field.placeholder || ''}
                       minHeight="clamp(120px, 32vh, 360px)"
                       onExpand={() => setExpandedFieldKey(field.field_key)}
-                      className="mt-0.5"
+                      className="mt-0.5 h-full"
                     />
                   </div>
 
@@ -649,9 +649,10 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
             const bottomRow = visible.slice(3);
             return (
               <>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 items-stretch auto-rows-fr">
                   {topRow.map(renderField)}
                 </div>
+
                 {bottomRow.length > 0 && (
                   <div className={cn(
                     "grid gap-2.5",
