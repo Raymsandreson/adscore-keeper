@@ -126,7 +126,7 @@ export function ContactsListPage() {
         const to = from + pageSize - 1;
         const { data: page, error } = await (externalSupabase as any)
           .from('whatsapp_groups_index')
-          .select('group_jid, contact_name, last_seen')
+          .select('group_jid, contact_name, last_seen, instance_name')
           .order('last_seen', { ascending: false })
           .range(from, to);
         if (error) { console.error('fetchGroups index page error:', error); break; }
@@ -139,6 +139,7 @@ export function ContactsListPage() {
               lead_name: '',
               lead_status: '',
               contact_count: 0,
+              instance_name: r.instance_name || null,
             });
           }
         }
