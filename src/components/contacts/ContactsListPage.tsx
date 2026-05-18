@@ -32,14 +32,47 @@ import {
 export function ContactsListPage() {
   const navigate = useNavigate();
   const [chatPreview, setChatPreview] = useState<{ phone: string; instance_name: string | null; contact_name: string | null } | null>(null);
+  const [editingLead, setEditingLead] = useState<Lead | null>(null);
+  const [loadingLeadForGroup, setLoadingLeadForGroup] = useState<string | null>(null);
   const openGroupChat = (jid: string) => {
     if (!jid) return;
     const g = groups.find(x => x.group_jid === jid);
     setChatPreview({
       phone: jid,
-      instance_name: g?.instance_name || null,
+      // Não filtrar por instance_name: o JID do grupo é global e algumas
+      // instâncias registram o mesmo grupo com case diferente. Filtrar
+      // estava escondendo conversas inteiras (ex.: Prev 06).
+      instance_name: null,
       contact_name: g?.group_name || null,
     });
+  };
+  const openGroupLead = async (jid: string) => {
+    if (!jid) return;
+    const g = groups.find(x => x.group_jid === jid);
+    if (!g?.lead_id) {
+      // Sem lead vinculado → cai para a conversa do grupo.
+      openGroupChat(jid);
+      return;
+    }
+    setLoadingLeadForGroup(jid);
+    try {
+      const { data, error } = await externalSupabase
+        .from('leads')
+        .select('*')
+        .eq('id', g.lead_id)
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) {
+        toast.error('Lead vinculado não encontrado.');
+        return;
+      }
+      setEditingLead(data as Lead);
+    } catch (err: any) {
+      console.error('openGroupLead error:', err);
+      toast.error('Falha ao carregar lead: ' + (err?.message || 'erro'));
+    } finally {
+      setLoadingLeadForGroup(null);
+    }
   };
   const { contacts, loading: contactsLoading, fetchContacts, totalCount, stats } = useContacts();
   const {
