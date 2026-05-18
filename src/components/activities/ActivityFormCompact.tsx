@@ -58,6 +58,8 @@ interface ActivityFormCompactProps {
   formWhatWasDone: string; setFormWhatWasDone: (v: string) => void;
   formCurrentStatus: string; setFormCurrentStatus: (v: string) => void;
   formNextSteps: string; setFormNextSteps: (v: string) => void;
+  formSolicitacao: string; setFormSolicitacao: (v: string) => void;
+  formRespostaJuizo: string; setFormRespostaJuizo: (v: string) => void;
   formNotes: string; setFormNotes: (v: string) => void;
   // Data
   teamMembers: TeamMember[];
