@@ -1345,12 +1345,16 @@ export function ContactsListPage() {
                           </span>
                           <span
                             className="text-sm truncate cursor-pointer hover:underline"
-                            title={group.lead_id ? 'Abrir lead' : 'Sem lead — abrir conversa do grupo'}
-                            onClick={() => openGroupLead(group.group_jid)}
+                            title="Abrir conversa do grupo"
+                            onClick={() => openGroupChat(group.group_jid)}
                           >
                             {highlight(group.group_name, groupSearchScope === 'group')}
                           </span>
-                          <span className="text-sm truncate" title={group.lead_name || ''}>
+                          <span
+                            className={`text-sm truncate ${group.lead_id ? 'cursor-pointer hover:underline' : 'text-muted-foreground'}`}
+                            title={group.lead_id ? 'Abrir lead' : 'Sem lead vinculado'}
+                            onClick={() => group.lead_id && openGroupLead(group.group_jid)}
+                          >
                             {highlight(group.lead_name, groupSearchScope === 'lead')}
                           </span>
                           <div className="flex items-center gap-1">
@@ -1395,19 +1399,31 @@ export function ContactsListPage() {
                         aria-label="Incluir grupo no filtro"
                       />
                       <UsersRound className="h-5 w-5 text-primary shrink-0" />
-                      <div
-                        className="flex-1 min-w-0 cursor-pointer"
-                        title={group.lead_id ? 'Abrir lead' : 'Sem lead — abrir conversa do grupo'}
-                        onClick={() => openGroupLead(group.group_jid)}
-                      >
-                        <p className="font-medium text-sm truncate">
+                      <div className="flex-1 min-w-0">
+                        <p
+                          className="font-medium text-sm truncate cursor-pointer hover:underline"
+                          title="Abrir conversa do grupo"
+                          onClick={() => openGroupChat(group.group_jid)}
+                        >
                           {highlight(group.group_name, groupSearchScope === 'group')}
-                          {loadingLeadForGroup === group.group_jid && (
-                            <Loader2 className="h-3 w-3 ml-1 inline animate-spin text-muted-foreground" />
-                          )}
                         </p>
                         <p className="text-xs text-muted-foreground truncate">
-                          Lead: {highlight(group.lead_name, groupSearchScope === 'lead')} • {group.contact_count} contato(s)
+                          Lead:{' '}
+                          {group.lead_id ? (
+                            <span
+                              className="cursor-pointer hover:underline text-foreground"
+                              title="Abrir lead"
+                              onClick={(e) => { e.stopPropagation(); openGroupLead(group.group_jid); }}
+                            >
+                              {highlight(group.lead_name, groupSearchScope === 'lead')}
+                              {loadingLeadForGroup === group.group_jid && (
+                                <Loader2 className="h-3 w-3 ml-1 inline animate-spin" />
+                              )}
+                            </span>
+                          ) : (
+                            <span>—</span>
+                          )}{' '}
+                          • {group.contact_count} contato(s)
                         </p>
                       </div>
                       <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0" title="Abrir conversa do grupo" onClick={(e) => { e.stopPropagation(); openGroupChat(group.group_jid); }}>
