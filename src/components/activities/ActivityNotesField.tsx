@@ -20,9 +20,8 @@ import {
   ExternalLink,
   Trash2,
   Loader2,
-  Pin,
-  PinOff,
 } from 'lucide-react';
+
 
 
 interface Attachment {
