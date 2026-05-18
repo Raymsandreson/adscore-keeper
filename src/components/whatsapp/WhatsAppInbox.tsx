@@ -1201,6 +1201,7 @@ export function WhatsAppInbox() {
             </button>
           </div>
           <FocusDashboard
+            compact={focusPanelPinned}
             onOpenMissingDocs={() => toast.info('Filtro "faltam documentos" em breve')}
             onOpenZapsignPending={() => toast.info('Lista de pendentes ZapSign em breve')}
             onOpenUnanswered={() => {
