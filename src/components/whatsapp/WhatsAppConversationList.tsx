@@ -15,6 +15,7 @@ import { externalSupabase } from '@/integrations/supabase/external-client';
 import { KanbanBoard } from '@/hooks/useKanbanBoards';
 import { useSharedWithMe } from '@/hooks/useSharedWithMe';
 import { Share2 } from 'lucide-react';
+import { normalizeWhatsAppConversationPhone } from '@/lib/whatsappPhone';
 
 interface LeadInfo {
   id: string;
@@ -91,7 +92,7 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
   const [leadDocStatus, setLeadDocStatus] = useState<Map<string, 'signed' | 'unsigned'>>(new Map());
 
   const getConversationKey = (phone: string, instanceName?: string | null) =>
-    `${(phone || '').trim()}__${(instanceName || '').trim().toLowerCase()}`;
+    `${normalizeWhatsAppConversationPhone(phone)}__${(instanceName || '').trim().toLowerCase()}`;
 
   // Track lead IDs to avoid unnecessary re-fetches
   const prevLeadIdsRef = useRef<string>('');
@@ -320,6 +321,8 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
   }, [filtered, sortMode]);
 
   const formatPhone = (phone: string) => {
+    const normalized = normalizeWhatsAppConversationPhone(phone);
+    if (normalized.replace(/\D/g, '').length >= 17) return `Grupo • …${normalized.slice(-6)}`;
     if (phone.length === 13) return `+${phone.slice(0, 2)} (${phone.slice(2, 4)}) ${phone.slice(4, 9)}-${phone.slice(9)}`;
     if (phone.length === 12) return `+${phone.slice(0, 2)} (${phone.slice(2, 4)}) ${phone.slice(4, 8)}-${phone.slice(8)}`;
     return phone;
