@@ -1330,8 +1330,8 @@ export function ContactsListPage() {
                           </span>
                           <span
                             className="text-sm truncate cursor-pointer hover:underline"
-                            title="Abrir conversa do grupo"
-                            onClick={() => openGroupChat(group.group_jid)}
+                            title={group.lead_id ? 'Abrir lead' : 'Sem lead — abrir conversa do grupo'}
+                            onClick={() => openGroupLead(group.group_jid)}
                           >
                             {highlight(group.group_name, groupSearchScope === 'group')}
                           </span>
