@@ -455,6 +455,10 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
       toast.error('Nº do Processo é obrigatório');
       return;
     }
+    if (!form.workflow_id) {
+      toast.error('Fluxo de trabalho é obrigatório');
+      return;
+    }
     setSaving(true);
     try {
       const payload: Record<string, any> = {};
@@ -492,6 +496,13 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
       const { data, error } = await externalSupabase.from('lead_processes').update(payload).eq('id', process.id).select();
       if (error) throw error;
       console.log('[ProcessDetailSheet] Save response:', data);
+      if (!data || data.length === 0) {
+        toast.error('Nenhuma linha foi atualizada. Verifique permissões (RLS) ou se o processo ainda existe.');
+        setSaving(false);
+        return;
+      }
+      // Sync local form with persisted row to avoid stale state on next open
+      setForm(prev => ({ ...prev, ...(data[0] as any) }));
       toast.success('Processo atualizado');
       setDirty(false);
       onUpdated?.();
