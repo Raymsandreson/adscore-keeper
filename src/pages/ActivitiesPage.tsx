@@ -719,6 +719,9 @@ const ActivitiesPage = () => {
 
   const handleUpdate = async () => {
     if (!selectedActivity) return;
+    if (!formAssignedTo) { toast.error('Selecione o assessor'); return; }
+    if (!formDeadline) { toast.error('Informe o prazo'); return; }
+    if (!formNotificationDate) { toast.error('Informe a data de notificação'); return; }
     await updateActivity(selectedActivity.id, {
       title: formTitle,
       description: null,
