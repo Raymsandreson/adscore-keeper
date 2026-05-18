@@ -129,6 +129,8 @@ export function WhatsAppInbox() {
   const [importingGoogle, setImportingGoogle] = useState(false);
   const [importingWhatsApp, setImportingWhatsApp] = useState(false);
   const [creatingLead, setCreatingLead] = useState(false);
+  const [focusPanelPinned, setFocusPanelPinned] = useState(false);
+  const [instanceSelectOpen, setInstanceSelectOpen] = useState(false);
 
   // Default instance do perfil do usuário (fonte da verdade para alertas e fallback).
   const [userDefaultInstanceId, setUserDefaultInstanceId] = useState<string | null>(null);
@@ -881,12 +883,26 @@ export function WhatsAppInbox() {
         height: 'calc(100dvh - var(--app-header-offset, 0px))',
       }}
     >
-      {/* Painel "Foco Agora" — só aparece ao passar o mouse na barra fina */}
+      {/* Painel "Foco Agora" — só aparece ao passar o mouse na barra fina (ou fixado durante operação) */}
+      {(() => {
+        const isPinned = focusPanelPinned || instanceSelectOpen || instanceSwitching || importingGoogle || importingWhatsApp;
+        return (
       <div className={`group/focus relative shrink-0 ${selectedPhone ? 'hidden md:block' : 'block'}`}>
         {/* Trigger fino sempre visível */}
         <div className="h-1.5 bg-gradient-to-r from-orange-400/40 via-primary/40 to-pink-400/40 hover:h-2 transition-all cursor-pointer" aria-label="Mostrar Foco Agora" />
-        {/* Painel revelado no hover */}
-        <div className="absolute left-0 right-0 top-full z-40 max-h-0 overflow-hidden opacity-0 group-hover/focus:max-h-[900px] group-hover/focus:opacity-100 transition-all duration-200 bg-background shadow-lg border-b">
+        {/* Painel revelado no hover (ou fixado) */}
+        <div className={`absolute left-0 right-0 top-full z-40 overflow-hidden transition-all duration-200 bg-background shadow-lg border-b ${isPinned ? 'max-h-[900px] opacity-100' : 'max-h-0 opacity-0 group-hover/focus:max-h-[900px] group-hover/focus:opacity-100'}`}>
+          {/* Botão de fixar */}
+          <div className="absolute top-1 right-2 z-10">
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setFocusPanelPinned(p => !p); }}
+              className={`text-[10px] px-2 py-0.5 rounded border ${focusPanelPinned ? 'bg-primary text-primary-foreground border-primary' : 'bg-background hover:bg-muted'}`}
+              title={focusPanelPinned ? 'Desafixar painel' : 'Fixar painel'}
+            >
+              {focusPanelPinned ? '📌 Fixado' : '📌 Fixar'}
+            </button>
+          </div>
           <FocusDashboard
             onOpenMissingDocs={() => toast.info('Filtro "faltam documentos" em breve')}
             onOpenZapsignPending={() => toast.info('Lista de pendentes ZapSign em breve')}
@@ -903,7 +919,7 @@ export function WhatsAppInbox() {
         )}
 
         {instances.length > 0 && (
-          <Select value={selectedInstanceId} onValueChange={(val) => { guardLeaveCurrent(() => { setSelectedInstanceId(val); setSelectedPhone(null); setSelectedInstance(null); if (val !== 'all') localStorage.setItem('whatsapp_last_instance_id', val); }); }}>
+          <Select open={instanceSelectOpen} onOpenChange={setInstanceSelectOpen} value={selectedInstanceId} onValueChange={(val) => { guardLeaveCurrent(() => { setSelectedInstanceId(val); setSelectedPhone(null); setSelectedInstance(null); if (val !== 'all') localStorage.setItem('whatsapp_last_instance_id', val); }); }}>
             <SelectTrigger className="w-52 h-8 text-xs ml-0 md:ml-2">
               <Smartphone className="h-3.5 w-3.5 mr-1.5 text-muted-foreground" />
               <SelectValue placeholder="Todas instâncias" />
@@ -1084,6 +1100,8 @@ export function WhatsAppInbox() {
           </div>
         </div>
       </div>
+        );
+      })()}
 
       {/* Reconnect Bar - apenas para instância padrão do usuário */}
       {relevantDisconnectedInstances.length > 0 && (
