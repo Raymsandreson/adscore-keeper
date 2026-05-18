@@ -1226,7 +1226,7 @@ export function ContactsListPage() {
                         {mismatched} divergente(s)
                       </span>
                     </div>
-                    <div className="grid grid-cols-[40px_60px_1fr_1fr_24px] gap-2 px-3 py-2 text-[11px] font-medium text-muted-foreground border-b">
+                    <div className="grid grid-cols-[40px_60px_1fr_1fr_64px] gap-2 px-3 py-2 text-[11px] font-medium text-muted-foreground border-b">
                       <span></span>
                       <span>Nº caso</span>
                       <span>Nome do grupo</span>
@@ -1242,7 +1242,7 @@ export function ContactsListPage() {
                       return (
                         <div
                           key={group.group_jid}
-                          className={`grid grid-cols-[40px_60px_1fr_1fr_24px] gap-2 items-center p-3 rounded-lg border transition-colors hover:bg-accent/50 ${!matches ? 'border-amber-500/40 bg-amber-500/5' : ''}`}
+                          className={`grid grid-cols-[40px_60px_1fr_1fr_64px] gap-2 items-center p-3 rounded-lg border transition-colors hover:bg-accent/50 ${!matches ? 'border-amber-500/40 bg-amber-500/5' : ''}`}
                         >
                           <Checkbox
                             checked={!excludedGroups.has(group.group_jid)}
