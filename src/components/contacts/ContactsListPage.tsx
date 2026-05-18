@@ -1313,7 +1313,7 @@ export function ContactsListPage() {
 
               return (
                 <div className="space-y-1">
-                  {visible.map(group => (
+                  {capped.map(group => (
                     <div
                       key={group.group_jid}
                       className="flex items-center gap-3 p-3 rounded-lg hover:bg-accent/50 transition-colors border"
@@ -1352,6 +1352,7 @@ export function ContactsListPage() {
                       </Badge>
                     </div>
                   ))}
+                  {truncatedNotice}
                 </div>
               );
             })()}
