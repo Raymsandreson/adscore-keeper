@@ -1396,14 +1396,17 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       // Fetch directly from the external DB (source of truth for whatsapp_messages).
       await ensureExternalSession().catch(() => {});
       const raw = await getConversationMessages(phone, instanceName, 3000);
-      const allMsgs: WhatsAppMessage[] = raw as unknown as WhatsAppMessage[];
+      const allMsgs: WhatsAppMessage[] = (raw as unknown as WhatsAppMessage[]).map((msg) => ({
+        ...msg,
+        phone: normalizeWhatsAppConversationPhone(msg.phone),
+      }));
 
       // Deduplicate group messages (same messageid from different instances)
       const deduped: WhatsAppMessage[] = [];
       const seenMsgIds = new Set<string>();
       for (const m of allMsgs) {
         const msgId = m.external_message_id?.split(':').pop();
-        const dedupKey = msgId ? `${msgId}_${m.created_at}` : m.id;
+        const dedupKey = msgId ? `ext:${msgId}` : m.id;
         if (!seenMsgIds.has(dedupKey)) {
           seenMsgIds.add(dedupKey);
           deduped.push(m);
