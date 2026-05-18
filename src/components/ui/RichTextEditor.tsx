@@ -226,7 +226,7 @@ function ToolbarPlugin({
   }, [editor, blockType]);
 
   return (
-    <div className="sticky top-0 z-20 flex shrink-0 items-center gap-0.5 border-b bg-background/95 px-1.5 py-1 backdrop-blur supports-[backdrop-filter]:bg-background/85 flex-wrap">
+    <div className="sticky top-0 z-20 hidden group-hover/rte:flex group-focus-within/rte:flex shrink-0 items-center gap-0.5 border-b bg-background/95 px-1.5 py-1 backdrop-blur supports-[backdrop-filter]:bg-background/85 flex-wrap">
       {/* AI Edition */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -635,7 +635,7 @@ function RichTextEditorComponent({
   }, [lastAiAction, fetchAiOptions]);
 
   return (
-    <div className={cn('flex flex-col rounded-md border bg-background h-full', className)} style={{ minHeight, height, maxHeight, overflow: 'auto' }}>
+    <div className={cn('group/rte flex flex-col rounded-md border bg-background h-full', className)} style={{ minHeight, height, maxHeight, overflow: 'auto' }}>
       <LexicalComposer initialConfig={initialConfig}>
         <ToolbarPlugin onExpand={onExpand ? handleExpand : undefined} aiLoading={aiLoading} onAiAction={handleAiAction} onCustomPrompt={handleCustomPrompt} />
         <div className="relative flex-1">
