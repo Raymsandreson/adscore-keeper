@@ -1023,6 +1023,21 @@ export function ContactsListPage() {
             )}
           </div>
 
+          {/* Contadores com lead / sem lead */}
+          {!selectedGroup && groups.length > 0 && (
+            <div className="flex items-center gap-2 flex-wrap pb-2 shrink-0">
+              <Badge variant="default" className="gap-1">
+                <CheckCircle2 className="h-3 w-3" />
+                Com lead: {groups.filter(g => g.lead_id).length}
+              </Badge>
+              <Badge variant="outline" className="gap-1">
+                <AlertTriangle className="h-3 w-3 text-amber-500" />
+                Sem lead: {groups.filter(g => !g.lead_id).length}
+              </Badge>
+              <span className="text-[11px] text-muted-foreground">de {groups.length} grupos</span>
+            </div>
+          )}
+
           {/* Chips de critério ativo */}
           {!selectedGroup && (
             <div className="flex items-center gap-2 flex-wrap pb-2 shrink-0">
