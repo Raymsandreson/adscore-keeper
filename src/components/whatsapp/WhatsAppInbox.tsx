@@ -323,7 +323,11 @@ export function WhatsAppInbox() {
   const [activityDefaults, setActivityDefaults] = useState<{ leadId?: string; leadName?: string; contactId?: string; contactName?: string }>({});
   const [showBoardPicker, setShowBoardPicker] = useState(false);
   const [selectedBoardId, setSelectedBoardId] = useState<string>('');
-  const [aiPreview, setAiPreview] = useState<{ leadFields: Record<string, string>; contactFields: Record<string, string> } | null>(null);
+  const [aiPreview, setAiPreview] = useState<{
+    leadFields: Record<string, string>;
+    contactFields: Record<string, string>;
+    customFields?: Array<{ id: string; label: string; type: string; value: any }>;
+  } | null>(null);
   const [showAiPreview, setShowAiPreview] = useState(false);
   // Bulk selection state
   const [bulkMode, setBulkMode] = useState(false);
