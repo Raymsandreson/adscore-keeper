@@ -3238,6 +3238,9 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
               </DropdownMenuContent>
             </DropdownMenu>
             <input ref={mediaInputRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleMediaUpload} />
+            {inputMode !== 'chat' && (
+              <AITextActions value={newMessage} onChange={setNewMessage} />
+            )}
             <Textarea
               placeholder={
                 inputMode === 'note' ? "Nota interna (não será enviada ao contato)..."
