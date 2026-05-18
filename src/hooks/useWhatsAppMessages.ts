@@ -672,30 +672,13 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         lead_id: leadId,
         instance_id: targetInstanceId,
       };
-      console.log(`[sendMessage ${debugId}] invoking send-whatsapp`, {
-        ...invokePayload,
-        message: `<${finalMessage?.length} chars>`,
-      });
 
-      const { data, error } = await cloudFunctions.invoke('send-whatsapp', { body: invokePayload });
-
-      console.log(`[sendMessage ${debugId}] response`, { data, error });
-
-      if (error) throw error;
-      if (!data?.success) {
-        console.error(`[sendMessage ${debugId}] returning false — server reported failure`, data);
-        if (data?.error_code === 'INSTANCE_DISCONNECTED') {
-          showDisconnectedToast(targetInstanceId, data.instance_name);
-          return false;
-        }
-        throw new Error(data?.error || 'Resposta inesperada do servidor');
-      }
-      toast.success('Mensagem enviada!');
-
-      // Optimistic local update instead of full refetch
+      // INSTANT UI: render optimistic bubble BEFORE awaiting the edge function.
+      // Reconciliation/removal happens once the server responds.
       const conversationPhone = normalizeWhatsAppConversationPhone(phone);
+      const optimisticId = crypto.randomUUID();
       const optimisticMsg: WhatsAppMessage = {
-        id: data.message_id || crypto.randomUUID(),
+        id: optimisticId,
         phone: conversationPhone,
         contact_name: null,
         message_text: finalMessage,
@@ -710,7 +693,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         metadata: { __optimistic: true },
         created_at: new Date().toISOString(),
         read_at: null,
-        instance_name: data.instance_name || conversationInstanceName || null,
+        instance_name: conversationInstanceName || null,
         instance_token: null,
       };
       setMessages(prev => [optimisticMsg, ...prev]);
@@ -720,6 +703,36 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
           ? { ...c, last_message: finalMessage, last_message_at: optimisticMsg.created_at, messages: [...c.messages, optimisticMsg] }
           : c
       ));
+
+      console.log(`[sendMessage ${debugId}] invoking send-whatsapp`, {
+        ...invokePayload,
+        message: `<${finalMessage?.length} chars>`,
+      });
+
+      // Fire-and-await but UI is already updated; failure will roll back the bubble.
+      const { data, error } = await cloudFunctions.invoke('send-whatsapp', { body: invokePayload });
+
+      console.log(`[sendMessage ${debugId}] response`, { data, error });
+
+      const rollback = () => {
+        setMessages(prev => prev.filter(m => m.id !== optimisticId));
+        setConversations(prev => prev.map(c =>
+          getConversationKey(c.phone, c.instance_name) === targetConversationKey
+            ? { ...c, messages: c.messages.filter(m => m.id !== optimisticId) }
+            : c
+        ));
+      };
+
+      if (error) { rollback(); throw error; }
+      if (!data?.success) {
+        rollback();
+        console.error(`[sendMessage ${debugId}] returning false — server reported failure`, data);
+        if (data?.error_code === 'INSTANCE_DISCONNECTED') {
+          showDisconnectedToast(targetInstanceId, data.instance_name);
+          return false;
+        }
+        throw new Error(data?.error || 'Resposta inesperada do servidor');
+      }
 
       console.log(`[sendMessage ${debugId}] SUCCESS`);
       return true;
