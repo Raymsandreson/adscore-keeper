@@ -734,10 +734,39 @@ export function WhatsAppInbox() {
     try {
       const leadFields: Record<string, string> = {};
       const contactFields: Record<string, string> = {};
+      const customFieldsResolved: Array<{ id: string; label: string; type: string; value: any }> = [];
 
       if (selectedConversation.lead_id) {
+        setExtractionStep('Carregando campos personalizados...');
+        // Fetch lead's board_id + custom fields for that board
+        let customSpecs: Array<{ id: string; label: string; type?: string; options?: string[] }> = [];
+        let customMeta: Record<string, { label: string; type: string }> = {};
+        try {
+          const { data: leadRow } = await externalSupabase
+            .from('leads')
+            .select('board_id')
+            .eq('id', selectedConversation.lead_id)
+            .maybeSingle();
+          const boardId = (leadRow as any)?.board_id;
+          if (boardId) {
+            const { data: cfs } = await (externalSupabase as any)
+              .from('lead_custom_fields')
+              .select('id, field_name, field_type, field_options')
+              .eq('board_id', boardId);
+            customSpecs = (cfs || []).map((f: any) => ({
+              id: f.id,
+              label: f.field_name,
+              type: f.field_type,
+              options: Array.isArray(f.field_options) ? f.field_options : undefined,
+            }));
+            customMeta = Object.fromEntries(customSpecs.map(s => [s.id, { label: s.label, type: s.type || 'text' }]));
+          }
+        } catch (e) {
+          console.warn('[handleUpdateWithAI] fetch custom fields error:', e);
+        }
+
         setExtractionStep('Analisando conversa para o lead...');
-        const extracted = await extractConversationData('lead');
+        const extracted = await extractConversationData('lead', customSpecs);
         const allowedLeadFields = [
           'lead_name', 'victim_name', 'lead_email', 'city', 'state', 'neighborhood',
           'main_company', 'contractor_company', 'accident_address', 'accident_date',
@@ -746,6 +775,12 @@ export function WhatsAppInbox() {
         ];
         for (const field of allowedLeadFields) {
           if (extracted[field]) leadFields[field] = extracted[field];
+        }
+        const extractedCustom = (extracted && extracted.custom_fields) || {};
+        for (const [fieldId, value] of Object.entries(extractedCustom)) {
+          const meta = customMeta[fieldId];
+          if (!meta) continue;
+          customFieldsResolved.push({ id: fieldId, label: meta.label, type: meta.type, value });
         }
       }
 
@@ -763,12 +798,16 @@ export function WhatsAppInbox() {
 
       setExtractionStep('');
 
-      if (Object.keys(leadFields).length === 0 && Object.keys(contactFields).length === 0) {
+      if (
+        Object.keys(leadFields).length === 0 &&
+        Object.keys(contactFields).length === 0 &&
+        customFieldsResolved.length === 0
+      ) {
         toast.info('Nenhuma informação nova encontrada na conversa.');
         return;
       }
 
-      setAiPreview({ leadFields, contactFields });
+      setAiPreview({ leadFields, contactFields, customFields: customFieldsResolved });
       setShowAiPreview(true);
     } catch (e) {
       console.error('Update with AI error:', e);
@@ -788,6 +827,55 @@ export function WhatsAppInbox() {
       if (Object.keys(aiPreview.contactFields).length > 0 && selectedConversation.contact_id) {
         const { error } = await externalSupabase.from('contacts').update(aiPreview.contactFields).eq('id', selectedConversation.contact_id);
         if (!error) updates.push('Contato');
+      }
+      if (aiPreview.customFields && aiPreview.customFields.length > 0 && selectedConversation.lead_id) {
+        const leadId = selectedConversation.lead_id;
+        let saved = 0;
+        for (const cf of aiPreview.customFields) {
+          try {
+            const payload: any = {
+              lead_id: leadId,
+              field_id: cf.id,
+              value_text: null,
+              value_number: null,
+              value_date: null,
+              value_boolean: null,
+            };
+            switch (cf.type) {
+              case 'number':
+                payload.value_number = typeof cf.value === 'number' ? cf.value : Number(String(cf.value).replace(/[^\d.-]/g, '')) || null;
+                break;
+              case 'date':
+                payload.value_date = String(cf.value).slice(0, 10);
+                break;
+              case 'checkbox':
+                payload.value_boolean = Boolean(cf.value);
+                break;
+              default:
+                payload.value_text = String(cf.value);
+            }
+            const { data: existing } = await (externalSupabase as any)
+              .from('lead_custom_field_values')
+              .select('id')
+              .eq('lead_id', leadId)
+              .eq('field_id', cf.id)
+              .maybeSingle();
+            if (existing?.id) {
+              await (externalSupabase as any).from('lead_custom_field_values').update({
+                value_text: payload.value_text,
+                value_number: payload.value_number,
+                value_date: payload.value_date,
+                value_boolean: payload.value_boolean,
+              }).eq('id', existing.id);
+            } else {
+              await (externalSupabase as any).from('lead_custom_field_values').insert(payload);
+            }
+            saved++;
+          } catch (e) {
+            console.warn('[handleConfirmAiUpdate] custom field save error:', cf.id, e);
+          }
+        }
+        if (saved > 0) updates.push(`${saved} campo(s) personalizado(s)`);
       }
       if (updates.length > 0) {
         toast.success(`${updates.join(' e ')} atualizado(s)!`);
