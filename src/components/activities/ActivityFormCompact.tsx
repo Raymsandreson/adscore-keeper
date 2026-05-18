@@ -588,6 +588,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
               next_steps: [props.formNextSteps, props.setFormNextSteps],
               notes: [props.formNotes, props.setFormNotes],
             };
+            const compactEditorHeight = 'clamp(110px, 20vh, 220px)';
             const renderField = (field: any) => {
               const entry = valueMap[field.field_key];
               if (!entry) return null;
@@ -621,6 +622,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
                       activityId={props.selectedActivity?.id || null}
                       placeholder={field.placeholder || 'Notas adicionais...'}
                       label={field.label}
+                      editorHeight={compactEditorHeight}
                     />
                   </div>
                 );
@@ -634,7 +636,9 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
                       value={value}
                       onChange={setter}
                       placeholder={field.placeholder || ''}
-                      minHeight="clamp(90px, 16vh, 170px)"
+                      minHeight={compactEditorHeight}
+                      height={compactEditorHeight}
+                      maxHeight={compactEditorHeight}
                       onExpand={() => setExpandedFieldKey(field.field_key)}
                       className="mt-0.5 h-full"
                     />

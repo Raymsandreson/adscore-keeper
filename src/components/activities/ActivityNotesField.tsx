@@ -41,9 +41,10 @@ interface ActivityNotesFieldProps {
   activityId?: string | null;
   placeholder?: string;
   label?: string;
+  editorHeight?: string;
 }
 
-export function ActivityNotesField({ value, onChange, activityId, placeholder, label }: ActivityNotesFieldProps) {
+export function ActivityNotesField({ value, onChange, activityId, placeholder, label, editorHeight = 'clamp(110px, 20vh, 220px)' }: ActivityNotesFieldProps) {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [uploading, setUploading] = useState(false);
   const [showLinkInput, setShowLinkInput] = useState(false);
@@ -269,7 +270,9 @@ export function ActivityNotesField({ value, onChange, activityId, placeholder, l
         value={value}
         onChange={onChange}
         placeholder={placeholder || 'Notas adicionais... (cole com Ctrl+V ou arraste arquivos)'}
-        minHeight="clamp(110px, 20vh, 220px)"
+        minHeight={editorHeight}
+        height={editorHeight}
+        maxHeight={editorHeight}
 
 
       />
