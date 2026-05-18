@@ -15,6 +15,17 @@ export function canonicalizeChatTarget(raw: string | null | undefined): string |
 }
 
 /**
+ * Identidade usada na UI/banco para agrupar conversa: inbound de grupos chega
+ * como dígitos puros, enquanto outbound pode voltar como JID (`@g.us`).
+ */
+export function normalizeWhatsAppConversationPhone(raw: string | null | undefined): string {
+  if (!raw) return '';
+  const trimmed = String(raw).trim();
+  if (trimmed.includes('@g.us')) return trimmed.replace('@g.us', '').replace(/\D/g, '');
+  return trimmed;
+}
+
+/**
  * Detecta se um identificador é um JID de grupo WhatsApp.
  * Grupos têm sufixo `@g.us` ou IDs numéricos com 18+ dígitos
  * (tipicamente iniciados em `1203...`).
