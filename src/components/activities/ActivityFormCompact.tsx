@@ -389,7 +389,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
       {/* === ROW 2: Core selects - 4 columns === */}
       <div className="grid grid-cols-4 gap-2">
         <div>
-          <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Assessor</span>
+          <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Assessor *</span>
           <Select value={props.formAssignedTo} onValueChange={props.handleSelectAssignee}>
             <SelectTrigger className="h-8 text-xs mt-0.5"><SelectValue placeholder="—" /></SelectTrigger>
             <SelectContent>
