@@ -129,6 +129,8 @@ export function WhatsAppInbox() {
   const [importingGoogle, setImportingGoogle] = useState(false);
   const [importingWhatsApp, setImportingWhatsApp] = useState(false);
   const [creatingLead, setCreatingLead] = useState(false);
+  const [focusPanelPinned, setFocusPanelPinned] = useState(false);
+  const [instanceSelectOpen, setInstanceSelectOpen] = useState(false);
 
   // Default instance do perfil do usuário (fonte da verdade para alertas e fallback).
   const [userDefaultInstanceId, setUserDefaultInstanceId] = useState<string | null>(null);
