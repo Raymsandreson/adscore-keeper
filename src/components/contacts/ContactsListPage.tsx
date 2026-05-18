@@ -171,6 +171,7 @@ export function ContactsListPage() {
               lead_name: lead?.lead_name || '',
               lead_status: lead?.lead_status || '',
               contact_count: 0,
+              instance_name: null,
             });
           }
         }
