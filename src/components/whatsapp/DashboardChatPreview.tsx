@@ -154,7 +154,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
       // abertos via JID retornavam zero mensagens.
       let query = (externalSupabase as any)
         .from('whatsapp_messages')
-        .select('id, message_text, direction, created_at, message_type, media_url, media_type, instance_name')
+        .select('id, message_text, direction, created_at, message_type, media_url, media_type, instance_name, external_message_id')
         .eq('phone', normalizedPhone);
       if (instanceName) {
         const variants = Array.from(new Set([instanceName, instanceName.toUpperCase(), instanceName.toLowerCase()]));
@@ -166,7 +166,18 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
       if (error) {
         console.warn('[DashboardChatPreview] fetchMessages error:', error.message);
       }
-      setMessages((data as any) || []);
+      // Grupos: a mesma mensagem é gravada por cada instância que está no grupo.
+      // Deduplicar por external_message_id (mesma lógica do useWhatsAppMessages).
+      const rows = (data as any[]) || [];
+      const seen = new Set<string>();
+      const deduped = rows.filter((m) => {
+        const msgId = m.external_message_id?.split(':').pop();
+        const key = msgId ? `${msgId}_${m.created_at}` : m.id;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+      setMessages(deduped as any);
       setLoading(false);
       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'auto' }), 100);
     };
