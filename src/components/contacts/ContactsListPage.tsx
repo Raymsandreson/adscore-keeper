@@ -1261,23 +1261,28 @@ export function ContactsListPage() {
                             {caseNum != null ? caseNum : <span className="text-muted-foreground">—</span>}
                           </span>
                           <span
-                            className="text-sm truncate cursor-pointer"
-                            title={group.group_name || ''}
-                            onClick={() => handleSelectGroup(group.group_jid)}
+                            className="text-sm truncate cursor-pointer hover:underline"
+                            title="Abrir conversa do grupo"
+                            onClick={() => openGroupChat(group.group_jid)}
                           >
                             {highlight(group.group_name, groupSearchScope === 'group')}
                           </span>
                           <span className="text-sm truncate" title={group.lead_name || ''}>
                             {highlight(group.lead_name, groupSearchScope === 'lead')}
                           </span>
-                          {matches ? (
-                            <CheckCircle2 className="h-4 w-4 text-emerald-500" aria-label="Bate" />
-                          ) : (
-                            <AlertTriangle
-                              className="h-4 w-4 text-amber-500"
-                              aria-label={hasBoth ? 'Nomes diferentes' : 'Faltando nome'}
-                            />
-                          )}
+                          <div className="flex items-center gap-1">
+                            {matches ? (
+                              <CheckCircle2 className="h-4 w-4 text-emerald-500" aria-label="Bate" />
+                            ) : (
+                              <AlertTriangle
+                                className="h-4 w-4 text-amber-500"
+                                aria-label={hasBoth ? 'Nomes diferentes' : 'Faltando nome'}
+                              />
+                            )}
+                            <Button size="icon" variant="ghost" className="h-6 w-6" title="Ver contatos do grupo" onClick={(e) => { e.stopPropagation(); handleSelectGroup(group.group_jid); }}>
+                              <Users className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
                         </div>
                       );
                     })}
