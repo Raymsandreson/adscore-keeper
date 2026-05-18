@@ -168,11 +168,12 @@ export function ContactsListPage() {
         const rows = (page as any[]) || [];
         for (const r of rows) {
           if (!groupMap.has(r.group_jid)) {
-            groupMap.set(r.group_jid, {
+          groupMap.set(r.group_jid, {
               group_jid: r.group_jid,
               group_name: r.contact_name ? String(r.contact_name).trim() : '',
               lead_name: '',
               lead_status: '',
+              lead_id: null,
               contact_count: 0,
               instance_name: r.instance_name || null,
             });
@@ -199,12 +200,14 @@ export function ContactsListPage() {
             if (!existing.group_name && g.group_name) existing.group_name = g.group_name;
             if (!existing.lead_name && lead?.lead_name) existing.lead_name = lead.lead_name;
             if (!existing.lead_status && lead?.lead_status) existing.lead_status = lead.lead_status;
+            if (!existing.lead_id && g.lead_id) existing.lead_id = g.lead_id;
           } else {
             groupMap.set(g.group_jid, {
               group_jid: g.group_jid,
               group_name: g.group_name || '',
               lead_name: lead?.lead_name || '',
               lead_status: lead?.lead_status || '',
+              lead_id: g.lead_id || null,
               contact_count: 0,
               instance_name: null,
             });
