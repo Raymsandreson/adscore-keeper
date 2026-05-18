@@ -304,13 +304,16 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
     const onOpenLead = () => setLinkLeadOpen(true);
     const onOpenCase = () => setLinkCaseOpen(true);
     const onOpenContact = () => setLinkContactOpen(true);
+    const onOpenProcess = () => setProcessPopoverOpen(true);
     window.addEventListener('activity-form:open-link-lead', onOpenLead);
     window.addEventListener('activity-form:open-link-case', onOpenCase);
     window.addEventListener('activity-form:open-link-contact', onOpenContact);
+    window.addEventListener('activity-form:open-link-process', onOpenProcess);
     return () => {
       window.removeEventListener('activity-form:open-link-lead', onOpenLead);
       window.removeEventListener('activity-form:open-link-case', onOpenCase);
       window.removeEventListener('activity-form:open-link-contact', onOpenContact);
+      window.removeEventListener('activity-form:open-link-process', onOpenProcess);
     };
   }, []);
   const [processPopoverOpen, setProcessPopoverOpen] = useState(false);

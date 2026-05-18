@@ -32,7 +32,7 @@ import {
   Plus, Calendar, CheckCircle2, Clock, AlertTriangle,
   FileText, Loader2, Trash2, Search, X, ChevronLeft, ChevronRight, MessageCircle, Copy, ChevronsUpDown, Check,
   Play, ArrowRight, Trophy, SkipForward, Timer, Share2, User, ExternalLink, RotateCcw, LayoutGrid, List, Layers, Settings2, Sparkles, TrendingUp, Briefcase, MoreVertical,
-  Users, Pin, PinOff, Pencil,
+  Users, Pin, PinOff, Pencil, UserPlus,
 } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { ShareMenu } from '@/components/ShareMenu';
@@ -2913,6 +2913,42 @@ const ActivitiesPage = () => {
                     >
                       <Plus className="h-3 w-3" />
                       Vincular Lead
+                    </Button>
+                  )}
+                  {!formCaseId && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs gap-1"
+                      onClick={() => window.dispatchEvent(new CustomEvent('activity-form:open-link-case'))}
+                      title="Vincular um caso existente ou criar um novo"
+                    >
+                      <Briefcase className="h-3 w-3" />
+                      Vincular Caso
+                    </Button>
+                  )}
+                  {formCaseId && !formProcessId && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs gap-1"
+                      onClick={() => window.dispatchEvent(new CustomEvent('activity-form:open-link-process'))}
+                      title="Vincular um processo do caso"
+                    >
+                      <FileText className="h-3 w-3" />
+                      Vincular Processo
+                    </Button>
+                  )}
+                  {!formContactId && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs gap-1"
+                      onClick={() => window.dispatchEvent(new CustomEvent('activity-form:open-link-contact'))}
+                      title="Vincular um contato"
+                    >
+                      <UserPlus className="h-3 w-3" />
+                      Vincular Contato
                     </Button>
                   )}
                   {/* Chat Equipe moved to bottom action bar to reduce top clutter */}
