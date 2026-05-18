@@ -726,8 +726,6 @@ export function WhatsAppInbox() {
 
       if (error) throw error;
 
-      await linkToLead(selectedConversation.phone, data.id, selectedConversation.instance_name);
-
       // Use already-extracted contact data
       const contactName = contactExtracted.full_name || selectedConversation.contact_name || 'Contato WhatsApp';
       
@@ -773,6 +771,7 @@ export function WhatsAppInbox() {
 
       // Link contact to conversation
       await linkToContact(selectedConversation.phone, contactId, selectedConversation.instance_name);
+      await linkToLead(selectedConversation.phone, data.id, selectedConversation.instance_name);
 
       setEditingLead(data as Lead);
       setShowLeadPanel(true);
