@@ -894,10 +894,8 @@ export function WhatsAppInbox() {
               window.dispatchEvent(new CustomEvent('wa:set-quick-filter', { detail: { filter: 'unanswered' } }));
             }}
           />
-        </div>
-      </div>
-      {/* Header */}
-      <div className={`flex items-center gap-2 md:gap-3 p-3 md:p-4 border-b bg-card shrink-0 flex-wrap md:flex-nowrap ${selectedPhone ? 'hidden md:flex' : 'flex'}`}>
+          {/* Header da inbox (instância + ações) — também escondido atrás do hover */}
+          <div className="flex items-center gap-2 md:gap-3 p-3 md:p-4 border-t bg-card flex-wrap md:flex-nowrap">
         <MessageSquare className="h-6 w-6 text-green-600" />
         <h1 className="text-lg font-semibold">WhatsApp</h1>
         {totalUnread > 0 && (
