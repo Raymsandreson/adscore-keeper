@@ -307,6 +307,11 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
   };
 
   const handleAddAsContact = async (participant: GroupParticipant) => {
+    // Bloqueia criar "Grupo" como contato — grupo é vinculado ao lead pela aba Grupos.
+    if (/^\s*grupo\b/i.test(participant.name?.trim() || '')) {
+      toast.error('Grupos não podem ser salvos como contato. Vincule o grupo ao lead pela aba "Grupos".');
+      return;
+    }
     setAddingPhone(participant.phone);
     try {
       const normalizedPhone = participant.phone.replace(/\D/g, '');
