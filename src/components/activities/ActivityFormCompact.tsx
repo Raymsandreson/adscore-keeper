@@ -796,9 +796,23 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
             <ScrollArea className="h-[calc(100vh-200px)]">
               <div className="space-y-0.5">
                 {(() => {
-                  const src = props.formLeadId
-                    ? (props.caseSearch ? props.leadCases.filter(c => c.title?.toLowerCase().includes(props.caseSearch.toLowerCase()) || c.case_number?.toLowerCase().includes(props.caseSearch.toLowerCase())) : props.leadCases)
-                    : (props.caseSearch ? props.availableCases.filter(c => c.title?.toLowerCase().includes(props.caseSearch.toLowerCase()) || c.case_number?.toLowerCase().includes(props.caseSearch.toLowerCase())) : props.availableCases.slice(0, 30));
+                  const q = props.caseSearch.toLowerCase();
+                  const matches = (c: { title: string; case_number: string }) =>
+                    !q || c.title?.toLowerCase().includes(q) || c.case_number?.toLowerCase().includes(q);
+                  // Quando há lead, mostrar casos do lead PRIMEIRO, depois os demais.
+                  // Se o lead não tem casos vinculados, ainda assim listar todos os disponíveis
+                  // para que o usuário possa vincular um caso existente.
+                  let src: { id: string; case_number: string; title: string; lead_id?: string | null }[];
+                  if (props.formLeadId) {
+                    const leadIds = new Set(props.leadCases.map(c => c.id));
+                    const leadFiltered = props.leadCases.filter(matches);
+                    const othersFiltered = props.availableCases.filter(c => !leadIds.has(c.id) && matches(c));
+                    src = q
+                      ? [...leadFiltered, ...othersFiltered]
+                      : [...leadFiltered, ...othersFiltered.slice(0, 30)];
+                  } else {
+                    src = q ? props.availableCases.filter(matches) : props.availableCases.slice(0, 30);
+                  }
                   return src.map(c => (
                     <button
                       key={c.id}
