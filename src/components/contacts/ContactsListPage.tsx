@@ -1382,16 +1382,22 @@ export function ContactsListPage() {
                       <UsersRound className="h-5 w-5 text-primary shrink-0" />
                       <div
                         className="flex-1 min-w-0 cursor-pointer"
-                        title="Abrir conversa do grupo"
-                        onClick={() => openGroupChat(group.group_jid)}
+                        title={group.lead_id ? 'Abrir lead' : 'Sem lead — abrir conversa do grupo'}
+                        onClick={() => openGroupLead(group.group_jid)}
                       >
                         <p className="font-medium text-sm truncate">
                           {highlight(group.group_name, groupSearchScope === 'group')}
+                          {loadingLeadForGroup === group.group_jid && (
+                            <Loader2 className="h-3 w-3 ml-1 inline animate-spin text-muted-foreground" />
+                          )}
                         </p>
                         <p className="text-xs text-muted-foreground truncate">
                           Lead: {highlight(group.lead_name, groupSearchScope === 'lead')} • {group.contact_count} contato(s)
                         </p>
                       </div>
+                      <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0" title="Abrir conversa do grupo" onClick={(e) => { e.stopPropagation(); openGroupChat(group.group_jid); }}>
+                        <MessageCircle className="h-4 w-4" />
+                      </Button>
                       <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0" title="Ver contatos do grupo" onClick={(e) => { e.stopPropagation(); handleSelectGroup(group.group_jid); }}>
                         <Users className="h-4 w-4" />
                       </Button>
