@@ -1306,6 +1306,7 @@ export function ContactsListPage() {
                         </div>
                       );
                     })}
+                    {truncatedNotice}
                   </div>
                 );
               }
