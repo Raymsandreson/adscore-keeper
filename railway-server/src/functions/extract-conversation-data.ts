@@ -25,12 +25,23 @@ const CONTACT_FIELDS = [
   'notes', 'instagram_url', 'profession',
 ];
 
-function buildSchemaPrompt(targetType: 'lead' | 'contact'): string {
+type CustomFieldSpec = { id: string; label: string; type?: string; options?: string[] };
+
+function buildSchemaPrompt(targetType: 'lead' | 'contact', customFields: CustomFieldSpec[] = []): string {
   const fields = targetType === 'lead' ? LEAD_FIELDS : CONTACT_FIELDS;
-  return `Retorne APENAS um objeto JSON puro (sem markdown, sem \`\`\`) com as chaves: ${fields.join(', ')}.
+  let prompt = `Retorne APENAS um objeto JSON puro (sem markdown, sem \`\`\`) com as chaves padrão: ${fields.join(', ')}.
 Inclua somente as chaves cujo valor você conseguiu inferir COM CONFIANÇA da conversa/contexto.
 Omita chaves desconhecidas — NÃO chute, NÃO use "N/A", NÃO use null.
 Datas no formato YYYY-MM-DD. Telefones somente dígitos.`;
+
+  if (customFields.length > 0) {
+    const list = customFields.map(f => {
+      const opt = f.options && f.options.length ? ` opções: [${f.options.join(' | ')}]` : '';
+      return `  - id="${f.id}" rótulo="${f.label}" tipo=${f.type || 'text'}${opt}`;
+    }).join('\n');
+    prompt += `\n\nALÉM disso, inclua a chave "custom_fields" como um OBJETO mapeando o id do campo personalizado ao valor inferido. Campos personalizados disponíveis para este lead:\n${list}\n\nUse EXATAMENTE o id como chave dentro de custom_fields. Omita os ids que você não conseguiu inferir.`;
+  }
+  return prompt;
 }
 
 function normalizeInstance(s: string): string {
@@ -111,16 +122,18 @@ function whitelist(obj: Record<string, any>, allowed: string[]): Record<string, 
 export const handler: RequestHandler = async (req, res) => {
   const ok = (b: Record<string, unknown>) => res.status(200).json(b);
   try {
-    const { phone, instance_name, targetType, extra_context, call_summaries } = (req.body || {}) as {
+    const { phone, instance_name, targetType, extra_context, call_summaries, custom_fields } = (req.body || {}) as {
       phone?: string;
       instance_name?: string;
       targetType?: 'lead' | 'contact';
       extra_context?: string;
       call_summaries?: string;
+      custom_fields?: CustomFieldSpec[];
     };
 
     if (!phone || !instance_name) return ok({ success: false, error: 'phone e instance_name obrigatórios' });
     const target: 'lead' | 'contact' = targetType === 'contact' ? 'contact' : 'lead';
+    const customs: CustomFieldSpec[] = (target === 'lead' && Array.isArray(custom_fields)) ? custom_fields.filter(c => c && c.id && c.label) : [];
 
     const transcript = await fetchRecentMessages(phone, normalizeInstance(instance_name));
     if (!transcript && !extra_context && !call_summaries) {
@@ -129,9 +142,9 @@ export const handler: RequestHandler = async (req, res) => {
 
     const callBlock = [extra_context, call_summaries].filter(Boolean).join('\n\n').slice(0, 30000);
     const systemPrompt = [
-      'Você é um extrator de dados estruturados para um CRM jurídico brasileiro (acidentes de trabalho/causídico).',
+      'Você é um extrator de dados estruturados para um CRM jurídico brasileiro (cobre acidentes de trabalho, previdenciário, maternidade e outros).',
       'Analisa transcrições do WhatsApp e resumos de ligações telefônicas.',
-      buildSchemaPrompt(target),
+      buildSchemaPrompt(target, customs),
     ].join('\n\n');
 
     const userParts: string[] = [];
@@ -147,7 +160,21 @@ export const handler: RequestHandler = async (req, res) => {
 
     const raw = await callAI(systemPrompt, userParts.join('\n\n'));
     const allowed = target === 'lead' ? LEAD_FIELDS : CONTACT_FIELDS;
-    const data = whitelist(raw, allowed);
+    const data: Record<string, any> = whitelist(raw, allowed);
+
+    if (customs.length > 0) {
+      const rawCustom = (raw && typeof raw.custom_fields === 'object' && raw.custom_fields) ? raw.custom_fields : {};
+      const allowedIds = new Set(customs.map(c => c.id));
+      const cleanCustom: Record<string, any> = {};
+      for (const [k, v] of Object.entries(rawCustom)) {
+        if (!allowedIds.has(k)) continue;
+        if (v === undefined || v === null) continue;
+        const s = typeof v === 'string' ? v.trim() : v;
+        if (s === '' || s === 'N/A' || s === 'null' || s === 'undefined') continue;
+        cleanCustom[k] = s;
+      }
+      if (Object.keys(cleanCustom).length > 0) data.custom_fields = cleanCustom;
+    }
 
     return ok({ success: true, data, model: MODEL, target, message_count: transcript ? transcript.split('\n').length : 0 });
   } catch (e: any) {
