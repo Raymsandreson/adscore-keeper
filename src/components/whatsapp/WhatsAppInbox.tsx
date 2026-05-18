@@ -1050,6 +1050,9 @@ export function WhatsAppInbox() {
   const handleContactCreated = async (contact: { id: string; full_name: string; phone: string | null; lead_id?: string | null }) => {
     if (selectedConversation) {
       await linkToContact(selectedConversation.phone, contact.id, selectedConversation.instance_name);
+      if (contact.lead_id) {
+        await linkToLead(selectedConversation.phone, contact.lead_id, selectedConversation.instance_name);
+      }
     }
     await refetch();
   };
