@@ -338,118 +338,41 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
         />
       </div>
 
-      {/* === ROW 2a: Lead/Caso link buttons (sempre visíveis) ===
-          Quando vinculado, mostra o nome do Lead/Caso como badge clicável (clique reabre seleção, X limpa). */}
-      <div className="flex flex-wrap items-center gap-1.5">
-          {props.formLeadName ? (
-            <div className="flex items-center gap-0.5">
-              <Badge
-                variant="outline"
-                className="text-[10px] h-6 max-w-[180px] truncate cursor-pointer hover:bg-accent gap-1"
-                onClick={() => setLinkLeadOpen(true)}
-                title="Clique para trocar o Lead vinculado"
-              >
-                <Building2 className="h-3 w-3 shrink-0" />
-                {props.formLeadName}
-              </Badge>
-              <button type="button" onClick={() => props.handleClearLead()} className="text-muted-foreground hover:text-foreground" title="Desvincular Lead">
-                <X className="h-3 w-3" />
-              </button>
-            </div>
-          ) : (
-            <Button type="button" variant="outline" size="sm" className="h-6 px-2 text-[10px] gap-1" onClick={() => setLinkLeadOpen(true)}>
-              <Building2 className="h-3 w-3" /> Lead
-            </Button>
-          )}
-          {props.formCaseTitle ? (
-            <div className="flex items-center gap-0.5">
-              <Badge
-                variant="outline"
-                className="text-[10px] h-6 max-w-[180px] truncate cursor-pointer hover:bg-accent gap-1"
-                onClick={() => setLinkCaseOpen(true)}
-                title="Clique para trocar o Caso vinculado"
-              >
-                <Briefcase className="h-3 w-3 shrink-0" />
-                {props.formCaseTitle}
-              </Badge>
-              <button type="button" onClick={() => { props.setFormCaseId(''); props.setFormCaseTitle(''); }} className="text-muted-foreground hover:text-foreground" title="Desvincular Caso">
-                <X className="h-3 w-3" />
-              </button>
-            </div>
-          ) : (
-            <Button type="button" variant="outline" size="sm" className="h-6 px-2 text-[10px] gap-1" onClick={() => setLinkCaseOpen(true)}>
-              <Briefcase className="h-3 w-3" /> Caso
-            </Button>
-          )}
-          {props.formProcessTitle && (
-            <div className="flex items-center gap-0.5">
-              <Badge
-                variant="outline"
-                className="text-[10px] h-6 max-w-[220px] truncate cursor-pointer hover:bg-accent gap-1"
-                onClick={() => setLinkCaseOpen(true)}
-                title="Processo vinculado — clique para trocar"
-              >
-                <FileText className="h-3 w-3 shrink-0" />
-                {props.formProcessTitle}
-              </Badge>
-              <button type="button" onClick={() => { props.setFormProcessId(''); props.setFormProcessTitle(''); }} className="text-muted-foreground hover:text-foreground" title="Desvincular Processo">
-                <X className="h-3 w-3" />
-              </button>
-            </div>
-          )}
-      </div>
-
-      {/* === ROW 2b: Contact + Sistema (sempre visíveis) === */}
-      <div className="flex flex-wrap items-center gap-1.5">
-        {props.formContactName ? (
-          <div className="flex items-center gap-0.5">
-            <Badge
-              variant="outline"
-              className="text-[10px] h-6 max-w-[160px] truncate cursor-copy hover:opacity-80 gap-1"
-              onClick={() => copyField(props.formContactName)}
-              title="Clique para copiar"
-            >
-              <UserPlus className="h-3 w-3 shrink-0" />
-              {props.formContactName}
-            </Badge>
-            <button type="button" onClick={() => { props.setFormContactId(''); props.setFormContactName(''); }} className="text-muted-foreground hover:text-foreground">
-              <X className="h-3 w-3" />
-            </button>
-          </div>
-        ) : (
+      {/* Vínculos (Lead/Caso/Processo/Contato/Sistema) ficam APENAS no cabeçalho fixo da atividade
+          para evitar duplicação visual. Só mostramos os botões de seleção aqui quando NADA está vinculado,
+          como atalho inicial. */}
+      {!props.formLeadId && !props.formCaseId && !props.formProcessId && !props.formContactId && !props.formIsSystem && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <Button type="button" variant="outline" size="sm" className="h-6 px-2 text-[10px] gap-1" onClick={() => setLinkLeadOpen(true)}>
+            <Building2 className="h-3 w-3" /> Lead
+          </Button>
+          <Button type="button" variant="outline" size="sm" className="h-6 px-2 text-[10px] gap-1" onClick={() => setLinkCaseOpen(true)}>
+            <Briefcase className="h-3 w-3" /> Caso
+          </Button>
           <Button type="button" variant="outline" size="sm" className="h-6 px-2 text-[10px] gap-1" onClick={() => setLinkContactOpen(true)}>
             <UserPlus className="h-3 w-3" /> Contato
           </Button>
-        )}
-
-        {props.setFormIsSystem && (
-          <>
-            <span className="text-muted-foreground text-xs">|</span>
-            <Button
-              type="button"
-              variant={props.formIsSystem ? 'default' : 'outline'}
-              size="sm"
-              className={cn(
-                'h-6 px-2 text-[10px] gap-1',
-                props.formIsSystem && 'bg-slate-700 hover:bg-slate-800 text-white'
-              )}
-              onClick={() => props.setFormIsSystem?.(!props.formIsSystem)}
-              title="Marcar como atividade interna do sistema (dispensa vínculo a Lead/Caso)"
-            >
-              <Settings2 className="h-3 w-3" /> {props.formIsSystem ? 'Sistema ✓' : 'Sistema'}
-            </Button>
-          </>
-        )}
-      </div>
-
-
-
-      {!props.formLeadId && !props.formCaseId && !props.formProcessId && !props.formIsSystem && (
-        <div className="flex items-start gap-1.5 px-2 py-1.5 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50">
-          <Info className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-          <span className="text-[11px] text-amber-700 dark:text-amber-300">
-            Vincule esta atividade a um <strong>Lead</strong>, <strong>Caso</strong> ou marque como <strong>Sistema</strong>.
-          </span>
+          {props.setFormIsSystem && (
+            <>
+              <span className="text-muted-foreground text-xs">|</span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-6 px-2 text-[10px] gap-1"
+                onClick={() => props.setFormIsSystem?.(true)}
+                title="Marcar como atividade interna do sistema"
+              >
+                <Settings2 className="h-3 w-3" /> Sistema
+              </Button>
+            </>
+          )}
+          <div className="flex items-start gap-1.5 px-2 py-1.5 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 w-full mt-1">
+            <Info className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+            <span className="text-[11px] text-amber-700 dark:text-amber-300">
+              Vincule esta atividade a um <strong>Lead</strong>, <strong>Caso</strong> ou marque como <strong>Sistema</strong>.
+            </span>
+          </div>
         </div>
       )}
 
