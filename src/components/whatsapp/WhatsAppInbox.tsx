@@ -52,6 +52,7 @@ import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { useModulePermissions } from '@/hooks/useModulePermissions';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
+import { normalizeWhatsAppConversationPhone } from '@/lib/whatsappPhone';
 
 const FIELD_LABELS: Record<string, string> = {
   lead_name: 'Nome do Lead', victim_name: 'Nome da Vítima', lead_email: 'E-mail', lead_phone: 'Telefone',
@@ -79,7 +80,7 @@ interface ConvShare {
 }
 
 const getConversationKey = (phone: string, instanceName?: string | null) =>
-  `${(phone || '').trim()}__${(instanceName || '').trim().toLowerCase()}`;
+  `${normalizeWhatsAppConversationPhone(phone)}__${(instanceName || '').trim().toLowerCase()}`;
 
 const normalizeInstanceName = (instanceName?: string | null) =>
   (instanceName || '').trim().toLowerCase();
