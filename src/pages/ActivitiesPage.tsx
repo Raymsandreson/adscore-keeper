@@ -1049,6 +1049,21 @@ const ActivitiesPage = () => {
     externalSupabase.from('legal_cases').select('id, case_number, title').eq('lead_id', leadId).then(({ data }) => {
       setLeadCases(data || []);
     });
+    // Load lead preview (needed for header progress bar)
+    externalSupabase
+      .from('leads')
+      .select('case_type, damage_description, accident_date, updated_at, board_id, lead_status')
+      .eq('id', leadId)
+      .maybeSingle()
+      .then(async ({ data }) => {
+        if (!data) { setLeadPreview(null); return; }
+        let boardName: string | null = null;
+        if (data.board_id) {
+          const { data: boardData } = await externalSupabase.from('kanban_boards').select('name').eq('id', data.board_id).maybeSingle();
+          boardName = boardData?.name || null;
+        }
+        setLeadPreview({ ...data, board_name: boardName });
+      });
     // Auto-set activity type based on lead's workflow step
     const workflowType = leadWorkflowActivityTypes[leadId];
     if (workflowType) {
