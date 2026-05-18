@@ -552,7 +552,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
       {/* Process info */}
       <div className="px-4 pb-2 space-y-2 border-b shrink-0">
         <EditableField label="Título" value={form.title || ''} onChange={v => set('title', v)} />
-        <EditableField label="Nº do Processo" value={form.process_number || ''} onChange={v => set('process_number', v)} icon={Hash} />
+        <EditableField label="Nº do Processo *" value={form.process_number || ''} onChange={v => set('process_number', v)} icon={Hash} />
         <div className="flex items-center gap-2 flex-wrap">
           <Badge variant="secondary" className="text-[10px]">
             {form.status === 'em_andamento' ? 'Em Andamento' : form.status === 'concluido' ? 'Concluído' : form.status === 'arquivado' ? 'Arquivado' : form.status}
