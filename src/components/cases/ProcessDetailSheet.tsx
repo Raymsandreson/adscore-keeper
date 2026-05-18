@@ -451,6 +451,10 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
 
   const handleSave = async () => {
     if (!process?.id) return;
+    if (!form.process_number || !String(form.process_number).trim()) {
+      toast.error('Nº do Processo é obrigatório');
+      return;
+    }
     setSaving(true);
     try {
       const payload: Record<string, any> = {};
@@ -484,14 +488,16 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
         return;
       }
 
-      const { error } = await externalSupabase.from('lead_processes').update(payload).eq('id', process.id);
+      console.log('[ProcessDetailSheet] Saving payload:', payload, 'for process:', process.id);
+      const { data, error } = await externalSupabase.from('lead_processes').update(payload).eq('id', process.id).select();
       if (error) throw error;
+      console.log('[ProcessDetailSheet] Save response:', data);
       toast.success('Processo atualizado');
       setDirty(false);
       onUpdated?.();
     } catch (err: any) {
       console.error('Error updating process:', err);
-      toast.error('Erro ao salvar: ' + (err.message || ''));
+      toast.error('Erro ao salvar: ' + (err.message || JSON.stringify(err)));
     } finally {
       setSaving(false);
     }
