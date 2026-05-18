@@ -1344,14 +1344,14 @@ export function ContactsListPage() {
                             {caseNum != null ? caseNum : <span className="text-muted-foreground">—</span>}
                           </span>
                           <span
-                            className="text-sm truncate cursor-pointer hover:underline"
+                            className="text-sm truncate cursor-pointer hover:underline pr-3"
                             title="Abrir conversa do grupo"
                             onClick={() => openGroupChat(group.group_jid)}
                           >
                             {highlight(group.group_name, groupSearchScope === 'group')}
                           </span>
                           <span
-                            className={`text-sm truncate ${group.lead_id ? 'cursor-pointer hover:underline' : 'text-muted-foreground'}`}
+                            className={`text-sm truncate pl-3 border-l border-border/40 ${group.lead_id ? 'cursor-pointer hover:underline' : 'text-muted-foreground'}`}
                             title={group.lead_id ? 'Abrir lead' : 'Sem lead vinculado'}
                             onClick={() => group.lead_id && openGroupLead(group.group_jid)}
                           >
