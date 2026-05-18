@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DashboardChatPreview } from '@/components/whatsapp/DashboardChatPreview';
+import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
+import type { Lead } from '@/hooks/useLeads';
 import { useContacts, Contact } from '@/hooks/useContacts';
 import { ContactDetailSheet } from './ContactDetailSheet';
 import { CreateContactDialog } from './CreateContactDialog';
@@ -30,14 +32,47 @@ import {
 export function ContactsListPage() {
   const navigate = useNavigate();
   const [chatPreview, setChatPreview] = useState<{ phone: string; instance_name: string | null; contact_name: string | null } | null>(null);
+  const [editingLead, setEditingLead] = useState<Lead | null>(null);
+  const [loadingLeadForGroup, setLoadingLeadForGroup] = useState<string | null>(null);
   const openGroupChat = (jid: string) => {
     if (!jid) return;
     const g = groups.find(x => x.group_jid === jid);
     setChatPreview({
       phone: jid,
-      instance_name: g?.instance_name || null,
+      // Não filtrar por instance_name: o JID do grupo é global e algumas
+      // instâncias registram o mesmo grupo com case diferente. Filtrar
+      // estava escondendo conversas inteiras (ex.: Prev 06).
+      instance_name: null,
       contact_name: g?.group_name || null,
     });
+  };
+  const openGroupLead = async (jid: string) => {
+    if (!jid) return;
+    const g = groups.find(x => x.group_jid === jid);
+    if (!g?.lead_id) {
+      // Sem lead vinculado → cai para a conversa do grupo.
+      openGroupChat(jid);
+      return;
+    }
+    setLoadingLeadForGroup(jid);
+    try {
+      const { data, error } = await externalSupabase
+        .from('leads')
+        .select('*')
+        .eq('id', g.lead_id)
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) {
+        toast.error('Lead vinculado não encontrado.');
+        return;
+      }
+      setEditingLead(data as Lead);
+    } catch (err: any) {
+      console.error('openGroupLead error:', err);
+      toast.error('Falha ao carregar lead: ' + (err?.message || 'erro'));
+    } finally {
+      setLoadingLeadForGroup(null);
+    }
   };
   const { contacts, loading: contactsLoading, fetchContacts, totalCount, stats } = useContacts();
   const {
@@ -92,7 +127,7 @@ export function ContactsListPage() {
   const [classifyingClients, setClassifyingClients] = useState(false);
 
   // Groups data
-  const [groups, setGroups] = useState<{ group_jid: string; group_name: string; lead_name: string; lead_status: string; contact_count: number; instance_name: string | null }[]>([]);
+  const [groups, setGroups] = useState<{ group_jid: string; group_name: string; lead_name: string; lead_status: string; lead_id: string | null; contact_count: number; instance_name: string | null }[]>([]);
   const [groupsLoading, setGroupsLoading] = useState(false);
   const [groupSearch, setGroupSearch] = useState('');
   const [groupSort, setGroupSort] = useState<'alpha' | 'number' | 'prefix'>('alpha');
@@ -133,11 +168,12 @@ export function ContactsListPage() {
         const rows = (page as any[]) || [];
         for (const r of rows) {
           if (!groupMap.has(r.group_jid)) {
-            groupMap.set(r.group_jid, {
+          groupMap.set(r.group_jid, {
               group_jid: r.group_jid,
               group_name: r.contact_name ? String(r.contact_name).trim() : '',
               lead_name: '',
               lead_status: '',
+              lead_id: null,
               contact_count: 0,
               instance_name: r.instance_name || null,
             });
@@ -164,12 +200,14 @@ export function ContactsListPage() {
             if (!existing.group_name && g.group_name) existing.group_name = g.group_name;
             if (!existing.lead_name && lead?.lead_name) existing.lead_name = lead.lead_name;
             if (!existing.lead_status && lead?.lead_status) existing.lead_status = lead.lead_status;
+            if (!existing.lead_id && g.lead_id) existing.lead_id = g.lead_id;
           } else {
             groupMap.set(g.group_jid, {
               group_jid: g.group_jid,
               group_name: g.group_name || '',
               lead_name: lead?.lead_name || '',
               lead_status: lead?.lead_status || '',
+              lead_id: g.lead_id || null,
               contact_count: 0,
               instance_name: null,
             });
@@ -985,6 +1023,21 @@ export function ContactsListPage() {
             )}
           </div>
 
+          {/* Contadores com lead / sem lead */}
+          {!selectedGroup && groups.length > 0 && (
+            <div className="flex items-center gap-2 flex-wrap pb-2 shrink-0">
+              <Badge variant="default" className="gap-1">
+                <CheckCircle2 className="h-3 w-3" />
+                Com lead: {groups.filter(g => g.lead_id).length}
+              </Badge>
+              <Badge variant="outline" className="gap-1">
+                <AlertTriangle className="h-3 w-3 text-amber-500" />
+                Sem lead: {groups.filter(g => !g.lead_id).length}
+              </Badge>
+              <span className="text-[11px] text-muted-foreground">de {groups.length} grupos</span>
+            </div>
+          )}
+
           {/* Chips de critério ativo */}
           {!selectedGroup && (
             <div className="flex items-center gap-2 flex-wrap pb-2 shrink-0">
@@ -1292,8 +1345,8 @@ export function ContactsListPage() {
                           </span>
                           <span
                             className="text-sm truncate cursor-pointer hover:underline"
-                            title="Abrir conversa do grupo"
-                            onClick={() => openGroupChat(group.group_jid)}
+                            title={group.lead_id ? 'Abrir lead' : 'Sem lead — abrir conversa do grupo'}
+                            onClick={() => openGroupLead(group.group_jid)}
                           >
                             {highlight(group.group_name, groupSearchScope === 'group')}
                           </span>
@@ -1344,16 +1397,22 @@ export function ContactsListPage() {
                       <UsersRound className="h-5 w-5 text-primary shrink-0" />
                       <div
                         className="flex-1 min-w-0 cursor-pointer"
-                        title="Abrir conversa do grupo"
-                        onClick={() => openGroupChat(group.group_jid)}
+                        title={group.lead_id ? 'Abrir lead' : 'Sem lead — abrir conversa do grupo'}
+                        onClick={() => openGroupLead(group.group_jid)}
                       >
                         <p className="font-medium text-sm truncate">
                           {highlight(group.group_name, groupSearchScope === 'group')}
+                          {loadingLeadForGroup === group.group_jid && (
+                            <Loader2 className="h-3 w-3 ml-1 inline animate-spin text-muted-foreground" />
+                          )}
                         </p>
                         <p className="text-xs text-muted-foreground truncate">
                           Lead: {highlight(group.lead_name, groupSearchScope === 'lead')} • {group.contact_count} contato(s)
                         </p>
                       </div>
+                      <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0" title="Abrir conversa do grupo" onClick={(e) => { e.stopPropagation(); openGroupChat(group.group_jid); }}>
+                        <MessageCircle className="h-4 w-4" />
+                      </Button>
                       <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0" title="Ver contatos do grupo" onClick={(e) => { e.stopPropagation(); handleSelectGroup(group.group_jid); }}>
                         <Users className="h-4 w-4" />
                       </Button>
@@ -1656,6 +1715,17 @@ export function ContactsListPage() {
         hasContact={false}
         wasResponded={false}
         responseTimeMinutes={null}
+      />
+
+      <LeadEditDialog
+        open={!!editingLead}
+        onOpenChange={(open) => { if (!open) { setEditingLead(null); fetchGroups(); } }}
+        lead={editingLead}
+        onSave={async (leadId, updates) => {
+          const { error } = await externalSupabase.from('leads').update(updates as any).eq('id', leadId);
+          if (error) throw error;
+        }}
+        mode="sheet"
       />
     </div>
   );
