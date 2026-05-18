@@ -607,6 +607,17 @@ export function WhatsAppInbox() {
       setExtracting(true);
       setExtractionStep(targetType === 'lead' ? 'Extraindo dados do lead...' : 'Extraindo dados do contato...');
       const callContext = await fetchCallContext(selectedConversation.lead_id, selectedConversation.contact_id);
+      const visibleMessages = (selectedConversation.messages || [])
+        .slice(-300)
+        .map((m) => ({
+          direction: m.direction,
+          sender_name: (m as any).sender_name,
+          contact_name: m.contact_name,
+          message_text: m.message_text,
+          message_type: m.message_type,
+          media_type: m.media_type,
+          created_at: m.created_at,
+        }));
       const { data, error } = await cloudFunctions.invoke('extract-conversation-data', {
         body: {
           phone: selectedConversation.phone,
@@ -615,6 +626,7 @@ export function WhatsAppInbox() {
           extra_context: callContext || undefined,
           call_summaries: callContext || undefined,
           custom_fields: customFields && customFields.length > 0 ? customFields : undefined,
+          visible_messages: visibleMessages,
         },
       });
       if (error) throw error;
