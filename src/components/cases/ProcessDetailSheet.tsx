@@ -25,7 +25,7 @@ interface ProcessDetailSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   process: any;
-  onUpdated?: () => void;
+  onUpdated?: (updatedProcess?: any) => void;
   mode?: 'sheet' | 'dialog';
 }
 
@@ -187,7 +187,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
 
   useEffect(() => {
     if (!open) return;
-    (supabase
+    (externalSupabase
       .from('kanban_boards' as any)
       .select('id, name, board_type')
       .eq('board_type', 'workflow')
@@ -505,7 +505,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
       setForm(prev => ({ ...prev, ...(data[0] as any) }));
       toast.success('Processo atualizado');
       setDirty(false);
-      onUpdated?.();
+      onUpdated?.(data[0]);
     } catch (err: any) {
       console.error('Error updating process:', err);
       toast.error('Erro ao salvar: ' + (err.message || JSON.stringify(err)));

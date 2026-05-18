@@ -254,6 +254,14 @@ const ActivitiesPage = () => {
   const [caseSearch, setCaseSearch] = useState('');
   const [leadCases, setLeadCases] = useState<{id: string; case_number: string; title: string}[]>([]);
   const [caseProcesses, setCaseProcesses] = useState<{id: string; title: string; process_number: string | null; polo_passivo: string | null; tribunal: string | null; area: string | null; assuntos: string[] | null; workflow_id: string | null; envolvidos: any[] | null}[]>([]);
+  const applyUpdatedCaseProcess = useCallback((updatedProcess?: any) => {
+    if (!updatedProcess?.id) return;
+    setCaseProcesses(prev => prev.map(proc => (
+      proc.id === updatedProcess.id
+        ? { ...proc, ...updatedProcess }
+        : proc
+    )));
+  }, []);
   const [availableContacts, setAvailableContacts] = useState<{id: string; full_name: string}[]>([]);
   const [contactSearch, setContactSearch] = useState('');
 
@@ -3498,6 +3506,7 @@ const ActivitiesPage = () => {
               open={!!showProcessSheetId}
               onOpenChange={(o) => { if (!o) setShowProcessSheetId(null); }}
               process={proc}
+              onUpdated={applyUpdatedCaseProcess}
             />
           </Suspense>
         );
