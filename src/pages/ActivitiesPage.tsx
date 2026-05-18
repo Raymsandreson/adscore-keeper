@@ -912,6 +912,8 @@ const ActivitiesPage = () => {
     setFormWhatWasDone(activity.what_was_done || '');
     setFormCurrentStatus(activity.current_status_notes || '');
     setFormNextSteps(activity.next_steps || '');
+    setFormSolicitacao((activity as any).solicitacao || '');
+    setFormRespostaJuizo((activity as any).resposta_juizo || '');
     setFormType(activity.activity_type);
     setFormPriority(activity.priority || 'normal');
     setFormLeadId(activity.lead_id || '');
