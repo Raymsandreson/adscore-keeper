@@ -1218,6 +1218,17 @@ export function ContactsListPage() {
                 </p>;
               }
 
+              // Renderizar 4.8k linhas de uma vez trava a UI. Limitamos a 300 e
+              // mostramos contador — usuário usa busca/filtros pra ver mais.
+              const RENDER_CAP = 300;
+              const totalAll = visible.length;
+              const capped = visible.slice(0, RENDER_CAP);
+              const truncatedNotice = totalAll > RENDER_CAP ? (
+                <div className="text-[11px] text-center text-muted-foreground py-2 border-t mt-2">
+                  Mostrando {RENDER_CAP} de {totalAll} grupos. Use a busca ou filtros para refinar.
+                </div>
+              ) : null;
+
               if (auditMode) {
                 const total = visible.length;
                 const mismatched = visible.filter(g => {
