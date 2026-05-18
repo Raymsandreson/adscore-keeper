@@ -881,15 +881,20 @@ export function WhatsAppInbox() {
         height: 'calc(100dvh - var(--app-header-offset, 0px))',
       }}
     >
-      {/* Painel "Foco Agora" — substitui a barra fina global */}
-      <div className={selectedPhone ? 'hidden md:block' : 'block'}>
-        <FocusDashboard
-          onOpenMissingDocs={() => toast.info('Filtro "faltam documentos" em breve')}
-          onOpenZapsignPending={() => toast.info('Lista de pendentes ZapSign em breve')}
-          onOpenUnanswered={() => {
-            window.dispatchEvent(new CustomEvent('wa:set-quick-filter', { detail: { filter: 'unanswered' } }));
-          }}
-        />
+      {/* Painel "Foco Agora" — só aparece ao passar o mouse na barra fina */}
+      <div className={`group/focus relative shrink-0 ${selectedPhone ? 'hidden md:block' : 'block'}`}>
+        {/* Trigger fino sempre visível */}
+        <div className="h-1.5 bg-gradient-to-r from-orange-400/40 via-primary/40 to-pink-400/40 hover:h-2 transition-all cursor-pointer" aria-label="Mostrar Foco Agora" />
+        {/* Painel revelado no hover */}
+        <div className="absolute left-0 right-0 top-full z-40 max-h-0 overflow-hidden opacity-0 group-hover/focus:max-h-[600px] group-hover/focus:opacity-100 transition-all duration-200 bg-background shadow-lg border-b">
+          <FocusDashboard
+            onOpenMissingDocs={() => toast.info('Filtro "faltam documentos" em breve')}
+            onOpenZapsignPending={() => toast.info('Lista de pendentes ZapSign em breve')}
+            onOpenUnanswered={() => {
+              window.dispatchEvent(new CustomEvent('wa:set-quick-filter', { detail: { filter: 'unanswered' } }));
+            }}
+          />
+        </div>
       </div>
       {/* Header */}
       <div className={`flex items-center gap-2 md:gap-3 p-3 md:p-4 border-b bg-card shrink-0 flex-wrap md:flex-nowrap ${selectedPhone ? 'hidden md:flex' : 'flex'}`}>
