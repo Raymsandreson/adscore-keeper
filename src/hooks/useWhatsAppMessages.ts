@@ -959,9 +959,8 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       return;
     }
     try {
-      // Fetch contact name from Cloud (contacts table lives there)
-      const { data: contactData } = await authClient.from('contacts').select('full_name').eq('id', contactId).single();
       await ensureExternalSession().catch(() => {});
+      const { data: contactData } = await db.from('contacts').select('full_name').eq('id', contactId).single();
       await linkMessagesToContact(phone, instanceName, contactId);
       toast.success('Conversa vinculada ao contato!');
       const targetConversationKey = getConversationKey(phone, instanceName);
