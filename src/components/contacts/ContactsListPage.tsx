@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { DashboardChatPreview } from '@/components/whatsapp/DashboardChatPreview';
 import { useContacts, Contact } from '@/hooks/useContacts';
 import { ContactDetailSheet } from './ContactDetailSheet';
 import { CreateContactDialog } from './CreateContactDialog';
@@ -28,9 +29,15 @@ import {
 
 export function ContactsListPage() {
   const navigate = useNavigate();
+  const [chatPreview, setChatPreview] = useState<{ phone: string; instance_name: string | null; contact_name: string | null } | null>(null);
   const openGroupChat = (jid: string) => {
     if (!jid) return;
-    navigate(`/whatsapp?openChat=${encodeURIComponent(jid)}`);
+    const g = groups.find(x => x.group_jid === jid);
+    setChatPreview({
+      phone: jid,
+      instance_name: g?.instance_name || null,
+      contact_name: g?.group_name || null,
+    });
   };
   const { contacts, loading: contactsLoading, fetchContacts, totalCount, stats } = useContacts();
   const {
@@ -85,7 +92,7 @@ export function ContactsListPage() {
   const [classifyingClients, setClassifyingClients] = useState(false);
 
   // Groups data
-  const [groups, setGroups] = useState<{ group_jid: string; group_name: string; lead_name: string; lead_status: string; contact_count: number }[]>([]);
+  const [groups, setGroups] = useState<{ group_jid: string; group_name: string; lead_name: string; lead_status: string; contact_count: number; instance_name: string | null }[]>([]);
   const [groupsLoading, setGroupsLoading] = useState(false);
   const [groupSearch, setGroupSearch] = useState('');
   const [groupSort, setGroupSort] = useState<'alpha' | 'number' | 'prefix'>('alpha');
@@ -119,7 +126,7 @@ export function ContactsListPage() {
         const to = from + pageSize - 1;
         const { data: page, error } = await (externalSupabase as any)
           .from('whatsapp_groups_index')
-          .select('group_jid, contact_name, last_seen')
+          .select('group_jid, contact_name, last_seen, instance_name')
           .order('last_seen', { ascending: false })
           .range(from, to);
         if (error) { console.error('fetchGroups index page error:', error); break; }
@@ -132,6 +139,7 @@ export function ContactsListPage() {
               lead_name: '',
               lead_status: '',
               contact_count: 0,
+              instance_name: r.instance_name || null,
             });
           }
         }
@@ -163,6 +171,7 @@ export function ContactsListPage() {
               lead_name: lead?.lead_name || '',
               lead_status: lead?.lead_status || '',
               contact_count: 0,
+              instance_name: null,
             });
           }
         }
@@ -1209,6 +1218,17 @@ export function ContactsListPage() {
                 </p>;
               }
 
+              // Renderizar 4.8k linhas de uma vez trava a UI. Limitamos a 300 e
+              // mostramos contador — usuário usa busca/filtros pra ver mais.
+              const RENDER_CAP = 300;
+              const totalAll = visible.length;
+              const capped = visible.slice(0, RENDER_CAP);
+              const truncatedNotice = totalAll > RENDER_CAP ? (
+                <div className="text-[11px] text-center text-muted-foreground py-2 border-t mt-2">
+                  Mostrando {RENDER_CAP} de {totalAll} grupos. Use a busca ou filtros para refinar.
+                </div>
+              ) : null;
+
               if (auditMode) {
                 const total = visible.length;
                 const mismatched = visible.filter(g => {
@@ -1233,7 +1253,7 @@ export function ContactsListPage() {
                       <span>Nome do lead</span>
                       <span></span>
                     </div>
-                    {visible.map(group => {
+                    {capped.map(group => {
                       const caseNum = extractCaseNum(group.group_name) ?? extractCaseNum(group.lead_name);
                       const ng = normalizeName(group.group_name);
                       const nl = normalizeName(group.lead_name);
@@ -1286,13 +1306,14 @@ export function ContactsListPage() {
                         </div>
                       );
                     })}
+                    {truncatedNotice}
                   </div>
                 );
               }
 
               return (
                 <div className="space-y-1">
-                  {visible.map(group => (
+                  {capped.map(group => (
                     <div
                       key={group.group_jid}
                       className="flex items-center gap-3 p-3 rounded-lg hover:bg-accent/50 transition-colors border"
@@ -1331,6 +1352,7 @@ export function ContactsListPage() {
                       </Badge>
                     </div>
                   ))}
+                  {truncatedNotice}
                 </div>
               );
             })()}
@@ -1612,6 +1634,18 @@ export function ContactsListPage() {
           setShowCreateContact(false);
           fetchContacts();
         }}
+      />
+
+      <DashboardChatPreview
+        open={!!chatPreview}
+        onOpenChange={(open) => { if (!open) setChatPreview(null); }}
+        phone={chatPreview?.phone || null}
+        contactName={chatPreview?.contact_name || null}
+        instanceName={chatPreview?.instance_name || null}
+        hasLead={false}
+        hasContact={false}
+        wasResponded={false}
+        responseTimeMinutes={null}
       />
     </div>
   );
