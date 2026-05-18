@@ -726,7 +726,7 @@ export function WhatsAppInbox() {
 
       if (error) throw error;
 
-      linkToLead(selectedConversation.phone, data.id, selectedConversation.instance_name);
+      await linkToLead(selectedConversation.phone, data.id, selectedConversation.instance_name);
 
       // Use already-extracted contact data
       const contactName = contactExtracted.full_name || selectedConversation.contact_name || 'Contato WhatsApp';
