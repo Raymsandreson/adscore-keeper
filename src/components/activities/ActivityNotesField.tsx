@@ -52,8 +52,17 @@ export function ActivityNotesField({ value, onChange, activityId, placeholder, l
   const [linkTitle, setLinkTitle] = useState('');
   const [isDragging, setIsDragging] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [toolbarPinned, setToolbarPinned] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return localStorage.getItem('activity-notes-toolbar-pinned') === '1';
+  });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    localStorage.setItem('activity-notes-toolbar-pinned', toolbarPinned ? '1' : '0');
+  }, [toolbarPinned]);
+
 
   useEffect(() => {
     if (activityId) fetchAttachments();
