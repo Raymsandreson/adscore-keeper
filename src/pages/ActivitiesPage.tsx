@@ -2960,6 +2960,22 @@ const ActivitiesPage = () => {
                 }
                 return null;
               })()}
+              {/* Nome do cliente (override) — vive no cabeçalho */}
+              <div className="flex items-center gap-2 mt-2">
+                <span className="text-[10px] text-muted-foreground uppercase tracking-wider whitespace-nowrap">Nome do cliente</span>
+                <Input
+                  value={formClientNameOverride || ''}
+                  onChange={(e) => setFormClientNameOverride(e.target.value)}
+                  placeholder={formLeadName ? `Auto: ${formLeadName}` : 'Preenchido automaticamente do lead'}
+                  className="h-7 text-xs flex-1"
+                  title="Se vazio, usa o nome do lead. Se preenchido, este nome aparece nos templates."
+                />
+                {formClientNameOverride && (
+                  <button type="button" onClick={() => setFormClientNameOverride('')} className="text-muted-foreground hover:text-foreground" title="Limpar">
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
               </div>
               {/* Botão fixar/desafixar cabeçalho */}
               <button
