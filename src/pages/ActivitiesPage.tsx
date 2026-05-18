@@ -3169,6 +3169,19 @@ const ActivitiesPage = () => {
                 }
                 return null;
               })()}
+              </div>
+              {/* Botão fixar/desafixar cabeçalho */}
+              <button
+                type="button"
+                onClick={toggleHeaderPinned}
+                className={cn(
+                  "absolute right-1 top-1 z-40 p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors",
+                  !headerPinned && "opacity-0 group-hover/header:opacity-100"
+                )}
+                title={headerPinned ? "Desafixar cabeçalho (ocultar automático)" : "Fixar cabeçalho sempre visível"}
+              >
+                {headerPinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
+              </button>
             </div>
 
             {/* Form body - scrollable */}
