@@ -1079,6 +1079,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       const handleIncomingMessage = (newMsg: WhatsAppMessage) => {
         const canonicalMsg = {
           ...newMsg,
+          phone: normalizeWhatsAppConversationPhone(newMsg.phone),
           instance_name: getCanonicalInstanceName(newMsg.instance_name),
         };
         const allowedNames = new Set(instances.map(i => i.instance_name?.trim().toLowerCase()));
