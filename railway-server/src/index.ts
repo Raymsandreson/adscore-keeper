@@ -20,6 +20,7 @@ import { handler as whatsappCloudWebhook } from './functions/whatsapp-cloud-webh
 import { handler as whatsappGroupExit } from './functions/whatsapp-group-exit';
 import { handler as whatsappDownloadMedia } from './functions/whatsapp-download-media';
 import { handler as whatsappBackfillMedia } from './functions/whatsapp-backfill-media';
+import { handler as extractConversationData } from './functions/extract-conversation-data';
 
 const functionHandlers: Record<string, express.RequestHandler> = {
   'whatsapp-webhook': whatsappWebhook,
@@ -33,6 +34,7 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'whatsapp-group-exit': whatsappGroupExit,
   'whatsapp-download-media': whatsappDownloadMedia,
   'whatsapp-backfill-media': whatsappBackfillMedia,
+  'extract-conversation-data': extractConversationData,
 };
 
 const app = express();
