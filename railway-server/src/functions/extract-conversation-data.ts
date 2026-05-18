@@ -126,6 +126,19 @@ async function fetchRecentMessages(phone: string, instance: string, limit = 120)
   return lines.join('\n').slice(0, 60000);
 }
 
+function buildTranscriptFromVisibleMessages(messages: VisibleMessage[]): string {
+  const lines = messages
+    .slice(-300)
+    .map((m: any) => {
+      const who = m.direction === 'outbound' ? 'ATENDENTE' : (m.sender_name || m.contact_name || 'CLIENTE');
+      const ts = m.created_at ? new Date(m.created_at).toISOString().slice(0, 16).replace('T', ' ') : '';
+      const txt = (m.message_text || `[${m.message_type || m.media_type || 'mídia'}]`).toString().slice(0, 1000);
+      return `[${ts}] ${who}: ${txt}`;
+    })
+    .filter(Boolean);
+  return lines.join('\n').slice(0, 80000);
+}
+
 async function callAI(systemPrompt: string, userPrompt: string): Promise<Record<string, any>> {
   if (!LOVABLE_API_KEY) throw new Error('LOVABLE_API_KEY ausente no Railway');
   const r = await fetch(LOVABLE_AI_URL, {
@@ -175,20 +188,23 @@ function whitelist(obj: Record<string, any>, allowed: string[]): Record<string, 
 export const handler: RequestHandler = async (req, res) => {
   const ok = (b: Record<string, unknown>) => res.status(200).json(b);
   try {
-    const { phone, instance_name, targetType, extra_context, call_summaries, custom_fields } = (req.body || {}) as {
+    const { phone, instance_name, targetType, extra_context, call_summaries, custom_fields, visible_messages } = (req.body || {}) as {
       phone?: string;
       instance_name?: string;
       targetType?: 'lead' | 'contact';
       extra_context?: string;
       call_summaries?: string;
       custom_fields?: CustomFieldSpec[];
+      visible_messages?: VisibleMessage[];
     };
 
     if (!phone || !instance_name) return ok({ success: false, error: 'phone e instance_name obrigatórios' });
     const target: 'lead' | 'contact' = targetType === 'contact' ? 'contact' : 'lead';
     const customs: CustomFieldSpec[] = (target === 'lead' && Array.isArray(custom_fields)) ? custom_fields.filter(c => c && c.id && c.label) : [];
 
-    const transcript = await fetchRecentMessages(phone, normalizeInstance(instance_name));
+    const visibleTranscript = Array.isArray(visible_messages) ? buildTranscriptFromVisibleMessages(visible_messages) : '';
+    const dbTranscript = await fetchRecentMessages(phone, normalizeInstance(instance_name));
+    const transcript = [visibleTranscript && '=== MENSAGENS JÁ CARREGADAS NA TELA ===\n' + visibleTranscript, dbTranscript && '=== MENSAGENS BUSCADAS NO BANCO ===\n' + dbTranscript].filter(Boolean).join('\n\n');
     if (!transcript && !extra_context && !call_summaries) {
       return ok({ success: true, data: {} });
     }
@@ -211,9 +227,15 @@ export const handler: RequestHandler = async (req, res) => {
     }
     userParts.push('\nExtraia os campos solicitados a partir de TODO o material acima (conversa + ligações).');
 
-    const raw = await callAI(systemPrompt, userParts.join('\n\n'));
+    const userPrompt = userParts.join('\n\n');
+    const raw = await callAI(systemPrompt, userPrompt);
     const allowed = target === 'lead' ? LEAD_FIELDS : CONTACT_FIELDS;
     const data: Record<string, any> = whitelist(raw, allowed);
+
+    if (target === 'lead' && !data.expected_birth_date) {
+      const deterministicBirthDate = extractNearestMaternityDate(`${callBlock}\n\n${transcript}`);
+      if (deterministicBirthDate) data.expected_birth_date = deterministicBirthDate;
+    }
 
     if (customs.length > 0) {
       const rawCustom = (raw && typeof raw.custom_fields === 'object' && raw.custom_fields) ? raw.custom_fields : {};
@@ -229,7 +251,7 @@ export const handler: RequestHandler = async (req, res) => {
       if (Object.keys(cleanCustom).length > 0) data.custom_fields = cleanCustom;
     }
 
-    return ok({ success: true, data, model: MODEL, target, message_count: transcript ? transcript.split('\n').length : 0 });
+    return ok({ success: true, data, model: MODEL, target, message_count: transcript ? transcript.split('\n').length : 0, source: { visible_messages: Array.isArray(visible_messages) ? visible_messages.length : 0, db: dbTranscript ? dbTranscript.split('\n').length : 0 } });
   } catch (e: any) {
     console.error('[extract-conversation-data] error:', e);
     return ok({ success: false, error: e?.message || String(e) });
