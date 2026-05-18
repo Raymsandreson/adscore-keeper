@@ -882,7 +882,6 @@ export function WhatsAppInbox() {
         }
       }
 
-      let identifiedContacts: Array<Record<string, any>> = [];
       if (selectedConversation.contact_id) {
         setExtractionStep('Analisando conversa para o contato...');
         const extracted = await extractConversationData('contact');
@@ -896,15 +895,6 @@ export function WhatsAppInbox() {
         }
       }
 
-      // Pegar identified_contacts da extração do LEAD (já chamada acima se houver lead_id)
-      if (selectedConversation.lead_id) {
-        // Re-extrair para pegar identified_contacts (já está em cache da chamada? não - precisa expor)
-        // Simplificação: pega do último extracted do lead via segunda variável no escopo acima
-      }
-      // Re-uso: chamamos extractConversationData('lead') uma vez acima — precisamos do retorno completo.
-      // Para evitar refator grande, refazemos uma chamada leve: a função já tem cache nenhum, então
-      // capturamos identified_contacts no bloco acima através de um truque: mantemos variável extra.
-      identifiedContacts = lastLeadExtractIdentified || [];
 
       setExtractionStep('');
 
