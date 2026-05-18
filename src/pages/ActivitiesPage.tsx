@@ -3378,6 +3378,7 @@ const ActivitiesPage = () => {
                   </div>
                 </div>
               )}
+              </div>
             </div>
           </div>
         )}
