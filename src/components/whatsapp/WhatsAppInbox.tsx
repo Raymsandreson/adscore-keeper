@@ -1100,6 +1100,8 @@ export function WhatsAppInbox() {
           </div>
         </div>
       </div>
+        );
+      })()}
 
       {/* Reconnect Bar - apenas para instância padrão do usuário */}
       {relevantDisconnectedInstances.length > 0 && (
