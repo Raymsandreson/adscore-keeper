@@ -23,7 +23,14 @@ const LEAD_FIELDS = [
 
 const CONTACT_FIELDS = [
   'full_name', 'phone', 'email', 'city', 'state', 'neighborhood',
-  'notes', 'instagram_url', 'profession',
+  'notes', 'instagram_url', 'instagram_username', 'profession',
+  'cpf', 'rg', 'cep', 'street', 'street_number', 'complement', 'birth_date',
+];
+
+const IDENTIFIED_CONTACT_FIELDS = [
+  'full_name', 'phone', 'role', 'cpf', 'rg', 'birth_date',
+  'cep', 'state', 'city', 'neighborhood', 'street', 'street_number', 'complement',
+  'email', 'profession', 'notes',
 ];
 
 type CustomFieldSpec = { id: string; label: string; type?: string; options?: string[] };
@@ -81,10 +88,14 @@ function buildSchemaPrompt(targetType: 'lead' | 'contact', customFields: CustomF
   let prompt = `Retorne APENAS um objeto JSON puro (sem markdown, sem \`\`\`) com as chaves padrão: ${fields.join(', ')}.
 Inclua somente as chaves cujo valor você conseguiu inferir COM CONFIANÇA da conversa/contexto.
 Omita chaves desconhecidas — NÃO chute, NÃO use "N/A", NÃO use null.
-Datas no formato YYYY-MM-DD. Telefones somente dígitos.`;
+Datas no formato YYYY-MM-DD. Telefones somente dígitos. CPF/RG somente dígitos. CEP só dígitos (8).`;
 
   if (targetType === 'lead') {
     prompt += `\nPara maternidade/parto: quando aparecer previsão/data do parto como "20 de outubro" ou "19 de outubro", preencha expected_birth_date em YYYY-MM-DD. Se houver datas conflitantes, use a data de parto MAIS PRÓXIMA/futura mais cedo. Se o contexto for auxílio maternidade, client_classification pode ser "parto".`;
+  }
+
+  if (targetType === 'contact') {
+    prompt += `\nPara o contato principal (titular da conversa), procure agressivamente CPF, RG, data de nascimento, endereço completo (CEP, rua, número, complemento, bairro, cidade, estado) que apareçam em qualquer mensagem, foto de documento (texto OCR), PDF anexado ou áudio transcrito.`;
   }
 
   if (customFields.length > 0) {
@@ -92,7 +103,16 @@ Datas no formato YYYY-MM-DD. Telefones somente dígitos.`;
       const opt = f.options && f.options.length ? ` opções: [${f.options.join(' | ')}]` : '';
       return `  - id="${f.id}" rótulo="${f.label}" tipo=${f.type || 'text'}${opt}`;
     }).join('\n');
-    prompt += `\n\nALÉM disso, inclua a chave "custom_fields" como um OBJETO mapeando o id do campo personalizado ao valor inferido. Campos personalizados disponíveis para este lead:\n${list}\n\nUse EXATAMENTE o id como chave dentro de custom_fields. Omita os ids que você não conseguiu inferir.`;
+    prompt += `\n\nALÉM disso, inclua a chave "custom_fields" como um OBJETO mapeando o id do campo personalizado ao valor inferido. Campos personalizados disponíveis para este lead:\n${list}\n\nREGRAS para custom_fields:
+- Use EXATAMENTE o id como chave dentro de custom_fields.
+- Para rótulos que contenham "senha", "password", "código gov", "gov.br", "código", "token", "pin": extraia QUALQUER string que pareça uma credencial/senha/código enviada na conversa (ex: "Rit@2025", "abc123!", "123456"). NÃO ignore credenciais por parecerem sensíveis — esse é o objetivo do CRM jurídico.
+- Para rótulos de data: aceite datas em português ("19 de outubro") e converta para YYYY-MM-DD.
+- Para rótulos com "nome da mãe", "nome do pai", "nome do cônjuge": procure menção explícita no texto/documentos.
+- Omita os ids que você realmente não conseguiu inferir.`;
+  }
+
+  if (targetType === 'lead') {
+    prompt += `\n\nADICIONALMENTE, inclua a chave "identified_contacts" como um ARRAY de objetos representando OUTRAS pessoas mencionadas na conversa (testemunhas, mãe, pai, cônjuge, médico, vizinho, indicador, advogado anterior, etc.) — NUNCA o titular da conversa. Cada objeto pode conter: ${IDENTIFIED_CONTACT_FIELDS.join(', ')}, mais "relationship" (relação com o titular, ex: "mãe", "testemunha", "médico"). Inclua apenas pessoas com nome real OU telefone identificável. Telefone só dígitos (com DDD se possível). Se não houver ninguém claro, retorne [].`;
   }
   return prompt;
 }
@@ -250,6 +270,24 @@ export const handler: RequestHandler = async (req, res) => {
         cleanCustom[k] = s;
       }
       if (Object.keys(cleanCustom).length > 0) data.custom_fields = cleanCustom;
+    }
+
+    if (target === 'lead' && Array.isArray(raw?.identified_contacts)) {
+      const identified = raw.identified_contacts
+        .filter((p: any) => p && typeof p === 'object')
+        .map((p: any) => {
+          const clean: Record<string, any> = {};
+          for (const k of [...IDENTIFIED_CONTACT_FIELDS, 'relationship']) {
+            const v = p?.[k];
+            if (v === undefined || v === null) continue;
+            const s = typeof v === 'string' ? v.trim() : v;
+            if (s === '' || s === 'N/A' || s === 'null' || s === 'undefined') continue;
+            clean[k] = s;
+          }
+          return clean;
+        })
+        .filter((p: Record<string, any>) => p.full_name || p.phone);
+      if (identified.length > 0) data.identified_contacts = identified;
     }
 
     return ok({ success: true, data, model: MODEL, target, message_count: transcript ? transcript.split('\n').length : 0, source: { visible_messages: Array.isArray(visible_messages) ? visible_messages.length : 0, db: dbTranscript ? dbTranscript.split('\n').length : 0 } });
