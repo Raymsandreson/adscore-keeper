@@ -515,6 +515,18 @@ const ActivitiesPage = () => {
       toast.error('Selecione o tipo de atividade');
       return;
     }
+    if (!formAssignedTo) {
+      toast.error('Selecione o assessor');
+      return;
+    }
+    if (!formDeadline) {
+      toast.error('Informe o prazo');
+      return;
+    }
+    if (!formNotificationDate) {
+      toast.error('Informe a data de notificação');
+      return;
+    }
 
     const baseData = {
       title: formTitle,
