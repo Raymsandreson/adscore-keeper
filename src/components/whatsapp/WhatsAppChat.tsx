@@ -39,6 +39,7 @@ import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { logGroupAudit } from '@/lib/groupAuditLog';
 import { normalizeWhatsAppConversationPhone } from '@/lib/whatsappPhone';
+import { AITextActions } from '@/components/ui/AITextActions';
 
 const TREATMENT_OPTIONS = ['', 'Dr.', 'Dra.', 'Sr.', 'Sra.', 'Prof.', 'Profa.'];
 const NAME_FORMAT_OPTIONS = [
