@@ -799,6 +799,8 @@ export function WhatsAppInbox() {
       const leadFields: Record<string, string> = {};
       const contactFields: Record<string, string> = {};
       const customFieldsResolved: Array<{ id: string; label: string; type: string; value: any }> = [];
+      let identifiedContacts: Array<Record<string, any>> = [];
+
 
       if (selectedConversation.lead_id) {
         setExtractionStep('Carregando campos personalizados...');
