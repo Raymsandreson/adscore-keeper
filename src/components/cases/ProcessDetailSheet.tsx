@@ -451,6 +451,10 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
 
   const handleSave = async () => {
     if (!process?.id) return;
+    if (!form.process_number || !String(form.process_number).trim()) {
+      toast.error('Nº do Processo é obrigatório');
+      return;
+    }
     setSaving(true);
     try {
       const payload: Record<string, any> = {};
@@ -484,14 +488,16 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
         return;
       }
 
-      const { error } = await externalSupabase.from('lead_processes').update(payload).eq('id', process.id);
+      console.log('[ProcessDetailSheet] Saving payload:', payload, 'for process:', process.id);
+      const { data, error } = await externalSupabase.from('lead_processes').update(payload).eq('id', process.id).select();
       if (error) throw error;
+      console.log('[ProcessDetailSheet] Save response:', data);
       toast.success('Processo atualizado');
       setDirty(false);
       onUpdated?.();
     } catch (err: any) {
       console.error('Error updating process:', err);
-      toast.error('Erro ao salvar: ' + (err.message || ''));
+      toast.error('Erro ao salvar: ' + (err.message || JSON.stringify(err)));
     } finally {
       setSaving(false);
     }
@@ -506,10 +512,19 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
   const innerContent = (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="p-4 pb-2 flex flex-row items-center justify-between shrink-0">
-        <div className="text-sm font-semibold flex items-center gap-2">
-          <Pencil className="h-4 w-4 text-primary" />
-          Detalhes do Processo
+      <div className="p-4 pb-2 flex flex-row items-center justify-between shrink-0 gap-2">
+        <div className="text-sm font-semibold flex items-center gap-2 min-w-0 flex-1">
+          <Pencil className="h-4 w-4 text-primary shrink-0" />
+          <span className="truncate">
+            {form.process_number ? (
+              <>
+                Nº {form.process_number}
+                {form.title && <span className="text-muted-foreground font-normal"> ("{form.title}")</span>}
+              </>
+            ) : (
+              <>Detalhes do Processo{form.title && <span className="text-muted-foreground font-normal"> ("{form.title}")</span>}</>
+            )}
+          </span>
         </div>
         <div className="flex items-center gap-2">
           <div className="flex flex-col items-end">
@@ -537,7 +552,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
       {/* Process info */}
       <div className="px-4 pb-2 space-y-2 border-b shrink-0">
         <EditableField label="Título" value={form.title || ''} onChange={v => set('title', v)} />
-        <EditableField label="Nº do Processo" value={form.process_number || ''} onChange={v => set('process_number', v)} icon={Hash} />
+        <EditableField label="Nº do Processo *" value={form.process_number || ''} onChange={v => set('process_number', v)} icon={Hash} />
         <div className="flex items-center gap-2 flex-wrap">
           <Badge variant="secondary" className="text-[10px]">
             {form.status === 'em_andamento' ? 'Em Andamento' : form.status === 'concluido' ? 'Concluído' : form.status === 'arquivado' ? 'Arquivado' : form.status}
