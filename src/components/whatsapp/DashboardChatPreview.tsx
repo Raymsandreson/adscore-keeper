@@ -149,17 +149,20 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
     const fetchMessages = async () => {
       // whatsapp_messages vive no Supabase EXTERNO. Usar `supabase` (Cloud) aqui
       // retornava sempre vazio → "nenhuma mensagem encontrada" mesmo com conversa real.
+      // phone na tabela whatsapp_messages é sempre só dígitos (mesmo para grupos,
+      // sem o sufixo @g.us). Usar `normalizedPhone` aqui — caso contrário, grupos
+      // abertos via JID retornavam zero mensagens.
       let query = (externalSupabase as any)
         .from('whatsapp_messages')
         .select('id, message_text, direction, created_at, message_type, media_url, media_type, instance_name')
-        .eq('phone', phone);
+        .eq('phone', normalizedPhone);
       if (instanceName) {
         const variants = Array.from(new Set([instanceName, instanceName.toUpperCase(), instanceName.toLowerCase()]));
         query = query.in('instance_name', variants);
       }
       const { data, error } = await query
         .order('created_at', { ascending: true })
-        .limit(500);
+        .limit(3000);
       if (error) {
         console.warn('[DashboardChatPreview] fetchMessages error:', error.message);
       }
@@ -314,13 +317,14 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
   // Realtime — assinar no Externo, onde whatsapp_messages realmente mora.
   useEffect(() => {
     if (!open || !phone) return;
+    const normalizedPhone = phone.replace(/\D/g, '');
     const channel = externalSupabase
-      .channel(`dashboard-chat-${phone}`)
+      .channel(`dashboard-chat-${normalizedPhone}`)
       .on('postgres_changes', {
         event: 'INSERT',
         schema: 'public',
         table: 'whatsapp_messages',
-        filter: `phone=eq.${phone}`,
+        filter: `phone=eq.${normalizedPhone}`,
       }, (payload) => {
         const msg = payload.new as any;
         if (instanceName && msg.instance_name && msg.instance_name.toLowerCase() !== instanceName.toLowerCase()) return;
