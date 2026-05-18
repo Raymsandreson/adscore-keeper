@@ -1716,6 +1716,17 @@ export function ContactsListPage() {
         wasResponded={false}
         responseTimeMinutes={null}
       />
+
+      <LeadEditDialog
+        open={!!editingLead}
+        onOpenChange={(open) => { if (!open) { setEditingLead(null); fetchGroups(); } }}
+        lead={editingLead}
+        onSave={async (leadId, updates) => {
+          const { error } = await externalSupabase.from('leads').update(updates as any).eq('id', leadId);
+          if (error) throw error;
+        }}
+        mode="sheet"
+      />
     </div>
   );
 }
