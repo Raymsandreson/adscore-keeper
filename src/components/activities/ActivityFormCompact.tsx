@@ -300,7 +300,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
   const [linkCaseOpen, setLinkCaseOpen] = useState(false);
 
   // Permite que o cabeçalho fixo (fora deste componente) dispare a abertura dos sheets de vínculo
-  React.useEffect(() => {
+  useEffect(() => {
     const onOpenLead = () => setLinkLeadOpen(true);
     const onOpenCase = () => setLinkCaseOpen(true);
     const onOpenContact = () => setLinkContactOpen(true);
