@@ -53,6 +53,7 @@ import { useModulePermissions } from '@/hooks/useModulePermissions';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { normalizeWhatsAppConversationPhone } from '@/lib/whatsappPhone';
+import { LEAD_FIELD_REGISTRY } from '@/components/leads/leadFormFields';
 
 const FIELD_LABELS: Record<string, string> = {
   lead_name: 'Nome do Lead', victim_name: 'Nome da Vítima', lead_email: 'E-mail', lead_phone: 'Telefone',
@@ -72,6 +73,19 @@ const PT_MONTHS: Record<string, number> = {
 };
 
 const toIsoDate = (date: Date) => date.toISOString().slice(0, 10);
+
+const normalizeFieldLabel = (value: string) =>
+  value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+
+const isBirthDateLabel = (label: string) => {
+  const normalized = normalizeFieldLabel(label);
+  return normalized.includes('data do parto') || normalized.includes('previsao do parto') || normalized.includes('previsao de parto');
+};
 
 const extractNearestExpectedBirthDate = (messages: WhatsAppConversation['messages'] = []) => {
   const text = messages.map((m) => m.message_text || '').join('\n');
@@ -789,6 +803,8 @@ export function WhatsAppInbox() {
         // Fetch lead's board_id + custom fields for that board
         let customSpecs: Array<{ id: string; label: string; type?: string; options?: string[] }> = [];
         let customMeta: Record<string, { label: string; type: string }> = {};
+        let visibleLeadFieldKeys: Set<string> | null = null;
+        let birthDateCustomFieldId: string | null = null;
         try {
           const { data: leadRow } = await externalSupabase
             .from('leads')
@@ -797,11 +813,27 @@ export function WhatsAppInbox() {
             .maybeSingle();
           const boardId = (leadRow as any)?.board_id;
           if (boardId) {
-            const { data: cfs } = await (externalSupabase as any)
-              .from('lead_custom_fields')
-              .select('id, field_name, field_type, field_options')
-                .or(`board_id.eq.${boardId},board_id.is.null`);
-            customSpecs = (cfs || []).map((f: any) => ({
+            const [{ data: cfs }, { data: fieldLayouts }, { data: tabLayouts }] = await Promise.all([
+              (externalSupabase as any)
+                .from('lead_custom_fields')
+                .select('id, field_name, field_type, field_options, tab')
+                .or(`board_id.eq.${boardId},board_id.is.null`),
+              (externalSupabase as any)
+                .from('lead_field_layouts')
+                .select('field_key, hidden')
+                .eq('board_id', boardId),
+              (externalSupabase as any)
+                .from('lead_tab_layouts')
+                .select('tab_key, hidden')
+                .eq('board_id', boardId),
+            ]);
+            const hiddenTabs = new Set((tabLayouts || []).filter((t: any) => t.hidden).map((t: any) => t.tab_key));
+            const hiddenFixed = new Set((fieldLayouts || []).filter((f: any) => f.hidden).map((f: any) => f.field_key));
+            visibleLeadFieldKeys = new Set(LEAD_FIELD_REGISTRY.map((def) => def.key).filter((key) => !hiddenFixed.has(key)));
+            const visibleCustomFields = (cfs || []).filter((f: any) => !hiddenTabs.has(((f as any).tab as string) || 'basic'));
+            const birthField = visibleCustomFields.find((f: any) => isBirthDateLabel(f.field_name));
+            birthDateCustomFieldId = birthField?.id || null;
+            customSpecs = visibleCustomFields.map((f: any) => ({
               id: f.id,
               label: f.field_name,
               type: f.field_type,
@@ -823,9 +855,11 @@ export function WhatsAppInbox() {
           'expected_birth_date', 'client_classification',
         ];
         for (const field of allowedLeadFields) {
+          if (visibleLeadFieldKeys && !visibleLeadFieldKeys.has(field)) continue;
+          if (field === 'expected_birth_date' && birthDateCustomFieldId) continue;
           if (extracted[field]) leadFields[field] = extracted[field];
         }
-        if (!leadFields.expected_birth_date) {
+        if (!leadFields.expected_birth_date && !birthDateCustomFieldId && (!visibleLeadFieldKeys || visibleLeadFieldKeys.has('expected_birth_date'))) {
           const deterministicDate = extractNearestExpectedBirthDate(selectedConversation.messages || []);
           if (deterministicDate) leadFields.expected_birth_date = deterministicDate;
         }
@@ -833,6 +867,10 @@ export function WhatsAppInbox() {
           leadFields.client_classification = 'parto';
         }
         const extractedCustom = (extracted && extracted.custom_fields) || {};
+        const deterministicBirthDate = extractNearestExpectedBirthDate(selectedConversation.messages || []);
+        if (birthDateCustomFieldId && deterministicBirthDate && !extractedCustom[birthDateCustomFieldId]) {
+          extractedCustom[birthDateCustomFieldId] = deterministicBirthDate;
+        }
         for (const [fieldId, value] of Object.entries(extractedCustom)) {
           const meta = customMeta[fieldId];
           if (!meta) continue;
