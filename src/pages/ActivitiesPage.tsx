@@ -2859,10 +2859,17 @@ const ActivitiesPage = () => {
                   <Button variant="ghost" size="icon" className="h-7 w-7 md:hidden shrink-0" onClick={closeSheet}>
                     <ChevronLeft className="h-4 w-4" />
                   </Button>
-                  <div className="min-w-0">
-                    <h2 className="text-sm font-semibold">
-                      {sheetMode === 'create' ? 'Nova Atividade' : 'Editar Atividade'}
-                    </h2>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5 group/title">
+                      <Pencil className="h-3.5 w-3.5 text-muted-foreground shrink-0 group-focus-within/title:text-primary" />
+                      <Input
+                        value={formTitle}
+                        onChange={(e) => handleTitleChange(e.target.value)}
+                        placeholder={sheetMode === 'create' ? 'Nova atividade — clique para nomear *' : 'Assunto da atividade *'}
+                        className="h-7 text-sm font-bold border-0 border-b border-transparent hover:border-border focus-visible:border-primary rounded-none px-0 bg-transparent focus-visible:ring-0 placeholder:text-muted-foreground/60 placeholder:font-normal"
+                        title="Clique para editar o assunto da atividade"
+                      />
+                    </div>
                     {formLeadName && (
                       formLeadId ? (
                         <button
