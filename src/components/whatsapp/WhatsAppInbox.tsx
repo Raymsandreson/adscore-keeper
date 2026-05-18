@@ -608,6 +608,8 @@ export function WhatsAppInbox() {
       setExtractionStep(targetType === 'lead' ? 'Extraindo dados do lead...' : 'Extraindo dados do contato...');
       const callContext = await fetchCallContext(selectedConversation.lead_id, selectedConversation.contact_id);
       const visibleMessages = (selectedConversation.messages || [])
+        .slice()
+        .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
         .slice(-300)
         .map((m) => ({
           direction: m.direction,
