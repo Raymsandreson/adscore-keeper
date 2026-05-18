@@ -342,7 +342,18 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
       }, (payload) => {
         const msg = payload.new as any;
         if (instanceName && msg.instance_name && msg.instance_name.toLowerCase() !== instanceName.toLowerCase()) return;
-        setMessages(prev => [...prev, msg]);
+        const incomingMsgId = typeof msg.external_message_id === 'string' ? msg.external_message_id.split(':').pop() : null;
+        setMessages(prev => {
+          const alreadyExists = incomingMsgId
+            ? prev.some(m => typeof m.external_message_id === 'string' && m.external_message_id.split(':').pop() === incomingMsgId)
+            : prev.some(m =>
+                m.direction === msg.direction &&
+                m.created_at === msg.created_at &&
+                (m.message_text || '').trim() === (msg.message_text || '').trim() &&
+                (m.media_url || '') === (msg.media_url || '')
+              );
+          return alreadyExists ? prev : [...prev, msg];
+        });
         setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
       })
       .subscribe();
