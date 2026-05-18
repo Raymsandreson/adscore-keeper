@@ -2962,7 +2962,7 @@ const ActivitiesPage = () => {
               })()}
               {/* Nome do cliente (override) — compacto no cabeçalho */}
               <div className="flex items-center gap-1.5 mt-1.5 text-[11px] text-muted-foreground">
-                <UserIcon className="h-3 w-3 shrink-0" />
+                <User className="h-3 w-3 shrink-0" />
                 <span className="uppercase tracking-wider text-[9px] whitespace-nowrap">Cliente</span>
                 <Input
                   value={formClientNameOverride || ''}
