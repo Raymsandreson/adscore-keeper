@@ -1743,18 +1743,6 @@ const ActivitiesPage = () => {
               <List className="h-3.5 w-3.5" />
               Lista
             </button>
-            <button
-              onClick={() => setViewMode('matrix')}
-              className={cn(
-                "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-all",
-                viewMode === 'matrix'
-                  ? "bg-primary-foreground text-primary shadow-sm"
-                  : "text-primary-foreground/70 hover:text-primary-foreground"
-              )}
-            >
-              <LayoutGrid className="h-3.5 w-3.5" />
-              Eisenhower
-            </button>
           </div>
           <Button variant="ghost" size="icon" className="h-8 w-8 text-primary-foreground hover:bg-primary-foreground/10" onClick={startWorkflow} title="Workflow">
             <Play className="h-4 w-4" />
