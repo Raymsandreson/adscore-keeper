@@ -1019,9 +1019,9 @@ export function WhatsAppInbox() {
         notes: [person.relationship ? `Relação: ${person.relationship}` : '', person.notes || ''].filter(Boolean).join('\n') || null,
         created_by: currentUser?.id || null,
       };
-      const { data: created, error: insertError } = await externalSupabase
+      const { data: created, error: insertError } = await (externalSupabase as any)
         .from('contacts')
-        .insert(insertPayload)
+        .insert(insertPayload as any)
         .select('id')
         .single();
       if (insertError) throw insertError;
