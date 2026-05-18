@@ -588,7 +588,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
         <div className="rounded-md border border-primary/30 bg-primary/5 p-2 space-y-1">
           <Label className="text-[10px] uppercase tracking-wider text-primary font-semibold flex items-center gap-1">
             <ClipboardList className="h-3 w-3" />
-            Fluxo de Trabalho Vinculado
+            Fluxo de Trabalho Vinculado *
           </Label>
           <Select
             value={form.workflow_id || '__none__'}
