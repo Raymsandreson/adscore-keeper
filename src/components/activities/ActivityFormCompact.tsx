@@ -723,22 +723,30 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
               what_was_done: [props.formWhatWasDone, props.setFormWhatWasDone],
               current_status: [props.formCurrentStatus, props.setFormCurrentStatus],
               next_steps: [props.formNextSteps, props.setFormNextSteps],
+              solicitacao: [props.formSolicitacao, props.setFormSolicitacao],
+              resposta_juizo: [props.formRespostaJuizo, props.setFormRespostaJuizo],
               notes: [props.formNotes, props.setFormNotes],
+            };
+            const fallbackLabels: Record<string, string> = {
+              solicitacao: 'Solicitação',
+              resposta_juizo: 'Resposta do juízo',
             };
             const fieldDef = props.fieldSettings.find((f: any) => f.field_key === expandedFieldKey);
             const entry = fieldValueMap[expandedFieldKey];
-            if (!fieldDef || !entry) return null;
+            if (!entry) return null;
             const [val, set] = entry;
+            const label = fieldDef?.label || fallbackLabels[expandedFieldKey] || expandedFieldKey;
+            const placeholder = fieldDef?.placeholder || '';
             return (
               <>
                 <SheetHeader>
-                  <SheetTitle className="text-base">{fieldDef.label}</SheetTitle>
+                  <SheetTitle className="text-base">{label}</SheetTitle>
                 </SheetHeader>
                 <div className="flex-1 pt-4">
                   <RichTextEditor
                     value={val}
                     onChange={set}
-                    placeholder={fieldDef.placeholder || ''}
+                    placeholder={placeholder}
                     minHeight="300px"
                     autoFocus
                   />
