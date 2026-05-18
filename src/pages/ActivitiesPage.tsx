@@ -3035,32 +3035,29 @@ const ActivitiesPage = () => {
                 const linkedProcess = formProcessId ? caseProcesses.find(p => p.id === formProcessId) : null;
                 const processWorkflowId = linkedProcess?.workflow_id;
                 const isLeadClosed = leadPreview?.lead_status === 'closed';
+                const wfName = (linkedProcess as any)?.workflow_name || null;
+                const showFunnel = !!leadPreview?.board_id && !isLeadClosed;
 
-                // Priority: if a process with workflow is selected, show its workflow.
-                // This is the most contextual progress for the activity.
-                if (processWorkflowId) {
-                  const wfName = (linkedProcess as any)?.workflow_name || null;
-                  return (
-                    <div>
-                      <div className="text-[10px] font-medium text-muted-foreground mt-1.5 mb-0.5 uppercase tracking-wide">
-                        Fluxo do Processo{wfName ? ` · ${wfName}` : ''}
+                return (
+                  <>
+                    {processWorkflowId && (
+                      <div>
+                        <div className="text-[10px] font-medium text-muted-foreground mt-1.5 mb-0.5 uppercase tracking-wide">
+                          Fluxo do Processo{wfName ? ` · ${wfName}` : ''}
+                        </div>
+                        <LeadFunnelProgressBar leadId={formLeadId} boardId={processWorkflowId} />
                       </div>
-                      <LeadFunnelProgressBar leadId={formLeadId} boardId={processWorkflowId} />
-                    </div>
-                  );
-                }
-                // Otherwise fall back to the sales funnel (only meaningful while lead is open)
-                if (leadPreview?.board_id && !isLeadClosed) {
-                  return (
-                    <div>
-                      <div className="text-[10px] font-medium text-muted-foreground mt-1.5 mb-0.5 uppercase tracking-wide">
-                        Funil de Vendas
+                    )}
+                    {showFunnel && (
+                      <div>
+                        <div className="text-[10px] font-medium text-muted-foreground mt-1.5 mb-0.5 uppercase tracking-wide">
+                          Funil de Vendas
+                        </div>
+                        <LeadFunnelProgressBar leadId={formLeadId} boardId={leadPreview.board_id} />
                       </div>
-                      <LeadFunnelProgressBar leadId={formLeadId} boardId={leadPreview.board_id} />
-                    </div>
-                  );
-                }
-                return null;
+                    )}
+                  </>
+                );
               })()}
               </div>
               {/* Botão fixar/desafixar cabeçalho */}
