@@ -336,18 +336,46 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
         />
       </div>
 
-      {/* === ROW 2a: Lead/Caso link buttons ===
-          Cada botão some apenas quando o vínculo correspondente já existe;
-          permitir vincular Lead E Caso na mesma atividade.
-          Vínculos confirmados vivem no cabeçalho da atividade. */}
-      {(!props.formLeadName || !props.formCaseTitle) && !props.formProcessTitle && (
+      {/* === ROW 2a: Lead/Caso link buttons (sempre visíveis) ===
+          Quando vinculado, mostra o nome do Lead/Caso como badge clicável (clique reabre seleção, X limpa). */}
+      {!props.formProcessTitle && (
         <div className="flex flex-wrap items-center gap-1.5">
-          {!props.formLeadName && (
+          {props.formLeadName ? (
+            <div className="flex items-center gap-0.5">
+              <Badge
+                variant="outline"
+                className="text-[10px] h-6 max-w-[180px] truncate cursor-pointer hover:bg-accent gap-1"
+                onClick={() => setLinkLeadOpen(true)}
+                title="Clique para trocar o Lead vinculado"
+              >
+                <Building2 className="h-3 w-3 shrink-0" />
+                {props.formLeadName}
+              </Badge>
+              <button type="button" onClick={() => props.handleClearLead()} className="text-muted-foreground hover:text-foreground" title="Desvincular Lead">
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          ) : (
             <Button type="button" variant="outline" size="sm" className="h-6 px-2 text-[10px] gap-1" onClick={() => setLinkLeadOpen(true)}>
               <Building2 className="h-3 w-3" /> Lead
             </Button>
           )}
-          {!props.formCaseTitle && (
+          {props.formCaseTitle ? (
+            <div className="flex items-center gap-0.5">
+              <Badge
+                variant="outline"
+                className="text-[10px] h-6 max-w-[180px] truncate cursor-pointer hover:bg-accent gap-1"
+                onClick={() => setLinkCaseOpen(true)}
+                title="Clique para trocar o Caso vinculado"
+              >
+                <Briefcase className="h-3 w-3 shrink-0" />
+                {props.formCaseTitle}
+              </Badge>
+              <button type="button" onClick={() => { props.setFormCaseId(''); props.setFormCaseTitle(''); }} className="text-muted-foreground hover:text-foreground" title="Desvincular Caso">
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          ) : (
             <Button type="button" variant="outline" size="sm" className="h-6 px-2 text-[10px] gap-1" onClick={() => setLinkCaseOpen(true)}>
               <Briefcase className="h-3 w-3" /> Caso
             </Button>
