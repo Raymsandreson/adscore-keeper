@@ -20,6 +20,7 @@ interface FocusDashboardProps {
   onOpenMissingDocs?: () => void;
   onOpenZapsignPending?: () => void;
   onOpenUnanswered?: () => void;
+  compact?: boolean;
 }
 
 const PERIOD_OPTIONS: { key: FocusPeriod; label: string }[] = [
