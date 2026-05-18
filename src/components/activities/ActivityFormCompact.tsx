@@ -338,8 +338,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
 
       {/* === ROW 2a: Lead/Caso link buttons (sempre visíveis) ===
           Quando vinculado, mostra o nome do Lead/Caso como badge clicável (clique reabre seleção, X limpa). */}
-      {!props.formProcessTitle && (
-        <div className="flex flex-wrap items-center gap-1.5">
+      <div className="flex flex-wrap items-center gap-1.5">
           {props.formLeadName ? (
             <div className="flex items-center gap-0.5">
               <Badge
@@ -380,8 +379,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
               <Briefcase className="h-3 w-3" /> Caso
             </Button>
           )}
-        </div>
-      )}
+      </div>
 
       {/* === ROW 2b: Contact + Sistema (sempre visíveis) === */}
       <div className="flex flex-wrap items-center gap-1.5">
