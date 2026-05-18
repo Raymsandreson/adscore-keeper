@@ -144,7 +144,8 @@ async function callAI(systemPrompt: string, userPrompt: string): Promise<Record<
   const r = await fetch(LOVABLE_AI_URL, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${LOVABLE_API_KEY}`,
+      'Lovable-API-Key': LOVABLE_API_KEY,
+      'X-Lovable-AIG-SDK': 'railway-fetch',
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
