@@ -508,12 +508,39 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
             <ChevronDown className={cn("h-3.5 w-3.5 text-muted-foreground transition-transform", detailsOpen && "rotate-180")} />
             <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Detalhes e Observações</span>
           </CollapsibleTrigger>
-          {props.stepContext?.docChecklist && props.stepContext.docChecklist.length > 0 && (
-            <StepChecklistButton
-              stepLabel={props.stepContext.stepLabel}
-              items={props.stepContext.docChecklist}
-            />
-          )}
+          <div className="flex items-center gap-1.5">
+            {(() => {
+              const notesField = props.fieldSettings?.find((f: any) => f.field_key === 'notes');
+              if (!notesField) return null;
+              const stepVariations = props.stepContext?.messageTemplates?.['notes'] || [];
+              const persistNotes = async (next: TemplateVariation[]) => {
+                if (!props.saveStepFieldTemplates) return false;
+                return props.saveStepFieldTemplates('notes', next);
+              };
+              return (
+                <StepTemplatesHub
+                  fieldLabel={notesField.label}
+                  variations={stepVariations}
+                  currentValue={props.formNotes}
+                  onApply={props.setFormNotes}
+                  stepLabel={props.stepContext?.stepLabel || null}
+                  phaseLabel={props.stepContext?.phaseLabel || null}
+                  objectiveLabel={props.stepContext?.objectiveLabel || null}
+                  canPersist={!!(props.stepContext?.templateId && props.saveStepFieldTemplates)}
+                  onPersist={persistNotes}
+                  allSteps={props.stepContext?.allSteps || []}
+                  activeStepId={props.stepContext?.stepId || null}
+                  onSelectStep={props.setSelectedStepId}
+                />
+              );
+            })()}
+            {props.stepContext?.docChecklist && props.stepContext.docChecklist.length > 0 && (
+              <StepChecklistButton
+                stepLabel={props.stepContext.stepLabel}
+                items={props.stepContext.docChecklist}
+              />
+            )}
+          </div>
         </div>
         <CollapsibleContent className="pt-1.5 space-y-2.5">
           {(() => {
@@ -555,8 +582,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
               };
               if (field.field_key === 'notes') {
                 return (
-                  <div key={field.field_key} className="min-w-0">
-                    <StepTemplatesHub {...hubProps} />
+                  <div key={field.field_key} className="min-w-0" data-notes-hub-props={JSON.stringify({ has: true })}>
                     <ActivityNotesField
                       value={value}
                       onChange={setter}
