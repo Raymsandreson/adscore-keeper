@@ -1,4 +1,5 @@
 import { externalSupabase } from './external-client';
+import { normalizeWhatsAppConversationPhone } from '@/lib/whatsappPhone';
 
 export interface ConversationSummary {
   phone: string;
@@ -104,10 +105,12 @@ export async function getConversationMessages(
   instanceName: string,
   limit = 50
 ): Promise<WhatsAppMessage[]> {
+  const normalizedPhone = normalizeWhatsAppConversationPhone(phone);
+  const phoneVariants = Array.from(new Set([phone, normalizedPhone, `${normalizedPhone}@g.us`].filter(Boolean)));
   const { data, error } = await (externalSupabase as any)
     .from('whatsapp_messages')
     .select('*')
-    .eq('phone', phone)
+    .in('phone', phoneVariants)
     .in('instance_name', instanceNameVariants(instanceName))
     .order('created_at', { ascending: false })
     .limit(limit);

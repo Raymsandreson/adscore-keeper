@@ -15,6 +15,7 @@ import { toast } from 'sonner';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { traceHook } from '@/utils/hookTracer';
 import { requestWhatsAppReconnect } from '@/lib/whatsappReconnectEvent';
+import { normalizeWhatsAppConversationPhone } from '@/lib/whatsappPhone';
 
 const showDisconnectedToast = (instanceId: string | undefined, instanceName: string | undefined) => {
   toast.error(
@@ -86,7 +87,7 @@ const normalizeInstanceName = (instanceName?: string | null) =>
 // Conversation identity = phone + instance_name. Normalize instance_name case-insensitively
 // to avoid creating phantom duplicates when the webhook saves "Cris" but the RPC returns "cris".
 const getConversationKey = (phone: string, instanceName?: string | null) =>
-  `${(phone || '').trim()}__${normalizeInstanceName(instanceName)}`;
+  `${normalizeWhatsAppConversationPhone(phone)}__${normalizeInstanceName(instanceName)}`;
 
 // ---------------------------------------------------------------------------
 // Module-level cache (sobrevive a unmount/remount do WhatsAppInbox).
@@ -415,6 +416,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       const conversationMap = new Map<string, WhatsAppConversation>();
 
       for (const summary of summaries || []) {
+        const summaryPhone = normalizeWhatsAppConversationPhone(summary.phone);
         const canonicalInstanceName =
           canonicalInstanceNames.get(normalizeInstanceName(summary.instance_name)) ||
           summary.instance_name ||
@@ -422,7 +424,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
 
         const summaryMessage: WhatsAppMessage = {
           id: `summary-${summary.phone}-${canonicalInstanceName}`,
-          phone: summary.phone,
+          phone: summaryPhone,
           contact_name: summary.contact_name,
           message_text: summary.last_message_text,
           message_type: 'text',
@@ -440,12 +442,12 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
           instance_token: null,
         };
 
-        const conversationKey = getConversationKey(summary.phone, canonicalInstanceName);
+        const conversationKey = getConversationKey(summaryPhone, canonicalInstanceName);
         const existingConversation = conversationMap.get(conversationKey);
 
         if (!existingConversation) {
           conversationMap.set(conversationKey, {
-            phone: summary.phone,
+            phone: summaryPhone,
             contact_name: summary.contact_name,
             contact_id: summary.contact_id,
             lead_id: summary.lead_id,
@@ -691,9 +693,10 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       toast.success('Mensagem enviada!');
 
       // Optimistic local update instead of full refetch
+      const conversationPhone = normalizeWhatsAppConversationPhone(phone);
       const optimisticMsg: WhatsAppMessage = {
         id: data.message_id || crypto.randomUUID(),
-        phone,
+        phone: conversationPhone,
         contact_name: null,
         message_text: finalMessage,
         message_type: 'text',
@@ -711,7 +714,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         instance_token: null,
       };
       setMessages(prev => [optimisticMsg, ...prev]);
-      const targetConversationKey = getConversationKey(phone, optimisticMsg.instance_name);
+      const targetConversationKey = getConversationKey(conversationPhone, optimisticMsg.instance_name);
       setConversations(prev => prev.map(c =>
         getConversationKey(c.phone, c.instance_name) === targetConversationKey
           ? { ...c, last_message: finalMessage, last_message_at: optimisticMsg.created_at, messages: [...c.messages, optimisticMsg] }
@@ -774,9 +777,10 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       toast.success('Mídia enviada!');
 
       const msgType = mediaType?.startsWith('audio') ? 'audio' : mediaType?.startsWith('image') ? 'image' : mediaType?.startsWith('video') ? 'video' : 'document';
+      const conversationPhone = normalizeWhatsAppConversationPhone(phone);
       const optimisticMsg: WhatsAppMessage = {
         id: data.message_id || crypto.randomUUID(),
-        phone, contact_name: null, message_text: caption || null,
+        phone: conversationPhone, contact_name: null, message_text: caption || null,
         message_type: msgType, media_url: mediaUrl, media_type: mediaType,
         direction: 'outbound', status: 'sent',
         contact_id: contactId || null, lead_id: leadId || null,
@@ -785,7 +789,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         instance_name: data.instance_name || conversationInstanceName || null, instance_token: null,
       };
       setMessages(prev => [optimisticMsg, ...prev]);
-      const targetConversationKey = getConversationKey(phone, optimisticMsg.instance_name);
+      const targetConversationKey = getConversationKey(conversationPhone, optimisticMsg.instance_name);
       setConversations(prev => prev.map(c =>
         getConversationKey(c.phone, c.instance_name) === targetConversationKey
           ? { ...c, last_message: caption || `📎 ${msgType}`, last_message_at: optimisticMsg.created_at, messages: [...c.messages, optimisticMsg] }
@@ -839,9 +843,10 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       toast.success('Localização enviada!');
 
       const locationText = `📍 ${name || 'Localização'}${address ? `\n${address}` : ''}`;
+      const conversationPhone = normalizeWhatsAppConversationPhone(phone);
       const optimisticMsg: WhatsAppMessage = {
         id: data.message_id || crypto.randomUUID(),
-        phone, contact_name: null, message_text: locationText,
+        phone: conversationPhone, contact_name: null, message_text: locationText,
         message_type: 'location', media_url: null, media_type: null,
         direction: 'outbound', status: 'sent',
         contact_id: contactId || null, lead_id: leadId || null,
@@ -850,7 +855,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         instance_name: data.instance_name || conversationInstanceName || null, instance_token: null,
       };
       setMessages(prev => [optimisticMsg, ...prev]);
-      const targetConversationKey = getConversationKey(phone, optimisticMsg.instance_name);
+      const targetConversationKey = getConversationKey(conversationPhone, optimisticMsg.instance_name);
       setConversations(prev => prev.map(c =>
         getConversationKey(c.phone, c.instance_name) === targetConversationKey
           ? { ...c, last_message: locationText, last_message_at: optimisticMsg.created_at, messages: [...c.messages, optimisticMsg] }
@@ -1077,6 +1082,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       const handleIncomingMessage = (newMsg: WhatsAppMessage) => {
         const canonicalMsg = {
           ...newMsg,
+          phone: normalizeWhatsAppConversationPhone(newMsg.phone),
           instance_name: getCanonicalInstanceName(newMsg.instance_name),
         };
         const allowedNames = new Set(instances.map(i => i.instance_name?.trim().toLowerCase()));
@@ -1093,7 +1099,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
 
         setMessages(prev => {
           // Match 1: external_message_id igual → duplicado, ignora.
-          if (incomingExtTail && prev.some(m => extMsgIdTail(m) === incomingExtTail && m.created_at === canonicalMsg.created_at)) {
+          if (incomingExtTail && prev.some(m => extMsgIdTail(m) === incomingExtTail)) {
             return prev;
           }
           // Match 2: optimistic fingerprint → replace in-place.
@@ -1111,7 +1117,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
           const existing = prev.find(c => getConversationKey(c.phone, c.instance_name) === targetConversationKey);
           if (existing) {
             // Match 1: external_message_id igual → duplicado (mirror disparando 2×).
-            if (incomingExtTail && existing.messages.some(m => extMsgIdTail(m) === incomingExtTail && m.created_at === canonicalMsg.created_at)) {
+            if (incomingExtTail && existing.messages.some(m => extMsgIdTail(m) === incomingExtTail)) {
               return prev;
             }
 
@@ -1121,7 +1127,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
             // Mesma lógica no cache da conversa ativa.
             if (activeConversationKeyRef.current === targetConversationKey && fullConvCacheRef.current[targetConversationKey]) {
               const cached = fullConvCacheRef.current[targetConversationKey];
-              const cachedHasExt = incomingExtTail && cached.some(m => extMsgIdTail(m) === incomingExtTail && m.created_at === canonicalMsg.created_at);
+              const cachedHasExt = incomingExtTail && cached.some(m => extMsgIdTail(m) === incomingExtTail);
               if (!cachedHasExt) {
                 const cachedOptIdx = cached.findIndex(m => isOptimisticMatch(m, canonicalMsg));
                 if (cachedOptIdx >= 0) {
@@ -1393,14 +1399,17 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       // Fetch directly from the external DB (source of truth for whatsapp_messages).
       await ensureExternalSession().catch(() => {});
       const raw = await getConversationMessages(phone, instanceName, 3000);
-      const allMsgs: WhatsAppMessage[] = raw as unknown as WhatsAppMessage[];
+      const allMsgs: WhatsAppMessage[] = (raw as unknown as WhatsAppMessage[]).map((msg) => ({
+        ...msg,
+        phone: normalizeWhatsAppConversationPhone(msg.phone),
+      }));
 
       // Deduplicate group messages (same messageid from different instances)
       const deduped: WhatsAppMessage[] = [];
       const seenMsgIds = new Set<string>();
       for (const m of allMsgs) {
         const msgId = m.external_message_id?.split(':').pop();
-        const dedupKey = msgId ? `${msgId}_${m.created_at}` : m.id;
+        const dedupKey = msgId ? `ext:${msgId}` : m.id;
         if (!seenMsgIds.has(dedupKey)) {
           seenMsgIds.add(dedupKey);
           deduped.push(m);

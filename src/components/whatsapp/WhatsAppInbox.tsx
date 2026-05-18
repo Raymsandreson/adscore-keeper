@@ -52,6 +52,7 @@ import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { useModulePermissions } from '@/hooks/useModulePermissions';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
+import { normalizeWhatsAppConversationPhone } from '@/lib/whatsappPhone';
 
 const FIELD_LABELS: Record<string, string> = {
   lead_name: 'Nome do Lead', victim_name: 'Nome da Vítima', lead_email: 'E-mail', lead_phone: 'Telefone',
@@ -79,7 +80,7 @@ interface ConvShare {
 }
 
 const getConversationKey = (phone: string, instanceName?: string | null) =>
-  `${(phone || '').trim()}__${(instanceName || '').trim().toLowerCase()}`;
+  `${normalizeWhatsAppConversationPhone(phone)}__${(instanceName || '').trim().toLowerCase()}`;
 
 const normalizeInstanceName = (instanceName?: string | null) =>
   (instanceName || '').trim().toLowerCase();
@@ -190,12 +191,13 @@ export function WhatsAppInbox() {
 
   const handleOpenChatByPhone = useCallback(async (phone: string) => {
     if (!phone) return;
+    const conversationPhone = normalizeWhatsAppConversationPhone(phone);
 
     try {
-      const { data: latestMessage } = await supabase
+      const { data: latestMessage } = await externalSupabase
         .from('whatsapp_messages')
         .select('instance_name')
-        .eq('phone', phone)
+        .in('phone', [conversationPhone, `${conversationPhone}@g.us`])
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -216,13 +218,13 @@ export function WhatsAppInbox() {
         setSelectedInstance(null);
       }
 
-      setSelectedPhone(phone);
-      fetchFullConversation(phone, targetInstanceName);
+      setSelectedPhone(conversationPhone);
+      fetchFullConversation(conversationPhone, targetInstanceName);
     } catch (error) {
       console.error('Error opening chat by phone:', error);
       setSelectedInstance(null);
-      setSelectedPhone(phone);
-      fetchFullConversation(phone, null);
+      setSelectedPhone(conversationPhone);
+      fetchFullConversation(conversationPhone, null);
     }
   }, [instances, selectedInstanceId, fetchFullConversation]);
 
@@ -448,7 +450,7 @@ export function WhatsAppInbox() {
 
   const [selectedInstance, setSelectedInstance] = usePageState<string | null>('wa_selected_instance', null);
   const selectedConversation = visibleConversations.find(
-    c => selectedPhone === c.phone && getConversationKey(c.phone, c.instance_name) === getConversationKey(selectedPhone || '', selectedInstance)
+    c => getConversationKey(c.phone, c.instance_name) === getConversationKey(selectedPhone || '', selectedInstance)
   ) || null;
 
   // Reidrata o histórico completo ao remontar (reload, troca de aba, navegação interna).
@@ -495,7 +497,7 @@ export function WhatsAppInbox() {
 
   const handleSelectConversation = (conv: WhatsAppConversation) => {
     const apply = () => {
-      setSelectedPhone(conv.phone);
+      setSelectedPhone(normalizeWhatsAppConversationPhone(conv.phone));
       setSelectedInstance(conv.instance_name);
       fetchFullConversation(conv.phone, conv.instance_name);
       if (conv.unread_count > 0) {
