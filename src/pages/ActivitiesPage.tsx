@@ -210,6 +210,20 @@ const ActivitiesPage = () => {
   const [leadSearch, setLeadSearch] = useState('');
   const [searchedLeads, setSearchedLeads] = useState<LeadOption[]>([]);
 
+  // Pinned UI prefs (per-user, localStorage). Default = unpinned (hidden até passar mouse).
+  const [headerPinned, setHeaderPinned] = useState<boolean>(() => {
+    try { return localStorage.getItem('activities_headerPinned') === '1'; } catch { return false; }
+  });
+  const [actionsPinned, setActionsPinned] = useState<boolean>(() => {
+    try { return localStorage.getItem('activities_actionsPinned') === '1'; } catch { return false; }
+  });
+  const toggleHeaderPinned = useCallback(() => {
+    setHeaderPinned(p => { const n = !p; try { localStorage.setItem('activities_headerPinned', n ? '1' : '0'); } catch {} return n; });
+  }, []);
+  const toggleActionsPinned = useCallback(() => {
+    setActionsPinned(p => { const n = !p; try { localStorage.setItem('activities_actionsPinned', n ? '1' : '0'); } catch {} return n; });
+  }, []);
+
   // Form state
   const [formTitle, setFormTitle] = useState('');
   const [formWhatWasDone, setFormWhatWasDone] = useState('');
