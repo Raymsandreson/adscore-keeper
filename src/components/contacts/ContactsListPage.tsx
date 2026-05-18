@@ -1313,7 +1313,8 @@ export function ContactsListPage() {
                       <UsersRound className="h-5 w-5 text-primary shrink-0" />
                       <div
                         className="flex-1 min-w-0 cursor-pointer"
-                        onClick={() => handleSelectGroup(group.group_jid)}
+                        title="Abrir conversa do grupo"
+                        onClick={() => openGroupChat(group.group_jid)}
                       >
                         <p className="font-medium text-sm truncate">
                           {highlight(group.group_name, groupSearchScope === 'group')}
@@ -1322,6 +1323,9 @@ export function ContactsListPage() {
                           Lead: {highlight(group.lead_name, groupSearchScope === 'lead')} • {group.contact_count} contato(s)
                         </p>
                       </div>
+                      <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0" title="Ver contatos do grupo" onClick={(e) => { e.stopPropagation(); handleSelectGroup(group.group_jid); }}>
+                        <Users className="h-4 w-4" />
+                      </Button>
                       <Badge variant={group.lead_status === 'closed' ? 'default' : 'outline'} className="text-[10px] shrink-0">
                         {group.lead_status || 'N/A'}
                       </Badge>
