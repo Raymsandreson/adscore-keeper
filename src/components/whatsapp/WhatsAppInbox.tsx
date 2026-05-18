@@ -803,6 +803,8 @@ export function WhatsAppInbox() {
         // Fetch lead's board_id + custom fields for that board
         let customSpecs: Array<{ id: string; label: string; type?: string; options?: string[] }> = [];
         let customMeta: Record<string, { label: string; type: string }> = {};
+        let visibleLeadFieldKeys: Set<string> | null = null;
+        let birthDateCustomFieldId: string | null = null;
         try {
           const { data: leadRow } = await externalSupabase
             .from('leads')
@@ -811,11 +813,27 @@ export function WhatsAppInbox() {
             .maybeSingle();
           const boardId = (leadRow as any)?.board_id;
           if (boardId) {
-            const { data: cfs } = await (externalSupabase as any)
-              .from('lead_custom_fields')
-              .select('id, field_name, field_type, field_options')
-                .or(`board_id.eq.${boardId},board_id.is.null`);
-            customSpecs = (cfs || []).map((f: any) => ({
+            const [{ data: cfs }, { data: fieldLayouts }, { data: tabLayouts }] = await Promise.all([
+              (externalSupabase as any)
+                .from('lead_custom_fields')
+                .select('id, field_name, field_type, field_options, tab')
+                .or(`board_id.eq.${boardId},board_id.is.null`),
+              (externalSupabase as any)
+                .from('lead_field_layouts')
+                .select('field_key, hidden')
+                .eq('board_id', boardId),
+              (externalSupabase as any)
+                .from('lead_tab_layouts')
+                .select('tab_key, hidden')
+                .eq('board_id', boardId),
+            ]);
+            const hiddenTabs = new Set((tabLayouts || []).filter((t: any) => t.hidden).map((t: any) => t.tab_key));
+            const hiddenFixed = new Set((fieldLayouts || []).filter((f: any) => f.hidden).map((f: any) => f.field_key));
+            visibleLeadFieldKeys = new Set(LEAD_FIELD_REGISTRY.map((def) => def.key).filter((key) => !hiddenFixed.has(key)));
+            const visibleCustomFields = (cfs || []).filter((f: any) => !hiddenTabs.has(((f as any).tab as string) || 'basic'));
+            const birthField = visibleCustomFields.find((f: any) => isBirthDateLabel(f.field_name));
+            birthDateCustomFieldId = birthField?.id || null;
+            customSpecs = visibleCustomFields.map((f: any) => ({
               id: f.id,
               label: f.field_name,
               type: f.field_type,
