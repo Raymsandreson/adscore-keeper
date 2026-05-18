@@ -1099,7 +1099,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
 
         setMessages(prev => {
           // Match 1: external_message_id igual → duplicado, ignora.
-          if (incomingExtTail && prev.some(m => extMsgIdTail(m) === incomingExtTail && m.created_at === canonicalMsg.created_at)) {
+          if (incomingExtTail && prev.some(m => extMsgIdTail(m) === incomingExtTail)) {
             return prev;
           }
           // Match 2: optimistic fingerprint → replace in-place.
@@ -1117,7 +1117,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
           const existing = prev.find(c => getConversationKey(c.phone, c.instance_name) === targetConversationKey);
           if (existing) {
             // Match 1: external_message_id igual → duplicado (mirror disparando 2×).
-            if (incomingExtTail && existing.messages.some(m => extMsgIdTail(m) === incomingExtTail && m.created_at === canonicalMsg.created_at)) {
+            if (incomingExtTail && existing.messages.some(m => extMsgIdTail(m) === incomingExtTail)) {
               return prev;
             }
 
@@ -1127,7 +1127,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
             // Mesma lógica no cache da conversa ativa.
             if (activeConversationKeyRef.current === targetConversationKey && fullConvCacheRef.current[targetConversationKey]) {
               const cached = fullConvCacheRef.current[targetConversationKey];
-              const cachedHasExt = incomingExtTail && cached.some(m => extMsgIdTail(m) === incomingExtTail && m.created_at === canonicalMsg.created_at);
+              const cachedHasExt = incomingExtTail && cached.some(m => extMsgIdTail(m) === incomingExtTail);
               if (!cachedHasExt) {
                 const cachedOptIdx = cached.findIndex(m => isOptimisticMatch(m, canonicalMsg));
                 if (cachedOptIdx >= 0) {
