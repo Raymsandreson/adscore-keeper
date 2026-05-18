@@ -815,17 +815,11 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
                   const q = props.caseSearch.toLowerCase();
                   const matches = (c: { title: string; case_number: string }) =>
                     !q || c.title?.toLowerCase().includes(q) || c.case_number?.toLowerCase().includes(q);
-                  // Quando há lead, mostrar casos do lead PRIMEIRO, depois os demais.
-                  // Se o lead não tem casos vinculados, ainda assim listar todos os disponíveis
-                  // para que o usuário possa vincular um caso existente.
+                  // Se houver lead selecionado, mostrar APENAS os casos vinculados a ele.
+                  // Sem lead, mostrar todos os disponíveis (limitado a 30 quando sem busca).
                   let src: { id: string; case_number: string; title: string; lead_id?: string | null }[];
                   if (props.formLeadId) {
-                    const leadIds = new Set(props.leadCases.map(c => c.id));
-                    const leadFiltered = props.leadCases.filter(matches);
-                    const othersFiltered = props.availableCases.filter(c => !leadIds.has(c.id) && matches(c));
-                    src = q
-                      ? [...leadFiltered, ...othersFiltered]
-                      : [...leadFiltered, ...othersFiltered.slice(0, 30)];
+                    src = props.leadCases.filter(matches);
                   } else {
                     src = q ? props.availableCases.filter(matches) : props.availableCases.slice(0, 30);
                   }
