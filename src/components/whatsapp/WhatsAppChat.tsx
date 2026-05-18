@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, useReducer } from 'react';
 import { WhatsAppConversation } from '@/hooks/useWhatsAppMessages';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -540,6 +540,8 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     ['image', 'video', 'audio', 'document'].includes(m?.message_type) &&
     (!m.media_url || isEncUrl(m.media_url));
 
+  const [, forceRerender] = useReducer((x: number) => x + 1, 0);
+
   const handleResyncMedia = async (msg: any) => {
     if (resyncingMsgId) return;
     setResyncingMsgId(msg.id);
@@ -551,8 +553,16 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         },
       });
       if (error) throw error;
-      if ((data as any)?.success === false) throw new Error((data as any)?.error || 'Falha ao baixar mídia');
-      toast.success('Mídia baixada e salva no banco externo.', { id: t });
+      const payload = data as any;
+      if (payload?.success === false) throw new Error(payload?.error || 'Falha ao baixar mídia');
+      // Patch local: muta a mensagem in-place pra UI já mostrar a mídia decifrada,
+      // sem esperar refetch do parent.
+      if (payload?.media_url) {
+        msg.media_url = payload.media_url;
+        if (payload.media_type) msg.media_type = payload.media_type;
+        forceRerender();
+      }
+      toast.success('Mídia recuperada com sucesso.', { id: t });
     } catch (e: any) {
       toast.error(e?.message || 'Erro ao sincronizar mídia', { id: t });
     } finally {
