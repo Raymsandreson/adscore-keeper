@@ -1075,12 +1075,17 @@ export function ContactsListPage() {
           <div className="flex-1 min-h-0 overflow-y-auto">
             {selectedGroup ? (
               <div className="space-y-1">
-                <div className="p-3 mb-2 rounded-lg bg-muted/50 border">
-                  <p className="text-sm font-medium">{groups.find(g => g.group_jid === selectedGroup)?.group_name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    Lead: {groups.find(g => g.group_jid === selectedGroup)?.lead_name} •
-                    Status: <Badge variant="outline" className="text-[10px] ml-1">{groups.find(g => g.group_jid === selectedGroup)?.lead_status || 'N/A'}</Badge>
-                  </p>
+                <div className="p-3 mb-2 rounded-lg bg-muted/50 border flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate">{groups.find(g => g.group_jid === selectedGroup)?.group_name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Lead: {groups.find(g => g.group_jid === selectedGroup)?.lead_name} •
+                      Status: <Badge variant="outline" className="text-[10px] ml-1">{groups.find(g => g.group_jid === selectedGroup)?.lead_status || 'N/A'}</Badge>
+                    </p>
+                  </div>
+                  <Button size="sm" variant="default" className="shrink-0" onClick={() => openGroupChat(selectedGroup!)}>
+                    <MessageCircle className="h-4 w-4 mr-1" /> Abrir conversa
+                  </Button>
                 </div>
                 {groupContactsLoading ? (
                   <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
