@@ -3027,7 +3027,7 @@ const ActivitiesPage = () => {
 
             {/* Form body - scrollable */}
             <div className="flex-1 overflow-y-auto p-4">
-              <div className="max-w-2xl">
+              <div className="max-w-[1200px] mx-auto">
                 {activityFormContent}
 
                 {sheetMode === 'edit' && selectedActivity?.completed_at && (
