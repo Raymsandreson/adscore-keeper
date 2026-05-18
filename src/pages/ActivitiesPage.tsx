@@ -32,7 +32,7 @@ import {
   Plus, Calendar, CheckCircle2, Clock, AlertTriangle,
   FileText, Loader2, Trash2, Search, X, ChevronLeft, ChevronRight, MessageCircle, Copy, ChevronsUpDown, Check,
   Play, ArrowRight, Trophy, SkipForward, Timer, Share2, User, ExternalLink, RotateCcw, LayoutGrid, List, Layers, Settings2, Sparkles, TrendingUp, Briefcase, MoreVertical,
-  Users,
+  Users, Pin, PinOff,
 } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { ShareMenu } from '@/components/ShareMenu';
@@ -209,6 +209,20 @@ const ActivitiesPage = () => {
   const [calendarMonth, setCalendarMonth] = useState(new Date());
   const [leadSearch, setLeadSearch] = useState('');
   const [searchedLeads, setSearchedLeads] = useState<LeadOption[]>([]);
+
+  // Pinned UI prefs (per-user, localStorage). Default = unpinned (hidden até passar mouse).
+  const [headerPinned, setHeaderPinned] = useState<boolean>(() => {
+    try { return localStorage.getItem('activities_headerPinned') === '1'; } catch { return false; }
+  });
+  const [actionsPinned, setActionsPinned] = useState<boolean>(() => {
+    try { return localStorage.getItem('activities_actionsPinned') === '1'; } catch { return false; }
+  });
+  const toggleHeaderPinned = useCallback(() => {
+    setHeaderPinned(p => { const n = !p; try { localStorage.setItem('activities_headerPinned', n ? '1' : '0'); } catch {} return n; });
+  }, []);
+  const toggleActionsPinned = useCallback(() => {
+    setActionsPinned(p => { const n = !p; try { localStorage.setItem('activities_actionsPinned', n ? '1' : '0'); } catch {} return n; });
+  }, []);
 
   // Form state
   const [formTitle, setFormTitle] = useState('');
@@ -3017,8 +3031,20 @@ const ActivitiesPage = () => {
         {/* RIGHT: Form panel (WhatsApp chat-detail style) */}
         {isEditing && (
           <div className="flex-1 flex flex-col overflow-hidden md:relative fixed inset-0 z-50 bg-background md:inset-auto md:z-auto">
-            {/* Form header with lead preview */}
-            <div className="bg-primary/5 border-b px-4 py-2.5 shrink-0">
+            {/* Form header com lead preview — oculto por padrão, revela no hover; pode fixar */}
+            <div className={cn("shrink-0 relative", !headerPinned && "group/header")}>
+              {!headerPinned && (
+                <div
+                  className="h-1.5 hover:h-2 bg-gradient-to-r from-primary/40 via-primary/60 to-primary/40 cursor-pointer transition-all"
+                  title="Passe o mouse para ver lead/funil. Clique para fixar."
+                  aria-label="Mostrar cabeçalho"
+                  onClick={toggleHeaderPinned}
+                />
+              )}
+              <div className={cn(
+                "bg-primary/5 px-4 py-2.5 transition-all overflow-hidden border-b",
+                !headerPinned && "absolute top-1.5 left-0 right-0 z-30 bg-background shadow-lg max-h-0 opacity-0 pointer-events-none group-hover/header:max-h-[500px] group-hover/header:opacity-100 group-hover/header:pointer-events-auto"
+              )}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 flex-1 min-w-0">
                   <Button variant="ghost" size="icon" className="h-7 w-7 md:hidden shrink-0" onClick={closeSheet}>
@@ -3143,6 +3169,19 @@ const ActivitiesPage = () => {
                 }
                 return null;
               })()}
+              </div>
+              {/* Botão fixar/desafixar cabeçalho */}
+              <button
+                type="button"
+                onClick={toggleHeaderPinned}
+                className={cn(
+                  "absolute right-1 top-1 z-40 p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors",
+                  !headerPinned && "opacity-0 group-hover/header:opacity-100"
+                )}
+                title={headerPinned ? "Desafixar cabeçalho (ocultar automático)" : "Fixar cabeçalho sempre visível"}
+              >
+                {headerPinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
+              </button>
             </div>
 
             {/* Form body - scrollable */}
@@ -3168,8 +3207,30 @@ const ActivitiesPage = () => {
               </div>
             </div>
 
-            {/* Action bar - always visible at bottom */}
-            <div className="shrink-0 border-t border-border bg-muted/60 px-4 py-2.5 shadow-[0_-2px_10px_rgba(0,0,0,0.05)] z-10 space-y-2">
+            {/* Action bar — oculta por padrão, revela no hover; pode fixar */}
+            <div className={cn("shrink-0 relative", !actionsPinned && "group/actions")}>
+              {!actionsPinned && (
+                <div
+                  className="h-1.5 hover:h-2 bg-gradient-to-r from-success/40 via-primary/60 to-success/40 cursor-pointer transition-all"
+                  title="Passe o mouse para ações. Clique para fixar."
+                  onClick={toggleActionsPinned}
+                />
+              )}
+              <button
+                type="button"
+                onClick={toggleActionsPinned}
+                className={cn(
+                  "absolute right-1 top-1 z-40 p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors",
+                  !actionsPinned && "opacity-0 group-hover/actions:opacity-100"
+                )}
+                title={actionsPinned ? "Desafixar ações (ocultar automático)" : "Fixar ações sempre visíveis"}
+              >
+                {actionsPinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
+              </button>
+              <div className={cn(
+                "border-t border-border bg-muted/60 px-4 py-2.5 shadow-[0_-2px_10px_rgba(0,0,0,0.05)] z-10 space-y-2 transition-all overflow-hidden",
+                !actionsPinned && "absolute bottom-1.5 left-0 right-0 z-30 bg-background shadow-2xl max-h-0 opacity-0 pointer-events-none group-hover/actions:max-h-[400px] group-hover/actions:opacity-100 group-hover/actions:pointer-events-auto"
+              )}>
               {buildMsg && (
                 <SendToGroupSection buildMsg={buildMsg} leadId={formLeadId} fieldSettings={fieldSettings} updateFieldSetting={updateFieldSetting} reorderFields={reorderFields} formLeadIdForTTS={formLeadId || undefined} formContactIdForTTS={formContactId || undefined} formAssignedTo={formAssignedTo || undefined} />
               )}
@@ -3317,6 +3378,7 @@ const ActivitiesPage = () => {
                   </div>
                 </div>
               )}
+              </div>
             </div>
           </div>
         )}
