@@ -336,27 +336,21 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
         />
       </div>
 
-      {/* === ROW 2: Hierarchy links - Lead → Caso → Processo ===
-          HIDDEN: vínculos de Lead/Caso/Processo vivem no cabeçalho da atividade.
-          Renderizamos apenas botões de "vincular" quando NADA está vinculado,
-          para permitir a vinculação inicial sem precisar fixar o cabeçalho. */}
-      <div className={cn(
-        "flex flex-wrap items-center gap-1.5",
-        (props.formLeadName || props.formCaseTitle || props.formProcessTitle) && "hidden"
-      )}>
-        {!props.formLeadName && (
+      {/* === ROW 2a: Lead/Caso link buttons (only when nothing linked yet) ===
+          Vínculos confirmados de Lead/Caso/Processo vivem no cabeçalho da atividade. */}
+      {!props.formLeadName && !props.formCaseTitle && !props.formProcessTitle && (
+        <div className="flex flex-wrap items-center gap-1.5">
           <Button type="button" variant="outline" size="sm" className="h-6 px-2 text-[10px] gap-1" onClick={() => setLinkLeadOpen(true)}>
             <Building2 className="h-3 w-3" /> Lead
           </Button>
-        )}
-        {!props.formCaseTitle && (
           <Button type="button" variant="outline" size="sm" className="h-6 px-2 text-[10px] gap-1" onClick={() => setLinkCaseOpen(true)}>
             <Briefcase className="h-3 w-3" /> Caso
           </Button>
-        )}
+        </div>
+      )}
 
-        {/* Contact */}
-        <span className="text-muted-foreground text-xs">|</span>
+      {/* === ROW 2b: Contact + Sistema (sempre visíveis) === */}
+      <div className="flex flex-wrap items-center gap-1.5">
         {props.formContactName ? (
           <div className="flex items-center gap-0.5">
             <Badge
@@ -378,7 +372,6 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
           </Button>
         )}
 
-        {/* System activity toggle (alternativa ao vínculo obrigatório) */}
         {props.setFormIsSystem && (
           <>
             <span className="text-muted-foreground text-xs">|</span>
