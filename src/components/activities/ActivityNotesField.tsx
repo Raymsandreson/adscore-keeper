@@ -8,6 +8,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 import {
   Paperclip,
   Image as ImageIcon,
@@ -19,7 +20,10 @@ import {
   ExternalLink,
   Trash2,
   Loader2,
+  Pin,
+  PinOff,
 } from 'lucide-react';
+
 
 interface Attachment {
   id?: string;
