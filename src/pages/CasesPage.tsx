@@ -128,10 +128,28 @@ export default function CasesPage() {
         query = query.eq('nucleus_id', nucleusFilter);
       }
 
+      const q = search.trim();
+      if (q) {
+        // Server-side search across multiple columns to avoid the 1000-row
+        // default cap hiding older matches. Escape commas/parens for PostgREST.
+        const safe = q.replace(/[,()]/g, ' ');
+        query = query.or(
+          [
+            `title.ilike.%${safe}%`,
+            `case_number.ilike.%${safe}%`,
+            `description.ilike.%${safe}%`,
+          ].join(','),
+        );
+        // Higher cap when searching, in case many rows match
+        query = query.limit(2000);
+      } else {
+        query = query.limit(2000);
+      }
+
       const { data, error } = await query;
       if (error) throw error;
 
-      let filtered = (data || []).map((c: any) => ({
+      let mapped = (data || []).map((c: any) => ({
         ...c,
         nucleus_name: c.specialized_nuclei?.name,
         nucleus_prefix: c.specialized_nuclei?.prefix,
@@ -139,17 +157,35 @@ export default function CasesPage() {
         lead_name: c.leads?.lead_name || null,
       }));
 
-      if (search.trim()) {
-        const q = search.toLowerCase();
-        filtered = filtered.filter((c: any) =>
-          c.title?.toLowerCase().includes(q) ||
-          c.case_number?.toLowerCase().includes(q) ||
-          c.description?.toLowerCase().includes(q) ||
-          c.lead_name?.toLowerCase().includes(q)
+      // Also match lead_name client-side (PostgREST .or on embedded relation is tricky),
+      // then merge with a separate lead_name lookup for completeness.
+      if (q) {
+        const lower = q.toLowerCase();
+        // Fetch any cases whose related lead.lead_name matches, even if other columns didn't.
+        const { data: leadMatches } = await externalSupabase
+          .from('legal_cases')
+          .select('*, specialized_nuclei(name, prefix, color), leads!inner(lead_name)')
+          .ilike('leads.lead_name', `%${safeFilter(q)}%`)
+          .limit(500);
+        const extra = (leadMatches || []).map((c: any) => ({
+          ...c,
+          nucleus_name: c.specialized_nuclei?.name,
+          nucleus_prefix: c.specialized_nuclei?.prefix,
+          nucleus_color: c.specialized_nuclei?.color,
+          lead_name: c.leads?.lead_name || null,
+        }));
+        const seen = new Set(mapped.map((c: any) => c.id));
+        for (const c of extra) if (!seen.has(c.id)) { mapped.push(c); seen.add(c.id); }
+        // Final safety filter (no-op for server matches, ensures relevance)
+        mapped = mapped.filter((c: any) =>
+          c.title?.toLowerCase().includes(lower) ||
+          c.case_number?.toLowerCase().includes(lower) ||
+          c.description?.toLowerCase().includes(lower) ||
+          c.lead_name?.toLowerCase().includes(lower)
         );
       }
 
-      setCases(filtered);
+      setCases(mapped);
     } catch (err) {
       console.error(err);
       toast.error('Erro ao carregar casos');
@@ -157,6 +193,10 @@ export default function CasesPage() {
       setLoading(false);
     }
   }, [search, statusFilter, nucleusFilter]);
+
+  function safeFilter(s: string) {
+    return s.replace(/[,()%]/g, ' ');
+  }
 
   useEffect(() => {
     fetchCases();
