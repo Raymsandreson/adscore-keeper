@@ -745,6 +745,14 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
         .or(`phone.eq.${phone},phone.eq.${normalizedPhone}`)
         .is('contact_id', null);
 
+      setLinkedLead(newLead as Lead);
+      if (existingContact) {
+        setLinkedContact({ id: existingContact.id, full_name: existingContact.full_name, phone } as Contact);
+      } else {
+        setLinkedContact({ id: contactId, full_name: contactFullName, phone } as Contact);
+      }
+      onConversationUpdated?.();
+
       toast.success('Lead e contato criados com dados da conversa!');
     } catch (e: any) {
       console.error('Error creating lead+contact:', e);
