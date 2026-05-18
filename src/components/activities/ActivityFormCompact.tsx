@@ -802,7 +802,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
                   // Quando há lead, mostrar casos do lead PRIMEIRO, depois os demais.
                   // Se o lead não tem casos vinculados, ainda assim listar todos os disponíveis
                   // para que o usuário possa vincular um caso existente.
-                  let src: typeof props.availableCases;
+                  let src: { id: string; case_number: string; title: string; lead_id?: string | null }[];
                   if (props.formLeadId) {
                     const leadIds = new Set(props.leadCases.map(c => c.id));
                     const leadFiltered = props.leadCases.filter(matches);
