@@ -115,7 +115,32 @@ Deno.serve(async (req) => {
     const inst = await loadInstance(cloud, instance_name);
 
     if (mode === "pull") {
-      const desc = await fetchDescriptionFromWa(inst.base_url, inst.token, group_jid);
+      // 1) Tenta a instância do contexto.
+      let desc = await fetchDescriptionFromWa(inst.base_url, inst.token, group_jid);
+      let usedInstance = inst.instance_name;
+
+      // 2) Se falhar (instância não é membro do grupo), tenta fallback nas outras
+      //    instâncias ativas — mesma estratégia do GroupMembersDialog/invite-link.
+      if (desc === null) {
+        const { data: others } = await cloud
+          .from("whatsapp_instances")
+          .select("instance_name, base_url, instance_token")
+          .eq("is_active", true)
+          .neq("instance_name", inst.instance_name)
+          .limit(20);
+        for (const o of (others as any[]) || []) {
+          if (!o?.instance_token) continue;
+          const base = (o.base_url || "https://abraci.uazapi.com").replace(/\/$/, "");
+          const d = await fetchDescriptionFromWa(base, o.instance_token, group_jid);
+          if (d !== null) {
+            desc = d;
+            usedInstance = o.instance_name;
+            console.info(`[sync-group-description] descrição lida via fallback "${usedInstance}" (contexto: ${inst.instance_name})`);
+            break;
+          }
+        }
+      }
+
       if (desc === null) return fail("Não foi possível ler a descrição na UazAPI");
       const { error } = await external
         .from("whatsapp_groups_index")
@@ -131,7 +156,7 @@ Deno.serve(async (req) => {
           { onConflict: "group_jid,instance_name" },
         );
       if (error) return fail(`save: ${error.message}`);
-      return ok({ mode: "pull", description: desc });
+      return ok({ mode: "pull", description: desc, used_instance: usedInstance });
     }
 
     if (mode === "push") {
