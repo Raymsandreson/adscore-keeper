@@ -1851,6 +1851,43 @@ export function WhatsAppInbox() {
                   </div>
                 </div>
               )}
+              {aiPreview.identifiedContacts && aiPreview.identifiedContacts.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-sm font-semibold text-primary">Pessoas identificadas na conversa</p>
+                  <div className="space-y-2">
+                    {aiPreview.identifiedContacts.map((person, idx) => (
+                      <div key={idx} className="rounded-lg border p-3 space-y-1 text-sm">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="font-medium">
+                            {person.full_name || '(sem nome)'}
+                            {person.relationship && <span className="text-muted-foreground font-normal"> — {person.relationship}</span>}
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={creatingIdentified === idx}
+                            onClick={() => handleCreateIdentifiedContact(idx)}
+                          >
+                            {creatingIdentified === idx ? 'Criando...' : 'Criar e vincular'}
+                          </Button>
+                        </div>
+                        <div className="text-xs text-muted-foreground flex flex-wrap gap-x-3 gap-y-0.5">
+                          {person.phone && <span>📞 {person.phone}</span>}
+                          {person.cpf && <span>CPF: {person.cpf}</span>}
+                          {person.birth_date && <span>Nasc: {person.birth_date}</span>}
+                          {person.city && <span>{person.city}{person.state ? `/${person.state}` : ''}</span>}
+                          {person.profession && <span>{person.profession}</span>}
+                        </div>
+                        {(person.street || person.cep) && (
+                          <div className="text-xs text-muted-foreground">
+                            {[person.street, person.street_number, person.complement, person.neighborhood, person.cep].filter(Boolean).join(', ')}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
           <DialogFooter>
