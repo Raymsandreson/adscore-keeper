@@ -1,4 +1,4 @@
-import { useState, lazy, Suspense } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 
 const ProcessDetailSheet = lazy(() => import('@/components/cases/ProcessDetailSheet'));
 import { Input } from '@/components/ui/input';
@@ -298,6 +298,21 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
   const [linkLeadOpen, setLinkLeadOpen] = useState(false);
   const [linkContactOpen, setLinkContactOpen] = useState(false);
   const [linkCaseOpen, setLinkCaseOpen] = useState(false);
+
+  // Permite que o cabeçalho fixo (fora deste componente) dispare a abertura dos sheets de vínculo
+  useEffect(() => {
+    const onOpenLead = () => setLinkLeadOpen(true);
+    const onOpenCase = () => setLinkCaseOpen(true);
+    const onOpenContact = () => setLinkContactOpen(true);
+    window.addEventListener('activity-form:open-link-lead', onOpenLead);
+    window.addEventListener('activity-form:open-link-case', onOpenCase);
+    window.addEventListener('activity-form:open-link-contact', onOpenContact);
+    return () => {
+      window.removeEventListener('activity-form:open-link-lead', onOpenLead);
+      window.removeEventListener('activity-form:open-link-case', onOpenCase);
+      window.removeEventListener('activity-form:open-link-contact', onOpenContact);
+    };
+  }, []);
   const [processPopoverOpen, setProcessPopoverOpen] = useState(false);
   const [editProcessData, setEditProcessData] = useState<any>(null);
   const [loadingProcessEdit, setLoadingProcessEdit] = useState(false);

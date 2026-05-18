@@ -2908,15 +2908,11 @@ const ActivitiesPage = () => {
                       variant="outline"
                       size="sm"
                       className="h-7 text-xs gap-1 border-primary/30 text-primary hover:bg-primary/10"
-                      onClick={() => {
-                        const params = new URLSearchParams();
-                        params.set('newLead', 'true');
-                        if (selectedActivity?.id) params.set('activityId', selectedActivity.id);
-                        navigate(`/leads?${params.toString()}`);
-                      }}
+                      onClick={() => window.dispatchEvent(new CustomEvent('activity-form:open-link-lead'))}
+                      title="Vincular um lead existente ou criar um novo"
                     >
                       <Plus className="h-3 w-3" />
-                      Criar Lead
+                      Vincular Lead
                     </Button>
                   )}
                   {/* Chat Equipe moved to bottom action bar to reduce top clutter */}
