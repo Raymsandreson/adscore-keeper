@@ -1037,6 +1037,7 @@ export function WhatsAppInbox() {
     setCreatingIdentified(idx);
     try {
       const { data: { user: currentUser } } = await supabase.auth.getUser();
+      const extCreatedBy = await remapToExternal(currentUser?.id);
       const phoneDigits = person.phone ? String(person.phone).replace(/\D/g, '') : null;
       const insertPayload: Record<string, any> = {
         full_name: person.full_name || person.relationship || 'Contato identificado',
@@ -1054,7 +1055,7 @@ export function WhatsAppInbox() {
         email: person.email || null,
         profession: person.profession || null,
         notes: [person.relationship ? `Relação: ${person.relationship}` : '', person.notes || ''].filter(Boolean).join('\n') || null,
-        created_by: currentUser?.id || null,
+        created_by: extCreatedBy,
       };
       const { data: created, error: insertError } = await (externalSupabase as any)
         .from('contacts')
@@ -1063,7 +1064,7 @@ export function WhatsAppInbox() {
         .single();
       if (insertError) throw insertError;
       // Vincular ao lead atual
-      const { error: linkError } = await supabase
+      const { error: linkError } = await externalSupabase
         .from('contact_leads' as any)
         .insert({ contact_id: created.id, lead_id: selectedConversation.lead_id });
       if (linkError && linkError.code !== '23505') throw linkError;
