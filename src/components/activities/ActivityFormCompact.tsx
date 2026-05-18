@@ -10,7 +10,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { Search, X, ChevronDown, Copy, Loader2, UserPlus, Building2, Briefcase, Send, Info, Settings2 } from 'lucide-react';
+import { Search, X, ChevronDown, Copy, Loader2, UserPlus, Building2, Briefcase, Send, Info, Settings2, FileText } from 'lucide-react';
 import { ActivityTTSButton } from '@/components/voice/ActivityTTSButton';
 import { ActivityFieldSettingsDialog } from '@/components/activities/ActivityFieldSettingsDialog';
 import { ActivityMessageTemplateSettings } from '@/components/activities/ActivityMessageTemplateSettings';
@@ -378,6 +378,22 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
             <Button type="button" variant="outline" size="sm" className="h-6 px-2 text-[10px] gap-1" onClick={() => setLinkCaseOpen(true)}>
               <Briefcase className="h-3 w-3" /> Caso
             </Button>
+          )}
+          {props.formProcessTitle && (
+            <div className="flex items-center gap-0.5">
+              <Badge
+                variant="outline"
+                className="text-[10px] h-6 max-w-[220px] truncate cursor-pointer hover:bg-accent gap-1"
+                onClick={() => setLinkCaseOpen(true)}
+                title="Processo vinculado — clique para trocar"
+              >
+                <FileText className="h-3 w-3 shrink-0" />
+                {props.formProcessTitle}
+              </Badge>
+              <button type="button" onClick={() => { props.setFormProcessId(''); props.setFormProcessTitle(''); }} className="text-muted-foreground hover:text-foreground" title="Desvincular Processo">
+                <X className="h-3 w-3" />
+              </button>
+            </div>
           )}
       </div>
 

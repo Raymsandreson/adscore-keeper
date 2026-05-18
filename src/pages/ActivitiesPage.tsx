@@ -2859,6 +2859,22 @@ const ActivitiesPage = () => {
                         <p className="text-xs text-muted-foreground truncate">📁 {formLeadName}</p>
                       )
                     )}
+                    {(formCaseTitle || formProcessTitle) && (
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground mt-0.5">
+                        {formCaseTitle && (
+                          <span className="flex items-center gap-1 truncate" title={formCaseTitle}>
+                            <Briefcase className="h-3 w-3 shrink-0" />
+                            <span className="truncate">{formCaseTitle}</span>
+                          </span>
+                        )}
+                        {formProcessTitle && (
+                          <span className="flex items-center gap-1 truncate" title={formProcessTitle}>
+                            <FileText className="h-3 w-3 shrink-0" />
+                            <span className="truncate">{formProcessTitle}</span>
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
