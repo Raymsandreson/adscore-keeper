@@ -2960,18 +2960,19 @@ const ActivitiesPage = () => {
                 }
                 return null;
               })()}
-              {/* Nome do cliente (override) — vive no cabeçalho */}
-              <div className="flex items-center gap-2 mt-2">
-                <span className="text-[10px] text-muted-foreground uppercase tracking-wider whitespace-nowrap">Nome do cliente</span>
+              {/* Nome do cliente (override) — compacto no cabeçalho */}
+              <div className="flex items-center gap-1.5 mt-1.5 text-[11px] text-muted-foreground">
+                <User className="h-3 w-3 shrink-0" />
+                <span className="uppercase tracking-wider text-[9px] whitespace-nowrap">Cliente</span>
                 <Input
                   value={formClientNameOverride || ''}
                   onChange={(e) => setFormClientNameOverride(e.target.value)}
-                  placeholder={formLeadName ? `Auto: ${formLeadName}` : 'Preenchido automaticamente do lead'}
-                  className="h-7 text-xs flex-1"
+                  placeholder={formLeadName ? `Auto: ${formLeadName}` : '—'}
+                  className="h-6 text-[11px] px-1.5 border-0 border-b rounded-none bg-transparent focus-visible:ring-0 focus-visible:border-primary flex-1 min-w-0"
                   title="Se vazio, usa o nome do lead. Se preenchido, este nome aparece nos templates."
                 />
                 {formClientNameOverride && (
-                  <button type="button" onClick={() => setFormClientNameOverride('')} className="text-muted-foreground hover:text-foreground" title="Limpar">
+                  <button type="button" onClick={() => setFormClientNameOverride('')} className="text-muted-foreground hover:text-foreground shrink-0" title="Limpar">
                     <X className="h-3 w-3" />
                   </button>
                 )}

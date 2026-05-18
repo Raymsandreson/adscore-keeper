@@ -336,131 +336,21 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
         />
       </div>
 
-      {/* === ROW 2: Hierarchy links - Lead → Caso → Processo === */}
-      <div className="flex flex-wrap items-center gap-1.5">
-        {/* Lead */}
-        {props.formLeadName ? (
-          <div className="flex items-center gap-0.5">
-            <Badge
-              variant="secondary"
-              className="text-[10px] h-6 max-w-[160px] truncate cursor-copy hover:opacity-80 gap-1"
-              onClick={() => copyField(props.formLeadName)}
-              title="Clique para copiar"
-            >
-              <Building2 className="h-3 w-3 shrink-0" />
-              {props.formLeadName}
-            </Badge>
-            <button type="button" onClick={props.handleClearLead} className="text-muted-foreground hover:text-foreground">
-              <X className="h-3 w-3" />
-            </button>
-          </div>
-        ) : (
+      {/* === ROW 2a: Lead/Caso link buttons (only when nothing linked yet) ===
+          Vínculos confirmados de Lead/Caso/Processo vivem no cabeçalho da atividade. */}
+      {!props.formLeadName && !props.formCaseTitle && !props.formProcessTitle && (
+        <div className="flex flex-wrap items-center gap-1.5">
           <Button type="button" variant="outline" size="sm" className="h-6 px-2 text-[10px] gap-1" onClick={() => setLinkLeadOpen(true)}>
             <Building2 className="h-3 w-3" /> Lead
           </Button>
-        )}
-
-        {/* Separator → */}
-        {props.formLeadName && <span className="text-muted-foreground text-xs">→</span>}
-
-        {/* Case (only show if lead is selected, or always as option) */}
-        {props.formCaseTitle ? (
-          <div className="flex items-center gap-0.5">
-            <Badge
-              variant="secondary"
-              className="text-[10px] h-6 max-w-[160px] truncate cursor-copy hover:opacity-80 gap-1 bg-orange-100 text-orange-700 dark:bg-orange-950/30 dark:text-orange-400"
-              onClick={() => copyField(props.formCaseTitle)}
-              title="Clique para copiar"
-            >
-              <Briefcase className="h-3 w-3 shrink-0" />
-              {props.formCaseTitle}
-            </Badge>
-            <button type="button" onClick={() => { props.setFormCaseId(''); props.setFormCaseTitle(''); props.setFormProcessId(''); props.setFormProcessTitle(''); props.setCaseProcesses([]); }} className="text-muted-foreground hover:text-foreground">
-              <X className="h-3 w-3" />
-            </button>
-          </div>
-        ) : (
           <Button type="button" variant="outline" size="sm" className="h-6 px-2 text-[10px] gap-1" onClick={() => setLinkCaseOpen(true)}>
             <Briefcase className="h-3 w-3" /> Caso
           </Button>
-        )}
+        </div>
+      )}
 
-        {/* Separator → */}
-        {props.formCaseId && <span className="text-muted-foreground text-xs">→</span>}
-
-        {/* Process (only show if case is selected) */}
-        {props.formCaseId && (
-          props.formProcessTitle ? (() => {
-            const selectedProc = props.caseProcesses.find(p => p.id === props.formProcessId);
-            const firstAssunto = selectedProc?.assuntos?.[0];
-            return (
-              <div className="flex items-center gap-0.5">
-                <Popover open={processPopoverOpen} onOpenChange={setProcessPopoverOpen}>
-                  <PopoverTrigger asChild>
-                    <Badge
-                      variant="secondary"
-                      className="text-[10px] h-auto max-w-[180px] cursor-pointer hover:opacity-80 gap-1 bg-blue-100 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400 flex flex-col items-start py-0.5 px-2"
-                    >
-                      <span className="truncate w-full">{props.formProcessTitle}</span>
-                      {firstAssunto && (
-                        <span className="text-[9px] opacity-70 truncate w-full">({firstAssunto})</span>
-                      )}
-                    </Badge>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-72 p-3 text-xs space-y-2" side="bottom" align="start">
-                    <div className="font-semibold text-sm">Detalhes do Processo <span className="text-[10px] text-muted-foreground font-normal">(clique para copiar)</span></div>
-                    {selectedProc?.process_number && (
-                      <div className="cursor-copy hover:bg-muted/50 rounded px-1 -mx-1" onClick={() => copyField(selectedProc.process_number)}><span className="text-muted-foreground">Número:</span> {selectedProc.process_number}</div>
-                    )}
-                    {selectedProc?.title && (
-                      <div className="cursor-copy hover:bg-muted/50 rounded px-1 -mx-1" onClick={() => copyField(selectedProc.title)}><span className="text-muted-foreground">Título:</span> {selectedProc.title}</div>
-                    )}
-                    {selectedProc?.assuntos && selectedProc.assuntos.length > 0 && (
-                      <div className="cursor-copy hover:bg-muted/50 rounded px-1 -mx-1" onClick={() => copyField(selectedProc.assuntos!.join(', '))}><span className="text-muted-foreground">Assuntos:</span> {selectedProc.assuntos.join(', ')}</div>
-                    )}
-                    {selectedProc?.polo_passivo && (
-                      <div className="cursor-copy hover:bg-muted/50 rounded px-1 -mx-1" onClick={() => copyField(selectedProc.polo_passivo)}><span className="text-muted-foreground">Polo Passivo:</span> {selectedProc.polo_passivo}</div>
-                    )}
-                    {selectedProc?.tribunal && (
-                      <div className="cursor-copy hover:bg-muted/50 rounded px-1 -mx-1" onClick={() => copyField(selectedProc.tribunal)}><span className="text-muted-foreground">Tribunal/Vara:</span> {selectedProc.tribunal}</div>
-                    )}
-                    {selectedProc?.area && (
-                      <div className="cursor-copy hover:bg-muted/50 rounded px-1 -mx-1" onClick={() => copyField(selectedProc.area)}><span className="text-muted-foreground">Área:</span> {selectedProc.area}</div>
-                    )}
-                    {selectedProc?.envolvidos && selectedProc.envolvidos.length > 0 && (
-                      <div>
-                        <span className="text-muted-foreground">Partes:</span>
-                        <ul className="ml-2 mt-0.5 space-y-0.5">
-                          {selectedProc.envolvidos.map((e: any, i: number) => (
-                            <li key={i} className="cursor-copy hover:bg-muted/50 rounded px-1 -mx-1" onClick={() => copyField(e.nome || e.name)}>👤 {e.nome || e.name}{e.tipo_participacao ? ` (${e.tipo_participacao})` : ''}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                    <div className="flex gap-1.5 mt-1">
-                      <Button type="button" variant="default" size="sm" className="flex-1 text-[10px] h-6" onClick={() => { setProcessPopoverOpen(false); openProcessEditor(props.formProcessId); }} disabled={loadingProcessEdit}>
-                        {loadingProcessEdit ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Editar / Vincular Workflow'}
-                      </Button>
-                      <Button type="button" variant="outline" size="sm" className="flex-1 text-[10px] h-6" onClick={() => { setProcessPopoverOpen(false); setLinkCaseOpen(true); }}>
-                        Trocar
-                      </Button>
-                    </div>
-                  </PopoverContent>
-                </Popover>
-                <button type="button" onClick={() => { props.setFormProcessId(''); props.setFormProcessTitle(''); }} className="text-muted-foreground hover:text-foreground">
-                  <X className="h-3 w-3" />
-                </button>
-              </div>
-            );
-          })() : props.caseProcesses.length > 0 ? (
-            <Button type="button" variant="outline" size="sm" className="h-6 px-2 text-[10px] gap-1" onClick={() => setLinkCaseOpen(true)}>
-              Processo
-            </Button>
-          ) : null
-        )}
-
-        {/* Contact */}
-        <span className="text-muted-foreground text-xs">|</span>
+      {/* === ROW 2b: Contact + Sistema (sempre visíveis) === */}
+      <div className="flex flex-wrap items-center gap-1.5">
         {props.formContactName ? (
           <div className="flex items-center gap-0.5">
             <Badge
@@ -482,7 +372,6 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
           </Button>
         )}
 
-        {/* System activity toggle (alternativa ao vínculo obrigatório) */}
         {props.setFormIsSystem && (
           <>
             <span className="text-muted-foreground text-xs">|</span>
