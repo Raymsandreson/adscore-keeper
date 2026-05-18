@@ -229,6 +229,8 @@ const ActivitiesPage = () => {
   const [formWhatWasDone, setFormWhatWasDone] = useState('');
   const [formCurrentStatus, setFormCurrentStatus] = useState('');
   const [formNextSteps, setFormNextSteps] = useState('');
+  const [formSolicitacao, setFormSolicitacao] = useState('');
+  const [formRespostaJuizo, setFormRespostaJuizo] = useState('');
   const [formType, setFormType] = useState('');
   const [formPriority, setFormPriority] = useState('normal');
   const [formLeadId, setFormLeadId] = useState<string>('');
