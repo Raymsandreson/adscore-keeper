@@ -855,9 +855,11 @@ export function WhatsAppInbox() {
           'expected_birth_date', 'client_classification',
         ];
         for (const field of allowedLeadFields) {
+          if (visibleLeadFieldKeys && !visibleLeadFieldKeys.has(field)) continue;
+          if (field === 'expected_birth_date' && birthDateCustomFieldId) continue;
           if (extracted[field]) leadFields[field] = extracted[field];
         }
-        if (!leadFields.expected_birth_date) {
+        if (!leadFields.expected_birth_date && !birthDateCustomFieldId && (!visibleLeadFieldKeys || visibleLeadFieldKeys.has('expected_birth_date'))) {
           const deterministicDate = extractNearestExpectedBirthDate(selectedConversation.messages || []);
           if (deterministicDate) leadFields.expected_birth_date = deterministicDate;
         }
@@ -865,6 +867,10 @@ export function WhatsAppInbox() {
           leadFields.client_classification = 'parto';
         }
         const extractedCustom = (extracted && extracted.custom_fields) || {};
+        const deterministicBirthDate = extractNearestExpectedBirthDate(selectedConversation.messages || []);
+        if (birthDateCustomFieldId && deterministicBirthDate && !extractedCustom[birthDateCustomFieldId]) {
+          extractedCustom[birthDateCustomFieldId] = deterministicBirthDate;
+        }
         for (const [fieldId, value] of Object.entries(extractedCustom)) {
           const meta = customMeta[fieldId];
           if (!meta) continue;
