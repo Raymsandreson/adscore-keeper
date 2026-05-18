@@ -886,7 +886,7 @@ export function WhatsAppInbox() {
         {/* Trigger fino sempre visível */}
         <div className="h-1.5 bg-gradient-to-r from-orange-400/40 via-primary/40 to-pink-400/40 hover:h-2 transition-all cursor-pointer" aria-label="Mostrar Foco Agora" />
         {/* Painel revelado no hover */}
-        <div className="absolute left-0 right-0 top-full z-40 max-h-0 overflow-hidden opacity-0 group-hover/focus:max-h-[600px] group-hover/focus:opacity-100 transition-all duration-200 bg-background shadow-lg border-b">
+        <div className="absolute left-0 right-0 top-full z-40 max-h-0 overflow-hidden opacity-0 group-hover/focus:max-h-[900px] group-hover/focus:opacity-100 transition-all duration-200 bg-background shadow-lg border-b">
           <FocusDashboard
             onOpenMissingDocs={() => toast.info('Filtro "faltam documentos" em breve')}
             onOpenZapsignPending={() => toast.info('Lista de pendentes ZapSign em breve')}
