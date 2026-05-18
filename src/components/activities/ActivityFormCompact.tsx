@@ -649,7 +649,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
             const bottomRow = visible.slice(3);
             return (
               <>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 items-stretch auto-rows-fr">
+                <div className="flex flex-col gap-2.5">
                   {topRow.map(renderField)}
                 </div>
 
