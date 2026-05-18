@@ -11,8 +11,8 @@ export interface ActivityFieldSetting {
 }
 
 const DEFAULT_FIELDS: ActivityFieldSetting[] = [
-  { id: '1', field_key: 'what_was_done', label: 'O que foi feito?', display_order: 1, include_in_message: true, placeholder: 'Descreva o que foi realizado...' },
-  { id: '2', field_key: 'current_status', label: 'Como está?', display_order: 2, include_in_message: true, placeholder: 'Situação atual do caso...' },
+  { id: '2', field_key: 'current_status', label: 'Como está?', display_order: 1, include_in_message: true, placeholder: 'Situação atual do caso...' },
+  { id: '1', field_key: 'what_was_done', label: 'O que foi feito?', display_order: 2, include_in_message: true, placeholder: 'Descreva o que foi realizado...' },
   { id: '3', field_key: 'next_steps', label: 'Próximo passo', display_order: 3, include_in_message: true, placeholder: 'Qual será o próximo passo...' },
   { id: '4', field_key: 'notes', label: 'Observações', display_order: 4, include_in_message: false, placeholder: 'Notas adicionais...' },
 ];
