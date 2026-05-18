@@ -1345,12 +1345,16 @@ export function ContactsListPage() {
                           </span>
                           <span
                             className="text-sm truncate cursor-pointer hover:underline"
-                            title={group.lead_id ? 'Abrir lead' : 'Sem lead — abrir conversa do grupo'}
-                            onClick={() => openGroupLead(group.group_jid)}
+                            title="Abrir conversa do grupo"
+                            onClick={() => openGroupChat(group.group_jid)}
                           >
                             {highlight(group.group_name, groupSearchScope === 'group')}
                           </span>
-                          <span className="text-sm truncate" title={group.lead_name || ''}>
+                          <span
+                            className={`text-sm truncate ${group.lead_id ? 'cursor-pointer hover:underline' : 'text-muted-foreground'}`}
+                            title={group.lead_id ? 'Abrir lead' : 'Sem lead vinculado'}
+                            onClick={() => group.lead_id && openGroupLead(group.group_jid)}
+                          >
                             {highlight(group.lead_name, groupSearchScope === 'lead')}
                           </span>
                           <div className="flex items-center gap-1">
