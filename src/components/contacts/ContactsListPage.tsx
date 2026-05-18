@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useContacts, Contact } from '@/hooks/useContacts';
 import { ContactDetailSheet } from './ContactDetailSheet';
 import { CreateContactDialog } from './CreateContactDialog';
@@ -22,10 +23,15 @@ import { toast } from 'sonner';
 import {
   Search, Users, Send, Plus, Trash2, Radio, UserPlus,
   Phone, Loader2, X, ImagePlus, Bot, BotOff, Filter, UsersRound, Wand2, Info,
-  SlidersHorizontal, ArrowDownAZ, ArrowUpAZ, AlertTriangle, CheckCircle2, ClipboardCheck
+  SlidersHorizontal, ArrowDownAZ, ArrowUpAZ, AlertTriangle, CheckCircle2, ClipboardCheck, MessageCircle
 } from 'lucide-react';
 
 export function ContactsListPage() {
+  const navigate = useNavigate();
+  const openGroupChat = (jid: string) => {
+    if (!jid) return;
+    navigate(`/whatsapp?openChat=${encodeURIComponent(jid)}`);
+  };
   const { contacts, loading: contactsLoading, fetchContacts, totalCount, stats } = useContacts();
   const {
     lists, loading: listsLoading, createList, deleteList,
@@ -1069,12 +1075,17 @@ export function ContactsListPage() {
           <div className="flex-1 min-h-0 overflow-y-auto">
             {selectedGroup ? (
               <div className="space-y-1">
-                <div className="p-3 mb-2 rounded-lg bg-muted/50 border">
-                  <p className="text-sm font-medium">{groups.find(g => g.group_jid === selectedGroup)?.group_name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    Lead: {groups.find(g => g.group_jid === selectedGroup)?.lead_name} •
-                    Status: <Badge variant="outline" className="text-[10px] ml-1">{groups.find(g => g.group_jid === selectedGroup)?.lead_status || 'N/A'}</Badge>
-                  </p>
+                <div className="p-3 mb-2 rounded-lg bg-muted/50 border flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate">{groups.find(g => g.group_jid === selectedGroup)?.group_name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Lead: {groups.find(g => g.group_jid === selectedGroup)?.lead_name} •
+                      Status: <Badge variant="outline" className="text-[10px] ml-1">{groups.find(g => g.group_jid === selectedGroup)?.lead_status || 'N/A'}</Badge>
+                    </p>
+                  </div>
+                  <Button size="sm" variant="default" className="shrink-0" onClick={() => openGroupChat(selectedGroup!)}>
+                    <MessageCircle className="h-4 w-4 mr-1" /> Abrir conversa
+                  </Button>
                 </div>
                 {groupContactsLoading ? (
                   <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
@@ -1215,7 +1226,7 @@ export function ContactsListPage() {
                         {mismatched} divergente(s)
                       </span>
                     </div>
-                    <div className="grid grid-cols-[40px_60px_1fr_1fr_24px] gap-2 px-3 py-2 text-[11px] font-medium text-muted-foreground border-b">
+                    <div className="grid grid-cols-[40px_60px_1fr_1fr_64px] gap-2 px-3 py-2 text-[11px] font-medium text-muted-foreground border-b">
                       <span></span>
                       <span>Nº caso</span>
                       <span>Nome do grupo</span>
@@ -1231,7 +1242,7 @@ export function ContactsListPage() {
                       return (
                         <div
                           key={group.group_jid}
-                          className={`grid grid-cols-[40px_60px_1fr_1fr_24px] gap-2 items-center p-3 rounded-lg border transition-colors hover:bg-accent/50 ${!matches ? 'border-amber-500/40 bg-amber-500/5' : ''}`}
+                          className={`grid grid-cols-[40px_60px_1fr_1fr_64px] gap-2 items-center p-3 rounded-lg border transition-colors hover:bg-accent/50 ${!matches ? 'border-amber-500/40 bg-amber-500/5' : ''}`}
                         >
                           <Checkbox
                             checked={!excludedGroups.has(group.group_jid)}
@@ -1250,23 +1261,28 @@ export function ContactsListPage() {
                             {caseNum != null ? caseNum : <span className="text-muted-foreground">—</span>}
                           </span>
                           <span
-                            className="text-sm truncate cursor-pointer"
-                            title={group.group_name || ''}
-                            onClick={() => handleSelectGroup(group.group_jid)}
+                            className="text-sm truncate cursor-pointer hover:underline"
+                            title="Abrir conversa do grupo"
+                            onClick={() => openGroupChat(group.group_jid)}
                           >
                             {highlight(group.group_name, groupSearchScope === 'group')}
                           </span>
                           <span className="text-sm truncate" title={group.lead_name || ''}>
                             {highlight(group.lead_name, groupSearchScope === 'lead')}
                           </span>
-                          {matches ? (
-                            <CheckCircle2 className="h-4 w-4 text-emerald-500" aria-label="Bate" />
-                          ) : (
-                            <AlertTriangle
-                              className="h-4 w-4 text-amber-500"
-                              aria-label={hasBoth ? 'Nomes diferentes' : 'Faltando nome'}
-                            />
-                          )}
+                          <div className="flex items-center gap-1">
+                            {matches ? (
+                              <CheckCircle2 className="h-4 w-4 text-emerald-500" aria-label="Bate" />
+                            ) : (
+                              <AlertTriangle
+                                className="h-4 w-4 text-amber-500"
+                                aria-label={hasBoth ? 'Nomes diferentes' : 'Faltando nome'}
+                              />
+                            )}
+                            <Button size="icon" variant="ghost" className="h-6 w-6" title="Ver contatos do grupo" onClick={(e) => { e.stopPropagation(); handleSelectGroup(group.group_jid); }}>
+                              <Users className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
                         </div>
                       );
                     })}
@@ -1297,7 +1313,8 @@ export function ContactsListPage() {
                       <UsersRound className="h-5 w-5 text-primary shrink-0" />
                       <div
                         className="flex-1 min-w-0 cursor-pointer"
-                        onClick={() => handleSelectGroup(group.group_jid)}
+                        title="Abrir conversa do grupo"
+                        onClick={() => openGroupChat(group.group_jid)}
                       >
                         <p className="font-medium text-sm truncate">
                           {highlight(group.group_name, groupSearchScope === 'group')}
@@ -1306,6 +1323,9 @@ export function ContactsListPage() {
                           Lead: {highlight(group.lead_name, groupSearchScope === 'lead')} • {group.contact_count} contato(s)
                         </p>
                       </div>
+                      <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0" title="Ver contatos do grupo" onClick={(e) => { e.stopPropagation(); handleSelectGroup(group.group_jid); }}>
+                        <Users className="h-4 w-4" />
+                      </Button>
                       <Badge variant={group.lead_status === 'closed' ? 'default' : 'outline'} className="text-[10px] shrink-0">
                         {group.lead_status || 'N/A'}
                       </Badge>
