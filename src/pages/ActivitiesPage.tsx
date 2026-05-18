@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, useCallback, type Dispatch, type SetStateAction } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback, lazy, Suspense, type Dispatch, type SetStateAction } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { usePageState } from '@/hooks/usePageState';
 import { supabase } from '@/integrations/supabase/client';
@@ -229,6 +229,8 @@ const ActivitiesPage = () => {
   const [formWhatWasDone, setFormWhatWasDone] = useState('');
   const [formCurrentStatus, setFormCurrentStatus] = useState('');
   const [formNextSteps, setFormNextSteps] = useState('');
+  const [formSolicitacao, setFormSolicitacao] = useState('');
+  const [formRespostaJuizo, setFormRespostaJuizo] = useState('');
   const [formType, setFormType] = useState('');
   const [formPriority, setFormPriority] = useState('normal');
   const [formLeadId, setFormLeadId] = useState<string>('');
@@ -275,6 +277,7 @@ const ActivitiesPage = () => {
   const [completeNotifyOpen, setCompleteNotifyOpen] = useState(false);
   const [completeNotifySource, setCompleteNotifySource] = useState<'sheet' | 'workflow'>('sheet');
   const [showLeadSheet, setShowLeadSheet] = useState(false);
+  const [showProcessSheetId, setShowProcessSheetId] = useState<string | null>(null);
   const [viewModeRaw, setViewMode] = usePageState<'list' | 'blocks'>('activities_viewMode', 'blocks');
   const viewMode = (viewModeRaw === 'list' ? 'list' : 'blocks') as 'list' | 'blocks';
   const [formMatrixQuadrant, setFormMatrixQuadrant] = useState<string>('');
@@ -469,6 +472,8 @@ const ActivitiesPage = () => {
     setFormWhatWasDone('');
     setFormCurrentStatus('');
     setFormNextSteps('');
+    setFormSolicitacao('');
+    setFormRespostaJuizo('');
     setFormType(timeBlockSettings.length > 0 ? timeBlockSettings[0].activityType : '');
     setFormPriority('normal');
     setFormLeadId('');
@@ -517,6 +522,8 @@ const ActivitiesPage = () => {
       what_was_done: formWhatWasDone || null,
       current_status_notes: formCurrentStatus || null,
       next_steps: formNextSteps || null,
+      solicitacao: formSolicitacao || null,
+      resposta_juizo: formRespostaJuizo || null,
       activity_type: formType,
       priority: formPriority,
       lead_id: formLeadId || null,
@@ -578,6 +585,8 @@ const ActivitiesPage = () => {
     setFormWhatWasDone(activity.what_was_done || '');
     setFormCurrentStatus(activity.current_status_notes || '');
     setFormNextSteps(activity.next_steps || '');
+    setFormSolicitacao((activity as any).solicitacao || '');
+    setFormRespostaJuizo((activity as any).resposta_juizo || '');
     setFormType(activity.activity_type);
     setFormPriority(activity.priority || 'normal');
     setFormLeadId(activity.lead_id || '');
@@ -704,6 +713,8 @@ const ActivitiesPage = () => {
       what_was_done: formWhatWasDone || null,
       current_status_notes: formCurrentStatus || null,
       next_steps: formNextSteps || null,
+      solicitacao: formSolicitacao || null,
+      resposta_juizo: formRespostaJuizo || null,
       activity_type: formType,
       priority: formPriority,
       lead_id: formLeadId || null,
@@ -755,6 +766,8 @@ const ActivitiesPage = () => {
         what_was_done: formWhatWasDone || null,
         current_status_notes: formCurrentStatus || null,
         next_steps: formNextSteps || null,
+        solicitacao: formSolicitacao || null,
+        resposta_juizo: formRespostaJuizo || null,
         activity_type: formType,
         priority: formPriority,
         lead_id: formLeadId || null,
@@ -900,6 +913,8 @@ const ActivitiesPage = () => {
     setFormWhatWasDone(activity.what_was_done || '');
     setFormCurrentStatus(activity.current_status_notes || '');
     setFormNextSteps(activity.next_steps || '');
+    setFormSolicitacao((activity as any).solicitacao || '');
+    setFormRespostaJuizo((activity as any).resposta_juizo || '');
     setFormType(activity.activity_type);
     setFormPriority(activity.priority || 'normal');
     setFormLeadId(activity.lead_id || '');
@@ -965,6 +980,7 @@ const ActivitiesPage = () => {
     await updateActivity(selectedActivity.id, {
       title: formTitle, what_was_done: formWhatWasDone || null,
       current_status_notes: formCurrentStatus || null, next_steps: formNextSteps || null,
+      solicitacao: formSolicitacao || null, resposta_juizo: formRespostaJuizo || null,
       activity_type: formType, priority: formPriority, lead_id: formLeadId || null,
       lead_name: formLeadName || null, assigned_to: formAssignedTo || null,
       assigned_to_name: formAssignedToName || null, deadline: formDeadline || null,
@@ -1346,7 +1362,7 @@ const ActivitiesPage = () => {
       const dias = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
       return `${format(d, 'dd/MM/yyyy')} ${dias[d.getDay()]}`;
     })() : '';
-    const valueMap: Record<string, string> = { what_was_done: stripHtml(formWhatWasDone), current_status: stripHtml(formCurrentStatus), next_steps: stripHtml(formNextSteps), notes: stripHtml(formNotes) };
+    const valueMap: Record<string, string> = { what_was_done: stripHtml(formWhatWasDone), current_status: stripHtml(formCurrentStatus), next_steps: stripHtml(formNextSteps), solicitacao: stripHtml(formSolicitacao), resposta_juizo: stripHtml(formRespostaJuizo), notes: stripHtml(formNotes) };
     const fieldLines = fieldSettings.filter(f => f.include_in_message).map(f => `*${f.label}:* ${valueMap[f.field_key] || '—'}`).join('\n\n');
     const createdByName = selectedActivity ? resolveUserName(selectedActivity.created_by) : resolveUserName(user?.id || null);
     const createdAtFmt = selectedActivity ? format(parseISO(selectedActivity.created_at), "dd/MM/yyyy 'às' HH:mm") : format(new Date(), "dd/MM/yyyy 'às' HH:mm");
@@ -1481,6 +1497,8 @@ const ActivitiesPage = () => {
       formWhatWasDone={formWhatWasDone} setFormWhatWasDone={setFormWhatWasDone}
       formCurrentStatus={formCurrentStatus} setFormCurrentStatus={setFormCurrentStatus}
       formNextSteps={formNextSteps} setFormNextSteps={setFormNextSteps}
+      formSolicitacao={formSolicitacao} setFormSolicitacao={setFormSolicitacao}
+      formRespostaJuizo={formRespostaJuizo} setFormRespostaJuizo={setFormRespostaJuizo}
       formNotes={formNotes} setFormNotes={setFormNotes}
       teamMembers={teamMembers}
       routineActivityTypes={routineActivityTypes}
@@ -2907,6 +2925,18 @@ const ActivitiesPage = () => {
                       Lead
                     </Button>
                   )}
+                  {formProcessId && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs gap-1"
+                      onClick={() => setShowProcessSheetId(formProcessId)}
+                      title="Ver últimas movimentações do processo"
+                    >
+                      <FileText className="h-3 w-3" />
+                      Últimas movimentações
+                    </Button>
+                  )}
                   <Button variant="ghost" size="icon" className="h-7 w-7" onClick={closeSheet}>
                     <X className="h-4 w-4" />
                   </Button>
@@ -3010,7 +3040,7 @@ const ActivitiesPage = () => {
 
             {/* Form body - scrollable */}
             <div className="flex-1 overflow-y-auto p-4">
-              <div className="max-w-2xl">
+              <div className="max-w-[1200px] mx-auto">
                 {activityFormContent}
 
                 {sheetMode === 'edit' && selectedActivity?.completed_at && (
@@ -3166,6 +3196,8 @@ const ActivitiesPage = () => {
                               what_was_done: formWhatWasDone || null,
                               current_status_notes: formCurrentStatus || null,
                               next_steps: formNextSteps || null,
+                              solicitacao: formSolicitacao || null,
+                              resposta_juizo: formRespostaJuizo || null,
                               activity_type: formType,
                               priority: formPriority,
                               lead_id: formLeadId || null,
@@ -3348,6 +3380,22 @@ const ActivitiesPage = () => {
           mode="sheet"
         />
       )}
+
+      {/* Process Detail Sheet — Últimas movimentações */}
+      {showProcessSheetId && (() => {
+        const proc = caseProcesses.find(p => p.id === showProcessSheetId);
+        if (!proc) return null;
+        const ProcessDetailSheet = lazy(() => import('@/components/cases/ProcessDetailSheet'));
+        return (
+          <Suspense fallback={null}>
+            <ProcessDetailSheet
+              open={!!showProcessSheetId}
+              onOpenChange={(o) => { if (!o) setShowProcessSheetId(null); }}
+              process={proc}
+            />
+          </Suspense>
+        );
+      })()}
 
       <CompleteAndNotifyDialog
         open={completeNotifyOpen}

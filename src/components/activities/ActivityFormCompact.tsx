@@ -58,6 +58,8 @@ interface ActivityFormCompactProps {
   formWhatWasDone: string; setFormWhatWasDone: (v: string) => void;
   formCurrentStatus: string; setFormCurrentStatus: (v: string) => void;
   formNextSteps: string; setFormNextSteps: (v: string) => void;
+  formSolicitacao: string; setFormSolicitacao: (v: string) => void;
+  formRespostaJuizo: string; setFormRespostaJuizo: (v: string) => void;
   formNotes: string; setFormNotes: (v: string) => void;
   // Data
   teamMembers: TeamMember[];
@@ -586,9 +588,15 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
               what_was_done: [props.formWhatWasDone, props.setFormWhatWasDone],
               current_status: [props.formCurrentStatus, props.setFormCurrentStatus],
               next_steps: [props.formNextSteps, props.setFormNextSteps],
+              solicitacao: [props.formSolicitacao, props.setFormSolicitacao],
+              resposta_juizo: [props.formRespostaJuizo, props.setFormRespostaJuizo],
               notes: [props.formNotes, props.setFormNotes],
             };
-            const compactEditorHeight = 'clamp(110px, 20vh, 220px)';
+            const labelMap: Record<string, string> = {
+              solicitacao: 'Solicitação',
+              resposta_juizo: 'Resposta do juízo',
+            };
+            const compactEditorHeight = '160px';
             const renderField = (field: any) => {
               const entry = valueMap[field.field_key];
               if (!entry) return null;
@@ -643,26 +651,62 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
                       className="mt-0.5 h-full"
                     />
                   </div>
-
                 </div>
               );
             };
-            // Top row: 3 fields, Bottom row: remaining (typically 2)
-            const visible = props.fieldSettings.filter((f: any) => valueMap[f.field_key]);
-            const topRow = visible.slice(0, 3);
-            const bottomRow = visible.slice(3);
+            // Render fixed extra field (label fallback when not in fieldSettings)
+            const renderFixedExtra = (key: 'solicitacao' | 'resposta_juizo') => {
+              const [value, setter] = valueMap[key];
+              return (
+                <div key={key} className="min-w-0 flex flex-col">
+                  <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{labelMap[key]}</span>
+                  <div className="flex-1 min-h-0">
+                    <RichTextEditor
+                      value={value}
+                      onChange={setter}
+                      placeholder=""
+                      minHeight={compactEditorHeight}
+                      height={compactEditorHeight}
+                      maxHeight={compactEditorHeight}
+                      onExpand={() => setExpandedFieldKey(key)}
+                      className="mt-0.5 h-full"
+                    />
+                  </div>
+                </div>
+              );
+            };
+            // Top 3 columns: Como está / O que foi feito / Próximos passos (in the order configured)
+            const corePrimary = props.fieldSettings.filter((f: any) =>
+              ['what_was_done', 'current_status', 'next_steps'].includes(f.field_key)
+            );
+            const coreSecondary = props.fieldSettings.filter((f: any) =>
+              ['solicitacao', 'resposta_juizo'].includes(f.field_key)
+            );
+            const otherFields = props.fieldSettings.filter((f: any) =>
+              valueMap[f.field_key] &&
+              !['what_was_done', 'current_status', 'next_steps', 'solicitacao', 'resposta_juizo'].includes(f.field_key)
+            );
+            // If solicitacao/resposta_juizo not configured in fieldSettings, render them as fixed extras
+            const hasSolicitacaoConfigured = coreSecondary.some((f: any) => f.field_key === 'solicitacao');
+            const hasRespostaConfigured = coreSecondary.some((f: any) => f.field_key === 'resposta_juizo');
             return (
               <>
-                <div className="flex flex-col gap-2.5">
-                  {topRow.map(renderField)}
+                {corePrimary.length > 0 && (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 items-stretch">
+                    {corePrimary.map(renderField)}
+                  </div>
+                )}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 items-stretch">
+                  {hasSolicitacaoConfigured
+                    ? renderField(coreSecondary.find((f: any) => f.field_key === 'solicitacao'))
+                    : renderFixedExtra('solicitacao')}
+                  {hasRespostaConfigured
+                    ? renderField(coreSecondary.find((f: any) => f.field_key === 'resposta_juizo'))
+                    : renderFixedExtra('resposta_juizo')}
                 </div>
-
-                {bottomRow.length > 0 && (
-                  <div className={cn(
-                    "grid gap-2.5",
-                    bottomRow.length === 1 ? "grid-cols-1" : "grid-cols-1 md:grid-cols-2"
-                  )}>
-                    {bottomRow.map(renderField)}
+                {otherFields.length > 0 && (
+                  <div className="flex flex-col gap-2.5">
+                    {otherFields.map(renderField)}
                   </div>
                 )}
               </>
@@ -679,22 +723,30 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
               what_was_done: [props.formWhatWasDone, props.setFormWhatWasDone],
               current_status: [props.formCurrentStatus, props.setFormCurrentStatus],
               next_steps: [props.formNextSteps, props.setFormNextSteps],
+              solicitacao: [props.formSolicitacao, props.setFormSolicitacao],
+              resposta_juizo: [props.formRespostaJuizo, props.setFormRespostaJuizo],
               notes: [props.formNotes, props.setFormNotes],
+            };
+            const fallbackLabels: Record<string, string> = {
+              solicitacao: 'Solicitação',
+              resposta_juizo: 'Resposta do juízo',
             };
             const fieldDef = props.fieldSettings.find((f: any) => f.field_key === expandedFieldKey);
             const entry = fieldValueMap[expandedFieldKey];
-            if (!fieldDef || !entry) return null;
+            if (!entry) return null;
             const [val, set] = entry;
+            const label = fieldDef?.label || fallbackLabels[expandedFieldKey] || expandedFieldKey;
+            const placeholder = fieldDef?.placeholder || '';
             return (
               <>
                 <SheetHeader>
-                  <SheetTitle className="text-base">{fieldDef.label}</SheetTitle>
+                  <SheetTitle className="text-base">{label}</SheetTitle>
                 </SheetHeader>
                 <div className="flex-1 pt-4">
                   <RichTextEditor
                     value={val}
                     onChange={set}
-                    placeholder={fieldDef.placeholder || ''}
+                    placeholder={placeholder}
                     minHeight="300px"
                     autoFocus
                   />
