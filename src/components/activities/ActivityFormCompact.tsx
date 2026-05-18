@@ -564,51 +564,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
         </div>
       </div>
 
-      {/* === ROW 3: Matrix as inline chips === */}
-      <div className="flex items-center gap-1.5">
-        <span className="text-[10px] text-muted-foreground uppercase tracking-wider shrink-0">Matriz</span>
-        {MATRIX_OPTIONS.map(q => {
-          const isActive = props.formMatrixQuadrant === q.value;
-          return (
-            <button
-              key={q.value}
-              type="button"
-              className={cn(
-                'px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all',
-                isActive ? q.active : q.color,
-                !isActive && 'hover:opacity-80'
-              )}
-              onClick={() => props.setFormMatrixQuadrant(isActive ? '' : q.value)}
-            >
-              {q.emoji} {q.label}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* === Nome do cliente (override personalizado para templates) === */}
-      {props.setFormClientNameOverride && (
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] text-muted-foreground uppercase tracking-wider whitespace-nowrap">Nome do cliente</span>
-          <Input
-            value={props.formClientNameOverride || ''}
-            onChange={(e) => props.setFormClientNameOverride?.(e.target.value)}
-            placeholder={props.formLeadName ? `Auto: ${props.formLeadName}` : 'Será preenchido automaticamente do lead'}
-            className="h-7 text-xs flex-1"
-            title="Se vazio, usa automaticamente o nome do lead vinculado. Se preenchido, este nome será usado nos templates de mensagem."
-          />
-          {props.formClientNameOverride && (
-            <button
-              type="button"
-              onClick={() => props.setFormClientNameOverride?.('')}
-              className="text-muted-foreground hover:text-foreground"
-              title="Limpar (voltar ao automático)"
-            >
-              <X className="h-3 w-3" />
-            </button>
-          )}
-        </div>
-      )}
+      {/* Matriz Eisenhower e Nome do cliente removidos do form — cliente vive no cabeçalho */}
 
       {/* === ROW 4: Dates side by side === */}
       <div className="grid grid-cols-2 gap-3">
