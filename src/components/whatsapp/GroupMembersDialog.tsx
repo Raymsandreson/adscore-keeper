@@ -499,12 +499,21 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
     });
   };
 
+  // Grupos não são contatos — esconder qualquer participante cujo nome (ou contato vinculado) comece com "Grupo"
+  const isGroupLikeName = (name?: string | null) =>
+    !!name && /^\s*grupo\b/i.test(name.trim());
+
+  const nonGroupParticipants = participants.filter(p => {
+    const contact = contactsMap.get(p.phone);
+    return !isGroupLikeName(p.name) && !isGroupLikeName(contact?.full_name);
+  });
+
   const filteredParticipants = searchQuery
-    ? participants.filter(p =>
+    ? nonGroupParticipants.filter(p =>
         p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         p.phone.includes(searchQuery)
       )
-    : participants;
+    : nonGroupParticipants;
 
   return (
     <>
