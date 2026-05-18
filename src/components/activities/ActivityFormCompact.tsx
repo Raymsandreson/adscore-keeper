@@ -389,7 +389,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
       {/* === ROW 2: Core selects - 4 columns === */}
       <div className="grid grid-cols-4 gap-2">
         <div>
-          <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Assessor</span>
+          <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Assessor *</span>
           <Select value={props.formAssignedTo} onValueChange={props.handleSelectAssignee}>
             <SelectTrigger className="h-8 text-xs mt-0.5"><SelectValue placeholder="—" /></SelectTrigger>
             <SelectContent>
@@ -442,7 +442,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
       <div className="grid grid-cols-2 gap-3">
         <div>
           <div className="flex items-center justify-between mb-0.5">
-            <span className="text-[10px] text-muted-foreground uppercase tracking-wider">📅 Prazo</span>
+            <span className="text-[10px] text-muted-foreground uppercase tracking-wider">📅 Prazo *</span>
             {props.deadlineDateCount !== null && props.formDeadline && (
               <span className={cn("text-[9px] font-medium px-1.5 py-0.5 rounded-full",
                 props.deadlineDateCount > 0 ? "bg-warning/10 text-warning" : "bg-success/10 text-success"
@@ -455,7 +455,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
         </div>
         <div>
           <div className="flex items-center justify-between mb-0.5">
-            <span className="text-[10px] text-muted-foreground uppercase tracking-wider">🔔 Notificação</span>
+            <span className="text-[10px] text-muted-foreground uppercase tracking-wider">🔔 Notificação *</span>
             {props.notifDateCount !== null && props.formNotificationDate && (
               <span className={cn("text-[9px] font-medium px-1.5 py-0.5 rounded-full",
                 props.notifDateCount > 0 ? "bg-warning/10 text-warning" : "bg-success/10 text-success"
