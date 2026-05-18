@@ -634,11 +634,12 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
                       value={value}
                       onChange={setter}
                       placeholder={field.placeholder || ''}
-                      minHeight="32px"
+                      minHeight="clamp(64px, 18vh, 220px)"
                       onExpand={() => setExpandedFieldKey(field.field_key)}
                       className="mt-0.5"
                     />
                   </div>
+
                 </div>
               );
             };
