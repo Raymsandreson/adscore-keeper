@@ -789,10 +789,45 @@ export function WhatsAppInbox() {
 
   const handleCreateContact = async () => {
     if (!selectedConversation) return;
-    // Extract data from conversation
     const extracted = await extractConversationData('contact');
-    setContactDefaults(extracted);
-    setShowCreateContactDialog(true);
+    const normalizedPhone = selectedConversation.phone.replace(/\D/g, '');
+    try {
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      const extCreatedBy = await remapToExternal(currentUser?.id);
+      const { data: existingContact } = await externalSupabase
+        .from('contacts')
+        .select('id, full_name, phone')
+        .or(`phone.eq.${selectedConversation.phone},phone.eq.${normalizedPhone},phone.ilike.%${normalizedPhone.slice(-8)}%`)
+        .limit(1)
+        .maybeSingle();
+
+      let contactId = existingContact?.id;
+      if (!contactId) {
+        const { data: created, error } = await externalSupabase
+          .from('contacts')
+          .insert({
+            full_name: extracted.full_name || selectedConversation.contact_name || 'Contato WhatsApp',
+            phone: selectedConversation.phone,
+            email: extracted.email || null,
+            city: extracted.city || null,
+            state: extracted.state || null,
+            instagram_url: extracted.instagram_url || null,
+            notes: extracted.notes || null,
+            created_by: extCreatedBy,
+          } as any)
+          .select('id')
+          .single();
+        if (error) throw error;
+        contactId = created.id;
+      }
+
+      await linkToContact(selectedConversation.phone, contactId, selectedConversation.instance_name);
+      await refetch();
+      toast.success(existingContact ? 'Contato existente vinculado' : 'Contato criado automaticamente');
+    } catch (e: any) {
+      console.error('Create contact error:', e);
+      toast.error('Erro ao criar contato: ' + (e?.message || ''));
+    }
   };
 
   const handleUpdateWithAI = async () => {
