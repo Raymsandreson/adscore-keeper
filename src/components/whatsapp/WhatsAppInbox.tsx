@@ -53,6 +53,7 @@ import { useModulePermissions } from '@/hooks/useModulePermissions';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { normalizeWhatsAppConversationPhone } from '@/lib/whatsappPhone';
+import { LEAD_FIELD_REGISTRY } from '@/components/leads/leadFormFields';
 
 const FIELD_LABELS: Record<string, string> = {
   lead_name: 'Nome do Lead', victim_name: 'Nome da Vítima', lead_email: 'E-mail', lead_phone: 'Telefone',
@@ -72,6 +73,19 @@ const PT_MONTHS: Record<string, number> = {
 };
 
 const toIsoDate = (date: Date) => date.toISOString().slice(0, 10);
+
+const normalizeFieldLabel = (value: string) =>
+  value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+
+const isBirthDateLabel = (label: string) => {
+  const normalized = normalizeFieldLabel(label);
+  return normalized.includes('data do parto') || normalized.includes('previsao do parto') || normalized.includes('previsao de parto');
+};
 
 const extractNearestExpectedBirthDate = (messages: WhatsAppConversation['messages'] = []) => {
   const text = messages.map((m) => m.message_text || '').join('\n');
