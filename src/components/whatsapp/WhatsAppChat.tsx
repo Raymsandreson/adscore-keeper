@@ -39,6 +39,7 @@ import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { logGroupAudit } from '@/lib/groupAuditLog';
 import { normalizeWhatsAppConversationPhone } from '@/lib/whatsappPhone';
+import { AITextActions } from '@/components/ui/AITextActions';
 
 const TREATMENT_OPTIONS = ['', 'Dr.', 'Dra.', 'Sr.', 'Sra.', 'Prof.', 'Profa.'];
 const NAME_FORMAT_OPTIONS = [
@@ -3237,6 +3238,9 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
               </DropdownMenuContent>
             </DropdownMenu>
             <input ref={mediaInputRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleMediaUpload} />
+            {inputMode !== 'chat' && (
+              <AITextActions value={newMessage} onChange={setNewMessage} />
+            )}
             <Textarea
               placeholder={
                 inputMode === 'note' ? "Nota interna (não será enviada ao contato)..."
