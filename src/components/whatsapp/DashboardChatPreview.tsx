@@ -258,7 +258,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
         }
 
         if (!leadData) {
-          const { data: ld } = await supabase
+          const { data: ld } = await externalSupabase
             .from('leads')
             .select('*')
             .eq('whatsapp_group_id', phone)
@@ -268,7 +268,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
           if (ld) leadData = ld;
         }
       } else {
-        const { data: ld } = await supabase
+        const { data: ld } = await externalSupabase
           .from('leads')
           .select('*')
           .or(`lead_phone.eq.${normalizedPhone},lead_phone.ilike.%${last8}%`)
@@ -299,7 +299,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
           if (cd) setLinkedContact(cd as any);
         }
       } else {
-        const { data: contactData } = await supabase
+        const { data: contactData } = await externalSupabase
           .from('contacts')
           .select('*')
           .or(`phone.eq.${phone},phone.eq.${normalizedPhone},phone.ilike.%${last8}%`)
