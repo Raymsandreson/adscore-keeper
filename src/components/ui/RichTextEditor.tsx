@@ -631,7 +631,7 @@ function RichTextEditorComponent({
   }, [lastAiAction, fetchAiOptions]);
 
   return (
-    <div className={cn('flex flex-col rounded-md border bg-background resize-y', className)} style={{ minHeight, overflow: 'auto' }}>
+    <div className={cn('flex flex-col rounded-md border bg-background h-full', className)} style={{ minHeight, overflow: 'auto' }}>
       <LexicalComposer initialConfig={initialConfig}>
         <ToolbarPlugin onExpand={onExpand ? handleExpand : undefined} aiLoading={aiLoading} onAiAction={handleAiAction} onCustomPrompt={handleCustomPrompt} />
         <div className="relative flex-1">
