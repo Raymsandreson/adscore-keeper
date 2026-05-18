@@ -776,9 +776,10 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       toast.success('Mídia enviada!');
 
       const msgType = mediaType?.startsWith('audio') ? 'audio' : mediaType?.startsWith('image') ? 'image' : mediaType?.startsWith('video') ? 'video' : 'document';
+      const conversationPhone = normalizeWhatsAppConversationPhone(phone);
       const optimisticMsg: WhatsAppMessage = {
         id: data.message_id || crypto.randomUUID(),
-        phone, contact_name: null, message_text: caption || null,
+        phone: conversationPhone, contact_name: null, message_text: caption || null,
         message_type: msgType, media_url: mediaUrl, media_type: mediaType,
         direction: 'outbound', status: 'sent',
         contact_id: contactId || null, lead_id: leadId || null,
@@ -787,7 +788,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         instance_name: data.instance_name || conversationInstanceName || null, instance_token: null,
       };
       setMessages(prev => [optimisticMsg, ...prev]);
-      const targetConversationKey = getConversationKey(phone, optimisticMsg.instance_name);
+      const targetConversationKey = getConversationKey(conversationPhone, optimisticMsg.instance_name);
       setConversations(prev => prev.map(c =>
         getConversationKey(c.phone, c.instance_name) === targetConversationKey
           ? { ...c, last_message: caption || `📎 ${msgType}`, last_message_at: optimisticMsg.created_at, messages: [...c.messages, optimisticMsg] }
@@ -841,9 +842,10 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       toast.success('Localização enviada!');
 
       const locationText = `📍 ${name || 'Localização'}${address ? `\n${address}` : ''}`;
+      const conversationPhone = normalizeWhatsAppConversationPhone(phone);
       const optimisticMsg: WhatsAppMessage = {
         id: data.message_id || crypto.randomUUID(),
-        phone, contact_name: null, message_text: locationText,
+        phone: conversationPhone, contact_name: null, message_text: locationText,
         message_type: 'location', media_url: null, media_type: null,
         direction: 'outbound', status: 'sent',
         contact_id: contactId || null, lead_id: leadId || null,
@@ -852,7 +854,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         instance_name: data.instance_name || conversationInstanceName || null, instance_token: null,
       };
       setMessages(prev => [optimisticMsg, ...prev]);
-      const targetConversationKey = getConversationKey(phone, optimisticMsg.instance_name);
+      const targetConversationKey = getConversationKey(conversationPhone, optimisticMsg.instance_name);
       setConversations(prev => prev.map(c =>
         getConversationKey(c.phone, c.instance_name) === targetConversationKey
           ? { ...c, last_message: locationText, last_message_at: optimisticMsg.created_at, messages: [...c.messages, optimisticMsg] }
