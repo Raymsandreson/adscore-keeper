@@ -692,9 +692,10 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       toast.success('Mensagem enviada!');
 
       // Optimistic local update instead of full refetch
+      const conversationPhone = normalizeWhatsAppConversationPhone(phone);
       const optimisticMsg: WhatsAppMessage = {
         id: data.message_id || crypto.randomUUID(),
-        phone,
+        phone: conversationPhone,
         contact_name: null,
         message_text: finalMessage,
         message_type: 'text',
@@ -712,7 +713,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         instance_token: null,
       };
       setMessages(prev => [optimisticMsg, ...prev]);
-      const targetConversationKey = getConversationKey(phone, optimisticMsg.instance_name);
+      const targetConversationKey = getConversationKey(conversationPhone, optimisticMsg.instance_name);
       setConversations(prev => prev.map(c =>
         getConversationKey(c.phone, c.instance_name) === targetConversationKey
           ? { ...c, last_message: finalMessage, last_message_at: optimisticMsg.created_at, messages: [...c.messages, optimisticMsg] }
