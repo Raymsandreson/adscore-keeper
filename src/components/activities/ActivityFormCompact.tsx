@@ -634,7 +634,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
                       value={value}
                       onChange={setter}
                       placeholder={field.placeholder || ''}
-                      minHeight="clamp(120px, 32vh, 360px)"
+                      minHeight="clamp(90px, 16vh, 170px)"
                       onExpand={() => setExpandedFieldKey(field.field_key)}
                       className="mt-0.5 h-full"
                     />
