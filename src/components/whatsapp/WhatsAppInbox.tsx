@@ -527,21 +527,66 @@ export function WhatsAppInbox() {
   const [extractionStep, setExtractionStep] = useState('');
   const [contactDefaults, setContactDefaults] = useState<Record<string, string>>({});
 
+  const fetchCallContext = async (leadId?: string | null, contactId?: string | null): Promise<string> => {
+    try {
+      const ids: string[] = [];
+      if (leadId) ids.push(`lead_id.eq.${leadId}`);
+      if (contactId) ids.push(`contact_id.eq.${contactId}`);
+      if (ids.length === 0) return '';
+      const { data } = await externalSupabase
+        .from('call_records')
+        .select('created_at, call_type, call_result, duration_seconds, ai_summary, ai_transcript, notes, next_step')
+        .or(ids.join(','))
+        .order('created_at', { ascending: false })
+        .limit(15);
+      if (!data || data.length === 0) return '';
+      return data
+        .map((c: any) => {
+          const when = c.created_at ? new Date(c.created_at).toLocaleString('pt-BR') : '';
+          const dur = c.duration_seconds ? ` (${Math.round(c.duration_seconds / 60)}min)` : '';
+          const parts = [
+            `--- Ligação ${when}${dur} [${c.call_type || ''} / ${c.call_result || ''}] ---`,
+            c.ai_summary ? `Resumo: ${c.ai_summary}` : '',
+            c.ai_transcript ? `Transcrição: ${c.ai_transcript}` : '',
+            c.notes ? `Notas: ${c.notes}` : '',
+            c.next_step ? `Próximo passo registrado: ${c.next_step}` : '',
+          ].filter(Boolean);
+          return parts.join('\n');
+        })
+        .join('\n\n');
+    } catch (e) {
+      console.warn('[fetchCallContext] erro:', e);
+      return '';
+    }
+  };
+
   const extractConversationData = async (targetType: 'lead' | 'contact') => {
     if (!selectedConversation?.phone || !selectedInstance) return {};
     try {
       setExtracting(true);
       setExtractionStep(targetType === 'lead' ? 'Extraindo dados do lead...' : 'Extraindo dados do contato...');
+      const callContext = await fetchCallContext(selectedConversation.lead_id, selectedConversation.contact_id);
       const { data, error } = await cloudFunctions.invoke('extract-conversation-data', {
         body: {
           phone: selectedConversation.phone,
           instance_name: selectedInstance,
           targetType,
+          extra_context: callContext || undefined,
+          call_summaries: callContext || undefined,
         },
       });
       if (error) throw error;
       setExtractionStep('Dados extraídos!');
-      return data?.data || data?.result || {};
+      const result = data?.data || data?.result || {};
+      // Garantir que o resumo das ligações apareça nas notas mesmo se a IA externa ignorar extra_context.
+      if (callContext) {
+        const existingNotes = (result.notes || '').toString();
+        const callMarker = '[Resumo das ligações CallFace]';
+        if (!existingNotes.includes(callMarker)) {
+          result.notes = `${existingNotes ? existingNotes + '\n\n' : ''}${callMarker}\n${callContext}`.slice(0, 8000);
+        }
+      }
+      return result;
     } catch (e) {
       console.error('Extraction error:', e);
       setExtractionStep('');
