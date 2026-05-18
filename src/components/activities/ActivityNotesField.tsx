@@ -289,12 +289,7 @@ export function ActivityNotesField({ value, onChange, activityId, placeholder, l
       )}
 
       {/* Attachment toolbar */}
-      <div
-        className={cn(
-          "flex items-center gap-1 mt-1.5",
-          toolbarPinned && "sticky bottom-0 z-20 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/70 border-t border-border/60 py-1.5 -mx-1 px-1 rounded-b-md"
-        )}
-      >
+      <div className="flex items-center gap-1 mt-1.5">
         <input
           ref={fileInputRef}
           type="file"
@@ -362,20 +357,8 @@ export function ActivityNotesField({ value, onChange, activityId, placeholder, l
           <Link2 className="h-3.5 w-3.5" />
           Link
         </Button>
-        <div className="ml-auto">
-          <Button
-            type="button"
-            variant={toolbarPinned ? "secondary" : "ghost"}
-            size="sm"
-            className="h-7 px-2 text-xs gap-1"
-            onClick={() => setToolbarPinned(p => !p)}
-            title={toolbarPinned ? 'Desafixar barra de ações' : 'Fixar barra de ações no rodapé'}
-          >
-            {toolbarPinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
-            {toolbarPinned ? 'Fixada' : 'Fixar'}
-          </Button>
-        </div>
       </div>
+
 
 
       {/* Link input */}
