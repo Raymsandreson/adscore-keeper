@@ -218,6 +218,7 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
     let skipCount = 0;
     try {
       const { data: { user } } = await supabase.auth.getUser();
+      const extUserId = await remapToExternal(user?.id);
 
       for (const idx of selectedResults) {
         const result = results[idx];
@@ -300,7 +301,7 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
             escavador_raw: fullResult,
             workflow_id: workflowId || null,
             workflow_name: selectedBoard?.name || null,
-            created_by: user?.id,
+            created_by: extUserId,
             // New Escavador fields
             estado_origem: estadoOrigem?.nome || null,
             estado_origem_sigla: estadoOrigem?.sigla || null,
@@ -396,6 +397,9 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
     }
     setSaving(true);
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const extUserId = await remapToExternal(user?.id);
+
       if (manualForm.process_number) {
         const { data: existing } = await externalSupabase
           .from('lead_processes')
@@ -410,8 +414,6 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
           return;
         }
       }
-
-      const { data: { user } } = await supabase.auth.getUser();
 
       const { error } = await externalSupabase
         .from('lead_processes')
@@ -432,15 +434,13 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
           started_at: manualForm.started_at || null,
           notes: manualForm.notes || null,
           status: 'em_andamento',
-          created_by: user?.id,
+          created_by: extUserId,
         } as any);
 
       if (error) throw error;
       
       // Auto-create "Dar andamento" activity
       try {
-        const { data: { user: currentUser } } = await supabase.auth.getUser();
-        const extUserId = await remapToExternal(currentUser?.id);
         await externalSupabase.from('lead_activities').insert({
           lead_id: leadId,
           lead_name: manualForm.title.trim(),

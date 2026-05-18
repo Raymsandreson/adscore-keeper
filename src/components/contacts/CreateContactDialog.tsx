@@ -213,13 +213,13 @@ export function CreateContactDialog({ open, onOpenChange, defaultPhone, defaultN
       } else if (leadLinkMode === 'new') {
         const leadName = newLeadName.trim() || form.full_name;
         const boardId = selectedBoardId || boards[0]?.id;
-        const { data: lead, error: leadError } = await supabase
+        const { data: lead, error: leadError } = await externalSupabase
           .from('leads')
           .insert({
             lead_name: leadName,
             source: 'contato',
             board_id: boardId || null,
-            created_by: user?.id || null,
+            created_by: createdByExt,
           })
           .select('id')
           .single();

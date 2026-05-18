@@ -25,6 +25,7 @@ import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
 import { ZapSignDocumentDialog } from '@/components/whatsapp/ZapSignDocumentDialog';
 import type { Lead } from '@/hooks/useLeads';
 import type { Contact } from '@/hooks/useContacts';
+import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 
 const TREATMENT_OPTIONS = ['', 'Dr.', 'Dra.', 'Sr.', 'Sra.', 'Prof.', 'Profa.'];
 const NAME_FORMAT_OPTIONS = [
@@ -257,7 +258,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
         }
 
         if (!leadData) {
-          const { data: ld } = await supabase
+          const { data: ld } = await externalSupabase
             .from('leads')
             .select('*')
             .eq('whatsapp_group_id', phone)
@@ -267,7 +268,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
           if (ld) leadData = ld;
         }
       } else {
-        const { data: ld } = await supabase
+        const { data: ld } = await externalSupabase
           .from('leads')
           .select('*')
           .or(`lead_phone.eq.${normalizedPhone},lead_phone.ilike.%${last8}%`)
@@ -298,7 +299,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
           if (cd) setLinkedContact(cd as any);
         }
       } else {
-        const { data: contactData } = await supabase
+        const { data: contactData } = await externalSupabase
           .from('contacts')
           .select('*')
           .or(`phone.eq.${phone},phone.eq.${normalizedPhone},phone.ilike.%${last8}%`)
@@ -612,6 +613,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
     setCreatingLead(true);
     try {
       const { data: { user: currentUser } } = await supabase.auth.getUser();
+      const extCreatedBy = await remapToExternal(currentUser?.id);
       const recentMessages = messages.slice(-50).map(m => ({
         direction: m.direction,
         message_text: m.message_text,
@@ -655,7 +657,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
         lead_phone: phone,
         lead_email: leadExtracted.lead_email || contactExtracted.email || null,
         source: 'whatsapp',
-        created_by: currentUser?.id || null,
+        created_by: extCreatedBy,
         board_id: boardId,
         city: leadExtracted.city || contactExtracted.city || null,
         state: leadExtracted.state || contactExtracted.state || null,
@@ -673,7 +675,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
         if (leadExtracted[field]) insertData[field] = leadExtracted[field];
       }
 
-      const { data: newLead, error: leadError } = await supabase
+      const { data: newLead, error: leadError } = await externalSupabase
         .from('leads')
         .insert(insertData)
         .select('*')
@@ -681,14 +683,14 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
       if (leadError) throw leadError;
 
       const normalizedPhone = phone.replace(/\D/g, '');
-      await supabase
+      await externalSupabase
         .from('whatsapp_messages')
         .update({ lead_id: newLead.id })
         .or(`phone.eq.${phone},phone.eq.${normalizedPhone}`)
         .is('lead_id', null);
 
       const contactFullName = contactExtracted.full_name || contactName || 'Contato WhatsApp';
-      const { data: existingContact } = await supabase
+      const { data: existingContact } = await externalSupabase
         .from('contacts')
         .select('id, full_name')
         .or(`phone.eq.${phone},phone.eq.${normalizedPhone},phone.ilike.%${normalizedPhone.slice(-8)}%`)
@@ -712,7 +714,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
         const contactInsert: Record<string, any> = {
           full_name: contactFullName,
           phone: phone,
-          created_by: currentUser?.id || null,
+          created_by: extCreatedBy,
         };
         if (contactExtracted.email) contactInsert.email = contactExtracted.email;
         if (contactExtracted.city) contactInsert.city = contactExtracted.city;
@@ -722,7 +724,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
         if (contactExtracted.neighborhood) contactInsert.neighborhood = contactExtracted.neighborhood;
         if (contactExtracted.instagram_url) contactInsert.instagram_url = contactExtracted.instagram_url;
 
-        const { data: newContact, error: contactError } = await supabase
+        const { data: newContact, error: contactError } = await externalSupabase
           .from('contacts')
           .insert([contactInsert] as any)
           .select('id')
@@ -737,11 +739,19 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
         relationship_to_victim: 'Vítima',
       });
 
-      await supabase
+      await externalSupabase
         .from('whatsapp_messages')
         .update({ contact_id: contactId })
         .or(`phone.eq.${phone},phone.eq.${normalizedPhone}`)
         .is('contact_id', null);
+
+      setLinkedLead(newLead as Lead);
+      if (existingContact) {
+        setLinkedContact({ id: existingContact.id, full_name: existingContact.full_name, phone } as Contact);
+      } else {
+        setLinkedContact({ id: contactId, full_name: contactFullName, phone } as Contact);
+      }
+      onConversationUpdated?.();
 
       toast.success('Lead e contato criados com dados da conversa!');
     } catch (e: any) {

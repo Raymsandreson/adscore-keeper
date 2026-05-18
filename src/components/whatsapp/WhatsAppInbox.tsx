@@ -54,6 +54,7 @@ import { useAuthContext } from '@/contexts/AuthContext';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { normalizeWhatsAppConversationPhone } from '@/lib/whatsappPhone';
 import { LEAD_FIELD_REGISTRY } from '@/components/leads/leadFormFields';
+import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 
 const FIELD_LABELS: Record<string, string> = {
   lead_name: 'Nome do Lead', victim_name: 'Nome da Vítima', lead_email: 'E-mail', lead_phone: 'Telefone',
@@ -684,6 +685,7 @@ export function WhatsAppInbox() {
     setCreatingLead(true);
     try {
       const { data: { user: currentUser } } = await supabase.auth.getUser();
+      const extCreatedBy = await remapToExternal(currentUser?.id);
 
       // Extract both lead and contact data in parallel
       const [extracted, contactExtracted] = await Promise.all([
@@ -696,7 +698,7 @@ export function WhatsAppInbox() {
         lead_phone: selectedConversation.phone || null,
         lead_email: extracted.lead_email || contactExtracted.email || null,
         source: 'whatsapp',
-        created_by: currentUser?.id || null,
+        created_by: extCreatedBy,
         board_id: boardId,
         city: extracted.city || contactExtracted.city || null,
         state: extracted.state || contactExtracted.state || null,
@@ -716,7 +718,7 @@ export function WhatsAppInbox() {
         }
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await externalSupabase
         .from('leads')
         .insert(insertData)
         .select('*')
@@ -724,14 +726,12 @@ export function WhatsAppInbox() {
 
       if (error) throw error;
 
-      linkToLead(selectedConversation.phone, data.id, selectedConversation.instance_name);
-
       // Use already-extracted contact data
       const contactName = contactExtracted.full_name || selectedConversation.contact_name || 'Contato WhatsApp';
       
       // Check if contact with same phone already exists
       const normalizedPhone = selectedConversation.phone.replace(/\D/g, '');
-      const { data: existingContact } = await supabase
+      const { data: existingContact } = await externalSupabase
         .from('contacts')
         .select('id, full_name')
         .or(`phone.eq.${selectedConversation.phone},phone.eq.${normalizedPhone},phone.ilike.%${normalizedPhone.slice(-8)}%`)
@@ -746,14 +746,14 @@ export function WhatsAppInbox() {
         const contactInsert: Record<string, any> = {
           full_name: contactName,
           phone: selectedConversation.phone,
-          created_by: currentUser?.id || null,
+          created_by: extCreatedBy,
         };
         if (contactExtracted.email) contactInsert.email = contactExtracted.email;
         if (contactExtracted.city) contactInsert.city = contactExtracted.city;
         if (contactExtracted.state) contactInsert.state = contactExtracted.state;
         if (contactExtracted.instagram_url) contactInsert.instagram_url = contactExtracted.instagram_url;
 
-        const { data: newContact, error: contactError } = await supabase
+        const { data: newContact, error: contactError } = await externalSupabase
           .from('contacts')
           .insert([contactInsert] as any)
           .select('id')
@@ -771,6 +771,7 @@ export function WhatsAppInbox() {
 
       // Link contact to conversation
       await linkToContact(selectedConversation.phone, contactId, selectedConversation.instance_name);
+      await linkToLead(selectedConversation.phone, data.id, selectedConversation.instance_name);
 
       setEditingLead(data as Lead);
       setShowLeadPanel(true);
@@ -787,10 +788,45 @@ export function WhatsAppInbox() {
 
   const handleCreateContact = async () => {
     if (!selectedConversation) return;
-    // Extract data from conversation
     const extracted = await extractConversationData('contact');
-    setContactDefaults(extracted);
-    setShowCreateContactDialog(true);
+    const normalizedPhone = selectedConversation.phone.replace(/\D/g, '');
+    try {
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      const extCreatedBy = await remapToExternal(currentUser?.id);
+      const { data: existingContact } = await externalSupabase
+        .from('contacts')
+        .select('id, full_name, phone')
+        .or(`phone.eq.${selectedConversation.phone},phone.eq.${normalizedPhone},phone.ilike.%${normalizedPhone.slice(-8)}%`)
+        .limit(1)
+        .maybeSingle();
+
+      let contactId = existingContact?.id;
+      if (!contactId) {
+        const { data: created, error } = await externalSupabase
+          .from('contacts')
+          .insert({
+            full_name: extracted.full_name || selectedConversation.contact_name || 'Contato WhatsApp',
+            phone: selectedConversation.phone,
+            email: extracted.email || null,
+            city: extracted.city || null,
+            state: extracted.state || null,
+            instagram_url: extracted.instagram_url || null,
+            notes: extracted.notes || null,
+            created_by: extCreatedBy,
+          } as any)
+          .select('id')
+          .single();
+        if (error) throw error;
+        contactId = created.id;
+      }
+
+      await linkToContact(selectedConversation.phone, contactId, selectedConversation.instance_name);
+      await refetch();
+      toast.success(existingContact ? 'Contato existente vinculado' : 'Contato criado automaticamente');
+    } catch (e: any) {
+      console.error('Create contact error:', e);
+      toast.error('Erro ao criar contato: ' + (e?.message || ''));
+    }
   };
 
   const handleUpdateWithAI = async () => {
@@ -1000,6 +1036,7 @@ export function WhatsAppInbox() {
     setCreatingIdentified(idx);
     try {
       const { data: { user: currentUser } } = await supabase.auth.getUser();
+      const extCreatedBy = await remapToExternal(currentUser?.id);
       const phoneDigits = person.phone ? String(person.phone).replace(/\D/g, '') : null;
       const insertPayload: Record<string, any> = {
         full_name: person.full_name || person.relationship || 'Contato identificado',
@@ -1017,7 +1054,7 @@ export function WhatsAppInbox() {
         email: person.email || null,
         profession: person.profession || null,
         notes: [person.relationship ? `Relação: ${person.relationship}` : '', person.notes || ''].filter(Boolean).join('\n') || null,
-        created_by: currentUser?.id || null,
+        created_by: extCreatedBy,
       };
       const { data: created, error: insertError } = await (externalSupabase as any)
         .from('contacts')
@@ -1026,7 +1063,7 @@ export function WhatsAppInbox() {
         .single();
       if (insertError) throw insertError;
       // Vincular ao lead atual
-      const { error: linkError } = await supabase
+      const { error: linkError } = await externalSupabase
         .from('contact_leads' as any)
         .insert({ contact_id: created.id, lead_id: selectedConversation.lead_id });
       if (linkError && linkError.code !== '23505') throw linkError;
@@ -1048,6 +1085,9 @@ export function WhatsAppInbox() {
   const handleContactCreated = async (contact: { id: string; full_name: string; phone: string | null; lead_id?: string | null }) => {
     if (selectedConversation) {
       await linkToContact(selectedConversation.phone, contact.id, selectedConversation.instance_name);
+      if (contact.lead_id) {
+        await linkToLead(selectedConversation.phone, contact.lead_id, selectedConversation.instance_name);
+      }
     }
     await refetch();
   };
@@ -1057,10 +1097,10 @@ export function WhatsAppInbox() {
     const { data: { user } } = await supabase.auth.getUser();
     const payload = { ...updates } as any;
     if (user?.id) {
-      payload.updated_by = user.id;
+      payload.updated_by = await remapToExternal(user.id);
     }
     
-    const { error } = await supabase
+    const { error } = await externalSupabase
       .from('leads')
       .update(payload)
       .eq('id', leadId);
