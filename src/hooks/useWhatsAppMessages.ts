@@ -416,6 +416,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       const conversationMap = new Map<string, WhatsAppConversation>();
 
       for (const summary of summaries || []) {
+        const summaryPhone = normalizeWhatsAppConversationPhone(summary.phone);
         const canonicalInstanceName =
           canonicalInstanceNames.get(normalizeInstanceName(summary.instance_name)) ||
           summary.instance_name ||
@@ -423,7 +424,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
 
         const summaryMessage: WhatsAppMessage = {
           id: `summary-${summary.phone}-${canonicalInstanceName}`,
-          phone: summary.phone,
+          phone: summaryPhone,
           contact_name: summary.contact_name,
           message_text: summary.last_message_text,
           message_type: 'text',
@@ -441,12 +442,12 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
           instance_token: null,
         };
 
-        const conversationKey = getConversationKey(summary.phone, canonicalInstanceName);
+        const conversationKey = getConversationKey(summaryPhone, canonicalInstanceName);
         const existingConversation = conversationMap.get(conversationKey);
 
         if (!existingConversation) {
           conversationMap.set(conversationKey, {
-            phone: summary.phone,
+            phone: summaryPhone,
             contact_name: summary.contact_name,
             contact_id: summary.contact_id,
             lead_id: summary.lead_id,
