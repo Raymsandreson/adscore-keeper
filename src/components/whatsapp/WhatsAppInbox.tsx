@@ -798,7 +798,7 @@ export function WhatsAppInbox() {
             const { data: cfs } = await (externalSupabase as any)
               .from('lead_custom_fields')
               .select('id, field_name, field_type, field_options')
-              .eq('board_id', boardId);
+                .or(`board_id.eq.${boardId},board_id.is.null`);
             customSpecs = (cfs || []).map((f: any) => ({
               id: f.id,
               label: f.field_name,
@@ -818,9 +818,17 @@ export function WhatsAppInbox() {
           'main_company', 'contractor_company', 'accident_address', 'accident_date',
           'damage_description', 'case_number', 'case_type', 'notes', 'sector',
           'visit_city', 'visit_state', 'visit_address', 'liability_type', 'news_link',
+          'expected_birth_date', 'client_classification',
         ];
         for (const field of allowedLeadFields) {
           if (extracted[field]) leadFields[field] = extracted[field];
+        }
+        if (!leadFields.expected_birth_date) {
+          const deterministicDate = extractNearestExpectedBirthDate(selectedConversation.messages || []);
+          if (deterministicDate) leadFields.expected_birth_date = deterministicDate;
+        }
+        if (leadFields.expected_birth_date && !leadFields.client_classification) {
+          leadFields.client_classification = 'parto';
         }
         const extractedCustom = (extracted && extracted.custom_fields) || {};
         for (const [fieldId, value] of Object.entries(extractedCustom)) {
