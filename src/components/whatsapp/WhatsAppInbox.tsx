@@ -194,7 +194,7 @@ export function WhatsAppInbox() {
     const conversationPhone = normalizeWhatsAppConversationPhone(phone);
 
     try {
-      const { data: latestMessage } = await supabase
+      const { data: latestMessage } = await externalSupabase
         .from('whatsapp_messages')
         .select('instance_name')
         .in('phone', [conversationPhone, `${conversationPhone}@g.us`])
