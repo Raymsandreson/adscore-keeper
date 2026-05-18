@@ -232,7 +232,15 @@ export default function ProcessesPage() {
             open={!!selectedProcess}
             onOpenChange={(open) => { if (!open) setSelectedProcess(null); }}
             process={selectedProcess}
-            onUpdated={loadProcesses}
+            onUpdated={(updated) => {
+              if (updated) {
+                // Merge imediato preservando o join legal_cases
+                setProcesses(prev => prev.map(p => p.id === updated.id ? { ...p, ...updated, legal_cases: (p as any).legal_cases } : p));
+                setSelectedProcess((prev: any) => prev && prev.id === updated.id ? { ...prev, ...updated } : prev);
+              }
+              // Re-fetch em paralelo para garantir consistência com joins
+              loadProcesses();
+            }}
             mode="sheet"
           />
         )}
