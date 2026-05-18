@@ -1635,6 +1635,18 @@ export function ContactsListPage() {
           fetchContacts();
         }}
       />
+
+      <DashboardChatPreview
+        open={!!chatPreview}
+        onOpenChange={(open) => { if (!open) setChatPreview(null); }}
+        phone={chatPreview?.phone || null}
+        contactName={chatPreview?.contact_name || null}
+        instanceName={chatPreview?.instance_name || null}
+        hasLead={false}
+        hasContact={false}
+        wasResponded={false}
+        responseTimeMinutes={null}
+      />
     </div>
   );
 }
