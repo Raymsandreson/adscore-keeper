@@ -794,11 +794,11 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
 
       {/* === SHEET: Link Case === */}
       <Sheet open={linkCaseOpen} onOpenChange={setLinkCaseOpen}>
-        <SheetContent className="w-full sm:max-w-sm">
-          <SheetHeader>
+        <SheetContent className="w-full sm:max-w-sm flex flex-col p-0">
+          <SheetHeader className="px-6 pt-6 pb-3 shrink-0">
             <SheetTitle className="text-base">Vincular Caso</SheetTitle>
           </SheetHeader>
-          <div className="pt-4 space-y-3">
+          <div className="px-6 pb-3 shrink-0">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
@@ -809,14 +809,14 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
                 autoFocus
               />
             </div>
-            <ScrollArea className="h-[calc(100vh-200px)]">
-              <div className="space-y-0.5">
+          </div>
+          <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+            <ScrollArea className="flex-1 min-h-0 px-6">
+              <div className="space-y-0.5 pb-2">
                 {(() => {
                   const q = props.caseSearch.toLowerCase();
                   const matches = (c: { title: string; case_number: string }) =>
                     !q || c.title?.toLowerCase().includes(q) || c.case_number?.toLowerCase().includes(q);
-                  // Se houver lead selecionado, mostrar APENAS os casos vinculados a ele.
-                  // Sem lead, mostrar todos os disponíveis (limitado a 30 quando sem busca).
                   let src: { id: string; case_number: string; title: string; lead_id?: string | null }[];
                   if (props.formLeadId) {
                     src = props.leadCases.filter(matches);
@@ -849,7 +849,6 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
                           .eq('case_id', c.id);
                         const processItems = (procs || []).map((p: any) => ({ id: p.id, title: p.title, process_number: p.process_number, polo_passivo: p.polo_passivo, tribunal: p.tribunal, area: p.area, assuntos: p.assuntos, workflow_id: p.workflow_id, workflow_name: p.workflow_name, envolvidos: p.envolvidos }));
                         props.setCaseProcesses(processItems);
-                        // Only close sheet if no processes to select
                         if (processItems.length === 0) {
                           setLinkCaseOpen(false);
                         }
@@ -861,9 +860,10 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
                 })()}
               </div>
             </ScrollArea>
+
             {/* Process selection within case sheet */}
             {props.formCaseId && props.caseProcesses.length > 0 && (
-              <div className="border-t pt-3">
+              <div className="border-t shrink-0 px-6 pt-3 pb-2 max-h-[45%] overflow-y-auto bg-muted/30">
                 <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Processos do caso</span>
                 <div className="mt-2 space-y-0.5">
                   {props.caseProcesses.map(p => {
@@ -876,7 +876,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
                       <button
                         key={p.id}
                         className={cn(
-                          "w-full text-left px-3 py-2.5 text-sm rounded-md hover:bg-accent transition-colors",
+                          "w-full text-left px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors",
                           props.formProcessId === p.id && "bg-accent font-medium"
                         )}
                         onClick={() => {
@@ -943,20 +943,21 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
                     <button type="button" onClick={() => { props.setFormProcessId(''); props.setFormProcessTitle(''); }} className="text-muted-foreground hover:text-foreground">
                       <X className="h-3 w-3" />
                     </button>
-              </div>
-            )}
-            {props.formCaseId && (
-              <div className="border-t pt-3 mt-3">
-                <Button type="button" size="sm" className="w-full" onClick={() => setLinkCaseOpen(false)}>
-                  Confirmar
-                </Button>
-              </div>
+                  </div>
                 )}
               </div>
             )}
           </div>
+          {props.formCaseId && (
+            <div className="border-t px-6 py-3 shrink-0">
+              <Button type="button" size="sm" className="w-full" onClick={() => setLinkCaseOpen(false)}>
+                Confirmar
+              </Button>
+            </div>
+          )}
         </SheetContent>
       </Sheet>
+
 
       <Suspense fallback={null}>
         {editProcessData && (
