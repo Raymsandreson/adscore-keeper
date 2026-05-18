@@ -31,7 +31,7 @@ const PERIOD_OPTIONS: { key: FocusPeriod; label: string }[] = [
   { key: 'year', label: 'Ano' },
 ];
 
-export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpenUnanswered }: FocusDashboardProps) {
+export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpenUnanswered, compact = false }: FocusDashboardProps) {
   const { user } = useAuthContext();
   const { teams } = useUserTeams();
   const data = useFocusDashboardData();
