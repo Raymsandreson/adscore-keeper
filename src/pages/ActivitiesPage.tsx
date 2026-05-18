@@ -471,6 +471,8 @@ const ActivitiesPage = () => {
     setFormWhatWasDone('');
     setFormCurrentStatus('');
     setFormNextSteps('');
+    setFormSolicitacao('');
+    setFormRespostaJuizo('');
     setFormType(timeBlockSettings.length > 0 ? timeBlockSettings[0].activityType : '');
     setFormPriority('normal');
     setFormLeadId('');
