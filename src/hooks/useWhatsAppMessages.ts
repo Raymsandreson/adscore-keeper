@@ -15,6 +15,7 @@ import { toast } from 'sonner';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { traceHook } from '@/utils/hookTracer';
 import { requestWhatsAppReconnect } from '@/lib/whatsappReconnectEvent';
+import { normalizeWhatsAppConversationPhone } from '@/lib/whatsappPhone';
 
 const showDisconnectedToast = (instanceId: string | undefined, instanceName: string | undefined) => {
   toast.error(
@@ -86,7 +87,7 @@ const normalizeInstanceName = (instanceName?: string | null) =>
 // Conversation identity = phone + instance_name. Normalize instance_name case-insensitively
 // to avoid creating phantom duplicates when the webhook saves "Cris" but the RPC returns "cris".
 const getConversationKey = (phone: string, instanceName?: string | null) =>
-  `${(phone || '').trim()}__${normalizeInstanceName(instanceName)}`;
+  `${normalizeWhatsAppConversationPhone(phone)}__${normalizeInstanceName(instanceName)}`;
 
 // ---------------------------------------------------------------------------
 // Module-level cache (sobrevive a unmount/remount do WhatsAppInbox).
