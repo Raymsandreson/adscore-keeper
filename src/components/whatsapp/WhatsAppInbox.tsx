@@ -1081,6 +1081,8 @@ export function WhatsAppInbox() {
             <Settings className="h-4 w-4" />
           </Button>
         </div>
+          </div>
+        </div>
       </div>
 
       {/* Reconnect Bar - apenas para instância padrão do usuário */}
