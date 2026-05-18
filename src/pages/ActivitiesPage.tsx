@@ -3207,8 +3207,30 @@ const ActivitiesPage = () => {
               </div>
             </div>
 
-            {/* Action bar - always visible at bottom */}
-            <div className="shrink-0 border-t border-border bg-muted/60 px-4 py-2.5 shadow-[0_-2px_10px_rgba(0,0,0,0.05)] z-10 space-y-2">
+            {/* Action bar — oculta por padrão, revela no hover; pode fixar */}
+            <div className={cn("shrink-0 relative", !actionsPinned && "group/actions")}>
+              {!actionsPinned && (
+                <div
+                  className="h-1.5 hover:h-2 bg-gradient-to-r from-success/40 via-primary/60 to-success/40 cursor-pointer transition-all"
+                  title="Passe o mouse para ações. Clique para fixar."
+                  onClick={toggleActionsPinned}
+                />
+              )}
+              <button
+                type="button"
+                onClick={toggleActionsPinned}
+                className={cn(
+                  "absolute right-1 top-1 z-40 p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors",
+                  !actionsPinned && "opacity-0 group-hover/actions:opacity-100"
+                )}
+                title={actionsPinned ? "Desafixar ações (ocultar automático)" : "Fixar ações sempre visíveis"}
+              >
+                {actionsPinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
+              </button>
+              <div className={cn(
+                "border-t border-border bg-muted/60 px-4 py-2.5 shadow-[0_-2px_10px_rgba(0,0,0,0.05)] z-10 space-y-2 transition-all overflow-hidden",
+                !actionsPinned && "absolute bottom-1.5 left-0 right-0 z-30 bg-background shadow-2xl max-h-0 opacity-0 pointer-events-none group-hover/actions:max-h-[400px] group-hover/actions:opacity-100 group-hover/actions:pointer-events-auto"
+              )}>
               {buildMsg && (
                 <SendToGroupSection buildMsg={buildMsg} leadId={formLeadId} fieldSettings={fieldSettings} updateFieldSetting={updateFieldSetting} reorderFields={reorderFields} formLeadIdForTTS={formLeadId || undefined} formContactIdForTTS={formContactId || undefined} formAssignedTo={formAssignedTo || undefined} />
               )}
