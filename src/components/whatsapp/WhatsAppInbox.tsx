@@ -375,7 +375,9 @@ export function WhatsAppInbox() {
     leadFields: Record<string, string>;
     contactFields: Record<string, string>;
     customFields?: Array<{ id: string; label: string; type: string; value: any }>;
+    identifiedContacts?: Array<Record<string, any>>;
   } | null>(null);
+  const [creatingIdentified, setCreatingIdentified] = useState<number | null>(null);
   const [showAiPreview, setShowAiPreview] = useState(false);
   // Bulk selection state
   const [bulkMode, setBulkMode] = useState(false);
