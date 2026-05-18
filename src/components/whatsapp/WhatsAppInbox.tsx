@@ -191,12 +191,13 @@ export function WhatsAppInbox() {
 
   const handleOpenChatByPhone = useCallback(async (phone: string) => {
     if (!phone) return;
+    const conversationPhone = normalizeWhatsAppConversationPhone(phone);
 
     try {
       const { data: latestMessage } = await supabase
         .from('whatsapp_messages')
         .select('instance_name')
-        .eq('phone', phone)
+        .in('phone', [conversationPhone, `${conversationPhone}@g.us`])
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -217,13 +218,13 @@ export function WhatsAppInbox() {
         setSelectedInstance(null);
       }
 
-      setSelectedPhone(phone);
-      fetchFullConversation(phone, targetInstanceName);
+      setSelectedPhone(conversationPhone);
+      fetchFullConversation(conversationPhone, targetInstanceName);
     } catch (error) {
       console.error('Error opening chat by phone:', error);
       setSelectedInstance(null);
-      setSelectedPhone(phone);
-      fetchFullConversation(phone, null);
+      setSelectedPhone(conversationPhone);
+      fetchFullConversation(conversationPhone, null);
     }
   }, [instances, selectedInstanceId, fetchFullConversation]);
 
@@ -449,7 +450,7 @@ export function WhatsAppInbox() {
 
   const [selectedInstance, setSelectedInstance] = usePageState<string | null>('wa_selected_instance', null);
   const selectedConversation = visibleConversations.find(
-    c => selectedPhone === c.phone && getConversationKey(c.phone, c.instance_name) === getConversationKey(selectedPhone || '', selectedInstance)
+    c => getConversationKey(c.phone, c.instance_name) === getConversationKey(selectedPhone || '', selectedInstance)
   ) || null;
 
   // Reidrata o histórico completo ao remontar (reload, troca de aba, navegação interna).
@@ -496,7 +497,7 @@ export function WhatsAppInbox() {
 
   const handleSelectConversation = (conv: WhatsAppConversation) => {
     const apply = () => {
-      setSelectedPhone(conv.phone);
+      setSelectedPhone(normalizeWhatsAppConversationPhone(conv.phone));
       setSelectedInstance(conv.instance_name);
       fetchFullConversation(conv.phone, conv.instance_name);
       if (conv.unread_count > 0) {
