@@ -560,7 +560,10 @@ export function WhatsAppInbox() {
     }
   };
 
-  const extractConversationData = async (targetType: 'lead' | 'contact') => {
+  const extractConversationData = async (
+    targetType: 'lead' | 'contact',
+    customFields?: Array<{ id: string; label: string; type?: string; options?: string[] }>
+  ) => {
     if (!selectedConversation?.phone || !selectedInstance) return {};
     try {
       setExtracting(true);
@@ -573,6 +576,7 @@ export function WhatsAppInbox() {
           targetType,
           extra_context: callContext || undefined,
           call_summaries: callContext || undefined,
+          custom_fields: customFields && customFields.length > 0 ? customFields : undefined,
         },
       });
       if (error) throw error;
