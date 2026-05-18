@@ -687,69 +687,88 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
             />
           )}
         </div>
-        <CollapsibleContent className="space-y-2.5 pt-1.5">
-          {props.fieldSettings.map(field => {
+        <CollapsibleContent className="pt-1.5 space-y-2.5">
+          {(() => {
             const valueMap: Record<string, [string, (v: string) => void]> = {
               what_was_done: [props.formWhatWasDone, props.setFormWhatWasDone],
               current_status: [props.formCurrentStatus, props.setFormCurrentStatus],
               next_steps: [props.formNextSteps, props.setFormNextSteps],
               notes: [props.formNotes, props.setFormNotes],
             };
-            const entry = valueMap[field.field_key];
-            if (!entry) return null;
-            const [value, setter] = entry;
-            const stepVariations = props.stepContext?.messageTemplates?.[field.field_key] || [];
-            const persistField = async (next: TemplateVariation[]) => {
-              if (!props.saveStepFieldTemplates) return false;
-              return props.saveStepFieldTemplates(field.field_key, next);
-            };
-            const hubProps = {
-              fieldLabel: field.label,
-              variations: stepVariations,
-              currentValue: value,
-              onApply: setter,
-              stepLabel: props.stepContext?.stepLabel || null,
-              phaseLabel: props.stepContext?.phaseLabel || null,
-              objectiveLabel: props.stepContext?.objectiveLabel || null,
-              canPersist: !!(props.stepContext?.templateId && props.saveStepFieldTemplates),
-              onPersist: persistField,
-              allSteps: props.stepContext?.allSteps || [],
-              activeStepId: props.stepContext?.stepId || null,
-              onSelectStep: props.setSelectedStepId,
-            };
-
-            if (field.field_key === 'notes') {
+            const renderField = (field: any) => {
+              const entry = valueMap[field.field_key];
+              if (!entry) return null;
+              const [value, setter] = entry;
+              const stepVariations = props.stepContext?.messageTemplates?.[field.field_key] || [];
+              const persistField = async (next: TemplateVariation[]) => {
+                if (!props.saveStepFieldTemplates) return false;
+                return props.saveStepFieldTemplates(field.field_key, next);
+              };
+              const hubProps = {
+                fieldLabel: field.label,
+                variations: stepVariations,
+                currentValue: value,
+                onApply: setter,
+                stepLabel: props.stepContext?.stepLabel || null,
+                phaseLabel: props.stepContext?.phaseLabel || null,
+                objectiveLabel: props.stepContext?.objectiveLabel || null,
+                canPersist: !!(props.stepContext?.templateId && props.saveStepFieldTemplates),
+                onPersist: persistField,
+                allSteps: props.stepContext?.allSteps || [],
+                activeStepId: props.stepContext?.stepId || null,
+                onSelectStep: props.setSelectedStepId,
+              };
+              if (field.field_key === 'notes') {
+                return (
+                  <div key={field.field_key} className="min-w-0">
+                    <StepTemplatesHub {...hubProps} />
+                    <ActivityNotesField
+                      value={value}
+                      onChange={setter}
+                      activityId={props.selectedActivity?.id || null}
+                      placeholder={field.placeholder || 'Notas adicionais...'}
+                      label={field.label}
+                    />
+                  </div>
+                );
+              }
               return (
-                <div key={field.field_key}>
+                <div key={field.field_key} className="min-w-0">
+                  <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{field.label}</span>
                   <StepTemplatesHub {...hubProps} />
-                  <ActivityNotesField
-                    value={value}
-                    onChange={setter}
-                    activityId={props.selectedActivity?.id || null}
-                    placeholder={field.placeholder || 'Notas adicionais...'}
-                    label={field.label}
-                  />
+                  <div className={expandedFieldKey === field.field_key ? 'hidden' : ''}>
+                    <RichTextEditor
+                      value={value}
+                      onChange={setter}
+                      placeholder={field.placeholder || ''}
+                      minHeight="32px"
+                      onExpand={() => setExpandedFieldKey(field.field_key)}
+                      className="mt-0.5"
+                    />
+                  </div>
                 </div>
               );
-            }
-
+            };
+            // Top row: 3 fields, Bottom row: remaining (typically 2)
+            const visible = props.fieldSettings.filter((f: any) => valueMap[f.field_key]);
+            const topRow = visible.slice(0, 3);
+            const bottomRow = visible.slice(3);
             return (
-              <div key={field.field_key}>
-                <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{field.label}</span>
-                <StepTemplatesHub {...hubProps} />
-                <div className={expandedFieldKey === field.field_key ? 'hidden' : ''}>
-                  <RichTextEditor
-                    value={value}
-                    onChange={setter}
-                    placeholder={field.placeholder || ''}
-                    minHeight="32px"
-                    onExpand={() => setExpandedFieldKey(field.field_key)}
-                    className="mt-0.5"
-                  />
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+                  {topRow.map(renderField)}
                 </div>
-              </div>
+                {bottomRow.length > 0 && (
+                  <div className={cn(
+                    "grid gap-2.5",
+                    bottomRow.length === 1 ? "grid-cols-1" : "grid-cols-1 md:grid-cols-2"
+                  )}>
+                    {bottomRow.map(renderField)}
+                  </div>
+                )}
+              </>
             );
-          })}
+          })()}
         </CollapsibleContent>
       </Collapsible>
 
