@@ -1313,7 +1313,7 @@ export function ContactsListPage() {
                       <span></span>
                       <span>Nº caso</span>
                       <span className="pr-3">Nome do grupo</span>
-                      <span className="pl-3 border-l border-border/40">Nome do lead</span>
+                      <span className="pl-3 text-center">Nome do lead</span>
                       <span></span>
                     </div>
                     {capped.map(group => {
