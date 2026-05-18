@@ -122,16 +122,18 @@ function whitelist(obj: Record<string, any>, allowed: string[]): Record<string, 
 export const handler: RequestHandler = async (req, res) => {
   const ok = (b: Record<string, unknown>) => res.status(200).json(b);
   try {
-    const { phone, instance_name, targetType, extra_context, call_summaries } = (req.body || {}) as {
+    const { phone, instance_name, targetType, extra_context, call_summaries, custom_fields } = (req.body || {}) as {
       phone?: string;
       instance_name?: string;
       targetType?: 'lead' | 'contact';
       extra_context?: string;
       call_summaries?: string;
+      custom_fields?: CustomFieldSpec[];
     };
 
     if (!phone || !instance_name) return ok({ success: false, error: 'phone e instance_name obrigatórios' });
     const target: 'lead' | 'contact' = targetType === 'contact' ? 'contact' : 'lead';
+    const customs: CustomFieldSpec[] = (target === 'lead' && Array.isArray(custom_fields)) ? custom_fields.filter(c => c && c.id && c.label) : [];
 
     const transcript = await fetchRecentMessages(phone, normalizeInstance(instance_name));
     if (!transcript && !extra_context && !call_summaries) {
@@ -140,9 +142,9 @@ export const handler: RequestHandler = async (req, res) => {
 
     const callBlock = [extra_context, call_summaries].filter(Boolean).join('\n\n').slice(0, 30000);
     const systemPrompt = [
-      'Você é um extrator de dados estruturados para um CRM jurídico brasileiro (acidentes de trabalho/causídico).',
+      'Você é um extrator de dados estruturados para um CRM jurídico brasileiro (cobre acidentes de trabalho, previdenciário, maternidade e outros).',
       'Analisa transcrições do WhatsApp e resumos de ligações telefônicas.',
-      buildSchemaPrompt(target),
+      buildSchemaPrompt(target, customs),
     ].join('\n\n');
 
     const userParts: string[] = [];
@@ -158,7 +160,21 @@ export const handler: RequestHandler = async (req, res) => {
 
     const raw = await callAI(systemPrompt, userParts.join('\n\n'));
     const allowed = target === 'lead' ? LEAD_FIELDS : CONTACT_FIELDS;
-    const data = whitelist(raw, allowed);
+    const data: Record<string, any> = whitelist(raw, allowed);
+
+    if (customs.length > 0) {
+      const rawCustom = (raw && typeof raw.custom_fields === 'object' && raw.custom_fields) ? raw.custom_fields : {};
+      const allowedIds = new Set(customs.map(c => c.id));
+      const cleanCustom: Record<string, any> = {};
+      for (const [k, v] of Object.entries(rawCustom)) {
+        if (!allowedIds.has(k)) continue;
+        if (v === undefined || v === null) continue;
+        const s = typeof v === 'string' ? v.trim() : v;
+        if (s === '' || s === 'N/A' || s === 'null' || s === 'undefined') continue;
+        cleanCustom[k] = s;
+      }
+      if (Object.keys(cleanCustom).length > 0) data.custom_fields = cleanCustom;
+    }
 
     return ok({ success: true, data, model: MODEL, target, message_count: transcript ? transcript.split('\n').length : 0 });
   } catch (e: any) {
