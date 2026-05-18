@@ -555,8 +555,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
               };
               if (field.field_key === 'notes') {
                 return (
-                  <div key={field.field_key} className="min-w-0">
-                    <StepTemplatesHub {...hubProps} />
+                  <div key={field.field_key} className="min-w-0" data-notes-hub-props={JSON.stringify({ has: true })}>
                     <ActivityNotesField
                       value={value}
                       onChange={setter}
