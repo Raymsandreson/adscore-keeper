@@ -3044,13 +3044,15 @@ const ActivitiesPage = () => {
                 type="button"
                 onClick={toggleActionsPinned}
                 className={cn(
-                  "absolute right-1 top-1 z-40 p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors",
-                  !actionsPinned && "opacity-0 group-hover/actions:opacity-100"
+                  "absolute right-2 -top-7 z-40 inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium border bg-background shadow-sm hover:bg-muted transition-colors",
+                  actionsPinned ? "text-primary border-primary/40" : "text-muted-foreground border-border"
                 )}
                 title={actionsPinned ? "Desafixar ações (ocultar automático)" : "Fixar ações sempre visíveis"}
               >
-                {actionsPinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
+                {actionsPinned ? <PinOff className="h-3 w-3" /> : <Pin className="h-3 w-3" />}
+                {actionsPinned ? 'Fixada' : 'Fixar'}
               </button>
+
               <div className={cn(
                 "border-t border-border bg-muted/60 px-4 py-2.5 shadow-[0_-2px_10px_rgba(0,0,0,0.05)] z-10 space-y-2 transition-all overflow-hidden",
                 !actionsPinned && "absolute bottom-1.5 left-0 right-0 z-30 bg-background shadow-2xl max-h-0 opacity-0 pointer-events-none group-hover/actions:max-h-[400px] group-hover/actions:opacity-100 group-hover/actions:pointer-events-auto"

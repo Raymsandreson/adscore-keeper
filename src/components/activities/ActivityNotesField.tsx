@@ -20,9 +20,8 @@ import {
   ExternalLink,
   Trash2,
   Loader2,
-  Pin,
-  PinOff,
 } from 'lucide-react';
+
 
 
 interface Attachment {
@@ -52,16 +51,9 @@ export function ActivityNotesField({ value, onChange, activityId, placeholder, l
   const [linkTitle, setLinkTitle] = useState('');
   const [isDragging, setIsDragging] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [toolbarPinned, setToolbarPinned] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false;
-    return localStorage.getItem('activity-notes-toolbar-pinned') === '1';
-  });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    localStorage.setItem('activity-notes-toolbar-pinned', toolbarPinned ? '1' : '0');
-  }, [toolbarPinned]);
 
 
   useEffect(() => {
@@ -277,7 +269,8 @@ export function ActivityNotesField({ value, onChange, activityId, placeholder, l
         value={value}
         onChange={onChange}
         placeholder={placeholder || 'Notas adicionais... (cole com Ctrl+V ou arraste arquivos)'}
-        minHeight="clamp(120px, 28vh, 360px)"
+        minHeight="clamp(160px, 38vh, 480px)"
+
       />
 
       {isDragging && (
@@ -289,12 +282,7 @@ export function ActivityNotesField({ value, onChange, activityId, placeholder, l
       )}
 
       {/* Attachment toolbar */}
-      <div
-        className={cn(
-          "flex items-center gap-1 mt-1.5",
-          toolbarPinned && "sticky bottom-0 z-20 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/70 border-t border-border/60 py-1.5 -mx-1 px-1 rounded-b-md"
-        )}
-      >
+      <div className="flex items-center gap-1 mt-1.5">
         <input
           ref={fileInputRef}
           type="file"
@@ -362,20 +350,8 @@ export function ActivityNotesField({ value, onChange, activityId, placeholder, l
           <Link2 className="h-3.5 w-3.5" />
           Link
         </Button>
-        <div className="ml-auto">
-          <Button
-            type="button"
-            variant={toolbarPinned ? "secondary" : "ghost"}
-            size="sm"
-            className="h-7 px-2 text-xs gap-1"
-            onClick={() => setToolbarPinned(p => !p)}
-            title={toolbarPinned ? 'Desafixar barra de ações' : 'Fixar barra de ações no rodapé'}
-          >
-            {toolbarPinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
-            {toolbarPinned ? 'Fixada' : 'Fixar'}
-          </Button>
-        </div>
       </div>
+
 
 
       {/* Link input */}
