@@ -38,6 +38,7 @@ import { useAuthContext } from '@/contexts/AuthContext';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { logGroupAudit } from '@/lib/groupAuditLog';
+import { normalizeWhatsAppConversationPhone } from '@/lib/whatsappPhone';
 
 const TREATMENT_OPTIONS = ['', 'Dr.', 'Dra.', 'Sr.', 'Sra.', 'Prof.', 'Profa.'];
 const NAME_FORMAT_OPTIONS = [
@@ -1759,6 +1760,8 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   };
 
   const formatPhone = (phone: string) => {
+    const normalized = normalizeWhatsAppConversationPhone(phone);
+    if (normalized.replace(/\D/g, '').length >= 17) return `Grupo • …${normalized.slice(-6)}`;
     if (phone.length === 13) {
       return `+${phone.slice(0, 2)} (${phone.slice(2, 4)}) ${phone.slice(4, 9)}-${phone.slice(9)}`;
     }
