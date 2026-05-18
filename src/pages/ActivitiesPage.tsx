@@ -3181,6 +3181,8 @@ const ActivitiesPage = () => {
                               what_was_done: formWhatWasDone || null,
                               current_status_notes: formCurrentStatus || null,
                               next_steps: formNextSteps || null,
+                              solicitacao: formSolicitacao || null,
+                              resposta_juizo: formRespostaJuizo || null,
                               activity_type: formType,
                               priority: formPriority,
                               lead_id: formLeadId || null,
