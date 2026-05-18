@@ -1682,6 +1682,19 @@ export function WhatsAppInbox() {
                   </div>
                 </div>
               )}
+              {aiPreview.customFields && aiPreview.customFields.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-sm font-semibold text-primary">Campos personalizados do lead</p>
+                  <div className="rounded-lg border divide-y">
+                    {aiPreview.customFields.map((cf) => (
+                      <div key={cf.id} className="flex items-start gap-3 px-3 py-2 text-sm">
+                        <span className="text-muted-foreground min-w-[140px] shrink-0">{cf.label}</span>
+                        <span className="font-medium break-words">{String(cf.value)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
           <DialogFooter>
