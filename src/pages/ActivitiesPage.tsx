@@ -275,7 +275,8 @@ const ActivitiesPage = () => {
   const [completeNotifyOpen, setCompleteNotifyOpen] = useState(false);
   const [completeNotifySource, setCompleteNotifySource] = useState<'sheet' | 'workflow'>('sheet');
   const [showLeadSheet, setShowLeadSheet] = useState(false);
-  const [viewMode, setViewMode] = usePageState<'list' | 'matrix' | 'blocks'>('activities_viewMode', 'blocks');
+  const [viewModeRaw, setViewMode] = usePageState<'list' | 'blocks'>('activities_viewMode', 'blocks');
+  const viewMode = (viewModeRaw === 'list' ? 'list' : 'blocks') as 'list' | 'blocks';
   const [formMatrixQuadrant, setFormMatrixQuadrant] = useState<string>('');
   const [dragOverQuadrant, setDragOverQuadrant] = useState<string | null>(null);
   const [aiSuggestingType, setAiSuggestingType] = useState(false);
