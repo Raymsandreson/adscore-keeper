@@ -3031,8 +3031,20 @@ const ActivitiesPage = () => {
         {/* RIGHT: Form panel (WhatsApp chat-detail style) */}
         {isEditing && (
           <div className="flex-1 flex flex-col overflow-hidden md:relative fixed inset-0 z-50 bg-background md:inset-auto md:z-auto">
-            {/* Form header with lead preview */}
-            <div className="bg-primary/5 border-b px-4 py-2.5 shrink-0">
+            {/* Form header com lead preview — oculto por padrão, revela no hover; pode fixar */}
+            <div className={cn("shrink-0 relative", !headerPinned && "group/header")}>
+              {!headerPinned && (
+                <div
+                  className="h-1.5 hover:h-2 bg-gradient-to-r from-primary/40 via-primary/60 to-primary/40 cursor-pointer transition-all"
+                  title="Passe o mouse para ver lead/funil. Clique para fixar."
+                  aria-label="Mostrar cabeçalho"
+                  onClick={toggleHeaderPinned}
+                />
+              )}
+              <div className={cn(
+                "bg-primary/5 px-4 py-2.5 transition-all overflow-hidden border-b",
+                !headerPinned && "absolute top-1.5 left-0 right-0 z-30 bg-background shadow-lg max-h-0 opacity-0 pointer-events-none group-hover/header:max-h-[500px] group-hover/header:opacity-100 group-hover/header:pointer-events-auto"
+              )}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 flex-1 min-w-0">
                   <Button variant="ghost" size="icon" className="h-7 w-7 md:hidden shrink-0" onClick={closeSheet}>
