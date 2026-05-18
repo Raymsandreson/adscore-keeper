@@ -851,6 +851,9 @@ export function WhatsAppInbox() {
 
         setExtractionStep('Analisando conversa para o lead...');
         const extracted = await extractConversationData('lead', customSpecs);
+        if (Array.isArray(extracted?.identified_contacts)) {
+          identifiedContacts = extracted.identified_contacts;
+        }
         const allowedLeadFields = [
           'lead_name', 'victim_name', 'lead_email', 'city', 'state', 'neighborhood',
           'main_company', 'contractor_company', 'accident_address', 'accident_date',
