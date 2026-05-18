@@ -29,8 +29,8 @@ export interface LeadActivity {
   what_was_done: string | null;
   next_steps: string | null;
   current_status_notes: string | null;
-  solicitacao: string | null;
-  resposta_juizo: string | null;
+  solicitacao?: string | null;
+  resposta_juizo?: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
