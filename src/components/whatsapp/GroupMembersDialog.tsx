@@ -144,7 +144,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
       const r = await callManage('promote', targets);
       toast.success(`${r.ok_count}/${targets.length} promovido(s) a admin`);
       // refetch para refletir status real
-      await fetchParticipants();
+      await fetchParticipants(true);
     } catch (e: any) {
       toast.error(e.message);
     } finally { setBulkPromoting(false); }
@@ -160,7 +160,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
         toast.success('Membro adicionado');
         setNewMemberPhone('');
         setShowAddMember(false);
-        await fetchParticipants();
+        await fetchParticipants(true);
       } else {
         const detail = r.details?.[0];
         toast.error(detail?.message || 'Não foi possível adicionar (número pode não ter WhatsApp ou bloqueou convites)');
@@ -243,7 +243,30 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
       fetchParticipants();
       fetchClassificationsAndTypes();
     }
-  }, [open, isGroup]);
+  }, [open, isGroup, groupJid, instanceName]);
+
+  // Realtime: quando o webhook atualizar o cache do grupo (entrou/saiu/promoveu membro),
+  // refaz a leitura automaticamente — sem o usuário precisar clicar em nada.
+  useEffect(() => {
+    if (!open || !isGroup || !groupJid || !instanceName) return;
+    const channel = supabase
+      .channel(`group-cache-${groupJid}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'whatsapp_groups_cache',
+          filter: `group_jid=eq.${groupJid}`,
+        },
+        () => {
+          // Lê do cache (instantâneo); sem refresh forçado pra não bater na UazAPI toda hora.
+          readFromCacheAndMerge();
+        },
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [open, isGroup, groupJid, instanceName]);
 
   const fetchClassificationsAndTypes = async () => {
     const [classRes, relRes] = await Promise.all([
@@ -254,98 +277,99 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
     if (relRes.data) setRelationshipTypes(relRes.data);
   };
 
-  const fetchParticipants = async () => {
+  // Mapeia a resposta enriquecida do edge get-group-participants ou linhas do cache puro.
+  const mapApiParticipants = (list: any[]): GroupParticipant[] => {
+    return (list || [])
+      .map((p: any) => {
+        const phone = String(p.phone || '').replace(/\D/g, '');
+        if (!phone || phone.length < 4) return null;
+        const name = p.name || p.display_name || p.notify || p.pushName || phone;
+        const isAdmin = !!(p.is_admin || p.admin === 'admin' || p.admin === 'superadmin' || p.IsAdmin);
+        return { phone, name, admin: isAdmin ? 'admin' : undefined, lid: p.lid || undefined } as GroupParticipant;
+      })
+      .filter(Boolean) as GroupParticipant[];
+  };
+
+  const mergeWithMessages = (apiList: GroupParticipant[]): GroupParticipant[] => {
+    const merged = new Map<string, GroupParticipant>();
+    for (const p of apiList) merged.set(p.phone, p);
+    for (const p of messageParticipants) {
+      if (!merged.has(p.phone) && p.phone.length >= 8) {
+        merged.set(p.phone, { phone: p.phone, name: p.name });
+      } else if (merged.has(p.phone)) {
+        const existing = merged.get(p.phone)!;
+        if ((existing.name === existing.phone || !existing.name || existing.name === 'Desconhecido') && p.name !== p.phone) {
+          existing.name = p.name;
+        }
+      }
+    }
+    return Array.from(merged.values())
+      .filter(p => p.name !== 'Você')
+      .sort((a, b) => {
+        if (a.admin && !b.admin) return -1;
+        if (!a.admin && b.admin) return 1;
+        return a.name.localeCompare(b.name);
+      });
+  };
+
+  // Leitura instantânea do cache local (sem chamar UazAPI).
+  const readFromCacheAndMerge = async () => {
+    if (!groupJid) return false;
+    const { data } = await supabase
+      .from('whatsapp_groups_cache')
+      .select('participants')
+      .eq('group_jid', groupJid)
+      .order('fetched_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const raw = Array.isArray((data as any)?.participants) ? (data as any).participants : [];
+    if (raw.length === 0) return false;
+    // O cache guarda o payload bruto da UazAPI — precisa extrair phone/admin.
+    const apiList: GroupParticipant[] = raw
+      .map((p: any) => {
+        const rawId = p?.JID || p?.jid || p?.id || p?.participant || '';
+        let phone = String(p?.PhoneNumber || p?.phoneNumber || p?.phone || rawId).replace('@s.whatsapp.net', '').replace('@lid', '').replace(/\D/g, '');
+        if (!phone || phone.length < 4) return null;
+        const name = p?.DisplayName || p?.displayName || p?.Name || p?.name || p?.PushName || p?.pushName || phone;
+        const isAdmin = !!(p?.IsAdmin || p?.isAdmin || p?.admin || p?.IsSuperAdmin || p?.superAdmin);
+        const isLid = String(rawId).includes('@lid');
+        return { phone, name, admin: isAdmin ? 'admin' : undefined, lid: isLid ? rawId : undefined };
+      })
+      .filter(Boolean) as GroupParticipant[];
+    const merged = mergeWithMessages(apiList);
+    setParticipants(merged);
+    enrichWithContactData(merged).catch(() => {});
+    return merged.length > 0;
+  };
+
+  const fetchParticipants = async (forceRefresh = false) => {
     setLoading(true);
     try {
-      // 1) Inst do contexto (preferencial) — sempre tentada primeiro
-      const tried = new Set<string>();
-      const candidates: { id: string; instance_name: string }[] = [];
-
-      if (instanceName) {
-        const { data: inst } = await supabase
-          .from('whatsapp_instances')
-          .select('id, instance_name')
-          .eq('instance_name', instanceName)
-          .eq('is_active', true)
-          .maybeSingle();
-        if (inst?.id) {
-          candidates.push(inst as any);
-          tried.add(inst.id);
-        }
+      // 1) Render instantâneo a partir do cache local (se não estiver forçando refresh).
+      if (!forceRefresh) {
+        await readFromCacheAndMerge();
       }
 
-      // 2) Demais instâncias ativas como fallback (mesma lógica do invite-link).
-      // Motivo: se a inst do contexto não é membro do grupo, a UazAPI devolve
-      // lista vazia e perdemos os membros reais.
-      const { data: others } = await supabase
-        .from('whatsapp_instances')
-        .select('id, instance_name')
-        .eq('is_active', true)
-        .limit(20);
-      for (const o of others || []) {
-        if (!tried.has(o.id)) {
-          candidates.push(o as any);
-          tried.add(o.id);
-        }
+      // 2) Chama o edge get-group-participants (usa cache de 24h + enriquece nomes/fotos via /chat/details).
+      if (!groupJid || !instanceName) return;
+      const { data, error } = await (supabase as any).functions.invoke('get-group-participants', {
+        body: { group_jid: groupJid, instance_name: instanceName, refresh: forceRefresh },
+      });
+      if (error) {
+        console.warn('[GroupMembers] get-group-participants error:', error);
+        return;
       }
-
-      let bestApi: GroupParticipant[] = [];
-      let usedInstance: string | null = null;
-      for (const inst of candidates) {
-        const { data, error } = await cloudFunctions.invoke('send-whatsapp', {
-          body: { action: 'fetch_group_participants', group_id: conversationPhone, instance_id: inst.id },
-        });
-        if (error || !data?.success || !Array.isArray(data?.participants)) continue;
-
-        const mapped: GroupParticipant[] = data.participants.map((p: any) => {
-          const rawId = p.id || p.phone || '';
-          let phone = rawId.replace('@s.whatsapp.net', '').replace(/\D/g, '');
-          const isLid = rawId.includes('@lid');
-          if (isLid) phone = rawId.replace('@lid', '').replace(/\D/g, '');
-          const name = p.name || p.notify || p.pushName || phone || 'Desconhecido';
-          return { phone, name, admin: p.admin || undefined, lid: isLid ? rawId : undefined };
-        }).filter((p: GroupParticipant) => p.phone && p.phone.length >= 4);
-
-        // Mantém a maior lista — instância que enxerga mais membros é a "membro do grupo".
-        if (mapped.length > bestApi.length) {
-          bestApi = mapped;
-          usedInstance = inst.instance_name;
-        }
-        // Se já temos uma lista razoavelmente grande, podemos parar para economizar chamadas.
-        if (bestApi.length >= 5) break;
+      if (data?.success && Array.isArray(data?.participants)) {
+        const apiList = mapApiParticipants(data.participants);
+        const allParticipants = mergeWithMessages(apiList);
+        setParticipants(allParticipants);
+        await enrichWithContactData(allParticipants);
       }
-
-      if (usedInstance && usedInstance !== instanceName) {
-        console.info(`[GroupMembers] participants fetched via fallback instance "${usedInstance}" (context: ${instanceName})`);
-      }
-
-      // Merge com participantes extraídos das mensagens (cobre @lid e quem só enviou msg).
-      const merged = new Map<string, GroupParticipant>();
-      for (const p of bestApi) merged.set(p.phone, p);
-      for (const p of messageParticipants) {
-        if (!merged.has(p.phone) && p.phone.length >= 8) {
-          merged.set(p.phone, { phone: p.phone, name: p.name });
-        } else if (merged.has(p.phone)) {
-          const existing = merged.get(p.phone)!;
-          if ((existing.name === existing.phone || !existing.name || existing.name === 'Desconhecido') && p.name !== p.phone) {
-            existing.name = p.name;
-          }
-        }
-      }
-
-      const allParticipants = Array.from(merged.values())
-        .filter(p => p.name !== 'Você')
-        .sort((a, b) => {
-          if (a.admin && !b.admin) return -1;
-          if (!a.admin && b.admin) return 1;
-          return a.name.localeCompare(b.name);
-        });
-
-      setParticipants(allParticipants);
-      await enrichWithContactData(allParticipants);
     } catch (e) {
       console.error('Error fetching group participants:', e);
-      setParticipants(messageParticipants.filter(p => p.name !== 'Você').map(p => ({ ...p })));
+      if (participants.length === 0) {
+        setParticipants(messageParticipants.filter(p => p.name !== 'Você').map(p => ({ ...p })));
+      }
     } finally {
       setLoading(false);
     }
@@ -624,7 +648,22 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Users className="h-5 w-5" />
-            Membros do grupo ({participants.length})
+            <span>Membros do grupo ({participants.length})</span>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-7 w-7 ml-auto"
+                  onClick={() => fetchParticipants(true)}
+                  disabled={loading}
+                  aria-label="Atualizar lista"
+                >
+                  <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Forçar atualização (sincroniza com o WhatsApp)</TooltipContent>
+            </Tooltip>
           </DialogTitle>
         </DialogHeader>
 
