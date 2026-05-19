@@ -1108,9 +1108,9 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
     const type = msg.media_type || msg.message_type;
     if (type?.startsWith('image') || msg.message_type === 'image') {
       return (
-        <a href={msg.media_url} target="_blank" rel="noopener noreferrer">
-          <img src={msg.media_url} alt="Imagem" className="max-w-[200px] max-h-[200px] rounded-md object-cover" loading="lazy" />
-        </a>
+        <button type="button" onClick={() => setLightboxUrl(msg.media_url!)} className="block">
+          <img src={msg.media_url} alt="Imagem" className="max-w-[200px] max-h-[200px] rounded-md object-cover cursor-zoom-in" loading="lazy" />
+        </button>
       );
     }
     if (type?.startsWith('video') || msg.message_type === 'video') {
@@ -1121,10 +1121,15 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
     }
     // Document
     const fileName = msg.media_url.split('/').pop() || 'Documento';
+    const isPdf = /\.pdf($|\?)/i.test(msg.media_url);
     return (
-      <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-[11px] underline">
+      <button
+        type="button"
+        onClick={() => isPdf ? setLightboxUrl(msg.media_url!) : window.open(msg.media_url!, '_blank', 'noopener,noreferrer')}
+        className="flex items-center gap-1.5 text-[11px] underline"
+      >
         📄 {fileName.length > 30 ? fileName.slice(0, 30) + '...' : fileName}
-      </a>
+      </button>
     );
   };
 
