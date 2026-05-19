@@ -126,34 +126,46 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
   };
 
   const handleRemove = async (p: GroupParticipant) => {
-    if (!confirm(`Remover ${p.name || p.phone} do grupo?`)) return;
-    setManagingPhone(p.phone);
-    try {
-      const r = await callManage('remove', [p.phone]);
-      if (r.ok_count > 0) {
-        toast.success(`${p.name || p.phone} removido do grupo`);
-        setParticipants(prev => prev.filter(x => x.phone !== p.phone));
-      } else {
-        toast.error('Não foi possível remover');
-      }
-    } catch (e: any) {
-      toast.error(e.message);
-    } finally { setManagingPhone(null); }
+    confirmDelete(
+      'Remover do grupo',
+      `Deseja remover ${p.name || p.phone} do grupo? Essa ação não pode ser desfeita.`,
+      async () => {
+        setManagingPhone(p.phone);
+        try {
+          const r = await callManage('remove', [p.phone]);
+          if (r.ok_count > 0) {
+            toast.success(`${p.name || p.phone} removido do grupo`);
+            setParticipants(prev => prev.filter(x => x.phone !== p.phone));
+          } else {
+            toast.error('Não foi possível remover');
+          }
+        } catch (e: any) {
+          toast.error(e.message);
+        } finally { setManagingPhone(null); }
+      },
+      'Remover'
+    );
   };
 
   const handlePromoteAll = async () => {
     const targets = participants.filter(p => !p.admin).map(p => p.phone);
     if (targets.length === 0) { toast.info('Todos já são admin'); return; }
-    if (!confirm(`Promover ${targets.length} membro(s) a admin?`)) return;
-    setBulkPromoting(true);
-    try {
-      const r = await callManage('promote', targets);
-      toast.success(`${r.ok_count}/${targets.length} promovido(s) a admin`);
-      // refetch para refletir status real
-      await fetchParticipants(true);
-    } catch (e: any) {
-      toast.error(e.message);
-    } finally { setBulkPromoting(false); }
+    confirmDelete(
+      'Promover todos a admin',
+      `Deseja promover ${targets.length} membro(s) a administrador do grupo?`,
+      async () => {
+        setBulkPromoting(true);
+        try {
+          const r = await callManage('promote', targets);
+          toast.success(`${r.ok_count}/${targets.length} promovido(s) a admin`);
+          // refetch para refletir status real
+          await fetchParticipants(true);
+        } catch (e: any) {
+          toast.error(e.message);
+        } finally { setBulkPromoting(false); }
+      },
+      'Promover'
+    );
   };
 
   const handleAddMember = async () => {
