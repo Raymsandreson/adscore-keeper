@@ -3554,6 +3554,20 @@ const ActivitiesPage = () => {
         buildMsg={buildMsg}
       />
 
+      {/* Preview de conversa do WhatsApp inline (mesmo componente do Monitor IA / Contatos) */}
+      <DashboardChatPreview
+        open={!!waChatPreview}
+        onOpenChange={(open) => { if (!open) setWaChatPreview(null); }}
+        phone={waChatPreview?.phone || null}
+        contactName={waChatPreview?.contact_name || null}
+        instanceName={waChatPreview?.instance_name || null}
+        hasLead={!!formLeadId}
+        hasContact={false}
+        wasResponded={false}
+        responseTimeMinutes={null}
+      />
+
+
       {/* Popup fullscreen de Parabéns ao concluir a última atividade do bloco */}
       {celebrateBlock && (
         <div
