@@ -127,9 +127,18 @@ function MemberRoutineView({ userId, memberName }: { userId: string; memberName:
 
 export function MemberRoutineManager() {
   const { members, loading } = useTeamMembers();
+  const { user } = useAuthContext();
+  const { isAdmin, loading: roleLoading } = useUserRole();
   const [selectedUserId, setSelectedUserId] = useState<string>('');
 
-  if (loading) {
+  // Não-admins editam apenas a própria rotina: força seleção no próprio user
+  useEffect(() => {
+    if (!roleLoading && !isAdmin && user?.id && selectedUserId !== user.id) {
+      setSelectedUserId(user.id);
+    }
+  }, [roleLoading, isAdmin, user?.id, selectedUserId]);
+
+  if (loading || roleLoading) {
     return (
       <div className="flex items-center justify-center py-16">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -137,7 +146,11 @@ export function MemberRoutineManager() {
     );
   }
 
-  const selectedMember = members.find(m => m.user_id === selectedUserId);
+  const selectedMember = members.find(m => m.user_id === selectedUserId)
+    || (user?.id === selectedUserId
+        ? { user_id: user.id, full_name: user.user_metadata?.full_name || user.email || 'Minha rotina', email: user.email || '', role: 'member' as const }
+        : undefined);
+
 
   return (
     <Card>
