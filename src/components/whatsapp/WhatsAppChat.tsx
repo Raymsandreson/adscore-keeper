@@ -102,6 +102,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const { profile } = useAuthContext();
   const { boards: kanbanBoards } = useKanbanBoards();
   const [newMessage, setNewMessage] = useState('');
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [showLinkDialog, setShowLinkDialog] = useState(false);
   const [showLeadPanel, setShowLeadPanel] = useState(false);
@@ -2780,24 +2781,24 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                     >
                       {selectedDriveMsgIds.has(msg.id) ? getSelectionIndex(msg.id) : '✓'}
                     </button>
-                    <a
-                      href={msg.media_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                    <button
+                      type="button"
                       onClick={(e) => {
                         if (longPressFiredRef.current) { e.preventDefault(); longPressFiredRef.current = false; return; }
-                        // Shift+clique no PC = entra no modo seleção e marca/desmarca
                         if (e.shiftKey || driveSelectionMode) {
                           e.preventDefault();
                           setDriveSelectionMode(true);
                           toggleDriveSelection(msg.id);
+                          return;
                         }
+                        setLightboxUrl(msg.media_url!);
                       }}
+                      className="block"
                     >
                       <img
                         src={msg.media_url}
                         alt="Imagem"
-                        className="max-w-full rounded-lg max-h-[320px] w-auto object-contain cursor-pointer bg-black/5"
+                        className="max-w-full rounded-lg max-h-[320px] w-auto object-contain cursor-zoom-in bg-black/5"
                         loading="lazy"
                         onError={(e) => {
                           const img = e.currentTarget;
@@ -2806,7 +2807,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                           if (sibling) sibling.style.display = 'flex';
                         }}
                       />
-                    </a>
+                    </button>
                     <div data-img-fallback className="hidden items-center gap-2 text-xs italic opacity-70 px-2 py-3 border rounded-lg bg-muted/40">
                       🖼️ Imagem indisponível — abra no link original
                       <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="underline">abrir</a>
@@ -2867,14 +2868,18 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                         </div>
                       )}
                       {!isPdf && isImage && (
-                        <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="block rounded-lg overflow-hidden border bg-white">
+                        <button
+                          type="button"
+                          onClick={() => setLightboxUrl(msg.media_url!)}
+                          className="block w-full rounded-lg overflow-hidden border bg-white cursor-zoom-in"
+                        >
                           <img
                             src={msg.media_url}
                             alt={fileName}
                             loading="lazy"
                             className="w-full max-h-[420px] object-contain bg-muted/30"
                           />
-                        </a>
+                        </button>
                       )}
                       <div className="group/doc flex items-center gap-2 px-2 py-1.5 rounded-md bg-muted/40">
                         <button
@@ -3324,6 +3329,38 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         phone={conversation.phone}
         instanceName={conversation.instance_name || undefined}
       />
+      {lightboxUrl && (
+        <div
+          className="fixed inset-0 z-[200] bg-black/90 flex items-center justify-center p-4 animate-in fade-in"
+          onClick={() => setLightboxUrl(null)}
+        >
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setLightboxUrl(null); }}
+            className="absolute top-4 right-4 bg-white/10 hover:bg-white/20 text-white rounded-full p-2"
+            title="Fechar"
+          >
+            <X className="h-5 w-5" />
+          </button>
+          <a
+            href={lightboxUrl}
+            download
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="absolute top-4 right-16 bg-white/10 hover:bg-white/20 text-white rounded-full p-2"
+            title="Baixar"
+          >
+            <Download className="h-5 w-5" />
+          </a>
+          <img
+            src={lightboxUrl}
+            alt="Visualização"
+            className="max-w-[95vw] max-h-[95vh] object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
     </div>
   );
 }
