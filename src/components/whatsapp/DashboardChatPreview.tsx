@@ -14,7 +14,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { format, parseISO, isToday, isYesterday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Loader2, User, Send, MoreVertical, Link2, UserPlus, Plus, Scale, Sparkles, X, Users, Bot, BotOff, Paperclip, Image, FileUp, Lock, LockOpen, FileSignature, FileText, Volume2, VolumeX, BellOff, Trash2, FastForward } from 'lucide-react';
+import { Loader2, User, Send, MoreVertical, Link2, UserPlus, Plus, Scale, Sparkles, X, Users, Bot, BotOff, Paperclip, Image, FileUp, Lock, LockOpen, FileSignature, FileText, Volume2, VolumeX, BellOff, Trash2, FastForward, Download } from 'lucide-react';
 import { Phone as PhoneIcon, PhoneIncoming, PhoneOutgoing, PhoneMissed } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -80,6 +80,7 @@ interface Props {
 export function DashboardChatPreview({ open, onOpenChange, phone, contactName, instanceName, hasLead, hasContact, wasResponded, responseTimeMinutes, onConversationUpdated, onOpenChat, campaignBoardId, campaignStageId }: Props) {
   const { user, profile } = useAuthContext();
   const [messages, setMessages] = useState<Message[]>([]);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [newMessage, setNewMessage] = useState('');
   const [sending, setSending] = useState(false);
@@ -1107,9 +1108,9 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
     const type = msg.media_type || msg.message_type;
     if (type?.startsWith('image') || msg.message_type === 'image') {
       return (
-        <a href={msg.media_url} target="_blank" rel="noopener noreferrer">
-          <img src={msg.media_url} alt="Imagem" className="max-w-[200px] max-h-[200px] rounded-md object-cover" loading="lazy" />
-        </a>
+        <button type="button" onClick={() => setLightboxUrl(msg.media_url!)} className="block">
+          <img src={msg.media_url} alt="Imagem" className="max-w-[200px] max-h-[200px] rounded-md object-cover cursor-zoom-in" loading="lazy" />
+        </button>
       );
     }
     if (type?.startsWith('video') || msg.message_type === 'video') {
@@ -1120,10 +1121,15 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
     }
     // Document
     const fileName = msg.media_url.split('/').pop() || 'Documento';
+    const isPdf = /\.pdf($|\?)/i.test(msg.media_url);
     return (
-      <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-[11px] underline">
+      <button
+        type="button"
+        onClick={() => isPdf ? setLightboxUrl(msg.media_url!) : window.open(msg.media_url!, '_blank', 'noopener,noreferrer')}
+        className="flex items-center gap-1.5 text-[11px] underline"
+      >
         📄 {fileName.length > 30 ? fileName.slice(0, 30) + '...' : fileName}
-      </a>
+      </button>
     );
   };
 
@@ -1765,6 +1771,47 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
         isGroup={true}
         messageParticipants={[]}
       />
+    )}
+    {lightboxUrl && (
+      <div
+        className="fixed inset-0 z-[200] bg-black/90 flex items-center justify-center p-4 animate-in fade-in"
+        onClick={() => setLightboxUrl(null)}
+      >
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); setLightboxUrl(null); }}
+          className="absolute top-4 right-4 bg-white/10 hover:bg-white/20 text-white rounded-full p-2"
+          title="Fechar"
+        >
+          <X className="h-5 w-5" />
+        </button>
+        <a
+          href={lightboxUrl}
+          download
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          className="absolute top-4 right-16 bg-white/10 hover:bg-white/20 text-white rounded-full p-2"
+          title="Baixar"
+        >
+          <Download className="h-5 w-5" />
+        </a>
+        {/\.pdf($|\?)/i.test(lightboxUrl) ? (
+          <iframe
+            src={lightboxUrl}
+            title="Documento"
+            className="w-[95vw] h-[95vh] bg-white rounded"
+            onClick={(e) => e.stopPropagation()}
+          />
+        ) : (
+          <img
+            src={lightboxUrl}
+            alt="Visualização"
+            className="max-w-[95vw] max-h-[95vh] object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
+        )}
+      </div>
     )}
     </>
   );
