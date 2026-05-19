@@ -1,5 +1,7 @@
 // Força download do arquivo na mesma aba, evitando navegação.
 // `download` HTML attribute é ignorado em URLs cross-origin -> precisamos baixar como blob.
+import type { MouseEvent } from 'react';
+
 export async function downloadFile(url: string, filename?: string): Promise<void> {
   const fallbackName = (() => {
     if (filename) return filename;
@@ -29,10 +31,11 @@ export async function downloadFile(url: string, filename?: string): Promise<void
 }
 
 export function bindDownload(url: string, filename?: string) {
-  return (e: React.MouseEvent) => {
+  return (e: MouseEvent<HTMLElement>) => {
     e.preventDefault();
     e.stopPropagation();
     e.nativeEvent?.stopImmediatePropagation?.();
+    e.currentTarget.removeAttribute?.('href');
     void downloadFile(url, filename);
   };
 }
