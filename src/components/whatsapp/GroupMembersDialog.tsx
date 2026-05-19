@@ -9,6 +9,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { Users, User, UserPlus, Loader2, MapPin, Briefcase, Tag, Heart, ChevronDown, ChevronUp, Check, Phone, Search, ExternalLink, Link2, FileText, RefreshCw, Save, ArrowUpFromLine, ShieldCheck, ShieldOff, UserMinus, Crown, Plus, X } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
@@ -80,6 +81,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
   const [showAddMember, setShowAddMember] = useState(false);
   const [newMemberPhone, setNewMemberPhone] = useState('');
   const [addingMember, setAddingMember] = useState(false);
+  const [ownerPhone, setOwnerPhone] = useState<string | null>(null);
 
   const callManage = async (action: 'add' | 'remove' | 'promote' | 'demote', numbers: string[]) => {
     if (!groupJid || !instanceName) throw new Error('Grupo ou instância não definidos');
@@ -176,7 +178,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
   const openQuickContact = async (contactId: string) => {
     setQuickContactLoading(contactId);
     try {
-      const { data, error } = await supabase
+      const { data, error } = await externalSupabase
         .from('contacts')
         .select('*')
         .eq('id', contactId)
@@ -247,6 +249,20 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
     }
   }, [open, isGroup, groupJid, instanceName]);
 
+  // Carrega o owner_phone da instância (essa é "nós mesmos" no grupo, não um contato do caso).
+  useEffect(() => {
+    if (!open || !instanceName) { setOwnerPhone(null); return; }
+    (async () => {
+      const { data } = await (externalSupabase as any)
+        .from('whatsapp_instances')
+        .select('owner_phone')
+        .ilike('instance_name', instanceName)
+        .maybeSingle();
+      const raw = (data?.owner_phone || '').replace(/\D/g, '');
+      setOwnerPhone(raw || null);
+    })();
+  }, [open, instanceName]);
+
   // Realtime: quando o webhook atualizar o cache do grupo (entrou/saiu/promoveu membro),
   // refaz a leitura automaticamente — sem o usuário precisar clicar em nada.
   useEffect(() => {
@@ -272,7 +288,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
 
   const fetchClassificationsAndTypes = async () => {
     const [classRes, relRes] = await Promise.all([
-      (supabase as any).from('contact_classifications').select('id, name, color').order('display_order'),
+      (externalSupabase as any).from('contact_classifications').select('id, name, color').order('display_order'),
       (supabase as any).from('contact_relationship_types').select('id, name').order('display_order'),
     ]);
     if (classRes.data) setClassifications(classRes.data);
@@ -387,7 +403,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
       `phone.eq.+55${ph}`,
     ]).join(',');
 
-    const { data: contacts } = await supabase
+    const { data: contacts } = await externalSupabase
       .from('contacts')
       .select('id, full_name, phone, classification, classifications, profession, city, state, tags')
       .or(orConditions);
@@ -409,7 +425,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
     if (leadId) {
       const contactIds = Array.from(cMap.values()).map(c => c.id);
       if (contactIds.length > 0) {
-        const { data: links } = await (supabase as any)
+        const { data: links } = await (externalSupabase as any)
           .from('contact_leads')
           .select('contact_id, relationship_to_primary, relationship_to_victim, is_primary_client')
           .eq('lead_id', leadId)
@@ -443,7 +459,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
       const normalizedPhone = participant.phone.replace(/\D/g, '');
       
       // Check existing
-      const { data: existing } = await supabase
+      const { data: existing } = await externalSupabase
         .from('contacts')
         .select('id, full_name')
         .or(`phone.eq.${normalizedPhone},phone.eq.+${normalizedPhone},phone.eq.+55${normalizedPhone}`)
@@ -455,7 +471,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
         contactId = existing.id;
         toast.info(`Contato "${existing.full_name}" já existe!`);
       } else {
-        const { data: newContact, error } = await supabase
+        const { data: newContact, error } = await externalSupabase
           .from('contacts')
           .insert({ full_name: participant.name, phone: normalizedPhone })
           .select()
@@ -467,7 +483,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
 
       // Link to lead if applicable
       if (leadId) {
-        const { data: linkExists } = await (supabase as any)
+        const { data: linkExists } = await (externalSupabase as any)
           .from('contact_leads')
           .select('id')
           .eq('contact_id', contactId)
@@ -475,7 +491,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
           .maybeSingle();
 
         if (!linkExists) {
-          await (supabase as any).from('contact_leads').insert({ contact_id: contactId, lead_id: leadId });
+          await (externalSupabase as any).from('contact_leads').insert({ contact_id: contactId, lead_id: leadId });
           toast.success('Contato vinculado ao lead!');
         }
       }
@@ -506,7 +522,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
         updateData.state = value || null;
       }
 
-      const { error } = await supabase
+      const { error } = await externalSupabase
         .from('contacts')
         .update(updateData)
         .eq('id', contact.id);
@@ -532,7 +548,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
     if (!contact || !leadId) return;
 
     try {
-      const { data: existing } = await (supabase as any)
+      const { data: existing } = await (externalSupabase as any)
         .from('contact_leads')
         .select('id')
         .eq('contact_id', contact.id)
@@ -540,12 +556,12 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
         .maybeSingle();
 
       if (existing) {
-        await (supabase as any)
+        await (externalSupabase as any)
           .from('contact_leads')
           .update({ relationship_to_primary: value || null })
           .eq('id', existing.id);
       } else {
-        await (supabase as any)
+        await (externalSupabase as any)
           .from('contact_leads')
           .insert({ contact_id: contact.id, lead_id: leadId, relationship_to_primary: value || null });
       }
@@ -570,13 +586,13 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
     setSettingPrimary(phone);
     try {
       // Desmarca qualquer principal anterior
-      await (supabase as any)
+      await (externalSupabase as any)
         .from('contact_leads')
         .update({ is_primary_client: false })
         .eq('lead_id', leadId);
 
       // Garante link e marca este como principal
-      const { data: existing } = await (supabase as any)
+      const { data: existing } = await (externalSupabase as any)
         .from('contact_leads')
         .select('id')
         .eq('contact_id', contact.id)
@@ -584,12 +600,12 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
         .maybeSingle();
 
       if (existing) {
-        await (supabase as any)
+        await (externalSupabase as any)
           .from('contact_leads')
           .update({ is_primary_client: true, relationship_to_primary: null })
           .eq('id', existing.id);
       } else {
-        await (supabase as any)
+        await (externalSupabase as any)
           .from('contact_leads')
           .insert({ contact_id: contact.id, lead_id: leadId, is_primary_client: true });
       }
@@ -611,7 +627,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
   const handleUnsetPrimary = async () => {
     if (!leadId) return;
     try {
-      await (supabase as any)
+      await (externalSupabase as any)
         .from('contact_leads')
         .update({ is_primary_client: false })
         .eq('lead_id', leadId);
@@ -628,7 +644,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
       setLinkSearchResults([]);
       return;
     }
-    const { data } = await supabase
+    const { data } = await externalSupabase
       .from('contacts')
       .select('id, full_name, phone, notes')
       .ilike('full_name', `%${query}%`)
@@ -643,7 +659,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
       const normalizedPhone = participant.phone.replace(/\D/g, '');
       
       // Update existing contact with this phone number
-      const { error } = await supabase
+      const { error } = await externalSupabase
         .from('contacts')
         .update({ phone: normalizedPhone })
         .eq('id', contactId);
@@ -651,7 +667,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
 
       // Link to lead if applicable
       if (leadId) {
-        const { data: linkExists } = await (supabase as any)
+        const { data: linkExists } = await (externalSupabase as any)
           .from('contact_leads')
           .select('id')
           .eq('contact_id', contactId)
@@ -659,7 +675,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
           .maybeSingle();
 
         if (!linkExists) {
-          await (supabase as any).from('contact_leads').insert({ contact_id: contactId, lead_id: leadId });
+          await (externalSupabase as any).from('contact_leads').insert({ contact_id: contactId, lead_id: leadId });
         }
       }
 
@@ -698,7 +714,13 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
 
   const nonGroupParticipants = participants.filter(p => {
     const contact = contactsMap.get(p.phone);
-    return !isGroupLikeName(p.name) && !isGroupLikeName(contact?.full_name);
+    if (isGroupLikeName(p.name) || isGroupLikeName(contact?.full_name)) return false;
+    // Esconde a própria instância (somos nós no grupo, não um contato do caso).
+    if (ownerPhone && ownerPhone.length >= 8) {
+      const tail = ownerPhone.slice(-8);
+      if (p.phone.endsWith(tail)) return false;
+    }
+    return true;
   });
 
   const filteredParticipants = searchQuery
@@ -715,7 +737,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Users className="h-5 w-5" />
-            <span>Membros do grupo ({participants.length})</span>
+            <span>Membros do grupo ({nonGroupParticipants.length})</span>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
