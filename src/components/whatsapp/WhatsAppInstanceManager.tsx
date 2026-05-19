@@ -650,7 +650,7 @@ export function WhatsAppInstanceManager() {
               // Just remove default, keep conversations active
               const { instanceId, oldAgentId } = pendingAgentRemoval;
               setInstances(prev => prev.map(i => i.id === instanceId ? { ...i, default_agent_id: null } : i));
-              await ext.from('whatsapp_instances').update({ default_agent_id: null } as any).eq('id', instanceId);
+              await supabase.functions.invoke('admin-whatsapp-instance', { body: { action: 'update', instance_id: instanceId, payload: { default_agent_id: null } } });
               toast.success('Agente padrão removido (conversas mantidas ativas)');
               setPendingAgentRemoval(null);
             }}>
