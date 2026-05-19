@@ -3059,6 +3059,22 @@ const ActivitiesPage = () => {
                       Lead
                     </Button>
                   )}
+                  {formLeadId && (leadPreview?.whatsapp_group_id || leadPreview?.lead_phone) && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs gap-1 text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-950/30"
+                      onClick={() => {
+                        const target = leadPreview?.whatsapp_group_id || leadPreview?.lead_phone || '';
+                        if (!target) return;
+                        window.open(`/whatsapp?n=${encodeURIComponent(target)}`, '_blank');
+                      }}
+                      title={leadPreview?.whatsapp_group_id ? 'Abrir grupo do WhatsApp vinculado' : 'Abrir conversa do WhatsApp'}
+                    >
+                      <MessageCircle className="h-3 w-3" />
+                      {leadPreview?.whatsapp_group_id ? 'Grupo WA' : 'WhatsApp'}
+                    </Button>
+                  )}
                   {formProcessId && (
                     <Button
                       variant="ghost"
