@@ -3588,6 +3588,32 @@ const ActivitiesPage = () => {
         responseTimeMinutes={null}
       />
 
+      {/* Busca de grupos do contato (mesmo dialog usado dentro do Lead) */}
+      {formLeadId && (
+        <LeadGroupSearchDialog
+          open={groupSearchOpen}
+          onOpenChange={setGroupSearchOpen}
+          leadId={formLeadId}
+          contactPhone={leadPreview?.lead_phone || undefined}
+          instanceName={undefined}
+          leadName={formLeadName || ''}
+          onGroupSelected={async (g) => {
+            try {
+              const { error } = await externalSupabase
+                .from('leads')
+                .update({ whatsapp_group_id: g.jid, whatsapp_group_name: g.name || null })
+                .eq('id', formLeadId);
+              if (error) throw error;
+              setLeadPreview((prev) => prev ? { ...prev, whatsapp_group_id: g.jid } : prev);
+              toast.success('Grupo vinculado ao lead.');
+            } catch (e: any) {
+              toast.error('Falha ao vincular grupo: ' + (e?.message || 'erro desconhecido'));
+            }
+          }}
+        />
+      )}
+
+
 
       {/* Popup fullscreen de Parabéns ao concluir a última atividade do bloco */}
       {celebrateBlock && (
