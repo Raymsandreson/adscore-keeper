@@ -250,6 +250,7 @@ export function LeadLinkedContacts({ leadId }: LeadLinkedContactsProps) {
       'Desvincular contato',
       `Desvincular "${contactName}" deste lead? O contato continua existindo no banco e em outros leads onde estiver vinculado.`,
       () => performUnlink(linkId),
+      'Desvincular',
     );
   };
 
