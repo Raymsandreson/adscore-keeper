@@ -1740,6 +1740,52 @@ export const handler: RequestHandler = async (req, res) => {
       } catch (e) { console.error('AI agent trigger setup error:', e); }
     }
 
+    // ========== AI AGENT AUTO-REPLY (GROUPS) ==========
+    // Trigger agent in groups ONLY for messages from real clients.
+    // Block any sender whose phone matches an active WhatsApp instance owner_phone,
+    // so the agent never replies to our own collaborators (Raym, Luana, atendimento-*, etc).
+    if (isGroup && direction === 'inbound' && instanceName && phone) {
+      try {
+        const senderRaw = normalizePhone(
+          body?.message?.sender_pn || body?.sender_pn || body?.message?.sender || ''
+        );
+        if (!senderRaw) {
+          console.log('[group-agent] skipped: missing sender_pn');
+        } else {
+          const { data: ownInstances } = await supabase
+            .from('whatsapp_instances')
+            .select('owner_phone')
+            .eq('is_active', true);
+          const instancePhones = (ownInstances || [])
+            .map((i: any) => (i.owner_phone || '').replace(/\D/g, ''))
+            .filter(Boolean);
+          const senderDigits = senderRaw.replace(/\D/g, '');
+          const isOurStaff = instancePhones.some((ip: string) =>
+            senderDigits.endsWith(ip) || ip.endsWith(senderDigits) || senderDigits.slice(-8) === ip.slice(-8)
+          );
+          if (isOurStaff) {
+            console.log(`[group-agent] skipped: sender ${senderDigits} is staff (registered instance owner)`);
+          } else {
+            fetch(`${CLOUD_FUNCTIONS_URL}/functions/v1/whatsapp-ai-agent-reply`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${CLOUD_ANON_KEY}` },
+              body: JSON.stringify({
+                phone: senderDigits,
+                group_id: phone,
+                instance_name: instanceName,
+                message_text: messageText,
+                message_type: messageType,
+                lead_id: leadId || null,
+                campaign_id: detectedCampaignId || null,
+                is_group: true,
+                contact_name: contactName || null,
+              }),
+            }).catch(err => console.error('AI agent group reply trigger error:', err));
+          }
+        }
+      } catch (e) { console.error('AI agent group trigger setup error:', e); }
+    }
+
     const respData = {
       success: true, message_id: message.id, contact_id: contactId, lead_id: leadId,
       is_new_contact: !contactId, instance_name: instanceName,
