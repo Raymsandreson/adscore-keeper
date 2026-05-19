@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/integrations/supabase';
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { endOfDay } from 'date-fns';
 import type { AgentData, ConversationDetail, AgentStats, ReferralData, BoardData, RedirectionData, UserData } from '../types';

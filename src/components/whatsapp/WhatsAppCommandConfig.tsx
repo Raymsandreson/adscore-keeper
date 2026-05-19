@@ -3,6 +3,7 @@ import { PromptVariableSelector } from './PromptVariableSelector';
 import { PromptBuilderChat } from './PromptBuilderChat';
 import { Checkbox } from '@/components/ui/checkbox';
 import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/integrations/supabase';
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { logAudit } from '@/hooks/useAuditLog';
 import { Button } from '@/components/ui/button';

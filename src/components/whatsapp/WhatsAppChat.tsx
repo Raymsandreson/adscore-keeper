@@ -34,6 +34,7 @@ import { WhatsAppMediaGallery } from './WhatsAppMediaGallery';
 import { cn } from '@/lib/utils';
 import { canonicalizeChatTarget } from '@/lib/whatsappPhone';
 import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/integrations/supabase';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { toast } from 'sonner';
 import { useAuthContext } from '@/contexts/AuthContext';

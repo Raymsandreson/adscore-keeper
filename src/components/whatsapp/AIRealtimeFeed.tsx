@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/integrations/supabase';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Bot, MessageCircle, UserPlus, Zap, Phone, PhoneCall, FileText, Activity, ClipboardList } from 'lucide-react';

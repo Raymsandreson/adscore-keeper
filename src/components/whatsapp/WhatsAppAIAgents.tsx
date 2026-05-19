@@ -5,6 +5,7 @@ import { AgentAutomationRules } from './AgentAutomationRules';
 import { AgentStageConfig } from './AgentStageConfig';
 
 import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/integrations/supabase';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { logAudit } from '@/hooks/useAuditLog';
 import { Button } from '@/components/ui/button';
