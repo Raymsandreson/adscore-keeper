@@ -325,6 +325,72 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
   const [editProcessData, setEditProcessData] = useState<any>(null);
   const [loadingProcessEdit, setLoadingProcessEdit] = useState(false);
 
+  // Create-new flows (reuses existing forms/hooks)
+  const { addLead } = useLeads();
+  const { createCase } = useLegalCases();
+  const [newLeadOpen, setNewLeadOpen] = useState(false);
+  const [newLeadName, setNewLeadName] = useState('');
+  const [newLeadPhone, setNewLeadPhone] = useState('');
+  const [creatingLead, setCreatingLead] = useState(false);
+  const [newCaseOpen, setNewCaseOpen] = useState(false);
+  const [newCaseTitle, setNewCaseTitle] = useState('');
+  const [newCaseNumber, setNewCaseNumber] = useState('');
+  const [creatingCase, setCreatingCase] = useState(false);
+  const [newProcessOpen, setNewProcessOpen] = useState(false);
+
+  const handleCreateLead = async () => {
+    if (!newLeadName.trim()) { toast.error('Nome do lead obrigatório'); return; }
+    setCreatingLead(true);
+    try {
+      const lead: any = await addLead({ lead_name: newLeadName.trim(), lead_phone: newLeadPhone.trim() || undefined } as any);
+      if (lead?.id) {
+        props.handleSelectLead(lead.id);
+        props.setFormCaseId(''); props.setFormCaseTitle('');
+        props.setFormProcessId(''); props.setFormProcessTitle('');
+        props.setCaseProcesses([]);
+        setNewLeadOpen(false);
+        setNewLeadName(''); setNewLeadPhone('');
+      }
+    } catch (e: any) {
+      toast.error('Erro ao criar lead: ' + (e?.message || ''));
+    } finally { setCreatingLead(false); }
+  };
+
+  const handleCreateCase = async () => {
+    if (!newCaseTitle.trim()) { toast.error('Título do caso obrigatório'); return; }
+    if (!props.formLeadId) { toast.error('Selecione um lead primeiro'); return; }
+    setCreatingCase(true);
+    try {
+      const c: any = await createCase({
+        lead_id: props.formLeadId,
+        title: newCaseTitle.trim(),
+        case_number: newCaseNumber.trim() || undefined,
+      });
+      if (c?.id) {
+        props.setFormCaseId(c.id);
+        props.setFormCaseTitle(`${c.case_number} - ${c.title}`);
+        props.setFormProcessId(''); props.setFormProcessTitle('');
+        props.setCaseProcesses([]);
+        setNewCaseOpen(false);
+        setNewCaseTitle(''); setNewCaseNumber('');
+        // trigger upstream lead-cases refresh by reselecting the lead
+        props.handleSelectLead(props.formLeadId);
+      }
+    } catch (e: any) {
+      toast.error('Erro ao criar caso: ' + (e?.message || ''));
+    } finally { setCreatingCase(false); }
+  };
+
+  const refreshCaseProcesses = async () => {
+    if (!props.formCaseId) return;
+    const { data: procs } = await externalSupabase
+      .from('lead_processes')
+      .select('id, title, process_number, polo_passivo, tribunal, area, assuntos, workflow_id, workflow_name, envolvidos')
+      .eq('case_id', props.formCaseId);
+    props.setCaseProcesses(procs || []);
+  };
+
+
   const openProcessEditor = async (processId: string) => {
     if (!processId) return;
     setLoadingProcessEdit(true);
