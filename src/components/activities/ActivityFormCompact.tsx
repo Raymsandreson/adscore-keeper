@@ -719,11 +719,11 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
 
       {/* === SHEET: Link Lead === */}
       <Sheet open={linkLeadOpen} onOpenChange={setLinkLeadOpen}>
-        <SheetContent className="w-full sm:max-w-sm">
-          <SheetHeader>
+        <SheetContent className="w-full sm:max-w-sm flex flex-col p-0">
+          <SheetHeader className="px-6 pt-6 pb-3 shrink-0">
             <SheetTitle className="text-base">Vincular Lead</SheetTitle>
           </SheetHeader>
-          <div className="pt-4 space-y-3">
+          <div className="px-6 pb-3 shrink-0">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
@@ -734,8 +734,10 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
                 autoFocus
               />
             </div>
-            <ScrollArea className="h-[calc(100vh-200px)]">
-              <div className="space-y-0.5">
+          </div>
+          <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+            <ScrollArea className={cn("min-h-0 px-6", props.formLeadId ? "max-h-[35%]" : "flex-1")}>
+              <div className="space-y-0.5 pb-2">
                 {props.filteredLeads.map(l => (
                   <button
                     key={l.id}
@@ -746,7 +748,11 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
                     onClick={() => {
                       props.handleSelectLead(l.id);
                       props.setLeadSearch('');
-                      setLinkLeadOpen(false);
+                      props.setFormCaseId('');
+                      props.setFormCaseTitle('');
+                      props.setFormProcessId('');
+                      props.setFormProcessTitle('');
+                      props.setCaseProcesses([]);
                     }}
                   >
                     {l.lead_name || 'Lead sem nome'}
@@ -757,7 +763,75 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
                 )}
               </div>
             </ScrollArea>
+
+            {/* Cases of selected lead */}
+            {props.formLeadId && (
+              <div className="border-t shrink-0 px-6 pt-3 pb-2 max-h-[35%] overflow-y-auto bg-muted/20">
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Casos do lead</span>
+                <div className="mt-2 space-y-0.5">
+                  {props.leadCases.length === 0 && (
+                    <p className="text-[11px] text-muted-foreground py-2">Nenhum caso vinculado a este lead</p>
+                  )}
+                  {props.leadCases.map(c => (
+                    <button
+                      key={c.id}
+                      className={cn(
+                        "w-full text-left px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors",
+                        props.formCaseId === c.id && "bg-accent font-medium"
+                      )}
+                      onClick={async () => {
+                        props.setFormCaseId(c.id);
+                        props.setFormCaseTitle(`${c.case_number} - ${c.title}`);
+                        props.setFormProcessId('');
+                        props.setFormProcessTitle('');
+                        const { data: procs } = await externalSupabase
+                          .from('lead_processes')
+                          .select('id, title, process_number, polo_passivo, tribunal, area, assuntos, workflow_id, workflow_name, envolvidos')
+                          .eq('case_id', c.id);
+                        const processItems = (procs || []).map((p: any) => ({ id: p.id, title: p.title, process_number: p.process_number, polo_passivo: p.polo_passivo, tribunal: p.tribunal, area: p.area, assuntos: p.assuntos, workflow_id: p.workflow_id, workflow_name: p.workflow_name, envolvidos: p.envolvidos }));
+                        props.setCaseProcesses(processItems);
+                      }}
+                    >
+                      <span className="font-medium">{c.case_number}</span> — {c.title}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Processes of selected case */}
+            {props.formCaseId && props.caseProcesses.length > 0 && (
+              <div className="border-t shrink-0 px-6 pt-3 pb-2 max-h-[35%] overflow-y-auto bg-muted/30">
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Processos do caso</span>
+                <div className="mt-2 space-y-0.5">
+                  {props.caseProcesses.map(p => (
+                    <button
+                      key={p.id}
+                      className={cn(
+                        "w-full text-left px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors",
+                        props.formProcessId === p.id && "bg-accent font-medium"
+                      )}
+                      onClick={() => {
+                        props.setFormProcessId(p.id);
+                        const label = [p.process_number, p.title].filter(Boolean).join(' - ');
+                        props.setFormProcessTitle(label);
+                      }}
+                    >
+                      {p.process_number && <span className="font-semibold">{p.process_number}</span>}
+                      {p.process_number ? ' — ' : ''}<span className="font-medium">{p.title}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
+          {props.formLeadId && (
+            <div className="border-t px-6 py-3 shrink-0">
+              <Button type="button" size="sm" className="w-full" onClick={() => setLinkLeadOpen(false)}>
+                Confirmar
+              </Button>
+            </div>
+          )}
         </SheetContent>
       </Sheet>
 
