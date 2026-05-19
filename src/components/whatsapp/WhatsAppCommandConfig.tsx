@@ -1732,6 +1732,19 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
               </div>
             )}
 
+            {formSection === 'conversations' && (
+              <div className="space-y-3">
+                {editingId ? (
+                  <AgentConversationsList agentId={editingId} />
+                ) : (
+                  <div className="text-center py-8">
+                    <MessageSquare className="h-8 w-8 text-muted-foreground/50 mx-auto mb-2" />
+                    <p className="text-sm text-muted-foreground">Salve o agente primeiro para ver as conversas vinculadas</p>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="flex gap-2 justify-end border-t pt-3">
               <Button size="sm" variant="ghost" onClick={resetForm}>Cancelar</Button>
               <Button size="sm" onClick={handleSave}>{editingId ? 'Atualizar' : 'Salvar'}</Button>
