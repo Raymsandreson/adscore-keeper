@@ -14,6 +14,7 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
+import { useConfirmDelete } from '@/hooks/useConfirmDelete';
 import type { Contact } from '@/hooks/useContacts';
 
 interface GroupParticipant {
@@ -51,6 +52,7 @@ interface Props {
 }
 
 export function GroupMembersDialog({ open, onOpenChange, conversationPhone, instanceName, leadId, isGroup, messageParticipants, onViewContact }: Props) {
+  const { confirmDelete, ConfirmDeleteDialog } = useConfirmDelete();
   const [loading, setLoading] = useState(false);
   const [participants, setParticipants] = useState<GroupParticipant[]>([]);
   const [contactsMap, setContactsMap] = useState<Map<string, ContactInfo>>(new Map());
@@ -124,34 +126,46 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
   };
 
   const handleRemove = async (p: GroupParticipant) => {
-    if (!confirm(`Remover ${p.name || p.phone} do grupo?`)) return;
-    setManagingPhone(p.phone);
-    try {
-      const r = await callManage('remove', [p.phone]);
-      if (r.ok_count > 0) {
-        toast.success(`${p.name || p.phone} removido do grupo`);
-        setParticipants(prev => prev.filter(x => x.phone !== p.phone));
-      } else {
-        toast.error('Não foi possível remover');
-      }
-    } catch (e: any) {
-      toast.error(e.message);
-    } finally { setManagingPhone(null); }
+    confirmDelete(
+      'Remover do grupo',
+      `Deseja remover ${p.name || p.phone} do grupo? Essa ação não pode ser desfeita.`,
+      async () => {
+        setManagingPhone(p.phone);
+        try {
+          const r = await callManage('remove', [p.phone]);
+          if (r.ok_count > 0) {
+            toast.success(`${p.name || p.phone} removido do grupo`);
+            setParticipants(prev => prev.filter(x => x.phone !== p.phone));
+          } else {
+            toast.error('Não foi possível remover');
+          }
+        } catch (e: any) {
+          toast.error(e.message);
+        } finally { setManagingPhone(null); }
+      },
+      'Remover'
+    );
   };
 
   const handlePromoteAll = async () => {
     const targets = participants.filter(p => !p.admin).map(p => p.phone);
     if (targets.length === 0) { toast.info('Todos já são admin'); return; }
-    if (!confirm(`Promover ${targets.length} membro(s) a admin?`)) return;
-    setBulkPromoting(true);
-    try {
-      const r = await callManage('promote', targets);
-      toast.success(`${r.ok_count}/${targets.length} promovido(s) a admin`);
-      // refetch para refletir status real
-      await fetchParticipants(true);
-    } catch (e: any) {
-      toast.error(e.message);
-    } finally { setBulkPromoting(false); }
+    confirmDelete(
+      'Promover todos a admin',
+      `Deseja promover ${targets.length} membro(s) a administrador do grupo?`,
+      async () => {
+        setBulkPromoting(true);
+        try {
+          const r = await callManage('promote', targets);
+          toast.success(`${r.ok_count}/${targets.length} promovido(s) a admin`);
+          // refetch para refletir status real
+          await fetchParticipants(true);
+        } catch (e: any) {
+          toast.error(e.message);
+        } finally { setBulkPromoting(false); }
+      },
+      'Promover'
+    );
   };
 
   const handleAddMember = async () => {
@@ -732,7 +746,8 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
 
   return (
     <>
-    <Dialog open={open} onOpenChange={onOpenChange}>
+      <ConfirmDeleteDialog />
+      <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg max-h-[85vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
