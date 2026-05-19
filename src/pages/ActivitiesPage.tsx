@@ -14,6 +14,7 @@ import { ActivityFieldSettingsDialog } from '@/components/activities/ActivityFie
 import { ActivityTTSButton } from '@/components/voice/ActivityTTSButton';
 import { ActivityFormCompact, SendToGroupSection } from '@/components/activities/ActivityFormCompact';
 import { CompleteAndNotifyDialog } from '@/components/activities/CompleteAndNotifyDialog';
+import { DashboardChatPreview } from '@/components/whatsapp/DashboardChatPreview';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
