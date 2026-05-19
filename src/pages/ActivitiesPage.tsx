@@ -638,7 +638,7 @@ const ActivitiesPage = () => {
         Promise.all([
           externalSupabase.from('legal_cases').select('id, case_number, title').eq('lead_id', activity.lead_id),
           externalSupabase.from('contact_leads').select('contact_id').eq('lead_id', activity.lead_id),
-          externalSupabase.from('leads').select('case_type, damage_description, accident_date, updated_at, board_id, lead_status, whatsapp_group_id, phone').eq('id', activity.lead_id).maybeSingle(),
+          externalSupabase.from('leads').select('case_type, damage_description, accident_date, updated_at, board_id, lead_status, whatsapp_group_id, lead_phone').eq('id', activity.lead_id).maybeSingle(),
         ]).then(async ([casesRes, linkedRes, leadPreviewRes]) => {
           setLeadCases(casesRes.data || []);
 
