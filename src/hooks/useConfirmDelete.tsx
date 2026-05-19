@@ -14,6 +14,7 @@ interface ConfirmDeleteState {
   open: boolean;
   title: string;
   description: string;
+  confirmLabel: string;
   onConfirm: (() => void) | null;
 }
 
@@ -22,12 +23,13 @@ export function useConfirmDelete() {
     open: false,
     title: '',
     description: '',
+    confirmLabel: 'Excluir',
     onConfirm: null,
   });
 
   const confirmDelete = useCallback(
-    (title: string, description: string, onConfirm: () => void) => {
-      setState({ open: true, title, description, onConfirm });
+    (title: string, description: string, onConfirm: () => void, confirmLabel: string = 'Excluir') => {
+      setState({ open: true, title, description, confirmLabel, onConfirm });
     },
     []
   );
@@ -54,7 +56,7 @@ export function useConfirmDelete() {
               }}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Excluir
+              {state.confirmLabel}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
