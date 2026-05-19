@@ -1254,7 +1254,10 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
 
   return (
     <>
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <Sheet open={open} onOpenChange={(nextOpen) => {
+      if (lightboxUrl && !nextOpen) return;
+      onOpenChange(nextOpen);
+    }}>
       <SheetContent side="right" className="w-full sm:max-w-md p-0 flex flex-col">
         {/* Header */}
         <div className="shrink-0 px-4 py-3 border-b bg-primary/5">
