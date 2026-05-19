@@ -22,6 +22,7 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
+import { MediaLightbox } from '@/components/whatsapp/MediaLightbox';
 
 interface ChatMessage {
   id: string;
@@ -130,6 +131,7 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
   const [activityTypes, setActivityTypes] = useState<{ key: string; label: string }[]>([]);
   const [profilesList, setProfilesList] = useState<{ user_id: string; full_name: string }[]>([]);
   const [lastCreatedActivityId, setLastCreatedActivityId] = useState<string | null>(null);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -1216,17 +1218,19 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
 
             {msg.message_type === 'image' && (
               <div>
-                <img src={msg.file_url || ''} alt={msg.file_name || 'imagem'} className="rounded-lg max-w-full max-h-48 object-cover" />
+                <button type="button" onClick={() => setLightboxUrl(msg.file_url || null)} className="block cursor-zoom-in">
+                  <img src={msg.file_url || ''} alt={msg.file_name || 'imagem'} className="rounded-lg max-w-full max-h-48 object-cover" />
+                </button>
                 {msg.content && msg.content !== msg.file_name && <p className="text-xs mt-1 opacity-80">{msg.content}</p>}
               </div>
             )}
 
             {msg.message_type === 'pdf' && (
-              <a href={msg.file_url || ''} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 hover:opacity-80">
+              <button type="button" onClick={() => setLightboxUrl(msg.file_url || null)} className="flex items-center gap-2 hover:opacity-80 text-left">
                 <FileText className="h-4 w-4 shrink-0" />
                 <div className="truncate text-xs">{msg.file_name || 'documento.pdf'}</div>
                 <Download className="h-3.5 w-3.5 shrink-0" />
-              </a>
+              </button>
             )}
 
             <div className={cn("text-[10px] mt-1", isOwn ? "text-primary-foreground/60" : "text-muted-foreground")}>
@@ -1250,7 +1254,10 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
 
   return (
     <>
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <Sheet open={open} onOpenChange={(nextOpen) => {
+      if (lightboxUrl && !nextOpen) return;
+      onOpenChange(nextOpen);
+    }}>
       <SheetContent side="right" className="w-full sm:max-w-md p-0 flex flex-col">
         {/* Header */}
         <div className="shrink-0 px-4 py-3 border-b bg-primary/5">
@@ -1809,6 +1816,7 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
+    <MediaLightbox url={lightboxUrl} title="Documento" onClose={() => setLightboxUrl(null)} />
     </>
   );
 }

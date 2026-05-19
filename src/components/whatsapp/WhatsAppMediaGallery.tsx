@@ -8,6 +8,7 @@ import { Image, FileText, Mic, Video, Download, ExternalLink, GalleryHorizontalE
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { MediaLightbox } from '@/components/whatsapp/MediaLightbox';
 
 interface Props {
   messages: WhatsAppMessage[];
@@ -15,6 +16,7 @@ interface Props {
 
 export function WhatsAppMediaGallery({ messages }: Props) {
   const [open, setOpen] = useState(false);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
   const images = messages.filter(m => m.message_type === 'image' && m.media_url);
   const videos = messages.filter(m => m.message_type === 'video' && m.media_url);
@@ -39,7 +41,10 @@ export function WhatsAppMediaGallery({ messages }: Props) {
         <TooltipContent>Mídias da conversa</TooltipContent>
       </Tooltip>
 
-      <Sheet open={open} onOpenChange={setOpen}>
+      <Sheet open={open} onOpenChange={(nextOpen) => {
+        if (lightboxUrl && !nextOpen) return;
+        setOpen(nextOpen);
+      }}>
         <SheetContent className="w-[380px] sm:w-[420px] p-0">
           <SheetHeader className="p-4 pb-2">
             <SheetTitle className="text-base">Mídias, docs e links</SheetTitle>
@@ -68,13 +73,13 @@ export function WhatsAppMediaGallery({ messages }: Props) {
                 ) : (
                   <div className="grid grid-cols-3 gap-1.5">
                     {images.map(msg => (
-                      <a key={msg.id} href={msg.media_url!} target="_blank" rel="noopener noreferrer" className="relative group aspect-square rounded-md overflow-hidden bg-muted">
+                      <button key={msg.id} type="button" onClick={() => setLightboxUrl(msg.media_url!)} className="relative group aspect-square rounded-md overflow-hidden bg-muted cursor-zoom-in">
                         <img src={msg.media_url!} alt="" className="w-full h-full object-cover" loading="lazy" />
                         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-end justify-between p-1 opacity-0 group-hover:opacity-100">
                           <span className="text-[9px] text-white font-medium">{format(new Date(msg.created_at), 'dd/MM/yy')}</span>
                           <Download className="h-3.5 w-3.5 text-white" />
                         </div>
-                      </a>
+                      </button>
                     ))}
                   </div>
                 )}
@@ -123,14 +128,14 @@ export function WhatsAppMediaGallery({ messages }: Props) {
                   <p className="text-sm text-muted-foreground text-center py-8">Nenhum documento</p>
                 ) : (
                   docs.map(msg => (
-                    <a key={msg.id} href={msg.media_url!} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 p-3 rounded-lg border bg-card hover:bg-muted/50 transition-colors">
+                    <button key={msg.id} type="button" onClick={() => setLightboxUrl(msg.media_url!)} className="flex w-full items-center gap-3 p-3 rounded-lg border bg-card hover:bg-muted/50 transition-colors text-left cursor-zoom-in">
                       <FileText className="h-5 w-5 text-muted-foreground shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium truncate">{msg.message_text || msg.media_type || 'Documento'}</p>
                         <p className="text-[10px] text-muted-foreground">{format(new Date(msg.created_at), "dd/MM/yy HH:mm", { locale: ptBR })}</p>
                       </div>
                       <Download className="h-4 w-4 text-muted-foreground shrink-0" />
-                    </a>
+                    </button>
                   ))
                 )}
               </TabsContent>
@@ -138,6 +143,7 @@ export function WhatsAppMediaGallery({ messages }: Props) {
           </Tabs>
         </SheetContent>
       </Sheet>
+      <MediaLightbox url={lightboxUrl} title="Documento" onClose={() => setLightboxUrl(null)} />
     </>
   );
 }

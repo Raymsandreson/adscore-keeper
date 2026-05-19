@@ -14,7 +14,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { format, parseISO, isToday, isYesterday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Loader2, User, Send, MoreVertical, Link2, UserPlus, Plus, Scale, Sparkles, X, Users, Bot, BotOff, Paperclip, Image, FileUp, Lock, LockOpen, FileSignature, FileText, Volume2, VolumeX, BellOff, Trash2, FastForward, Download } from 'lucide-react';
+import { Loader2, User, Send, MoreVertical, Link2, UserPlus, Plus, Scale, Sparkles, X, Users, Bot, BotOff, Paperclip, Image, FileUp, Lock, LockOpen, FileSignature, FileText, Volume2, VolumeX, BellOff, Trash2, FastForward } from 'lucide-react';
 import { Phone as PhoneIcon, PhoneIncoming, PhoneOutgoing, PhoneMissed } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -24,6 +24,7 @@ import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
 import { ZapSignDocumentDialog } from '@/components/whatsapp/ZapSignDocumentDialog';
 import { GroupMembersDialog } from '@/components/whatsapp/GroupMembersDialog';
+import { MediaLightbox } from '@/components/whatsapp/MediaLightbox';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { Lead } from '@/hooks/useLeads';
 import type { Contact } from '@/hooks/useContacts';
@@ -1142,7 +1143,10 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
 
   return (
     <>
-    <Drawer open={open} onOpenChange={onOpenChange}>
+    <Drawer open={open} onOpenChange={(nextOpen) => {
+      if (lightboxUrl && !nextOpen) return;
+      onOpenChange(nextOpen);
+    }}>
       <DrawerContent className="max-h-[92vh] flex flex-col">
         <DrawerHeader className="pb-2 shrink-0">
           <div className="flex items-center justify-between">
@@ -1772,47 +1776,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
         messageParticipants={[]}
       />
     )}
-    {lightboxUrl && (
-      <div
-        className="fixed inset-0 z-[200] bg-black/90 flex items-center justify-center p-4 animate-in fade-in"
-        onClick={() => setLightboxUrl(null)}
-      >
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); setLightboxUrl(null); }}
-          className="absolute top-4 right-4 bg-white/10 hover:bg-white/20 text-white rounded-full p-2"
-          title="Fechar"
-        >
-          <X className="h-5 w-5" />
-        </button>
-        <a
-          href={lightboxUrl}
-          download
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={(e) => e.stopPropagation()}
-          className="absolute top-4 right-16 bg-white/10 hover:bg-white/20 text-white rounded-full p-2"
-          title="Baixar"
-        >
-          <Download className="h-5 w-5" />
-        </a>
-        {/\.pdf($|\?)/i.test(lightboxUrl) ? (
-          <iframe
-            src={lightboxUrl}
-            title="Documento"
-            className="w-[95vw] h-[95vh] bg-white rounded"
-            onClick={(e) => e.stopPropagation()}
-          />
-        ) : (
-          <img
-            src={lightboxUrl}
-            alt="Visualização"
-            className="max-w-[95vw] max-h-[95vh] object-contain"
-            onClick={(e) => e.stopPropagation()}
-          />
-        )}
-      </div>
-    )}
+    <MediaLightbox url={lightboxUrl} title="Documento" onClose={() => setLightboxUrl(null)} />
     </>
   );
 }
