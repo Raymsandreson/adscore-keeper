@@ -442,7 +442,10 @@ Deno.serve(async (req) => {
         } catch (e) {
           console.error("[lead-drive] docx extract failed:", e);
         }
-        userContent = `Identifique o tipo deste documento, o titular e descreva brevemente. Nome do arquivo: ${meta.name}\n\nConteúdo extraído do DOCX:\n\n${text || "(não foi possível extrair texto)"}`;
+        const fieldsInstr = cfList.length
+          ? `\n\nALÉM DISSO, extraia valores para os seguintes CAMPOS PERSONALIZADOS do CRM, somente se o documento mostrar a informação. Devolva no array "extracted_fields" com { field_id, value } (value sempre como string; datas em formato ISO YYYY-MM-DD; checkbox como "true"/"false"). Não invente; omita o campo se a informação não estiver clara.\nCampos:\n${cfList.map((f) => `- id=${f.id} | nome="${f.name}" | tipo=${f.type}${f.options?.length ? ` | opções=[${f.options.join(", ")}]` : ""}`).join("\n")}`
+          : "";
+        userContent = `Identifique o tipo deste documento, o titular e descreva brevemente. Nome do arquivo: ${meta.name}${fieldsInstr}\n\nConteúdo extraído do DOCX:\n\n${text || "(não foi possível extrair texto)"}`;
       } else {
         // Tipo não suportado pela IA — devolve análise neutra sem chamar Gemini
         return new Response(JSON.stringify({
