@@ -186,6 +186,9 @@ export function WhatsAppAIAgents() {
     { id: 'cgSgspJ2msm6clMCkdW9', name: 'Jessica' },
     { id: 'pFZP5JQG7iQjIQuC4Bku', name: 'Lily' },
     { id: 'TX3LPaxmHKxFdv7VOQHJ', name: 'Liam' },
+    { id: 'nPczCjzI2devNBz1zQrb', name: 'Brian' },
+    { id: 'CwhRBWXzGAHq8TQ4Fs17', name: 'Roger' },
+    { id: 'XrExE9yKIg1WjnnlVkGX', name: 'Matilda' },
   ];
 
   const fetchVoices = async () => {
