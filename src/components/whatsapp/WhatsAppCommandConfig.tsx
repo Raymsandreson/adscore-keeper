@@ -27,6 +27,7 @@ import { AIShortcutGenerator } from './AIShortcutGenerator';
 import { SuperPromptDiagnostic } from './SuperPromptDiagnostic';
 import { MemberAssistantSettings } from './MemberAssistantSettings';
 import { AgentAutomationRules } from './AgentAutomationRules';
+import { AgentConversationsList } from './AgentConversationsList';
 
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
@@ -288,7 +289,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
   const [templateFields, setTemplateFields] = useState<{ variable: string; label: string; required: boolean }[]>([]);
   const [loadingFields, setLoadingFields] = useState(false);
   const [loadingTemplates, setLoadingTemplates] = useState(false);
-  const [formSection, setFormSection] = useState<'general' | 'ai' | 'document' | 'followup' | 'automations'>('general');
+  const [formSection, setFormSection] = useState<'general' | 'ai' | 'document' | 'followup' | 'automations' | 'conversations'>('general');
   const [availableVoices, setAvailableVoices] = useState<{ id: string; name: string }[]>([]);
   const [instances, setInstances] = useState<any[]>([]);
   const [boards, setBoards] = useState<{ id: string; name: string }[]>([]);
@@ -701,7 +702,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
             <div className="flex items-center justify-between">
               <p className="text-xs font-medium text-primary">{editingId ? '✏️ Editando agente' : '➕ Novo agente'}</p>
               <div className="flex gap-1">
-                {(['general', 'ai', 'document', 'followup', 'automations'] as const).map(sec => (
+                {(['general', 'ai', 'document', 'followup', 'automations', 'conversations'] as const).map(sec => (
                   <Button
                     key={sec}
                     size="sm"
@@ -714,6 +715,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                     {sec === 'document' && '📄 Documento'}
                     {sec === 'followup' && '🔔 Follow-up'}
                     {sec === 'automations' && '⚡ Automações'}
+                    {sec === 'conversations' && '💬 Conversas'}
                   </Button>
                 ))}
               </div>
@@ -1725,6 +1727,19 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                   <div className="text-center py-8">
                     <Zap className="h-8 w-8 text-muted-foreground/50 mx-auto mb-2" />
                     <p className="text-sm text-muted-foreground">Salve o agente primeiro para configurar automações</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {formSection === 'conversations' && (
+              <div className="space-y-3">
+                {editingId ? (
+                  <AgentConversationsList agentId={editingId} />
+                ) : (
+                  <div className="text-center py-8">
+                    <MessageSquare className="h-8 w-8 text-muted-foreground/50 mx-auto mb-2" />
+                    <p className="text-sm text-muted-foreground">Salve o agente primeiro para ver as conversas vinculadas</p>
                   </div>
                 )}
               </div>
