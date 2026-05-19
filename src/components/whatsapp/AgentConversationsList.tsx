@@ -89,7 +89,7 @@ export function AgentConversationsList({ agentId }: Props) {
         const linkedPhones = Array.from(linkedKeys).map((k) => k.split('|')[0]).filter(Boolean);
         let linkedMessages: any[] = [];
         if (linkedPhones.length > 0) {
-          let q: any = db
+          let q = (db as any)
             .from('whatsapp_messages')
             .select('phone, instance_name, is_group, contact_name, message_text, created_at')
             .in('phone', linkedPhones.slice(0, 200))
