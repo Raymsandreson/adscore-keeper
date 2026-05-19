@@ -929,6 +929,29 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
                     </div>
 
                     <div className="flex items-center gap-1 shrink-0">
+                      {hasContact && leadId && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7"
+                              disabled={settingPrimary === p.phone}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                isPrimary ? handleUnsetPrimary() : handleSetPrimary(p.phone);
+                              }}
+                            >
+                              {settingPrimary === p.phone ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Crown className={cn("h-3.5 w-3.5", isPrimary ? "text-amber-500 fill-amber-500" : "text-muted-foreground")} />
+                              )}
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>{isPrimary ? 'Remover como cliente principal' : 'Marcar como cliente principal'}</TooltipContent>
+                        </Tooltip>
+                      )}
                       {/* Group admin actions */}
                       <Tooltip>
                         <TooltipTrigger asChild>
