@@ -250,7 +250,8 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
       }
     } catch (err: any) {
       console.error('[saveToDrive] erro:', err);
-      toast.error(`Erro ao salvar no Drive: ${err.message || err}`, { id: tId });
+      if (!silent) toast.error(`Erro ao salvar no Drive: ${err.message || err}`, { id: tId! });
+      else throw err;
     } finally {
       setSavingDriveMsgId(null);
     }
