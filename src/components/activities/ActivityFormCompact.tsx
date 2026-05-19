@@ -879,10 +879,18 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
             )}
 
             {/* Processes of selected case */}
-            {props.formCaseId && props.caseProcesses.length > 0 && (
+            {props.formCaseId && (
               <div className="border-t shrink-0 px-6 pt-3 pb-2 max-h-[35%] overflow-y-auto bg-muted/30">
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Processos do caso</span>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Processos do caso</span>
+                  <Button type="button" size="sm" variant="ghost" className="h-6 gap-1 text-[10px]" onClick={() => setNewProcessOpen(true)}>
+                    <Plus className="h-3 w-3" /> Novo processo
+                  </Button>
+                </div>
                 <div className="mt-2 space-y-0.5">
+                  {props.caseProcesses.length === 0 && (
+                    <p className="text-[11px] text-muted-foreground py-2">Nenhum processo neste caso</p>
+                  )}
                   {props.caseProcesses.map(p => (
                     <button
                       key={p.id}
