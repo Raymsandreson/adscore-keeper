@@ -405,26 +405,29 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
     }
     setContactsMap(cMap);
 
-    // Fetch relationships to lead
+    // Fetch relationships to lead (cliente principal + relação ao principal)
     if (leadId) {
       const contactIds = Array.from(cMap.values()).map(c => c.id);
       if (contactIds.length > 0) {
         const { data: links } = await (supabase as any)
           .from('contact_leads')
-          .select('contact_id, relationship_to_victim')
+          .select('contact_id, relationship_to_primary, relationship_to_victim, is_primary_client')
           .eq('lead_id', leadId)
           .in('contact_id', contactIds);
 
         const rMap = new Map<string, string>();
+        let primary: string | null = null;
         for (const link of links || []) {
-          // Find phone for this contact
           for (const [phone, contact] of cMap.entries()) {
-            if (contact.id === link.contact_id && link.relationship_to_victim) {
-              rMap.set(phone, link.relationship_to_victim);
+            if (contact.id === link.contact_id) {
+              const rel = link.relationship_to_primary || link.relationship_to_victim;
+              if (rel) rMap.set(phone, rel);
+              if (link.is_primary_client) primary = phone;
             }
           }
         }
         setRelationshipsMap(rMap);
+        setPrimaryPhone(primary);
       }
     }
   };
