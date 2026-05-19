@@ -8,11 +8,14 @@ import { Loader2, Settings2, User, ChevronsUpDown, Check } from 'lucide-react';
 import { ShareMenu } from '@/components/ShareMenu';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { useTimeBlockSettings } from '@/hooks/useTimeBlockSettings';
+import { useAuthContext } from '@/contexts/AuthContext';
+import { useUserRole } from '@/hooks/useUserRole';
 import { TimeBlockSettingsDialog, TimeBlockConfig } from '@/components/activities/TimeBlockSettingsDialog';
 import { RoutineCalendarGrid } from '@/components/activities/RoutineCalendarGrid';
 import { useActivityTypes } from '@/hooks/useActivityTypes';
 import { useUserTeams } from '@/hooks/useUserTeams';
 import { cn } from '@/lib/utils';
+
 
 function MemberRoutineView({ userId, memberName }: { userId: string; memberName: string }) {
   const { configs, loading, saveSettings } = useTimeBlockSettings(userId);
@@ -127,9 +130,18 @@ function MemberRoutineView({ userId, memberName }: { userId: string; memberName:
 
 export function MemberRoutineManager() {
   const { members, loading } = useTeamMembers();
+  const { user } = useAuthContext();
+  const { isAdmin, loading: roleLoading } = useUserRole();
   const [selectedUserId, setSelectedUserId] = useState<string>('');
 
-  if (loading) {
+  // Não-admins editam apenas a própria rotina: força seleção no próprio user
+  useEffect(() => {
+    if (!roleLoading && !isAdmin && user?.id && selectedUserId !== user.id) {
+      setSelectedUserId(user.id);
+    }
+  }, [roleLoading, isAdmin, user?.id, selectedUserId]);
+
+  if (loading || roleLoading) {
     return (
       <div className="flex items-center justify-center py-16">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -137,7 +149,11 @@ export function MemberRoutineManager() {
     );
   }
 
-  const selectedMember = members.find(m => m.user_id === selectedUserId);
+  const selectedMember = members.find(m => m.user_id === selectedUserId)
+    || (user?.id === selectedUserId
+        ? { user_id: user.id, full_name: user.user_metadata?.full_name || user.email || 'Minha rotina', email: user.email || '', role: 'member' as const }
+        : undefined);
+
 
   return (
     <Card>
@@ -151,6 +167,8 @@ export function MemberRoutineManager() {
         </p>
       </CardHeader>
       <CardContent className="space-y-6">
+        {isAdmin && (
+
         <div className="flex items-center gap-3">
           <label className="text-sm font-medium text-muted-foreground whitespace-nowrap">
             Selecionar membro:
@@ -203,6 +221,8 @@ export function MemberRoutineManager() {
             </PopoverContent>
           </Popover>
         </div>
+        )}
+
 
         {selectedUserId && selectedMember ? (
           <MemberRoutineView
