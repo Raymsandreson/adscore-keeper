@@ -288,6 +288,7 @@ const ActivitiesPage = () => {
   const [completeNotifySource, setCompleteNotifySource] = useState<'sheet' | 'workflow'>('sheet');
   const [showLeadSheet, setShowLeadSheet] = useState(false);
   const [waChatPreview, setWaChatPreview] = useState<{ phone: string; contact_name: string | null; instance_name: string | null } | null>(null);
+  const [groupSearchOpen, setGroupSearchOpen] = useState(false);
   const [showProcessSheetId, setShowProcessSheetId] = useState<string | null>(null);
   const [viewModeRaw, setViewMode] = usePageState<'list' | 'blocks'>('activities_viewMode', 'blocks');
   const viewMode = (viewModeRaw === 'list' ? 'list' : 'blocks') as 'list' | 'blocks';
