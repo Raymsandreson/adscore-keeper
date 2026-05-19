@@ -177,7 +177,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
   const openQuickContact = async (contactId: string) => {
     setQuickContactLoading(contactId);
     try {
-      const { data, error } = await supabase
+      const { data, error } = await externalSupabase
         .from('contacts')
         .select('*')
         .eq('id', contactId)
@@ -273,7 +273,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
 
   const fetchClassificationsAndTypes = async () => {
     const [classRes, relRes] = await Promise.all([
-      (supabase as any).from('contact_classifications').select('id, name, color').order('display_order'),
+      (externalSupabase as any).from('contact_classifications').select('id, name, color').order('display_order'),
       (supabase as any).from('contact_relationship_types').select('id, name').order('display_order'),
     ]);
     if (classRes.data) setClassifications(classRes.data);
@@ -388,7 +388,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
       `phone.eq.+55${ph}`,
     ]).join(',');
 
-    const { data: contacts } = await supabase
+    const { data: contacts } = await externalSupabase
       .from('contacts')
       .select('id, full_name, phone, classification, classifications, profession, city, state, tags')
       .or(orConditions);
@@ -444,7 +444,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
       const normalizedPhone = participant.phone.replace(/\D/g, '');
       
       // Check existing
-      const { data: existing } = await supabase
+      const { data: existing } = await externalSupabase
         .from('contacts')
         .select('id, full_name')
         .or(`phone.eq.${normalizedPhone},phone.eq.+${normalizedPhone},phone.eq.+55${normalizedPhone}`)
@@ -456,7 +456,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
         contactId = existing.id;
         toast.info(`Contato "${existing.full_name}" já existe!`);
       } else {
-        const { data: newContact, error } = await supabase
+        const { data: newContact, error } = await externalSupabase
           .from('contacts')
           .insert({ full_name: participant.name, phone: normalizedPhone })
           .select()
@@ -476,7 +476,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
           .maybeSingle();
 
         if (!linkExists) {
-          await (supabase as any).from('contact_leads').insert({ contact_id: contactId, lead_id: leadId });
+          await (externalSupabase as any).from('contact_leads').insert({ contact_id: contactId, lead_id: leadId });
           toast.success('Contato vinculado ao lead!');
         }
       }
@@ -507,7 +507,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
         updateData.state = value || null;
       }
 
-      const { error } = await supabase
+      const { error } = await externalSupabase
         .from('contacts')
         .update(updateData)
         .eq('id', contact.id);
@@ -629,7 +629,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
       setLinkSearchResults([]);
       return;
     }
-    const { data } = await supabase
+    const { data } = await externalSupabase
       .from('contacts')
       .select('id, full_name, phone, notes')
       .ilike('full_name', `%${query}%`)
@@ -644,7 +644,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
       const normalizedPhone = participant.phone.replace(/\D/g, '');
       
       // Update existing contact with this phone number
-      const { error } = await supabase
+      const { error } = await externalSupabase
         .from('contacts')
         .update({ phone: normalizedPhone })
         .eq('id', contactId);
@@ -660,7 +660,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
           .maybeSingle();
 
         if (!linkExists) {
-          await (supabase as any).from('contact_leads').insert({ contact_id: contactId, lead_id: leadId });
+          await (externalSupabase as any).from('contact_leads').insert({ contact_id: contactId, lead_id: leadId });
         }
       }
 
