@@ -8,11 +8,14 @@ import { Loader2, Settings2, User, ChevronsUpDown, Check } from 'lucide-react';
 import { ShareMenu } from '@/components/ShareMenu';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { useTimeBlockSettings } from '@/hooks/useTimeBlockSettings';
+import { useAuthContext } from '@/contexts/AuthContext';
+import { useUserRole } from '@/hooks/useUserRole';
 import { TimeBlockSettingsDialog, TimeBlockConfig } from '@/components/activities/TimeBlockSettingsDialog';
 import { RoutineCalendarGrid } from '@/components/activities/RoutineCalendarGrid';
 import { useActivityTypes } from '@/hooks/useActivityTypes';
 import { useUserTeams } from '@/hooks/useUserTeams';
 import { cn } from '@/lib/utils';
+
 
 function MemberRoutineView({ userId, memberName }: { userId: string; memberName: string }) {
   const { configs, loading, saveSettings } = useTimeBlockSettings(userId);
