@@ -127,7 +127,7 @@ Deno.serve(async (req) => {
     if (action === "update") {
       if (!payload) return json({ success: false, error: "missing payload" });
       const allowed: Record<string, any> = {};
-      for (const k of ["instance_name", "instance_token", "base_url", "owner_phone", "owner_name"]) {
+      for (const k of ["instance_name", "instance_token", "base_url", "owner_phone", "owner_name", "default_agent_id"]) {
         if (k in payload) allowed[k] = payload[k] === "" ? null : payload[k];
       }
       const { error, count } = await ext
