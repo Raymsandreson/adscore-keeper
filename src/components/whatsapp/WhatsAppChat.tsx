@@ -2781,24 +2781,24 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                     >
                       {selectedDriveMsgIds.has(msg.id) ? getSelectionIndex(msg.id) : '✓'}
                     </button>
-                    <a
-                      href={msg.media_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                    <button
+                      type="button"
                       onClick={(e) => {
                         if (longPressFiredRef.current) { e.preventDefault(); longPressFiredRef.current = false; return; }
-                        // Shift+clique no PC = entra no modo seleção e marca/desmarca
                         if (e.shiftKey || driveSelectionMode) {
                           e.preventDefault();
                           setDriveSelectionMode(true);
                           toggleDriveSelection(msg.id);
+                          return;
                         }
+                        setLightboxUrl(msg.media_url!);
                       }}
+                      className="block"
                     >
                       <img
                         src={msg.media_url}
                         alt="Imagem"
-                        className="max-w-full rounded-lg max-h-[320px] w-auto object-contain cursor-pointer bg-black/5"
+                        className="max-w-full rounded-lg max-h-[320px] w-auto object-contain cursor-zoom-in bg-black/5"
                         loading="lazy"
                         onError={(e) => {
                           const img = e.currentTarget;
@@ -2807,7 +2807,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                           if (sibling) sibling.style.display = 'flex';
                         }}
                       />
-                    </a>
+                    </button>
                     <div data-img-fallback className="hidden items-center gap-2 text-xs italic opacity-70 px-2 py-3 border rounded-lg bg-muted/40">
                       🖼️ Imagem indisponível — abra no link original
                       <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="underline">abrir</a>
