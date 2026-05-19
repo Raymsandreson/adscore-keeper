@@ -285,6 +285,7 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
 
   return (
     <div className="space-y-4">
+      <GroupExitAlert leadId={leadId} />
       <div className="flex items-center justify-between gap-2">
         <button
           type="button"
