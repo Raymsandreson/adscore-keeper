@@ -16,7 +16,6 @@ import { ActivityFormCompact, SendToGroupSection } from '@/components/activities
 import { CompleteAndNotifyDialog } from '@/components/activities/CompleteAndNotifyDialog';
 import { DashboardChatPreview } from '@/components/whatsapp/DashboardChatPreview';
 import { LeadGroupSearchDialog } from '@/components/kanban/LeadGroupSearchDialog';
-import { externalSupabase } from '@/integrations/supabase/external-client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
