@@ -1129,6 +1129,11 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
 
   let lastDateLabel = '';
 
+  // Detecta grupo mesmo quando o sufixo @g.us foi removido em algum ponto do pipeline.
+  // IDs de grupos do WhatsApp são numéricos com 15+ dígitos (ex: 120363424314808089),
+  // enquanto números BR têm no máximo ~13 dígitos.
+  const isGroupChat = !!phone && (phone.includes('@g.us') || /^\d{15,}$/.test(phone.replace(/\D/g, '')));
+
   return (
     <>
     <Drawer open={open} onOpenChange={onOpenChange}>
