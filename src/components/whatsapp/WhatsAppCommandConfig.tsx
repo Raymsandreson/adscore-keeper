@@ -3,6 +3,7 @@ import { PromptVariableSelector } from './PromptVariableSelector';
 import { PromptBuilderChat } from './PromptBuilderChat';
 import { Checkbox } from '@/components/ui/checkbox';
 import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/integrations/supabase';
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { logAudit } from '@/hooks/useAuditLog';
 import { Button } from '@/components/ui/button';
@@ -190,7 +191,7 @@ export function WhatsAppCommandConfig() {
     setLoading(true);
     const [profilesRes, shortcutsRes] = await Promise.all([
       supabase.from('profiles').select('user_id, full_name').order('full_name'),
-      supabase.from('wjia_command_shortcuts').select('*').order('display_order') as any,
+      db.from('wjia_command_shortcuts').select('*').order('display_order') as any,
     ]);
     setProfiles((profilesRes.data || []).filter((p: any) => p.full_name));
     
@@ -310,7 +311,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
 
   useEffect(() => {
     const fetchInstances = async () => {
-      const { data } = await externalSupabase.from('whatsapp_instances').select('id, instance_name').order('instance_name');
+      const { data } = await db.from('whatsapp_instances').select('id, instance_name').order('instance_name');
       setInstances(data || []);
     };
     const fetchBoards = async () => {
@@ -596,9 +597,9 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
     let error;
     let savedAgentId = editingId;
     if (editingId) {
-      ({ error } = await (supabase.from('wjia_command_shortcuts') as any).update(payload).eq('id', editingId));
+      ({ error } = await (db.from('wjia_command_shortcuts') as any).update(payload).eq('id', editingId));
     } else {
-      const { data: insertData, error: insertError } = await (supabase.from('wjia_command_shortcuts') as any)
+      const { data: insertData, error: insertError } = await (db.from('wjia_command_shortcuts') as any)
         .insert({ ...payload, display_order: shortcuts.length }).select('id').single();
       error = insertError;
       savedAgentId = insertData?.id || null;
@@ -631,19 +632,19 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
     const shortcut = shortcuts.find(s => s.id === id);
     
     // Fetch full data for backup snapshot
-    const { data: fullData } = await (supabase.from('wjia_command_shortcuts') as any).select('*').eq('id', id).single();
+    const { data: fullData } = await (db.from('wjia_command_shortcuts') as any).select('*').eq('id', id).single();
     
     // Save snapshot in audit log for recovery
     logAudit({ action: 'delete', entityType: 'agent', entityId: id, entityName: shortcut?.shortcut_name, details: { snapshot: fullData, soft_delete: true } });
     
     // Soft delete instead of hard delete
-    await (supabase.from('wjia_command_shortcuts') as any).update({ deleted_at: new Date().toISOString() }).eq('id', id);
+    await (db.from('wjia_command_shortcuts') as any).update({ deleted_at: new Date().toISOString() }).eq('id', id);
     onReload();
     toast.success('Agente arquivado (pode ser restaurado)');
   };
 
   const handleToggle = async (id: string, isActive: boolean) => {
-    await (supabase.from('wjia_command_shortcuts') as any).update({ is_active: !isActive }).eq('id', id);
+    await (db.from('wjia_command_shortcuts') as any).update({ is_active: !isActive }).eq('id', id);
     onReload();
   };
 

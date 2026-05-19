@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/integrations/supabase';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -94,8 +95,8 @@ export function WhatsAppNotificationSettings() {
   const loadData = async () => {
     setLoading(true);
     const [instRes, configRes, profilesRes] = await Promise.all([
-      externalSupabase.from('whatsapp_instances').select('instance_name').order('instance_name'),
-      supabase.from('whatsapp_notification_config').select('*').limit(1).maybeSingle(),
+      db.from('whatsapp_instances').select('instance_name').order('instance_name'),
+      db.from('whatsapp_notification_config').select('*').limit(1).maybeSingle(),
       supabase.from('profiles').select('id, user_id, full_name, email, phone').order('full_name'),
     ]);
     setInstances(instRes.data || []);
@@ -161,10 +162,10 @@ export function WhatsAppNotificationSettings() {
       };
 
       if (config.id) {
-        const { error } = await supabase.from('whatsapp_notification_config').update(payload as any).eq('id', config.id);
+        const { error } = await db.from('whatsapp_notification_config').update(payload as any).eq('id', config.id);
         if (error) throw error;
       } else {
-        const { data, error } = await supabase.from('whatsapp_notification_config').insert(payload as any).select('id').single();
+        const { data, error } = await db.from('whatsapp_notification_config').insert(payload as any).select('id').single();
         if (error) throw error;
         setConfig(prev => ({ ...prev, id: data.id }));
       }

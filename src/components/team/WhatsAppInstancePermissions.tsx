@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { MessageSquare, Smartphone, Search, X } from 'lucide-react';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/integrations/supabase';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -45,8 +46,8 @@ export function WhatsAppInstancePermissions() {
   const fetchData = useCallback(async () => {
     try {
       const [instRes, iuRes, profilesRes] = await Promise.all([
-        externalSupabase.from('whatsapp_instances').select('id, instance_name').eq('is_active', true).order('instance_name'),
-        supabase.from('whatsapp_instance_users').select('id, instance_id, user_id'),
+        db.from('whatsapp_instances').select('id, instance_name').eq('is_active', true).order('instance_name'),
+        db.from('whatsapp_instance_users').select('id, instance_id, user_id'),
         supabase.from('profiles').select('user_id, default_instance_id'),
       ]);
       setInstances(instRes.data || []);
@@ -100,13 +101,13 @@ export function WhatsAppInstancePermissions() {
     try {
       const existing = instanceUsers.find(iu => iu.user_id === userId && iu.instance_id === instanceId);
       if (existing) {
-        await supabase.from('whatsapp_instance_users').delete().eq('id', existing.id);
+        await db.from('whatsapp_instance_users').delete().eq('id', existing.id);
         if (getDefaultInstance(userId) === instanceId) {
           await supabase.from('profiles').update({ default_instance_id: null } as any).eq('user_id', userId);
         }
         setInstanceUsers(prev => prev.filter(iu => iu.id !== existing.id));
       } else {
-        const { data } = await supabase.from('whatsapp_instance_users').insert({ user_id: userId, instance_id: instanceId }).select('id, instance_id, user_id').single();
+        const { data } = await db.from('whatsapp_instance_users').insert({ user_id: userId, instance_id: instanceId }).select('id, instance_id, user_id').single();
         if (data) setInstanceUsers(prev => [...prev, data as InstanceUser]);
       }
     } catch {
@@ -124,13 +125,13 @@ export function WhatsAppInstancePermissions() {
         const missing = targets.filter(t => !hasAccess(userId, t.id));
         if (missing.length === 0) return;
         const rows = missing.map(t => ({ user_id: userId, instance_id: t.id }));
-        const { data } = await supabase.from('whatsapp_instance_users').insert(rows).select('id, instance_id, user_id');
+        const { data } = await db.from('whatsapp_instance_users').insert(rows).select('id, instance_id, user_id');
         if (data) setInstanceUsers(prev => [...prev, ...(data as InstanceUser[])]);
         toast.success(`${missing.length} acesso(s) concedido(s)`);
       } else {
         const toRemove = instanceUsers.filter(iu => iu.user_id === userId && targets.some(t => t.id === iu.instance_id));
         if (toRemove.length === 0) return;
-        await supabase.from('whatsapp_instance_users').delete().in('id', toRemove.map(r => r.id));
+        await db.from('whatsapp_instance_users').delete().in('id', toRemove.map(r => r.id));
         setInstanceUsers(prev => prev.filter(iu => !toRemove.some(r => r.id === iu.id)));
         toast.success(`${toRemove.length} acesso(s) removido(s)`);
       }
@@ -149,13 +150,13 @@ export function WhatsAppInstancePermissions() {
         const missing = targets.filter(m => !hasAccess(m.user_id, instanceId));
         if (missing.length === 0) return;
         const rows = missing.map(m => ({ user_id: m.user_id, instance_id: instanceId }));
-        const { data } = await supabase.from('whatsapp_instance_users').insert(rows).select('id, instance_id, user_id');
+        const { data } = await db.from('whatsapp_instance_users').insert(rows).select('id, instance_id, user_id');
         if (data) setInstanceUsers(prev => [...prev, ...(data as InstanceUser[])]);
         toast.success(`${missing.length} acesso(s) concedido(s)`);
       } else {
         const toRemove = instanceUsers.filter(iu => iu.instance_id === instanceId && targets.some(m => m.user_id === iu.user_id));
         if (toRemove.length === 0) return;
-        await supabase.from('whatsapp_instance_users').delete().in('id', toRemove.map(r => r.id));
+        await db.from('whatsapp_instance_users').delete().in('id', toRemove.map(r => r.id));
         setInstanceUsers(prev => prev.filter(iu => !toRemove.some(r => r.id === iu.id)));
         toast.success(`${toRemove.length} acesso(s) removido(s)`);
       }

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/integrations/supabase';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
@@ -152,7 +153,7 @@ export function AgentKnowledgeDocs({ agentId }: Props) {
       }
     }
 
-    await supabase.from('agent_knowledge_documents').delete().eq('id', doc.id);
+    await db.from('agent_knowledge_documents').delete().eq('id', doc.id);
     toast.success('Documento excluído');
     fetchDocs();
   };

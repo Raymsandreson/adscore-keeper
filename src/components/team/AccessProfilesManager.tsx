@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/integrations/supabase';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -52,7 +53,7 @@ export function AccessProfilesManager() {
     setLoading(true);
     const [profilesRes, instancesRes] = await Promise.all([
       supabase.from('access_profiles').select('*').eq('is_active', true).order('name'),
-      externalSupabase.from('whatsapp_instances').select('id, instance_name').eq('is_active', true).order('instance_name'),
+      db.from('whatsapp_instances').select('id, instance_name').eq('is_active', true).order('instance_name'),
     ]);
     setProfiles((profilesRes.data || []) as unknown as AccessProfile[]);
     setInstances((instancesRes.data || []) as WhatsAppInstance[]);

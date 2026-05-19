@@ -5,6 +5,7 @@ import { AgentAutomationRules } from './AgentAutomationRules';
 import { AgentStageConfig } from './AgentStageConfig';
 
 import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/integrations/supabase';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { logAudit } from '@/hooks/useAuditLog';
 import { Button } from '@/components/ui/button';
@@ -152,14 +153,14 @@ export function WhatsAppAIAgents() {
     (convData || []).forEach((c: any) => { counts[c.agent_id] = (counts[c.agent_id] || 0) + 1; });
     setConversationCounts(counts);
 
-    const { data: links } = await supabase.from('whatsapp_agent_campaign_links').select('*');
+    const { data: links } = await db.from('whatsapp_agent_campaign_links').select('*');
     setCampaignLinks((links as any[]) || []);
 
     setLoading(false);
   };
 
   const fetchInstances = async () => {
-    const { data } = await externalSupabase.from('whatsapp_instances').select('id, instance_name').eq('is_active', true);
+    const { data } = await db.from('whatsapp_instances').select('id, instance_name').eq('is_active', true);
     setInstances((data as any[]) || []);
   };
 
@@ -169,7 +170,7 @@ export function WhatsAppAIAgents() {
   };
 
   const fetchCallQueueCount = async () => {
-    const { count } = await supabase.from('whatsapp_call_queue').select('id', { count: 'exact', head: true }).eq('status', 'pending');
+    const { count } = await db.from('whatsapp_call_queue').select('id', { count: 'exact', head: true }).eq('status', 'pending');
     setCallQueueCount(count || 0);
   };
 
@@ -290,12 +291,12 @@ export function WhatsAppAIAgents() {
       };
 
       if (editingAgent.id) {
-        const { error } = await supabase.from('whatsapp_ai_agents').update(payload as any).eq('id', editingAgent.id);
+        const { error } = await db.from('whatsapp_ai_agents').update(payload as any).eq('id', editingAgent.id);
         if (error) throw error;
         toast.success('Agente atualizado!');
         logAudit({ action: 'update', entityType: 'agent', entityId: editingAgent.id, entityName: editingAgent.name });
       } else {
-        const { data: created, error } = await supabase.from('whatsapp_ai_agents').insert(payload as any).select('id').single();
+        const { data: created, error } = await db.from('whatsapp_ai_agents').insert(payload as any).select('id').single();
         if (error) throw error;
         toast.success('Agente criado!');
         logAudit({ action: 'create', entityType: 'agent', entityId: (created as any)?.id, entityName: editingAgent.name });
@@ -311,7 +312,7 @@ export function WhatsAppAIAgents() {
   };
 
   const handleToggleActive = async (agent: AIAgent) => {
-    await supabase.from('whatsapp_ai_agents').update({ is_active: !agent.is_active } as any).eq('id', agent.id);
+    await db.from('whatsapp_ai_agents').update({ is_active: !agent.is_active } as any).eq('id', agent.id);
     toast.success(agent.is_active ? 'Agente desativado' : 'Agente ativado');
     logAudit({ action: 'update', entityType: 'agent', entityId: agent.id, entityName: agent.name, details: { field: 'is_active', value: !agent.is_active } });
     fetchAgents();
@@ -350,7 +351,7 @@ export function WhatsAppAIAgents() {
   };
 
   const handleLinkCampaign = async (agentId: string, campaignId: string, campaignName: string) => {
-    const { error } = await supabase.from('whatsapp_agent_campaign_links').upsert({
+    const { error } = await db.from('whatsapp_agent_campaign_links').upsert({
       agent_id: agentId, campaign_id: campaignId, campaign_name: campaignName,
     } as any, { onConflict: 'campaign_id' });
     if (error) toast.error('Erro ao vincular');
@@ -358,7 +359,7 @@ export function WhatsAppAIAgents() {
   };
 
   const handleUnlinkCampaign = async (linkId: string) => {
-    await supabase.from('whatsapp_agent_campaign_links').delete().eq('id', linkId);
+    await db.from('whatsapp_agent_campaign_links').delete().eq('id', linkId);
     toast.success('Campanha desvinculada');
     fetchAgents();
   };
@@ -941,7 +942,7 @@ Contexto: Use o histórico da conversa para personalizar a mensagem de retorno.`
                                 id={`auto-lead-${link.id}`}
                                 checked={linkAny.auto_create_lead || false}
                                 onChange={async (e) => {
-                                  await supabase.from('whatsapp_agent_campaign_links').update({ auto_create_lead: e.target.checked } as any).eq('id', link.id);
+                                  await db.from('whatsapp_agent_campaign_links').update({ auto_create_lead: e.target.checked } as any).eq('id', link.id);
                                   fetchAgents();
                                 }}
                                 className="rounded border-input"
@@ -954,7 +955,7 @@ Contexto: Use o histórico da conversa para personalizar a mensagem de retorno.`
                                 <div>
                                   <Label className="text-[10px]">Funil</Label>
                                   <Select value={linkAny.board_id || ''} onValueChange={async (v) => {
-                                    await supabase.from('whatsapp_agent_campaign_links').update({ board_id: v || null, stage_id: null } as any).eq('id', link.id);
+                                    await db.from('whatsapp_agent_campaign_links').update({ board_id: v || null, stage_id: null } as any).eq('id', link.id);
                                     fetchAgents();
                                   }}>
                                     <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecionar funil..." /></SelectTrigger>
@@ -966,7 +967,7 @@ Contexto: Use o histórico da conversa para personalizar a mensagem de retorno.`
                                 <div>
                                   <Label className="text-[10px]">Etapa inicial</Label>
                                   <Select value={linkAny.stage_id || ''} onValueChange={async (v) => {
-                                    await supabase.from('whatsapp_agent_campaign_links').update({ stage_id: v || null } as any).eq('id', link.id);
+                                    await db.from('whatsapp_agent_campaign_links').update({ stage_id: v || null } as any).eq('id', link.id);
                                     fetchAgents();
                                   }}>
                                     <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Primeira etapa..." /></SelectTrigger>

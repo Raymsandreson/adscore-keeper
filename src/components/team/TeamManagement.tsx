@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/integrations/supabase';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -108,7 +109,7 @@ export function TeamManagement() {
 
   useEffect(() => {
     Promise.all([
-      externalSupabase.from('whatsapp_instances').select('id, instance_name').eq('is_active', true).order('instance_name'),
+      db.from('whatsapp_instances').select('id, instance_name').eq('is_active', true).order('instance_name'),
       supabase.from('access_profiles').select('id, name, description, module_permissions, whatsapp_instance_ids, is_system').eq('is_active', true).order('name'),
     ]).then(([instRes, profRes]) => {
       setWhatsappInstances((instRes.data || []) as WhatsAppInstanceOption[]);
@@ -250,9 +251,9 @@ export function TeamManagement() {
             }))
           );
         }
-        await supabase.from('whatsapp_instance_users').delete().eq('user_id', userId);
+        await db.from('whatsapp_instance_users').delete().eq('user_id', userId);
         if (profile.whatsapp_instance_ids.length > 0) {
-          await supabase.from('whatsapp_instance_users').insert(
+          await db.from('whatsapp_instance_users').insert(
             profile.whatsapp_instance_ids.map((instId: string) => ({
               user_id: userId,
               instance_id: instId,

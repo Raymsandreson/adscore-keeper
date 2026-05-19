@@ -34,6 +34,7 @@ import { WhatsAppMediaGallery } from './WhatsAppMediaGallery';
 import { cn } from '@/lib/utils';
 import { canonicalizeChatTarget } from '@/lib/whatsappPhone';
 import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/integrations/supabase';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { toast } from 'sonner';
 import { useAuthContext } from '@/contexts/AuthContext';
@@ -861,8 +862,8 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   useEffect(() => {
     const fetchAgentState = async () => {
       const [{ data: agentsData }, { data: assignment }] = await Promise.all([
-        supabase.from('whatsapp_ai_agents').select('id, name').eq('is_active', true).order('name'),
-        externalSupabase.from('whatsapp_conversation_agents').select('agent_id, is_active, human_paused_until')
+        db.from('whatsapp_ai_agents').select('id, name').eq('is_active', true).order('name'),
+        db.from('whatsapp_conversation_agents').select('agent_id, is_active, human_paused_until')
           .eq('phone', conversation.phone).eq('instance_name', conversation.instance_name).maybeSingle()
       ]);
       setAvailableAgents((agentsData as any[]) || []);
@@ -900,7 +901,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
             if (row.agent_id !== activeAgentId) {
               setActiveAgentId(row.agent_id);
               // Re-fetch agent name
-              supabase.from('whatsapp_ai_agents').select('name').eq('id', row.agent_id).single()
+              db.from('whatsapp_ai_agents').select('name').eq('id', row.agent_id).single()
                 .then(({ data }) => { if (data) setActiveAgentName((data as any).name); });
             }
           }
@@ -918,7 +919,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     setAgentLoading(true);
     try {
       const newState = !agentEnabled;
-      await externalSupabase.from('whatsapp_conversation_agents')
+      await db.from('whatsapp_conversation_agents')
         .update({ is_active: newState, human_paused_until: newState ? null : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString() } as any)
         .eq('phone', conversation.phone).eq('instance_name', conversation.instance_name);
       setAgentEnabled(newState);
@@ -958,7 +959,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     setAgentLoading(true);
     try {
       const agent = availableAgents.find(a => a.id === agentId);
-      await externalSupabase.from('whatsapp_conversation_agents')
+      await db.from('whatsapp_conversation_agents')
         .upsert({ phone: conversation.phone, instance_name: conversation.instance_name, agent_id: agentId, is_active: true } as any, { onConflict: 'phone,instance_name' });
       setActiveAgentId(agentId);
       setActiveAgentName(agent?.name || null);
@@ -971,7 +972,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const handleRemoveAgent = async () => {
     setAgentLoading(true);
     try {
-      await externalSupabase.from('whatsapp_conversation_agents')
+      await db.from('whatsapp_conversation_agents')
         .delete().eq('phone', conversation.phone).eq('instance_name', conversation.instance_name);
       setActiveAgentId(null); setActiveAgentName(null); setAgentEnabled(false);
       toast.success('Agente removido');
@@ -1209,14 +1210,14 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
       if (!currentUser) return;
       
       if (isPrivate) {
-        await supabase.from('whatsapp_private_conversations')
+        await db.from('whatsapp_private_conversations')
           .delete()
           .eq('phone', conversation.phone)
           .eq('instance_name', conversation.instance_name);
         setIsPrivate(false);
         toast.success('Conversa tornada pública');
       } else {
-        await supabase.from('whatsapp_private_conversations')
+        await db.from('whatsapp_private_conversations')
           .insert({ phone: conversation.phone, instance_name: conversation.instance_name, private_by: currentUser.id });
         setIsPrivate(true);
         toast.success('Conversa marcada como privada');
@@ -1988,7 +1989,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
               title="Clique para interromper a pausa e reativar o agente"
               onClick={async () => {
                 try {
-                  await externalSupabase.from('whatsapp_conversation_agents')
+                  await db.from('whatsapp_conversation_agents')
                     .update({ human_paused_until: null } as any)
                     .eq('phone', conversation.phone).eq('instance_name', conversation.instance_name);
                   setHumanPausedUntil(null);

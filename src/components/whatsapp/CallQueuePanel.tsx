@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/integrations/supabase';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -102,7 +103,7 @@ export function CallQueuePanel({ onSelectConversation }: CallQueuePanelProps = {
   }, [items, statusFilter, searchQuery]);
 
   const handleCancel = async (id: string) => {
-    const { error } = await supabase.from('whatsapp_call_queue').update({ status: 'cancelled' }).eq('id', id);
+    const { error } = await db.from('whatsapp_call_queue').update({ status: 'cancelled' }).eq('id', id);
     if (error) {
       toast.error('Erro ao cancelar');
     } else {
@@ -112,7 +113,7 @@ export function CallQueuePanel({ onSelectConversation }: CallQueuePanelProps = {
   };
 
   const handleRetry = async (id: string) => {
-    const { error } = await supabase.from('whatsapp_call_queue').update({ status: 'pending', attempts: 0, last_result: null }).eq('id', id);
+    const { error } = await db.from('whatsapp_call_queue').update({ status: 'pending', attempts: 0, last_result: null }).eq('id', id);
     if (error) {
       toast.error('Erro ao recolocar na fila');
     } else {
@@ -122,7 +123,7 @@ export function CallQueuePanel({ onSelectConversation }: CallQueuePanelProps = {
   };
 
   const handleClearCompleted = async () => {
-    const { error } = await supabase.from('whatsapp_call_queue').delete().in('status', ['completed', 'cancelled']);
+    const { error } = await db.from('whatsapp_call_queue').delete().in('status', ['completed', 'cancelled']);
     if (error) {
       toast.error('Erro ao limpar');
     } else {
