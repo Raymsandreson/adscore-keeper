@@ -542,8 +542,12 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
       if (existing) {
         await (supabase as any)
           .from('contact_leads')
-          .update({ relationship_to_victim: value || null })
+          .update({ relationship_to_primary: value || null })
           .eq('id', existing.id);
+      } else {
+        await (supabase as any)
+          .from('contact_leads')
+          .insert({ contact_id: contact.id, lead_id: leadId, relationship_to_primary: value || null });
       }
 
       setRelationshipsMap(prev => {
@@ -558,6 +562,64 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
       toast.error('Erro ao atualizar relação');
     }
     setEditingField(null);
+  };
+
+  const handleSetPrimary = async (phone: string) => {
+    const contact = contactsMap.get(phone);
+    if (!contact || !leadId) return;
+    setSettingPrimary(phone);
+    try {
+      // Desmarca qualquer principal anterior
+      await (supabase as any)
+        .from('contact_leads')
+        .update({ is_primary_client: false })
+        .eq('lead_id', leadId);
+
+      // Garante link e marca este como principal
+      const { data: existing } = await (supabase as any)
+        .from('contact_leads')
+        .select('id')
+        .eq('contact_id', contact.id)
+        .eq('lead_id', leadId)
+        .maybeSingle();
+
+      if (existing) {
+        await (supabase as any)
+          .from('contact_leads')
+          .update({ is_primary_client: true, relationship_to_primary: null })
+          .eq('id', existing.id);
+      } else {
+        await (supabase as any)
+          .from('contact_leads')
+          .insert({ contact_id: contact.id, lead_id: leadId, is_primary_client: true });
+      }
+
+      setPrimaryPhone(phone);
+      setRelationshipsMap(prev => {
+        const newMap = new Map(prev);
+        newMap.delete(phone);
+        return newMap;
+      });
+      toast.success(`${contact.full_name} agora é o cliente principal`);
+    } catch (e: any) {
+      toast.error('Erro ao marcar cliente principal: ' + (e?.message || ''));
+    } finally {
+      setSettingPrimary(null);
+    }
+  };
+
+  const handleUnsetPrimary = async () => {
+    if (!leadId) return;
+    try {
+      await (supabase as any)
+        .from('contact_leads')
+        .update({ is_primary_client: false })
+        .eq('lead_id', leadId);
+      setPrimaryPhone(null);
+      toast.success('Cliente principal removido');
+    } catch {
+      toast.error('Erro ao remover cliente principal');
+    }
   };
 
   const handleSearchExistingContacts = async (query: string) => {
