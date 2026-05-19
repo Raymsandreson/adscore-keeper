@@ -413,8 +413,11 @@ Deno.serve(async (req) => {
         }
         const b64 = btoa(bin);
         const dataUrl = `data:${meta.mimeType};base64,${b64}`;
+        const fieldsInstr = cfList.length
+          ? `\n\nALÉM DISSO, extraia valores para os seguintes CAMPOS PERSONALIZADOS do CRM, somente se o documento mostrar a informação. Devolva no array "extracted_fields" com { field_id, value } (value sempre como string; datas em formato ISO YYYY-MM-DD; checkbox como "true"/"false"). Não invente; omita o campo se a informação não estiver clara.\nCampos:\n${cfList.map((f) => `- id=${f.id} | nome="${f.name}" | tipo=${f.type}${f.options?.length ? ` | opções=[${f.options.join(", ")}]` : ""}`).join("\n")}`
+          : "";
         userContent = [
-          { type: "text", text: `Identifique o tipo deste documento, o titular e descreva brevemente. Nome do arquivo: ${meta.name}` },
+          { type: "text", text: `Identifique o tipo deste documento, o titular e descreva brevemente. Nome do arquivo: ${meta.name}${fieldsInstr}` },
           { type: "image_url", image_url: { url: dataUrl } },
         ];
       } else if (isDocx) {
