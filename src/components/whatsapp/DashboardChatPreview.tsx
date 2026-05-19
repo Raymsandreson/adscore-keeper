@@ -1143,7 +1143,10 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
 
   return (
     <>
-    <Drawer open={open} onOpenChange={onOpenChange}>
+    <Drawer open={open} onOpenChange={(nextOpen) => {
+      if (lightboxUrl && !nextOpen) return;
+      onOpenChange(nextOpen);
+    }}>
       <DrawerContent className="max-h-[92vh] flex flex-col">
         <DrawerHeader className="pb-2 shrink-0">
           <div className="flex items-center justify-between">
