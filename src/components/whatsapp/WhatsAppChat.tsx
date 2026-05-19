@@ -1908,6 +1908,25 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
               <Link2 className="h-3 w-3" /> Ver Lead
             </Badge>
           )}
+          {autoDrive.total > 0 && (
+            <Badge
+              variant="outline"
+              className={cn(
+                "text-[10px] gap-1 px-2 py-0.5",
+                autoDrive.running
+                  ? "border-blue-400 text-blue-700 bg-blue-50 dark:bg-blue-950/30"
+                  : "border-emerald-400 text-emerald-700 bg-emerald-50 dark:bg-emerald-950/30"
+              )}
+              title={autoDrive.running ? 'Enviando mídias para o Google Drive em segundo plano' : 'Todas as mídias da conversa foram enviadas ao Drive'}
+            >
+              {autoDrive.running ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Sparkles className="h-3 w-3" />
+              )}
+              Drive {autoDrive.done}/{autoDrive.total}
+            </Badge>
+          )}
           {agentEnabled && activeAgentName && (
             <Badge variant="default" className="text-[9px] gap-1 bg-emerald-600 hover:bg-emerald-700 px-1.5 py-0 cursor-pointer" onClick={handleAgentToggle}>
               <Bot className="h-3 w-3" /> {activeAgentName}
