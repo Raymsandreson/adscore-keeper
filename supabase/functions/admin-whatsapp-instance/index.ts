@@ -4,6 +4,7 @@
 // validando que quem chama é admin no Lovable Cloud.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { remapToExternal } from "../_shared/uuid-remap.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -37,13 +38,15 @@ Deno.serve(async (req) => {
     }
     // Source of truth for roles is the External DB.
     const extAuth = createClient(EXTERNAL_URL, EXTERNAL_SR);
-    const { data: roleRow, error: roleErr } = await extAuth
+    const externalUserId = await remapToExternal(extAuth, userData.user.id);
+    const adminCandidateIds = Array.from(new Set([userData.user.id, externalUserId].filter(Boolean)));
+    const { data: roleRows, error: roleErr } = await extAuth
       .from("user_roles")
       .select("role")
-      .eq("user_id", userData.user.id)
+      .in("user_id", adminCandidateIds)
       .eq("role", "admin")
-      .maybeSingle();
-    if (roleErr || !roleRow) {
+      .limit(1);
+    if (roleErr || !roleRows?.length) {
       return json({ success: false, error: "forbidden" });
     }
 
