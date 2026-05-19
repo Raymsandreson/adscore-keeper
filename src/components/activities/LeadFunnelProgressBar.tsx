@@ -45,6 +45,8 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
   const [_loading, setLoading] = useState(true);
   const [viewingStageId, setViewingStageId] = useState<string | null>(null);
   const [isLeadClosed, setIsLeadClosed] = useState(false);
+  const [boardName, setBoardName] = useState<string>('');
+  const [boardType, setBoardType] = useState<string>('');
   const { createLeadInstances, fetchLeadInstances } = useChecklists();
 
   const fetchData = useCallback(async () => {
@@ -55,10 +57,12 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
 
     try {
       const [boardRes, historyRes, leadRes] = await Promise.all([
-        externalSupabase.from('kanban_boards').select('stages, board_type').eq('id', boardId).maybeSingle(),
+        externalSupabase.from('kanban_boards').select('stages, board_type, name').eq('id', boardId).maybeSingle(),
         externalSupabase.from('lead_stage_history').select('to_stage').eq('lead_id', leadId).order('changed_at', { ascending: false }).limit(1),
         externalSupabase.from('leads').select('status, lead_status, became_client_date, board_id').eq('id', leadId).maybeSingle(),
       ]);
+      setBoardName((boardRes.data as any)?.name || '');
+      setBoardType((boardRes.data as any)?.board_type || '');
 
       // Lead is "closed" only when we're showing its sales funnel (not a process workflow)
       const leadData = leadRes.data as any;
@@ -215,7 +219,10 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
       {/* Stepper bar — always visible, segments clickable to switch stage view, click toggles expand */}
       <div className="w-full mt-2">
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 flex-1 min-w-0">
+          <div
+            className="flex items-center gap-1 flex-1 min-w-0"
+            title={boardName ? `${boardType === 'workflow' ? 'Fluxo' : 'Funil'}: ${boardName}` : undefined}
+          >
             {stages.map((stage, idx) => {
               const stageDetail = hierarchicalProgress.stageDetails.find(d => d.stageId === stage.id);
               const stageWeight = stageDetail?.stagePercent || 0;
