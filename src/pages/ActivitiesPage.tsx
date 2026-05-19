@@ -319,7 +319,7 @@ const ActivitiesPage = () => {
     board_name?: string | null;
     lead_status?: string | null;
     whatsapp_group_id?: string | null;
-    phone?: string | null;
+    lead_phone?: string | null;
   } | null>(null);
 
   const getFilterParams = () => ({
