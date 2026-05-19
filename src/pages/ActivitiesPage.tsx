@@ -959,7 +959,7 @@ const ActivitiesPage = () => {
       try {
         const [linkedData, leadPreviewRes] = await Promise.all([
           externalSupabase.from('contact_leads').select('contact_id').eq('lead_id', activity.lead_id),
-          externalSupabase.from('leads').select('case_type, damage_description, accident_date, updated_at, board_id, lead_status').eq('id', activity.lead_id).maybeSingle(),
+          externalSupabase.from('leads').select('case_type, damage_description, accident_date, updated_at, board_id, lead_status, whatsapp_group_id, lead_phone').eq('id', activity.lead_id).maybeSingle(),
         ]);
         let boardName: string | null = null;
         if (leadPreviewRes.data?.board_id) {
