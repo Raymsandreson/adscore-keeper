@@ -160,7 +160,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
         toast.success('Membro adicionado');
         setNewMemberPhone('');
         setShowAddMember(false);
-        await fetchParticipants();
+        await fetchParticipants(true);
       } else {
         const detail = r.details?.[0];
         toast.error(detail?.message || 'Não foi possível adicionar (número pode não ter WhatsApp ou bloqueou convites)');
