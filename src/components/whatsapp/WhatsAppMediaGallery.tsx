@@ -128,14 +128,14 @@ export function WhatsAppMediaGallery({ messages }: Props) {
                   <p className="text-sm text-muted-foreground text-center py-8">Nenhum documento</p>
                 ) : (
                   docs.map(msg => (
-                    <a key={msg.id} href={msg.media_url!} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 p-3 rounded-lg border bg-card hover:bg-muted/50 transition-colors">
+                    <button key={msg.id} type="button" onClick={() => setLightboxUrl(msg.media_url!)} className="flex w-full items-center gap-3 p-3 rounded-lg border bg-card hover:bg-muted/50 transition-colors text-left cursor-zoom-in">
                       <FileText className="h-5 w-5 text-muted-foreground shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium truncate">{msg.message_text || msg.media_type || 'Documento'}</p>
                         <p className="text-[10px] text-muted-foreground">{format(new Date(msg.created_at), "dd/MM/yy HH:mm", { locale: ptBR })}</p>
                       </div>
                       <Download className="h-4 w-4 text-muted-foreground shrink-0" />
-                    </a>
+                    </button>
                   ))
                 )}
               </TabsContent>
@@ -143,6 +143,7 @@ export function WhatsAppMediaGallery({ messages }: Props) {
           </Tabs>
         </SheetContent>
       </Sheet>
+      <MediaLightbox url={lightboxUrl} title="Documento" onClose={() => setLightboxUrl(null)} />
     </>
   );
 }
