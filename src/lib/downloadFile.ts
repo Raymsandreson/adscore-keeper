@@ -1,5 +1,7 @@
 // Força download do arquivo na mesma aba, evitando navegação.
 // `download` HTML attribute é ignorado em URLs cross-origin -> precisamos baixar como blob.
+import type { MouseEvent } from 'react';
+
 export async function downloadFile(url: string, filename?: string): Promise<void> {
   const fallbackName = (() => {
     if (filename) return filename;
@@ -23,16 +25,17 @@ export async function downloadFile(url: string, filename?: string): Promise<void
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(blobUrl), 1500);
-  } catch {
-    // Fallback: abre em nova aba se CORS bloquear
-    window.open(url, '_blank', 'noopener,noreferrer');
+  } catch (error) {
+    console.warn('Download bloqueado pelo navegador/CORS, sem navegar para fora da página.', error);
   }
 }
 
 export function bindDownload(url: string, filename?: string) {
-  return (e: React.MouseEvent) => {
+  return (e: MouseEvent<HTMLElement>) => {
     e.preventDefault();
     e.stopPropagation();
+    e.nativeEvent?.stopImmediatePropagation?.();
+    e.currentTarget.removeAttribute?.('href');
     void downloadFile(url, filename);
   };
 }
