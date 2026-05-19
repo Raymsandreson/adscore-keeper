@@ -167,6 +167,8 @@ export function MemberRoutineManager() {
         </p>
       </CardHeader>
       <CardContent className="space-y-6">
+        {isAdmin && (
+
         <div className="flex items-center gap-3">
           <label className="text-sm font-medium text-muted-foreground whitespace-nowrap">
             Selecionar membro:
