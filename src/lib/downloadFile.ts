@@ -23,9 +23,8 @@ export async function downloadFile(url: string, filename?: string): Promise<void
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(blobUrl), 1500);
-  } catch {
-    // Fallback: abre em nova aba se CORS bloquear
-    window.open(url, '_blank', 'noopener,noreferrer');
+  } catch (error) {
+    console.warn('Download bloqueado pelo navegador/CORS, sem navegar para fora da página.', error);
   }
 }
 
@@ -33,6 +32,7 @@ export function bindDownload(url: string, filename?: string) {
   return (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    e.nativeEvent?.stopImmediatePropagation?.();
     void downloadFile(url, filename);
   };
 }
