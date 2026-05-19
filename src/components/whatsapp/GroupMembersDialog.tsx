@@ -52,6 +52,7 @@ interface Props {
 }
 
 export function GroupMembersDialog({ open, onOpenChange, conversationPhone, instanceName, leadId, isGroup, messageParticipants, onViewContact }: Props) {
+  const { confirmDelete, ConfirmDeleteDialog } = useConfirmDelete();
   const [loading, setLoading] = useState(false);
   const [participants, setParticipants] = useState<GroupParticipant[]>([]);
   const [contactsMap, setContactsMap] = useState<Map<string, ContactInfo>>(new Map());
