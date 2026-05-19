@@ -150,11 +150,26 @@ export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId, cu
     }
   }
 
+  const [selectedExtracted, setSelectedExtracted] = useState<Record<string, boolean>>({});
+  const [applyingFields, setApplyingFields] = useState(false);
+
   async function handleAnalyze(f: DriveFile) {
     setAnalyzingId(f.id);
     try {
+      const cfPayload = (customFields || []).map((c) => ({
+        id: c.id,
+        name: c.name,
+        type: c.type,
+        options: c.options,
+      }));
       const { data, error } = await supabase.functions.invoke('lead-drive', {
-        body: { action: 'analyze_file', lead_id: leadId, lead_name: leadName, file_id: f.id },
+        body: {
+          action: 'analyze_file',
+          lead_id: leadId,
+          lead_name: leadName,
+          file_id: f.id,
+          custom_fields: cfPayload,
+        },
       });
       if (error) throw error;
       if ((data as any)?.error) throw new Error((data as any).error);
@@ -165,12 +180,52 @@ export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId, cu
       if (renamed) {
         setFiles((prev) => prev.map((x) => (x.id === f.id ? { ...x, name: renamed } : x)));
       }
+      // pré-selecionar todos os campos extraídos
+      const sel: Record<string, boolean> = {};
+      (analysis.extracted_fields || []).forEach((ef) => { sel[ef.field_id] = true; });
+      setSelectedExtracted(sel);
       setAnalysisOpen(true);
     } catch (err: any) {
       console.error('[LeadDocumentsTab] analyze error', err);
       toast.error(`Erro ao analisar: ${err.message || err}`);
     } finally {
       setAnalyzingId(null);
+    }
+  }
+
+  async function handleApplyExtracted() {
+    if (!analysisResult || !onApplyExtractedFields) return;
+    const extracted = analysisResult.analysis.extracted_fields || [];
+    const defs = customFields || [];
+    const values: Record<string, { type: DocCustomFieldDef['type']; value: string | number | boolean | null }> = {};
+    for (const ef of extracted) {
+      if (!selectedExtracted[ef.field_id]) continue;
+      const def = defs.find((d) => d.id === ef.field_id);
+      if (!def) continue;
+      let v: string | number | boolean | null = ef.value;
+      if (def.type === 'number') {
+        const n = Number(String(ef.value).replace(',', '.'));
+        v = Number.isFinite(n) ? n : null;
+      } else if (def.type === 'checkbox') {
+        v = String(ef.value).toLowerCase() === 'true';
+      } else if (def.type === 'date') {
+        v = ef.value || null;
+      }
+      values[ef.field_id] = { type: def.type, value: v };
+    }
+    if (Object.keys(values).length === 0) {
+      toast.info('Nenhum campo selecionado');
+      return;
+    }
+    setApplyingFields(true);
+    try {
+      await onApplyExtractedFields(values);
+      toast.success(`${Object.keys(values).length} campo(s) atualizado(s)`);
+      setAnalysisOpen(false);
+    } catch (e: any) {
+      toast.error(`Erro ao aplicar: ${e.message || e}`);
+    } finally {
+      setApplyingFields(false);
     }
   }
 
