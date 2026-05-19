@@ -54,6 +54,8 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
   const [participants, setParticipants] = useState<GroupParticipant[]>([]);
   const [contactsMap, setContactsMap] = useState<Map<string, ContactInfo>>(new Map());
   const [relationshipsMap, setRelationshipsMap] = useState<Map<string, string>>(new Map());
+  const [primaryPhone, setPrimaryPhone] = useState<string | null>(null);
+  const [settingPrimary, setSettingPrimary] = useState<string | null>(null);
   const [classifications, setClassifications] = useState<Array<{ id: string; name: string; color: string }>>([]);
   const [relationshipTypes, setRelationshipTypes] = useState<Array<{ id: string; name: string }>>([]);
   const [expandedPhone, setExpandedPhone] = useState<string | null>(null);
