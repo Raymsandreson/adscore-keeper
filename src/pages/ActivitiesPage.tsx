@@ -318,6 +318,8 @@ const ActivitiesPage = () => {
     board_id?: string | null;
     board_name?: string | null;
     lead_status?: string | null;
+    whatsapp_group_id?: string | null;
+    lead_phone?: string | null;
   } | null>(null);
 
   const getFilterParams = () => ({
@@ -636,7 +638,7 @@ const ActivitiesPage = () => {
         Promise.all([
           externalSupabase.from('legal_cases').select('id, case_number, title').eq('lead_id', activity.lead_id),
           externalSupabase.from('contact_leads').select('contact_id').eq('lead_id', activity.lead_id),
-          externalSupabase.from('leads').select('case_type, damage_description, accident_date, updated_at, board_id, lead_status').eq('id', activity.lead_id).maybeSingle(),
+          externalSupabase.from('leads').select('case_type, damage_description, accident_date, updated_at, board_id, lead_status, whatsapp_group_id, lead_phone').eq('id', activity.lead_id).maybeSingle(),
         ]).then(async ([casesRes, linkedRes, leadPreviewRes]) => {
           setLeadCases(casesRes.data || []);
 
@@ -957,7 +959,7 @@ const ActivitiesPage = () => {
       try {
         const [linkedData, leadPreviewRes] = await Promise.all([
           externalSupabase.from('contact_leads').select('contact_id').eq('lead_id', activity.lead_id),
-          externalSupabase.from('leads').select('case_type, damage_description, accident_date, updated_at, board_id, lead_status').eq('id', activity.lead_id).maybeSingle(),
+          externalSupabase.from('leads').select('case_type, damage_description, accident_date, updated_at, board_id, lead_status, whatsapp_group_id, lead_phone').eq('id', activity.lead_id).maybeSingle(),
         ]);
         let boardName: string | null = null;
         if (leadPreviewRes.data?.board_id) {
@@ -1075,7 +1077,7 @@ const ActivitiesPage = () => {
     // Load lead preview (needed for header progress bar)
     externalSupabase
       .from('leads')
-      .select('case_type, damage_description, accident_date, updated_at, board_id, lead_status')
+      .select('case_type, damage_description, accident_date, updated_at, board_id, lead_status, whatsapp_group_id, lead_phone')
       .eq('id', leadId)
       .maybeSingle()
       .then(async ({ data }) => {
@@ -3055,6 +3057,22 @@ const ActivitiesPage = () => {
                     >
                       <ExternalLink className="h-3 w-3" />
                       Lead
+                    </Button>
+                  )}
+                  {formLeadId && (leadPreview?.whatsapp_group_id || leadPreview?.lead_phone) && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs gap-1 text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-950/30"
+                      onClick={() => {
+                        const target = leadPreview?.whatsapp_group_id || leadPreview?.lead_phone || '';
+                        if (!target) return;
+                        window.open(`/whatsapp?n=${encodeURIComponent(target)}`, '_blank');
+                      }}
+                      title={leadPreview?.whatsapp_group_id ? 'Abrir grupo do WhatsApp vinculado' : 'Abrir conversa do WhatsApp'}
+                    >
+                      <MessageCircle className="h-3 w-3" />
+                      {leadPreview?.whatsapp_group_id ? 'Grupo WA' : 'WhatsApp'}
                     </Button>
                   )}
                   {formProcessId && (
