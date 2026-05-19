@@ -188,12 +188,13 @@ export function LeadLinkedContacts({ leadId }: LeadLinkedContactsProps) {
         const linkedIds = contacts.map(c => c.contact_id);
         const { data } = await externalSupabase
           .from('contacts')
-          .select('id, full_name, instagram_username, phone, email')
+          .select('id, full_name, instagram_username, phone, email, whatsapp_group_id')
           .or(`full_name.ilike.%${searchQuery}%,instagram_username.ilike.%${searchQuery}%,phone.ilike.%${searchQuery}%`)
+          .is('whatsapp_group_id', null)
           .limit(8);
 
         if (data) {
-          setSearchResults(data.filter(c => !linkedIds.includes(c.id)));
+          setSearchResults(data.filter(c => !linkedIds.includes(c.id) && !c.whatsapp_group_id));
         }
       } catch {
         // ignore
