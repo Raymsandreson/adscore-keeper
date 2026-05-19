@@ -18,6 +18,7 @@ import { FastForward, FileText } from 'lucide-react';
 import { DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger } from '@/components/ui/dropdown-menu';
 import { useWhatsAppInternalNotes } from '@/hooks/useWhatsAppInternalNotes';
 import { openZapSignDialog } from '@/lib/zapsignDialogEvent';
+import { bindDownload } from '@/lib/downloadFile';
 import { SessionFieldEditor } from './SessionFieldEditor';
 import { GroupMembersDialog } from './GroupMembersDialog';
 import { WhatsAppConversationShareDialog } from './WhatsAppConversationShareDialog';
@@ -2748,9 +2749,9 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                       <source src={msg.media_url} />
                       Áudio não suportado
                     </audio>
-                    <a href={msg.media_url} download target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] mt-1 opacity-70 hover:opacity-100">
+                    <button type="button" onClick={bindDownload(msg.media_url)} className="inline-flex items-center gap-1 text-[10px] mt-1 opacity-70 hover:opacity-100">
                       <Download className="h-3 w-3" /> Baixar áudio
-                    </a>
+                    </button>
                   </div>
                 )}
                 {msg.message_type === 'image' && msg.media_url && !isEncUrl(msg.media_url) && (
@@ -2813,9 +2814,9 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                       🖼️ Imagem indisponível — abra no link original
                       <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="underline">abrir</a>
                     </div>
-                    <a href={msg.media_url} download target="_blank" rel="noopener noreferrer" className="absolute top-2 right-2 bg-black/60 text-white rounded-full p-1.5 opacity-0 group-hover/img:opacity-100 transition-opacity" title="Baixar">
+                    <button type="button" onClick={bindDownload(msg.media_url)} className="absolute top-2 right-2 bg-black/60 text-white rounded-full p-1.5 opacity-0 group-hover/img:opacity-100 transition-opacity" title="Baixar">
                       <Download className="h-3.5 w-3.5" />
-                    </a>
+                    </button>
                     <button
                       type="button"
                       onClick={() => handleSaveToDrive(msg)}
@@ -2836,9 +2837,9 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                     <video controls className="max-w-full rounded-lg max-h-[320px]" preload="metadata">
                       <source src={msg.media_url} type={msg.media_type || 'video/mp4'} />
                     </video>
-                    <a href={msg.media_url} download target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] mt-1 opacity-70 hover:opacity-100">
+                    <button type="button" onClick={bindDownload(msg.media_url)} className="inline-flex items-center gap-1 text-[10px] mt-1 opacity-70 hover:opacity-100">
                       <Download className="h-3 w-3" /> Baixar vídeo
-                    </a>
+                    </button>
                   </div>
                 )}
                 {msg.message_type === 'document' && msg.media_url && !isEncUrl(msg.media_url) && (() => {
@@ -2919,9 +2920,9 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                           {fileName}
                         </button>
 
-                        <a href={msg.media_url} download target="_blank" rel="noopener noreferrer" className="opacity-70 hover:opacity-100" title="Baixar">
+                        <button type="button" onClick={bindDownload(msg.media_url, fileName)} className="opacity-70 hover:opacity-100" title="Baixar">
                           <Download className="h-3.5 w-3.5" />
-                        </a>
+                        </button>
                         <button
                           type="button"
                           onClick={() => handleSaveToDrive(msg)}
@@ -2964,9 +2965,9 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                     <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs underline">
                       <ExternalLink className="h-3 w-3" /> {msg.media_type || 'Mídia'}
                     </a>
-                    <a href={msg.media_url} download target="_blank" rel="noopener noreferrer" className="opacity-70 hover:opacity-100">
+                    <button type="button" onClick={bindDownload(msg.media_url)} className="opacity-70 hover:opacity-100">
                       <Download className="h-3.5 w-3.5" />
-                    </a>
+                    </button>
                   </div>
                 )}
                 {msg.message_text && (
