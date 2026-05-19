@@ -1156,7 +1156,50 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
             }}
           />
         )}
+        {newProcessOpen && props.formCaseId && props.formLeadId && (
+          <AddProcessDialog
+            open={newProcessOpen}
+            onOpenChange={setNewProcessOpen}
+            caseId={props.formCaseId}
+            leadId={props.formLeadId}
+            onProcessAdded={refreshCaseProcesses}
+          />
+        )}
       </Suspense>
+
+      {/* === Dialog: Novo Lead (minimal) === */}
+      <Dialog open={newLeadOpen} onOpenChange={setNewLeadOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader><DialogTitle>Novo lead</DialogTitle></DialogHeader>
+          <div className="space-y-3 pt-2">
+            <div><Label>Nome *</Label><Input value={newLeadName} onChange={e => setNewLeadName(e.target.value)} autoFocus /></div>
+            <div><Label>Telefone</Label><Input value={newLeadPhone} onChange={e => setNewLeadPhone(e.target.value)} placeholder="(11) 99999-9999" /></div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNewLeadOpen(false)}>Cancelar</Button>
+            <Button onClick={handleCreateLead} disabled={creatingLead || !newLeadName.trim()}>
+              {creatingLead ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Criar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* === Dialog: Novo Caso (minimal) === */}
+      <Dialog open={newCaseOpen} onOpenChange={setNewCaseOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader><DialogTitle>Novo caso</DialogTitle></DialogHeader>
+          <div className="space-y-3 pt-2">
+            <div><Label>Título *</Label><Input value={newCaseTitle} onChange={e => setNewCaseTitle(e.target.value)} autoFocus /></div>
+            <div><Label>Número (opcional)</Label><Input value={newCaseNumber} onChange={e => setNewCaseNumber(e.target.value)} placeholder="auto-gerado se vazio" /></div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNewCaseOpen(false)}>Cancelar</Button>
+            <Button onClick={handleCreateCase} disabled={creatingCase || !newCaseTitle.trim()}>
+              {creatingCase ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Criar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
