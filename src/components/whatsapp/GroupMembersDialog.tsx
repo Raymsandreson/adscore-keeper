@@ -14,6 +14,7 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
+import { useConfirmDelete } from '@/hooks/useConfirmDelete';
 import type { Contact } from '@/hooks/useContacts';
 
 interface GroupParticipant {
