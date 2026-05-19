@@ -639,6 +639,48 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
           />
         </div>
 
+        {/* Group management toolbar */}
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 text-xs gap-1"
+            onClick={() => { setShowAddMember(v => !v); setNewMemberPhone(''); }}
+          >
+            <Plus className="h-3.5 w-3.5" /> Adicionar membro
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 text-xs gap-1"
+            onClick={handlePromoteAll}
+            disabled={bulkPromoting || participants.filter(p => !p.admin).length === 0}
+          >
+            {bulkPromoting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Crown className="h-3.5 w-3.5" />}
+            Promover todos a admin
+          </Button>
+        </div>
+
+        {showAddMember && (
+          <div className="flex items-center gap-2 rounded-md border bg-muted/30 p-2">
+            <Input
+              autoFocus
+              placeholder="Ex: 5511999998888 (com DDI+DDD)"
+              value={newMemberPhone}
+              onChange={(e) => setNewMemberPhone(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleAddMember(); }}
+              className="h-8 text-xs flex-1"
+              disabled={addingMember}
+            />
+            <Button size="sm" className="h-8 text-xs" onClick={handleAddMember} disabled={addingMember}>
+              {addingMember ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+            </Button>
+            <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={() => { setShowAddMember(false); setNewMemberPhone(''); }}>
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        )}
+
         {/* Group description (sync with WhatsApp) */}
         <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
           <div className="flex items-center justify-between">
