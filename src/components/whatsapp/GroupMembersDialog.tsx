@@ -9,6 +9,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { Users, User, UserPlus, Loader2, MapPin, Briefcase, Tag, Heart, ChevronDown, ChevronUp, Check, Phone, Search, ExternalLink, Link2, FileText, RefreshCw, Save, ArrowUpFromLine, ShieldCheck, ShieldOff, UserMinus, Crown, Plus, X } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
