@@ -32,12 +32,24 @@ interface Analysis {
   holder_cpf?: string | null;
   description?: string;
   confidence?: 'alta' | 'média' | 'baixa' | string;
+  extracted_fields?: Array<{ field_id: string; value: string }>;
+}
+
+export interface DocCustomFieldDef {
+  id: string;
+  name: string;
+  type: 'text' | 'number' | 'date' | 'select' | 'checkbox' | 'url' | 'password';
+  options?: string[];
 }
 
 interface Props {
   leadId: string;
   leadName: string;
   whatsappGroupId?: string | null;
+  customFields?: DocCustomFieldDef[];
+  onApplyExtractedFields?: (
+    values: Record<string, { type: DocCustomFieldDef['type']; value: string | number | boolean | null }>,
+  ) => Promise<void> | void;
 }
 
 function formatBytes(bytes?: string) {
