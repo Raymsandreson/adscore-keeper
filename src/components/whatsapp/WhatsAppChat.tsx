@@ -150,7 +150,8 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   // Marca local de mensagens salvas no Drive nesta sessão (id -> link)
   const [driveSavedById, setDriveSavedById] = useState<Record<string, { link?: string; name?: string }>>({});
 
-  const runDriveUpload = async (msg: any, leadId: string, leadNameInput?: string) => {
+  const runDriveUpload = async (msg: any, leadId: string, leadNameInput?: string, opts?: { silent?: boolean }) => {
+    const silent = !!opts?.silent;
     if (!msg?.media_url) {
       toast.error('Mensagem sem mídia para salvar.');
       return;
