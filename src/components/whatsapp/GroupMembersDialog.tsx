@@ -81,6 +81,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
   const [showAddMember, setShowAddMember] = useState(false);
   const [newMemberPhone, setNewMemberPhone] = useState('');
   const [addingMember, setAddingMember] = useState(false);
+  const [ownerPhone, setOwnerPhone] = useState<string | null>(null);
 
   const callManage = async (action: 'add' | 'remove' | 'promote' | 'demote', numbers: string[]) => {
     if (!groupJid || !instanceName) throw new Error('Grupo ou instância não definidos');
