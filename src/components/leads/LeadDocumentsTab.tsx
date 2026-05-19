@@ -443,13 +443,58 @@ export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId, cu
                 </div>
               </div>
 
+              {(() => {
+                const extracted = analysisResult.analysis.extracted_fields || [];
+                if (extracted.length === 0) return null;
+                const defs = customFields || [];
+                const rows = extracted
+                  .map((ef) => ({ ef, def: defs.find((d) => d.id === ef.field_id) }))
+                  .filter((r) => r.def);
+                if (rows.length === 0) return null;
+                return (
+                  <div className="border-t pt-3 space-y-2">
+                    <div className="text-xs font-semibold text-muted-foreground flex items-center gap-1">
+                      <Sparkles className="h-3.5 w-3.5 text-primary" />
+                      Campos detectados no documento
+                    </div>
+                    <div className="space-y-1.5">
+                      {rows.map(({ ef, def }) => (
+                        <label
+                          key={ef.field_id}
+                          className="flex items-start gap-2 text-sm p-2 rounded hover:bg-muted/40 cursor-pointer"
+                        >
+                          <input
+                            type="checkbox"
+                            className="mt-1"
+                            checked={!!selectedExtracted[ef.field_id]}
+                            onChange={(e) =>
+                              setSelectedExtracted((p) => ({ ...p, [ef.field_id]: e.target.checked }))
+                            }
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="text-xs text-muted-foreground">{def!.name}</div>
+                            <div className="font-medium break-words">{ef.value}</div>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+
               <div className="flex justify-end gap-2 pt-2">
                 <Button variant="outline" size="sm" asChild>
                   <a href={analysisResult.file.webViewLink} target="_blank" rel="noreferrer">
                     <ExternalLink className="h-3.5 w-3.5 mr-1" /> Abrir no Drive
                   </a>
                 </Button>
-                <Button size="sm" onClick={() => setAnalysisOpen(false)}>Fechar</Button>
+                {(analysisResult.analysis.extracted_fields || []).length > 0 && onApplyExtractedFields && (
+                  <Button size="sm" onClick={handleApplyExtracted} disabled={applyingFields}>
+                    {applyingFields ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Wand2 className="h-3.5 w-3.5 mr-1" />}
+                    Aplicar aos campos
+                  </Button>
+                )}
+                <Button variant="outline" size="sm" onClick={() => setAnalysisOpen(false)}>Fechar</Button>
               </div>
             </div>
           )}
