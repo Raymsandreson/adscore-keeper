@@ -32,12 +32,24 @@ interface Analysis {
   holder_cpf?: string | null;
   description?: string;
   confidence?: 'alta' | 'média' | 'baixa' | string;
+  extracted_fields?: Array<{ field_id: string; value: string }>;
+}
+
+export interface DocCustomFieldDef {
+  id: string;
+  name: string;
+  type: 'text' | 'number' | 'date' | 'select' | 'checkbox' | 'url' | 'password';
+  options?: string[];
 }
 
 interface Props {
   leadId: string;
   leadName: string;
   whatsappGroupId?: string | null;
+  customFields?: DocCustomFieldDef[];
+  onApplyExtractedFields?: (
+    values: Record<string, { type: DocCustomFieldDef['type']; value: string | number | boolean | null }>,
+  ) => Promise<void> | void;
 }
 
 function formatBytes(bytes?: string) {
@@ -49,7 +61,7 @@ function formatBytes(bytes?: string) {
   return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
-export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId }: Props) {
+export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId, customFields, onApplyExtractedFields }: Props) {
   const [files, setFiles] = useState<DriveFile[]>([]);
   const [folderUrl, setFolderUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -138,11 +150,26 @@ export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId }: 
     }
   }
 
+  const [selectedExtracted, setSelectedExtracted] = useState<Record<string, boolean>>({});
+  const [applyingFields, setApplyingFields] = useState(false);
+
   async function handleAnalyze(f: DriveFile) {
     setAnalyzingId(f.id);
     try {
+      const cfPayload = (customFields || []).map((c) => ({
+        id: c.id,
+        name: c.name,
+        type: c.type,
+        options: c.options,
+      }));
       const { data, error } = await supabase.functions.invoke('lead-drive', {
-        body: { action: 'analyze_file', lead_id: leadId, lead_name: leadName, file_id: f.id },
+        body: {
+          action: 'analyze_file',
+          lead_id: leadId,
+          lead_name: leadName,
+          file_id: f.id,
+          custom_fields: cfPayload,
+        },
       });
       if (error) throw error;
       if ((data as any)?.error) throw new Error((data as any).error);
@@ -153,12 +180,52 @@ export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId }: 
       if (renamed) {
         setFiles((prev) => prev.map((x) => (x.id === f.id ? { ...x, name: renamed } : x)));
       }
+      // pré-selecionar todos os campos extraídos
+      const sel: Record<string, boolean> = {};
+      (analysis.extracted_fields || []).forEach((ef) => { sel[ef.field_id] = true; });
+      setSelectedExtracted(sel);
       setAnalysisOpen(true);
     } catch (err: any) {
       console.error('[LeadDocumentsTab] analyze error', err);
       toast.error(`Erro ao analisar: ${err.message || err}`);
     } finally {
       setAnalyzingId(null);
+    }
+  }
+
+  async function handleApplyExtracted() {
+    if (!analysisResult || !onApplyExtractedFields) return;
+    const extracted = analysisResult.analysis.extracted_fields || [];
+    const defs = customFields || [];
+    const values: Record<string, { type: DocCustomFieldDef['type']; value: string | number | boolean | null }> = {};
+    for (const ef of extracted) {
+      if (!selectedExtracted[ef.field_id]) continue;
+      const def = defs.find((d) => d.id === ef.field_id);
+      if (!def) continue;
+      let v: string | number | boolean | null = ef.value;
+      if (def.type === 'number') {
+        const n = Number(String(ef.value).replace(',', '.'));
+        v = Number.isFinite(n) ? n : null;
+      } else if (def.type === 'checkbox') {
+        v = String(ef.value).toLowerCase() === 'true';
+      } else if (def.type === 'date') {
+        v = ef.value || null;
+      }
+      values[ef.field_id] = { type: def.type, value: v };
+    }
+    if (Object.keys(values).length === 0) {
+      toast.info('Nenhum campo selecionado');
+      return;
+    }
+    setApplyingFields(true);
+    try {
+      await onApplyExtractedFields(values);
+      toast.success(`${Object.keys(values).length} campo(s) atualizado(s)`);
+      setAnalysisOpen(false);
+    } catch (e: any) {
+      toast.error(`Erro ao aplicar: ${e.message || e}`);
+    } finally {
+      setApplyingFields(false);
     }
   }
 
@@ -376,13 +443,58 @@ export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId }: 
                 </div>
               </div>
 
+              {(() => {
+                const extracted = analysisResult.analysis.extracted_fields || [];
+                if (extracted.length === 0) return null;
+                const defs = customFields || [];
+                const rows = extracted
+                  .map((ef) => ({ ef, def: defs.find((d) => d.id === ef.field_id) }))
+                  .filter((r) => r.def);
+                if (rows.length === 0) return null;
+                return (
+                  <div className="border-t pt-3 space-y-2">
+                    <div className="text-xs font-semibold text-muted-foreground flex items-center gap-1">
+                      <Sparkles className="h-3.5 w-3.5 text-primary" />
+                      Campos detectados no documento
+                    </div>
+                    <div className="space-y-1.5">
+                      {rows.map(({ ef, def }) => (
+                        <label
+                          key={ef.field_id}
+                          className="flex items-start gap-2 text-sm p-2 rounded hover:bg-muted/40 cursor-pointer"
+                        >
+                          <input
+                            type="checkbox"
+                            className="mt-1"
+                            checked={!!selectedExtracted[ef.field_id]}
+                            onChange={(e) =>
+                              setSelectedExtracted((p) => ({ ...p, [ef.field_id]: e.target.checked }))
+                            }
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="text-xs text-muted-foreground">{def!.name}</div>
+                            <div className="font-medium break-words">{ef.value}</div>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+
               <div className="flex justify-end gap-2 pt-2">
                 <Button variant="outline" size="sm" asChild>
                   <a href={analysisResult.file.webViewLink} target="_blank" rel="noreferrer">
                     <ExternalLink className="h-3.5 w-3.5 mr-1" /> Abrir no Drive
                   </a>
                 </Button>
-                <Button size="sm" onClick={() => setAnalysisOpen(false)}>Fechar</Button>
+                {(analysisResult.analysis.extracted_fields || []).length > 0 && onApplyExtractedFields && (
+                  <Button size="sm" onClick={handleApplyExtracted} disabled={applyingFields}>
+                    {applyingFields ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Wand2 className="h-3.5 w-3.5 mr-1" />}
+                    Aplicar aos campos
+                  </Button>
+                )}
+                <Button variant="outline" size="sm" onClick={() => setAnalysisOpen(false)}>Fechar</Button>
               </div>
             </div>
           )}

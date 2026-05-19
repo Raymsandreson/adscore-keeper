@@ -364,9 +364,14 @@ Deno.serve(async (req) => {
     }
 
     if (action === "analyze_file") {
-      // Baixa um arquivo do Drive e usa Gemini Vision para identificar tipo + titular
-      const { file_id } = body;
+      // Baixa um arquivo do Drive e usa Gemini Vision para identificar tipo + titular.
+      // Opcionalmente extrai valores para campos personalizados informados em `custom_fields`.
+      const { file_id, custom_fields } = body as {
+        file_id?: string;
+        custom_fields?: Array<{ id: string; name: string; type: string; options?: string[] }>;
+      };
       if (!file_id) throw new Error("file_id required");
+      const cfList = Array.isArray(custom_fields) ? custom_fields.filter((f) => f && f.id && f.name) : [];
 
       // Get file metadata before downloading bytes; large files can exceed worker memory.
       const metaRes = await fetch(`${GATEWAY}/files/${file_id}?fields=id,name,mimeType,size`, { headers: gwHeaders() });
@@ -408,8 +413,11 @@ Deno.serve(async (req) => {
         }
         const b64 = btoa(bin);
         const dataUrl = `data:${meta.mimeType};base64,${b64}`;
+        const fieldsInstr = cfList.length
+          ? `\n\nALÉM DISSO, extraia valores para os seguintes CAMPOS PERSONALIZADOS do CRM, somente se o documento mostrar a informação. Devolva no array "extracted_fields" com { field_id, value } (value sempre como string; datas em formato ISO YYYY-MM-DD; checkbox como "true"/"false"). Não invente; omita o campo se a informação não estiver clara.\nCampos:\n${cfList.map((f) => `- id=${f.id} | nome="${f.name}" | tipo=${f.type}${f.options?.length ? ` | opções=[${f.options.join(", ")}]` : ""}`).join("\n")}`
+          : "";
         userContent = [
-          { type: "text", text: `Identifique o tipo deste documento, o titular e descreva brevemente. Nome do arquivo: ${meta.name}` },
+          { type: "text", text: `Identifique o tipo deste documento, o titular e descreva brevemente. Nome do arquivo: ${meta.name}${fieldsInstr}` },
           { type: "image_url", image_url: { url: dataUrl } },
         ];
       } else if (isDocx) {
@@ -434,7 +442,10 @@ Deno.serve(async (req) => {
         } catch (e) {
           console.error("[lead-drive] docx extract failed:", e);
         }
-        userContent = `Identifique o tipo deste documento, o titular e descreva brevemente. Nome do arquivo: ${meta.name}\n\nConteúdo extraído do DOCX:\n\n${text || "(não foi possível extrair texto)"}`;
+        const fieldsInstr = cfList.length
+          ? `\n\nALÉM DISSO, extraia valores para os seguintes CAMPOS PERSONALIZADOS do CRM, somente se o documento mostrar a informação. Devolva no array "extracted_fields" com { field_id, value } (value sempre como string; datas em formato ISO YYYY-MM-DD; checkbox como "true"/"false"). Não invente; omita o campo se a informação não estiver clara.\nCampos:\n${cfList.map((f) => `- id=${f.id} | nome="${f.name}" | tipo=${f.type}${f.options?.length ? ` | opções=[${f.options.join(", ")}]` : ""}`).join("\n")}`
+          : "";
+        userContent = `Identifique o tipo deste documento, o titular e descreva brevemente. Nome do arquivo: ${meta.name}${fieldsInstr}\n\nConteúdo extraído do DOCX:\n\n${text || "(não foi possível extrair texto)"}`;
       } else {
         // Tipo não suportado pela IA — devolve análise neutra sem chamar Gemini
         return new Response(JSON.stringify({
@@ -484,6 +495,19 @@ Deno.serve(async (req) => {
                     holder_cpf: { type: ["string", "null"] },
                     description: { type: "string", description: "Resumo de 1-2 linhas do conteúdo" },
                     confidence: { type: "string", enum: ["alta", "média", "baixa"] },
+                    extracted_fields: {
+                      type: "array",
+                      description: "Valores extraídos para os campos personalizados do CRM. Inclua somente os campos cujos valores aparecem claramente no documento.",
+                      items: {
+                        type: "object",
+                        properties: {
+                          field_id: { type: "string" },
+                          value: { type: "string", description: "Sempre como string. Datas em YYYY-MM-DD. Checkbox como 'true'/'false'." },
+                        },
+                        required: ["field_id", "value"],
+                        additionalProperties: false,
+                      },
+                    },
                   },
                   required: ["document_type", "description", "confidence"],
                   additionalProperties: false,
