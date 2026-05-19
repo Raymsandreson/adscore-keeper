@@ -249,6 +249,20 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
     }
   }, [open, isGroup, groupJid, instanceName]);
 
+  // Carrega o owner_phone da instância (essa é "nós mesmos" no grupo, não um contato do caso).
+  useEffect(() => {
+    if (!open || !instanceName) { setOwnerPhone(null); return; }
+    (async () => {
+      const { data } = await (externalSupabase as any)
+        .from('whatsapp_instances')
+        .select('owner_phone')
+        .ilike('instance_name', instanceName)
+        .maybeSingle();
+      const raw = (data?.owner_phone || '').replace(/\D/g, '');
+      setOwnerPhone(raw || null);
+    })();
+  }, [open, instanceName]);
+
   // Realtime: quando o webhook atualizar o cache do grupo (entrou/saiu/promoveu membro),
   // refaz a leitura automaticamente — sem o usuário precisar clicar em nada.
   useEffect(() => {
