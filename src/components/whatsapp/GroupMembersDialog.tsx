@@ -853,6 +853,9 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
               const relationship = relationshipsMap.get(p.phone);
               const isExpanded = expandedPhone === p.phone;
               const hasContact = !!contact;
+              const isPrimary = primaryPhone === p.phone;
+              const primaryContact = primaryPhone ? contactsMap.get(primaryPhone) : null;
+              const primaryName = primaryContact?.full_name || (primaryPhone ? 'cliente principal' : null);
 
               return (
                 <div
