@@ -791,8 +791,11 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
       {/* === SHEET: Link Lead === */}
       <Sheet open={linkLeadOpen} onOpenChange={setLinkLeadOpen}>
         <SheetContent className="w-full sm:max-w-sm flex flex-col p-0">
-          <SheetHeader className="px-6 pt-6 pb-3 shrink-0">
+          <SheetHeader className="px-6 pt-6 pb-3 shrink-0 flex-row items-center justify-between space-y-0">
             <SheetTitle className="text-base">Vincular Lead</SheetTitle>
+            <Button type="button" size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={() => setNewLeadOpen(true)}>
+              <Plus className="h-3 w-3" /> Novo lead
+            </Button>
           </SheetHeader>
           <div className="px-6 pb-3 shrink-0">
             <div className="relative">
