@@ -3601,7 +3601,7 @@ const ActivitiesPage = () => {
             try {
               const { error } = await externalSupabase
                 .from('leads')
-                .update({ whatsapp_group_id: g.jid, whatsapp_group_name: g.name || null })
+                .update({ whatsapp_group_id: g.jid })
                 .eq('id', formLeadId);
               if (error) throw error;
               setLeadPreview((prev) => prev ? { ...prev, whatsapp_group_id: g.jid } : prev);
