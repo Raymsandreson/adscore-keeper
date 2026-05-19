@@ -1,6 +1,7 @@
 import { useState, useEffect, lazy, Suspense } from 'react';
 
 const ProcessDetailSheet = lazy(() => import('@/components/cases/ProcessDetailSheet'));
+const AddProcessDialog = lazy(() => import('@/components/cases/AddProcessDialog'));
 import { Input } from '@/components/ui/input';
 import { RichTextEditor } from '@/components/ui/RichTextEditor';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -10,7 +11,9 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { Search, X, ChevronDown, Copy, Loader2, UserPlus, Building2, Briefcase, Send, Info, Settings2, FileText } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Search, X, ChevronDown, Copy, Loader2, UserPlus, Building2, Briefcase, Send, Info, Settings2, FileText, Plus } from 'lucide-react';
 import { ActivityTTSButton } from '@/components/voice/ActivityTTSButton';
 import { ActivityFieldSettingsDialog } from '@/components/activities/ActivityFieldSettingsDialog';
 import { ActivityMessageTemplateSettings } from '@/components/activities/ActivityMessageTemplateSettings';
@@ -23,6 +26,8 @@ import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
+import { useLeads } from '@/hooks/useLeads';
+import { useLegalCases } from '@/hooks/useLegalCases';
 import { toast } from 'sonner';
 
 function copyField(text: string | null | undefined) {
@@ -319,6 +324,72 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
   const [processPopoverOpen, setProcessPopoverOpen] = useState(false);
   const [editProcessData, setEditProcessData] = useState<any>(null);
   const [loadingProcessEdit, setLoadingProcessEdit] = useState(false);
+
+  // Create-new flows (reuses existing forms/hooks)
+  const { addLead } = useLeads();
+  const { createCase } = useLegalCases();
+  const [newLeadOpen, setNewLeadOpen] = useState(false);
+  const [newLeadName, setNewLeadName] = useState('');
+  const [newLeadPhone, setNewLeadPhone] = useState('');
+  const [creatingLead, setCreatingLead] = useState(false);
+  const [newCaseOpen, setNewCaseOpen] = useState(false);
+  const [newCaseTitle, setNewCaseTitle] = useState('');
+  const [newCaseNumber, setNewCaseNumber] = useState('');
+  const [creatingCase, setCreatingCase] = useState(false);
+  const [newProcessOpen, setNewProcessOpen] = useState(false);
+
+  const handleCreateLead = async () => {
+    if (!newLeadName.trim()) { toast.error('Nome do lead obrigatório'); return; }
+    setCreatingLead(true);
+    try {
+      const lead: any = await addLead({ lead_name: newLeadName.trim(), lead_phone: newLeadPhone.trim() || undefined } as any);
+      if (lead?.id) {
+        props.handleSelectLead(lead.id);
+        props.setFormCaseId(''); props.setFormCaseTitle('');
+        props.setFormProcessId(''); props.setFormProcessTitle('');
+        props.setCaseProcesses([]);
+        setNewLeadOpen(false);
+        setNewLeadName(''); setNewLeadPhone('');
+      }
+    } catch (e: any) {
+      toast.error('Erro ao criar lead: ' + (e?.message || ''));
+    } finally { setCreatingLead(false); }
+  };
+
+  const handleCreateCase = async () => {
+    if (!newCaseTitle.trim()) { toast.error('Título do caso obrigatório'); return; }
+    if (!props.formLeadId) { toast.error('Selecione um lead primeiro'); return; }
+    setCreatingCase(true);
+    try {
+      const c: any = await createCase({
+        lead_id: props.formLeadId,
+        title: newCaseTitle.trim(),
+        case_number: newCaseNumber.trim() || undefined,
+      });
+      if (c?.id) {
+        props.setFormCaseId(c.id);
+        props.setFormCaseTitle(`${c.case_number} - ${c.title}`);
+        props.setFormProcessId(''); props.setFormProcessTitle('');
+        props.setCaseProcesses([]);
+        setNewCaseOpen(false);
+        setNewCaseTitle(''); setNewCaseNumber('');
+        // trigger upstream lead-cases refresh by reselecting the lead
+        props.handleSelectLead(props.formLeadId);
+      }
+    } catch (e: any) {
+      toast.error('Erro ao criar caso: ' + (e?.message || ''));
+    } finally { setCreatingCase(false); }
+  };
+
+  const refreshCaseProcesses = async () => {
+    if (!props.formCaseId) return;
+    const { data: procs } = await externalSupabase
+      .from('lead_processes')
+      .select('id, title, process_number, polo_passivo, tribunal, area, assuntos, workflow_id, workflow_name, envolvidos')
+      .eq('case_id', props.formCaseId);
+    props.setCaseProcesses(procs || []);
+  };
+
 
   const openProcessEditor = async (processId: string) => {
     if (!processId) return;
@@ -720,8 +791,11 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
       {/* === SHEET: Link Lead === */}
       <Sheet open={linkLeadOpen} onOpenChange={setLinkLeadOpen}>
         <SheetContent className="w-full sm:max-w-sm flex flex-col p-0">
-          <SheetHeader className="px-6 pt-6 pb-3 shrink-0">
+          <SheetHeader className="px-6 pt-6 pb-3 shrink-0 flex-row items-center justify-between space-y-0">
             <SheetTitle className="text-base">Vincular Lead</SheetTitle>
+            <Button type="button" size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={() => setNewLeadOpen(true)}>
+              <Plus className="h-3 w-3" /> Novo lead
+            </Button>
           </SheetHeader>
           <div className="px-6 pb-3 shrink-0">
             <div className="relative">
@@ -767,7 +841,12 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
             {/* Cases of selected lead */}
             {props.formLeadId && (
               <div className="border-t shrink-0 px-6 pt-3 pb-2 max-h-[35%] overflow-y-auto bg-muted/20">
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Casos do lead</span>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Casos do lead</span>
+                  <Button type="button" size="sm" variant="ghost" className="h-6 gap-1 text-[10px]" onClick={() => setNewCaseOpen(true)}>
+                    <Plus className="h-3 w-3" /> Novo caso
+                  </Button>
+                </div>
                 <div className="mt-2 space-y-0.5">
                   {props.leadCases.length === 0 && (
                     <p className="text-[11px] text-muted-foreground py-2">Nenhum caso vinculado a este lead</p>
@@ -800,10 +879,18 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
             )}
 
             {/* Processes of selected case */}
-            {props.formCaseId && props.caseProcesses.length > 0 && (
+            {props.formCaseId && (
               <div className="border-t shrink-0 px-6 pt-3 pb-2 max-h-[35%] overflow-y-auto bg-muted/30">
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Processos do caso</span>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Processos do caso</span>
+                  <Button type="button" size="sm" variant="ghost" className="h-6 gap-1 text-[10px]" onClick={() => setNewProcessOpen(true)}>
+                    <Plus className="h-3 w-3" /> Novo processo
+                  </Button>
+                </div>
                 <div className="mt-2 space-y-0.5">
+                  {props.caseProcesses.length === 0 && (
+                    <p className="text-[11px] text-muted-foreground py-2">Nenhum processo neste caso</p>
+                  )}
                   {props.caseProcesses.map(p => (
                     <button
                       key={p.id}
@@ -1069,7 +1156,50 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
             }}
           />
         )}
+        {newProcessOpen && props.formCaseId && props.formLeadId && (
+          <AddProcessDialog
+            open={newProcessOpen}
+            onOpenChange={setNewProcessOpen}
+            caseId={props.formCaseId}
+            leadId={props.formLeadId}
+            onProcessAdded={refreshCaseProcesses}
+          />
+        )}
       </Suspense>
+
+      {/* === Dialog: Novo Lead (minimal) === */}
+      <Dialog open={newLeadOpen} onOpenChange={setNewLeadOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader><DialogTitle>Novo lead</DialogTitle></DialogHeader>
+          <div className="space-y-3 pt-2">
+            <div><Label>Nome *</Label><Input value={newLeadName} onChange={e => setNewLeadName(e.target.value)} autoFocus /></div>
+            <div><Label>Telefone</Label><Input value={newLeadPhone} onChange={e => setNewLeadPhone(e.target.value)} placeholder="(11) 99999-9999" /></div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNewLeadOpen(false)}>Cancelar</Button>
+            <Button onClick={handleCreateLead} disabled={creatingLead || !newLeadName.trim()}>
+              {creatingLead ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Criar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* === Dialog: Novo Caso (minimal) === */}
+      <Dialog open={newCaseOpen} onOpenChange={setNewCaseOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader><DialogTitle>Novo caso</DialogTitle></DialogHeader>
+          <div className="space-y-3 pt-2">
+            <div><Label>Título *</Label><Input value={newCaseTitle} onChange={e => setNewCaseTitle(e.target.value)} autoFocus /></div>
+            <div><Label>Número (opcional)</Label><Input value={newCaseNumber} onChange={e => setNewCaseNumber(e.target.value)} placeholder="auto-gerado se vazio" /></div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNewCaseOpen(false)}>Cancelar</Button>
+            <Button onClick={handleCreateCase} disabled={creatingCase || !newCaseTitle.trim()}>
+              {creatingCase ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Criar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
