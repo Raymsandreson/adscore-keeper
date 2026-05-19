@@ -700,49 +700,98 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     return () => { cancelled = true; };
   }, [conversation.lead_id]);
 
-  // ====== Auto-upload de mídias para o Drive ao abrir a conversa ======
+  // ====== Auto-upload de mídias para o Drive (histórico completo + novas) ======
   const [autoDrive, setAutoDrive] = useState<{ total: number; done: number; running: boolean }>({ total: 0, done: 0, running: false });
-  const autoDriveRunRef = useRef<string | null>(null);
+  const autoDriveConvKeyRef = useRef<string | null>(null);
+  const autoDriveProcessedRef = useRef<Set<string>>(new Set());
+  const autoDriveQueueRef = useRef<Promise<void>>(Promise.resolve());
 
   useEffect(() => {
     const leadId = conversation.lead_id;
     if (!leadId) return;
     const convKey = `${conversation.phone}__${conversation.instance_name}__${leadId}`;
-    if (autoDriveRunRef.current === convKey) return;
-    if (!messages || messages.length === 0) return;
 
-    const candidates = messages.filter((m: any) => {
-      if (!m.media_url || isEncUrl(m.media_url)) return false;
-      if (m.message_type !== 'image' && m.message_type !== 'document') return false;
-      if (m.metadata?.drive?.file_id) return false;
-      if (driveSavedById[m.id]) return false;
-      return true;
-    });
-
-    autoDriveRunRef.current = convKey;
-    if (candidates.length === 0) {
+    // Reset estado quando muda de conversa
+    if (autoDriveConvKeyRef.current !== convKey) {
+      autoDriveConvKeyRef.current = convKey;
+      autoDriveProcessedRef.current = new Set();
       setAutoDrive({ total: 0, done: 0, running: false });
-      return;
     }
 
-    setAutoDrive({ total: candidates.length, done: 0, running: true });
     let cancelled = false;
+
     (async () => {
-      for (const m of candidates) {
-        if (cancelled) break;
-        try {
-          await runDriveUpload(m, leadId, undefined, { silent: true });
-        } catch (e) {
-          console.warn('[auto-drive] falhou para msg', m.id, e);
+      // 1) Varredura COMPLETA do histórico no banco (não só o que está em tela)
+      let dbCandidates: any[] = [];
+      try {
+        const phoneDigits = (conversation.phone || '').replace(/\D/g, '');
+        const { data } = await externalSupabase
+          .from('whatsapp_messages')
+          .select('id, media_url, message_type, metadata, file_name, mime_type, lead_id, phone, instance_name')
+          .or(`lead_id.eq.${leadId},and(phone.eq.${phoneDigits},instance_name.ilike.${conversation.instance_name})`)
+          .in('message_type', ['image', 'document'])
+          .not('media_url', 'is', null)
+          .limit(500);
+        dbCandidates = (data || []) as any[];
+      } catch (e) {
+        console.warn('[auto-drive] fetch histórico falhou:', e);
+      }
+
+      if (cancelled) return;
+
+      // 2) Merge com o que está em tela (caso ainda não tenha persistido)
+      const byId = new Map<string, any>();
+      for (const m of dbCandidates) byId.set(m.id, m);
+      for (const m of (messages || [])) {
+        if (!byId.has(m.id)) byId.set(m.id, m);
+      }
+
+      // 3) Filtra pendentes
+      const pending = Array.from(byId.values()).filter((m: any) => {
+        if (!m.media_url || isEncUrl(m.media_url)) return false;
+        if (m.message_type !== 'image' && m.message_type !== 'document') return false;
+        if (m.metadata?.drive?.file_id) return false;
+        if (driveSavedById[m.id]) return false;
+        if (autoDriveProcessedRef.current.has(m.id)) return false;
+        return true;
+      });
+
+      if (pending.length === 0) {
+        setAutoDrive(prev => ({ ...prev, running: false }));
+        return;
+      }
+
+      // Marca como em processamento ANTES de enfileirar pra evitar dupla execução
+      for (const m of pending) autoDriveProcessedRef.current.add(m.id);
+
+      setAutoDrive(prev => ({
+        total: prev.total + pending.length,
+        done: prev.done,
+        running: true,
+      }));
+
+      // Enfileira respeitando ordem (sem concorrência paralela)
+      autoDriveQueueRef.current = autoDriveQueueRef.current.then(async () => {
+        for (const m of pending) {
+          if (cancelled) break;
+          try {
+            await runDriveUpload(m, leadId, undefined, { silent: true });
+          } catch (e) {
+            console.warn('[auto-drive] falhou para msg', m.id, e);
+          }
+          if (!cancelled) {
+            setAutoDrive(prev => ({ ...prev, done: prev.done + 1 }));
+          }
         }
         if (!cancelled) {
-          setAutoDrive(prev => ({ ...prev, done: prev.done + 1 }));
+          setAutoDrive(prev => ({
+            ...prev,
+            running: prev.done < prev.total ? true : false,
+          }));
         }
-      }
-      if (!cancelled) {
-        setAutoDrive(prev => ({ ...prev, running: false }));
-      }
+      });
     })();
+
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversation.lead_id, conversation.phone, conversation.instance_name, messages.length]);
