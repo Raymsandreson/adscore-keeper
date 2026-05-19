@@ -102,6 +102,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const { profile } = useAuthContext();
   const { boards: kanbanBoards } = useKanbanBoards();
   const [newMessage, setNewMessage] = useState('');
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [showLinkDialog, setShowLinkDialog] = useState(false);
   const [showLeadPanel, setShowLeadPanel] = useState(false);
