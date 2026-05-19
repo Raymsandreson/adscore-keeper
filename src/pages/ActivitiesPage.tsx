@@ -1077,7 +1077,7 @@ const ActivitiesPage = () => {
     // Load lead preview (needed for header progress bar)
     externalSupabase
       .from('leads')
-      .select('case_type, damage_description, accident_date, updated_at, board_id, lead_status')
+      .select('case_type, damage_description, accident_date, updated_at, board_id, lead_status, whatsapp_group_id, lead_phone')
       .eq('id', leadId)
       .maybeSingle()
       .then(async ({ data }) => {
