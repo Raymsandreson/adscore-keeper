@@ -2898,21 +2898,26 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                           {selectedDriveMsgIds.has(msg.id) ? getSelectionIndex(msg.id) : '✓'}
                         </button>
                         <FileText className="h-4 w-4 text-orange-500 shrink-0" />
-                        <a
-                          href={msg.media_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
+                        <button
+                          type="button"
                           onClick={(e) => {
                             if (e.shiftKey || driveSelectionMode) {
                               e.preventDefault();
                               setDriveSelectionMode(true);
                               toggleDriveSelection(msg.id);
+                              return;
+                            }
+                            if (isPdf || isImage) {
+                              setLightboxUrl(msg.media_url!);
+                            } else {
+                              window.open(msg.media_url!, '_blank', 'noopener,noreferrer');
                             }
                           }}
-                          className="flex-1 text-xs underline truncate"
+                          className="flex-1 text-xs underline truncate text-left cursor-pointer"
                         >
                           {fileName}
-                        </a>
+                        </button>
+
                         <a href={msg.media_url} download target="_blank" rel="noopener noreferrer" className="opacity-70 hover:opacity-100" title="Baixar">
                           <Download className="h-3.5 w-3.5" />
                         </a>
@@ -3353,12 +3358,21 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
           >
             <Download className="h-5 w-5" />
           </a>
-          <img
-            src={lightboxUrl}
-            alt="Visualização"
-            className="max-w-[95vw] max-h-[95vh] object-contain"
-            onClick={(e) => e.stopPropagation()}
-          />
+          {/\.pdf($|\?)/i.test(lightboxUrl) ? (
+            <iframe
+              src={lightboxUrl}
+              title="Documento"
+              className="w-[95vw] h-[95vh] bg-white rounded"
+              onClick={(e) => e.stopPropagation()}
+            />
+          ) : (
+            <img
+              src={lightboxUrl}
+              alt="Visualização"
+              className="max-w-[95vw] max-h-[95vh] object-contain"
+              onClick={(e) => e.stopPropagation()}
+            />
+          )}
         </div>
       )}
     </div>
