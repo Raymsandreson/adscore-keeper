@@ -1,64 +1,91 @@
-## Escopo
+# Plano — Cliente principal + alerta de saída do grupo
 
-Três blocos independentes. Sem mexer em backend/edge functions — só frontend e regra de validação.
+## Frente 1 — Cliente principal + relação entre contatos
 
----
+### O que muda visualmente
+No diálogo de membros do grupo (e em qualquer tela de contatos de um lead/caso):
 
-### 1. Card "Contatos Vinculados" do lead — `src/components/leads/LeadLinkedContacts.tsx`
+- Cada membro ganha um **toggle "Cliente principal"** (estrela/coroa). Só pode ter **1 principal por lead**.
+- O campo atual "Relação com a vítima" vira **"Relação com o cliente principal"** (filho, esposa, irmão, advogado, testemunha, outro…) e fica **desabilitado** enquanto não houver cliente principal definido.
+- Quando alguém é marcado como principal, o campo dele some (ele é a referência) e nos demais aparece "Relação com [Nome do Principal]".
 
-**Estado atual:**
-- Botão **Desvincular** (X) — clica e remove direto, **sem confirmação**.
-- Botão **Excluir** (lixeira) — usa `window.confirm()` feio do navegador.
-- Ambos só aparecem no hover (`opacity-0 group-hover:opacity-100`), ruim em mobile.
+### Schema (Supabase Externo, via `run-external-migration`)
+Adicionar em `contact_leads` (tabela que já vincula contato↔lead):
+- `is_primary_client BOOLEAN DEFAULT false`
+- `relationship_to_primary TEXT` (livre + sugestões)
+- Índice parcial único garantindo 1 principal por lead: `CREATE UNIQUE INDEX ... ON contact_leads(lead_id) WHERE is_primary_client = true`
 
-**Mudanças:**
-- Trocar os dois para usar o hook `useConfirmDelete` (dialog padrão do app).
-- **Desvincular:** dialog "Desvincular [nome] deste lead? O contato continua no banco."
-- **Excluir:** dialog "Excluir DEFINITIVAMENTE [nome]? Remove de todos os leads e do banco de contatos. Não pode desfazer." (texto destrutivo claro).
-- Tirar `opacity-0 group-hover:opacity-100` → botões sempre visíveis (melhor mobile).
+Manter o campo antigo `relationship_to_victim` por 24h como `_legacy`, depois remover (Regra 4).
 
----
-
-### 2. Nº do Caso — `src/components/kanban/LeadEditDialog.tsx`
-
-**Estado atual (linha 2333-2341):**
-- Input `readOnly`, label "Nº do Caso (auto)", preenchido automaticamente pela ordem de assinatura ZapSign.
-- Na hora de criar `legal_case` (linha 1240-1245): se `caseNumber` está vazio, chama RPC `generate_case_number` automaticamente.
-- Foi exatamente isso que gerou o caos 1070/1071.
-
-**Mudanças:**
-- Input passa a ser **editável** (`readOnly` removido). Label vira "Nº do Caso *" (obrigatório quando fechado).
-- Hint trocado para: "Preencha manualmente. Esta é a numeração oficial do caso e não será gerada automaticamente."
-- **Validação no save:** se `leadOutcome === 'closed'` e `caseNumber` vazio/só espaços → toast de erro "Nº do Caso é obrigatório ao fechar um lead" e bloqueia o save (não prossegue).
-- **Remover geração automática** na criação do `legal_case` (linha 1239-1245): se `caseNumber` vazio, não chama mais `generate_case_number` — usa o que o usuário digitou (que agora é obrigatório). Mantém `matchedNucleusId` só pra associar ao núcleo, não pra numerar.
-- Manter o banner amarelo de "Nº do caso desatualizado" (caseSyncCheck) — agora ele vira sugestão pra editar manualmente, não auto-aplicação silenciosa.
-
-**O que não muda:**
-- O banner de sugestão (`applyCaseSync`) continua existindo — só renomeia o lead quando o usuário clica.
-- `generate_case_number` RPC continua existindo no banco (não removo função), só não é mais chamada daqui.
+### Migração de dados
+Para leads em funis de **Acidente de Trabalho**: copiar `relationship_to_victim` → `relationship_to_primary`. Demais leads: descartar (não fazia sentido).
 
 ---
 
-### 3. Extrair com IA — picker de quantidade de mensagens
+## Frente 2 — Saída do grupo
 
-**Pergunta antes de codar:** o botão "Extrair com IA" com escolha de fonte (conversa do grupo / contato vinculado) **ainda não existe no código** — foi proposta minha do plano anterior que não foi implementada. Hoje só existe o "Extrair dados de notícia/documento" no `LeadNewsLinksManager`.
+### Detecção (webhook tempo real)
+- Adicionar handler no Railway (`whatsapp-group-participant-left.ts`) que escuta eventos `group.participant.leave` da UazAPI.
+- Valida assinatura/token do webhook (Princípio de cibersegurança 3).
+- Quando dispara: grava em nova tabela `whatsapp_group_exits` (group_jid, phone, exit_at, exit_type: 'left'|'removed').
+- Atualiza `whatsapp_groups_cache` removendo o participante.
 
-Opções:
-- **(a)** Implementar agora a feature inteira: novo botão "Extrair com IA" dentro do `LeadEditDialog` com 3 escolhas: fonte (grupo/contato privado), quantidade (50/200/todas), e disparo. Vai pra função `extract-conversation-data` existente.
-- **(b)** Por enquanto só adicionar o seletor 50/200/todas no botão "Preencher com IA" que já existe (linha 2278-2322, gera motivo do fechamento).
-- **(c)** Esperar você confirmar onde quer o botão antes de eu codar.
+### Card fixo na aba Atividades
+- Componente novo `GroupExitAlert` no topo de `LeadActivitiesTab`/`CaseActivitiesTab`.
+- Mostra: "⚠️ [Nome ou telefone] saiu do grupo em [data/hora]. Não envie atualizações pelo grupo sem verificar."
+- Botão "Marcar como visto" (grava `acknowledged_by` + `acknowledged_at` na linha de `whatsapp_group_exits`).
+- Permanece visível enquanto houver saídas não-reconhecidas.
 
-Vou parar aqui no item 3 e perguntar via `ask_questions` qual das opções, em vez de chutar. Itens 1 e 2 já posso executar.
+### Atividade automática para o responsável processual
+- Adicionar **campo obrigatório** `processual_responsible_id` em `leads` (UUID do profile). Validação no form de lead.
+- Quando saída detectada: criar `lead_activities` do tipo `notificacao`, prioridade `alta`, assigned_to = `processual_responsible_id`, título "Cliente saiu do grupo".
+- Se o lead não tiver responsável processual definido (legacy), cair para `assigned_to` do lead com aviso.
 
 ---
 
-### Arquivos tocados
-- `src/components/leads/LeadLinkedContacts.tsx` — confirmações + botões sempre visíveis
-- `src/components/kanban/LeadEditDialog.tsx` — input editável, validação obrigatória, remoção do auto-generate
+## Arquivos afetados
 
-### Rollback
-- Item 1: trivial, reverte arquivo.
-- Item 2: reverte arquivo. Nenhum dado é tocado (zero SQL).
+**Schema (Externo)**
+- `contact_leads`: novos campos
+- `leads`: `processual_responsible_id NOT NULL` (com default backfill = assigned_to)
+- `whatsapp_group_exits`: tabela nova
 
-### Risco
-- Item 2 muda comportamento de fechamento de lead: quem fechar sem preencher Nº do Caso vai ser bloqueado. **Isso é o pedido explícito** — mas pode quebrar fluxo de quem está acostumado a fechar e deixar pra preencher depois. Posso suavizar com warning em vez de bloqueio se preferir.
+**Backend**
+- `railway-server/src/functions/whatsapp-group-participant-left.ts` — novo
+- `railway-server/src/index.ts` — registrar rota
+- `supabase/functions/whatsapp-uazapi-webhook` — encaminhar evento de saída
+
+**Frontend**
+- `src/components/whatsapp/GroupMembersDialog.tsx` — toggle principal + relação dinâmica
+- `src/components/leads/LeadFormDialog.tsx` (ou equivalente) — campo obrigatório
+- `src/components/leads/LeadActivitiesTab.tsx` + `src/components/cases/CaseActivitiesTab.tsx` — `GroupExitAlert`
+- `src/components/whatsapp/GroupExitAlert.tsx` — novo
+- `src/hooks/useGroupExits.ts` — novo, com realtime
+
+---
+
+## Ordem de execução
+1. Migration no Externo (schema + backfill)
+2. Webhook + handler Railway
+3. Hook + componente de alerta
+4. UI do GroupMembersDialog (toggle principal + relação)
+5. Campo obrigatório no form de lead
+6. Testes manuais: criar lead → marcar principal → simular saída via webhook → ver card + atividade
+
+---
+
+## O que NÃO vai mexer
+- Estrutura de membros do grupo no UazAPI (continua igual)
+- Demais campos do contato (profissão, classificação, etc)
+- Fluxo de adicionar/remover/promover membros (parte 2 anterior continua intacta)
+- Funis de Acidente de Trabalho seguem funcionando — só renomeia o campo
+
+---
+
+## Risco / Rollback
+- Migration reversível: campos novos são opcionais (exceto `processual_responsible_id`, que tem default de backfill).
+- Tabela `whatsapp_group_exits` é nova → drop limpo se precisar reverter.
+- Componentes novos são aditivos.
+- Webhook handler pode ser desativado via flag se gerar ruído.
+
+Aprovar pra eu começar pela migration?
