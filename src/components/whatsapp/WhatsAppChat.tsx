@@ -153,7 +153,6 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const runDriveUpload = async (msg: any, leadId: string, leadNameInput?: string, opts?: { silent?: boolean }) => {
     const silent = !!opts?.silent;
     if (!msg?.media_url) {
-    if (!msg?.media_url) {
       if (!silent) toast.error('Mensagem sem mídia para salvar.');
       return;
     }
