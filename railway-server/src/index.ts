@@ -21,6 +21,7 @@ import { handler as whatsappGroupExit } from './functions/whatsapp-group-exit';
 import { handler as whatsappDownloadMedia } from './functions/whatsapp-download-media';
 import { handler as whatsappBackfillMedia } from './functions/whatsapp-backfill-media';
 import { handler as extractConversationData } from './functions/extract-conversation-data';
+import { handler as manageWhatsappGroupParticipants } from './functions/manage-whatsapp-group-participants';
 
 const functionHandlers: Record<string, express.RequestHandler> = {
   'whatsapp-webhook': whatsappWebhook,
@@ -35,6 +36,7 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'whatsapp-download-media': whatsappDownloadMedia,
   'whatsapp-backfill-media': whatsappBackfillMedia,
   'extract-conversation-data': extractConversationData,
+  'manage-whatsapp-group-participants': manageWhatsappGroupParticipants,
 };
 
 const app = express();
