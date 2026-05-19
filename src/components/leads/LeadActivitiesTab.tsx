@@ -20,6 +20,7 @@ import { ActivityChatSheet } from '@/components/activities/ActivityChatSheet';
 import { ActivityEditSheet } from '@/components/activities/ActivityEditSheet';
 import { TeamChatButton } from '@/components/chat/TeamChatButton';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
+import { GroupExitAlert } from '@/components/whatsapp/GroupExitAlert';
 
 interface LeadActivity {
   id: string;
@@ -284,6 +285,7 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
 
   return (
     <div className="space-y-4">
+      <GroupExitAlert leadId={leadId} />
       <div className="flex items-center justify-between gap-2">
         <button
           type="button"

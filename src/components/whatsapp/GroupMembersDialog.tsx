@@ -54,6 +54,8 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
   const [participants, setParticipants] = useState<GroupParticipant[]>([]);
   const [contactsMap, setContactsMap] = useState<Map<string, ContactInfo>>(new Map());
   const [relationshipsMap, setRelationshipsMap] = useState<Map<string, string>>(new Map());
+  const [primaryPhone, setPrimaryPhone] = useState<string | null>(null);
+  const [settingPrimary, setSettingPrimary] = useState<string | null>(null);
   const [classifications, setClassifications] = useState<Array<{ id: string; name: string; color: string }>>([]);
   const [relationshipTypes, setRelationshipTypes] = useState<Array<{ id: string; name: string }>>([]);
   const [expandedPhone, setExpandedPhone] = useState<string | null>(null);
@@ -403,26 +405,29 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
     }
     setContactsMap(cMap);
 
-    // Fetch relationships to lead
+    // Fetch relationships to lead (cliente principal + relação ao principal)
     if (leadId) {
       const contactIds = Array.from(cMap.values()).map(c => c.id);
       if (contactIds.length > 0) {
         const { data: links } = await (supabase as any)
           .from('contact_leads')
-          .select('contact_id, relationship_to_victim')
+          .select('contact_id, relationship_to_primary, relationship_to_victim, is_primary_client')
           .eq('lead_id', leadId)
           .in('contact_id', contactIds);
 
         const rMap = new Map<string, string>();
+        let primary: string | null = null;
         for (const link of links || []) {
-          // Find phone for this contact
           for (const [phone, contact] of cMap.entries()) {
-            if (contact.id === link.contact_id && link.relationship_to_victim) {
-              rMap.set(phone, link.relationship_to_victim);
+            if (contact.id === link.contact_id) {
+              const rel = link.relationship_to_primary || link.relationship_to_victim;
+              if (rel) rMap.set(phone, rel);
+              if (link.is_primary_client) primary = phone;
             }
           }
         }
         setRelationshipsMap(rMap);
+        setPrimaryPhone(primary);
       }
     }
   };
@@ -537,8 +542,12 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
       if (existing) {
         await (supabase as any)
           .from('contact_leads')
-          .update({ relationship_to_victim: value || null })
+          .update({ relationship_to_primary: value || null })
           .eq('id', existing.id);
+      } else {
+        await (supabase as any)
+          .from('contact_leads')
+          .insert({ contact_id: contact.id, lead_id: leadId, relationship_to_primary: value || null });
       }
 
       setRelationshipsMap(prev => {
@@ -553,6 +562,64 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
       toast.error('Erro ao atualizar relação');
     }
     setEditingField(null);
+  };
+
+  const handleSetPrimary = async (phone: string) => {
+    const contact = contactsMap.get(phone);
+    if (!contact || !leadId) return;
+    setSettingPrimary(phone);
+    try {
+      // Desmarca qualquer principal anterior
+      await (supabase as any)
+        .from('contact_leads')
+        .update({ is_primary_client: false })
+        .eq('lead_id', leadId);
+
+      // Garante link e marca este como principal
+      const { data: existing } = await (supabase as any)
+        .from('contact_leads')
+        .select('id')
+        .eq('contact_id', contact.id)
+        .eq('lead_id', leadId)
+        .maybeSingle();
+
+      if (existing) {
+        await (supabase as any)
+          .from('contact_leads')
+          .update({ is_primary_client: true, relationship_to_primary: null })
+          .eq('id', existing.id);
+      } else {
+        await (supabase as any)
+          .from('contact_leads')
+          .insert({ contact_id: contact.id, lead_id: leadId, is_primary_client: true });
+      }
+
+      setPrimaryPhone(phone);
+      setRelationshipsMap(prev => {
+        const newMap = new Map(prev);
+        newMap.delete(phone);
+        return newMap;
+      });
+      toast.success(`${contact.full_name} agora é o cliente principal`);
+    } catch (e: any) {
+      toast.error('Erro ao marcar cliente principal: ' + (e?.message || ''));
+    } finally {
+      setSettingPrimary(null);
+    }
+  };
+
+  const handleUnsetPrimary = async () => {
+    if (!leadId) return;
+    try {
+      await (supabase as any)
+        .from('contact_leads')
+        .update({ is_primary_client: false })
+        .eq('lead_id', leadId);
+      setPrimaryPhone(null);
+      toast.success('Cliente principal removido');
+    } catch {
+      toast.error('Erro ao remover cliente principal');
+    }
   };
 
   const handleSearchExistingContacts = async (query: string) => {
@@ -786,6 +853,9 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
               const relationship = relationshipsMap.get(p.phone);
               const isExpanded = expandedPhone === p.phone;
               const hasContact = !!contact;
+              const isPrimary = primaryPhone === p.phone;
+              const primaryContact = primaryPhone ? contactsMap.get(primaryPhone) : null;
+              const primaryName = primaryContact?.full_name || (primaryPhone ? 'cliente principal' : null);
 
               return (
                 <div
@@ -844,7 +914,12 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
                             {[contact.city, contact.state].filter(Boolean).join('/')}
                           </Badge>
                         )}
-                        {relationship && (
+                        {isPrimary ? (
+                          <Badge variant="default" className="text-[10px] px-1.5 py-0 bg-amber-500 hover:bg-amber-500">
+                            <Crown className="h-2.5 w-2.5 mr-0.5" />
+                            Cliente principal
+                          </Badge>
+                        ) : relationship && (
                           <Badge variant="default" className="text-[10px] px-1.5 py-0">
                             <Heart className="h-2.5 w-2.5 mr-0.5" />
                             {relationship}
@@ -854,6 +929,29 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
                     </div>
 
                     <div className="flex items-center gap-1 shrink-0">
+                      {hasContact && leadId && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7"
+                              disabled={settingPrimary === p.phone}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                isPrimary ? handleUnsetPrimary() : handleSetPrimary(p.phone);
+                              }}
+                            >
+                              {settingPrimary === p.phone ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Crown className={cn("h-3.5 w-3.5", isPrimary ? "text-amber-500 fill-amber-500" : "text-muted-foreground")} />
+                              )}
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>{isPrimary ? 'Remover como cliente principal' : 'Marcar como cliente principal'}</TooltipContent>
+                        </Tooltip>
+                      )}
                       {/* Group admin actions */}
                       <Tooltip>
                         <TooltipTrigger asChild>
@@ -996,17 +1094,18 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
                         </Select>
                       </div>
 
-                      {/* Relationship */}
-                      {leadId && (
+                      {/* Relationship to primary client */}
+                      {leadId && !isPrimary && (
                         <div className="flex items-center gap-2">
                           <Heart className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                           <span className="text-xs text-muted-foreground w-20 shrink-0">Relação</span>
                           <Select
                             value={relationship || ''}
                             onValueChange={(val) => handleUpdateRelationship(p.phone, val)}
+                            disabled={!primaryPhone}
                           >
                             <SelectTrigger className="h-7 text-xs flex-1">
-                              <SelectValue placeholder="Relação com a vítima..." />
+                              <SelectValue placeholder={primaryPhone ? `Relação com ${primaryName}...` : 'Defina o cliente principal antes'} />
                             </SelectTrigger>
                             <SelectContent>
                               {relationshipTypes.map(r => (
