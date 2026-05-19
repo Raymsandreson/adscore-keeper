@@ -3069,7 +3069,11 @@ const ActivitiesPage = () => {
                       onClick={() => {
                         const target = leadPreview?.whatsapp_group_id || leadPreview?.lead_phone || '';
                         if (!target) return;
-                        window.open(`/whatsapp?n=${encodeURIComponent(target)}`, '_blank');
+                        setWaChatPreview({
+                          phone: target,
+                          contact_name: formLeadName || null,
+                          instance_name: null,
+                        });
                       }}
                       title={leadPreview?.whatsapp_group_id ? 'Abrir grupo do WhatsApp vinculado' : 'Abrir conversa do WhatsApp'}
                     >
