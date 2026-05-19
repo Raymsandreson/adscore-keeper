@@ -663,7 +663,7 @@ export function WhatsAppInstanceManager() {
               try {
                 // Remove default agent
                 setInstances(prev => prev.map(i => i.id === instanceId ? { ...i, default_agent_id: null } : i));
-                await ext.from('whatsapp_instances').update({ default_agent_id: null } as any).eq('id', instanceId);
+                await supabase.functions.invoke('admin-whatsapp-instance', { body: { action: 'update', instance_id: instanceId, payload: { default_agent_id: null } } });
                 
                 // Stop agent in all conversations of this instance
                 const { data: convs, error: fetchErr } = await supabase
