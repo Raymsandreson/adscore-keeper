@@ -61,7 +61,7 @@ function formatBytes(bytes?: string) {
   return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
-export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId }: Props) {
+export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId, customFields, onApplyExtractedFields }: Props) {
   const [files, setFiles] = useState<DriveFile[]>([]);
   const [folderUrl, setFolderUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
