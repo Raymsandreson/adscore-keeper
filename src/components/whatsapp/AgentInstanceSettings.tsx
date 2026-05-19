@@ -37,7 +37,7 @@ export function AgentInstanceSettings({ agentId }: Props) {
   const fetchData = async () => {
     setLoading(true);
     const [instRes, settRes] = await Promise.all([
-      externalSupabase.from('whatsapp_instances').select('id, instance_name, owner_name, is_active').eq('is_active', true).order('instance_name'),
+      db.from('whatsapp_instances').select('id, instance_name, owner_name, is_active').eq('is_active', true).order('instance_name'),
       supabase.from('agent_instance_settings').select('id, instance_id, is_enabled').eq('agent_id', agentId),
     ]);
     setInstances((instRes.data || []) as Instance[]);

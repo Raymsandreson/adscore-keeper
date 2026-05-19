@@ -123,7 +123,7 @@ export function MemberAssistantSettings({ shortcuts = [], profiles = [], onReloa
     setLoading(true);
     const [configRes, instRes] = await Promise.all([
       supabase.from('member_assistant_config').select('*').limit(1).maybeSingle(),
-      externalSupabase.from('whatsapp_instances').select('id, instance_name').eq('is_active', true).order('instance_name'),
+      db.from('whatsapp_instances').select('id, instance_name').eq('is_active', true).order('instance_name'),
     ]);
     setInstances(instRes.data || []);
     if (configRes.data) {
@@ -196,9 +196,9 @@ export function MemberAssistantSettings({ shortcuts = [], profiles = [], onReloa
 
     let error;
     if (editingId) {
-      ({ error } = await (supabase.from('wjia_command_shortcuts') as any).update(payload).eq('id', editingId));
+      ({ error } = await (db.from('wjia_command_shortcuts') as any).update(payload).eq('id', editingId));
     } else {
-      ({ error } = await (supabase.from('wjia_command_shortcuts') as any).insert({ ...payload, display_order: shortcuts.length }));
+      ({ error } = await (db.from('wjia_command_shortcuts') as any).insert({ ...payload, display_order: shortcuts.length }));
     }
     if (error) { toast.error(error.message); return; }
     toast.success(editingId ? 'Comando atualizado!' : 'Comando criado!');
@@ -208,13 +208,13 @@ export function MemberAssistantSettings({ shortcuts = [], profiles = [], onReloa
 
   const handleDeleteCommand = async (id: string) => {
     // Soft delete instead of hard delete
-    await (supabase.from('wjia_command_shortcuts') as any).update({ deleted_at: new Date().toISOString() }).eq('id', id);
+    await (db.from('wjia_command_shortcuts') as any).update({ deleted_at: new Date().toISOString() }).eq('id', id);
     onReload?.();
     toast.success('Comando arquivado (pode ser restaurado)');
   };
 
   const handleToggleCommand = async (id: string, isActive: boolean) => {
-    await (supabase.from('wjia_command_shortcuts') as any).update({ is_active: !isActive }).eq('id', id);
+    await (db.from('wjia_command_shortcuts') as any).update({ is_active: !isActive }).eq('id', id);
     onReload?.();
   };
 

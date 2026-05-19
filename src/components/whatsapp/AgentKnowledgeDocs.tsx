@@ -152,7 +152,7 @@ export function AgentKnowledgeDocs({ agentId }: Props) {
       }
     }
 
-    await supabase.from('agent_knowledge_documents').delete().eq('id', doc.id);
+    await db.from('agent_knowledge_documents').delete().eq('id', doc.id);
     toast.success('Documento excluído');
     fetchDocs();
   };

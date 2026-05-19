@@ -116,7 +116,7 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
   useEffect(() => {
     const fetchInstances = async () => {
       const [instRes, presetRes, customRes, profilesRes] = await Promise.all([
-        externalSupabase.from('whatsapp_instances').select('id, instance_name').eq('is_active', true).order('instance_name'),
+        db.from('whatsapp_instances').select('id, instance_name').eq('is_active', true).order('instance_name'),
         Promise.resolve([
           { id: 'FGY2WhTYpPnrIDTdsKH5', name: 'Laura' },
           { id: 'CwhRBWXzGAHq8TQ4Fs17', name: 'Roger' },
@@ -186,9 +186,9 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
         }
 
         // Update WhatsApp instance permissions
-        await supabase.from('whatsapp_instance_users').delete().eq('user_id', member.user_id);
+        await db.from('whatsapp_instance_users').delete().eq('user_id', member.user_id);
         if (profile.whatsapp_instance_ids.length > 0) {
-          await supabase.from('whatsapp_instance_users').insert(
+          await db.from('whatsapp_instance_users').insert(
             profile.whatsapp_instance_ids.map((instId: string) => ({
               user_id: member.user_id,
               instance_id: instId,

@@ -113,14 +113,14 @@ export function AIRealtimeFeed({ onEventClick }: AIRealtimeFeedProps) {
         if (!user) { if (mounted) setLoading(false); return; }
 
         const [permRes, convAgentsRes] = await Promise.all([
-          supabase.from('whatsapp_instance_users').select('instance_id').eq('user_id', user.id),
-          externalSupabase.from('whatsapp_conversation_agents').select('phone, instance_name').eq('is_active', true),
+          db.from('whatsapp_instance_users').select('instance_id').eq('user_id', user.id),
+          db.from('whatsapp_conversation_agents').select('phone, instance_name').eq('is_active', true),
         ]);
 
         const instanceIds = (permRes.data || []).map((p: any) => p.instance_id);
         let allowedInstanceNames: string[] = [];
         if (instanceIds.length > 0) {
-          const { data: instances } = await externalSupabase.from('whatsapp_instances').select('instance_name').in('id', instanceIds);
+          const { data: instances } = await db.from('whatsapp_instances').select('instance_name').in('id', instanceIds);
           allowedInstanceNames = (instances || []).map((i: any) => i.instance_name);
         }
 
@@ -140,7 +140,7 @@ export function AIRealtimeFeed({ onEventClick }: AIRealtimeFeedProps) {
             .select('id, title, description, activity_type, lead_name, created_at, lead_id')
             .gte('created_at', since)
             .order('created_at', { ascending: false }).limit(50),
-          supabase.from('whatsapp_call_queue')
+          db.from('whatsapp_call_queue')
             .select('id, phone, instance_name, status, contact_name, created_at')
             .gte('created_at', since).in('instance_name', instFilter)
             .order('created_at', { ascending: false }).limit(50),

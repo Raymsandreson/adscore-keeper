@@ -16,7 +16,7 @@ export function useAgentStageAssignments(agentId?: string, boardId?: string) {
   const fetchAssignments = useCallback(async () => {
     setLoading(true);
     try {
-      let query = supabase.from('agent_stage_assignments').select('*');
+      let query = db.from('agent_stage_assignments').select('*');
       if (agentId) query = query.eq('agent_id', agentId);
       if (boardId) query = query.eq('board_id', boardId);
       const { data, error } = await query;
@@ -49,7 +49,7 @@ export function useAgentStageAssignments(agentId?: string, boardId?: string) {
           board_id: bId,
           stage_id: stageId,
         }));
-        const { error } = await supabase.from('agent_stage_assignments').insert(rows);
+        const { error } = await db.from('agent_stage_assignments').insert(rows);
         if (error) throw error;
       }
       await fetchAssignments();
@@ -70,7 +70,7 @@ export function useAgentStageAssignments(agentId?: string, boardId?: string) {
         .eq('stage_id', stageId);
 
       if (aId) {
-        const { error } = await supabase.from('agent_stage_assignments').insert({
+        const { error } = await db.from('agent_stage_assignments').insert({
           agent_id: aId,
           board_id: bId,
           stage_id: stageId,

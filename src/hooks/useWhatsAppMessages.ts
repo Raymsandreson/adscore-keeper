@@ -612,7 +612,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
 
       // Run instance lookup and profile fetch in parallel
       const instancePromise = conversationInstanceName
-        ? authClient.from('whatsapp_instances').select('id').eq('instance_name', conversationInstanceName).eq('is_active', true).maybeSingle()
+        ? db.from('whatsapp_instances').select('id').eq('instance_name', conversationInstanceName).eq('is_active', true).maybeSingle()
         : Promise.resolve(null);
 
       const profilePromise = (user && identifySender && !profileCacheRef.current)
@@ -757,7 +757,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     try {
       let targetInstanceId = selectedInstanceId && selectedInstanceId !== 'all' ? selectedInstanceId : undefined;
       if (conversationInstanceName) {
-        const { data } = await authClient.from('whatsapp_instances').select('id').eq('instance_name', conversationInstanceName).eq('is_active', true).maybeSingle();
+        const { data } = await db.from('whatsapp_instances').select('id').eq('instance_name', conversationInstanceName).eq('is_active', true).maybeSingle();
         if (data?.id) targetInstanceId = data.id;
       }
       if (!targetInstanceId) {
@@ -830,7 +830,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     try {
       let targetInstanceId = selectedInstanceId && selectedInstanceId !== 'all' ? selectedInstanceId : undefined;
       if (conversationInstanceName) {
-        const { data } = await authClient.from('whatsapp_instances').select('id').eq('instance_name', conversationInstanceName).eq('is_active', true).maybeSingle();
+        const { data } = await db.from('whatsapp_instances').select('id').eq('instance_name', conversationInstanceName).eq('is_active', true).maybeSingle();
         if (data?.id) targetInstanceId = data.id;
       }
       if (!targetInstanceId) {
@@ -886,7 +886,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     try {
       let instanceId: string | undefined;
       if (instanceName) {
-        const { data } = await authClient.from('whatsapp_instances').select('id').eq('instance_name', instanceName).eq('is_active', true).maybeSingle();
+        const { data } = await db.from('whatsapp_instances').select('id').eq('instance_name', instanceName).eq('is_active', true).maybeSingle();
         if (data?.id) instanceId = data.id;
       }
 

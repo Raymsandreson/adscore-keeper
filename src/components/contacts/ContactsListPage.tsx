@@ -342,8 +342,8 @@ export function ContactsListPage() {
 
   const fetchAgentsAndAssignments = async () => {
     const [{ data: agentsData }, { data: assignmentsData }] = await Promise.all([
-      supabase.from('whatsapp_ai_agents').select('id, name').eq('is_active', true).order('name'),
-      supabase.from('broadcast_list_agents').select('broadcast_list_id, agent_id, is_active, whatsapp_ai_agents(name)') as any,
+      db.from('whatsapp_ai_agents').select('id, name').eq('is_active', true).order('name'),
+      db.from('broadcast_list_agents').select('broadcast_list_id, agent_id, is_active, whatsapp_ai_agents(name)') as any,
     ]);
     setAgents((agentsData || []) as any);
     const map: Record<string, any> = {};
@@ -359,12 +359,12 @@ export function ContactsListPage() {
 
   const handleAssignAgentToList = async (listId: string, agentId: string | null) => {
     if (!agentId) {
-      await supabase.from('broadcast_list_agents').delete().eq('broadcast_list_id', listId);
+      await db.from('broadcast_list_agents').delete().eq('broadcast_list_id', listId);
       setListAgentMap(prev => { const n = { ...prev }; delete n[listId]; return n; });
       toast.success('Agente removido da lista');
       return;
     }
-    const { error } = await (supabase.from('broadcast_list_agents') as any).upsert({
+    const { error } = await (db.from('broadcast_list_agents') as any).upsert({
       broadcast_list_id: listId,
       agent_id: agentId,
       is_active: true,
@@ -397,7 +397,7 @@ export function ContactsListPage() {
   useEffect(() => {
     const loadExtras = async () => {
       const [instancesRes, creatorsRes] = await Promise.all([
-        externalSupabase.from('whatsapp_instances').select('id, instance_name').eq('is_active', true),
+        db.from('whatsapp_instances').select('id, instance_name').eq('is_active', true),
         supabase.from('profiles').select('user_id, full_name').order('full_name'),
       ]);
       setInstances(instancesRes.data || []);

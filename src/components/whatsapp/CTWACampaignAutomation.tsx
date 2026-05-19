@@ -294,10 +294,10 @@ export function CTWACampaignAutomation() {
       console.warn('[CTWA] sessão externa não iniciada:', err?.message || err);
     });
     const [linksRes, agentsRes, boardsRes, instancesRes]: any[] = await Promise.all([
-      supabase.from('whatsapp_agent_campaign_links' as any).select('*'),
-      supabase.from('wjia_command_shortcuts').select('id, shortcut_name, description').eq('is_active', true).order('shortcut_name'),
+      db.from('whatsapp_agent_campaign_links' as any).select('*'),
+      db.from('wjia_command_shortcuts').select('id, shortcut_name, description').eq('is_active', true).order('shortcut_name'),
       externalSupabase.from('kanban_boards' as any).select('id, name, stages'),
-      externalSupabase.from('whatsapp_instances').select('id, instance_name, owner_phone').eq('is_active', true).order('instance_name'),
+      db.from('whatsapp_instances').select('id, instance_name, owner_phone').eq('is_active', true).order('instance_name'),
     ]);
 
     setLinks((linksRes.data as any[]) || []);
@@ -727,7 +727,7 @@ export function CTWACampaignAutomation() {
   const handleTogglePause = async (link: CampaignLink) => {
     const linkAny = link as any;
     const newActive = !(linkAny.is_active !== false);
-    await supabase.from('whatsapp_agent_campaign_links').update({ is_active: newActive } as any).eq('id', link.id);
+    await db.from('whatsapp_agent_campaign_links').update({ is_active: newActive } as any).eq('id', link.id);
     toast.success(newActive ? 'Vínculo reativado!' : 'Vínculo pausado!');
     fetchData();
   };
@@ -772,7 +772,7 @@ export function CTWACampaignAutomation() {
     if (addingStage) payload.stage_id = addingStage;
 
     console.log('[CTWA] upsert payload:', payload);
-    const { error } = await supabase.from('whatsapp_agent_campaign_links').upsert(payload, { onConflict: 'campaign_id' });
+    const { error } = await db.from('whatsapp_agent_campaign_links').upsert(payload, { onConflict: 'campaign_id' });
 
     if (error) {
       console.error('[CTWA] upsert error:', error);
@@ -838,7 +838,7 @@ export function CTWACampaignAutomation() {
         if (existing?.length) continue;
 
         // Assign agent
-        await externalSupabase.from('whatsapp_conversation_agents' as any).insert({
+        await db.from('whatsapp_conversation_agents' as any).insert({
           phone,
           agent_id: agentId,
           instance_name: instanceName,
@@ -857,7 +857,7 @@ export function CTWACampaignAutomation() {
   };
 
   const handleDelete = async (id: string) => {
-    await supabase.from('whatsapp_agent_campaign_links').delete().eq('id', id);
+    await db.from('whatsapp_agent_campaign_links').delete().eq('id', id);
     toast.success('Vínculo removido');
     fetchData();
   };
@@ -866,7 +866,7 @@ export function CTWACampaignAutomation() {
     // Optimistic update — atualiza estado local na hora, sem refetch (evita "piscar")
     const prev = links;
     setLinks(curr => curr.map(l => (l.id === id ? ({ ...l, ...(updates as any) }) : l)));
-    const { error } = await supabase.from('whatsapp_agent_campaign_links').update(updates as any).eq('id', id);
+    const { error } = await db.from('whatsapp_agent_campaign_links').update(updates as any).eq('id', id);
     if (error) {
       console.error('Update error:', error);
       toast.error('Erro ao atualizar: ' + error.message);

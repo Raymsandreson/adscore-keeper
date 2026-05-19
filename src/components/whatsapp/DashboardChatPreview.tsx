@@ -502,7 +502,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
           .maybeSingle();
         if (shortcut) {
           // Activate agent for this conversation
-          await externalSupabase.from('whatsapp_conversation_agents').upsert({
+          await db.from('whatsapp_conversation_agents').upsert({
             phone,
             instance_name: msgInstanceName,
             agent_id: shortcut.id,
@@ -1064,7 +1064,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
     const normalizedPhone = phone.replace(/\D/g, '');
     try {
       await externalSupabase.from('whatsapp_messages').delete().eq('phone', normalizedPhone);
-      await externalSupabase.from('whatsapp_conversation_agents').delete()
+      await db.from('whatsapp_conversation_agents').delete()
         .or(`phone.eq.${normalizedPhone},phone.ilike.%${normalizedPhone.slice(-8)}%`);
       setMessages([]);
       setAgentInfo(null);
@@ -1335,7 +1335,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
                             <DropdownMenuItem onClick={async () => {
                               if (!phone) return;
                               const normalizedPhone = phone.replace(/\D/g, '');
-                              await externalSupabase.from('whatsapp_conversation_agents').delete().or(`phone.eq.${normalizedPhone},phone.ilike.%${normalizedPhone.slice(-8)}%`);
+                              await db.from('whatsapp_conversation_agents').delete().or(`phone.eq.${normalizedPhone},phone.ilike.%${normalizedPhone.slice(-8)}%`);
                               setAgentInfo(null);
                               onConversationUpdated?.();
                               toast.success('Agente removido');

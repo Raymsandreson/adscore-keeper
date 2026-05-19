@@ -41,14 +41,14 @@ export function useMonitorData() {
         convAgentsRes,        // CLOUD:  estado da conversa (vinculo phone↔agent)
         referralsRes,         // CLOUD:  indicações
       ] = await Promise.all([
-        externalSupabase.from('wjia_command_shortcuts')
+        db.from('wjia_command_shortcuts')
           .select('id, shortcut_name, description, is_active, followup_steps, followup_repeat_forever')
           .order('shortcut_name'),
         externalSupabase.from('kanban_boards').select('id, name, stages'),
         externalSupabase.from('agent_group_redirections')
           .select('id, agent_name, phone, instance_name, group_jid, notify_instance_name, group_message, private_notification, created_at')
           .gte('created_at', startISO).lte('created_at', endISO).order('created_at', { ascending: false }),
-        externalSupabase.from('whatsapp_conversation_agents')
+        db.from('whatsapp_conversation_agents')
           .select('id, phone, instance_name, agent_id, is_active, is_blocked, activated_by, created_at, human_paused_until')
           .order('created_at', { ascending: false })
           .limit(2000),
