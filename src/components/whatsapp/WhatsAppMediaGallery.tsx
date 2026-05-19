@@ -9,6 +9,7 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { MediaLightbox } from '@/components/whatsapp/MediaLightbox';
+import { bindDownload } from '@/lib/downloadFile';
 
 interface Props {
   messages: WhatsAppMessage[];
@@ -96,7 +97,7 @@ export function WhatsAppMediaGallery({ messages }: Props) {
                       </video>
                       <div className="flex items-center justify-between px-2 py-1 bg-muted/50">
                         <span className="text-[10px] text-muted-foreground">{format(new Date(msg.created_at), "dd/MM/yy HH:mm", { locale: ptBR })}</span>
-                        <a href={msg.media_url!} download target="_blank" rel="noopener noreferrer"><Download className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" /></a>
+                        <button type="button" onClick={bindDownload(msg.media_url!)}><Download className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" /></button>
                       </div>
                     </div>
                   ))
