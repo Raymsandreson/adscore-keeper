@@ -106,9 +106,10 @@ export function WhatsAppInstanceManager() {
 
   const fetchInstances = useCallback(async () => {
     await ensureExternalSession().catch(() => {});
-    const [instancesRes, shortcutsRes, msgInstancesRes] = await Promise.all([
+    const [instancesRes, agentsRes, msgInstancesRes] = await Promise.all([
       ext.from('whatsapp_instances').select('*').order('instance_name'),
-      supabase.from('wjia_command_shortcuts').select('id, shortcut_name').eq('is_active', true).order('display_order'),
+      // Agentes reais vivem no Externo (whatsapp_ai_agents) - é o destino da FK default_agent_id
+      ext.from('whatsapp_ai_agents').select('id, name').eq('is_active', true).order('name'),
       // Distinct instance_name values found in whatsapp_messages but possibly missing in whatsapp_instances
       ext.from('whatsapp_messages').select('instance_name').not('instance_name', 'is', null).limit(5000),
     ]);
@@ -117,7 +118,7 @@ export function WhatsAppInstanceManager() {
       setInstances(instancesRes.data as Instance[]);
       regNames = (instancesRes.data as Instance[]).map(i => (i.instance_name || '').toLowerCase().trim());
     }
-    if (!shortcutsRes.error && shortcutsRes.data) setAgents((shortcutsRes.data as any[]).map(s => ({ id: s.id, name: '#' + s.shortcut_name })));
+    if (!agentsRes.error && agentsRes.data) setAgents((agentsRes.data as any[]).map(a => ({ id: a.id, name: a.name })));
     if (!msgInstancesRes.error && msgInstancesRes.data) {
       const seen = new Map<string, string>();
       for (const row of msgInstancesRes.data as Array<{ instance_name: string }>) {
