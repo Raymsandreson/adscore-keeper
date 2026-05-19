@@ -71,7 +71,7 @@ export function AgentConversationsList({ agentId }: Props) {
         // 2. Mensagens onde o agente respondeu diretamente (campo agent_id em whatsapp_messages, quando existir)
         let agentMessages: any[] = [];
         try {
-          let q: any = db
+          let q = (db as any)
             .from('whatsapp_messages')
             .select('phone, instance_name, is_group, contact_name, message_text, created_at, agent_id')
             .eq('agent_id', agentId)
