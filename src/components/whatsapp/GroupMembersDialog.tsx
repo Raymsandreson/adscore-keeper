@@ -815,6 +815,45 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
                     </div>
 
                     <div className="flex items-center gap-1 shrink-0">
+                      {/* Group admin actions */}
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            disabled={managingPhone === p.phone}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              p.admin ? handleDemote(p) : handlePromote(p);
+                            }}
+                          >
+                            {managingPhone === p.phone ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : p.admin ? (
+                              <ShieldOff className="h-3.5 w-3.5 text-muted-foreground" />
+                            ) : (
+                              <ShieldCheck className="h-3.5 w-3.5 text-amber-600" />
+                            )}
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>{p.admin ? 'Rebaixar (remover admin)' : 'Tornar admin'}</TooltipContent>
+                      </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            disabled={managingPhone === p.phone}
+                            onClick={(e) => { e.stopPropagation(); handleRemove(p); }}
+                          >
+                            <UserMinus className="h-3.5 w-3.5 text-destructive" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Remover do grupo</TooltipContent>
+                      </Tooltip>
+
                       {!hasContact && (
                         <Tooltip>
                           <TooltipTrigger asChild>
