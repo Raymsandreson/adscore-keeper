@@ -221,6 +221,8 @@ export function MemberRoutineManager() {
             </PopoverContent>
           </Popover>
         </div>
+        )}
+
 
         {selectedUserId && selectedMember ? (
           <MemberRoutineView
