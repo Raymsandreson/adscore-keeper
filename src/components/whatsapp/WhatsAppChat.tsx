@@ -150,13 +150,14 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   // Marca local de mensagens salvas no Drive nesta sessão (id -> link)
   const [driveSavedById, setDriveSavedById] = useState<Record<string, { link?: string; name?: string }>>({});
 
-  const runDriveUpload = async (msg: any, leadId: string, leadNameInput?: string) => {
+  const runDriveUpload = async (msg: any, leadId: string, leadNameInput?: string, opts?: { silent?: boolean }) => {
+    const silent = !!opts?.silent;
     if (!msg?.media_url) {
-      toast.error('Mensagem sem mídia para salvar.');
+      if (!silent) toast.error('Mensagem sem mídia para salvar.');
       return;
     }
     setSavingDriveMsgId(msg.id);
-    const tId = toast.loading('Enviando para o Google Drive…');
+    const tId = silent ? null : toast.loading('Enviando para o Google Drive…');
     try {
       let leadName = leadNameInput;
       if (!leadName) {
@@ -210,15 +211,17 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         console.warn('[saveToDrive] analyze_file falhou:', e);
       }
 
-      toast.success(
-        `Salvo no Drive: ${analyzedName || file.name}`,
-        {
-          id: tId,
-          action: file.webViewLink
-            ? { label: 'Abrir', onClick: () => window.open(file.webViewLink, '_blank') }
-            : undefined,
-        },
-      );
+      if (!silent) {
+        toast.success(
+          `Salvo no Drive: ${analyzedName || file.name}`,
+          {
+            id: tId!,
+            action: file.webViewLink
+              ? { label: 'Abrir', onClick: () => window.open(file.webViewLink, '_blank') }
+              : undefined,
+          },
+        );
+      }
 
       // Marca local imediato p/ exibir badge no balão
       setDriveSavedById(prev => ({
@@ -247,7 +250,8 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
       }
     } catch (err: any) {
       console.error('[saveToDrive] erro:', err);
-      toast.error(`Erro ao salvar no Drive: ${err.message || err}`, { id: tId });
+      if (!silent) toast.error(`Erro ao salvar no Drive: ${err.message || err}`, { id: tId! });
+      else throw err;
     } finally {
       setSavingDriveMsgId(null);
     }
@@ -695,6 +699,54 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     })();
     return () => { cancelled = true; };
   }, [conversation.lead_id]);
+
+  // ====== Auto-upload de mídias para o Drive ao abrir a conversa ======
+  const [autoDrive, setAutoDrive] = useState<{ total: number; done: number; running: boolean }>({ total: 0, done: 0, running: false });
+  const autoDriveRunRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const leadId = conversation.lead_id;
+    if (!leadId) return;
+    const convKey = `${conversation.phone}__${conversation.instance_name}__${leadId}`;
+    if (autoDriveRunRef.current === convKey) return;
+    if (!messages || messages.length === 0) return;
+
+    const candidates = messages.filter((m: any) => {
+      if (!m.media_url || isEncUrl(m.media_url)) return false;
+      if (m.message_type !== 'image' && m.message_type !== 'document') return false;
+      if (m.metadata?.drive?.file_id) return false;
+      if (driveSavedById[m.id]) return false;
+      return true;
+    });
+
+    autoDriveRunRef.current = convKey;
+    if (candidates.length === 0) {
+      setAutoDrive({ total: 0, done: 0, running: false });
+      return;
+    }
+
+    setAutoDrive({ total: candidates.length, done: 0, running: true });
+    let cancelled = false;
+    (async () => {
+      for (const m of candidates) {
+        if (cancelled) break;
+        try {
+          await runDriveUpload(m, leadId, undefined, { silent: true });
+        } catch (e) {
+          console.warn('[auto-drive] falhou para msg', m.id, e);
+        }
+        if (!cancelled) {
+          setAutoDrive(prev => ({ ...prev, done: prev.done + 1 }));
+        }
+      }
+      if (!cancelled) {
+        setAutoDrive(prev => ({ ...prev, running: false }));
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversation.lead_id, conversation.phone, conversation.instance_name, messages.length]);
+
 
   // Auto-fetch de histórico em background quando a instância da conversa
   // teve uma desconexão recente (últimos 7 dias) que cruza com a janela de
@@ -1854,6 +1906,25 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
               title="Clique para abrir o formulário de edição do lead"
             >
               <Link2 className="h-3 w-3" /> Ver Lead
+            </Badge>
+          )}
+          {autoDrive.total > 0 && (
+            <Badge
+              variant="outline"
+              className={cn(
+                "text-[10px] gap-1 px-2 py-0.5",
+                autoDrive.running
+                  ? "border-blue-400 text-blue-700 bg-blue-50 dark:bg-blue-950/30"
+                  : "border-emerald-400 text-emerald-700 bg-emerald-50 dark:bg-emerald-950/30"
+              )}
+              title={autoDrive.running ? 'Enviando mídias para o Google Drive em segundo plano' : 'Todas as mídias da conversa foram enviadas ao Drive'}
+            >
+              {autoDrive.running ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Sparkles className="h-3 w-3" />
+              )}
+              Drive {autoDrive.done}/{autoDrive.total}
             </Badge>
           )}
           {agentEnabled && activeAgentName && (
