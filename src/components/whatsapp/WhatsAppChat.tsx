@@ -3358,12 +3358,21 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
           >
             <Download className="h-5 w-5" />
           </a>
-          <img
-            src={lightboxUrl}
-            alt="Visualização"
-            className="max-w-[95vw] max-h-[95vh] object-contain"
-            onClick={(e) => e.stopPropagation()}
-          />
+          {/\.pdf($|\?)/i.test(lightboxUrl) ? (
+            <iframe
+              src={lightboxUrl}
+              title="Documento"
+              className="w-[95vw] h-[95vh] bg-white rounded"
+              onClick={(e) => e.stopPropagation()}
+            />
+          ) : (
+            <img
+              src={lightboxUrl}
+              alt="Visualização"
+              className="max-w-[95vw] max-h-[95vh] object-contain"
+              onClick={(e) => e.stopPropagation()}
+            />
+          )}
         </div>
       )}
     </div>
