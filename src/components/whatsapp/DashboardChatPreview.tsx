@@ -1234,7 +1234,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
             </div>
 
             <div className="flex items-center gap-1 shrink-0 ml-2">
-              {phone?.includes('@g.us') && (
+              {isGroupChat && (
                 <>
                   <Tooltip>
                     <TooltipTrigger asChild>
