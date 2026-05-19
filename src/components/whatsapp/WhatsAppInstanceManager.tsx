@@ -418,12 +418,11 @@ export function WhatsAppInstanceManager() {
                             }
                             
                             setInstances(prev => prev.map(i => i.id === inst.id ? { ...i, default_agent_id: newVal } : i));
-                            const { error } = await ext
-                              .from('whatsapp_instances')
-                              .update({ default_agent_id: newVal } as any)
-                              .eq('id', inst.id);
-                            if (error) {
-                              toast.error('Erro ao salvar agente padrão');
+                            const { data: resp, error } = await supabase.functions.invoke('admin-whatsapp-instance', {
+                              body: { action: 'update', instance_id: inst.id, payload: { default_agent_id: newVal } }
+                            });
+                            if (error || !resp?.success) {
+                              toast.error('Erro ao salvar agente padrão: ' + (resp?.error || error?.message || ''));
                               setInstances(prev => prev.map(i => i.id === inst.id ? { ...i, default_agent_id: oldVal } : i));
                             } else {
                               const agentName = agents.find(a => a.id === newVal)?.name;
