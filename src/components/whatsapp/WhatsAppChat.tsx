@@ -2868,14 +2868,18 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                         </div>
                       )}
                       {!isPdf && isImage && (
-                        <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="block rounded-lg overflow-hidden border bg-white">
+                        <button
+                          type="button"
+                          onClick={() => setLightboxUrl(msg.media_url!)}
+                          className="block w-full rounded-lg overflow-hidden border bg-white cursor-zoom-in"
+                        >
                           <img
                             src={msg.media_url}
                             alt={fileName}
                             loading="lazy"
                             className="w-full max-h-[420px] object-contain bg-muted/30"
                           />
-                        </a>
+                        </button>
                       )}
                       <div className="group/doc flex items-center gap-2 px-2 py-1.5 rounded-md bg-muted/40">
                         <button
