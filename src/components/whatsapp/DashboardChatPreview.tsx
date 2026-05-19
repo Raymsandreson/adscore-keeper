@@ -23,6 +23,8 @@ import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
 import { ZapSignDocumentDialog } from '@/components/whatsapp/ZapSignDocumentDialog';
+import { GroupMembersDialog } from '@/components/whatsapp/GroupMembersDialog';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { Lead } from '@/hooks/useLeads';
 import type { Contact } from '@/hooks/useContacts';
 import { remapToExternal } from '@/integrations/supabase/uuid-remap';
@@ -107,6 +109,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
   const [isMuted, setIsMuted] = useState(false);
   const [muteLoading, setMuteLoading] = useState(false);
   const [showZapSign, setShowZapSign] = useState(false);
+  const [showGroupMembers, setShowGroupMembers] = useState(false);
   const [selectedMsgId, setSelectedMsgId] = useState<string | null>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -1226,6 +1229,16 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
             </div>
 
             <div className="flex items-center gap-1 shrink-0 ml-2">
+              {phone?.includes('@g.us') && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setShowGroupMembers(true)}>
+                      <Users className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Membros do grupo</TooltipContent>
+                </Tooltip>
+              )}
               <Button
                 variant="outline"
                 size="icon"
@@ -1733,6 +1746,19 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
         contactId={linkedContact?.id}
         contactName={linkedContact?.full_name || contactName || undefined}
         instanceName={instanceName || messages.find(m => m.instance_name)?.instance_name || undefined}
+      />
+    )}
+
+    {/* Group Members Dialog (membros + ações) */}
+    {phone?.includes('@g.us') && (
+      <GroupMembersDialog
+        open={showGroupMembers}
+        onOpenChange={setShowGroupMembers}
+        conversationPhone={phone}
+        instanceName={instanceName || messages.find(m => m.instance_name)?.instance_name || null}
+        leadId={linkedLead?.id || null}
+        isGroup={true}
+        messageParticipants={[]}
       />
     )}
     </>
