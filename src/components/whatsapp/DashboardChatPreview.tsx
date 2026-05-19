@@ -1504,7 +1504,14 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
                               {msg.media_type === 'image' ? '📷 Imagem' : msg.media_type === 'audio' ? '🎵 Áudio' : msg.media_type === 'video' ? '🎬 Vídeo' : msg.media_type === 'document' ? '📄 Documento' : '📎 Mídia'}
                             </span>
                           )}
-                          {msg.message_text && <p className="whitespace-pre-wrap break-words">{msg.message_text}</p>}
+                          {msg.message_text && (
+                            <p className="whitespace-pre-wrap break-words">
+                              {msg.message_type === 'audio' && (
+                                <span className="text-[10px] font-medium opacity-70 block mb-0.5">🎤 Transcrição:</span>
+                              )}
+                              {msg.message_text}
+                            </p>
+                          )}
                           <p className={cn("text-[9px] mt-0.5", isInbound ? "text-muted-foreground" : "text-primary-foreground/70")}>
                             {format(parseISO(msg.created_at), 'HH:mm')}
                           </p>
