@@ -162,20 +162,36 @@ export function MediaLightbox({ url, title = 'Visualização', onClose }: MediaL
             </button>
           </>
         )}
-        <a
-          href={url}
-          download
-          target="_blank"
-          rel="noopener noreferrer"
+        <button
+          type="button"
           onPointerDown={stopEvent}
           onMouseDown={stopEvent}
-          onClick={stopEvent}
+          onClick={async (e) => {
+            e.stopPropagation();
+            try {
+              const res = await fetch(url, { mode: 'cors' });
+              const blob = await res.blob();
+              const blobUrl = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = blobUrl;
+              const urlPath = (() => { try { return new URL(url).pathname; } catch { return url; } })();
+              const fallbackName = urlPath.split('/').pop() || 'arquivo';
+              a.download = fallbackName;
+              document.body.appendChild(a);
+              a.click();
+              a.remove();
+              setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+            } catch {
+              // fallback: abre em nova aba se CORS bloquear
+              window.open(url, '_blank', 'noopener,noreferrer');
+            }
+          }}
           className="bg-card/80 hover:bg-card text-foreground border border-border rounded-full p-2 shadow-lg"
           title="Baixar"
           aria-label="Baixar arquivo"
         >
           <Download className="h-5 w-5" />
-        </a>
+        </button>
         <button
           type="button"
           onPointerDown={stopEvent}
