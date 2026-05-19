@@ -841,7 +841,12 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
             {/* Cases of selected lead */}
             {props.formLeadId && (
               <div className="border-t shrink-0 px-6 pt-3 pb-2 max-h-[35%] overflow-y-auto bg-muted/20">
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Casos do lead</span>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Casos do lead</span>
+                  <Button type="button" size="sm" variant="ghost" className="h-6 gap-1 text-[10px]" onClick={() => setNewCaseOpen(true)}>
+                    <Plus className="h-3 w-3" /> Novo caso
+                  </Button>
+                </div>
                 <div className="mt-2 space-y-0.5">
                   {props.leadCases.length === 0 && (
                     <p className="text-[11px] text-muted-foreground py-2">Nenhum caso vinculado a este lead</p>
