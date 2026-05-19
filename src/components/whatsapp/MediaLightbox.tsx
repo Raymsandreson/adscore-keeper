@@ -1,6 +1,7 @@
 import { createPortal } from 'react-dom';
 import { Download, X, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState, type SyntheticEvent } from 'react';
+import { bindDownload } from '@/lib/downloadFile';
 
 interface MediaLightboxProps {
   url: string | null;
@@ -166,26 +167,7 @@ export function MediaLightbox({ url, title = 'Visualização', onClose }: MediaL
           type="button"
           onPointerDown={stopEvent}
           onMouseDown={stopEvent}
-          onClick={async (e) => {
-            e.stopPropagation();
-            try {
-              const res = await fetch(url, { mode: 'cors' });
-              const blob = await res.blob();
-              const blobUrl = URL.createObjectURL(blob);
-              const a = document.createElement('a');
-              a.href = blobUrl;
-              const urlPath = (() => { try { return new URL(url).pathname; } catch { return url; } })();
-              const fallbackName = urlPath.split('/').pop() || 'arquivo';
-              a.download = fallbackName;
-              document.body.appendChild(a);
-              a.click();
-              a.remove();
-              setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
-            } catch {
-              // fallback: abre em nova aba se CORS bloquear
-              window.open(url, '_blank', 'noopener,noreferrer');
-            }
-          }}
+          onClick={bindDownload(url)}
           className="bg-card/80 hover:bg-card text-foreground border border-border rounded-full p-2 shadow-lg"
           title="Baixar"
           aria-label="Baixar arquivo"
