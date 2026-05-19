@@ -914,7 +914,12 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
                             {[contact.city, contact.state].filter(Boolean).join('/')}
                           </Badge>
                         )}
-                        {relationship && (
+                        {isPrimary ? (
+                          <Badge variant="default" className="text-[10px] px-1.5 py-0 bg-amber-500 hover:bg-amber-500">
+                            <Crown className="h-2.5 w-2.5 mr-0.5" />
+                            Cliente principal
+                          </Badge>
+                        ) : relationship && (
                           <Badge variant="default" className="text-[10px] px-1.5 py-0">
                             <Heart className="h-2.5 w-2.5 mr-0.5" />
                             {relationship}
