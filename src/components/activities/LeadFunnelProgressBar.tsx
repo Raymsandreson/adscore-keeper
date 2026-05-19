@@ -219,7 +219,10 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
       {/* Stepper bar — always visible, segments clickable to switch stage view, click toggles expand */}
       <div className="w-full mt-2">
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 flex-1 min-w-0">
+          <div
+            className="flex items-center gap-1 flex-1 min-w-0"
+            title={boardName ? `${boardType === 'workflow' ? 'Fluxo' : 'Funil'}: ${boardName}` : undefined}
+          >
             {stages.map((stage, idx) => {
               const stageDetail = hierarchicalProgress.stageDetails.find(d => d.stageId === stage.id);
               const stageWeight = stageDetail?.stagePercent || 0;
