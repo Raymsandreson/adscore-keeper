@@ -153,11 +153,12 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const runDriveUpload = async (msg: any, leadId: string, leadNameInput?: string, opts?: { silent?: boolean }) => {
     const silent = !!opts?.silent;
     if (!msg?.media_url) {
-      toast.error('Mensagem sem mídia para salvar.');
+    if (!msg?.media_url) {
+      if (!silent) toast.error('Mensagem sem mídia para salvar.');
       return;
     }
     setSavingDriveMsgId(msg.id);
-    const tId = toast.loading('Enviando para o Google Drive…');
+    const tId = silent ? null : toast.loading('Enviando para o Google Drive…');
     try {
       let leadName = leadNameInput;
       if (!leadName) {
