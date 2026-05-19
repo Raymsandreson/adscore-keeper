@@ -714,7 +714,13 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
 
   const nonGroupParticipants = participants.filter(p => {
     const contact = contactsMap.get(p.phone);
-    return !isGroupLikeName(p.name) && !isGroupLikeName(contact?.full_name);
+    if (isGroupLikeName(p.name) || isGroupLikeName(contact?.full_name)) return false;
+    // Esconde a própria instância (somos nós no grupo, não um contato do caso).
+    if (ownerPhone && ownerPhone.length >= 8) {
+      const tail = ownerPhone.slice(-8);
+      if (p.phone.endsWith(tail)) return false;
+    }
+    return true;
   });
 
   const filteredParticipants = searchQuery
