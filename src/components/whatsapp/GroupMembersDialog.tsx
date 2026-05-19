@@ -1094,17 +1094,18 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
                         </Select>
                       </div>
 
-                      {/* Relationship */}
-                      {leadId && (
+                      {/* Relationship to primary client */}
+                      {leadId && !isPrimary && (
                         <div className="flex items-center gap-2">
                           <Heart className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                           <span className="text-xs text-muted-foreground w-20 shrink-0">Relação</span>
                           <Select
                             value={relationship || ''}
                             onValueChange={(val) => handleUpdateRelationship(p.phone, val)}
+                            disabled={!primaryPhone}
                           >
                             <SelectTrigger className="h-7 text-xs flex-1">
-                              <SelectValue placeholder="Relação com a vítima..." />
+                              <SelectValue placeholder={primaryPhone ? `Relação com ${primaryName}...` : 'Defina o cliente principal antes'} />
                             </SelectTrigger>
                             <SelectContent>
                               {relationshipTypes.map(r => (
