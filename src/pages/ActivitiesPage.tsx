@@ -3129,10 +3129,20 @@ const ActivitiesPage = () => {
                 const linkedProcess = formProcessId ? caseProcesses.find(p => p.id === formProcessId) : null;
                 const processWorkflowId = linkedProcess?.workflow_id;
 
-                if (isLeadClosed && processWorkflowId) {
-                  return <LeadFunnelProgressBar leadId={formLeadId} boardId={processWorkflowId} />;
+                // Se há processo vinculado: só mostra se o processo tem fluxo próprio.
+                // Sem fluxo no processo = sem barra (não cai no funil do lead).
+                if (formProcessId) {
+                  if (processWorkflowId) {
+                    return <LeadFunnelProgressBar leadId={formLeadId} boardId={processWorkflowId} />;
+                  }
+                  return (
+                    <p className="text-[10px] text-muted-foreground mt-1.5 italic">
+                      Processo sem fluxo de trabalho vinculado — cadastre um fluxo no processo para ver o progresso.
+                    </p>
+                  );
                 }
-                if (leadPreview?.board_id) {
+                // Sem processo vinculado: usa o funil do lead (apenas se ainda em andamento).
+                if (!isLeadClosed && leadPreview?.board_id) {
                   return <LeadFunnelProgressBar leadId={formLeadId} boardId={leadPreview.board_id} />;
                 }
                 return null;
