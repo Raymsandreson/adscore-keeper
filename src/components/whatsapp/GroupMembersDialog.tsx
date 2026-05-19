@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { Users, User, UserPlus, Loader2, MapPin, Briefcase, Tag, Heart, ChevronDown, ChevronUp, Check, Phone, Search, ExternalLink, Link2, FileText, RefreshCw, Save, ArrowUpFromLine } from 'lucide-react';
+import { Users, User, UserPlus, Loader2, MapPin, Briefcase, Tag, Heart, ChevronDown, ChevronUp, Check, Phone, Search, ExternalLink, Link2, FileText, RefreshCw, Save, ArrowUpFromLine, ShieldCheck, ShieldOff, UserMinus, Crown, Plus, X } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -73,6 +73,103 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
   const [quickContact, setQuickContact] = useState<Contact | null>(null);
   const [quickContactOpen, setQuickContactOpen] = useState(false);
   const [quickContactLoading, setQuickContactLoading] = useState<string | null>(null);
+  const [managingPhone, setManagingPhone] = useState<string | null>(null);
+  const [bulkPromoting, setBulkPromoting] = useState(false);
+  const [showAddMember, setShowAddMember] = useState(false);
+  const [newMemberPhone, setNewMemberPhone] = useState('');
+  const [addingMember, setAddingMember] = useState(false);
+
+  const callManage = async (action: 'add' | 'remove' | 'promote' | 'demote', numbers: string[]) => {
+    if (!groupJid || !instanceName) throw new Error('Grupo ou instância não definidos');
+    const { data, error } = await (supabase as any).functions.invoke('manage-whatsapp-group-participants', {
+      body: { instance_name: instanceName, group_jid: groupJid, action, numbers },
+    });
+    if (error) throw new Error(error.message);
+    if (data?.success === false) throw new Error(data.error || 'Falha na operação');
+    return data;
+  };
+
+  const handlePromote = async (p: GroupParticipant) => {
+    setManagingPhone(p.phone);
+    try {
+      const r = await callManage('promote', [p.phone]);
+      if (r.ok_count > 0) {
+        toast.success(`${p.name || p.phone} promovido a admin`);
+        setParticipants(prev => prev.map(x => x.phone === p.phone ? { ...x, admin: 'admin' } : x));
+      } else {
+        toast.error('Não foi possível promover (verifique se você é admin do grupo)');
+      }
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally { setManagingPhone(null); }
+  };
+
+  const handleDemote = async (p: GroupParticipant) => {
+    setManagingPhone(p.phone);
+    try {
+      const r = await callManage('demote', [p.phone]);
+      if (r.ok_count > 0) {
+        toast.success(`${p.name || p.phone} rebaixado a membro`);
+        setParticipants(prev => prev.map(x => x.phone === p.phone ? { ...x, admin: undefined } : x));
+      } else {
+        toast.error('Não foi possível rebaixar');
+      }
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally { setManagingPhone(null); }
+  };
+
+  const handleRemove = async (p: GroupParticipant) => {
+    if (!confirm(`Remover ${p.name || p.phone} do grupo?`)) return;
+    setManagingPhone(p.phone);
+    try {
+      const r = await callManage('remove', [p.phone]);
+      if (r.ok_count > 0) {
+        toast.success(`${p.name || p.phone} removido do grupo`);
+        setParticipants(prev => prev.filter(x => x.phone !== p.phone));
+      } else {
+        toast.error('Não foi possível remover');
+      }
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally { setManagingPhone(null); }
+  };
+
+  const handlePromoteAll = async () => {
+    const targets = participants.filter(p => !p.admin).map(p => p.phone);
+    if (targets.length === 0) { toast.info('Todos já são admin'); return; }
+    if (!confirm(`Promover ${targets.length} membro(s) a admin?`)) return;
+    setBulkPromoting(true);
+    try {
+      const r = await callManage('promote', targets);
+      toast.success(`${r.ok_count}/${targets.length} promovido(s) a admin`);
+      // refetch para refletir status real
+      await fetchParticipants();
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally { setBulkPromoting(false); }
+  };
+
+  const handleAddMember = async () => {
+    const digits = newMemberPhone.replace(/\D/g, '');
+    if (digits.length < 10) { toast.error('Informe um número válido com DDD'); return; }
+    setAddingMember(true);
+    try {
+      const r = await callManage('add', [digits]);
+      if (r.ok_count > 0) {
+        toast.success('Membro adicionado');
+        setNewMemberPhone('');
+        setShowAddMember(false);
+        await fetchParticipants();
+      } else {
+        const detail = r.details?.[0];
+        toast.error(detail?.message || 'Não foi possível adicionar (número pode não ter WhatsApp ou bloqueou convites)');
+      }
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally { setAddingMember(false); }
+  };
+
 
   const openQuickContact = async (contactId: string) => {
     setQuickContactLoading(contactId);
@@ -542,6 +639,48 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
           />
         </div>
 
+        {/* Group management toolbar */}
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 text-xs gap-1"
+            onClick={() => { setShowAddMember(v => !v); setNewMemberPhone(''); }}
+          >
+            <Plus className="h-3.5 w-3.5" /> Adicionar membro
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 text-xs gap-1"
+            onClick={handlePromoteAll}
+            disabled={bulkPromoting || participants.filter(p => !p.admin).length === 0}
+          >
+            {bulkPromoting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Crown className="h-3.5 w-3.5" />}
+            Promover todos a admin
+          </Button>
+        </div>
+
+        {showAddMember && (
+          <div className="flex items-center gap-2 rounded-md border bg-muted/30 p-2">
+            <Input
+              autoFocus
+              placeholder="Ex: 5511999998888 (com DDI+DDD)"
+              value={newMemberPhone}
+              onChange={(e) => setNewMemberPhone(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleAddMember(); }}
+              className="h-8 text-xs flex-1"
+              disabled={addingMember}
+            />
+            <Button size="sm" className="h-8 text-xs" onClick={handleAddMember} disabled={addingMember}>
+              {addingMember ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+            </Button>
+            <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={() => { setShowAddMember(false); setNewMemberPhone(''); }}>
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        )}
+
         {/* Group description (sync with WhatsApp) */}
         <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
           <div className="flex items-center justify-between">
@@ -676,6 +815,45 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
                     </div>
 
                     <div className="flex items-center gap-1 shrink-0">
+                      {/* Group admin actions */}
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            disabled={managingPhone === p.phone}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              p.admin ? handleDemote(p) : handlePromote(p);
+                            }}
+                          >
+                            {managingPhone === p.phone ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : p.admin ? (
+                              <ShieldOff className="h-3.5 w-3.5 text-muted-foreground" />
+                            ) : (
+                              <ShieldCheck className="h-3.5 w-3.5 text-amber-600" />
+                            )}
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>{p.admin ? 'Rebaixar (remover admin)' : 'Tornar admin'}</TooltipContent>
+                      </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            disabled={managingPhone === p.phone}
+                            onClick={(e) => { e.stopPropagation(); handleRemove(p); }}
+                          >
+                            <UserMinus className="h-3.5 w-3.5 text-destructive" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Remover do grupo</TooltipContent>
+                      </Tooltip>
+
                       {!hasContact && (
                         <Tooltip>
                           <TooltipTrigger asChild>
