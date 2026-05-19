@@ -27,6 +27,7 @@ import { AIShortcutGenerator } from './AIShortcutGenerator';
 import { SuperPromptDiagnostic } from './SuperPromptDiagnostic';
 import { MemberAssistantSettings } from './MemberAssistantSettings';
 import { AgentAutomationRules } from './AgentAutomationRules';
+import { AgentConversationsList } from './AgentConversationsList';
 
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
