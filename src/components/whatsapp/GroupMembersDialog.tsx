@@ -410,7 +410,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
     if (leadId) {
       const contactIds = Array.from(cMap.values()).map(c => c.id);
       if (contactIds.length > 0) {
-        const { data: links } = await (supabase as any)
+        const { data: links } = await (externalSupabase as any)
           .from('contact_leads')
           .select('contact_id, relationship_to_primary, relationship_to_victim, is_primary_client')
           .eq('lead_id', leadId)
@@ -468,7 +468,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
 
       // Link to lead if applicable
       if (leadId) {
-        const { data: linkExists } = await (supabase as any)
+        const { data: linkExists } = await (externalSupabase as any)
           .from('contact_leads')
           .select('id')
           .eq('contact_id', contactId)
@@ -533,7 +533,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
     if (!contact || !leadId) return;
 
     try {
-      const { data: existing } = await (supabase as any)
+      const { data: existing } = await (externalSupabase as any)
         .from('contact_leads')
         .select('id')
         .eq('contact_id', contact.id)
@@ -541,12 +541,12 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
         .maybeSingle();
 
       if (existing) {
-        await (supabase as any)
+        await (externalSupabase as any)
           .from('contact_leads')
           .update({ relationship_to_primary: value || null })
           .eq('id', existing.id);
       } else {
-        await (supabase as any)
+        await (externalSupabase as any)
           .from('contact_leads')
           .insert({ contact_id: contact.id, lead_id: leadId, relationship_to_primary: value || null });
       }
@@ -571,13 +571,13 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
     setSettingPrimary(phone);
     try {
       // Desmarca qualquer principal anterior
-      await (supabase as any)
+      await (externalSupabase as any)
         .from('contact_leads')
         .update({ is_primary_client: false })
         .eq('lead_id', leadId);
 
       // Garante link e marca este como principal
-      const { data: existing } = await (supabase as any)
+      const { data: existing } = await (externalSupabase as any)
         .from('contact_leads')
         .select('id')
         .eq('contact_id', contact.id)
@@ -585,12 +585,12 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
         .maybeSingle();
 
       if (existing) {
-        await (supabase as any)
+        await (externalSupabase as any)
           .from('contact_leads')
           .update({ is_primary_client: true, relationship_to_primary: null })
           .eq('id', existing.id);
       } else {
-        await (supabase as any)
+        await (externalSupabase as any)
           .from('contact_leads')
           .insert({ contact_id: contact.id, lead_id: leadId, is_primary_client: true });
       }
@@ -612,7 +612,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
   const handleUnsetPrimary = async () => {
     if (!leadId) return;
     try {
-      await (supabase as any)
+      await (externalSupabase as any)
         .from('contact_leads')
         .update({ is_primary_client: false })
         .eq('lead_id', leadId);
@@ -652,7 +652,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
 
       // Link to lead if applicable
       if (leadId) {
-        const { data: linkExists } = await (supabase as any)
+        const { data: linkExists } = await (externalSupabase as any)
           .from('contact_leads')
           .select('id')
           .eq('contact_id', contactId)
