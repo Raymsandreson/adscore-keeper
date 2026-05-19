@@ -14,6 +14,7 @@ import { ActivityFieldSettingsDialog } from '@/components/activities/ActivityFie
 import { ActivityTTSButton } from '@/components/voice/ActivityTTSButton';
 import { ActivityFormCompact, SendToGroupSection } from '@/components/activities/ActivityFormCompact';
 import { CompleteAndNotifyDialog } from '@/components/activities/CompleteAndNotifyDialog';
+import { DashboardChatPreview } from '@/components/whatsapp/DashboardChatPreview';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -285,6 +286,7 @@ const ActivitiesPage = () => {
   const [completeNotifyOpen, setCompleteNotifyOpen] = useState(false);
   const [completeNotifySource, setCompleteNotifySource] = useState<'sheet' | 'workflow'>('sheet');
   const [showLeadSheet, setShowLeadSheet] = useState(false);
+  const [waChatPreview, setWaChatPreview] = useState<{ phone: string; contact_name: string | null; instance_name: string | null } | null>(null);
   const [showProcessSheetId, setShowProcessSheetId] = useState<string | null>(null);
   const [viewModeRaw, setViewMode] = usePageState<'list' | 'blocks'>('activities_viewMode', 'blocks');
   const viewMode = (viewModeRaw === 'list' ? 'list' : 'blocks') as 'list' | 'blocks';
@@ -3067,7 +3069,11 @@ const ActivitiesPage = () => {
                       onClick={() => {
                         const target = leadPreview?.whatsapp_group_id || leadPreview?.lead_phone || '';
                         if (!target) return;
-                        window.open(`/whatsapp?n=${encodeURIComponent(target)}`, '_blank');
+                        setWaChatPreview({
+                          phone: target,
+                          contact_name: formLeadName || null,
+                          instance_name: null,
+                        });
                       }}
                       title={leadPreview?.whatsapp_group_id ? 'Abrir grupo do WhatsApp vinculado' : 'Abrir conversa do WhatsApp'}
                     >
@@ -3547,6 +3553,20 @@ const ActivitiesPage = () => {
         leadId={formLeadId || null}
         buildMsg={buildMsg}
       />
+
+      {/* Preview de conversa do WhatsApp inline (mesmo componente do Monitor IA / Contatos) */}
+      <DashboardChatPreview
+        open={!!waChatPreview}
+        onOpenChange={(open) => { if (!open) setWaChatPreview(null); }}
+        phone={waChatPreview?.phone || null}
+        contactName={waChatPreview?.contact_name || null}
+        instanceName={waChatPreview?.instance_name || null}
+        hasLead={!!formLeadId}
+        hasContact={false}
+        wasResponded={false}
+        responseTimeMinutes={null}
+      />
+
 
       {/* Popup fullscreen de Parabéns ao concluir a última atividade do bloco */}
       {celebrateBlock && (
