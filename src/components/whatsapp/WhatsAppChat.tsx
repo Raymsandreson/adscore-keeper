@@ -700,6 +700,54 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     return () => { cancelled = true; };
   }, [conversation.lead_id]);
 
+  // ====== Auto-upload de mídias para o Drive ao abrir a conversa ======
+  const [autoDrive, setAutoDrive] = useState<{ total: number; done: number; running: boolean }>({ total: 0, done: 0, running: false });
+  const autoDriveRunRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const leadId = conversation.lead_id;
+    if (!leadId) return;
+    const convKey = `${conversation.phone}__${conversation.instance_name}__${leadId}`;
+    if (autoDriveRunRef.current === convKey) return;
+    if (!messages || messages.length === 0) return;
+
+    const candidates = messages.filter((m: any) => {
+      if (!m.media_url || isEncUrl(m.media_url)) return false;
+      if (m.message_type !== 'image' && m.message_type !== 'document') return false;
+      if (m.metadata?.drive?.file_id) return false;
+      if (driveSavedById[m.id]) return false;
+      return true;
+    });
+
+    autoDriveRunRef.current = convKey;
+    if (candidates.length === 0) {
+      setAutoDrive({ total: 0, done: 0, running: false });
+      return;
+    }
+
+    setAutoDrive({ total: candidates.length, done: 0, running: true });
+    let cancelled = false;
+    (async () => {
+      for (const m of candidates) {
+        if (cancelled) break;
+        try {
+          await runDriveUpload(m, leadId, undefined, { silent: true });
+        } catch (e) {
+          console.warn('[auto-drive] falhou para msg', m.id, e);
+        }
+        if (!cancelled) {
+          setAutoDrive(prev => ({ ...prev, done: prev.done + 1 }));
+        }
+      }
+      if (!cancelled) {
+        setAutoDrive(prev => ({ ...prev, running: false }));
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversation.lead_id, conversation.phone, conversation.instance_name, messages.length]);
+
+
   // Auto-fetch de histórico em background quando a instância da conversa
   // teve uma desconexão recente (últimos 7 dias) que cruza com a janela de
   // atividade desta conversa. Dispara silenciosamente, no máximo 1x por
