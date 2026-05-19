@@ -144,7 +144,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
       const r = await callManage('promote', targets);
       toast.success(`${r.ok_count}/${targets.length} promovido(s) a admin`);
       // refetch para refletir status real
-      await fetchParticipants();
+      await fetchParticipants(true);
     } catch (e: any) {
       toast.error(e.message);
     } finally { setBulkPromoting(false); }
