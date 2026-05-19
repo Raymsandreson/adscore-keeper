@@ -495,6 +495,19 @@ Deno.serve(async (req) => {
                     holder_cpf: { type: ["string", "null"] },
                     description: { type: "string", description: "Resumo de 1-2 linhas do conteúdo" },
                     confidence: { type: "string", enum: ["alta", "média", "baixa"] },
+                    extracted_fields: {
+                      type: "array",
+                      description: "Valores extraídos para os campos personalizados do CRM. Inclua somente os campos cujos valores aparecem claramente no documento.",
+                      items: {
+                        type: "object",
+                        properties: {
+                          field_id: { type: "string" },
+                          value: { type: "string", description: "Sempre como string. Datas em YYYY-MM-DD. Checkbox como 'true'/'false'." },
+                        },
+                        required: ["field_id", "value"],
+                        additionalProperties: false,
+                      },
+                    },
                   },
                   required: ["document_type", "description", "confidence"],
                   additionalProperties: false,
