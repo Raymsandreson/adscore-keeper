@@ -648,7 +648,22 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Users className="h-5 w-5" />
-            Membros do grupo ({participants.length})
+            <span>Membros do grupo ({participants.length})</span>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-7 w-7 ml-auto"
+                  onClick={() => fetchParticipants(true)}
+                  disabled={loading}
+                  aria-label="Atualizar lista"
+                >
+                  <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Forçar atualização (sincroniza com o WhatsApp)</TooltipContent>
+            </Tooltip>
           </DialogTitle>
         </DialogHeader>
 
