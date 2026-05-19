@@ -64,9 +64,12 @@ export function useModulePermissions() {
   }, [permissions, user, isAdmin]);
 
   const canView = useCallback((moduleKey: string, userId?: string): boolean => {
+    // Equipe é acessível a todos os usuários autenticados
+    if (moduleKey === 'team_management' && !userId) return true;
     const level = getAccess(moduleKey, userId);
     return level === 'view' || level === 'edit';
   }, [getAccess]);
+
 
   const canEdit = useCallback((moduleKey: string, userId?: string): boolean => {
     return getAccess(moduleKey, userId) === 'edit';
