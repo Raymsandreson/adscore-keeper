@@ -209,6 +209,18 @@ export function LeadLinkedContacts({ leadId }: LeadLinkedContactsProps) {
     setLinking(true);
     try {
       await ensureExternalSession().catch(() => {});
+
+      // Defesa: nunca vincular grupo de WhatsApp como contato do lead.
+      const { data: target } = await (externalSupabase as any)
+        .from('contacts')
+        .select('id, whatsapp_group_id')
+        .eq('id', contactId)
+        .maybeSingle();
+      if (target?.whatsapp_group_id) {
+        toast.error('Isso é um grupo de WhatsApp, não pode ser vinculado como contato. Use "Vincular grupo".');
+        return;
+      }
+
       const { error } = await (externalSupabase as any)
         .from('contact_leads')
         .insert({ contact_id: contactId, lead_id: leadId });
