@@ -1129,6 +1129,11 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
 
   let lastDateLabel = '';
 
+  // Detecta grupo mesmo quando o sufixo @g.us foi removido em algum ponto do pipeline.
+  // IDs de grupos do WhatsApp são numéricos com 15+ dígitos (ex: 120363424314808089),
+  // enquanto números BR têm no máximo ~13 dígitos.
+  const isGroupChat = !!phone && (phone.includes('@g.us') || /^\d{15,}$/.test(phone.replace(/\D/g, '')));
+
   return (
     <>
     <Drawer open={open} onOpenChange={onOpenChange}>
@@ -1137,12 +1142,12 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
           <div className="flex items-center justify-between">
             <div className="min-w-0 flex-1">
               <DrawerTitle className="text-base truncate flex items-center gap-2">
-                {phone?.includes('@g.us') ? <Users className="h-4 w-4 text-muted-foreground shrink-0" /> : <User className="h-4 w-4 text-muted-foreground shrink-0" />}
+                {isGroupChat ? <Users className="h-4 w-4 text-muted-foreground shrink-0" /> : <User className="h-4 w-4 text-muted-foreground shrink-0" />}
                 {contactName || groupName || linkedLead?.lead_name || phone}
               </DrawerTitle>
               <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                {phone?.includes('@g.us') && groupName && <span className="text-xs text-muted-foreground">Grupo WhatsApp</span>}
-                {phone && !phone.includes('@g.us') && contactName && <span className="text-xs text-muted-foreground">{phone}</span>}
+                {isGroupChat && <span className="text-xs text-muted-foreground">Grupo WhatsApp{groupName ? '' : ''}</span>}
+                {phone && !isGroupChat && contactName && <span className="text-xs text-muted-foreground">{phone}</span>}
                 {instanceName && <span className="text-[10px] text-muted-foreground">• {instanceName}</span>}
               </div>
               <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
@@ -1229,7 +1234,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
             </div>
 
             <div className="flex items-center gap-1 shrink-0 ml-2">
-              {phone?.includes('@g.us') && (
+              {isGroupChat && (
                 <>
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -1760,7 +1765,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
     )}
 
     {/* Group Members Dialog (membros + ações) */}
-    {phone?.includes('@g.us') && (
+    {isGroupChat && (
       <GroupMembersDialog
         open={showGroupMembers}
         onOpenChange={setShowGroupMembers}
