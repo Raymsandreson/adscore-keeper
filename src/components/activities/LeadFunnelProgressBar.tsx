@@ -221,7 +221,6 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
         <div className="flex items-center gap-2">
           <div
             className="flex items-center gap-1 flex-1 min-w-0"
-            title={boardName ? `${boardType === 'workflow' ? 'Fluxo' : 'Funil'}: ${boardName}` : undefined}
           >
             {stages.map((stage, idx) => {
               const stageDetail = hierarchicalProgress.stageDetails.find(d => d.stageId === stage.id);
@@ -233,6 +232,18 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
               const isCurrent = idx === currentIdx;
               const isViewing = stage.id === activeViewStageId;
 
+              const stageObjectives = instances
+                .filter(i => i.stage_id === stage.id)
+                .map(i => i.template_name)
+                .filter(Boolean) as string[];
+              const prefix = boardName
+                ? `${boardType === 'workflow' ? 'Fluxo' : 'Funil'}: ${boardName}\n`
+                : '';
+              const objLine = stageObjectives.length > 0
+                ? `\n• ${stageObjectives.join('\n• ')}`
+                : '';
+              const tooltip = `${prefix}${stage.name} — ${Math.round(fillPercent)}%${objLine}`;
+
               return (
                 <button
                   key={stage.id}
@@ -243,7 +254,7 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
                     setViewingStageId(stage.id === currentStageId ? null : stage.id);
                   }}
                   className="flex items-center flex-1 relative group/seg"
-                  title={`${stage.name} — ${Math.round(fillPercent)}%`}
+                  title={tooltip}
                 >
                   <div
                     className={cn(
