@@ -1,5 +1,6 @@
 import { createPortal } from 'react-dom';
 import { Download, X } from 'lucide-react';
+import type { SyntheticEvent } from 'react';
 
 interface MediaLightboxProps {
   url: string | null;
@@ -11,7 +12,7 @@ export function MediaLightbox({ url, title = 'Visualização', onClose }: MediaL
   if (!url || typeof document === 'undefined') return null;
 
   const isPdf = /\.pdf($|\?)/i.test(url);
-  const stopEvent = (event: React.SyntheticEvent) => {
+  const stopEvent = (event: SyntheticEvent) => {
     event.stopPropagation();
   };
 
