@@ -57,10 +57,12 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
 
     try {
       const [boardRes, historyRes, leadRes] = await Promise.all([
-        externalSupabase.from('kanban_boards').select('stages, board_type').eq('id', boardId).maybeSingle(),
+        externalSupabase.from('kanban_boards').select('stages, board_type, name').eq('id', boardId).maybeSingle(),
         externalSupabase.from('lead_stage_history').select('to_stage').eq('lead_id', leadId).order('changed_at', { ascending: false }).limit(1),
         externalSupabase.from('leads').select('status, lead_status, became_client_date, board_id').eq('id', leadId).maybeSingle(),
       ]);
+      setBoardName((boardRes.data as any)?.name || '');
+      setBoardType((boardRes.data as any)?.board_type || '');
 
       // Lead is "closed" only when we're showing its sales funnel (not a process workflow)
       const leadData = leadRes.data as any;
