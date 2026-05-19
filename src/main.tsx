@@ -118,9 +118,28 @@ window.addEventListener(
   { once: true }
 );
 
-// Keep update watcher only for production PWA builds.
-if (import.meta.env.PROD) {
+// Keep update watcher only for production PWA builds, and never inside the
+// Lovable preview iframe (SW registration there fails with "unknown error
+// when fetching the script" and causes a blank screen).
+const isInIframe = (() => {
+  try { return window.self !== window.top; } catch { return true; }
+})();
+const isPreviewHostname =
+  window.location.hostname.includes("id-preview--") ||
+  window.location.hostname.includes("lovableproject.com");
+
+if (import.meta.env.PROD && !isInIframe && !isPreviewHostname) {
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("/sw.js").catch(() => undefined);
+    });
+  }
   initPWAUpdater();
+} else if (isInIframe || isPreviewHostname) {
+  // Limpa qualquer SW que tenha sido registrado anteriormente no preview
+  navigator.serviceWorker?.getRegistrations().then((regs) => {
+    regs.forEach((r) => r.unregister());
+  }).catch(() => undefined);
 }
 
 createRoot(document.getElementById("root")!).render(<App />);
