@@ -364,9 +364,14 @@ Deno.serve(async (req) => {
     }
 
     if (action === "analyze_file") {
-      // Baixa um arquivo do Drive e usa Gemini Vision para identificar tipo + titular
-      const { file_id } = body;
+      // Baixa um arquivo do Drive e usa Gemini Vision para identificar tipo + titular.
+      // Opcionalmente extrai valores para campos personalizados informados em `custom_fields`.
+      const { file_id, custom_fields } = body as {
+        file_id?: string;
+        custom_fields?: Array<{ id: string; name: string; type: string; options?: string[] }>;
+      };
       if (!file_id) throw new Error("file_id required");
+      const cfList = Array.isArray(custom_fields) ? custom_fields.filter((f) => f && f.id && f.name) : [];
 
       // Get file metadata before downloading bytes; large files can exceed worker memory.
       const metaRes = await fetch(`${GATEWAY}/files/${file_id}?fields=id,name,mimeType,size`, { headers: gwHeaders() });
