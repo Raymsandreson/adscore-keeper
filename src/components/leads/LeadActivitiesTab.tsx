@@ -20,6 +20,7 @@ import { ActivityChatSheet } from '@/components/activities/ActivityChatSheet';
 import { ActivityEditSheet } from '@/components/activities/ActivityEditSheet';
 import { TeamChatButton } from '@/components/chat/TeamChatButton';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
+import { GroupExitAlert } from '@/components/whatsapp/GroupExitAlert';
 
 interface LeadActivity {
   id: string;
