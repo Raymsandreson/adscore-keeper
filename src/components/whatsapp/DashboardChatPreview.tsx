@@ -1765,7 +1765,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
     )}
 
     {/* Group Members Dialog (membros + ações) */}
-    {phone?.includes('@g.us') && (
+    {isGroupChat && (
       <GroupMembersDialog
         open={showGroupMembers}
         onOpenChange={setShowGroupMembers}
