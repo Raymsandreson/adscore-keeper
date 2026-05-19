@@ -1772,6 +1772,47 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
         messageParticipants={[]}
       />
     )}
+    {lightboxUrl && (
+      <div
+        className="fixed inset-0 z-[200] bg-black/90 flex items-center justify-center p-4 animate-in fade-in"
+        onClick={() => setLightboxUrl(null)}
+      >
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); setLightboxUrl(null); }}
+          className="absolute top-4 right-4 bg-white/10 hover:bg-white/20 text-white rounded-full p-2"
+          title="Fechar"
+        >
+          <X className="h-5 w-5" />
+        </button>
+        <a
+          href={lightboxUrl}
+          download
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          className="absolute top-4 right-16 bg-white/10 hover:bg-white/20 text-white rounded-full p-2"
+          title="Baixar"
+        >
+          <Download className="h-5 w-5" />
+        </a>
+        {/\.pdf($|\?)/i.test(lightboxUrl) ? (
+          <iframe
+            src={lightboxUrl}
+            title="Documento"
+            className="w-[95vw] h-[95vh] bg-white rounded"
+            onClick={(e) => e.stopPropagation()}
+          />
+        ) : (
+          <img
+            src={lightboxUrl}
+            alt="Visualização"
+            className="max-w-[95vw] max-h-[95vh] object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
+        )}
+      </div>
+    )}
     </>
   );
 }
