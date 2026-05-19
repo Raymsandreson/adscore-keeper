@@ -211,15 +211,17 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         console.warn('[saveToDrive] analyze_file falhou:', e);
       }
 
-      toast.success(
-        `Salvo no Drive: ${analyzedName || file.name}`,
-        {
-          id: tId,
-          action: file.webViewLink
-            ? { label: 'Abrir', onClick: () => window.open(file.webViewLink, '_blank') }
-            : undefined,
-        },
-      );
+      if (!silent) {
+        toast.success(
+          `Salvo no Drive: ${analyzedName || file.name}`,
+          {
+            id: tId!,
+            action: file.webViewLink
+              ? { label: 'Abrir', onClick: () => window.open(file.webViewLink, '_blank') }
+              : undefined,
+          },
+        );
+      }
 
       // Marca local imediato p/ exibir badge no balão
       setDriveSavedById(prev => ({
