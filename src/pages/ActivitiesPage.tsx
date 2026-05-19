@@ -3063,26 +3063,45 @@ const ActivitiesPage = () => {
                       Lead
                     </Button>
                   )}
-                  {formLeadId && (leadPreview?.whatsapp_group_id || leadPreview?.lead_phone) && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 text-xs gap-1 text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-950/30"
-                      onClick={() => {
-                        const target = leadPreview?.whatsapp_group_id || leadPreview?.lead_phone || '';
-                        if (!target) return;
-                        setWaChatPreview({
-                          phone: target,
-                          contact_name: formLeadName || null,
-                          instance_name: null,
-                        });
-                      }}
-                      title={leadPreview?.whatsapp_group_id ? 'Abrir grupo do WhatsApp vinculado' : 'Abrir conversa do WhatsApp'}
-                    >
-                      <MessageCircle className="h-3 w-3" />
-                      {leadPreview?.whatsapp_group_id ? 'Grupo WA' : 'WhatsApp'}
-                    </Button>
-                  )}
+                  {formLeadId && (() => {
+                    const hasGroup = !!leadPreview?.whatsapp_group_id;
+                    const hasPhone = !!leadPreview?.lead_phone;
+                    const hasAnyWa = hasGroup || hasPhone;
+                    return (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className={`h-7 text-xs gap-1 ${
+                          hasAnyWa
+                            ? 'text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-950/30'
+                            : 'text-muted-foreground/60 hover:text-muted-foreground hover:bg-muted/50'
+                        }`}
+                        onClick={() => {
+                          if (hasAnyWa) {
+                            const target = leadPreview?.whatsapp_group_id || leadPreview?.lead_phone || '';
+                            if (!target) return;
+                            setWaChatPreview({
+                              phone: target,
+                              contact_name: formLeadName || null,
+                              instance_name: null,
+                            });
+                          } else {
+                            setGroupSearchOpen(true);
+                          }
+                        }}
+                        title={
+                          hasGroup
+                            ? 'Abrir grupo do WhatsApp vinculado'
+                            : hasPhone
+                              ? 'Abrir conversa do WhatsApp'
+                              : 'Vincular grupo do WhatsApp ao lead'
+                        }
+                      >
+                        <MessageCircle className="h-3 w-3" />
+                        {hasGroup ? 'Grupo WA' : hasPhone ? 'WhatsApp' : 'Vincular WA'}
+                      </Button>
+                    );
+                  })()}
                   {formProcessId && (
                     <Button
                       variant="ghost"
