@@ -63,7 +63,7 @@ const EMPTY_KPIS: FocusKpis = {
   leadsReceived: 0, leadsReceivedDelta: '—',
   closed: 0, goal: 5, goalProgress: 0,
   conversion: 0, conversionDelta: '—',
-  unviable: 0, unviableTopReason: null,
+  unviable: 0, unviablePercentage: 0, unviableTopReason: null,
 };
 
 const EMPTY_ACTIONS: FocusActions = {
