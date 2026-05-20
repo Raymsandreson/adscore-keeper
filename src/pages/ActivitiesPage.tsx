@@ -3360,18 +3360,11 @@ const ActivitiesPage = () => {
                       >
                         <Copy className="h-3.5 w-3.5 mr-2" /> Duplicar
                       </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        onClick={() => selectedActivity && handleDelete(selectedActivity.id)}
-                        className="text-xs text-destructive focus:text-destructive"
-                      >
-                        <Trash2 className="h-3.5 w-3.5 mr-2" /> Excluir
-                      </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
 
                   {/* Primary actions */}
-                  <div className="flex gap-2 flex-wrap">
+                  <div className="flex gap-1.5 flex-wrap items-center">
                     {selectedActivity?.status === 'concluida' && (
                       <Popover>
                         <PopoverTrigger asChild>
@@ -3404,6 +3397,15 @@ const ActivitiesPage = () => {
                         </PopoverContent>
                       </Popover>
                     )}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 text-xs gap-1 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                      onClick={() => selectedActivity && handleDelete(selectedActivity.id)}
+                      title="Excluir atividade"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" /> Excluir
+                    </Button>
                     <Button size="sm" variant="outline" className="h-8 text-xs" onClick={handleUpdate}>Salvar</Button>
                     {selectedActivity?.status !== 'concluida' && (
                       <Button size="sm" className="h-8 text-xs gap-1 bg-warning hover:bg-warning/90 text-warning-foreground" onClick={() => openCompleteAndNotify('sheet')}>
