@@ -242,6 +242,72 @@ export function WhatsAppInbox() {
     applyDefault();
   }, [user, instances, defaultInstanceApplied]);
 
+  // Popup: usuário sem instância padrão cadastrada não pode enviar.
+  const [missingInstanceOpen, setMissingInstanceOpen] = useState(false);
+  const [pickingInstanceId, setPickingInstanceId] = useState<string>('');
+  const [savingDefault, setSavingDefault] = useState(false);
+
+  const guardSendMessage = useCallback((fn: typeof sendMessage) => {
+    return ((...args: Parameters<typeof sendMessage>) => {
+      if (!userDefaultInstanceId) {
+        setPickingInstanceId('');
+        setMissingInstanceOpen(true);
+        toast.error('Cadastre uma instância de WhatsApp antes de enviar mensagens.');
+        return Promise.resolve(undefined as any);
+      }
+      return fn(...args);
+    }) as typeof sendMessage;
+  }, [userDefaultInstanceId, sendMessage]);
+
+  const guardSendMedia = useCallback((...args: Parameters<typeof sendMedia>) => {
+    if (!userDefaultInstanceId) {
+      setPickingInstanceId('');
+      setMissingInstanceOpen(true);
+      toast.error('Cadastre uma instância de WhatsApp antes de enviar mensagens.');
+      return Promise.resolve(undefined as any);
+    }
+    return (sendMedia as any)(...args);
+  }, [userDefaultInstanceId, sendMedia]);
+
+  const guardSendLocation = useCallback((...args: Parameters<typeof sendLocation>) => {
+    if (!userDefaultInstanceId) {
+      setPickingInstanceId('');
+      setMissingInstanceOpen(true);
+      toast.error('Cadastre uma instância de WhatsApp antes de enviar mensagens.');
+      return Promise.resolve(undefined as any);
+    }
+    return (sendLocation as any)(...args);
+  }, [userDefaultInstanceId, sendLocation]);
+
+  const handleConfirmDefaultInstance = useCallback(async () => {
+    if (!user || !pickingInstanceId) return;
+    setSavingDefault(true);
+    try {
+      const extUserId = await remapToExternal(user.id);
+      // Escreve no Externo (fonte de verdade)
+      const { error: extErr } = await externalSupabase
+        .from('profiles')
+        .update({ default_instance_id: pickingInstanceId } as any)
+        .eq('user_id', extUserId || user.id);
+      if (extErr) throw extErr;
+      // Espelha no Cloud (compat com leituras legadas)
+      await supabase
+        .from('profiles')
+        .update({ default_instance_id: pickingInstanceId } as any)
+        .eq('user_id', user.id);
+
+      setUserDefaultInstanceId(pickingInstanceId);
+      setSelectedInstanceId(pickingInstanceId);
+      setMissingInstanceOpen(false);
+      toast.success('Instância padrão cadastrada. Você já pode enviar mensagens.');
+    } catch (e: any) {
+      toast.error('Erro ao salvar instância: ' + (e?.message || ''));
+    } finally {
+      setSavingDefault(false);
+    }
+  }, [user, pickingInstanceId]);
+
+
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedPhone, setSelectedPhone] = usePageState<string | null>('wa_selected_phone', null);
