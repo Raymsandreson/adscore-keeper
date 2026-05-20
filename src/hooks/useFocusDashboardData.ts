@@ -28,6 +28,7 @@ export interface FocusActions {
   unansweredOwedByMe: number; // "Eu devo"
   unansweredClientGhosted: number; // "Cliente sumiu"
   unansweredBuckets: { plus30: number; plus4h: number; plus24h: number };
+  avgResponseMinutes: number; // tempo médio (min) entre inbound do cliente e resposta nossa
 }
 
 export interface FocusData {
@@ -71,6 +72,7 @@ const EMPTY_ACTIONS: FocusActions = {
   zapsignPending: 0, zapsignPendingHint: '',
   unanswered: 0, unansweredOwedByMe: 0, unansweredClientGhosted: 0,
   unansweredBuckets: { plus30: 0, plus4h: 0, plus24h: 0 },
+  avgResponseMinutes: 0,
 };
 
 export function useFocusDashboardData(): FocusData {
