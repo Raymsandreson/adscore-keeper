@@ -1805,7 +1805,8 @@ export const handler: RequestHandler = async (req, res) => {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${CLOUD_ANON_KEY}` },
               body: JSON.stringify({
-                phone: senderDigits,
+                phone,
+                sender_phone: senderDigits,
                 group_id: phone,
                 instance_name: instanceName,
                 message_text: messageText,
