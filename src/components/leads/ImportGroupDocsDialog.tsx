@@ -94,7 +94,7 @@ export default function ImportGroupDocsDialog({
         const content = m.metadata?.message?.content || {};
         const fileName = content.fileName || content.title || null;
         const mimeType = content.mimetype || content.mimeType || null;
-        const last = (m.external_message_id || '').slice(-32);
+        const last = String(m.external_message_id || '').trim();
         return {
           id: last,
           external_message_id: m.external_message_id,
