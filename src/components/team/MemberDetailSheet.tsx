@@ -43,6 +43,7 @@ import {
 import { supabase } from '@/integrations/supabase/client';
 import { db } from '@/integrations/supabase';
 import { externalSupabase } from '@/integrations/supabase/external-client';
+import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { toast } from 'sonner';
 import { format, formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
