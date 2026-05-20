@@ -113,12 +113,12 @@ export function AIRealtimeFeed({ onEventClick }: AIRealtimeFeedProps) {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) { if (mounted) setLoading(false); return; }
 
-        const [permRes, convAgentsRes] = await Promise.all([
-          db.from('whatsapp_instance_users').select('instance_id').eq('user_id', user.id),
+        // Permissão de instâncias: Cloud (autoritativo). Dados: Externo.
+        const [instanceIds, convAgentsRes] = await Promise.all([
+          getMyAllowedInstanceIds(user.id),
           db.from('whatsapp_conversation_agents').select('phone, instance_name').eq('is_active', true),
         ]);
 
-        const instanceIds = (permRes.data || []).map((p: any) => p.instance_id);
         let allowedInstanceNames: string[] = [];
         if (instanceIds.length > 0) {
           const { data: instances } = await db.from('whatsapp_instances').select('instance_name').in('id', instanceIds);

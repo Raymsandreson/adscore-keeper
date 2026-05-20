@@ -9,8 +9,9 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { ArrowLeft, User, Mail, Save, Loader2, Scale, Phone, Smartphone } from "lucide-react";
-import { db } from "@/integrations/supabase";
+import { db, authClient } from "@/integrations/supabase";
 import { remapToExternal } from "@/integrations/supabase/uuid-remap";
+import { getMyAllowedInstanceIds } from "@/integrations/supabase/permissions";
 
 const TREATMENT_OPTIONS = [
   { value: 'none', label: 'Nenhum' },
