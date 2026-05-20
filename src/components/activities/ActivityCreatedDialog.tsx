@@ -31,6 +31,12 @@ export function ActivityCreatedDialog({ open, onOpenChange, title, onEdit, onDel
     [open]
   );
 
+  useEffect(() => {
+    if (!open) return;
+    const t = setTimeout(() => onOpenChange(false), 5000);
+    return () => clearTimeout(t);
+  }, [open, onOpenChange]);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md text-center">
