@@ -5,7 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
-import { Search, User, Link2, Smartphone, PhoneCall, Unlink, Clock, CheckSquare, ChevronDown, ArrowDownAZ, ArrowDown, Lock, ArrowUpFromLine, ArrowDownToLine, Users, UserCheck, FileText } from 'lucide-react';
+import { Search, User, Link2, Smartphone, PhoneCall, Unlink, Clock, CheckSquare, ChevronDown, ArrowDownAZ, ArrowDown, Lock, ArrowUpFromLine, ArrowDownToLine, Users, UserCheck, FileText, Trophy, AlertTriangle, Briefcase } from 'lucide-react';
 import { format, formatDistanceToNow, isToday, isYesterday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -24,6 +24,7 @@ interface LeadInfo {
   completed_checklist_ids: string[];
   checkedItemIds: string[]; // individual item IDs that are checked across all instances
   lead_name?: string | null;
+  lead_status?: string | null;
 }
 
 interface Props {
@@ -43,7 +44,7 @@ interface Props {
   privatePhones?: Set<string>;
 }
 
-type QuickFilter = 'all' | 'has_lead' | 'no_lead' | 'unanswered' | 'calls' | 'groups' | 'shared';
+type QuickFilter = 'all' | 'has_lead' | 'no_lead' | 'unanswered' | 'calls' | 'groups' | 'shared' | 'lead_active' | 'lead_closed' | 'lead_inviavel';
 type SortMode = 'alpha' | 'last_activity';
 type DirectionFilter = 'all' | 'inbound' | 'outbound';
 type DocFilter = 'all' | 'has_doc' | 'signed' | 'unsigned' | 'no_doc';
@@ -121,7 +122,7 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
       }
 
       const [leadsRes, leadsExtRes, stageRes, checklistInstancesRes, templatesRes, docsRes] = await Promise.all([
-        externalSupabase.from('leads').select('id, board_id').in('id', leadIds),
+        externalSupabase.from('leads').select('id, board_id, lead_status').in('id', leadIds),
         externalSupabase.from('leads').select('id, lead_name').in('id', leadIds),
         externalSupabase.from('lead_stage_history')
           .select('lead_id, to_stage, changed_at')
@@ -156,7 +157,11 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
 
       const map = new Map<string, LeadInfo>();
       const boardById = new Map<string, string | null>();
-      for (const l of (leadsRes.data || [])) boardById.set(l.id, l.board_id ?? null);
+      const statusById = new Map<string, string | null>();
+      for (const l of (leadsRes.data || [])) {
+        boardById.set(l.id, l.board_id ?? null);
+        statusById.set(l.id, (l as any).lead_status ?? null);
+      }
 
       // Iterate all known lead ids (union of Cloud + External results)
       const allIds = new Set<string>([...boardById.keys(), ...leadNameById.keys()]);
@@ -182,6 +187,7 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
           completed_checklist_ids: completedIds,
           checkedItemIds,
           lead_name: leadNameById.get(id) ?? null,
+          lead_status: statusById.get(id) ?? null,
         });
       }
       setLeadInfoMap(map);
@@ -253,6 +259,18 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
     if (quickFilter === 'calls' && !hasCalls(c)) return false;
     if (quickFilter === 'groups' && !isGroupConversation(c)) return false;
     if (quickFilter === 'shared' && !sharedPhonesAll.has(c.phone)) return false;
+    if (quickFilter === 'lead_active') {
+      const status = c.lead_id ? leadInfoMap.get(c.lead_id)?.lead_status : null;
+      if (!c.lead_id || !(status === 'active' || status === 'novo' || status == null)) return false;
+    }
+    if (quickFilter === 'lead_closed') {
+      const status = c.lead_id ? leadInfoMap.get(c.lead_id)?.lead_status : null;
+      if (status !== 'closed') return false;
+    }
+    if (quickFilter === 'lead_inviavel') {
+      const status = c.lead_id ? leadInfoMap.get(c.lead_id)?.lead_status : null;
+      if (status !== 'inviavel') return false;
+    }
 
     // Direction filter: only show conversations that have messages in the selected direction
     if (directionFilter === 'inbound' && !c.messages.some(m => m.direction === 'inbound')) return false;
@@ -344,10 +362,16 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
     }
   };
 
+  const statusOf = (c: WhatsAppConversation) =>
+    c.lead_id ? (leadInfoMap.get(c.lead_id)?.lead_status ?? null) : null;
+
   const quickFilters: { key: QuickFilter; label: string; icon: React.ReactNode }[] = [
     { key: 'all', label: 'Todas', icon: null },
     { key: 'has_lead', label: 'Com lead', icon: <UserCheck className="h-3 w-3" /> },
     { key: 'no_lead', label: 'Sem lead', icon: <Unlink className="h-3 w-3" /> },
+    { key: 'lead_active', label: 'Leads', icon: <Briefcase className="h-3 w-3" /> },
+    { key: 'lead_closed', label: 'Fechados', icon: <Trophy className="h-3 w-3" /> },
+    { key: 'lead_inviavel', label: 'Inviáveis', icon: <AlertTriangle className="h-3 w-3" /> },
     { key: 'unanswered', label: 'Não respondidas', icon: <Clock className="h-3 w-3" /> },
     { key: 'calls', label: 'Ligações', icon: <PhoneCall className="h-3 w-3" /> },
     { key: 'groups', label: 'Grupos', icon: <Users className="h-3 w-3" /> },
@@ -358,6 +382,13 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
     all: conversations.length,
     has_lead: conversations.filter(c => !!c.lead_id).length,
     no_lead: conversations.filter(c => !c.lead_id).length,
+    lead_active: conversations.filter(c => {
+      if (!c.lead_id) return false;
+      const s = statusOf(c);
+      return s === 'active' || s === 'novo' || s == null;
+    }).length,
+    lead_closed: conversations.filter(c => statusOf(c) === 'closed').length,
+    lead_inviavel: conversations.filter(c => statusOf(c) === 'inviavel').length,
     unanswered: conversations.filter(c => isUnanswered(c)).length,
     calls: conversations.filter(c => hasCalls(c)).length,
     groups: conversations.filter(c => isGroupConversation(c)).length,
