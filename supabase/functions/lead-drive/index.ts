@@ -561,11 +561,14 @@ Deno.serve(async (req) => {
           const labelSource: "case_number" | "case_title" | "holder_name" | "none" =
             caseLabelSource ?? (analysis.holder_name ? "holder_name" : "none");
 
+          // Padrão de nome: "{Tipo} — {Titular} ({frente|verso}) — {PREV 597}{ext}"
+          // PREV / código do caso vai SEMPRE no final.
           const parts: string[] = [sanitize(analysis.document_type)];
-          if (caseLabel) parts.push(sanitize(caseLabel));
-          else if (analysis.holder_name) parts.push(sanitize(analysis.holder_name));
+          if (analysis.holder_name) parts.push(sanitize(analysis.holder_name));
           if (analysis.document_subtype) parts.push(`(${sanitize(analysis.document_subtype)})`);
-          let base = parts.join(" — ").slice(0, 180);
+          let base = parts.join(" — ");
+          if (caseLabel) base = `${base} — ${sanitize(caseLabel)}`;
+          base = base.slice(0, 180);
           const desired = `${base}${extName}`;
           if (desired && desired !== meta.name) {
             const previousName = meta.name;
