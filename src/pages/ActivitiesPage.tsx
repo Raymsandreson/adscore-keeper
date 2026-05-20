@@ -657,29 +657,10 @@ const ActivitiesPage = () => {
     closeSheet();
     fetchActivities(getFilterParams());
 
-    // Confirmation toast with title + edit/delete actions
+    // Confirmation dialog with title + edit/delete actions
     if (createdActivityId && createdActivityFull) {
       const activityForActions = createdActivityFull as LeadActivity;
-      toast.success(`Atividade criada: ${titleToUse}`, {
-        duration: 8000,
-        action: {
-          label: 'Editar',
-          onClick: () => handleOpenEdit(activityForActions),
-        },
-        cancel: {
-          label: 'Excluir',
-          onClick: () => {
-            confirmDelete(
-              'Excluir atividade?',
-              `"${titleToUse}" será excluída.`,
-              async () => {
-                await deleteActivity(activityForActions.id);
-                fetchActivities(getFilterParams());
-              }
-            );
-          },
-        },
-      });
+      setCreatedDialog({ open: true, title: titleToUse, activity: activityForActions });
     }
   };
 
