@@ -1,7 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
 import { db } from '@/integrations/supabase';
-import { externalSupabase } from '@/integrations/supabase/external-client';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
@@ -39,7 +37,7 @@ export function AgentInstanceSettings({ agentId }: Props) {
     setLoading(true);
     const [instRes, settRes] = await Promise.all([
       db.from('whatsapp_instances').select('id, instance_name, owner_name, is_active').eq('is_active', true).order('instance_name'),
-      supabase.from('agent_instance_settings').select('id, instance_id, is_enabled').eq('agent_id', agentId),
+      db.from('agent_instance_settings').select('id, instance_id, is_enabled').eq('agent_id', agentId),
     ]);
     setInstances((instRes.data || []) as Instance[]);
     setSettings((settRes.data || []) as Setting[]);
@@ -51,14 +49,14 @@ export function AgentInstanceSettings({ agentId }: Props) {
     try {
       const existing = settings.find(s => s.instance_id === instanceId);
       if (existing) {
-        const { error } = await supabase
+        const { error } = await db
           .from('agent_instance_settings')
           .update({ is_enabled: !currentEnabled } as any)
           .eq('id', existing.id);
         if (error) throw error;
         setSettings(prev => prev.map(s => s.id === existing.id ? { ...s, is_enabled: !currentEnabled } : s));
       } else {
-        const { data, error } = await supabase
+        const { data, error } = await db
           .from('agent_instance_settings')
           .insert({ agent_id: agentId, instance_id: instanceId, is_enabled: true } as any)
           .select('id, instance_id, is_enabled')

@@ -1,6 +1,6 @@
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { useState, useEffect } from 'react';
-import { db as supabase, ensureExternalSession } from '@/integrations/supabase';
+import { db as supabase, db, ensureExternalSession } from '@/integrations/supabase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
