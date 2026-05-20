@@ -362,10 +362,16 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
     }
   };
 
+  const statusOf = (c: WhatsAppConversation) =>
+    c.lead_id ? (leadInfoMap.get(c.lead_id)?.lead_status ?? null) : null;
+
   const quickFilters: { key: QuickFilter; label: string; icon: React.ReactNode }[] = [
     { key: 'all', label: 'Todas', icon: null },
     { key: 'has_lead', label: 'Com lead', icon: <UserCheck className="h-3 w-3" /> },
     { key: 'no_lead', label: 'Sem lead', icon: <Unlink className="h-3 w-3" /> },
+    { key: 'lead_active', label: 'Leads', icon: <Briefcase className="h-3 w-3" /> },
+    { key: 'lead_closed', label: 'Fechados', icon: <Trophy className="h-3 w-3" /> },
+    { key: 'lead_inviavel', label: 'Inviáveis', icon: <AlertTriangle className="h-3 w-3" /> },
     { key: 'unanswered', label: 'Não respondidas', icon: <Clock className="h-3 w-3" /> },
     { key: 'calls', label: 'Ligações', icon: <PhoneCall className="h-3 w-3" /> },
     { key: 'groups', label: 'Grupos', icon: <Users className="h-3 w-3" /> },
@@ -376,6 +382,13 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
     all: conversations.length,
     has_lead: conversations.filter(c => !!c.lead_id).length,
     no_lead: conversations.filter(c => !c.lead_id).length,
+    lead_active: conversations.filter(c => {
+      if (!c.lead_id) return false;
+      const s = statusOf(c);
+      return s === 'active' || s === 'novo' || s == null;
+    }).length,
+    lead_closed: conversations.filter(c => statusOf(c) === 'closed').length,
+    lead_inviavel: conversations.filter(c => statusOf(c) === 'inviavel').length,
     unanswered: conversations.filter(c => isUnanswered(c)).length,
     calls: conversations.filter(c => hasCalls(c)).length,
     groups: conversations.filter(c => isGroupConversation(c)).length,
