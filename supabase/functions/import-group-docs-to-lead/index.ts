@@ -51,12 +51,20 @@ Deno.serve(async (req) => {
     if (!body.lead_id) return json({ error: "lead_id required" }, 400);
 
     // Normalize legacy
-    const docs: DocItem[] = body.documents
+    const incomingDocs: DocItem[] = body.documents
       ? body.documents
       : (body.message_ids || []).map((m) => ({
           message_id: m,
           document_type: body.document_type || "Outro",
         }));
+
+    const seenInput = new Set<string>();
+    const docs = incomingDocs.filter((item) => {
+      const key = String(item.message_id || "").trim();
+      if (!key || seenInput.has(key)) return false;
+      seenInput.add(key);
+      return true;
+    });
 
     if (docs.length === 0) return json({ error: "documents[] required" }, 400);
 
@@ -184,6 +192,32 @@ Deno.serve(async (req) => {
           continue;
         }
 
+        const contentHash = await sha256Hex(bytes);
+
+        // --- Late skip: same binary was already imported for this lead ---
+        try {
+          const { data: sameSizeDocs } = await cloud
+            .from("process_documents")
+            .select("id, file_url, file_name, metadata")
+            .eq("lead_id", body.lead_id)
+            .eq("source", "whatsapp_group")
+            .eq("file_size", bytes.length)
+            .limit(25);
+          const sameBinaryDoc = (sameSizeDocs || []).find((doc: any) =>
+            doc?.metadata?.content_hash === contentHash || doc?.file_name === fileName,
+          );
+          if (sameBinaryDoc?.id) {
+            results.push({
+              msgId,
+              status: "ok",
+              deduped: true,
+              document_id: sameBinaryDoc.id,
+              drive_link: sameBinaryDoc.file_url || null,
+            });
+            continue;
+          }
+        } catch (_) { /* fallthrough — best-effort dedup */ }
+
         // --- Upload to Supabase Storage (backup) ---
         const safeName = fileName.replace(/[^\w.\-]+/g, "_");
         const storagePath = `lead/${body.lead_id}/group-docs/${msgId}-${safeName}`;
@@ -215,6 +249,8 @@ Deno.serve(async (req) => {
               source_url: pub.publicUrl,
               mime_type: mimeType,
               document_type: documentType,
+              dedup_key: `wa:${body.lead_id}:${msg.external_message_id}`,
+              content_hash: contentHash,
             }),
           });
           const driveJson = await driveRes.json();
@@ -246,6 +282,7 @@ Deno.serve(async (req) => {
               group_jid: msg.phone,
               import_strategy: strategy,
               storage_url: pub.publicUrl,
+              content_hash: contentHash,
               drive_file_id: driveFile?.id || null,
               drive_view_link: driveFile?.webViewLink || null,
               drive_error: driveError,
@@ -311,13 +348,22 @@ async function hkdfSha256(
   info: Uint8Array,
   length: number,
 ): Promise<Uint8Array> {
-  const baseKey = await crypto.subtle.importKey("raw", ikm, "HKDF", false, ["deriveBits"]);
+  const baseKey = await crypto.subtle.importKey("raw", toArrayBuffer(ikm), "HKDF", false, ["deriveBits"]);
   const bits = await crypto.subtle.deriveBits(
-    { name: "HKDF", hash: "SHA-256", salt, info },
+    { name: "HKDF", hash: "SHA-256", salt: toArrayBuffer(salt), info: toArrayBuffer(info) },
     baseKey,
     length * 8,
   );
   return new Uint8Array(bits);
+}
+
+async function sha256Hex(bytes: Uint8Array): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", toArrayBuffer(bytes));
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
 }
 
 function base64ToBytes(b64: string): Uint8Array {
