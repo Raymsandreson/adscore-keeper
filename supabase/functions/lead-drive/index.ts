@@ -752,6 +752,30 @@ Deno.serve(async (req) => {
       const binary = new Uint8Array(await dl.arrayBuffer());
       const finalMime = mime_type || dl.headers.get("content-type") || "application/octet-stream";
 
+      // --- Dedup: skip re-upload if same name+size already exists in subfolder ---
+      try {
+        const escapedName = file_name.replace(/'/g, "\\'");
+        const q = encodeURIComponent(`name = '${escapedName}' and '${subFolderId}' in parents and trashed = false`);
+        const listRes = await fetch(
+          `${GATEWAY}/files?q=${q}&fields=files(id,name,size,mimeType,webViewLink,modifiedTime)&pageSize=10`,
+          { headers: gwHeaders() },
+        );
+        if (listRes.ok) {
+          const listJson = await listRes.json();
+          const existing = (listJson.files || []).find(
+            (f: any) => String(f.size || "") === String(binary.length),
+          );
+          if (existing) {
+            return new Response(
+              JSON.stringify({ ok: true, file: existing, deduped: true, lead_folder_id: leadFolderId, subfolder_id: subFolderId }),
+              { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+            );
+          }
+        }
+      } catch (e) {
+        console.warn("[lead-drive] dedup check failed, proceeding with upload:", e);
+      }
+
       const boundary = "----lovable-boundary-" + crypto.randomUUID();
       const metadata = JSON.stringify({ name: file_name, parents: [subFolderId] });
       const head = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n--${boundary}\r\nContent-Type: ${finalMime}\r\n\r\n`;
