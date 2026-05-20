@@ -19,6 +19,8 @@ import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import type { Lead } from '@/hooks/useLeads';
+import { useAutoImportGroupDocs } from '@/hooks/useAutoImportGroupDocs';
+
 
 interface LeadData {
   id: string;
