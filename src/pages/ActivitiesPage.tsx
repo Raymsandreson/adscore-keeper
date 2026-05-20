@@ -520,9 +520,42 @@ const ActivitiesPage = () => {
 
   // handleTitleChange moved below routineActivityTypes
 
+  const generateTitleWithAI = async (): Promise<string | null> => {
+    const stripHtml = (s: string) => s.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    const parts = [
+      formCurrentStatus && `COMO ESTÁ: ${stripHtml(formCurrentStatus)}`,
+      formWhatWasDone && `O QUE FOI FEITO: ${stripHtml(formWhatWasDone)}`,
+      formNextSteps && `PRÓXIMO PASSO: ${stripHtml(formNextSteps)}`,
+      formSolicitacao && `SOLICITAÇÃO: ${stripHtml(formSolicitacao)}`,
+      formRespostaJuizo && `RESPOSTA DO JUÍZO: ${stripHtml(formRespostaJuizo)}`,
+      formNotes && `OBSERVAÇÕES: ${stripHtml(formNotes)}`,
+    ].filter(Boolean).join('\n');
+    if (!parts) return null;
+    try {
+      const { data, error } = await supabase.functions.invoke('ai-text-editor', {
+        body: {
+          text: parts,
+          action: 'custom',
+          custom_prompt: 'Gere um título curto (no máximo 8 palavras, sem aspas, sem ponto final) que resuma o assunto desta atividade jurídica de forma clara para qualquer pessoa entender do que se trata. Retorne APENAS o título, sem prefixos como "Título:".',
+        },
+      });
+      if (error) throw error;
+      const opt = (data?.options?.[0] || '').trim().replace(/^["'`]+|["'`.]+$/g, '');
+      return opt || null;
+    } catch (e) {
+      console.error('Erro gerando título com IA:', e);
+      return null;
+    }
+  };
+
   const handleCreate = async () => {
-    if (!formTitle.trim()) {
-      toast.error('Informe o assunto da atividade');
+    let titleToUse = formTitle.trim();
+
+    const hasContentForAI =
+      !!(formWhatWasDone || formCurrentStatus || formNextSteps || formSolicitacao || formRespostaJuizo || formNotes);
+
+    if (!titleToUse && !hasContentForAI) {
+      toast.error('Informe o assunto da atividade ou preencha algum campo de detalhes');
       return;
     }
     if (!formType) {
@@ -542,8 +575,21 @@ const ActivitiesPage = () => {
       return;
     }
 
+    if (!titleToUse && hasContentForAI) {
+      const aiLoadingId = toast.loading('Gerando assunto com IA...');
+      const aiTitle = await generateTitleWithAI();
+      toast.dismiss(aiLoadingId);
+      if (aiTitle) {
+        titleToUse = aiTitle;
+        setFormTitle(aiTitle);
+      } else {
+        toast.error('Não foi possível gerar o assunto automaticamente. Escreva manualmente.');
+        return;
+      }
+    }
+
     const baseData = {
-      title: formTitle,
+      title: titleToUse,
       description: null,
       what_was_done: formWhatWasDone || null,
       current_status_notes: formCurrentStatus || null,
@@ -568,11 +614,12 @@ const ActivitiesPage = () => {
     };
 
     let createdActivityId: string | null = null;
+    let createdActivityFull: any = null;
     if (formRepeatWeekDays.length > 0 && formDeadline) {
       // Create one activity per selected day of the week, starting from the deadline week
       const baseDate = parseISO(formDeadline);
       const weekStart = startOfWeek(baseDate, { weekStartsOn: 1 }); // Monday
-      
+
       for (const dayIdx of formRepeatWeekDays) {
         const targetDate = addDays(weekStart, dayIdx);
         const dateStr = format(targetDate, 'yyyy-MM-dd');
@@ -581,7 +628,10 @@ const ActivitiesPage = () => {
           deadline: dateStr,
           notification_date: dateStr,
         });
-        if (!createdActivityId && result?.id) createdActivityId = result.id;
+        if (!createdActivityId && result?.id) {
+          createdActivityId = result.id;
+          createdActivityFull = result;
+        }
       }
       toast.success(`${formRepeatWeekDays.length} atividades criadas para a semana!`);
     } else {
@@ -590,7 +640,10 @@ const ActivitiesPage = () => {
         deadline: formDeadline || null,
         notification_date: formNotificationDate || null,
       });
-      if (result?.id) createdActivityId = result.id;
+      if (result?.id) {
+        createdActivityId = result.id;
+        createdActivityFull = result;
+      }
     }
 
 
@@ -601,6 +654,31 @@ const ActivitiesPage = () => {
 
     closeSheet();
     fetchActivities(getFilterParams());
+
+    // Confirmation toast with title + edit/delete actions
+    if (createdActivityId && createdActivityFull) {
+      const activityForActions = createdActivityFull as LeadActivity;
+      toast.success(`Atividade criada: ${titleToUse}`, {
+        duration: 8000,
+        action: {
+          label: 'Editar',
+          onClick: () => handleOpenEdit(activityForActions),
+        },
+        cancel: {
+          label: 'Excluir',
+          onClick: () => {
+            confirmDelete(
+              'Excluir atividade?',
+              `"${titleToUse}" será excluída.`,
+              async () => {
+                await deleteActivity(activityForActions.id);
+                fetchActivities(getFilterParams());
+              }
+            );
+          },
+        },
+      });
+    }
   };
 
   const handleOpenEdit = async (activity: LeadActivity) => {
