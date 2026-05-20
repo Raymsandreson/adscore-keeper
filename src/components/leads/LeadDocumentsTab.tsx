@@ -445,6 +445,7 @@ export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId, cu
                       target="_blank"
                       rel="noreferrer"
                       className="text-sm font-medium truncate hover:underline block"
+                      title={smartLabel ? `${smartLabel}\n${f.name}` : f.name}
                     >
                       {smartLabel || f.name}
                     </a>
