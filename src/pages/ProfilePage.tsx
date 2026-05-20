@@ -62,13 +62,9 @@ const ProfilePage = () => {
           setDefaultInstanceId(profileData.default_instance_id);
         }
 
-        // Load instances assigned to this user
-        const { data: assignments } = await db
-          .from('whatsapp_instance_users')
-          .select('instance_id')
-          .eq('user_id', extUserId);
-
-        const ids = (assignments || []).map((a: any) => a.instance_id).filter(Boolean);
+        // Load instances assigned to this user — permissão vem do Cloud (autoritativo)
+        const { data: { user: cloudUser } } = await authClient.auth.getUser();
+        const ids = cloudUser ? await getMyAllowedInstanceIds(cloudUser.id) : [];
         if (ids.length === 0) {
           // Fallback: all active instances (admin or no restriction)
           const { data: allInst } = await db
