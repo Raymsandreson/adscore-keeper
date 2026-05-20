@@ -2088,6 +2088,57 @@ export function WhatsAppInbox() {
       </AlertDialog>
 
       <SharedConversationsPanel open={sharedPanelOpen} onOpenChange={setSharedPanelOpen} />
+
+      {/* Popup bloqueante: sem instância padrão = sem envio */}
+      <Dialog
+        open={missingInstanceOpen}
+        onOpenChange={(open) => {
+          // Só fecha se já tiver instância cadastrada (não pode escapar sem escolher)
+          if (!open && !userDefaultInstanceId) return;
+          setMissingInstanceOpen(open);
+        }}
+      >
+        <DialogContent className="sm:max-w-md" onPointerDownOutside={(e) => e.preventDefault()} onEscapeKeyDown={(e) => e.preventDefault()}>
+          <DialogHeader>
+            <DialogTitle>Escolha sua instância de WhatsApp</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <p className="text-sm text-muted-foreground">
+              Você ainda não tem uma instância cadastrada. Selecione qual número deve enviar suas mensagens. Sem isso, o envio fica bloqueado.
+            </p>
+            {instances.length === 0 ? (
+              <p className="text-sm text-destructive">
+                Nenhuma instância disponível para você. Peça ao administrador para liberar uma instância.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                <Label>Instância</Label>
+                <Select value={pickingInstanceId} onValueChange={setPickingInstanceId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione uma instância..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {instances.map((inst) => (
+                      <SelectItem key={inst.id} value={inst.id}>
+                        {inst.instance_name}{inst.owner_name ? ` — ${inst.owner_name}` : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              onClick={handleConfirmDefaultInstance}
+              disabled={!pickingInstanceId || savingDefault || instances.length === 0}
+            >
+              {savingDefault ? (<><Loader2 className="h-4 w-4 mr-2 animate-spin" />Salvando...</>) : 'Cadastrar instância'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
+
