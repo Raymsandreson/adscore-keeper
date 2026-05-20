@@ -11,7 +11,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { toast } from 'sonner';
 import {
   ExternalLink, MapPin, Building2, Phone, Mail, User, Calendar,
-  ArrowRight, Clock, FileText, Instagram, Heart, UserPlus, Search, Link2, Loader2,
+  ArrowRight, Clock, FileText, Instagram, Heart, UserPlus, Search, Link2, Loader2, Sparkles,
 } from 'lucide-react';
 import { TeamChatButton } from '@/components/chat/TeamChatButton';
 import { format, parseISO } from 'date-fns';
