@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -8,7 +8,9 @@ import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { ArrowLeft, User, Mail, Save, Loader2, Scale, Phone } from "lucide-react";
+import { ArrowLeft, User, Mail, Save, Loader2, Scale, Phone, Smartphone } from "lucide-react";
+import { db } from "@/integrations/supabase";
+import { remapToExternal } from "@/integrations/supabase/uuid-remap";
 
 const TREATMENT_OPTIONS = [
   { value: 'none', label: 'Nenhum' },
@@ -34,7 +36,63 @@ const ProfilePage = () => {
   const [oabNumber, setOabNumber] = useState((profile as any)?.oab_number || "");
   const [oabUf, setOabUf] = useState((profile as any)?.oab_uf || "");
   const [phone, setPhone] = useState((profile as any)?.phone || "");
+  const [defaultInstanceId, setDefaultInstanceId] = useState<string>("none");
+  const [instances, setInstances] = useState<Array<{ id: string; instance_name: string }>>([]);
+  const [loadingInstances, setLoadingInstances] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    const loadInstances = async () => {
+      if (!user?.id) return;
+      setLoadingInstances(true);
+      try {
+        const extUserId = await remapToExternal(user.id);
+        if (!extUserId) {
+          setLoadingInstances(false);
+          return;
+        }
+
+        // Load default_instance_id from External profile
+        const { data: profileData } = await db
+          .from('profiles')
+          .select('default_instance_id')
+          .eq('user_id', extUserId)
+          .maybeSingle();
+        if (profileData?.default_instance_id) {
+          setDefaultInstanceId(profileData.default_instance_id);
+        }
+
+        // Load instances assigned to this user
+        const { data: assignments } = await db
+          .from('whatsapp_instance_users')
+          .select('instance_id')
+          .eq('user_id', extUserId);
+
+        const ids = (assignments || []).map((a: any) => a.instance_id).filter(Boolean);
+        if (ids.length === 0) {
+          // Fallback: all active instances (admin or no restriction)
+          const { data: allInst } = await db
+            .from('whatsapp_instances')
+            .select('id, instance_name')
+            .eq('is_active', true)
+            .order('instance_name');
+          setInstances(allInst || []);
+        } else {
+          const { data: inst } = await db
+            .from('whatsapp_instances')
+            .select('id, instance_name')
+            .in('id', ids)
+            .order('instance_name');
+          setInstances(inst || []);
+        }
+      } catch (e) {
+        console.error('Erro ao carregar instâncias', e);
+      } finally {
+        setLoadingInstances(false);
+      }
+    };
+    loadInstances();
+  }, [user?.id]);
 
   const getInitials = () => {
     if (profile?.full_name) {
@@ -63,7 +121,22 @@ const ProfilePage = () => {
       oab_uf: oabUf.trim() || null,
       phone: phone.trim() || null,
     } as any);
-    
+
+    // Mirror default_instance_id to External (source of truth)
+    try {
+      if (user?.id) {
+        const extUserId = await remapToExternal(user.id);
+        if (extUserId) {
+          await db
+            .from('profiles')
+            .update({ default_instance_id: defaultInstanceId === 'none' ? null : defaultInstanceId })
+            .eq('user_id', extUserId);
+        }
+      }
+    } catch (e) {
+      console.error('Erro ao salvar instância padrão no Externo', e);
+    }
+
     if (error) {
       toast.error("Erro ao salvar perfil", { description: error.message });
     } else {
@@ -210,6 +283,37 @@ const ProfilePage = () => {
                 Usado para receber notificações automáticas de movimentação processual
               </p>
             </div>
+
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <Smartphone className="h-4 w-4" />
+                Instância de WhatsApp padrão
+              </Label>
+              <Select
+                value={defaultInstanceId}
+                onValueChange={setDefaultInstanceId}
+                disabled={loadingInstances}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={loadingInstances ? "Carregando..." : "Selecione a instância"} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Nenhuma</SelectItem>
+                  {instances.map((inst) => (
+                    <SelectItem key={inst.id} value={inst.id}>
+                      {inst.instance_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {instances.length === 0 && !loadingInstances
+                  ? "Nenhuma instância disponível. Solicite acesso a um administrador."
+                  : "Instância usada por padrão ao enviar mensagens no WhatsApp"}
+              </p>
+            </div>
+
+
 
             <div className="space-y-2">
               <Label htmlFor="email" className="flex items-center gap-2">
