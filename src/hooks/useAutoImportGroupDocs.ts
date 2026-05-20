@@ -10,12 +10,13 @@ export interface AutoImportProgress {
 }
 
 /**
- * Auto-importa todas as mídias recentes do grupo WhatsApp do lead para a pasta
- * "Outro" do Drive, em segundo plano. Idempotente (a edge `lead-drive`
- * deduplica por nome+tamanho). Roda 1x por sessão por leadId.
+ * Sempre calcula `total` (mídias do grupo/lead no WhatsApp) e `done`
+ * (process_documents já importadas com source=whatsapp_group). O badge
+ * "Drive x/y" fica visível em qualquer tela que use este hook.
  *
- * Retorna progresso { total, done, running } para o caller exibir badge
- * "Drive x/y" igual ao do chat do WhatsApp.
+ * Gatilho do upload: na 1ª montagem por sessão (por leadId), se `done < total`,
+ * dispara import-group-docs-to-lead em lotes de 5. Idempotente (a edge
+ * deduplica por external_message_id + content_hash).
  */
 export function useAutoImportGroupDocs(
   leadId: string | null | undefined,
@@ -32,17 +33,14 @@ export function useAutoImportGroupDocs(
 
   useEffect(() => {
     if (!leadId || !leadName) return;
-
-    const key = `auto-import-docs:v2:${leadId}`;
-    if (sessionStorage.getItem(key)) return;
-    sessionStorage.setItem(key, '1');
-
     let cancelled = false;
 
     (async () => {
       try {
         await ensureExternalSession();
-        let query = externalSupabase
+
+        // 1) Conta mídias disponíveis no WhatsApp (grupo ou lead).
+        let mediaQuery = externalSupabase
           .from('whatsapp_messages')
           .select('external_message_id, message_type, media_url, created_at')
           .in('message_type', ['image', 'document', 'video', 'audio'])
@@ -50,30 +48,46 @@ export function useAutoImportGroupDocs(
           .order('created_at', { ascending: false })
           .limit(200);
 
-        query = whatsappGroupId
-          ? query.or(`phone.eq.${whatsappGroupId},lead_id.eq.${leadId}`)
-          : query.eq('lead_id', leadId);
+        mediaQuery = whatsappGroupId
+          ? mediaQuery.or(`phone.eq.${whatsappGroupId},lead_id.eq.${leadId}`)
+          : mediaQuery.eq('lead_id', leadId);
 
-        const { data, error } = await query;
+        const { data: mediaMsgs, error: mediaErr } = await mediaQuery;
+        if (cancelled || mediaErr) return;
 
-        if (cancelled || error || !data?.length) return;
-
-        const documents = data
+        const documents = (mediaMsgs || [])
           .map((m: any) => {
             const messageId = String(m.external_message_id || '').trim();
             if (!messageId) return null;
             return { message_id: messageId, document_type: 'Outro' };
           })
-          .filter(Boolean);
+          .filter(Boolean) as { message_id: string; document_type: string }[];
 
-        if (documents.length === 0) return;
+        const total = documents.length;
+        if (total === 0) return;
 
-        setProgress({ total: documents.length, done: 0, running: true, newlyImported: 0 });
+        // 2) Conta quantas já estão no Drive (process_documents do lead).
+        const { count: doneCount } = await supabase
+          .from('process_documents')
+          .select('id', { count: 'exact', head: true })
+          .eq('lead_id', leadId)
+          .eq('source', 'whatsapp_group');
 
-        // Processa em lotes pequenos pra não estourar o timeout de 150s da edge.
-        // Cada doc decripta + sobe pro Storage + Drive (~5-15s cada).
+        const done = Math.min(doneCount || 0, total);
+        setProgress({ total, done, running: false, newlyImported: 0 });
+
+        // 3) Já tudo importado? Só mostra badge verde.
+        if (done >= total) return;
+
+        // 4) 1x por sessão por lead — evita reprocessar a cada navegação.
+        const sessKey = `auto-import-docs:v3:${leadId}`;
+        if (sessionStorage.getItem(sessKey)) return;
+        sessionStorage.setItem(sessKey, '1');
+
+        setProgress({ total, done, running: true, newlyImported: 0 });
+
         const CHUNK_SIZE = 5;
-        let doneAcc = 0;
+        let doneAcc = done;
         let newlyAcc = 0;
 
         for (let i = 0; i < documents.length; i += CHUNK_SIZE) {
@@ -92,15 +106,18 @@ export function useAutoImportGroupDocs(
           }
 
           const results = (resp as any)?.results || [];
-          doneAcc += results.filter(
-            (r: any) => r.status === 'ok' || r.status === 'ok_no_drive',
-          ).length;
-          newlyAcc += results.filter(
+          const okNew = results.filter(
             (r: any) => (r.status === 'ok' || r.status === 'ok_no_drive') && !r.deduped,
           ).length;
+          const okAll = results.filter(
+            (r: any) => r.status === 'ok' || r.status === 'ok_no_drive',
+          ).length;
+
+          newlyAcc += okNew;
+          doneAcc = Math.min(doneAcc + okAll, total);
 
           setProgress({
-            total: documents.length,
+            total,
             done: doneAcc,
             running: i + CHUNK_SIZE < documents.length,
             newlyImported: newlyAcc,
