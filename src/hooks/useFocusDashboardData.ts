@@ -15,6 +15,7 @@ export interface FocusKpis {
   conversion: number; // 0..100
   conversionDelta: string;
   unviable: number;
+  unviablePercentage: number; // 0..100
   unviableTopReason: string | null;
 }
 
