@@ -515,8 +515,10 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
           <div className="flex items-center justify-between mb-0.5">
             <span className="text-[10px] text-muted-foreground uppercase tracking-wider">📅 Prazo *</span>
             {props.deadlineDateCount !== null && props.formDeadline && (
-              <span className={cn("text-[9px] font-medium px-1.5 py-0.5 rounded-full",
-                props.deadlineDateCount > 0 ? "bg-warning/10 text-warning" : "bg-success/10 text-success"
+              <span className={cn("text-[11px] font-bold px-2 py-0.5 rounded-full border shadow-sm",
+                props.deadlineDateCount > 0
+                  ? "bg-warning/15 text-warning border-warning/40 ring-1 ring-warning/30"
+                  : "bg-success/15 text-success border-success/40 ring-1 ring-success/30"
               )}>
                 {props.deadlineDateCount} atv
               </span>
@@ -528,8 +530,10 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
           <div className="flex items-center justify-between mb-0.5">
             <span className="text-[10px] text-muted-foreground uppercase tracking-wider">🔔 Notificação *</span>
             {props.notifDateCount !== null && props.formNotificationDate && (
-              <span className={cn("text-[9px] font-medium px-1.5 py-0.5 rounded-full",
-                props.notifDateCount > 0 ? "bg-warning/10 text-warning" : "bg-success/10 text-success"
+              <span className={cn("text-[11px] font-bold px-2 py-0.5 rounded-full border shadow-sm",
+                props.notifDateCount > 0
+                  ? "bg-warning/15 text-warning border-warning/40 ring-1 ring-warning/30"
+                  : "bg-success/15 text-success border-success/40 ring-1 ring-success/30"
               )}>
                 {props.notifDateCount} atv
               </span>
