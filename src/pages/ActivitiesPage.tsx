@@ -832,6 +832,10 @@ const ActivitiesPage = () => {
   const handleComplete = async (id: string) => {
     await completeActivity(id);
     fetchActivities(getFilterParams());
+    toast.success('Atividade concluída! 🎉', {
+      description: randomChurchillQuote(),
+      duration: 6000,
+    });
   };
 
   const openCompleteAndNotify = (source: 'sheet' | 'workflow') => {
