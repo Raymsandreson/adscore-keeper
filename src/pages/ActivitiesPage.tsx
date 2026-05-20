@@ -885,6 +885,10 @@ const ActivitiesPage = () => {
 
       // Conclude the current activity without overwriting its existing data
       await completeActivity(currentActivity.id);
+      toast.success('Atividade concluída! 🎉', {
+        description: randomChurchillQuote(),
+        duration: 6000,
+      });
 
       // Create the next activity with the captured form data
       await createActivity(nextData);
