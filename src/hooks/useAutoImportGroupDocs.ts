@@ -70,36 +70,45 @@ export function useAutoImportGroupDocs(
 
         setProgress({ total: documents.length, done: 0, running: true, newlyImported: 0 });
 
-        const { data: resp, error: invokeErr } = await supabase.functions.invoke(
-          'import-group-docs-to-lead',
-          {
-            body: { lead_id: leadId, lead_name: leadName, documents },
-          },
-        );
+        // Processa em lotes pequenos pra não estourar o timeout de 150s da edge.
+        // Cada doc decripta + sobe pro Storage + Drive (~5-15s cada).
+        const CHUNK_SIZE = 5;
+        let doneAcc = 0;
+        let newlyAcc = 0;
 
-        if (cancelled) return;
-        if (invokeErr) {
-          console.warn('[useAutoImportGroupDocs] invoke error', invokeErr);
-          setProgress((p) => ({ ...p, running: false }));
-          return;
+        for (let i = 0; i < documents.length; i += CHUNK_SIZE) {
+          if (cancelled) return;
+          const chunk = documents.slice(i, i + CHUNK_SIZE);
+
+          const { data: resp, error: invokeErr } = await supabase.functions.invoke(
+            'import-group-docs-to-lead',
+            { body: { lead_id: leadId, lead_name: leadName, documents: chunk } },
+          );
+
+          if (cancelled) return;
+          if (invokeErr) {
+            console.warn('[useAutoImportGroupDocs] invoke error', invokeErr);
+            break;
+          }
+
+          const results = (resp as any)?.results || [];
+          doneAcc += results.filter(
+            (r: any) => r.status === 'ok' || r.status === 'ok_no_drive',
+          ).length;
+          newlyAcc += results.filter(
+            (r: any) => (r.status === 'ok' || r.status === 'ok_no_drive') && !r.deduped,
+          ).length;
+
+          setProgress({
+            total: documents.length,
+            done: doneAcc,
+            running: i + CHUNK_SIZE < documents.length,
+            newlyImported: newlyAcc,
+          });
         }
 
-        const results = (resp as any)?.results || [];
-        const okCount = results.filter(
-          (r: any) => r.status === 'ok' || r.status === 'ok_no_drive',
-        ).length;
-        const newlyImported = results.filter(
-          (r: any) => (r.status === 'ok' || r.status === 'ok_no_drive') && !r.deduped,
-        ).length;
-
-        setProgress({
-          total: documents.length,
-          done: okCount,
-          running: false,
-          newlyImported,
-        });
-
-        if (newlyImported > 0) onImported?.();
+        setProgress((p) => ({ ...p, running: false }));
+        if (newlyAcc > 0) onImported?.();
       } catch (e) {
         console.warn('[useAutoImportGroupDocs] failed', e);
         if (!cancelled) setProgress((p) => ({ ...p, running: false }));
