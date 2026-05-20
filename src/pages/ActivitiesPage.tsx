@@ -2538,7 +2538,7 @@ const ActivitiesPage = () => {
                             <div
                               key={a.id}
                               className={cn(
-                                "px-3 py-2 transition-colors hover:bg-muted/50 cursor-pointer flex items-start gap-2",
+                                "group/blockitem px-3 py-2 transition-colors hover:bg-muted/50 cursor-pointer flex items-start gap-2",
                                 selectedActivityId === a.id && "bg-primary/10"
                               )}
                               onClick={() => handleOpenEdit(a)}
@@ -2553,6 +2553,14 @@ const ActivitiesPage = () => {
                                   </Badge>
                                 </div>
                               </div>
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); handleDelete(a.id); }}
+                                className="shrink-0 opacity-0 group-hover/blockitem:opacity-100 transition-opacity p-1 rounded hover:bg-destructive/10 text-destructive"
+                                title="Excluir atividade"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
                             </div>
                           ))}
                         </div>
