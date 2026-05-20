@@ -122,7 +122,7 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
       }
 
       const [leadsRes, leadsExtRes, stageRes, checklistInstancesRes, templatesRes, docsRes] = await Promise.all([
-        externalSupabase.from('leads').select('id, board_id').in('id', leadIds),
+        externalSupabase.from('leads').select('id, board_id, lead_status').in('id', leadIds),
         externalSupabase.from('leads').select('id, lead_name').in('id', leadIds),
         externalSupabase.from('lead_stage_history')
           .select('lead_id, to_stage, changed_at')
