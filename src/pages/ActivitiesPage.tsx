@@ -3596,6 +3596,25 @@ const ActivitiesPage = () => {
         </div>
       )}
       <ConfirmDeleteDialog />
+      <ActivityCreatedDialog
+        open={createdDialog.open}
+        onOpenChange={(open) => setCreatedDialog((prev) => ({ ...prev, open }))}
+        title={createdDialog.title}
+        onEdit={() => createdDialog.activity && handleOpenEdit(createdDialog.activity)}
+        onDelete={() => {
+          const act = createdDialog.activity;
+          const titleToUse = createdDialog.title;
+          if (!act) return;
+          confirmDelete(
+            'Excluir atividade?',
+            `"${titleToUse}" será excluída.`,
+            async () => {
+              await deleteActivity(act.id);
+              fetchActivities(getFilterParams());
+            }
+          );
+        }}
+      />
       {/* Lead Edit Sheet */}
       {formLeadId && (
         <LeadEditDialog
