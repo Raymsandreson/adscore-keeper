@@ -95,11 +95,14 @@ export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpen
                   !k.onClick && 'cursor-default'
                 )}
               >
-                <span className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide opacity-80">
-                  <Icon className="h-3 w-3" />
-                  {k.label}
-                </span>
-                <span className="text-base font-bold tabular-nums leading-none">{k.value}</span>
+              <span className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide opacity-80">
+                <Icon className="h-3 w-3" />
+                {k.label}
+              </span>
+              <span className="text-base font-bold tabular-nums leading-none">{k.value}</span>
+              {k.sub && (
+                <span className="text-[10px] opacity-70 leading-none">{k.sub}</span>
+              )}
               </button>
             );
           })}
