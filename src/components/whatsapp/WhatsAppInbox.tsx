@@ -213,8 +213,13 @@ export function WhatsAppInbox() {
   useEffect(() => {
     if (defaultInstanceApplied || !user || instances.length === 0) return;
     const applyDefault = async () => {
-      // 1. Perfil default (fonte primária)
-      const { data } = await supabase.from('profiles').select('default_instance_id').eq('user_id', user.id).single();
+      // 1. Perfil default lido SEMPRE do Externo (fonte de verdade)
+      const extUserId = await remapToExternal(user.id);
+      const { data } = await externalSupabase
+        .from('profiles')
+        .select('default_instance_id')
+        .eq('user_id', extUserId || user.id)
+        .maybeSingle();
       const defaultId = (data as any)?.default_instance_id || null;
       setUserDefaultInstanceId(defaultId);
 
@@ -236,6 +241,7 @@ export function WhatsAppInbox() {
     };
     applyDefault();
   }, [user, instances, defaultInstanceApplied]);
+
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedPhone, setSelectedPhone] = usePageState<string | null>('wa_selected_phone', null);
