@@ -21,6 +21,10 @@ function gwHeaders(extra: Record<string, string> = {}) {
   };
 }
 
+function driveQ(value: string): string {
+  return value.replace(/['\\]/g, "");
+}
+
 async function getOrCreateRootFolder(): Promise<string> {
   // Search by name
   const q = encodeURIComponent(`name='${ROOT_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
@@ -740,12 +744,33 @@ Deno.serve(async (req) => {
     if (action === "upload_url_typed") {
       // Sobe um arquivo de uma URL pública para uma SUBPASTA por tipo de documento dentro da pasta do lead.
       // Body: { lead_id, lead_name, file_name, source_url, mime_type?, document_type }
-      const { file_name, source_url, mime_type, document_type } = body;
+      const { file_name, source_url, mime_type, document_type, dedup_key, content_hash } = body;
       if (!file_name || !source_url) throw new Error("file_name and source_url required");
       if (!document_type) throw new Error("document_type required");
 
       const leadFolderId = await getOrCreateLeadFolder(lead_id, lead_name, ext);
       const subFolderId = await getOrCreateSubfolder(leadFolderId, document_type);
+
+      for (const [key, value] of [["dedup_key", dedup_key], ["content_hash", content_hash]] as const) {
+        if (!value) continue;
+        const q = encodeURIComponent(
+          `'${subFolderId}' in parents and trashed = false and appProperties has { key='${key}' and value='${driveQ(String(value))}' }`,
+        );
+        const listRes = await fetch(
+          `${GATEWAY}/files?q=${q}&fields=files(id,name,size,mimeType,webViewLink,modifiedTime)&pageSize=1`,
+          { headers: gwHeaders() },
+        );
+        if (listRes.ok) {
+          const listJson = await listRes.json();
+          const existing = listJson.files?.[0];
+          if (existing) {
+            return new Response(
+              JSON.stringify({ ok: true, file: existing, deduped: true, lead_folder_id: leadFolderId, subfolder_id: subFolderId }),
+              { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+            );
+          }
+        }
+      }
 
       const dl = await fetch(source_url);
       if (!dl.ok) throw new Error(`source download failed [${dl.status}]: ${source_url}`);
@@ -754,7 +779,7 @@ Deno.serve(async (req) => {
 
       // --- Dedup: skip re-upload if same name+size already exists in subfolder ---
       try {
-        const escapedName = file_name.replace(/'/g, "\\'");
+        const escapedName = driveQ(file_name);
         const q = encodeURIComponent(`name = '${escapedName}' and '${subFolderId}' in parents and trashed = false`);
         const listRes = await fetch(
           `${GATEWAY}/files?q=${q}&fields=files(id,name,size,mimeType,webViewLink,modifiedTime)&pageSize=10`,
@@ -777,7 +802,14 @@ Deno.serve(async (req) => {
       }
 
       const boundary = "----lovable-boundary-" + crypto.randomUUID();
-      const metadata = JSON.stringify({ name: file_name, parents: [subFolderId] });
+      const appProperties: Record<string, string> = {};
+      if (dedup_key) appProperties.dedup_key = String(dedup_key);
+      if (content_hash) appProperties.content_hash = String(content_hash);
+      const metadata = JSON.stringify({
+        name: file_name,
+        parents: [subFolderId],
+        ...(Object.keys(appProperties).length ? { appProperties } : {}),
+      });
       const head = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n--${boundary}\r\nContent-Type: ${finalMime}\r\n\r\n`;
       const tail = `\r\n--${boundary}--`;
       const headBytes = new TextEncoder().encode(head);
