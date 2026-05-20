@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { supabase } from '@/integrations/supabase/client';
 import { db } from '@/integrations/supabase';
-import { externalSupabase } from '@/integrations/supabase/external-client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -251,14 +250,15 @@ export function TeamManagement() {
             }))
           );
         }
-        await db.from('whatsapp_instance_users').delete().eq('user_id', userId);
-        if (profile.whatsapp_instance_ids.length > 0) {
-          await db.from('whatsapp_instance_users').insert(
-            profile.whatsapp_instance_ids.map((instId: string) => ({
-              user_id: userId,
-              instance_id: instId,
-            }))
-          );
+        const { data: accessResp, error: accessErr } = await supabase.functions.invoke('admin-whatsapp-instance', {
+          body: {
+            action: 'replace_user_instance_accesses',
+            user_id: userId,
+            instance_ids: profile.whatsapp_instance_ids,
+          },
+        });
+        if (accessErr || (accessResp as any)?.success === false) {
+          throw accessErr || new Error((accessResp as any)?.error || 'Erro ao aplicar acessos do WhatsApp');
         }
       }
 
