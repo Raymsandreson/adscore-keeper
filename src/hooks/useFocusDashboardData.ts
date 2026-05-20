@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { db, authClient } from '@/integrations/supabase';
 import { useAuthContext } from '@/contexts/AuthContext';
+import { usePageState } from '@/hooks/usePageState';
 import { startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear, subDays } from 'date-fns';
 
 export type FocusPeriod = 'yesterday' | 'today' | 'week' | 'month' | 'year' | 'custom';
