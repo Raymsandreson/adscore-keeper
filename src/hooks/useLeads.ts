@@ -123,7 +123,7 @@ export interface Lead {
   lead_status_changed_at: string | null;
   cac: number | null;
   inviavel_date: string | null;
-  cancelled_date: string | null;
+  cancelled_date?: string | null;
 }
 
 export interface LeadStats {
