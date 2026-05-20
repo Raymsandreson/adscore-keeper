@@ -24,6 +24,7 @@ interface LeadInfo {
   completed_checklist_ids: string[];
   checkedItemIds: string[]; // individual item IDs that are checked across all instances
   lead_name?: string | null;
+  lead_status?: string | null;
 }
 
 interface Props {
