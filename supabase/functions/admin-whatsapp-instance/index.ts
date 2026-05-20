@@ -52,11 +52,14 @@ Deno.serve(async (req) => {
 
     // 2) Aplicar operação no Externo com service role
     const body = await req.json().catch(() => ({}));
-    const { action, instance_id, is_active, payload } = body as {
-      action?: "delete" | "set_active" | "create" | "update";
+    const { action, instance_id, is_active, payload, operations, user_id, instance_ids } = body as {
+      action?: "delete" | "set_active" | "create" | "update" | "list_instance_accesses" | "set_instance_accesses" | "replace_user_instance_accesses";
       instance_id?: string;
       is_active?: boolean;
       payload?: Record<string, any>;
+      operations?: Array<{ user_id?: string; cloud_user_id?: string; instance_id?: string; grant?: boolean }>;
+      user_id?: string;
+      instance_ids?: string[];
     };
     if (!action) {
       return json({ success: false, error: "missing action" });
@@ -70,6 +73,86 @@ Deno.serve(async (req) => {
     // vivem no Cloud. Toda escrita em whatsapp_instances precisa espelhar lá pra não sumir do app.
     const SUPABASE_SR = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const cloudAdmin = createClient(SUPABASE_URL, SUPABASE_SR);
+
+    const mapAccessRowsToCloud = async (rows: any[]) => {
+      const { data: mappings } = await ext
+        .from("auth_uuid_mapping")
+        .select("cloud_uuid, ext_uuid");
+      const reverse = new Map((mappings || []).map((m: any) => [m.ext_uuid, m.cloud_uuid]));
+      return rows.map((row) => ({
+        id: row.id,
+        instance_id: row.instance_id,
+        user_id: reverse.get(row.user_id) || row.user_id,
+        external_user_id: row.user_id,
+      }));
+    };
+
+    if (action === "list_instance_accesses") {
+      const { data, error } = await ext
+        .from("whatsapp_instance_users")
+        .select("id, instance_id, user_id")
+        .order("created_at", { ascending: false });
+      if (error) return json({ success: false, error: error.message });
+      return json({ success: true, access_rows: await mapAccessRowsToCloud(data || []) });
+    }
+
+    if (action === "set_instance_accesses") {
+      const ops = Array.isArray(operations) ? operations : [];
+      if (!ops.length) return json({ success: false, error: "operations required" });
+      if (ops.length > 500) return json({ success: false, error: "too many operations" });
+
+      const grantedRows: any[] = [];
+      let revoked = 0;
+      for (const op of ops) {
+        const cloudUserId = op.cloud_user_id || op.user_id;
+        if (!cloudUserId || !op.instance_id || typeof op.grant !== "boolean") {
+          return json({ success: false, error: "invalid operation" });
+        }
+        const extUserId = await remapToExternal(ext, cloudUserId);
+        if (!extUserId) return json({ success: false, error: "user mapping not found" });
+
+        if (op.grant) {
+          const { data, error } = await ext
+            .from("whatsapp_instance_users")
+            .upsert({ user_id: extUserId, instance_id: op.instance_id }, { onConflict: "instance_id,user_id" })
+            .select("id, instance_id, user_id")
+            .single();
+          if (error) return json({ success: false, error: error.message });
+          if (data) grantedRows.push(data);
+        } else {
+          const { error, count } = await ext
+            .from("whatsapp_instance_users")
+            .delete({ count: "exact" })
+            .eq("user_id", extUserId)
+            .eq("instance_id", op.instance_id);
+          if (error) return json({ success: false, error: error.message });
+          revoked += count || 0;
+        }
+      }
+
+      return json({ success: true, revoked, access_rows: await mapAccessRowsToCloud(grantedRows) });
+    }
+
+    if (action === "replace_user_instance_accesses") {
+      if (!user_id || !Array.isArray(instance_ids)) {
+        return json({ success: false, error: "user_id and instance_ids required" });
+      }
+      if (instance_ids.length > 500) return json({ success: false, error: "too many instances" });
+      const extUserId = await remapToExternal(ext, user_id);
+      if (!extUserId) return json({ success: false, error: "user mapping not found" });
+
+      const { error: delErr } = await ext.from("whatsapp_instance_users").delete().eq("user_id", extUserId);
+      if (delErr) return json({ success: false, error: delErr.message });
+      if (instance_ids.length === 0) return json({ success: true, access_rows: [] });
+
+      const rows = Array.from(new Set(instance_ids)).map((id) => ({ user_id: extUserId, instance_id: id }));
+      const { data, error } = await ext
+        .from("whatsapp_instance_users")
+        .insert(rows)
+        .select("id, instance_id, user_id");
+      if (error) return json({ success: false, error: error.message });
+      return json({ success: true, access_rows: await mapAccessRowsToCloud(data || []) });
+    }
 
     if (action === "delete") {
       const { error, count } = await ext
