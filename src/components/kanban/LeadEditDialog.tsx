@@ -1350,13 +1350,27 @@ ${scrapeData.content || ''}
   const Footer = mode === 'sheet' ? SheetFooter : DialogFooter;
 
   const contentClassName = mode === 'sheet'
-    ? 'sm:max-w-lg flex flex-col h-full overflow-y-auto'
+    ? 'flex flex-col h-full overflow-y-auto !max-w-none'
     : 'max-w-2xl max-h-[90vh] flex flex-col';
+
+  const sheetContentStyle = mode === 'sheet'
+    ? { width: `${sheetWidth}px`, maxWidth: '95vw' }
+    : undefined;
 
   return (
     <>
     <Wrapper open={open} onOpenChange={onOpenChange}>
-      <Content className={contentClassName} {...(mode === 'sheet' ? { side: 'right' as const } : {})}>
+      <Content className={contentClassName} style={sheetContentStyle} {...(mode === 'sheet' ? { side: 'right' as const } : {})}>
+        {mode === 'sheet' && (
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            title="Arraste para redimensionar"
+            onMouseDown={startResize}
+            onDoubleClick={() => { setSheetWidth(512); localStorage.setItem('leadEditDialog.sheetWidth', '512'); }}
+            className="absolute left-0 top-0 h-full w-1.5 cursor-col-resize bg-transparent hover:bg-primary/40 active:bg-primary/60 transition-colors z-30"
+          />
+        )}
         <Header>
           <div className="flex items-center justify-between">
             <Title className="flex items-center gap-2">
