@@ -1412,6 +1412,33 @@ ${scrapeData.content || ''}
             </Title>
             {currentLead && (
               <div className="flex items-center gap-1">
+                {autoDrive.total > 0 && (
+                  <Badge
+                    variant="outline"
+                    className={cn(
+                      "text-[10px] gap-1 px-2 py-0.5",
+                      autoDrive.running
+                        ? "border-blue-400 text-blue-700 bg-blue-50 dark:bg-blue-950/30"
+                        : autoDrive.done >= autoDrive.total
+                          ? "border-emerald-400 text-emerald-700 bg-emerald-50 dark:bg-emerald-950/30"
+                          : "border-amber-400 text-amber-700 bg-amber-50 dark:bg-amber-950/30"
+                    )}
+                    title={
+                      autoDrive.running
+                        ? 'Enviando mídias do grupo para o Google Drive…'
+                        : autoDrive.done >= autoDrive.total
+                          ? 'Todas as mídias do grupo estão no Drive'
+                          : `${autoDrive.total - autoDrive.done} mídia(s) ainda fora do Drive`
+                    }
+                  >
+                    {autoDrive.running ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <Sparkles className="h-3 w-3" />
+                    )}
+                    Drive {autoDrive.done}/{autoDrive.total}
+                  </Badge>
+                )}
                 <Button
                   variant="outline"
                   size="sm"
