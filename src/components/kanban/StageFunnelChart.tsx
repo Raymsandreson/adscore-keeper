@@ -23,7 +23,7 @@ interface StageFunnelChartProps {
   conversionAlerts?: ConversionAlert[];
 }
 
-type StatusFilter = 'closed' | 'refused' | 'inviavel' | 'blocked' | 'active' | 'stage';
+type StatusFilter = 'closed' | 'refused' | 'inviavel' | 'cancelled' | 'blocked' | 'active' | 'stage';
 
 export function StageFunnelChart({ board, leadsPerStage, conversionAlerts = [] }: StageFunnelChartProps) {
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -40,12 +40,13 @@ export function StageFunnelChart({ board, leadsPerStage, conversionAlerts = [] }
         .select('lead_status, is_blocked')
         .eq('board_id', board.id);
       if (error) throw error;
-      const counts = { closed: 0, refused: 0, inviavel: 0, blocked: 0, active: 0 };
+      const counts = { closed: 0, refused: 0, inviavel: 0, cancelled: 0, blocked: 0, active: 0 };
       for (const l of data || []) {
         if ((l as any).is_blocked) { counts.blocked++; continue; }
         if (l.lead_status === 'closed') counts.closed++;
         else if (l.lead_status === 'refused') counts.refused++;
         else if (l.lead_status === 'inviavel') counts.inviavel++;
+        else if ((l as any).lead_status === 'cancelled') counts.cancelled++;
         else if (l.lead_status === 'active' || !l.lead_status) counts.active++;
       }
       return counts;
@@ -143,6 +144,7 @@ export function StageFunnelChart({ board, leadsPerStage, conversionAlerts = [] }
     if (activeFilter === 'closed') return 'Leads Fechados';
     if (activeFilter === 'refused') return 'Leads Recusados';
     if (activeFilter === 'inviavel') return 'Leads Inviáveis';
+    if (activeFilter === 'cancelled') return 'Leads Cancelados';
     if (activeFilter === 'blocked') return 'Leads Bloqueados';
     if (activeFilter === 'active') return 'Leads Em Andamento';
     if (activeFilter === 'stage' && activeStageId) {
@@ -291,6 +293,16 @@ export function StageFunnelChart({ board, leadsPerStage, conversionAlerts = [] }
               <div className="text-[10px] text-muted-foreground">Inviáveis</div>
             </div>
             <div
+              className="p-2 rounded-md bg-purple-500/10 cursor-pointer hover:bg-purple-500/20 transition-colors"
+              onClick={() => openSheet('cancelled')}
+            >
+              <div className="flex items-center justify-center gap-1">
+                <Ban className="h-3.5 w-3.5 text-purple-600" />
+                <span className="text-lg font-bold text-purple-600">{statusCounts?.cancelled || 0}</span>
+              </div>
+              <div className="text-[10px] text-muted-foreground">Cancelamentos</div>
+            </div>
+            <div
               className="p-2 rounded-md bg-muted cursor-pointer hover:bg-muted/80 transition-colors"
               onClick={() => openSheet('blocked')}
             >
@@ -330,6 +342,7 @@ export function StageFunnelChart({ board, leadsPerStage, conversionAlerts = [] }
                       {lead.lead_status === 'closed' ? 'Fechado' :
                        lead.lead_status === 'refused' ? 'Recusado' :
                        lead.lead_status === 'inviavel' ? 'Inviável' :
+                       (lead as any).lead_status === 'cancelled' ? 'Cancelamento' :
                        'Ativo'}
                     </Badge>
                   </div>

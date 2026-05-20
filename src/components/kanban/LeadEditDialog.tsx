@@ -237,7 +237,7 @@ export function LeadEditDialog({
   const [groupSearchInstance, setGroupSearchInstance] = useState<string | undefined>(undefined);
   const [clientClassification, setClientClassification] = useState<string>('');
   const [expectedBirthDate, setExpectedBirthDate] = useState('');
-  const [leadOutcome, setLeadOutcome] = useState<'' | 'closed' | 'refused' | 'in_progress' | 'inviavel'>('');
+  const [leadOutcome, setLeadOutcome] = useState<'' | 'closed' | 'refused' | 'in_progress' | 'inviavel' | 'cancelled'>('');
   const [leadOutcomeDate, setLeadOutcomeDate] = useState('');
   const [leadOutcomeReason, setLeadOutcomeReason] = useState('');
   const [isGeneratingReason, setIsGeneratingReason] = useState(false);
@@ -382,6 +382,9 @@ export function LeadEditDialog({
     if (leadStatus === 'closed' || leadAny.became_client_date) {
       setLeadOutcome('closed');
       setLeadOutcomeDate(leadAny.became_client_date || '');
+    } else if (leadStatus === 'cancelled' || leadAny.cancelled_date) {
+      setLeadOutcome('cancelled');
+      setLeadOutcomeDate(leadAny.cancelled_date || '');
     } else if (leadStatus === 'inviavel' || leadAny.inviavel_date) {
       setLeadOutcome('inviavel');
       setLeadOutcomeDate(leadAny.inviavel_date || '');
@@ -1130,7 +1133,7 @@ ${scrapeData.content || ''}
           if (leadOutcome === 'closed') {
             const closedId = findClosedStageId(stages);
             if (closedId && closedId !== currentStageId) return { status: closedId };
-          } else if (leadOutcome === 'refused' || leadOutcome === 'inviavel') {
+          } else if (leadOutcome === 'refused' || leadOutcome === 'inviavel' || leadOutcome === 'cancelled') {
             const refusedId = findRefusedStageId(stages);
             if (refusedId && refusedId !== currentStageId) return { status: refusedId };
           }
@@ -1141,6 +1144,7 @@ ${scrapeData.content || ''}
         classification_date: leadOutcome === 'refused' ? (normalizeDateInput(leadOutcomeDate) || new Date().toISOString().slice(0, 10)) : null,
         in_progress_date: leadOutcome === 'in_progress' ? (normalizeDateInput(leadOutcomeDate) || new Date().toISOString().slice(0, 10)) : null,
         inviavel_date: leadOutcome === 'inviavel' ? (normalizeDateInput(leadOutcomeDate) || new Date().toISOString().slice(0, 10)) : null,
+        cancelled_date: leadOutcome === 'cancelled' ? (normalizeDateInput(leadOutcomeDate) || new Date().toISOString().slice(0, 10)) : null,
         lead_status_reason: leadOutcomeReason || null,
         case_number: caseNumber || null,
       } as any);
@@ -1152,7 +1156,7 @@ ${scrapeData.content || ''}
        }
 
       // Save status history if outcome changed
-       const previousOutcome = (currentLead as any).became_client_date ? 'closed' : (currentLead as any).inviavel_date ? 'inviavel' : (currentLead as any).classification_date ? 'refused' : (currentLead as any).in_progress_date ? 'in_progress' : 'active';
+       const previousOutcome = (currentLead as any).became_client_date ? 'closed' : (currentLead as any).cancelled_date ? 'cancelled' : (currentLead as any).inviavel_date ? 'inviavel' : (currentLead as any).classification_date ? 'refused' : (currentLead as any).in_progress_date ? 'in_progress' : 'active';
        if (leadOutcome && leadOutcome !== previousOutcome) {
          const { data: { user } } = await supabase.auth.getUser();
          await supabase.from('lead_status_history' as any).insert({
@@ -1293,7 +1297,6 @@ ${scrapeData.content || ''}
          }, 'refused');
        } else if (leadOutcome === 'inviavel') {
          await externalSupabase.from('leads').update({ lead_status: 'inviavel' } as any).eq('id', currentLead.id);
-         // Send conversion event to Meta CAPI
          sendLeadConversionEvent({
            id: currentLead.id,
            lead_name: currentLead.lead_name,
@@ -1301,12 +1304,21 @@ ${scrapeData.content || ''}
            ctwa_context: (currentLead as any).ctwa_context,
            campaign_id: (currentLead as any).campaign_id,
          }, 'inviavel');
+       } else if (leadOutcome === 'cancelled') {
+         await externalSupabase.from('leads').update({ lead_status: 'cancelled' } as any).eq('id', currentLead.id);
+         sendLeadConversionEvent({
+           id: currentLead.id,
+           lead_name: currentLead.lead_name,
+           lead_phone: (currentLead as any).lead_phone,
+           ctwa_context: (currentLead as any).ctwa_context,
+           campaign_id: (currentLead as any).campaign_id,
+         }, 'cancelled');
        } else if (
          (currentLead as any).became_client_date ||
          (currentLead as any).inviavel_date ||
-         ['closed', 'refused', 'inviavel'].includes((currentLead as any).lead_status)
+         (currentLead as any).cancelled_date ||
+         ['closed', 'refused', 'inviavel', 'cancelled'].includes((currentLead as any).lead_status)
        ) {
-         // Was closed/refused/inviável, now reopened (or status drifted)
          await externalSupabase.from('leads').update({ lead_status: 'active' } as any).eq('id', currentLead.id);
        }
 
@@ -2279,12 +2291,24 @@ ${scrapeData.content || ''}
                     >
                       <AlertTriangle className="h-4 w-4 mr-1" /> Inviável
                     </Button>
+                    <Button
+                      type="button"
+                      variant={leadOutcome === 'cancelled' ? 'default' : 'outline'}
+                      size="sm"
+                      className={`flex-1 min-w-[100px] ${leadOutcome === 'cancelled' ? 'bg-purple-600 hover:bg-purple-700 text-white' : ''}`}
+                      onClick={() => {
+                        if (leadOutcome === 'cancelled') { setLeadOutcome(''); setLeadOutcomeDate(''); }
+                        else { setLeadOutcome('cancelled'); if (!leadOutcomeDate) setLeadOutcomeDate(new Date().toISOString().slice(0, 10)); }
+                      }}
+                    >
+                      <Ban className="h-4 w-4 mr-1" /> Cancelamento
+                    </Button>
                   </div>
                   {leadOutcome && (
                     <>
                       <div>
                         <Label className="text-xs">
-                          {leadOutcome === 'closed' ? 'Data de Fechamento' : leadOutcome === 'refused' ? 'Data da Recusa' : leadOutcome === 'inviavel' ? 'Data da Inviabilidade' : 'Data de Início'}
+                          {leadOutcome === 'closed' ? 'Data de Fechamento' : leadOutcome === 'refused' ? 'Data da Recusa' : leadOutcome === 'inviavel' ? 'Data da Inviabilidade' : leadOutcome === 'cancelled' ? 'Data do Cancelamento' : 'Data de Início'}
                         </Label>
                         <Input type="date" value={leadOutcomeDate} onChange={(e) => setLeadOutcomeDate(e.target.value)} className="mt-1" />
                       </div>
@@ -2315,7 +2339,7 @@ ${scrapeData.content || ''}
                                 const leadInstanceName = instMsg?.[0]?.instance_name;
                                 if (!leadInstanceName) { toast.error('Nenhuma conversa encontrada'); return; }
 
-                                const statusLabel = leadOutcome === 'inviavel' ? 'INVIÁVEL' : leadOutcome === 'refused' ? 'RECUSADO' : leadOutcome === 'closed' ? 'FECHADO' : 'EM ANDAMENTO';
+                                const statusLabel = leadOutcome === 'inviavel' ? 'INVIÁVEL' : leadOutcome === 'refused' ? 'RECUSADO' : leadOutcome === 'closed' ? 'FECHADO' : leadOutcome === 'cancelled' ? 'CANCELAMENTO' : 'EM ANDAMENTO';
                                 const { data, error } = await cloudFunctions.invoke('extract-conversation-data', {
                                   body: {
                                     phone,
@@ -2345,7 +2369,7 @@ ${scrapeData.content || ''}
                           </Button>
                         </div>
                         <Input 
-                          placeholder={leadOutcome === 'inviavel' ? 'Ex: Prazo prescrito, sem direito...' : leadOutcome === 'refused' ? 'Ex: Não quis prosseguir...' : 'Motivo (opcional)'}
+                          placeholder={leadOutcome === 'inviavel' ? 'Ex: Prazo prescrito, sem direito...' : leadOutcome === 'refused' ? 'Ex: Não quis prosseguir...' : leadOutcome === 'cancelled' ? 'Ex: Cliente desistiu, cancelou contrato...' : 'Motivo (opcional)'}
                           value={leadOutcomeReason}
                           onChange={(e) => setLeadOutcomeReason(e.target.value)}
                           className="mt-1"

@@ -10,12 +10,13 @@
  */
 import { supabase } from "@/integrations/supabase/client";
 
-type LeadStatus = 'closed' | 'refused' | 'inviavel';
+type LeadStatus = 'closed' | 'refused' | 'inviavel' | 'cancelled';
 
 const STATUS_EVENT_MAP: Record<LeadStatus, { event_name: string; content_category: string }> = {
   closed: { event_name: 'Purchase', content_category: 'lead_converted' },
   refused: { event_name: 'Lead', content_category: 'lead_refused' },
   inviavel: { event_name: 'Lead', content_category: 'lead_unqualified' },
+  cancelled: { event_name: 'Lead', content_category: 'lead_cancelled' },
 };
 
 export async function sendLeadConversionEvent(lead: {

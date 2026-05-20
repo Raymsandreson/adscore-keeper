@@ -98,6 +98,7 @@ export function useMonitorFilters(conversations: ConversationDetail[], boards: B
       fechado: base.filter(c => getCaseStatus(c) === 'fechado').length,
       recusado: base.filter(c => getCaseStatus(c) === 'recusado').length,
       inviavel: base.filter(c => getCaseStatus(c) === 'inviavel').length,
+      cancelado: base.filter(c => getCaseStatus(c) === 'cancelado').length,
       bloqueado: base.filter(c => getCaseStatus(c) === 'bloqueado').length,
     };
   }, [conversations, agentFilter, effectiveInstanceFilter, boardFilter, campaignFilter, acolhedorFilter, effectiveAcolhedorFromUser]);
