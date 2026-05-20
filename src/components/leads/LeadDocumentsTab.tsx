@@ -601,6 +601,60 @@ export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId, cu
         whatsappGroupId={whatsappGroupId || null}
         onImported={load}
       />
+
+      <Dialog open={mergeOpen} onOpenChange={(o) => !merging && setMergeOpen(o)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Combine className="h-4 w-4" /> Agrupar em um PDF único
+            </DialogTitle>
+            <DialogDescription>
+              {selectedIds.length} arquivo(s) serão unidos na ordem de seleção. PDFs, JPG e PNG são suportados.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Nome do PDF</label>
+              <Input
+                value={mergeName}
+                onChange={(e) => setMergeName(e.target.value)}
+                placeholder="Ex.: RG — João Silva — PREV 597"
+                disabled={merging}
+              />
+              <div className="text-[11px] text-muted-foreground mt-1">.pdf será adicionado automaticamente.</div>
+            </div>
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <Checkbox
+                checked={mergeDeleteOriginals}
+                onCheckedChange={(v) => setMergeDeleteOriginals(v === true)}
+                disabled={merging}
+              />
+              Apagar os arquivos originais após agrupar
+            </label>
+            <div className="max-h-40 overflow-auto rounded border p-2 space-y-1">
+              {selectedIds.map((id, i) => {
+                const f = files.find((x) => x.id === id);
+                if (!f) return null;
+                return (
+                  <div key={id} className="text-xs flex items-center gap-2">
+                    <span className="font-mono opacity-60 w-5 text-right">{i + 1}.</span>
+                    <span className="truncate">{f.name}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" size="sm" onClick={() => setMergeOpen(false)} disabled={merging}>
+              Cancelar
+            </Button>
+            <Button size="sm" onClick={handleMerge} disabled={merging || selectedIds.length < 2}>
+              {merging ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Combine className="h-3.5 w-3.5 mr-1" />}
+              Agrupar
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
