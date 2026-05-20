@@ -182,6 +182,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         : '';
       const baseName = (msg.message_text && msg.message_text.length < 120 ? msg.message_text : urlBase || `whatsapp_${msg.id}`).replace(/[\\/:*?"<>|]/g, '_');
       const fileName = hasExt ? baseName : `${baseName}${extFromMime}`;
+      const dedupSourceId = msg.external_message_id || msg.id;
 
       const { data: upData, error: upErr } = await supabase.functions.invoke('lead-drive', {
         body: {
@@ -191,6 +192,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
           file_name: fileName,
           source_url: msg.media_url,
           mime_type: mime || undefined,
+          dedup_key: dedupSourceId ? `wa:${leadId}:${dedupSourceId}` : undefined,
         },
       });
       if (upErr) throw upErr;
@@ -348,7 +350,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const [aiNamingFile, setAiNamingFile] = useState(false);
   const [batchUploading, setBatchUploading] = useState(false);
   const [pendingBatchAfterLead, setPendingBatchAfterLead] = useState(false);
-  const [batchDriveOrder, setBatchDriveOrder] = useState<Array<{ id: string; media_url: string; media_type: string; message_text: string; message_type: string }>>([]);
+  const [batchDriveOrder, setBatchDriveOrder] = useState<Array<{ id: string; media_url: string; media_type: string; message_text: string; message_type: string; external_message_id?: string | null }>>([]);
   const [batchAnalysis, setBatchAnalysis] = useState<{ type?: string; title?: string; holder_name?: string | null; holder_cpf?: string | null; description?: string | null; pages_label?: string | null } | null>(null);
 
   // Long-press p/ ativar seleção (mobile) — usa um único timer compartilhado
@@ -435,7 +437,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     setBatchFileName(`Documentos ${today}`.replace(/[\\/:*?"<>|]/g, '_'));
     setBatchDriveMode('merge');
     setBatchAnalysis(null);
-    setBatchDriveOrder(selected.map((m: any) => ({ id: m.id, media_url: m.media_url, media_type: m.media_type || '', message_text: m.message_text || '', message_type: m.message_type })));
+    setBatchDriveOrder(selected.map((m: any) => ({ id: m.id, media_url: m.media_url, media_type: m.media_type || '', message_text: m.message_text || '', message_type: m.message_type, external_message_id: m.external_message_id || null })));
     setShowBatchDriveDialog(true);
     // Dispara IA p/ analisar conteúdo + sugerir título
     void analyzeBatchWithAi(selected);
@@ -505,8 +507,9 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
               : mime.startsWith('audio/') ? '.ogg' : '';
             const baseName = (m.message_text && m.message_text.length < 100 ? m.message_text : urlBase || `whatsapp_${m.id}`).replace(/[\\/:*?"<>|]/g, '_');
             const fileName = hasExt ? baseName : `${baseName}${extFromMime}`;
+            const dedupSourceId = m.external_message_id || m.id;
             const { data, error } = await supabase.functions.invoke('lead-drive', {
-              body: { action: 'upload_url', lead_id: leadId, lead_name: leadName, file_name: fileName, source_url: m.media_url, mime_type: mime || undefined },
+              body: { action: 'upload_url', lead_id: leadId, lead_name: leadName, file_name: fileName, source_url: m.media_url, mime_type: mime || undefined, dedup_key: dedupSourceId ? `wa:${leadId}:${dedupSourceId}` : undefined },
             });
             if (error || (data as any)?.error) throw new Error((data as any)?.error || error?.message);
             okCount++;

@@ -25,6 +25,14 @@ function driveQ(value: string): string {
   return value.replace(/['\\]/g, "");
 }
 
+async function sha256Hex(bytes: Uint8Array): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
+  );
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 async function getOrCreateRootFolder(): Promise<string> {
   // Search by name
   const q = encodeURIComponent(`name='${ROOT_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
@@ -216,8 +224,16 @@ Deno.serve(async (req) => {
       );
       if (!res.ok) throw new Error(`drive list failed [${res.status}]: ${await res.text()}`);
       const data = await res.json();
+      const seenFiles = new Set<string>();
+      const files = (data.files || []).filter((file: any) => {
+        const key = `${file.name || ""}::${file.size || ""}`;
+        if (!file.size || !file.name) return true;
+        if (seenFiles.has(key)) return false;
+        seenFiles.add(key);
+        return true;
+      });
       return new Response(
-        JSON.stringify({ folder_id: folderId, folder_url: `https://drive.google.com/drive/folders/${folderId}`, files: data.files || [] }),
+        JSON.stringify({ folder_id: folderId, folder_url: `https://drive.google.com/drive/folders/${folderId}`, files }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
@@ -259,7 +275,7 @@ Deno.serve(async (req) => {
 
     if (action === "upload_url") {
       // Baixa o arquivo de uma URL pública e sobe pro Drive na pasta do lead
-      const { file_name, source_url, mime_type } = body;
+      const { file_name, source_url, mime_type, dedup_key, content_hash } = body;
       if (!file_name || !source_url) throw new Error("file_name and source_url required");
       const folderId = await getOrCreateLeadFolder(lead_id, lead_name, ext);
 
@@ -267,9 +283,33 @@ Deno.serve(async (req) => {
       if (!dl.ok) throw new Error(`source download failed [${dl.status}]: ${source_url}`);
       const binary = new Uint8Array(await dl.arrayBuffer());
       const finalMime = mime_type || dl.headers.get("content-type") || "application/octet-stream";
+      const finalHash = content_hash || await sha256Hex(binary);
+
+      const dedupQueries = [
+        ...(dedup_key ? [`appProperties has { key='dedup_key' and value='${driveQ(String(dedup_key))}' }`] : []),
+        ...(finalHash ? [`appProperties has { key='content_hash' and value='${driveQ(String(finalHash))}' }`] : []),
+        `name = '${driveQ(file_name)}'`,
+      ];
+      for (const condition of dedupQueries) {
+        const q = encodeURIComponent(`'${folderId}' in parents and trashed = false and ${condition}`);
+        const listRes = await fetch(`${GATEWAY}/files?q=${q}&fields=files(id,name,size,mimeType,webViewLink,modifiedTime)&pageSize=20`, { headers: gwHeaders() });
+        if (!listRes.ok) continue;
+        const listJson = await listRes.json();
+        const existing = (listJson.files || []).find((f: any) =>
+          condition.startsWith("name =") ? String(f.size || "") === String(binary.length) : true,
+        );
+        if (existing) {
+          return new Response(
+            JSON.stringify({ ok: true, file: existing, folder_id: folderId, deduped: true }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
+        }
+      }
 
       const boundary = "----lovable-boundary-" + crypto.randomUUID();
-      const metadata = JSON.stringify({ name: file_name, parents: [folderId] });
+      const appProperties: Record<string, string> = { content_hash: String(finalHash) };
+      if (dedup_key) appProperties.dedup_key = String(dedup_key);
+      const metadata = JSON.stringify({ name: file_name, parents: [folderId], appProperties });
       const head = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n--${boundary}\r\nContent-Type: ${finalMime}\r\n\r\n`;
       const tail = `\r\n--${boundary}--`;
       const headBytes = new TextEncoder().encode(head);

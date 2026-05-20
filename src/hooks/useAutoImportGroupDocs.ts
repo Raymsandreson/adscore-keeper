@@ -31,9 +31,9 @@ export function useAutoImportGroupDocs(
   });
 
   useEffect(() => {
-    if (!leadId || !leadName || !whatsappGroupId) return;
+    if (!leadId || !leadName) return;
 
-    const key = `auto-import-docs:${leadId}`;
+    const key = `auto-import-docs:v2:${leadId}`;
     if (sessionStorage.getItem(key)) return;
     sessionStorage.setItem(key, '1');
 
@@ -42,22 +42,27 @@ export function useAutoImportGroupDocs(
     (async () => {
       try {
         await ensureExternalSession();
-        const { data, error } = await externalSupabase
+        let query = externalSupabase
           .from('whatsapp_messages')
           .select('external_message_id, message_type, media_url, created_at')
-          .eq('phone', whatsappGroupId)
           .in('message_type', ['image', 'document', 'video', 'audio'])
           .not('media_url', 'is', null)
           .order('created_at', { ascending: false })
           .limit(200);
 
+        query = whatsappGroupId
+          ? query.or(`phone.eq.${whatsappGroupId},lead_id.eq.${leadId}`)
+          : query.eq('lead_id', leadId);
+
+        const { data, error } = await query;
+
         if (cancelled || error || !data?.length) return;
 
         const documents = data
           .map((m: any) => {
-            const last = (m.external_message_id || '').slice(-32);
-            if (!last) return null;
-            return { message_id: last, document_type: 'Outro' };
+            const messageId = String(m.external_message_id || '').trim();
+            if (!messageId) return null;
+            return { message_id: messageId, document_type: 'Outro' };
           })
           .filter(Boolean);
 
