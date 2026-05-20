@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useEffect } from 'react';
 import { CheckCircle2, Pencil, Trash2, X } from 'lucide-react';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -30,6 +30,12 @@ export function ActivityCreatedDialog({ open, onOpenChange, title, onEdit, onDel
     () => CHURCHILL_QUOTES[Math.floor(Math.random() * CHURCHILL_QUOTES.length)],
     [open]
   );
+
+  useEffect(() => {
+    if (!open) return;
+    const t = setTimeout(() => onOpenChange(false), 5000);
+    return () => clearTimeout(t);
+  }, [open, onOpenChange]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
