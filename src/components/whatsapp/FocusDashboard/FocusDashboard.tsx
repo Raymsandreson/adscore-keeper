@@ -53,90 +53,56 @@ export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpen
   }, [user, data.scope, teams]);
 
   if (compact) {
+    const kpiCards = [
+      { label: 'Leads', value: data.kpis.leadsReceived, icon: UserIcon, tone: 'bg-blue-50 dark:bg-blue-950/30 border-blue-200/60 dark:border-blue-900/40 text-blue-700 dark:text-blue-300' },
+      { label: 'Fechados', value: `${data.kpis.closed}/${data.kpis.goal}`, icon: Trophy, tone: 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200/60 dark:border-emerald-900/40 text-emerald-700 dark:text-emerald-300' },
+      { label: 'Conversão', value: `${data.kpis.conversion}%`, icon: Percent, tone: 'bg-violet-50 dark:bg-violet-950/30 border-violet-200/60 dark:border-violet-900/40 text-violet-700 dark:text-violet-300' },
+      { label: 'Inviáveis', value: data.kpis.unviable, icon: XCircle, tone: 'bg-amber-50 dark:bg-amber-950/30 border-amber-200/60 dark:border-amber-900/40 text-amber-700 dark:text-amber-300' },
+      { label: 'Docs', value: data.actions.missingDocs, icon: FileText, tone: 'bg-orange-50 dark:bg-orange-950/30 border-orange-200/60 dark:border-orange-900/40 text-orange-700 dark:text-orange-300', onClick: onOpenMissingDocs },
+      { label: 'Assinatura', value: data.actions.zapsignPending, icon: PenTool, tone: 'bg-stone-100 dark:bg-stone-900/40 border-stone-300/60 dark:border-stone-700/40 text-stone-700 dark:text-stone-300', onClick: onOpenZapsignPending },
+      { label: 'Sem resp.', value: data.actions.unansweredOwedByMe, icon: MessageCircleOff, tone: 'bg-rose-50 dark:bg-rose-950/30 border-rose-200/60 dark:border-rose-900/40 text-rose-700 dark:text-rose-300', onClick: onOpenUnanswered },
+    ];
+
     return (
       <Card className="rounded-none border-x-0 border-t-0 bg-card shrink-0">
-        <div className="px-2 py-1 flex items-center gap-2 flex-wrap">
-          {/* Identidade + período juntos */}
-          <div className="flex items-center gap-1.5 shrink-0">
-            <Avatar className="h-5 w-5 ring-1 ring-primary/20">
-              <AvatarFallback className="bg-primary/10 text-primary text-[9px] font-bold">{initials}</AvatarFallback>
-            </Avatar>
-            <span className="text-[11px] font-semibold truncate max-w-[110px]">{displayName.split(' · ')[0]}</span>
-          </div>
-
+        <div className="px-2 py-2 flex items-stretch gap-2 flex-wrap">
           <ToggleGroup
             type="single"
             value={data.period}
             onValueChange={(v) => { if (v) data.setPeriod(v as FocusPeriod); }}
-            className="border rounded shrink-0"
+            className="border rounded shrink-0 self-center"
           >
             {PERIOD_OPTIONS.map(p => (
-              <ToggleGroupItem key={p.key} value={p.key} className="text-[10px] h-5 px-1.5">{p.label}</ToggleGroupItem>
+              <ToggleGroupItem key={p.key} value={p.key} className="text-[11px] h-10 px-2">{p.label}</ToggleGroupItem>
             ))}
           </ToggleGroup>
 
-          <div className="h-4 w-px bg-border shrink-0" />
-
-          {/* KPIs inline */}
-          <div className="flex items-center gap-2 shrink-0 text-[11px]">
-            <span className="flex items-center gap-0.5" title="Leads recebidos">
-              <UserIcon className="h-3 w-3 text-blue-600" />
-              <b className="tabular-nums">{data.kpis.leadsReceived}</b>
-              <span className="text-muted-foreground">leads</span>
-            </span>
-            <span className="flex items-center gap-0.5" title="Fechados / Meta">
-              <Trophy className="h-3 w-3 text-green-600" />
-              <b className="tabular-nums">{data.kpis.closed}<span className="text-muted-foreground font-normal">/{data.kpis.goal}</span></b>
-            </span>
-            <span className="flex items-center gap-0.5" title="Conversão">
-              <Percent className="h-3 w-3 text-violet-600" />
-              <b className="tabular-nums">{data.kpis.conversion}%</b>
-            </span>
-            <span className="flex items-center gap-0.5" title="Inviáveis">
-              <XCircle className="h-3 w-3 text-amber-600" />
-              <b className="tabular-nums">{data.kpis.unviable}</b>
-            </span>
-          </div>
-
-          <div className="h-4 w-px bg-border shrink-0" />
-
-          {/* Ações Foco Agora — pílulas compactas */}
-          <div className="flex items-center gap-1 shrink-0">
-            <button
-              type="button"
-              onClick={onOpenMissingDocs}
-              title={data.actions.missingDocsHint}
-              className="h-6 px-1.5 rounded text-[10px] inline-flex items-center gap-1 bg-orange-600 hover:bg-orange-700 text-white"
-            >
-              <FileText className="h-3 w-3" />
-              <b className="tabular-nums">{data.actions.missingDocs}</b>
-              <span className="hidden sm:inline">docs</span>
-            </button>
-            <button
-              type="button"
-              onClick={onOpenZapsignPending}
-              title={data.actions.zapsignPendingHint}
-              className="h-6 px-1.5 rounded text-[10px] inline-flex items-center gap-1 bg-stone-700 hover:bg-stone-800 text-white"
-            >
-              <PenTool className="h-3 w-3" />
-              <b className="tabular-nums">{data.actions.zapsignPending}</b>
-              <span className="hidden sm:inline">assin.</span>
-            </button>
-            <button
-              type="button"
-              onClick={onOpenUnanswered}
-              title={`+30min ${data.actions.unansweredBuckets.plus30} · +4h ${data.actions.unansweredBuckets.plus4h} · +24h ${data.actions.unansweredBuckets.plus24h}`}
-              className="h-6 px-1.5 rounded text-[10px] inline-flex items-center gap-1 bg-rose-700 hover:bg-rose-800 text-white"
-            >
-              <MessageCircleOff className="h-3 w-3" />
-              <b className="tabular-nums">{data.actions.unansweredOwedByMe}</b>
-              <span className="hidden sm:inline">s/ resp.</span>
-            </button>
-          </div>
+          {kpiCards.map((k) => {
+            const Icon = k.icon;
+            return (
+              <button
+                key={k.label}
+                type="button"
+                onClick={k.onClick}
+                className={cn(
+                  'flex flex-col items-start justify-center gap-0.5 px-2.5 py-1.5 rounded-md border min-w-[78px] transition-colors',
+                  k.tone,
+                  k.onClick && 'hover:brightness-95 cursor-pointer',
+                  !k.onClick && 'cursor-default'
+                )}
+              >
+                <span className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide opacity-80">
+                  <Icon className="h-3 w-3" />
+                  {k.label}
+                </span>
+                <span className="text-base font-bold tabular-nums leading-none">{k.value}</span>
+              </button>
+            );
+          })}
 
           <div className="flex-1" />
-          <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={data.refetch} disabled={data.loading}>
-            <RefreshCw className={cn('h-3 w-3', data.loading && 'animate-spin')} />
+          <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0 self-center" onClick={data.refetch} disabled={data.loading}>
+            <RefreshCw className={cn('h-4 w-4', data.loading && 'animate-spin')} />
           </Button>
         </div>
       </Card>
