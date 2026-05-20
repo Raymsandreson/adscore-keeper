@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { db } from '@/integrations/supabase';
 import { externalSupabase } from '@/integrations/supabase/external-client';
+import { getMyAllowedInstanceIds } from '@/integrations/supabase/permissions';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Bot, MessageCircle, UserPlus, Zap, Phone, PhoneCall, FileText, Activity, ClipboardList } from 'lucide-react';
 import { format } from 'date-fns';
@@ -113,12 +114,12 @@ export function AIRealtimeFeed({ onEventClick }: AIRealtimeFeedProps) {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) { if (mounted) setLoading(false); return; }
 
-        const [permRes, convAgentsRes] = await Promise.all([
-          db.from('whatsapp_instance_users').select('instance_id').eq('user_id', user.id),
+        // Permissão de instâncias: Cloud (autoritativo). Dados: Externo.
+        const [instanceIds, convAgentsRes] = await Promise.all([
+          getMyAllowedInstanceIds(user.id),
           db.from('whatsapp_conversation_agents').select('phone, instance_name').eq('is_active', true),
         ]);
 
-        const instanceIds = (permRes.data || []).map((p: any) => p.instance_id);
         let allowedInstanceNames: string[] = [];
         if (instanceIds.length > 0) {
           const { data: instances } = await db.from('whatsapp_instances').select('instance_name').in('id', instanceIds);

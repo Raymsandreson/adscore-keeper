@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { db, authClient } from '@/integrations/supabase';
 import { ensureExternalSession } from '@/integrations/supabase/external-client';
 import { remapToExternal } from '@/integrations/supabase/uuid-remap';
+import { getMyAllowedInstanceIds } from '@/integrations/supabase/permissions';
 import {
   getConversationSummaries,
   getConversationMessages,
@@ -179,54 +180,11 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       }
 
       // Members: only see explicitly assigned instances.
-      // Fonte principal: Externo. Fallback: Cloud metadata espelhado.
-      // Motivo: o Externo pode estar com sessão anônima no browser; nesse caso
-      // a RLS esconde whatsapp_instance_users mesmo quando o Cloud user tem acesso.
-      const extUserId = await remapToExternal(user.id);
-      const lookupId = extUserId || user.id;
-      const [
-        { data: externalPermissions, error: externalPermissionsError },
-        { data: externalProfile, error: externalProfileError },
-        { data: cloudPermissions, error: cloudPermissionsError },
-        { data: cloudProfile, error: cloudProfileError },
-      ] = await Promise.all([
-        db
-          .from('whatsapp_instance_users')
-          .select('instance_id')
-          .eq('user_id', lookupId),
-        db
-          .from('profiles')
-          .select('default_instance_id')
-          .eq('user_id', lookupId)
-          .maybeSingle(),
-        authClient
-          .from('whatsapp_instance_users')
-          .select('instance_id')
-          .eq('user_id', user.id),
-        authClient
-          .from('profiles')
-          .select('default_instance_id')
-          .eq('user_id', user.id)
-          .maybeSingle(),
-      ]);
+      // Fonte AUTORITATIVA = Cloud (auth.uid() válido → RLS funciona).
+      // Externo é só pra buscar os DADOS das instâncias, filtradas pelos IDs do Cloud.
+      const allowedIds = await getMyAllowedInstanceIds(user.id);
 
-      if (externalPermissionsError && cloudPermissionsError) throw externalPermissionsError;
-      if (externalProfileError && cloudProfileError) throw externalProfileError;
-
-      const allowedIds = new Set([
-        ...((externalPermissions || []).map((permission) => permission.instance_id)),
-        ...((cloudPermissions || []).map((permission) => permission.instance_id)),
-      ].filter(Boolean));
-
-      if ((externalProfile as any)?.default_instance_id) {
-        allowedIds.add((externalProfile as any).default_instance_id);
-      }
-      if ((cloudProfile as any)?.default_instance_id) {
-        allowedIds.add((cloudProfile as any).default_instance_id);
-      }
-
-
-      if (allowedIds.size === 0) {
+      if (allowedIds.length === 0) {
         setInstances([]);
         return;
       }
@@ -235,7 +193,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         .from('whatsapp_instances')
         .select('*')
         .eq('is_active', true)
-        .in('id', Array.from(allowedIds))
+        .in('id', allowedIds)
         .order('instance_name');
 
       if (instError) throw instError;
