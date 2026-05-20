@@ -259,6 +259,18 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
     if (quickFilter === 'calls' && !hasCalls(c)) return false;
     if (quickFilter === 'groups' && !isGroupConversation(c)) return false;
     if (quickFilter === 'shared' && !sharedPhonesAll.has(c.phone)) return false;
+    if (quickFilter === 'lead_active') {
+      const status = c.lead_id ? leadInfoMap.get(c.lead_id)?.lead_status : null;
+      if (!c.lead_id || !(status === 'active' || status === 'novo' || status == null)) return false;
+    }
+    if (quickFilter === 'lead_closed') {
+      const status = c.lead_id ? leadInfoMap.get(c.lead_id)?.lead_status : null;
+      if (status !== 'closed') return false;
+    }
+    if (quickFilter === 'lead_inviavel') {
+      const status = c.lead_id ? leadInfoMap.get(c.lead_id)?.lead_status : null;
+      if (status !== 'inviavel') return false;
+    }
 
     // Direction filter: only show conversations that have messages in the selected direction
     if (directionFilter === 'inbound' && !c.messages.some(m => m.direction === 'inbound')) return false;
