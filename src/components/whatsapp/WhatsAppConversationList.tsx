@@ -44,7 +44,7 @@ interface Props {
   privatePhones?: Set<string>;
 }
 
-type QuickFilter = 'all' | 'has_lead' | 'no_lead' | 'unanswered' | 'calls' | 'groups' | 'shared';
+type QuickFilter = 'all' | 'has_lead' | 'no_lead' | 'unanswered' | 'calls' | 'groups' | 'shared' | 'lead_active' | 'lead_closed' | 'lead_inviavel';
 type SortMode = 'alpha' | 'last_activity';
 type DirectionFilter = 'all' | 'inbound' | 'outbound';
 type DocFilter = 'all' | 'has_doc' | 'signed' | 'unsigned' | 'no_doc';
