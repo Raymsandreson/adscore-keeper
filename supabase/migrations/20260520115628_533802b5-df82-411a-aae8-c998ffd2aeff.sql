@@ -1,0 +1,1 @@
+ALTER TABLE public.profiles DROP CONSTRAINT IF EXISTS profiles_default_instance_id_fkey;
