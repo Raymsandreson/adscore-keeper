@@ -1,60 +1,78 @@
-## Objetivo
+## Decisões confirmadas
+- Vínculo `lead↔grupo` → lead vira `closed` automático, retroativo
+- `closed_at` = `lead_whatsapp_groups.created_at` (data em que o vínculo entrou no sistema — é o que temos sem chamar a UazAPI)
+- Resultado (`lead_status` ∈ ganho/recusado/inviável/cancelado) obrigatório **ao tentar fechar**
+- Quando o caso está fechado e o lead não tem grupo, sistema tenta achar por **nome do lead** no `whatsapp_groups_cache`
 
-Trocar todas as 43 referências em `src/` que leem (e escrevem) as tabelas de agente/instância no banco Cloud para o banco Externo, **sem mexer em dados** e mantendo todas as triggers/funções do Cloud no lugar (Fase C cuidaria disso depois).
+## 1) Trigger no Supabase Externo (via run-external-migration)
 
-## Metáfora
+```sql
+-- a) função: ao inserir vínculo lead↔grupo, marca lead como fechado
+create or replace function public.auto_close_lead_on_group_link()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  update public.leads
+     set lead_status = case
+           when lead_status in ('refused','inviavel','cancelled') then lead_status
+           else 'closed'
+         end,
+         lead_status_changed_at = coalesce(lead_status_changed_at, NEW.created_at),
+         lead_status_reason = coalesce(lead_status_reason, 'Auto: grupo WhatsApp vinculado'),
+         updated_at = now()
+   where id = NEW.lead_id
+     and (lead_status is null or lead_status = 'active');
+  return NEW;
+end $$;
 
-Hoje o app tem duas estantes (Cloud e Externo) com os mesmos rótulos, mas o estoque novo só entra no Externo. Vários funcionários ainda leem da estante velha (Cloud) — vendo livros faltando ou desatualizados. Esta fase vira o crachá de cada funcionário para "ler só do Externo". As estantes velhas continuam de pé, intocadas; só ninguém mais lê delas.
+drop trigger if exists trg_auto_close_on_group_link on public.lead_whatsapp_groups;
+create trigger trg_auto_close_on_group_link
+  after insert on public.lead_whatsapp_groups
+  for each row execute function public.auto_close_lead_on_group_link();
 
-## Escopo
+-- b) backfill retroativo: todos os leads que já têm vínculo e ainda estão ativos
+update public.leads l
+   set lead_status = 'closed',
+       lead_status_changed_at = coalesce(l.lead_status_changed_at, lwg.first_link),
+       lead_status_reason = coalesce(l.lead_status_reason, 'Auto: grupo WhatsApp vinculado (backfill)'),
+       updated_at = now()
+  from (
+    select lead_id, min(created_at) as first_link
+      from public.lead_whatsapp_groups
+     group by lead_id
+  ) lwg
+ where lwg.lead_id = l.id
+   and (l.lead_status is null or l.lead_status = 'active');
+```
 
-43 arquivos em `src/`, agrupados por tabela:
+**Rollback**: `drop trigger trg_auto_close_on_group_link on public.lead_whatsapp_groups; drop function public.auto_close_lead_on_group_link;` — o backfill não tem rollback automático, então mostro contagem antes (`select count(*) from leads l join lead_whatsapp_groups lwg on lwg.lead_id=l.id where l.lead_status='active'`) e você aprova.
 
-**Instâncias (`whatsapp_instances`, `whatsapp_instance_users`)** — ~15 arquivos
-- hooks: `useWhatsAppMessages`, `useCallRecords`, `useWhatsAppInstanceStatus`, `useBroadcastLists`, `useIncomingCallDetector`
-- componentes: `FloatingWhatsAppCall`, `WhatsAppReportSettings`, `WhatsAppLeadsDashboard`, `WhatsAppInstanceManager` (resto), `AIRealtimeFeed`, `agent-monitor/*`, `MemberDetailSheet`, `TeamManagement`, `WhatsAppInstancePermissions`
+## 2) Resultado obrigatório ao fechar (UI)
 
-**Agentes / shortcuts (`whatsapp_ai_agents`, `wjia_command_shortcuts`)** — ~8 arquivos
-- `DashboardChatPreview`, `CTWACampaignAutomation`, `ArchivedItemsPanel`, `agent-monitor/useMonitorData`, `WhatsAppCommandConfig`, `MemberAssistantSettings`, `WhatsAppAIAgents`, `WhatsAppChat`, `ContactsListPage`
+`LeadEditDialog.handleSave`:
+- Se mudança implica `lead_status='closed'` (mudou para etapa de fechamento OU foi clicado Salvar com status closed) **e** `lead_status_reason` está vazio **e** nenhum resultado específico (`refused/inviavel/cancelled/closed-com-ganho`) foi selecionado → bloqueia salvar, toast `"Selecione o resultado do lead antes de fechar."`, foca no campo de resultado.
+- Mesmo bloqueio no `auto_close_lead_on_case_creation` (trigger Cloud): se ao criar caso o lead não tem `lead_status_reason` nem resultado, mostra dialog forçando preencher antes (no frontend, antes do insert do caso).
 
-**Conversation agents / call queue / notas / outros** — ~10 arquivos
-- `AgentConversationsList`, `CallQueuePanel`, `WhatsAppNotificationSettings`, `useWhatsAppInternalNotes`, `useAgentStageAssignments`, `AIKnowledgeGenerator`
+## 3) Auto-link de grupo quando entra no lead (caso fechado, sem grupo)
 
-## Padrão de troca
+Novo hook `useAutoLinkGroupByName(leadId, leadName, hasCase, currentGroupId)`:
+- Só roda se `hasCase === true` e `currentGroupId` vazio.
+- 1x por sessão por lead.
+- Busca em `whatsapp_groups_cache` por `group_name ilike %{leadName normalizado}%` (com tokens significativos do nome do lead).
+- **Match único** → insere em `lead_whatsapp_groups` (vai disparar a trigger acima).
+- **Vários matches** → abre toast com botão "escolher grupo" que abre o `LinkOrphanWhatsAppButton` já existente.
+- **Nenhum match** → silencioso.
 
-Em cada arquivo:
-1. Trocar import: `supabase` (cliente Cloud) → `db` (Externo), do barrel `@/integrations/supabase`.
-2. Trocar `supabase.from('tabela_X')` → `db.from('tabela_X')` **apenas para as tabelas listadas acima**.
-3. Manter `supabase` (= `authClient`) para tudo que continua sendo Cloud (`profiles`, `user_roles`, `team_conversations`, `team_chat_*`, auth.uid(), realtime de chat interno, etc.).
-4. Onde o arquivo já usa `externalSupabase`, normalizar para `db` (mesmo cliente, alias oficial).
+## 4) Resposta de background docs (perguntada)
+Sair do lead **cancela** o upload pendente. Pra continuar em background mesmo fechado, precisaria virar edge function assíncrona — fica fora deste escopo. Te aviso se quiser depois.
 
-## Pontos sensíveis (checagem manual por arquivo)
+## O que NÃO vou mexer
+- Edge functions de WhatsApp/ZapSign existentes
+- Estrutura do kanban / regras de etapas
+- `lead-drive` e import de docs (separado)
+- Lovable Cloud DB (regra do projeto — só Externo)
 
-- **`DashboardChatPreview.tsx`** já mistura `supabase` e `externalSupabase` para essas mesmas tabelas — preciso unificar para `db`. Risco: regressão no chat. Verificar abrir conversa, listar agentes e trocar agente após mudança.
-- **`useWhatsAppMessages.ts`** já usa `authClient.from('whatsapp_instances')` em 4 pontos — trocar para `db.from(...)`. Esse hook é o coração do chat.
-- **`CTWACampaignAutomation.tsx`** lê `whatsapp_agent_campaign_links` (Cloud) e `wjia_command_shortcuts` (Cloud) + `whatsapp_conversation_agents` (Externo). Trocar tudo do bloco para `db`.
-- **`WhatsAppNotificationSettings.tsx`** — `whatsapp_notification_config` no Externo tem 1 linha igual à Cloud, ok migrar.
-- **`useWhatsAppInternalNotes`** ⚠️ Externo tem 3 notas vs 6 no Cloud. Migrar leitura agora **vai esconder** 3 notas existentes. Recomendação: antes de migrar este hook, copiar as 3 órfãs Cloud→Externo (passo separado, com sua confirmação). Se preferir, deixo este arquivo de fora da Fase A e trato em Fase A.1.
-
-## Rollback
-
-- Mudança puramente de código (nenhum DDL/DML). Reverter = `git restore` nos arquivos editados.
-- Triggers Cloud (`auto_swap_agent_on_stage_change` etc.) continuam ativas — qualquer regressão de escrita ainda alcança Cloud por baixo. Fase B/C trata isso.
-
-## O que NÃO vou fazer nesta fase
-
-- Não desabilitar/renomear nenhuma tabela Cloud.
-- Não tocar em edge functions nem triggers.
-- Não copiar dados entre bancos (exceto se você aprovar o ponto das 3 notas órfãs).
-- Não mexer em `src/integrations/supabase/client.ts` nem `types.ts`.
-- Não tocar em arquivos fora da lista acima, mesmo se for "limpeza óbvia".
-
-## Verificação pós-edit
-
-1. `npm run build` (típechek).
-2. Smoke test manual sugerido por você: abrir chat de uma conversa, abrir Configurações → Instâncias, abrir CTWA campanhas, abrir Monitor IA. Em cada tela conferir se a quantidade de itens bate com a do Externo (que tem mais).
-3. Olho no console: nenhum erro `relation does not exist` (sinal que esqueci alguma tabela só-Cloud).
-
-## Pergunta antes de executar
-
-`whatsapp_internal_notes`: incluo no lote (esconde 3 notas órfãs do Cloud) ou deixo fora e a gente trata depois?
+## Ordem de execução
+1. SQL no Externo via `run-external-migration` (trigger + backfill, mostro contagem antes)
+2. Validação obrigatória no `LeadEditDialog.handleSave` + ponto de criação de caso
+3. Novo hook `useAutoLinkGroupByName` + plug no `LeadEditDialog`
+4. Validar build
