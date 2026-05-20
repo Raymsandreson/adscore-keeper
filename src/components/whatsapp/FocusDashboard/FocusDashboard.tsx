@@ -70,7 +70,16 @@ export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpen
       },
       { label: 'Docs', value: data.actions.missingDocs, icon: FileText, tone: 'bg-orange-50 dark:bg-orange-950/30 border-orange-200/60 dark:border-orange-900/40 text-orange-700 dark:text-orange-300', onClick: onOpenMissingDocs },
       { label: 'Assinatura', value: data.actions.zapsignPending, icon: PenTool, tone: 'bg-stone-100 dark:bg-stone-900/40 border-stone-300/60 dark:border-stone-700/40 text-stone-700 dark:text-stone-300', onClick: onOpenZapsignPending },
-      { label: 'Sem resp.', value: data.actions.unansweredOwedByMe, icon: MessageCircleOff, tone: 'bg-rose-50 dark:bg-rose-950/30 border-rose-200/60 dark:border-rose-900/40 text-rose-700 dark:text-rose-300', onClick: onOpenUnanswered },
+      {
+        label: 'Sem resp.',
+        value: `${data.actions.unansweredOwedByMe}/${data.actions.unansweredClientGhosted}`,
+        sub: data.actions.avgResponseMinutes > 0
+          ? `eu/cliente · ⌀ ${data.actions.avgResponseMinutes < 60 ? `${data.actions.avgResponseMinutes}min` : `${(data.actions.avgResponseMinutes / 60).toFixed(1)}h`}`
+          : 'eu / cliente',
+        icon: MessageCircleOff,
+        tone: 'bg-rose-50 dark:bg-rose-950/30 border-rose-200/60 dark:border-rose-900/40 text-rose-700 dark:text-rose-300',
+        onClick: onOpenUnanswered,
+      },
     ];
 
     return (
