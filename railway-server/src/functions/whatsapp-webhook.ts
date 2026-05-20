@@ -1146,6 +1146,41 @@ export const handler: RequestHandler = async (req, res) => {
 
     console.log('Message saved:', message.id, 'Contact:', contactId, 'Lead:', leadId, 'Instance:', instanceName);
 
+    // ========== AUTO-ACTIVATE DEFAULT AGENT ==========
+    // Se a instância tem default_agent_id e ainda não há agente ativado para essa conversa,
+    // cria a linha em whatsapp_conversation_agents automaticamente. Sem isso, o agente
+    // nunca responde mesmo com default_agent_id configurado.
+    if (direction === 'inbound' && instanceName && phone) {
+      try {
+        const { data: existingAgent } = await supabase
+          .from('whatsapp_conversation_agents')
+          .select('id')
+          .eq('phone', phone)
+          .eq('instance_name', instanceName)
+          .maybeSingle();
+        if (!existingAgent) {
+          const { data: inst } = await supabase
+            .from('whatsapp_instances')
+            .select('default_agent_id')
+            .eq('instance_name', instanceName)
+            .maybeSingle();
+          if (inst?.default_agent_id) {
+            await supabase.from('whatsapp_conversation_agents').upsert({
+              phone,
+              instance_name: instanceName,
+              agent_id: inst.default_agent_id,
+              is_active: true,
+              activated_by: 'default_instance',
+            }, { onConflict: 'phone,instance_name' });
+            console.log('[default-agent] activated', inst.default_agent_id, 'for', phone, '@', instanceName);
+          }
+        }
+      } catch (e) {
+        console.error('[default-agent] auto-activate error:', e);
+      }
+    }
+
+
     // ========== AUTO-ENRICH LEAD/CONTACT (parity with Cloud) ==========
     if (!isGroup && direction === 'inbound' && instanceName && phone && (leadId || contactId) && CLOUD_FUNCTIONS_URL && CLOUD_ANON_KEY) {
       // Fire and forget — don't block webhook response
