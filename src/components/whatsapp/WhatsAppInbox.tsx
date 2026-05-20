@@ -2120,7 +2120,7 @@ export function WhatsAppInbox() {
                   <SelectContent>
                     {instances.map((inst) => (
                       <SelectItem key={inst.id} value={inst.id}>
-                        {inst.instance_name}{inst.owner_name ? ` — ${inst.owner_name}` : ''}
+                        {inst.instance_name}{(inst as any).owner_name ? ` — ${(inst as any).owner_name}` : ''}
                       </SelectItem>
                     ))}
                   </SelectContent>
