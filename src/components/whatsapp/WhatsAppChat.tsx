@@ -1904,32 +1904,35 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
           <CopyableText copyValue={conversation.contact_name || formatPhone(conversation.phone)} label="Nome" className="font-medium text-sm truncate" as="p">
             {conversation.contact_name || formatPhone(conversation.phone)}
           </CopyableText>
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
             <a
               href={`https://wa.me/${whatsappPhone}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-xs bg-green-600 text-white px-2 py-0.5 rounded-full hover:bg-green-700 transition-colors inline-flex items-center gap-1 no-underline"
+              className="h-6 text-xs bg-green-600 text-white px-2 rounded-full hover:bg-green-700 transition-colors inline-flex items-center gap-1 no-underline whitespace-nowrap shrink-0"
               title="Abrir WhatsApp"
             >
               📱 WhatsApp
             </a>
+            {primaryLeadId && (
+              <button
+                type="button"
+                onClick={handleOpenLeadEdit}
+                title="Abrir formulário de edição do lead"
+                className="h-6 text-xs bg-blue-600 text-white px-2 rounded-full hover:bg-blue-700 transition-colors inline-flex items-center gap-1 cursor-pointer border-0 whitespace-nowrap shrink-0"
+              >
+                <Link2 className="h-3 w-3" /> Ver Lead
+              </button>
+            )}
             <button
               type="button"
-              className="callface-dial text-xs bg-blue-600 text-white px-2 py-0.5 rounded-full hover:bg-blue-700 transition-colors inline-flex items-center gap-1 cursor-pointer border-0"
+              className="callface-dial h-6 text-xs bg-indigo-600 text-white px-2 rounded-full hover:bg-indigo-700 transition-colors inline-flex items-center gap-1 cursor-pointer border-0 whitespace-nowrap shrink-0"
               data-phone={whatsappPhone?.replace(/^55/, '')}
               title="Ligar via CallFace"
-              onClick={(e) => {
-                // CallFace extension intercepts via callface-dial class + data-phone
-                // If extension not installed, show hint
-                setTimeout(() => {
-                  // Extension should have handled it; if not, notify user
-                }, 500);
-              }}
             >
               📞 CallFace
             </button>
-            <CopyableText copyValue={conversation.phone} label="Telefone" className="text-xs text-muted-foreground" as="span">
+            <CopyableText copyValue={conversation.phone} label="Telefone" className="text-xs text-muted-foreground whitespace-nowrap" as="span">
               📋 Copiar
             </CopyableText>
           </div>
@@ -1949,15 +1952,8 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
               <VolumeX className="h-3 w-3" /> Mudo
             </Badge>
           )}
-          {primaryLeadId && (
-            <Badge
-              className="text-[10px] gap-1 px-2 py-0.5 cursor-pointer bg-blue-600 hover:bg-blue-700 text-white border-0 shadow-sm"
-              onClick={handleOpenLeadEdit}
-              title="Clique para abrir o formulário de edição do lead"
-            >
-              <Link2 className="h-3 w-3" /> Ver Lead
-            </Badge>
-          )}
+
+
           {autoDrive.total > 0 && (
             <Badge
               variant="outline"
