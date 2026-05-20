@@ -6,7 +6,8 @@ export const getCaseStatus = (c: ConversationDetail): CaseStatus => {
   if (c.is_blocked) return 'bloqueado';
   if (c.lead_status === 'closed') return 'fechado';
   if (c.lead_status === 'refused') return 'recusado';
-  if (c.lead_status === 'unviable') return 'inviavel';
+  if (c.lead_status === 'unviable' || c.lead_status === 'inviavel') return 'inviavel';
+  if (c.lead_status === 'cancelled') return 'cancelado';
   if (c.inbound_count > 0 && c.outbound_count === 0) return 'sem_resposta';
   return 'em_andamento';
 };
@@ -41,6 +42,7 @@ export const statusColor = (s: CaseStatus) => {
     case 'fechado': return 'text-green-600 bg-green-50 border-green-200 dark:bg-green-950 dark:text-green-400 dark:border-green-800';
     case 'recusado': return 'text-red-600 bg-red-50 border-red-200 dark:bg-red-950 dark:text-red-400 dark:border-red-800';
     case 'inviavel': return 'text-muted-foreground bg-muted border-border';
+    case 'cancelado': return 'text-purple-600 bg-purple-50 border-purple-200 dark:bg-purple-950 dark:text-purple-400 dark:border-purple-800';
     case 'bloqueado': return 'text-orange-600 bg-orange-50 border-orange-200 dark:bg-orange-950 dark:text-orange-400 dark:border-orange-800';
   }
 };
@@ -52,6 +54,7 @@ export const statusLabel = (s: CaseStatus) => {
     case 'fechado': return 'Fechado';
     case 'recusado': return 'Recusado';
     case 'inviavel': return 'Inviável';
+    case 'cancelado': return 'Cancelamento';
     case 'bloqueado': return 'Bloqueado';
   }
 };

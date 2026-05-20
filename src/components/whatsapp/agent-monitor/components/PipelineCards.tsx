@@ -1,5 +1,5 @@
 import { Card, CardContent } from '@/components/ui/card';
-import { AlertCircle, MessageCircle, CheckCircle, XCircle, Eye, StopCircle, Sparkles, Clock, TrendingUp, FileSignature, Users, Briefcase, Scale, AlertTriangle, FileText, UserPlus } from 'lucide-react';
+import { AlertCircle, MessageCircle, CheckCircle, XCircle, Eye, StopCircle, Sparkles, Clock, TrendingUp, FileSignature, Users, Briefcase, Scale, AlertTriangle, FileText, UserPlus, Ban } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import type { CaseStatus } from '../types';
 import { statusLabel } from '../utils';
@@ -30,6 +30,7 @@ const statusConfig: { key: CaseStatus; icon: typeof AlertCircle; color: string }
   { key: 'fechado', icon: CheckCircle, color: 'text-green-500' },
   { key: 'recusado', icon: XCircle, color: 'text-red-500' },
   { key: 'inviavel', icon: Eye, color: 'text-muted-foreground' },
+  { key: 'cancelado', icon: Ban, color: 'text-purple-500' },
   { key: 'bloqueado', icon: StopCircle, color: 'text-orange-500' },
 ];
 

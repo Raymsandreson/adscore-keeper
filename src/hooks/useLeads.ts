@@ -30,7 +30,7 @@ const LEAD_SELECT_COLUMNS = [
   'whatsapp_group_id', 'last_edit_summary', 'expected_birth_date',
   'case_number', 'in_progress_date', 'ctwa_context',
   'action_source', 'action_source_detail',
-  'lead_status_reason', 'lead_status_changed_at', 'cac', 'inviavel_date'
+  'lead_status_reason', 'lead_status_changed_at', 'cac', 'inviavel_date', 'cancelled_date'
 ].join(',');
 
 const PAGE_SIZE = 1000;
@@ -39,7 +39,7 @@ const isAlreadyMissingLeadError = (error?: string) =>
   String(error || '').toLowerCase().includes('lead não encontrado no banco externo');
 
 export type LeadStatus = 'new' | 'contacted' | 'qualified' | 'not_qualified' | 'converted' | 'lost' | 'comment';
-export type LeadBusinessStatus = 'active' | 'closed' | 'refused' | 'inviavel';
+export type LeadBusinessStatus = 'active' | 'closed' | 'refused' | 'inviavel' | 'cancelled';
 export type SyncStatus = 'local' | 'synced' | 'syncing' | 'error';
 export type ClientClassification = 'client' | 'non_client' | 'prospect' | null;
 
@@ -123,6 +123,7 @@ export interface Lead {
   lead_status_changed_at: string | null;
   cac: number | null;
   inviavel_date: string | null;
+  cancelled_date: string | null;
 }
 
 export interface LeadStats {
@@ -309,6 +310,7 @@ export const useLeads = (adAccountId?: string) => {
           classification_date: lead.classification_date ?? null,
           in_progress_date: lead.in_progress_date ?? null,
           inviavel_date: lead.inviavel_date ?? null,
+          cancelled_date: lead.cancelled_date ?? null,
           ad_account_id: adAccountId || lead.ad_account_id,
           created_by: externalUserId,
           updated_by: externalUserId,

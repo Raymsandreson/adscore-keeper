@@ -70,7 +70,7 @@ export interface BoardData {
   stages: any[];
 }
 
-export type CaseStatus = 'sem_resposta' | 'em_andamento' | 'fechado' | 'recusado' | 'inviavel' | 'bloqueado';
+export type CaseStatus = 'sem_resposta' | 'em_andamento' | 'fechado' | 'recusado' | 'inviavel' | 'cancelado' | 'bloqueado';
 
 export interface UserData {
   id: string;

@@ -30,6 +30,7 @@ const statusLabels: Record<string, string> = {
   refused: 'Recusado',
   inviavel: 'Inviável',
   unviable: 'Inviável',
+  cancelled: 'Cancelamento',
 };
 
 const statusColors: Record<string, string> = {
@@ -39,6 +40,7 @@ const statusColors: Record<string, string> = {
   refused: '#ef4444',
   inviavel: '#f59e0b',
   unviable: '#f59e0b',
+  cancelled: '#a855f7',
 };
 
 export function LeadStageHistoryPanel({ leadId, boards = [] }: LeadStageHistoryPanelProps) {
