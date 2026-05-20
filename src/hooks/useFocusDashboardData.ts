@@ -28,6 +28,7 @@ export interface FocusActions {
   unansweredOwedByMe: number; // "Eu devo"
   unansweredClientGhosted: number; // "Cliente sumiu"
   unansweredBuckets: { plus30: number; plus4h: number; plus24h: number };
+  avgResponseMinutes: number; // tempo médio (min) entre inbound do cliente e resposta nossa
 }
 
 export interface FocusData {
@@ -71,6 +72,7 @@ const EMPTY_ACTIONS: FocusActions = {
   zapsignPending: 0, zapsignPendingHint: '',
   unanswered: 0, unansweredOwedByMe: 0, unansweredClientGhosted: 0,
   unansweredBuckets: { plus30: 0, plus4h: 0, plus24h: 0 },
+  avgResponseMinutes: 0,
 };
 
 export function useFocusDashboardData(): FocusData {
@@ -208,15 +210,44 @@ export function useFocusDashboardData(): FocusData {
         .order('created_at', { ascending: false })
         .limit(5000);
 
-      // Group by phone+instance, find last inbound/outbound
+      // Group by phone+instance, find last inbound/outbound + collect pairs for avg response
       const last = new Map<string, { inbound?: string; outbound?: string }>();
+      // Para tempo médio: agrupa todas as msgs por conversa em ordem cronológica
+      const byConv = new Map<string, { dir: string; t: number }[]>();
       (msgs || []).forEach((m: any) => {
         const key = `${m.phone}__${(m.instance_name || '').toLowerCase()}`;
         const cur = last.get(key) || {};
         if (m.direction === 'inbound' && !cur.inbound) cur.inbound = m.created_at;
         if (m.direction === 'outbound' && !cur.outbound) cur.outbound = m.created_at;
         last.set(key, cur);
+        const arr = byConv.get(key) || [];
+        arr.push({ dir: m.direction, t: new Date(m.created_at).getTime() });
+        byConv.set(key, arr);
       });
+
+      // Calcula tempo médio de resposta: para cada inbound seguida por outbound, mede o gap
+      let totalGapMs = 0; let gapCount = 0;
+      byConv.forEach((arr) => {
+        // msgs vieram em ordem desc; reordena asc
+        const asc = arr.slice().sort((a, b) => a.t - b.t);
+        for (let i = 0; i < asc.length - 1; i++) {
+          if (asc[i].dir === 'inbound') {
+            // procura próximo outbound
+            for (let j = i + 1; j < asc.length; j++) {
+              if (asc[j].dir === 'outbound') {
+                const gap = asc[j].t - asc[i].t;
+                if (gap > 0 && gap < 24 * 60 * 60 * 1000) { // ignora >24h (provavelmente abandono)
+                  totalGapMs += gap;
+                  gapCount++;
+                }
+                break;
+              }
+              if (asc[j].dir === 'inbound') break; // outra inbound antes da resposta
+            }
+          }
+        }
+      });
+      const avgResponseMinutes = gapCount > 0 ? Math.round(totalGapMs / gapCount / 60000) : 0;
 
       let owedByMe = 0; let ghosted = 0;
       const buckets = { plus30: 0, plus4h: 0, plus24h: 0 };
@@ -225,7 +256,6 @@ export function useFocusDashboardData(): FocusData {
         const inMs = v.inbound ? new Date(v.inbound).getTime() : 0;
         const outMs = v.outbound ? new Date(v.outbound).getTime() : 0;
         if (inMs > outMs && inMs > 0) {
-          // inbound is the latest → eu devo responder
           const ageMin = (now - inMs) / 60000;
           if (ageMin >= 30) {
             owedByMe++;
@@ -234,7 +264,6 @@ export function useFocusDashboardData(): FocusData {
             else buckets.plus30++;
           }
         } else if (outMs > inMs && outMs > 0) {
-          // last was outbound, no reply → cliente sumiu
           const ageMin = (now - outMs) / 60000;
           if (ageMin >= 30) ghosted++;
         }
@@ -249,6 +278,7 @@ export function useFocusDashboardData(): FocusData {
         unansweredOwedByMe: owedByMe,
         unansweredClientGhosted: ghosted,
         unansweredBuckets: buckets,
+        avgResponseMinutes,
       });
     } catch (err) {
       console.error('[useFocusDashboardData] error:', err);
