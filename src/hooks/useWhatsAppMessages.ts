@@ -178,17 +178,19 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       }
 
       // Members: only see explicitly assigned instances
-      // default_instance_id é lido SEMPRE do Externo (fonte de verdade)
+      // whatsapp_instance_users + profiles vivem no EXTERNO (fonte da verdade).
+      // O admin grava acessos só no Externo; o mirror no Cloud é stale.
       const extUserId = await remapToExternal(user.id);
+      const lookupId = extUserId || user.id;
       const [{ data: permissions, error: permissionsError }, { data: profile, error: profileError }] = await Promise.all([
-        authClient
+        db
           .from('whatsapp_instance_users')
           .select('instance_id')
-          .eq('user_id', user.id),
+          .eq('user_id', lookupId),
         db
           .from('profiles')
           .select('default_instance_id')
-          .eq('user_id', extUserId || user.id)
+          .eq('user_id', lookupId)
           .maybeSingle(),
       ]);
 
