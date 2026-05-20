@@ -1,21 +1,35 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { supabase } from '@/integrations/supabase/client';
+
+export interface AutoImportProgress {
+  total: number;
+  done: number;
+  running: boolean;
+  newlyImported: number;
+}
 
 /**
  * Auto-importa todas as mídias recentes do grupo WhatsApp do lead para a pasta
  * "Outro" do Drive, em segundo plano. Idempotente (a edge `lead-drive`
  * deduplica por nome+tamanho). Roda 1x por sessão por leadId.
  *
- * Use em qualquer tela que abra um lead (edit lead, detalhe de atividade etc.)
- * para garantir que os documentos do grupo estejam sempre espelhados no Drive.
+ * Retorna progresso { total, done, running } para o caller exibir badge
+ * "Drive x/y" igual ao do chat do WhatsApp.
  */
 export function useAutoImportGroupDocs(
   leadId: string | null | undefined,
   leadName: string | null | undefined,
   whatsappGroupId: string | null | undefined,
   onImported?: () => void,
-) {
+): AutoImportProgress {
+  const [progress, setProgress] = useState<AutoImportProgress>({
+    total: 0,
+    done: 0,
+    running: false,
+    newlyImported: 0,
+  });
+
   useEffect(() => {
     if (!leadId || !leadName || !whatsappGroupId) return;
 
@@ -49,6 +63,8 @@ export function useAutoImportGroupDocs(
 
         if (documents.length === 0) return;
 
+        setProgress({ total: documents.length, done: 0, running: true, newlyImported: 0 });
+
         const { data: resp, error: invokeErr } = await supabase.functions.invoke(
           'import-group-docs-to-lead',
           {
@@ -59,20 +75,34 @@ export function useAutoImportGroupDocs(
         if (cancelled) return;
         if (invokeErr) {
           console.warn('[useAutoImportGroupDocs] invoke error', invokeErr);
+          setProgress((p) => ({ ...p, running: false }));
           return;
         }
 
         const results = (resp as any)?.results || [];
+        const okCount = results.filter(
+          (r: any) => r.status === 'ok' || r.status === 'ok_no_drive',
+        ).length;
         const newlyImported = results.filter(
           (r: any) => (r.status === 'ok' || r.status === 'ok_no_drive') && !r.deduped,
         ).length;
 
+        setProgress({
+          total: documents.length,
+          done: okCount,
+          running: false,
+          newlyImported,
+        });
+
         if (newlyImported > 0) onImported?.();
       } catch (e) {
         console.warn('[useAutoImportGroupDocs] failed', e);
+        if (!cancelled) setProgress((p) => ({ ...p, running: false }));
       }
     })();
 
     return () => { cancelled = true; };
   }, [leadId, leadName, whatsappGroupId, onImported]);
+
+  return progress;
 }
