@@ -196,15 +196,16 @@ Deno.serve(async (req) => {
 
         // --- Late skip: same binary was already imported for this lead ---
         try {
-          const { data: sameBinaryDoc } = await cloud
+          const { data: sameSizeDocs } = await cloud
             .from("process_documents")
-            .select("id, file_url")
+            .select("id, file_url, file_name, metadata")
             .eq("lead_id", body.lead_id)
             .eq("source", "whatsapp_group")
             .eq("file_size", bytes.length)
-            .or(`metadata->>content_hash.eq.${contentHash},file_name.eq.${fileName}`)
-            .limit(1)
-            .maybeSingle();
+            .limit(25);
+          const sameBinaryDoc = (sameSizeDocs || []).find((doc: any) =>
+            doc?.metadata?.content_hash === contentHash || doc?.file_name === fileName,
+          );
           if (sameBinaryDoc?.id) {
             results.push({
               msgId,
