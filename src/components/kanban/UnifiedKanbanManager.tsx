@@ -682,6 +682,7 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
                 // Clear closure markers so the lead is fully reopened
                 updatePayload.became_client_date = null;
                 updatePayload.inviavel_date = null;
+                updatePayload.cancelled_date = null;
               }
 
               await externalSupabase.from('leads').update(updatePayload).eq('id', leadId);
@@ -694,7 +695,7 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
                 from_board_id: currentLead?.board_id || selectedBoardId,
                 to_board_id: currentLead?.board_id || selectedBoardId,
                 changed_by: user?.id || null,
-                notes: newStatus === 'closed' ? 'Lead fechado' : newStatus === 'refused' ? 'Lead recusado' : newStatus === 'inviavel' ? 'Lead inviável' : 'Lead reativado',
+                notes: newStatus === 'closed' ? 'Lead fechado' : newStatus === 'refused' ? 'Lead recusado' : newStatus === 'inviavel' ? 'Lead inviável' : newStatus === 'cancelled' ? 'Lead cancelado' : 'Lead reativado',
               } as any);
 
               // Record in lead_status_history
@@ -813,6 +814,11 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
                   inviavel_date: new Date().toISOString().slice(0, 10),
                 } as any).eq('id', leadId);
                 toast.success('Lead marcado como Inviável');
+              } else if (newStatus === 'cancelled') {
+                await externalSupabase.from('leads').update({
+                  cancelled_date: new Date().toISOString().slice(0, 10),
+                } as any).eq('id', leadId);
+                toast.success('Lead marcado como Cancelamento');
               } else {
                 toast.success(newStatus === 'refused' ? 'Lead marcado como Recusado' : 'Lead reativado');
               }

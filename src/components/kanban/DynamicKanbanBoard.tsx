@@ -52,6 +52,7 @@ import {
   ClipboardPlus,
   Copy,
   MapPin,
+  Ban,
 } from 'lucide-react';
 import { CopyableText } from '@/components/ui/copyable-text';
 import { KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
