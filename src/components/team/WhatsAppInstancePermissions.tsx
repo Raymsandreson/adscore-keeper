@@ -11,7 +11,6 @@ import { MessageSquare, Smartphone, Search, X } from 'lucide-react';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { supabase } from '@/integrations/supabase/client';
 import { db } from '@/integrations/supabase';
-import { externalSupabase } from '@/integrations/supabase/external-client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -45,13 +44,16 @@ export function WhatsAppInstancePermissions() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [instRes, iuRes, profilesRes] = await Promise.all([
+      const [instRes, accessRes, profilesRes] = await Promise.all([
         db.from('whatsapp_instances').select('id, instance_name').eq('is_active', true).order('instance_name'),
-        db.from('whatsapp_instance_users').select('id, instance_id, user_id'),
+        supabase.functions.invoke('admin-whatsapp-instance', { body: { action: 'list_instance_accesses' } }),
         supabase.from('profiles').select('user_id, default_instance_id'),
       ]);
       setInstances(instRes.data || []);
-      setInstanceUsers(iuRes.data || []);
+      if (accessRes.error || (accessRes.data as any)?.success === false) {
+        throw accessRes.error || new Error((accessRes.data as any)?.error || 'Erro ao carregar acessos');
+      }
+      setInstanceUsers((accessRes.data as any)?.access_rows || []);
       setMemberDefaults((profilesRes.data || []).map((p: any) => ({ user_id: p.user_id, default_instance_id: p.default_instance_id })));
     } catch (e) {
       console.error(e);
@@ -64,6 +66,16 @@ export function WhatsAppInstancePermissions() {
 
   const hasAccess = (userId: string, instanceId: string) =>
     instanceUsers.some(iu => iu.user_id === userId && iu.instance_id === instanceId);
+
+  const saveAccessOperations = async (operations: Array<{ user_id: string; instance_id: string; grant: boolean }>) => {
+    const { data, error } = await supabase.functions.invoke('admin-whatsapp-instance', {
+      body: { action: 'set_instance_accesses', operations },
+    });
+    if (error || (data as any)?.success === false) {
+      throw error || new Error((data as any)?.error || 'Erro ao atualizar acesso');
+    }
+    return ((data as any)?.access_rows || []) as InstanceUser[];
+  };
 
   const getDefaultInstance = (userId: string) =>
     memberDefaults.find(m => m.user_id === userId)?.default_instance_id || null;
@@ -101,17 +113,17 @@ export function WhatsAppInstancePermissions() {
     try {
       const existing = instanceUsers.find(iu => iu.user_id === userId && iu.instance_id === instanceId);
       if (existing) {
-        await db.from('whatsapp_instance_users').delete().eq('id', existing.id);
+        await saveAccessOperations([{ user_id: userId, instance_id: instanceId, grant: false }]);
         if (getDefaultInstance(userId) === instanceId) {
           await supabase.from('profiles').update({ default_instance_id: null } as any).eq('user_id', userId);
         }
         setInstanceUsers(prev => prev.filter(iu => iu.id !== existing.id));
       } else {
-        const { data } = await db.from('whatsapp_instance_users').insert({ user_id: userId, instance_id: instanceId }).select('id, instance_id, user_id').single();
-        if (data) setInstanceUsers(prev => [...prev, data as InstanceUser]);
+        const rows = await saveAccessOperations([{ user_id: userId, instance_id: instanceId, grant: true }]);
+        setInstanceUsers(prev => [...prev.filter(iu => !(iu.user_id === userId && iu.instance_id === instanceId)), ...rows]);
       }
-    } catch {
-      toast.error('Erro ao atualizar acesso');
+    } catch (error: any) {
+      toast.error(error?.message || 'Erro ao atualizar acesso');
     } finally {
       setSaving(null);
     }
@@ -124,19 +136,19 @@ export function WhatsAppInstancePermissions() {
       if (grant) {
         const missing = targets.filter(t => !hasAccess(userId, t.id));
         if (missing.length === 0) return;
-        const rows = missing.map(t => ({ user_id: userId, instance_id: t.id }));
-        const { data } = await db.from('whatsapp_instance_users').insert(rows).select('id, instance_id, user_id');
-        if (data) setInstanceUsers(prev => [...prev, ...(data as InstanceUser[])]);
+        const rows = await saveAccessOperations(missing.map(t => ({ user_id: userId, instance_id: t.id, grant: true })));
+        const rowKeys = new Set(rows.map(r => `${r.user_id}-${r.instance_id}`));
+        setInstanceUsers(prev => [...prev.filter(iu => !rowKeys.has(`${iu.user_id}-${iu.instance_id}`)), ...rows]);
         toast.success(`${missing.length} acesso(s) concedido(s)`);
       } else {
         const toRemove = instanceUsers.filter(iu => iu.user_id === userId && targets.some(t => t.id === iu.instance_id));
         if (toRemove.length === 0) return;
-        await db.from('whatsapp_instance_users').delete().in('id', toRemove.map(r => r.id));
+        await saveAccessOperations(toRemove.map(r => ({ user_id: userId, instance_id: r.instance_id, grant: false })));
         setInstanceUsers(prev => prev.filter(iu => !toRemove.some(r => r.id === iu.id)));
         toast.success(`${toRemove.length} acesso(s) removido(s)`);
       }
-    } catch {
-      toast.error('Erro na operação em lote');
+    } catch (error: any) {
+      toast.error(error?.message || 'Erro na operação em lote');
     } finally {
       setSaving(null);
     }
@@ -149,19 +161,19 @@ export function WhatsAppInstancePermissions() {
       if (grant) {
         const missing = targets.filter(m => !hasAccess(m.user_id, instanceId));
         if (missing.length === 0) return;
-        const rows = missing.map(m => ({ user_id: m.user_id, instance_id: instanceId }));
-        const { data } = await db.from('whatsapp_instance_users').insert(rows).select('id, instance_id, user_id');
-        if (data) setInstanceUsers(prev => [...prev, ...(data as InstanceUser[])]);
+        const rows = await saveAccessOperations(missing.map(m => ({ user_id: m.user_id, instance_id: instanceId, grant: true })));
+        const rowKeys = new Set(rows.map(r => `${r.user_id}-${r.instance_id}`));
+        setInstanceUsers(prev => [...prev.filter(iu => !rowKeys.has(`${iu.user_id}-${iu.instance_id}`)), ...rows]);
         toast.success(`${missing.length} acesso(s) concedido(s)`);
       } else {
         const toRemove = instanceUsers.filter(iu => iu.instance_id === instanceId && targets.some(m => m.user_id === iu.user_id));
         if (toRemove.length === 0) return;
-        await db.from('whatsapp_instance_users').delete().in('id', toRemove.map(r => r.id));
+        await saveAccessOperations(toRemove.map(r => ({ user_id: r.user_id, instance_id: instanceId, grant: false })));
         setInstanceUsers(prev => prev.filter(iu => !toRemove.some(r => r.id === iu.id)));
         toast.success(`${toRemove.length} acesso(s) removido(s)`);
       }
-    } catch {
-      toast.error('Erro na operação em lote');
+    } catch (error: any) {
+      toast.error(error?.message || 'Erro na operação em lote');
     } finally {
       setSaving(null);
     }

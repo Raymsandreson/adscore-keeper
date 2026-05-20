@@ -42,7 +42,6 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { db } from '@/integrations/supabase';
-import { externalSupabase } from '@/integrations/supabase/external-client';
 import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { toast } from 'sonner';
 import { format, formatDistanceToNow } from 'date-fns';
@@ -187,15 +186,16 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
           );
         }
 
-        // Update WhatsApp instance permissions
-        await db.from('whatsapp_instance_users').delete().eq('user_id', member.user_id);
-        if (profile.whatsapp_instance_ids.length > 0) {
-          await db.from('whatsapp_instance_users').insert(
-            profile.whatsapp_instance_ids.map((instId: string) => ({
-              user_id: member.user_id,
-              instance_id: instId,
-            }))
-          );
+        // Update WhatsApp instance permissions in the External DB via admin function.
+        const { data: accessResp, error: accessErr } = await supabase.functions.invoke('admin-whatsapp-instance', {
+          body: {
+            action: 'replace_user_instance_accesses',
+            user_id: member.user_id,
+            instance_ids: profile.whatsapp_instance_ids,
+          },
+        });
+        if (accessErr || (accessResp as any)?.success === false) {
+          throw accessErr || new Error((accessResp as any)?.error || 'Erro ao aplicar acessos do WhatsApp');
         }
       }
 
