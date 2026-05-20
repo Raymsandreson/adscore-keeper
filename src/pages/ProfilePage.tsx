@@ -285,6 +285,37 @@ const ProfilePage = () => {
             </div>
 
             <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <Smartphone className="h-4 w-4" />
+                Instância de WhatsApp padrão
+              </Label>
+              <Select
+                value={defaultInstanceId}
+                onValueChange={setDefaultInstanceId}
+                disabled={loadingInstances}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={loadingInstances ? "Carregando..." : "Selecione a instância"} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Nenhuma</SelectItem>
+                  {instances.map((inst) => (
+                    <SelectItem key={inst.id} value={inst.id}>
+                      {inst.instance_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {instances.length === 0 && !loadingInstances
+                  ? "Nenhuma instância disponível. Solicite acesso a um administrador."
+                  : "Instância usada por padrão ao enviar mensagens no WhatsApp"}
+              </p>
+            </div>
+
+
+
+            <div className="space-y-2">
               <Label htmlFor="email" className="flex items-center gap-2">
                 <Mail className="h-4 w-4" />
                 Email
