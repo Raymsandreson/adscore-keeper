@@ -43,6 +43,7 @@ import {
 import { supabase } from '@/integrations/supabase/client';
 import { db } from '@/integrations/supabase';
 import { externalSupabase } from '@/integrations/supabase/external-client';
+import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { toast } from 'sonner';
 import { format, formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -411,6 +412,28 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
 
       if (error) throw error;
 
+      // Espelha a configuração no Externo (fonte de verdade pro profile).
+      try {
+        const extUserId = await remapToExternal(member.user_id);
+        if (extUserId) {
+          await db
+            .from('profiles')
+            .update({
+              full_name: fullName.trim(),
+              email: email.trim(),
+              phone: normalizedPhone || null,
+              oab_number: primaryOab.oab_number || null,
+              oab_uf: primaryOab.oab_uf || null,
+              default_instance_id: defaultInstanceId && defaultInstanceId !== 'none' ? defaultInstanceId : null,
+              voice_id: voiceId && voiceId !== 'none' ? voiceId : null,
+              voice_name: voiceId && voiceId !== 'none' ? (voices.find(v => v.id === voiceId)?.name || null) : null,
+            } as any)
+            .eq('user_id', extUserId);
+        }
+      } catch (extErr) {
+        console.warn('External profile mirror failed (non-blocking):', extErr);
+      }
+
       // Also sync name/email to External DB (source of truth for auth profile)
       try {
         await cloudFunctions.invoke('sync-user-to-external', {
@@ -425,6 +448,7 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
       } catch (syncErr) {
         console.warn('External profile sync failed (non-blocking):', syncErr);
       }
+
 
       // Sync OAB entries
       await supabase.from('profile_oab_entries').delete().eq('user_id', member.user_id);
