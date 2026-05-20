@@ -61,7 +61,13 @@ export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpen
         icon: Trophy,
         tone: 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200/60 dark:border-emerald-900/40 text-emerald-700 dark:text-emerald-300',
       },
-      { label: 'Inviáveis', value: data.kpis.unviable, icon: XCircle, tone: 'bg-amber-50 dark:bg-amber-950/30 border-amber-200/60 dark:border-amber-900/40 text-amber-700 dark:text-amber-300' },
+      {
+        label: 'Inviáveis',
+        value: `${data.kpis.unviable} (${data.kpis.unviablePercentage}%)`,
+        sub: data.kpis.unviableTopReason ? `Principal: ${data.kpis.unviableTopReason}` : undefined,
+        icon: XCircle,
+        tone: 'bg-amber-50 dark:bg-amber-950/30 border-amber-200/60 dark:border-amber-900/40 text-amber-700 dark:text-amber-300'
+      },
       { label: 'Docs', value: data.actions.missingDocs, icon: FileText, tone: 'bg-orange-50 dark:bg-orange-950/30 border-orange-200/60 dark:border-orange-900/40 text-orange-700 dark:text-orange-300', onClick: onOpenMissingDocs },
       { label: 'Assinatura', value: data.actions.zapsignPending, icon: PenTool, tone: 'bg-stone-100 dark:bg-stone-900/40 border-stone-300/60 dark:border-stone-700/40 text-stone-700 dark:text-stone-300', onClick: onOpenZapsignPending },
       { label: 'Sem resp.', value: data.actions.unansweredOwedByMe, icon: MessageCircleOff, tone: 'bg-rose-50 dark:bg-rose-950/30 border-rose-200/60 dark:border-rose-900/40 text-rose-700 dark:text-rose-300', onClick: onOpenUnanswered },
