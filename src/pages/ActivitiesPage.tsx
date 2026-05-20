@@ -666,15 +666,15 @@ const ActivitiesPage = () => {
         },
         cancel: {
           label: 'Excluir',
-          onClick: async () => {
-            const ok = await confirmDelete({
-              title: 'Excluir atividade?',
-              description: `"${titleToUse}" será excluída.`,
-            });
-            if (ok) {
-              await deleteActivity(activityForActions.id);
-              fetchActivities(getFilterParams());
-            }
+          onClick: () => {
+            confirmDelete(
+              'Excluir atividade?',
+              `"${titleToUse}" será excluída.`,
+              async () => {
+                await deleteActivity(activityForActions.id);
+                fetchActivities(getFilterParams());
+              }
+            );
           },
         },
       });
