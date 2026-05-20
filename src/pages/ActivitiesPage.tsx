@@ -47,6 +47,7 @@ import { TeamChatButton } from '@/components/chat/TeamChatButton';
 import { TeamChatSheet } from '@/components/chat/TeamChatSheet';
 import { ActivityNotesField } from '@/components/activities/ActivityNotesField';
 import { TimeBlockSettingsDialog, TimeBlockConfig } from '@/components/activities/TimeBlockSettingsDialog';
+import { ActivityCreatedDialog } from '@/components/activities/ActivityCreatedDialog';
 import { TrafficActivityPanel } from '@/components/traffic/TrafficActivityPanel';
 import { useTimeBlockSettings } from '@/hooks/useTimeBlockSettings';
 import { useActivityTypes } from '@/hooks/useActivityTypes';
@@ -206,6 +207,7 @@ const ActivitiesPage = () => {
   const [sheetMode, setSheetMode] = usePageState<'create' | 'edit' | null>('activities_sheetMode', null);
   const [selectedActivityId, setSelectedActivityId] = usePageState<string | null>('activities_selectedId', null);
   const [selectedActivity, setSelectedActivity] = useState<LeadActivity | null>(null);
+  const [createdDialog, setCreatedDialog] = useState<{ open: boolean; title: string; activity: LeadActivity | null }>({ open: false, title: '', activity: null });
   const [leads, setLeads] = useState<LeadOption[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [calendarMonth, setCalendarMonth] = useState(new Date());
@@ -655,29 +657,10 @@ const ActivitiesPage = () => {
     closeSheet();
     fetchActivities(getFilterParams());
 
-    // Confirmation toast with title + edit/delete actions
+    // Confirmation dialog with title + edit/delete actions
     if (createdActivityId && createdActivityFull) {
       const activityForActions = createdActivityFull as LeadActivity;
-      toast.success(`Atividade criada: ${titleToUse}`, {
-        duration: 8000,
-        action: {
-          label: 'Editar',
-          onClick: () => handleOpenEdit(activityForActions),
-        },
-        cancel: {
-          label: 'Excluir',
-          onClick: () => {
-            confirmDelete(
-              'Excluir atividade?',
-              `"${titleToUse}" será excluída.`,
-              async () => {
-                await deleteActivity(activityForActions.id);
-                fetchActivities(getFilterParams());
-              }
-            );
-          },
-        },
-      });
+      setCreatedDialog({ open: true, title: titleToUse, activity: activityForActions });
     }
   };
 
@@ -3613,6 +3596,25 @@ const ActivitiesPage = () => {
         </div>
       )}
       <ConfirmDeleteDialog />
+      <ActivityCreatedDialog
+        open={createdDialog.open}
+        onOpenChange={(open) => setCreatedDialog((prev) => ({ ...prev, open }))}
+        title={createdDialog.title}
+        onEdit={() => createdDialog.activity && handleOpenEdit(createdDialog.activity)}
+        onDelete={() => {
+          const act = createdDialog.activity;
+          const titleToUse = createdDialog.title;
+          if (!act) return;
+          confirmDelete(
+            'Excluir atividade?',
+            `"${titleToUse}" será excluída.`,
+            async () => {
+              await deleteActivity(act.id);
+              fetchActivities(getFilterParams());
+            }
+          );
+        }}
+      />
       {/* Lead Edit Sheet */}
       {formLeadId && (
         <LeadEditDialog
