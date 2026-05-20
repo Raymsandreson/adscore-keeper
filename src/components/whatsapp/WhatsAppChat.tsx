@@ -182,6 +182,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         : '';
       const baseName = (msg.message_text && msg.message_text.length < 120 ? msg.message_text : urlBase || `whatsapp_${msg.id}`).replace(/[\\/:*?"<>|]/g, '_');
       const fileName = hasExt ? baseName : `${baseName}${extFromMime}`;
+      const dedupSourceId = msg.external_message_id || msg.id;
 
       const { data: upData, error: upErr } = await supabase.functions.invoke('lead-drive', {
         body: {
@@ -191,6 +192,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
           file_name: fileName,
           source_url: msg.media_url,
           mime_type: mime || undefined,
+          dedup_key: dedupSourceId ? `wa:${leadId}:${dedupSourceId}` : undefined,
         },
       });
       if (upErr) throw upErr;
