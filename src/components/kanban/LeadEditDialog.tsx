@@ -216,6 +216,32 @@ export function LeadEditDialog({
   initialTab,
 }: LeadEditDialogProps) {
   // Basic fields state
+  const [sheetWidth, setSheetWidth] = useState<number>(() => {
+    if (typeof window === 'undefined') return 512;
+    const saved = Number(localStorage.getItem('leadEditDialog.sheetWidth'));
+    return Number.isFinite(saved) && saved >= 360 ? saved : 512;
+  });
+  const startResize = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = sheetWidth;
+    const onMove = (ev: MouseEvent) => {
+      const delta = startX - ev.clientX; // arrastar p/ esquerda aumenta
+      const next = Math.min(Math.max(360, startW + delta), Math.floor(window.innerWidth * 0.95));
+      setSheetWidth(next);
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      document.body.style.userSelect = '';
+      try { localStorage.setItem('leadEditDialog.sheetWidth', String(sheetWidthRef.current)); } catch {}
+    };
+    document.body.style.userSelect = 'none';
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  };
+  const sheetWidthRef = useRef(512);
+  useEffect(() => { sheetWidthRef.current = sheetWidth; }, [sheetWidth]);
   const [leadName, setLeadName] = useState('');
   const [leadPhone, setLeadPhone] = useState('');
   const [leadEmail, setLeadEmail] = useState('');
