@@ -373,6 +373,33 @@ export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId, cu
         </div>
       </div>
 
+      {selectedIds.length > 0 && (
+        <div className="flex items-center justify-between gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 flex-wrap">
+          <div className="text-sm">
+            <span className="font-medium">{selectedIds.length}</span> arquivo(s) selecionado(s)
+            {selectedIds.length < 2 && (
+              <span className="text-muted-foreground"> · selecione 2 ou mais para agrupar</span>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <Button variant="ghost" size="sm" onClick={clearSelection}>
+              <X className="h-3.5 w-3.5 mr-1" /> Limpar
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => {
+                const firstName = files.find((f) => f.id === selectedIds[0])?.name || '';
+                setMergeName(firstName.replace(/\.[^.]+$/, ''));
+                setMergeOpen(true);
+              }}
+              disabled={selectedIds.length < 2}
+            >
+              <Combine className="h-3.5 w-3.5 mr-1" /> Agrupar em PDF
+            </Button>
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <div className="flex items-center justify-center py-12 text-muted-foreground text-sm">
           <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Carregando documentos…
