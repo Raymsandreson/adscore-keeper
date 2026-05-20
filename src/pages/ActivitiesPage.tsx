@@ -47,7 +47,7 @@ import { TeamChatButton } from '@/components/chat/TeamChatButton';
 import { TeamChatSheet } from '@/components/chat/TeamChatSheet';
 import { ActivityNotesField } from '@/components/activities/ActivityNotesField';
 import { TimeBlockSettingsDialog, TimeBlockConfig } from '@/components/activities/TimeBlockSettingsDialog';
-import { ActivityCreatedDialog } from '@/components/activities/ActivityCreatedDialog';
+import { ActivityCreatedDialog, randomChurchillQuote } from '@/components/activities/ActivityCreatedDialog';
 import { TrafficActivityPanel } from '@/components/traffic/TrafficActivityPanel';
 import { useTimeBlockSettings } from '@/hooks/useTimeBlockSettings';
 import { useActivityTypes } from '@/hooks/useActivityTypes';
@@ -832,6 +832,10 @@ const ActivitiesPage = () => {
   const handleComplete = async (id: string) => {
     await completeActivity(id);
     fetchActivities(getFilterParams());
+    toast.success('Atividade concluída! 🎉', {
+      description: randomChurchillQuote(),
+      duration: 6000,
+    });
   };
 
   const openCompleteAndNotify = (source: 'sheet' | 'workflow') => {
@@ -881,6 +885,10 @@ const ActivitiesPage = () => {
 
       // Conclude the current activity without overwriting its existing data
       await completeActivity(currentActivity.id);
+      toast.success('Atividade concluída! 🎉', {
+        description: randomChurchillQuote(),
+        duration: 6000,
+      });
 
       // Create the next activity with the captured form data
       await createActivity(nextData);
@@ -1080,6 +1088,10 @@ const ActivitiesPage = () => {
       client_name_override: formClientNameOverride || null,
     } as any);
     await completeActivity(selectedActivity.id);
+    toast.success('Atividade concluída! 🎉', {
+      description: randomChurchillQuote(),
+      duration: 6000,
+    });
     const timeSpent = getActivityTimeSpent();
     setWorkflowCompleted(prev => [...prev, { activity: selectedActivity, action: 'completed', timeSpent }]);
     workflowAdvance();

@@ -3,7 +3,7 @@ import { CheckCircle2, Pencil, Trash2, X } from 'lucide-react';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 
-const CHURCHILL_QUOTES = [
+export const CHURCHILL_QUOTES = [
   '"O sucesso é ir de fracasso em fracasso sem perder o entusiasmo." — Winston Churchill',
   '"Nunca, nunca, nunca desista." — Winston Churchill',
   '"Coragem é o que é preciso para se levantar e falar; coragem é também o que é preciso para se sentar e ouvir." — Winston Churchill',
@@ -12,6 +12,10 @@ const CHURCHILL_QUOTES = [
   '"Você nunca chegará ao seu destino se parar e atirar pedras em cada cão que ladrar." — Winston Churchill',
   '"O pessimista vê dificuldade em cada oportunidade; o otimista vê oportunidade em cada dificuldade." — Winston Churchill',
 ];
+
+export function randomChurchillQuote() {
+  return CHURCHILL_QUOTES[Math.floor(Math.random() * CHURCHILL_QUOTES.length)];
+}
 
 interface Props {
   open: boolean;
