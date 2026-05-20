@@ -223,67 +223,65 @@ export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpen
 
         {!collapsed && (
           <>
-            {/* Card único: Leads + Fechados + Conversão + Inviáveis em uma linha */}
-            <Card className="p-3 border-0 bg-gradient-to-r from-blue-50 via-emerald-50 via-violet-50 to-amber-50 dark:from-blue-950/30 dark:via-emerald-950/30 dark:via-violet-950/30 dark:to-amber-950/30">
-              <div className="grid grid-cols-4 gap-2 divide-x divide-border/40">
-                {/* Leads */}
-                <div className="pr-2">
-                  <div className="flex items-center gap-1 text-[11px] font-semibold text-blue-700 dark:text-blue-300 mb-1">
-                    <UserIcon className="h-3 w-3" /> Leads
-                  </div>
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-2xl font-bold tabular-nums text-blue-700 dark:text-blue-300 leading-none">{data.kpis.leadsReceived}</span>
+            {/* Linha única e compacta: Leads (com fechados+conversão inline) + Inviáveis */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+              {/* Card Leads — agora inclui Fechados e Conversão como sub-infos inline */}
+              <Card className="p-2 border-0 bg-gradient-to-r from-blue-50 via-emerald-50 to-violet-50 dark:from-blue-950/30 dark:via-emerald-950/30 dark:to-violet-950/30 md:col-span-2">
+                <div className="flex items-center gap-3 flex-wrap">
+                  {/* Leads (destaque) */}
+                  <div className="flex items-center gap-2 min-w-0">
+                    <UserIcon className="h-3.5 w-3.5 text-blue-700 dark:text-blue-300" />
+                    <span className="text-[11px] font-semibold text-blue-700 dark:text-blue-300">Leads</span>
+                    <span className="text-xl font-bold tabular-nums text-blue-700 dark:text-blue-300 leading-none">{data.kpis.leadsReceived}</span>
                     <span className="text-[10px] text-muted-foreground">recebidos</span>
+                    {data.kpis.leadsReceivedDelta !== '—' && (
+                      <span className="text-[10px] text-blue-600 dark:text-blue-400 font-medium flex items-center gap-0.5">
+                        <TrendingUp className="h-2.5 w-2.5" />{data.kpis.leadsReceivedDelta}
+                      </span>
+                    )}
                   </div>
-                  {data.kpis.leadsReceivedDelta !== '—' && (
-                    <div className="text-[10px] text-blue-600 dark:text-blue-400 font-medium flex items-center gap-0.5 mt-0.5">
-                      <TrendingUp className="h-2.5 w-2.5" />{data.kpis.leadsReceivedDelta}
-                    </div>
-                  )}
-                </div>
-                {/* Fechados */}
-                <div className="px-2">
-                  <div className="flex items-center gap-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 mb-1">
-                    <Trophy className="h-3 w-3" /> Fechados
-                  </div>
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-2xl font-bold tabular-nums text-emerald-700 dark:text-emerald-300 leading-none">{data.kpis.closed}</span>
+
+                  <span className="h-4 w-px bg-border/60" />
+
+                  {/* Fechados inline */}
+                  <div className="flex items-center gap-1.5">
+                    <Trophy className="h-3 w-3 text-emerald-700 dark:text-emerald-300" />
+                    <span className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">Fechados</span>
+                    <span className="text-sm font-bold tabular-nums text-emerald-700 dark:text-emerald-300">{data.kpis.closed}</span>
                     <span className="text-[10px] text-muted-foreground">/ {data.kpis.goal}</span>
+                    <div className="w-12 h-1 rounded-full bg-background/60 overflow-hidden">
+                      <div className="h-full bg-emerald-500 transition-all" style={{ width: `${Math.round((data.kpis.goalProgress ?? 0) * 100)}%` }} />
+                    </div>
                   </div>
-                  <div className="mt-1 h-1 rounded-full bg-background/60 overflow-hidden">
-                    <div className="h-full bg-emerald-500 transition-all" style={{ width: `${Math.round((data.kpis.goalProgress ?? 0) * 100)}%` }} />
-                  </div>
-                </div>
-                {/* Conversão */}
-                <div className="px-2">
-                  <div className="flex items-center gap-1 text-[11px] font-semibold text-violet-700 dark:text-violet-300 mb-1">
-                    <Percent className="h-3 w-3" /> Conversão
-                  </div>
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-2xl font-bold tabular-nums text-violet-700 dark:text-violet-300 leading-none">{data.kpis.conversion}%</span>
-                  </div>
-                  <div className="text-[10px] text-muted-foreground mt-0.5 truncate">
-                    {data.kpis.closed} de {data.kpis.leadsReceived}
+
+                  <span className="h-4 w-px bg-border/60" />
+
+                  {/* Conversão inline */}
+                  <div className="flex items-center gap-1.5">
+                    <Percent className="h-3 w-3 text-violet-700 dark:text-violet-300" />
+                    <span className="text-[11px] font-semibold text-violet-700 dark:text-violet-300">Conversão</span>
+                    <span className="text-sm font-bold tabular-nums text-violet-700 dark:text-violet-300">{data.kpis.conversion}%</span>
+                    <span className="text-[10px] text-muted-foreground">({data.kpis.closed}/{data.kpis.leadsReceived})</span>
                     {data.kpis.conversionDelta !== '—' && (
-                      <span className="ml-1 text-violet-600 dark:text-violet-400 font-medium">↗ {data.kpis.conversionDelta}</span>
+                      <span className="text-[10px] text-violet-600 dark:text-violet-400 font-medium">↗ {data.kpis.conversionDelta}</span>
                     )}
                   </div>
                 </div>
-                {/* Inviáveis */}
-                <div className="pl-2">
-                  <div className="flex items-center gap-1 text-[11px] font-semibold text-amber-700 dark:text-amber-300 mb-1">
-                    <XCircle className="h-3 w-3" /> Inviáveis
-                  </div>
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-2xl font-bold tabular-nums text-amber-700 dark:text-amber-300 leading-none">{data.kpis.unviable}</span>
-                    <span className="text-[10px] text-muted-foreground">descartados</span>
-                  </div>
-                  <div className="text-[10px] text-muted-foreground mt-0.5 truncate">
-                    {data.kpis.unviableTopReason ? `Top: ${data.kpis.unviableTopReason}` : '—'}
-                  </div>
+              </Card>
+
+              {/* Inviáveis - card separado, compacto */}
+              <Card className="p-2 border-0 bg-amber-50 dark:bg-amber-950/30">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <XCircle className="h-3.5 w-3.5 text-amber-700 dark:text-amber-300" />
+                  <span className="text-[11px] font-semibold text-amber-700 dark:text-amber-300">Inviáveis</span>
+                  <span className="text-xl font-bold tabular-nums text-amber-700 dark:text-amber-300 leading-none">{data.kpis.unviable}</span>
+                  <span className="text-[10px] text-muted-foreground">descartados</span>
+                  {data.kpis.unviableTopReason && (
+                    <span className="text-[10px] text-muted-foreground truncate ml-auto">Top: {data.kpis.unviableTopReason}</span>
+                  )}
                 </div>
-              </div>
-            </Card>
+              </Card>
+            </div>
 
             {/* FOCO AGORA */}
             <div className="flex items-center justify-between mt-1">
