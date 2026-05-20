@@ -213,8 +213,13 @@ export function WhatsAppInbox() {
   useEffect(() => {
     if (defaultInstanceApplied || !user || instances.length === 0) return;
     const applyDefault = async () => {
-      // 1. Perfil default (fonte primária)
-      const { data } = await supabase.from('profiles').select('default_instance_id').eq('user_id', user.id).single();
+      // 1. Perfil default lido SEMPRE do Externo (fonte de verdade)
+      const extUserId = await remapToExternal(user.id);
+      const { data } = await externalSupabase
+        .from('profiles')
+        .select('default_instance_id')
+        .eq('user_id', extUserId || user.id)
+        .maybeSingle();
       const defaultId = (data as any)?.default_instance_id || null;
       setUserDefaultInstanceId(defaultId);
 
@@ -236,6 +241,73 @@ export function WhatsAppInbox() {
     };
     applyDefault();
   }, [user, instances, defaultInstanceApplied]);
+
+  // Popup: usuário sem instância padrão cadastrada não pode enviar.
+  const [missingInstanceOpen, setMissingInstanceOpen] = useState(false);
+  const [pickingInstanceId, setPickingInstanceId] = useState<string>('');
+  const [savingDefault, setSavingDefault] = useState(false);
+
+  const guardSendMessage = useCallback((fn: typeof sendMessage) => {
+    return ((...args: Parameters<typeof sendMessage>) => {
+      if (!userDefaultInstanceId) {
+        setPickingInstanceId('');
+        setMissingInstanceOpen(true);
+        toast.error('Cadastre uma instância de WhatsApp antes de enviar mensagens.');
+        return Promise.resolve(undefined as any);
+      }
+      return fn(...args);
+    }) as typeof sendMessage;
+  }, [userDefaultInstanceId, sendMessage]);
+
+  const guardSendMedia = useCallback((...args: Parameters<typeof sendMedia>) => {
+    if (!userDefaultInstanceId) {
+      setPickingInstanceId('');
+      setMissingInstanceOpen(true);
+      toast.error('Cadastre uma instância de WhatsApp antes de enviar mensagens.');
+      return Promise.resolve(undefined as any);
+    }
+    return (sendMedia as any)(...args);
+  }, [userDefaultInstanceId, sendMedia]);
+
+  const guardSendLocation = useCallback((...args: Parameters<typeof sendLocation>) => {
+    if (!userDefaultInstanceId) {
+      setPickingInstanceId('');
+      setMissingInstanceOpen(true);
+      toast.error('Cadastre uma instância de WhatsApp antes de enviar mensagens.');
+      return Promise.resolve(undefined as any);
+    }
+    return (sendLocation as any)(...args);
+  }, [userDefaultInstanceId, sendLocation]);
+
+  const handleConfirmDefaultInstance = useCallback(async () => {
+    if (!user || !pickingInstanceId) return;
+    setSavingDefault(true);
+    try {
+      const extUserId = await remapToExternal(user.id);
+      // Escreve no Externo (fonte de verdade)
+      const { error: extErr } = await externalSupabase
+        .from('profiles')
+        .update({ default_instance_id: pickingInstanceId } as any)
+        .eq('user_id', extUserId || user.id);
+      if (extErr) throw extErr;
+      // Espelha no Cloud (compat com leituras legadas)
+      await supabase
+        .from('profiles')
+        .update({ default_instance_id: pickingInstanceId } as any)
+        .eq('user_id', user.id);
+
+      setUserDefaultInstanceId(pickingInstanceId);
+      setSelectedInstanceId(pickingInstanceId);
+      setMissingInstanceOpen(false);
+      toast.success('Instância padrão cadastrada. Você já pode enviar mensagens.');
+    } catch (e: any) {
+      toast.error('Erro ao salvar instância: ' + (e?.message || ''));
+    } finally {
+      setSavingDefault(false);
+    }
+  }, [user, pickingInstanceId]);
+
+
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedPhone, setSelectedPhone] = usePageState<string | null>('wa_selected_phone', null);
@@ -1591,14 +1663,15 @@ export function WhatsAppInbox() {
                   onSendMessage={(() => {
                     const share = sharedConvs.find(s => s.phone === selectedConversation.phone && s.instance_name === selectedConversation.instance_name);
                     if (share) {
-                      return (phone: string, message: string, contactId?: string, leadId?: string, instanceName?: string | null, _identifySender?: boolean, chatId?: string, treatmentOverride?: string | null, nameFormatOverride?: string, nicknameOverride?: string | null) =>
-                        sendMessage(phone, message, contactId, leadId, instanceName, share.identify_sender, chatId, treatmentOverride, nameFormatOverride, nicknameOverride);
+                      return guardSendMessage(((phone: string, message: string, contactId?: string, leadId?: string, instanceName?: string | null, _identifySender?: boolean, chatId?: string, treatmentOverride?: string | null, nameFormatOverride?: string, nicknameOverride?: string | null) =>
+                        sendMessage(phone, message, contactId, leadId, instanceName, share.identify_sender, chatId, treatmentOverride, nameFormatOverride, nicknameOverride)) as any);
                     }
-                    return sendMessage;
+                    return guardSendMessage(sendMessage);
                   })()}
                   shareInfo={sharedConvs.find(s => s.phone === selectedConversation.phone && s.instance_name === selectedConversation.instance_name) || null}
-                  onSendMedia={sendMedia}
-                  onSendLocation={sendLocation}
+                  onSendMedia={guardSendMedia as any}
+                  onSendLocation={guardSendLocation as any}
+
                   onDeleteMessage={deleteMessage}
                   onLinkToLead={linkToLead}
                   onLinkToContact={linkToContact}
@@ -1665,14 +1738,15 @@ export function WhatsAppInbox() {
                   onSendMessage={(() => {
                     const share = sharedConvs.find(s => s.phone === selectedConversation.phone && s.instance_name === selectedConversation.instance_name);
                     if (share) {
-                      return (phone: string, message: string, contactId?: string, leadId?: string, instanceName?: string | null, _identifySender?: boolean, chatId?: string, treatmentOverride?: string | null, nameFormatOverride?: string, nicknameOverride?: string | null) =>
-                        sendMessage(phone, message, contactId, leadId, instanceName, share.identify_sender, chatId, treatmentOverride, nameFormatOverride, nicknameOverride);
+                      return guardSendMessage(((phone: string, message: string, contactId?: string, leadId?: string, instanceName?: string | null, _identifySender?: boolean, chatId?: string, treatmentOverride?: string | null, nameFormatOverride?: string, nicknameOverride?: string | null) =>
+                        sendMessage(phone, message, contactId, leadId, instanceName, share.identify_sender, chatId, treatmentOverride, nameFormatOverride, nicknameOverride)) as any);
                     }
-                    return sendMessage;
+                    return guardSendMessage(sendMessage);
                   })()}
                   shareInfo={sharedConvs.find(s => s.phone === selectedConversation.phone && s.instance_name === selectedConversation.instance_name) || null}
-                  onSendMedia={sendMedia}
-                  onSendLocation={sendLocation}
+                  onSendMedia={guardSendMedia as any}
+                  onSendLocation={guardSendLocation as any}
+
                   onDeleteMessage={deleteMessage}
                   onLinkToLead={linkToLead}
                   onLinkToContact={linkToContact}
@@ -2014,6 +2088,57 @@ export function WhatsAppInbox() {
       </AlertDialog>
 
       <SharedConversationsPanel open={sharedPanelOpen} onOpenChange={setSharedPanelOpen} />
+
+      {/* Popup bloqueante: sem instância padrão = sem envio */}
+      <Dialog
+        open={missingInstanceOpen}
+        onOpenChange={(open) => {
+          // Só fecha se já tiver instância cadastrada (não pode escapar sem escolher)
+          if (!open && !userDefaultInstanceId) return;
+          setMissingInstanceOpen(open);
+        }}
+      >
+        <DialogContent className="sm:max-w-md" onPointerDownOutside={(e) => e.preventDefault()} onEscapeKeyDown={(e) => e.preventDefault()}>
+          <DialogHeader>
+            <DialogTitle>Escolha sua instância de WhatsApp</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <p className="text-sm text-muted-foreground">
+              Você ainda não tem uma instância cadastrada. Selecione qual número deve enviar suas mensagens. Sem isso, o envio fica bloqueado.
+            </p>
+            {instances.length === 0 ? (
+              <p className="text-sm text-destructive">
+                Nenhuma instância disponível para você. Peça ao administrador para liberar uma instância.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                <Label>Instância</Label>
+                <Select value={pickingInstanceId} onValueChange={setPickingInstanceId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione uma instância..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {instances.map((inst) => (
+                      <SelectItem key={inst.id} value={inst.id}>
+                        {inst.instance_name}{(inst as any).owner_name ? ` — ${(inst as any).owner_name}` : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              onClick={handleConfirmDefaultInstance}
+              disabled={!pickingInstanceId || savingDefault || instances.length === 0}
+            >
+              {savingDefault ? (<><Loader2 className="h-4 w-4 mr-2 animate-spin" />Salvando...</>) : 'Cadastrar instância'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
+

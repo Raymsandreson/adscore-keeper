@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { db, authClient } from '@/integrations/supabase';
 import { ensureExternalSession } from '@/integrations/supabase/external-client';
+import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import {
   getConversationSummaries,
   getConversationMessages,
@@ -177,15 +178,17 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       }
 
       // Members: only see explicitly assigned instances
+      // default_instance_id é lido SEMPRE do Externo (fonte de verdade)
+      const extUserId = await remapToExternal(user.id);
       const [{ data: permissions, error: permissionsError }, { data: profile, error: profileError }] = await Promise.all([
         authClient
           .from('whatsapp_instance_users')
           .select('instance_id')
           .eq('user_id', user.id),
-        authClient
+        db
           .from('profiles')
           .select('default_instance_id')
-          .eq('user_id', user.id)
+          .eq('user_id', extUserId || user.id)
           .maybeSingle(),
       ]);
 
@@ -194,9 +197,10 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
 
       const allowedIds = new Set((permissions || []).map((permission) => permission.instance_id));
 
-      if (profile?.default_instance_id) {
-        allowedIds.add(profile.default_instance_id);
+      if ((profile as any)?.default_instance_id) {
+        allowedIds.add((profile as any).default_instance_id);
       }
+
 
       if (allowedIds.size === 0) {
         setInstances([]);
