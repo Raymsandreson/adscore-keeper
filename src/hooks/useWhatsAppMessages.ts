@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { db, authClient } from '@/integrations/supabase';
 import { ensureExternalSession } from '@/integrations/supabase/external-client';
+import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import {
   getConversationSummaries,
   getConversationMessages,
