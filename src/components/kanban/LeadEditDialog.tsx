@@ -216,6 +216,32 @@ export function LeadEditDialog({
   initialTab,
 }: LeadEditDialogProps) {
   // Basic fields state
+  const [sheetWidth, setSheetWidth] = useState<number>(() => {
+    if (typeof window === 'undefined') return 512;
+    const saved = Number(localStorage.getItem('leadEditDialog.sheetWidth'));
+    return Number.isFinite(saved) && saved >= 360 ? saved : 512;
+  });
+  const startResize = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = sheetWidth;
+    const onMove = (ev: MouseEvent) => {
+      const delta = startX - ev.clientX; // arrastar p/ esquerda aumenta
+      const next = Math.min(Math.max(360, startW + delta), Math.floor(window.innerWidth * 0.95));
+      setSheetWidth(next);
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      document.body.style.userSelect = '';
+      try { localStorage.setItem('leadEditDialog.sheetWidth', String(sheetWidthRef.current)); } catch {}
+    };
+    document.body.style.userSelect = 'none';
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  };
+  const sheetWidthRef = useRef(512);
+  useEffect(() => { sheetWidthRef.current = sheetWidth; }, [sheetWidth]);
   const [leadName, setLeadName] = useState('');
   const [leadPhone, setLeadPhone] = useState('');
   const [leadEmail, setLeadEmail] = useState('');
@@ -1350,13 +1376,27 @@ ${scrapeData.content || ''}
   const Footer = mode === 'sheet' ? SheetFooter : DialogFooter;
 
   const contentClassName = mode === 'sheet'
-    ? 'sm:max-w-lg flex flex-col h-full overflow-y-auto'
+    ? 'flex flex-col h-full overflow-y-auto !max-w-none'
     : 'max-w-2xl max-h-[90vh] flex flex-col';
+
+  const sheetContentStyle = mode === 'sheet'
+    ? { width: `${sheetWidth}px`, maxWidth: '95vw' }
+    : undefined;
 
   return (
     <>
     <Wrapper open={open} onOpenChange={onOpenChange}>
-      <Content className={contentClassName} {...(mode === 'sheet' ? { side: 'right' as const } : {})}>
+      <Content className={contentClassName} style={sheetContentStyle} {...(mode === 'sheet' ? { side: 'right' as const } : {})}>
+        {mode === 'sheet' && (
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            title="Arraste para redimensionar"
+            onMouseDown={startResize}
+            onDoubleClick={() => { setSheetWidth(512); localStorage.setItem('leadEditDialog.sheetWidth', '512'); }}
+            className="absolute left-0 top-0 h-full w-1.5 cursor-col-resize bg-transparent hover:bg-primary/40 active:bg-primary/60 transition-colors z-30"
+          />
+        )}
         <Header>
           <div className="flex items-center justify-between">
             <Title className="flex items-center gap-2">
