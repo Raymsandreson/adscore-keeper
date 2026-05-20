@@ -166,8 +166,9 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
 
     try {
       // Admins see all active instances
+      // whatsapp_instances vive no Externo (fonte da verdade) — Cloud é mirror stale.
       if (isAdmin) {
-        const { data, error } = await authClient
+        const { data, error } = await db
           .from('whatsapp_instances')
           .select('*')
           .eq('is_active', true)
@@ -209,7 +210,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         return;
       }
 
-      const { data: instData, error: instError } = await authClient
+      const { data: instData, error: instError } = await db
         .from('whatsapp_instances')
         .select('*')
         .eq('is_active', true)
