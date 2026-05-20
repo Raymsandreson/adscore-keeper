@@ -224,8 +224,16 @@ Deno.serve(async (req) => {
       );
       if (!res.ok) throw new Error(`drive list failed [${res.status}]: ${await res.text()}`);
       const data = await res.json();
+      const seenFiles = new Set<string>();
+      const files = (data.files || []).filter((file: any) => {
+        const key = `${file.name || ""}::${file.size || ""}`;
+        if (!file.size || !file.name) return true;
+        if (seenFiles.has(key)) return false;
+        seenFiles.add(key);
+        return true;
+      });
       return new Response(
-        JSON.stringify({ folder_id: folderId, folder_url: `https://drive.google.com/drive/folders/${folderId}`, files: data.files || [] }),
+        JSON.stringify({ folder_id: folderId, folder_url: `https://drive.google.com/drive/folders/${folderId}`, files }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
