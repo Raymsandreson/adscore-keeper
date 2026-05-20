@@ -335,6 +335,11 @@ export function LeadEditDialog({
   const [selectedBoardId, setSelectedBoardId] = useState('');
 
   const currentLead = lead;
+  const autoDrive = useAutoImportGroupDocs(
+    currentLead?.id || null,
+    currentLead?.lead_name || null,
+    (currentLead as any)?.whatsapp_group_id || null,
+  );
   const layoutBoardId = selectedBoardId || (currentLead as any)?.board_id || null;
   const { resolved: resolvedFieldLayout } = useLeadFieldLayout(layoutBoardId);
   const { visibleTabs: visibleLayoutTabs } = useLeadTabLayout(layoutBoardId);
