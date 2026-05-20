@@ -498,8 +498,9 @@ const ActivitiesPage = () => {
     const currentUser = teamMembers.find(m => m.user_id === user?.id);
     setFormAssignedTo(user?.id || '');
     setFormAssignedToName(currentUser?.full_name || '');
-    setFormDeadline('');
-    setFormNotificationDate('');
+    const todayStr = format(new Date(), 'yyyy-MM-dd');
+    setFormDeadline(todayStr);
+    setFormNotificationDate(todayStr);
     setFormNotes('');
     setFormRepeatWeekDays([]);
     setFormStatus('pendente');
@@ -2537,7 +2538,7 @@ const ActivitiesPage = () => {
                             <div
                               key={a.id}
                               className={cn(
-                                "px-3 py-2 transition-colors hover:bg-muted/50 cursor-pointer flex items-start gap-2",
+                                "group/blockitem px-3 py-2 transition-colors hover:bg-muted/50 cursor-pointer flex items-start gap-2",
                                 selectedActivityId === a.id && "bg-primary/10"
                               )}
                               onClick={() => handleOpenEdit(a)}
@@ -2552,6 +2553,14 @@ const ActivitiesPage = () => {
                                   </Badge>
                                 </div>
                               </div>
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); handleDelete(a.id); }}
+                                className="shrink-0 opacity-0 group-hover/blockitem:opacity-100 transition-opacity p-1 rounded hover:bg-destructive/10 text-destructive"
+                                title="Excluir atividade"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
                             </div>
                           ))}
                         </div>
@@ -3351,18 +3360,11 @@ const ActivitiesPage = () => {
                       >
                         <Copy className="h-3.5 w-3.5 mr-2" /> Duplicar
                       </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        onClick={() => selectedActivity && handleDelete(selectedActivity.id)}
-                        className="text-xs text-destructive focus:text-destructive"
-                      >
-                        <Trash2 className="h-3.5 w-3.5 mr-2" /> Excluir
-                      </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
 
                   {/* Primary actions */}
-                  <div className="flex gap-2 flex-wrap">
+                  <div className="flex gap-1.5 flex-wrap items-center">
                     {selectedActivity?.status === 'concluida' && (
                       <Popover>
                         <PopoverTrigger asChild>
@@ -3395,6 +3397,15 @@ const ActivitiesPage = () => {
                         </PopoverContent>
                       </Popover>
                     )}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 text-xs gap-1 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                      onClick={() => selectedActivity && handleDelete(selectedActivity.id)}
+                      title="Excluir atividade"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" /> Excluir
+                    </Button>
                     <Button size="sm" variant="outline" className="h-8 text-xs" onClick={handleUpdate}>Salvar</Button>
                     {selectedActivity?.status !== 'concluida' && (
                       <Button size="sm" className="h-8 text-xs gap-1 bg-warning hover:bg-warning/90 text-warning-foreground" onClick={() => openCompleteAndNotify('sheet')}>
