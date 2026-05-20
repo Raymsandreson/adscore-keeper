@@ -471,7 +471,7 @@ Deno.serve(async (req) => {
           messages: [
             {
               role: "system",
-              content: "Você analisa documentos brasileiros (RG, CPF, CNH, comprovantes, procurações, laudos periciais, boletins, etc.). Devolva APENAS via tool call.",
+              content: "Você analisa documentos brasileiros (RG, CPF, CNH, certidões de nascimento/casamento/óbito, comprovantes, procurações, laudos periciais, boletins, holerites, extratos, etc.). Seja ESPECÍFICO no document_type — nunca use 'Outro' se houver qualquer indicação clara (título do documento, brasão, layout). SEMPRE preencha document_subtype indicando se é 'frente', 'verso', 'frente e verso' ou 'único' (documento de página única que não tem verso). Devolva APENAS via tool call.",
             },
             {
               role: "user",
@@ -488,9 +488,9 @@ Deno.serve(async (req) => {
                   properties: {
                     document_type: {
                       type: "string",
-                      enum: ["RG", "CPF", "CNH", "Procuração", "Comprovante de Endereço", "Laudo Pericial", "Boletim de Ocorrência", "Contrato", "Atestado Médico", "Foto", "Outro"],
+                      description: "Nome específico do documento em português. Ex: 'Certidão de Nascimento', 'Certidão de Casamento', 'Certidão de Óbito', 'RG', 'CPF', 'CNH', 'Carteira de Trabalho', 'Comprovante de Endereço', 'Holerite', 'Extrato Bancário', 'Procuração', 'Laudo Pericial', 'Boletim de Ocorrência', 'Contrato', 'Atestado Médico', 'Histórico Escolar', 'Título de Eleitor', 'Passaporte', 'Foto'. Use 'Outro' SOMENTE se for impossível identificar.",
                     },
-                    document_subtype: { type: ["string", "null"], description: "Ex: 'frente', 'verso', 'frente e verso', 'página 1 de 3'" },
+                    document_subtype: { type: "string", enum: ["frente", "verso", "frente e verso", "único"], description: "Identifique sempre. 'único' = documento de página única sem verso (ex: certidão completa, comprovante)." },
                     holder_name: { type: ["string", "null"], description: "Nome do titular do documento" },
                     holder_cpf: { type: ["string", "null"] },
                     description: { type: "string", description: "Resumo de 1-2 linhas do conteúdo" },
@@ -509,7 +509,7 @@ Deno.serve(async (req) => {
                       },
                     },
                   },
-                  required: ["document_type", "description", "confidence"],
+                  required: ["document_type", "document_subtype", "description", "confidence"],
                   additionalProperties: false,
                 },
               },
@@ -561,11 +561,14 @@ Deno.serve(async (req) => {
           const labelSource: "case_number" | "case_title" | "holder_name" | "none" =
             caseLabelSource ?? (analysis.holder_name ? "holder_name" : "none");
 
+          // Padrão de nome: "{Tipo} — {Titular} ({frente|verso}) — {PREV 597}{ext}"
+          // PREV / código do caso vai SEMPRE no final.
           const parts: string[] = [sanitize(analysis.document_type)];
-          if (caseLabel) parts.push(sanitize(caseLabel));
-          else if (analysis.holder_name) parts.push(sanitize(analysis.holder_name));
+          if (analysis.holder_name) parts.push(sanitize(analysis.holder_name));
           if (analysis.document_subtype) parts.push(`(${sanitize(analysis.document_subtype)})`);
-          let base = parts.join(" — ").slice(0, 180);
+          let base = parts.join(" — ");
+          if (caseLabel) base = `${base} — ${sanitize(caseLabel)}`;
+          base = base.slice(0, 180);
           const desired = `${base}${extName}`;
           if (desired && desired !== meta.name) {
             const previousName = meta.name;
