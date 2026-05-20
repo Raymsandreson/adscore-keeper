@@ -498,8 +498,9 @@ const ActivitiesPage = () => {
     const currentUser = teamMembers.find(m => m.user_id === user?.id);
     setFormAssignedTo(user?.id || '');
     setFormAssignedToName(currentUser?.full_name || '');
-    setFormDeadline('');
-    setFormNotificationDate('');
+    const todayStr = format(new Date(), 'yyyy-MM-dd');
+    setFormDeadline(todayStr);
+    setFormNotificationDate(todayStr);
     setFormNotes('');
     setFormRepeatWeekDays([]);
     setFormStatus('pendente');
