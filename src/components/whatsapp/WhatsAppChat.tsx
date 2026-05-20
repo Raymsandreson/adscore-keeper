@@ -350,7 +350,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const [aiNamingFile, setAiNamingFile] = useState(false);
   const [batchUploading, setBatchUploading] = useState(false);
   const [pendingBatchAfterLead, setPendingBatchAfterLead] = useState(false);
-  const [batchDriveOrder, setBatchDriveOrder] = useState<Array<{ id: string; media_url: string; media_type: string; message_text: string; message_type: string }>>([]);
+  const [batchDriveOrder, setBatchDriveOrder] = useState<Array<{ id: string; media_url: string; media_type: string; message_text: string; message_type: string; external_message_id?: string | null }>>([]);
   const [batchAnalysis, setBatchAnalysis] = useState<{ type?: string; title?: string; holder_name?: string | null; holder_cpf?: string | null; description?: string | null; pages_label?: string | null } | null>(null);
 
   // Long-press p/ ativar seleção (mobile) — usa um único timer compartilhado
@@ -437,7 +437,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     setBatchFileName(`Documentos ${today}`.replace(/[\\/:*?"<>|]/g, '_'));
     setBatchDriveMode('merge');
     setBatchAnalysis(null);
-    setBatchDriveOrder(selected.map((m: any) => ({ id: m.id, media_url: m.media_url, media_type: m.media_type || '', message_text: m.message_text || '', message_type: m.message_type })));
+    setBatchDriveOrder(selected.map((m: any) => ({ id: m.id, media_url: m.media_url, media_type: m.media_type || '', message_text: m.message_text || '', message_type: m.message_type, external_message_id: m.external_message_id || null })));
     setShowBatchDriveDialog(true);
     // Dispara IA p/ analisar conteúdo + sugerir título
     void analyzeBatchWithAi(selected);
