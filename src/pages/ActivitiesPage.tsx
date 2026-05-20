@@ -1088,6 +1088,10 @@ const ActivitiesPage = () => {
       client_name_override: formClientNameOverride || null,
     } as any);
     await completeActivity(selectedActivity.id);
+    toast.success('Atividade concluída! 🎉', {
+      description: randomChurchillQuote(),
+      duration: 6000,
+    });
     const timeSpent = getActivityTimeSpent();
     setWorkflowCompleted(prev => [...prev, { activity: selectedActivity, action: 'completed', timeSpent }]);
     workflowAdvance();
