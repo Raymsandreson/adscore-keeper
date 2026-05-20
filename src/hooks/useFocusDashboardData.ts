@@ -180,6 +180,7 @@ export function useFocusDashboardData(): FocusData {
         conversion,
         conversionDelta: convDelta !== 0 ? (convDelta > 0 ? `+${convDelta}pp vs ontem` : `${convDelta}pp vs ontem`) : '—',
         unviable: unviableLeads.length,
+        unviablePercentage: received > 0 ? Math.round((unviableLeads.length / received) * 100) : 0,
         unviableTopReason: topReason,
       });
 
