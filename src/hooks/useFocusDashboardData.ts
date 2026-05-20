@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { db, authClient } from '@/integrations/supabase';
 import { useAuthContext } from '@/contexts/AuthContext';
+import { usePageState } from '@/hooks/usePageState';
 import { startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear, subDays } from 'date-fns';
 
 export type FocusPeriod = 'yesterday' | 'today' | 'week' | 'month' | 'year' | 'custom';
@@ -77,9 +78,13 @@ const EMPTY_ACTIONS: FocusActions = {
 
 export function useFocusDashboardData(): FocusData {
   const { user } = useAuthContext();
-  const [period, setPeriod] = useState<FocusPeriod>('today');
-  const [scope, setScope] = useState<FocusScope>('personal');
-  const [customRange, setCustomRange] = useState<{ from: Date; to: Date } | undefined>();
+  const [period, setPeriod] = usePageState<FocusPeriod>('focus_dashboard_period', 'today');
+  const [scope, setScope] = usePageState<FocusScope>('focus_dashboard_scope', 'personal');
+  const [customRangeRaw, setCustomRangeRaw] = usePageState<{ from: string; to: string } | null>('focus_dashboard_custom_range', null);
+  const customRange = useMemo(() => {
+    if (!customRangeRaw) return undefined;
+    return { from: new Date(customRangeRaw.from), to: new Date(customRangeRaw.to) };
+  }, [customRangeRaw]);
   const [kpis, setKpis] = useState<FocusKpis>(EMPTY_KPIS);
   const [actions, setActions] = useState<FocusActions>(EMPTY_ACTIONS);
   const [loading, setLoading] = useState(false);
@@ -87,9 +92,9 @@ export function useFocusDashboardData(): FocusData {
 
   const range = useMemo(() => rangeFromPeriod(period, customRange), [period, customRange]);
   const setRange = useCallback((r: { from: Date; to: Date }) => {
-    setCustomRange(r);
+    setCustomRangeRaw({ from: r.from.toISOString(), to: r.to.toISOString() });
     setPeriod('custom');
-  }, []);
+  }, [setCustomRangeRaw, setPeriod]);
 
   // Resolve scope user IDs (Cloud)
   useEffect(() => {
