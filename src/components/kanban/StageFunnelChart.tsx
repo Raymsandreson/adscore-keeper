@@ -342,7 +342,7 @@ export function StageFunnelChart({ board, leadsPerStage, conversionAlerts = [] }
                       {lead.lead_status === 'closed' ? 'Fechado' :
                        lead.lead_status === 'refused' ? 'Recusado' :
                        lead.lead_status === 'inviavel' ? 'Inviável' :
-                       (lead as any).lead_status === 'cancelled' ? 'Cancelamento' :
+                       (lead as any).lead_status === 'cancelled' ? 'Cancelado' :
                        'Ativo'}
                     </Badge>
                   </div>

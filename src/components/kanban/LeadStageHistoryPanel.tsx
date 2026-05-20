@@ -30,7 +30,7 @@ const statusLabels: Record<string, string> = {
   refused: 'Recusado',
   inviavel: 'Inviável',
   unviable: 'Inviável',
-  cancelled: 'Cancelamento',
+  cancelled: 'Cancelado',
 };
 
 const statusColors: Record<string, string> = {
