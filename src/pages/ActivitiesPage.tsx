@@ -47,6 +47,7 @@ import { TeamChatButton } from '@/components/chat/TeamChatButton';
 import { TeamChatSheet } from '@/components/chat/TeamChatSheet';
 import { ActivityNotesField } from '@/components/activities/ActivityNotesField';
 import { TimeBlockSettingsDialog, TimeBlockConfig } from '@/components/activities/TimeBlockSettingsDialog';
+import { ActivityCreatedDialog } from '@/components/activities/ActivityCreatedDialog';
 import { TrafficActivityPanel } from '@/components/traffic/TrafficActivityPanel';
 import { useTimeBlockSettings } from '@/hooks/useTimeBlockSettings';
 import { useActivityTypes } from '@/hooks/useActivityTypes';
