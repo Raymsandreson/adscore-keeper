@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -8,7 +8,9 @@ import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { ArrowLeft, User, Mail, Save, Loader2, Scale, Phone } from "lucide-react";
+import { ArrowLeft, User, Mail, Save, Loader2, Scale, Phone, Smartphone } from "lucide-react";
+import { db } from "@/integrations/supabase";
+import { remapToExternal } from "@/integrations/supabase/uuid-remap";
 
 const TREATMENT_OPTIONS = [
   { value: 'none', label: 'Nenhum' },
