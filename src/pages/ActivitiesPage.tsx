@@ -207,6 +207,7 @@ const ActivitiesPage = () => {
   const [sheetMode, setSheetMode] = usePageState<'create' | 'edit' | null>('activities_sheetMode', null);
   const [selectedActivityId, setSelectedActivityId] = usePageState<string | null>('activities_selectedId', null);
   const [selectedActivity, setSelectedActivity] = useState<LeadActivity | null>(null);
+  const [createdDialog, setCreatedDialog] = useState<{ open: boolean; title: string; activity: LeadActivity | null }>({ open: false, title: '', activity: null });
   const [leads, setLeads] = useState<LeadOption[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [calendarMonth, setCalendarMonth] = useState(new Date());
