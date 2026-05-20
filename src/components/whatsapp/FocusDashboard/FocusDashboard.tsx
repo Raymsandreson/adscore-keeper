@@ -55,96 +55,94 @@ export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpen
   if (compact) {
     return (
       <Card className="rounded-none border-x-0 border-t-0 bg-card shrink-0">
-        <div className="px-3 py-1.5 flex items-center gap-3 overflow-x-auto">
-          {/* Identidade */}
+        <div className="px-2 py-1 flex items-center gap-2 flex-wrap">
+          {/* Identidade + período juntos */}
           <div className="flex items-center gap-1.5 shrink-0">
-            <Avatar className="h-6 w-6 ring-1 ring-primary/20">
-              <AvatarFallback className="bg-primary/10 text-primary text-[10px] font-bold">{initials}</AvatarFallback>
+            <Avatar className="h-5 w-5 ring-1 ring-primary/20">
+              <AvatarFallback className="bg-primary/10 text-primary text-[9px] font-bold">{initials}</AvatarFallback>
             </Avatar>
-            <span className="text-xs font-semibold truncate max-w-[140px]">{displayName.split(' · ')[0]}</span>
+            <span className="text-[11px] font-semibold truncate max-w-[110px]">{displayName.split(' · ')[0]}</span>
           </div>
 
-          {/* Período */}
           <ToggleGroup
             type="single"
             value={data.period}
             onValueChange={(v) => { if (v) data.setPeriod(v as FocusPeriod); }}
-            className="border rounded-md shrink-0"
+            className="border rounded shrink-0"
           >
             {PERIOD_OPTIONS.map(p => (
-              <ToggleGroupItem key={p.key} value={p.key} className="text-[10px] h-6 px-2">{p.label}</ToggleGroupItem>
+              <ToggleGroupItem key={p.key} value={p.key} className="text-[10px] h-5 px-1.5">{p.label}</ToggleGroupItem>
             ))}
           </ToggleGroup>
 
-          <div className="h-5 w-px bg-border shrink-0" />
+          <div className="h-4 w-px bg-border shrink-0" />
 
           {/* KPIs inline */}
-          <div className="flex items-center gap-3 shrink-0 text-xs">
-            <div className="flex items-center gap-1" title="Leads recebidos">
+          <div className="flex items-center gap-2 shrink-0 text-[11px]">
+            <span className="flex items-center gap-0.5" title="Leads recebidos">
               <UserIcon className="h-3 w-3 text-blue-600" />
-              <span className="font-bold tabular-nums">{data.kpis.leadsReceived}</span>
-              <span className="text-muted-foreground text-[10px]">leads</span>
-            </div>
-            <div className="flex items-center gap-1" title="Fechados / Meta">
+              <b className="tabular-nums">{data.kpis.leadsReceived}</b>
+              <span className="text-muted-foreground">leads</span>
+            </span>
+            <span className="flex items-center gap-0.5" title="Fechados / Meta">
               <Trophy className="h-3 w-3 text-green-600" />
-              <span className="font-bold tabular-nums">{data.kpis.closed}<span className="text-muted-foreground font-normal">/{data.kpis.goal}</span></span>
-            </div>
-            <div className="flex items-center gap-1" title="Conversão">
+              <b className="tabular-nums">{data.kpis.closed}<span className="text-muted-foreground font-normal">/{data.kpis.goal}</span></b>
+            </span>
+            <span className="flex items-center gap-0.5" title="Conversão">
               <Percent className="h-3 w-3 text-violet-600" />
-              <span className="font-bold tabular-nums">{data.kpis.conversion}%</span>
-            </div>
-            <div className="flex items-center gap-1" title="Inviáveis">
+              <b className="tabular-nums">{data.kpis.conversion}%</b>
+            </span>
+            <span className="flex items-center gap-0.5" title="Inviáveis">
               <XCircle className="h-3 w-3 text-amber-600" />
-              <span className="font-bold tabular-nums">{data.kpis.unviable}</span>
-              <span className="text-muted-foreground text-[10px]">inv.</span>
-            </div>
+              <b className="tabular-nums">{data.kpis.unviable}</b>
+            </span>
           </div>
 
-          <div className="h-5 w-px bg-border shrink-0" />
+          <div className="h-4 w-px bg-border shrink-0" />
 
-          {/* Ações Foco Agora inline */}
-          <div className="flex items-center gap-1.5 shrink-0">
-            <Button
-              size="sm"
-              className="h-7 text-[11px] gap-1 bg-orange-600 hover:bg-orange-700 text-white px-2"
+          {/* Ações Foco Agora — pílulas compactas */}
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              type="button"
               onClick={onOpenMissingDocs}
               title={data.actions.missingDocsHint}
+              className="h-6 px-1.5 rounded text-[10px] inline-flex items-center gap-1 bg-orange-600 hover:bg-orange-700 text-white"
             >
               <FileText className="h-3 w-3" />
-              <span className="font-bold tabular-nums">{data.actions.missingDocs}</span>
-              <span className="hidden lg:inline">docs</span>
-            </Button>
-            <Button
-              size="sm"
-              className="h-7 text-[11px] gap-1 bg-stone-700 hover:bg-stone-800 text-white px-2"
+              <b className="tabular-nums">{data.actions.missingDocs}</b>
+              <span className="hidden sm:inline">docs</span>
+            </button>
+            <button
+              type="button"
               onClick={onOpenZapsignPending}
               title={data.actions.zapsignPendingHint}
+              className="h-6 px-1.5 rounded text-[10px] inline-flex items-center gap-1 bg-stone-700 hover:bg-stone-800 text-white"
             >
               <PenTool className="h-3 w-3" />
-              <span className="font-bold tabular-nums">{data.actions.zapsignPending}</span>
-              <span className="hidden lg:inline">ZapSign</span>
-            </Button>
-            <Button
-              size="sm"
-              className="h-7 text-[11px] gap-1 bg-rose-700 hover:bg-rose-800 text-white px-2"
+              <b className="tabular-nums">{data.actions.zapsignPending}</b>
+              <span className="hidden sm:inline">assin.</span>
+            </button>
+            <button
+              type="button"
               onClick={onOpenUnanswered}
               title={`+30min ${data.actions.unansweredBuckets.plus30} · +4h ${data.actions.unansweredBuckets.plus4h} · +24h ${data.actions.unansweredBuckets.plus24h}`}
+              className="h-6 px-1.5 rounded text-[10px] inline-flex items-center gap-1 bg-rose-700 hover:bg-rose-800 text-white"
             >
               <MessageCircleOff className="h-3 w-3" />
-              <span className="font-bold tabular-nums">{data.actions.unansweredOwedByMe}</span>
-              <span className="hidden lg:inline">s/ resp.</span>
-            </Button>
+              <b className="tabular-nums">{data.actions.unansweredOwedByMe}</b>
+              <span className="hidden sm:inline">s/ resp.</span>
+            </button>
           </div>
 
-          {/* Spacer + ações à direita */}
           <div className="flex-1" />
-          <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={data.refetch} disabled={data.loading}>
-            <RefreshCw className={cn('h-3.5 w-3.5', data.loading && 'animate-spin')} />
+          <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={data.refetch} disabled={data.loading}>
+            <RefreshCw className={cn('h-3 w-3', data.loading && 'animate-spin')} />
           </Button>
         </div>
       </Card>
     );
   }
+
 
   return (
     <Card className="rounded-none border-x-0 border-t-0 bg-card shrink-0">
