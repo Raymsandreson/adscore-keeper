@@ -392,7 +392,12 @@ export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId, cu
                 ? `${a.document_type}${a.holder_name ? ' — ' + a.holder_name : ''}`
                 : null;
               const row = (
-                <div key={f.id} className="flex items-center gap-3 p-3 hover:bg-muted/30">
+                <div key={f.id} className={`flex items-center gap-3 p-3 hover:bg-muted/30 ${selectedIds.includes(f.id) ? 'bg-primary/5' : ''}`}>
+                  <Checkbox
+                    checked={selectedIds.includes(f.id)}
+                    onCheckedChange={() => toggleSelect(f.id)}
+                    aria-label="Selecionar para agrupar"
+                  />
                   {f.iconLink ? (
                     <img src={f.iconLink} alt="" className="h-5 w-5" />
                   ) : (
