@@ -253,7 +253,7 @@ export function ActivityDetailPanel({ leadId, leadName, currentActivityId, onNav
 
   // Ao abrir uma atividade vinculada a um lead, dispara o mesmo gatilho de
   // atualização de documentos do grupo WhatsApp (silencioso, idempotente).
-  useAutoImportGroupDocs(
+  const autoDrive = useAutoImportGroupDocs(
     leadId,
     leadName,
     (lead as any)?.whatsapp_group_id || null,
