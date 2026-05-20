@@ -51,12 +51,20 @@ Deno.serve(async (req) => {
     if (!body.lead_id) return json({ error: "lead_id required" }, 400);
 
     // Normalize legacy
-    const docs: DocItem[] = body.documents
+    const incomingDocs: DocItem[] = body.documents
       ? body.documents
       : (body.message_ids || []).map((m) => ({
           message_id: m,
           document_type: body.document_type || "Outro",
         }));
+
+    const seenInput = new Set<string>();
+    const docs = incomingDocs.filter((item) => {
+      const key = String(item.message_id || "").trim();
+      if (!key || seenInput.has(key)) return false;
+      seenInput.add(key);
+      return true;
+    });
 
     if (docs.length === 0) return json({ error: "documents[] required" }, 400);
 
@@ -184,6 +192,31 @@ Deno.serve(async (req) => {
           continue;
         }
 
+        const contentHash = await sha256Hex(bytes);
+
+        // --- Late skip: same binary was already imported for this lead ---
+        try {
+          const { data: sameBinaryDoc } = await cloud
+            .from("process_documents")
+            .select("id, file_url")
+            .eq("lead_id", body.lead_id)
+            .eq("source", "whatsapp_group")
+            .eq("file_size", bytes.length)
+            .or(`metadata->>content_hash.eq.${contentHash},file_name.eq.${fileName}`)
+            .limit(1)
+            .maybeSingle();
+          if (sameBinaryDoc?.id) {
+            results.push({
+              msgId,
+              status: "ok",
+              deduped: true,
+              document_id: sameBinaryDoc.id,
+              drive_link: sameBinaryDoc.file_url || null,
+            });
+            continue;
+          }
+        } catch (_) { /* fallthrough — best-effort dedup */ }
+
         // --- Upload to Supabase Storage (backup) ---
         const safeName = fileName.replace(/[^\w.\-]+/g, "_");
         const storagePath = `lead/${body.lead_id}/group-docs/${msgId}-${safeName}`;
@@ -215,6 +248,8 @@ Deno.serve(async (req) => {
               source_url: pub.publicUrl,
               mime_type: mimeType,
               document_type: documentType,
+              dedup_key: `wa:${body.lead_id}:${msg.external_message_id}`,
+              content_hash: contentHash,
             }),
           });
           const driveJson = await driveRes.json();
@@ -246,6 +281,7 @@ Deno.serve(async (req) => {
               group_jid: msg.phone,
               import_strategy: strategy,
               storage_url: pub.publicUrl,
+              content_hash: contentHash,
               drive_file_id: driveFile?.id || null,
               drive_view_link: driveFile?.webViewLink || null,
               drive_error: driveError,
