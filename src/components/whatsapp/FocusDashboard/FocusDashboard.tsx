@@ -55,8 +55,9 @@ export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpen
   if (compact) {
     const kpiCards = [
       {
-        label: `Fechados · ${data.kpis.leadsReceived} leads`,
-        value: `${data.kpis.closed}/${data.kpis.goal} · ${data.kpis.conversion}%`,
+        label: 'Fechados',
+        value: `${data.kpis.closed}/${data.kpis.goal} (${data.kpis.conversion}%)`,
+        sub: `${data.kpis.leadsReceived} leads`,
         icon: Trophy,
         tone: 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200/60 dark:border-emerald-900/40 text-emerald-700 dark:text-emerald-300',
       },
@@ -94,11 +95,14 @@ export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpen
                   !k.onClick && 'cursor-default'
                 )}
               >
-                <span className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide opacity-80">
-                  <Icon className="h-3 w-3" />
-                  {k.label}
-                </span>
-                <span className="text-base font-bold tabular-nums leading-none">{k.value}</span>
+              <span className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide opacity-80">
+                <Icon className="h-3 w-3" />
+                {k.label}
+              </span>
+              <span className="text-base font-bold tabular-nums leading-none">{k.value}</span>
+              {k.sub && (
+                <span className="text-[10px] opacity-70 leading-none">{k.sub}</span>
+              )}
               </button>
             );
           })}
