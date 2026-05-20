@@ -75,6 +75,63 @@ export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId, cu
   const [importGroupOpen, setImportGroupOpen] = useState(false);
   const [analyses, setAnalyses] = useState<Record<string, Analysis>>({});
 
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [mergeOpen, setMergeOpen] = useState(false);
+  const [mergeName, setMergeName] = useState('');
+  const [mergeDeleteOriginals, setMergeDeleteOriginals] = useState(true);
+  const [merging, setMerging] = useState(false);
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const idx = prev.indexOf(id);
+      if (idx === -1) return [...prev, id];
+      const next = [...prev];
+      next.splice(idx, 1);
+      return next;
+    });
+  };
+  const clearSelection = () => setSelectedIds([]);
+
+  async function handleMerge() {
+    if (selectedIds.length < 2) {
+      toast.error('Selecione 2 ou mais arquivos para agrupar.');
+      return;
+    }
+    setMerging(true);
+    const tId = toast.loading(`Agrupando ${selectedIds.length} arquivos em um PDF...`);
+    try {
+      const { data, error } = await supabase.functions.invoke('lead-drive', {
+        body: {
+          action: 'merge_drive_files',
+          lead_id: leadId,
+          lead_name: leadName,
+          file_ids: selectedIds,
+          output_name: mergeName.trim() || undefined,
+          delete_originals: mergeDeleteOriginals,
+        },
+      });
+      if (error) throw error;
+      const d = data as any;
+      if (d?.success === false || d?.ok === false) throw new Error(d?.error || 'Falha ao agrupar');
+      const skipped = (d?.skipped || []).length;
+      toast.success(
+        skipped
+          ? `PDF criado (${d.merged.length} OK, ${skipped} pulados)`
+          : `PDF criado com ${d.merged.length} arquivo(s)`,
+        { id: tId },
+      );
+      clearSelection();
+      setMergeOpen(false);
+      setMergeName('');
+      await load();
+    } catch (err: any) {
+      console.error('[LeadDocumentsTab] merge error', err);
+      toast.error(`Erro ao agrupar: ${err.message || err}`, { id: tId });
+    } finally {
+      setMerging(false);
+    }
+  }
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
