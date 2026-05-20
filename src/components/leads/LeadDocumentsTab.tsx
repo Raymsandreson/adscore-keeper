@@ -5,7 +5,9 @@ import { ExternalLink, Upload, Trash2, FileText, Loader2, RefreshCw, Sparkles, W
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import ImportGroupDocsDialog from '@/components/leads/ImportGroupDocsDialog';
+import { useAutoImportGroupDocs } from '@/hooks/useAutoImportGroupDocs';
 import { toast } from 'sonner';
+
 import {
   Dialog,
   DialogContent,
@@ -154,6 +156,13 @@ export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId, cu
   }, [leadId, leadName]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Auto-importa mídias recentes do grupo WhatsApp para o Drive (tudo como "Outro").
+  // Roda 1x por sessão por lead; a edge `lead-drive` e `import-group-docs-to-lead`
+  // deduplicam, então re-abrir o lead não cria duplicatas.
+  useAutoImportGroupDocs(leadId, leadName, whatsappGroupId, load);
+
+
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];

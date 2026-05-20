@@ -19,6 +19,8 @@ import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import type { Lead } from '@/hooks/useLeads';
+import { useAutoImportGroupDocs } from '@/hooks/useAutoImportGroupDocs';
+
 
 interface LeadData {
   id: string;
@@ -248,6 +250,16 @@ export function ActivityDetailPanel({ leadId, leadName, currentActivityId, onNav
   useEffect(() => {
     fetchLeadData();
   }, [fetchLeadData]);
+
+  // Ao abrir uma atividade vinculada a um lead, dispara o mesmo gatilho de
+  // atualização de documentos do grupo WhatsApp (silencioso, idempotente).
+  useAutoImportGroupDocs(
+    leadId,
+    leadName,
+    (lead as any)?.whatsapp_group_id || null,
+  );
+
+
 
   if (!leadId || !leadName) {
     return (

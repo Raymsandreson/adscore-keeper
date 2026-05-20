@@ -107,6 +107,28 @@ Deno.serve(async (req) => {
           continue;
         }
 
+        // --- Early skip: this message was already imported for this lead ---
+        try {
+          const { data: existingDoc } = await cloud
+            .from("process_documents")
+            .select("id, file_url")
+            .eq("lead_id", body.lead_id)
+            .eq("metadata->>external_message_id", msg.external_message_id)
+            .limit(1)
+            .maybeSingle();
+          if (existingDoc?.id) {
+            results.push({
+              msgId,
+              status: "ok",
+              deduped: true,
+              document_id: existingDoc.id,
+              drive_link: existingDoc.file_url || null,
+            });
+            continue;
+          }
+        } catch (_) { /* fallthrough — best-effort dedup */ }
+
+
         const content = msg.metadata?.message?.content || {};
         const mediaKeyB64: string | undefined = content.mediaKey;
         const mimeType: string =
