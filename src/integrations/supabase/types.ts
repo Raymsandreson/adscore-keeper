@@ -7246,15 +7246,7 @@ export type Database = {
           voice_id?: string | null
           voice_name?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "profiles_default_instance_id_fkey"
-            columns: ["default_instance_id"]
-            isOneToOne: false
-            referencedRelation: "whatsapp_instances"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       promoted_posts: {
         Row: {
