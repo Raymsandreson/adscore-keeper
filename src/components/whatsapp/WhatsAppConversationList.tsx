@@ -157,7 +157,11 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
 
       const map = new Map<string, LeadInfo>();
       const boardById = new Map<string, string | null>();
-      for (const l of (leadsRes.data || [])) boardById.set(l.id, l.board_id ?? null);
+      const statusById = new Map<string, string | null>();
+      for (const l of (leadsRes.data || [])) {
+        boardById.set(l.id, l.board_id ?? null);
+        statusById.set(l.id, (l as any).lead_status ?? null);
+      }
 
       // Iterate all known lead ids (union of Cloud + External results)
       const allIds = new Set<string>([...boardById.keys(), ...leadNameById.keys()]);
@@ -183,6 +187,7 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
           completed_checklist_ids: completedIds,
           checkedItemIds,
           lead_name: leadNameById.get(id) ?? null,
+          lead_status: statusById.get(id) ?? null,
         });
       }
       setLeadInfoMap(map);
