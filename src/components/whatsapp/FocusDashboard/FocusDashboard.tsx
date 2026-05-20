@@ -223,58 +223,44 @@ export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpen
 
         {!collapsed && (
           <>
-            {/* Linha única e compacta: Leads (com fechados+conversão inline) + Inviáveis */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-              {/* Card Leads — agora inclui Fechados e Conversão como sub-infos inline */}
-              <Card className="p-2 border-0 bg-gradient-to-r from-blue-50 via-emerald-50 to-violet-50 dark:from-blue-950/30 dark:via-emerald-950/30 dark:to-violet-950/30 md:col-span-2">
-                <div className="flex items-center gap-3 flex-wrap">
-                  {/* Leads (destaque) */}
-                  <div className="flex items-center gap-2 min-w-0">
-                    <UserIcon className="h-3.5 w-3.5 text-blue-700 dark:text-blue-300" />
-                    <span className="text-[11px] font-semibold text-blue-700 dark:text-blue-300">Leads</span>
-                    <span className="text-xl font-bold tabular-nums text-blue-700 dark:text-blue-300 leading-none">{data.kpis.leadsReceived}</span>
+            {/* Linha única ultra-compacta: Leads (com fechados+conversão inline) + Inviáveis */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-1.5">
+              <Card className="px-2 py-1 border-0 bg-gradient-to-r from-blue-50 via-emerald-50 to-violet-50 dark:from-blue-950/30 dark:via-emerald-950/30 dark:to-violet-950/30 md:col-span-2">
+                <div className="flex items-center gap-2 flex-wrap text-[11px]">
+                  <div className="flex items-center gap-1">
+                    <UserIcon className="h-3 w-3 text-blue-700 dark:text-blue-300" />
+                    <span className="font-semibold text-blue-700 dark:text-blue-300">Leads</span>
+                    <span className="text-sm font-bold tabular-nums text-blue-700 dark:text-blue-300">{data.kpis.leadsReceived}</span>
                     <span className="text-[10px] text-muted-foreground">recebidos</span>
                     {data.kpis.leadsReceivedDelta !== '—' && (
-                      <span className="text-[10px] text-blue-600 dark:text-blue-400 font-medium flex items-center gap-0.5">
-                        <TrendingUp className="h-2.5 w-2.5" />{data.kpis.leadsReceivedDelta}
-                      </span>
+                      <span className="text-[10px] text-blue-600 dark:text-blue-400 font-medium">↗ {data.kpis.leadsReceivedDelta}</span>
                     )}
                   </div>
-
-                  <span className="h-4 w-px bg-border/60" />
-
-                  {/* Fechados inline */}
-                  <div className="flex items-center gap-1.5">
+                  <span className="h-3 w-px bg-border/60" />
+                  <div className="flex items-center gap-1">
                     <Trophy className="h-3 w-3 text-emerald-700 dark:text-emerald-300" />
-                    <span className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">Fechados</span>
+                    <span className="font-semibold text-emerald-700 dark:text-emerald-300">Fechados</span>
                     <span className="text-sm font-bold tabular-nums text-emerald-700 dark:text-emerald-300">{data.kpis.closed}</span>
                     <span className="text-[10px] text-muted-foreground">/ {data.kpis.goal}</span>
-                    <div className="w-12 h-1 rounded-full bg-background/60 overflow-hidden">
-                      <div className="h-full bg-emerald-500 transition-all" style={{ width: `${Math.round((data.kpis.goalProgress ?? 0) * 100)}%` }} />
+                    <div className="w-10 h-1 rounded-full bg-background/60 overflow-hidden">
+                      <div className="h-full bg-emerald-500" style={{ width: `${Math.round((data.kpis.goalProgress ?? 0) * 100)}%` }} />
                     </div>
                   </div>
-
-                  <span className="h-4 w-px bg-border/60" />
-
-                  {/* Conversão inline */}
-                  <div className="flex items-center gap-1.5">
+                  <span className="h-3 w-px bg-border/60" />
+                  <div className="flex items-center gap-1">
                     <Percent className="h-3 w-3 text-violet-700 dark:text-violet-300" />
-                    <span className="text-[11px] font-semibold text-violet-700 dark:text-violet-300">Conversão</span>
+                    <span className="font-semibold text-violet-700 dark:text-violet-300">Conversão</span>
                     <span className="text-sm font-bold tabular-nums text-violet-700 dark:text-violet-300">{data.kpis.conversion}%</span>
                     <span className="text-[10px] text-muted-foreground">({data.kpis.closed}/{data.kpis.leadsReceived})</span>
-                    {data.kpis.conversionDelta !== '—' && (
-                      <span className="text-[10px] text-violet-600 dark:text-violet-400 font-medium">↗ {data.kpis.conversionDelta}</span>
-                    )}
                   </div>
                 </div>
               </Card>
 
-              {/* Inviáveis - card separado, compacto */}
-              <Card className="p-2 border-0 bg-amber-50 dark:bg-amber-950/30">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <XCircle className="h-3.5 w-3.5 text-amber-700 dark:text-amber-300" />
-                  <span className="text-[11px] font-semibold text-amber-700 dark:text-amber-300">Inviáveis</span>
-                  <span className="text-xl font-bold tabular-nums text-amber-700 dark:text-amber-300 leading-none">{data.kpis.unviable}</span>
+              <Card className="px-2 py-1 border-0 bg-amber-50 dark:bg-amber-950/30">
+                <div className="flex items-center gap-1.5 text-[11px]">
+                  <XCircle className="h-3 w-3 text-amber-700 dark:text-amber-300" />
+                  <span className="font-semibold text-amber-700 dark:text-amber-300">Inviáveis</span>
+                  <span className="text-sm font-bold tabular-nums text-amber-700 dark:text-amber-300">{data.kpis.unviable}</span>
                   <span className="text-[10px] text-muted-foreground">descartados</span>
                   {data.kpis.unviableTopReason && (
                     <span className="text-[10px] text-muted-foreground truncate ml-auto">Top: {data.kpis.unviableTopReason}</span>
@@ -284,56 +270,54 @@ export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpen
             </div>
 
             {/* FOCO AGORA */}
-            <div className="flex items-center justify-between mt-1">
-              <div className="flex items-center gap-1.5 text-xs font-bold text-orange-600 dark:text-orange-400 uppercase tracking-wide">
-                <Flame className="h-3.5 w-3.5" />
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5 text-[11px] font-bold text-orange-600 dark:text-orange-400 uppercase tracking-wide">
+                <Flame className="h-3 w-3" />
                 Foco agora
               </div>
               <span className="text-[10px] text-muted-foreground">não muda com o período</span>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-1.5">
               {/* Card combinado: Faltam documentos + Pendentes assinatura */}
-              <Card className="p-3 border bg-orange-50/60 dark:bg-orange-950/20 border-orange-200/60 dark:border-orange-900/40 flex flex-col gap-2">
-                <div className="grid grid-cols-2 gap-3 divide-x divide-border/40">
+              <Card className="px-2 py-1.5 border bg-orange-50/60 dark:bg-orange-950/20 border-orange-200/60 dark:border-orange-900/40">
+                <div className="grid grid-cols-2 gap-2 divide-x divide-border/40">
                   {/* Faltam documentos */}
-                  <div className="pr-3 flex flex-col gap-1.5">
+                  <div className="pr-2 flex flex-col gap-1">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-1 text-[11px] font-semibold text-orange-800 dark:text-orange-300">
                         <FileText className="h-3 w-3" /> Faltam docs
                       </div>
                       {data.actions.missingDocs > 0 && (
-                        <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-orange-600 text-white font-bold flex items-center gap-0.5">
+                        <span className="text-[9px] px-1 py-0 rounded-full bg-orange-600 text-white font-bold flex items-center gap-0.5">
                           <Flame className="h-2.5 w-2.5" /> QUENTE
                         </span>
                       )}
                     </div>
                     <div className="flex items-baseline gap-1">
-                      <span className="text-2xl font-bold tabular-nums leading-none text-orange-800 dark:text-orange-200">{data.actions.missingDocs}</span>
-                      <span className="text-[10px] text-muted-foreground">prontos pra fechar</span>
+                      <span className="text-lg font-bold tabular-nums leading-none text-orange-800 dark:text-orange-200">{data.actions.missingDocs}</span>
+                      <span className="text-[10px] text-muted-foreground truncate">prontos pra fechar</span>
                     </div>
-                    <div className="text-[10px] text-muted-foreground line-clamp-2">{data.actions.missingDocsHint}</div>
                     <button
                       type="button"
                       onClick={onOpenMissingDocs}
-                      className="w-full h-7 text-[11px] mt-auto rounded-md bg-orange-600 hover:bg-orange-700 text-white font-medium transition-colors"
+                      className="w-full h-6 text-[10px] rounded bg-orange-600 hover:bg-orange-700 text-white font-medium transition-colors"
                     >
                       Cobrar docs →
                     </button>
                   </div>
                   {/* Pendentes assinatura */}
-                  <div className="pl-3 flex flex-col gap-1.5">
+                  <div className="pl-2 flex flex-col gap-1">
                     <div className="flex items-center gap-1 text-[11px] font-semibold text-stone-800 dark:text-amber-300">
                       <PenTool className="h-3 w-3" /> Pendentes assinatura
                     </div>
                     <div className="flex items-baseline gap-1">
-                      <span className="text-2xl font-bold tabular-nums leading-none text-stone-800 dark:text-amber-200">{data.actions.zapsignPending}</span>
-                      <span className="text-[10px] text-muted-foreground">no ZapSign</span>
+                      <span className="text-lg font-bold tabular-nums leading-none text-stone-800 dark:text-amber-200">{data.actions.zapsignPending}</span>
+                      <span className="text-[10px] text-muted-foreground truncate">no ZapSign</span>
                     </div>
-                    <div className="text-[10px] text-muted-foreground line-clamp-2">{data.actions.zapsignPendingHint}</div>
                     <button
                       type="button"
                       onClick={onOpenZapsignPending}
-                      className="w-full h-7 text-[11px] mt-auto rounded-md bg-stone-700 hover:bg-stone-800 text-white font-medium transition-colors"
+                      className="w-full h-6 text-[10px] rounded bg-stone-700 hover:bg-stone-800 text-white font-medium transition-colors"
                     >
                       Reenviar / cobrar →
                     </button>
@@ -341,32 +325,37 @@ export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpen
                 </div>
               </Card>
 
-              {/* Sem resposta - separado */}
-              <FocusActionCard
-                icon={<MessageCircleOff className="h-3.5 w-3.5 text-rose-700 dark:text-rose-400" />}
-                title="Sem resposta"
-                badge={<span className="text-[10px] text-muted-foreground">+30min</span>}
-                value={data.actions.unansweredOwedByMe}
-                unit="aguardando você"
-                hint={
-                  <span className="text-[10px]">
-                    +30min <b>{data.actions.unansweredBuckets.plus30}</b> · +4h <b>{data.actions.unansweredBuckets.plus4h}</b> · +24h <b>{data.actions.unansweredBuckets.plus24h}</b>
-                  </span>
-                }
-                extra={
-                  <div className="flex gap-1 -mt-1">
-                    <div className="flex-1 text-center text-[10px] py-1 px-1.5 rounded bg-rose-700 text-white font-medium">
-                      Eu devo ({data.actions.unansweredOwedByMe})
-                    </div>
-                    <div className="flex-1 text-center text-[10px] py-1 px-1.5 rounded bg-background border font-medium">
-                      Cliente sumiu ({data.actions.unansweredClientGhosted})
-                    </div>
+              {/* Sem resposta - compacto */}
+              <Card className="px-2 py-1.5 border bg-rose-50/60 dark:bg-rose-950/20 border-rose-200/60 dark:border-rose-900/40 flex flex-col gap-1">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1 text-[11px] font-semibold text-rose-800 dark:text-rose-300">
+                    <MessageCircleOff className="h-3 w-3" /> Sem resposta
                   </div>
-                }
-                ctaLabel="Responder agora"
-                ctaTone="red"
-                onClick={onOpenUnanswered}
-              />
+                  <span className="text-[10px] text-muted-foreground">+30min</span>
+                </div>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-lg font-bold tabular-nums leading-none text-rose-800 dark:text-rose-200">{data.actions.unansweredOwedByMe}</span>
+                  <span className="text-[10px] text-muted-foreground">aguardando você</span>
+                  <span className="text-[10px] text-muted-foreground ml-auto">
+                    +30 <b>{data.actions.unansweredBuckets.plus30}</b> · +4h <b>{data.actions.unansweredBuckets.plus4h}</b> · +24h <b>{data.actions.unansweredBuckets.plus24h}</b>
+                  </span>
+                </div>
+                <div className="flex gap-1">
+                  <div className="flex-1 text-center text-[10px] py-0.5 rounded bg-rose-700 text-white font-medium">
+                    Eu devo ({data.actions.unansweredOwedByMe})
+                  </div>
+                  <div className="flex-1 text-center text-[10px] py-0.5 rounded bg-background border font-medium">
+                    Cliente sumiu ({data.actions.unansweredClientGhosted})
+                  </div>
+                  <button
+                    type="button"
+                    onClick={onOpenUnanswered}
+                    className="px-2 text-[10px] rounded bg-rose-600 hover:bg-rose-700 text-white font-medium"
+                  >
+                    Responder →
+                  </button>
+                </div>
+              </Card>
             </div>
           </>
         )}
