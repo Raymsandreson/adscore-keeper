@@ -471,7 +471,7 @@ Deno.serve(async (req) => {
           messages: [
             {
               role: "system",
-              content: "Você analisa documentos brasileiros (RG, CPF, CNH, comprovantes, procurações, laudos periciais, boletins, etc.). Devolva APENAS via tool call.",
+              content: "Você analisa documentos brasileiros (RG, CPF, CNH, certidões de nascimento/casamento/óbito, comprovantes, procurações, laudos periciais, boletins, holerites, extratos, etc.). Seja ESPECÍFICO no document_type — nunca use 'Outro' se houver qualquer indicação clara (título do documento, brasão, layout). SEMPRE preencha document_subtype indicando se é 'frente', 'verso', 'frente e verso' ou 'único' (documento de página única que não tem verso). Devolva APENAS via tool call.",
             },
             {
               role: "user",
@@ -488,9 +488,9 @@ Deno.serve(async (req) => {
                   properties: {
                     document_type: {
                       type: "string",
-                      enum: ["RG", "CPF", "CNH", "Procuração", "Comprovante de Endereço", "Laudo Pericial", "Boletim de Ocorrência", "Contrato", "Atestado Médico", "Foto", "Outro"],
+                      description: "Nome específico do documento em português. Ex: 'Certidão de Nascimento', 'Certidão de Casamento', 'Certidão de Óbito', 'RG', 'CPF', 'CNH', 'Carteira de Trabalho', 'Comprovante de Endereço', 'Holerite', 'Extrato Bancário', 'Procuração', 'Laudo Pericial', 'Boletim de Ocorrência', 'Contrato', 'Atestado Médico', 'Histórico Escolar', 'Título de Eleitor', 'Passaporte', 'Foto'. Use 'Outro' SOMENTE se for impossível identificar.",
                     },
-                    document_subtype: { type: ["string", "null"], description: "Ex: 'frente', 'verso', 'frente e verso', 'página 1 de 3'" },
+                    document_subtype: { type: "string", enum: ["frente", "verso", "frente e verso", "único"], description: "Identifique sempre. 'único' = documento de página única sem verso (ex: certidão completa, comprovante)." },
                     holder_name: { type: ["string", "null"], description: "Nome do titular do documento" },
                     holder_cpf: { type: ["string", "null"] },
                     description: { type: "string", description: "Resumo de 1-2 linhas do conteúdo" },
@@ -509,7 +509,7 @@ Deno.serve(async (req) => {
                       },
                     },
                   },
-                  required: ["document_type", "description", "confidence"],
+                  required: ["document_type", "document_subtype", "description", "confidence"],
                   additionalProperties: false,
                 },
               },
