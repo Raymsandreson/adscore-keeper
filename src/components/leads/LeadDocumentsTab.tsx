@@ -5,7 +5,9 @@ import { ExternalLink, Upload, Trash2, FileText, Loader2, RefreshCw, Sparkles, W
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import ImportGroupDocsDialog from '@/components/leads/ImportGroupDocsDialog';
+import { useAutoImportGroupDocs } from '@/hooks/useAutoImportGroupDocs';
 import { toast } from 'sonner';
+
 import {
   Dialog,
   DialogContent,
