@@ -54,9 +54,12 @@ export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpen
 
   if (compact) {
     const kpiCards = [
-      { label: 'Leads', value: data.kpis.leadsReceived, icon: UserIcon, tone: 'bg-blue-50 dark:bg-blue-950/30 border-blue-200/60 dark:border-blue-900/40 text-blue-700 dark:text-blue-300' },
-      { label: 'Fechados', value: `${data.kpis.closed}/${data.kpis.goal}`, icon: Trophy, tone: 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200/60 dark:border-emerald-900/40 text-emerald-700 dark:text-emerald-300' },
-      { label: 'Conversão', value: `${data.kpis.conversion}%`, icon: Percent, tone: 'bg-violet-50 dark:bg-violet-950/30 border-violet-200/60 dark:border-violet-900/40 text-violet-700 dark:text-violet-300' },
+      {
+        label: `Fechados · ${data.kpis.leadsReceived} leads`,
+        value: `${data.kpis.closed}/${data.kpis.goal} · ${data.kpis.conversion}%`,
+        icon: Trophy,
+        tone: 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200/60 dark:border-emerald-900/40 text-emerald-700 dark:text-emerald-300',
+      },
       { label: 'Inviáveis', value: data.kpis.unviable, icon: XCircle, tone: 'bg-amber-50 dark:bg-amber-950/30 border-amber-200/60 dark:border-amber-900/40 text-amber-700 dark:text-amber-300' },
       { label: 'Docs', value: data.actions.missingDocs, icon: FileText, tone: 'bg-orange-50 dark:bg-orange-950/30 border-orange-200/60 dark:border-orange-900/40 text-orange-700 dark:text-orange-300', onClick: onOpenMissingDocs },
       { label: 'Assinatura', value: data.actions.zapsignPending, icon: PenTool, tone: 'bg-stone-100 dark:bg-stone-900/40 border-stone-300/60 dark:border-stone-700/40 text-stone-700 dark:text-stone-300', onClick: onOpenZapsignPending },
