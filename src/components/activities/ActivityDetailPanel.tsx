@@ -333,16 +333,37 @@ export function ActivityDetailPanel({ leadId, leadName, currentActivityId, onNav
               )}
             </div>
           </div>
-          {leadId && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 text-xs gap-1 shrink-0"
-              onClick={() => setShowLeadSheet(true)}
-            >
-              <ExternalLink className="h-3 w-3" /> Abrir Lead
-            </Button>
-          )}
+          <div className="flex items-center gap-1 shrink-0">
+            {autoDrive.total > 0 && (
+              <Badge
+                variant="outline"
+                className={cn(
+                  "text-[10px] gap-1 px-2 py-0.5",
+                  autoDrive.running
+                    ? "border-blue-400 text-blue-700 bg-blue-50 dark:bg-blue-950/30"
+                    : "border-emerald-400 text-emerald-700 bg-emerald-50 dark:bg-emerald-950/30"
+                )}
+                title={autoDrive.running ? 'Enviando mídias para o Google Drive em segundo plano' : 'Mídias do grupo sincronizadas no Drive'}
+              >
+                {autoDrive.running ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Sparkles className="h-3 w-3" />
+                )}
+                Drive {autoDrive.done}/{autoDrive.total}
+              </Badge>
+            )}
+            {leadId && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs gap-1"
+                onClick={() => setShowLeadSheet(true)}
+              >
+                <ExternalLink className="h-3 w-3" /> Abrir Lead
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 
