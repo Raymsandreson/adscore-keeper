@@ -76,7 +76,7 @@ interface DynamicKanbanBoardProps {
   onEditLead?: (lead: Lead) => void;
   onManageContacts?: (lead: Lead) => void;
   availableBoards?: KanbanBoard[];
-  onChangeLeadStatus?: (leadId: string, newStatus: 'active' | 'closed' | 'refused' | 'inviavel') => void;
+  onChangeLeadStatus?: (leadId: string, newStatus: 'active' | 'closed' | 'refused' | 'inviavel' | 'cancelled') => void;
 }
 
 export function DynamicKanbanBoard({
@@ -268,6 +268,7 @@ export function DynamicKanbanBoard({
   const closedLeads = useMemo(() => leads.filter(l => (l as any).lead_status === 'closed'), [leads]);
   const refusedLeads = useMemo(() => leads.filter(l => (l as any).lead_status === 'refused'), [leads]);
   const inviavelLeads = useMemo(() => leads.filter(l => (l as any).lead_status === 'inviavel'), [leads]);
+  const cancelledLeads = useMemo(() => leads.filter(l => (l as any).lead_status === 'cancelled'), [leads]);
 
   // Group active leads by stage
   const leadsByStage = useMemo(() => {
@@ -784,6 +785,13 @@ export function DynamicKanbanBoard({
                                               <AlertTriangle className="h-3 w-3 mr-2" />
                                               Marcar como Inviável
                                             </DropdownMenuItem>
+                                            <DropdownMenuItem
+                                              onClick={() => onChangeLeadStatus(lead.id, 'cancelled')}
+                                              className="text-purple-600"
+                                            >
+                                              <Ban className="h-3 w-3 mr-2" />
+                                              Marcar como Cancelamento
+                                            </DropdownMenuItem>
                                           </>
                                         )}
                                         
@@ -977,11 +985,12 @@ export function DynamicKanbanBoard({
             );
           })}
 
-          {/* Fixed Status Columns: Fechados, Recusados & Inviáveis */}
+          {/* Fixed Status Columns: Fechados, Recusados, Inviáveis & Cancelamentos */}
           {[
             { id: 'closed', name: 'Fechados', color: '#22c55e', icon: CheckCircle2, leads: closedLeads },
             { id: 'refused', name: 'Recusados', color: '#ef4444', icon: XCircle, leads: refusedLeads },
             { id: 'inviavel', name: 'Inviáveis', color: '#f59e0b', icon: AlertTriangle, leads: inviavelLeads },
+            { id: 'cancelled', name: 'Cancelamentos', color: '#a855f7', icon: Ban, leads: cancelledLeads },
           ].map(statusCol => {
             const colFilter = stageFilters[statusCol.id] || '';
             const matchedColLeads = colFilter
@@ -997,14 +1006,14 @@ export function DynamicKanbanBoard({
               <div
                 key={statusCol.id}
                 className="flex-shrink-0 rounded-lg border"
-                style={{ width: `max(240px, calc((100vw - ${(board.stages.length + 2) * 4 + 16}px) / ${board.stages.length + 2}))` }}
+                style={{ width: `max(240px, calc((100vw - ${(board.stages.length + 3) * 4 + 16}px) / ${board.stages.length + 3}))` }}
                 onDragOver={(e) => { e.preventDefault(); setDragOverStage(statusCol.id); }}
                 onDragLeave={handleDragLeave}
                 onDrop={(e) => {
                   e.preventDefault();
                   setDragOverStage(null);
                   if (draggedLead && onChangeLeadStatus) {
-                    onChangeLeadStatus(draggedLead.id, statusCol.id as 'closed' | 'refused' | 'inviavel');
+                    onChangeLeadStatus(draggedLead.id, statusCol.id as 'closed' | 'refused' | 'inviavel' | 'cancelled');
                   }
                   setDraggedLead(null);
                 }}
@@ -1091,6 +1100,12 @@ export function DynamicKanbanBoard({
                                       <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onChangeLeadStatus(lead.id, 'inviavel'); }} className="text-amber-600">
                                         <AlertTriangle className="h-3 w-3 mr-2" />
                                         Mover para Inviáveis
+                                      </DropdownMenuItem>
+                                    )}
+                                    {statusCol.id !== 'cancelled' && (
+                                      <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onChangeLeadStatus(lead.id, 'cancelled'); }} className="text-purple-600">
+                                        <Ban className="h-3 w-3 mr-2" />
+                                        Mover para Cancelamentos
                                       </DropdownMenuItem>
                                     )}
                                     <DropdownMenuSeparator />
