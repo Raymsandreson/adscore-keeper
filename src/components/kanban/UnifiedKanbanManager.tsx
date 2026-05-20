@@ -818,7 +818,7 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
                 await externalSupabase.from('leads').update({
                   cancelled_date: new Date().toISOString().slice(0, 10),
                 } as any).eq('id', leadId);
-                toast.success('Lead marcado como Cancelamento');
+                toast.success('Lead marcado como Cancelado');
               } else {
                 toast.success(newStatus === 'refused' ? 'Lead marcado como Recusado' : 'Lead reativado');
               }

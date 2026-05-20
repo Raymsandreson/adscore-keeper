@@ -2301,7 +2301,7 @@ ${scrapeData.content || ''}
                         else { setLeadOutcome('cancelled'); if (!leadOutcomeDate) setLeadOutcomeDate(new Date().toISOString().slice(0, 10)); }
                       }}
                     >
-                      <Ban className="h-4 w-4 mr-1" /> Cancelamento
+                      <Ban className="h-4 w-4 mr-1" /> Cancelado
                     </Button>
                   </div>
                   {leadOutcome && (

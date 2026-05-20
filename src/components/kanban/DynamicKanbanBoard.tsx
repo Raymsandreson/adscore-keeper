@@ -791,7 +791,7 @@ export function DynamicKanbanBoard({
                                               className="text-purple-600"
                                             >
                                               <Ban className="h-3 w-3 mr-2" />
-                                              Marcar como Cancelamento
+                                              Marcar como Cancelado
                                             </DropdownMenuItem>
                                           </>
                                         )}
