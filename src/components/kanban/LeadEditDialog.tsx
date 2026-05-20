@@ -65,6 +65,8 @@ import { LinkOrphanWhatsAppButton } from '@/components/leads/LinkOrphanWhatsAppB
 const AccidentDataExtractor = lazy(() => import('@/components/leads/AccidentDataExtractor').then(m => ({ default: m.AccidentDataExtractor })));
 import { ExtractedAccidentData, CurrentLeadData } from '@/components/leads/AccidentDataExtractor';
 import { LeadAIChatExtractor } from '@/components/leads/LeadAIChatExtractor';
+import { useAutoImportGroupDocs } from '@/hooks/useAutoImportGroupDocs';
+import { cn } from '@/lib/utils';
 import { KanbanBoard } from '@/hooks/useKanbanBoards';
 import { 
   User, 
