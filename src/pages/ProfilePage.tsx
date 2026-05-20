@@ -121,7 +121,22 @@ const ProfilePage = () => {
       oab_uf: oabUf.trim() || null,
       phone: phone.trim() || null,
     } as any);
-    
+
+    // Mirror default_instance_id to External (source of truth)
+    try {
+      if (user?.id) {
+        const extUserId = await remapToExternal(user.id);
+        if (extUserId) {
+          await db
+            .from('profiles')
+            .update({ default_instance_id: defaultInstanceId === 'none' ? null : defaultInstanceId })
+            .eq('user_id', extUserId);
+        }
+      }
+    } catch (e) {
+      console.error('Erro ao salvar instância padrão no Externo', e);
+    }
+
     if (error) {
       toast.error("Erro ao salvar perfil", { description: error.message });
     } else {
