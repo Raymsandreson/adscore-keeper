@@ -223,43 +223,58 @@ export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpen
 
         {!collapsed && (
           <>
-            {/* KPIs */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-              <KpiCard
-                tone="blue"
-                icon={<UserIcon className="h-3.5 w-3.5" />}
-                label="Leads"
-                value={data.kpis.leadsReceived}
-                unit="recebidos"
-                hint={data.kpis.leadsReceivedDelta !== '—' && (
-                  <span className="inline-flex items-center gap-0.5 text-blue-600 dark:text-blue-400 font-medium">
-                    <TrendingUp className="h-3 w-3" />{data.kpis.leadsReceivedDelta}
-                  </span>
-                )}
-              />
-              <KpiCard
-                tone="green"
-                icon={<Trophy className="h-3.5 w-3.5" />}
-                label="Fechados"
-                value={data.kpis.closed}
-                unit={`/ ${data.kpis.goal}`}
-                progress={data.kpis.goalProgress}
-                hint={`Meta ${data.kpis.goal}`}
-              />
-              <KpiCard
-                tone="purple"
-                icon={<Percent className="h-3.5 w-3.5" />}
-                label="Conversão"
-                value={`${data.kpis.conversion}%`}
-                hint={
-                  <>
-                    {data.kpis.closed} de {data.kpis.leadsReceived}
-                    {data.kpis.conversionDelta !== '—' && (
-                      <span className="ml-1 text-violet-600 dark:text-violet-400 font-medium">↗ {data.kpis.conversionDelta}</span>
+            {/* Resultados combinados + Inviáveis */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+              {/* Card combinado: Leads + Fechados + Conversão */}
+              <Card className="p-3 border-0 bg-gradient-to-br from-blue-50 via-emerald-50 to-violet-50 dark:from-blue-950/30 dark:via-emerald-950/30 dark:to-violet-950/30 md:col-span-2">
+                <div className="grid grid-cols-3 gap-2 divide-x divide-border/40">
+                  {/* Leads */}
+                  <div className="pr-2">
+                    <div className="flex items-center gap-1 text-[11px] font-semibold text-blue-700 dark:text-blue-300 mb-1">
+                      <UserIcon className="h-3 w-3" /> Leads
+                    </div>
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-2xl font-bold tabular-nums text-blue-700 dark:text-blue-300 leading-none">{data.kpis.leadsReceived}</span>
+                      <span className="text-[10px] text-muted-foreground">recebidos</span>
+                    </div>
+                    {data.kpis.leadsReceivedDelta !== '—' && (
+                      <div className="text-[10px] text-blue-600 dark:text-blue-400 font-medium flex items-center gap-0.5 mt-0.5">
+                        <TrendingUp className="h-2.5 w-2.5" />{data.kpis.leadsReceivedDelta}
+                      </div>
                     )}
-                  </>
-                }
-              />
+                  </div>
+                  {/* Fechados */}
+                  <div className="px-2">
+                    <div className="flex items-center gap-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 mb-1">
+                      <Trophy className="h-3 w-3" /> Fechados
+                    </div>
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-2xl font-bold tabular-nums text-emerald-700 dark:text-emerald-300 leading-none">{data.kpis.closed}</span>
+                      <span className="text-[10px] text-muted-foreground">/ {data.kpis.goal}</span>
+                    </div>
+                    <div className="mt-1 h-1 rounded-full bg-background/60 overflow-hidden">
+                      <div className="h-full bg-emerald-500 transition-all" style={{ width: `${Math.round((data.kpis.goalProgress ?? 0) * 100)}%` }} />
+                    </div>
+                  </div>
+                  {/* Conversão */}
+                  <div className="pl-2">
+                    <div className="flex items-center gap-1 text-[11px] font-semibold text-violet-700 dark:text-violet-300 mb-1">
+                      <Percent className="h-3 w-3" /> Conversão
+                    </div>
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-2xl font-bold tabular-nums text-violet-700 dark:text-violet-300 leading-none">{data.kpis.conversion}%</span>
+                    </div>
+                    <div className="text-[10px] text-muted-foreground mt-0.5">
+                      {data.kpis.closed} de {data.kpis.leadsReceived}
+                      {data.kpis.conversionDelta !== '—' && (
+                        <span className="ml-1 text-violet-600 dark:text-violet-400 font-medium">↗ {data.kpis.conversionDelta}</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </Card>
+
+              {/* Inviáveis - separado */}
               <KpiCard
                 tone="amber"
                 icon={<XCircle className="h-3.5 w-3.5" />}
@@ -278,32 +293,57 @@ export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpen
               </div>
               <span className="text-[10px] text-muted-foreground">não muda com o período</span>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-              <FocusActionCard
-                icon={<FileText className="h-3.5 w-3.5 text-orange-700 dark:text-orange-400" />}
-                title="Faltam documentos"
-                badge={data.actions.missingDocs > 0 && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-orange-600 text-white font-bold flex items-center gap-1">
-                    <Flame className="h-3 w-3" /> QUENTE
-                  </span>
-                )}
-                value={data.actions.missingDocs}
-                unit="leads prontos pra fechar"
-                hint={data.actions.missingDocsHint}
-                ctaLabel="Cobrar documentos"
-                ctaTone="orange"
-                onClick={onOpenMissingDocs}
-              />
-              <FocusActionCard
-                icon={<PenTool className="h-3.5 w-3.5 text-stone-700 dark:text-amber-400" />}
-                title="Pendentes de assinatura"
-                value={data.actions.zapsignPending}
-                unit="no ZapSign"
-                hint={data.actions.zapsignPendingHint}
-                ctaLabel="Reenviar / cobrar"
-                ctaTone="olive"
-                onClick={onOpenZapsignPending}
-              />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              {/* Card combinado: Faltam documentos + Pendentes assinatura */}
+              <Card className="p-3 border bg-orange-50/60 dark:bg-orange-950/20 border-orange-200/60 dark:border-orange-900/40 flex flex-col gap-2">
+                <div className="grid grid-cols-2 gap-3 divide-x divide-border/40">
+                  {/* Faltam documentos */}
+                  <div className="pr-3 flex flex-col gap-1.5">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1 text-[11px] font-semibold text-orange-800 dark:text-orange-300">
+                        <FileText className="h-3 w-3" /> Faltam docs
+                      </div>
+                      {data.actions.missingDocs > 0 && (
+                        <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-orange-600 text-white font-bold flex items-center gap-0.5">
+                          <Flame className="h-2.5 w-2.5" /> QUENTE
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-2xl font-bold tabular-nums leading-none text-orange-800 dark:text-orange-200">{data.actions.missingDocs}</span>
+                      <span className="text-[10px] text-muted-foreground">prontos pra fechar</span>
+                    </div>
+                    <div className="text-[10px] text-muted-foreground line-clamp-2">{data.actions.missingDocsHint}</div>
+                    <button
+                      type="button"
+                      onClick={onOpenMissingDocs}
+                      className="w-full h-7 text-[11px] mt-auto rounded-md bg-orange-600 hover:bg-orange-700 text-white font-medium transition-colors"
+                    >
+                      Cobrar docs →
+                    </button>
+                  </div>
+                  {/* Pendentes assinatura */}
+                  <div className="pl-3 flex flex-col gap-1.5">
+                    <div className="flex items-center gap-1 text-[11px] font-semibold text-stone-800 dark:text-amber-300">
+                      <PenTool className="h-3 w-3" /> Pendentes assinatura
+                    </div>
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-2xl font-bold tabular-nums leading-none text-stone-800 dark:text-amber-200">{data.actions.zapsignPending}</span>
+                      <span className="text-[10px] text-muted-foreground">no ZapSign</span>
+                    </div>
+                    <div className="text-[10px] text-muted-foreground line-clamp-2">{data.actions.zapsignPendingHint}</div>
+                    <button
+                      type="button"
+                      onClick={onOpenZapsignPending}
+                      className="w-full h-7 text-[11px] mt-auto rounded-md bg-stone-700 hover:bg-stone-800 text-white font-medium transition-colors"
+                    >
+                      Reenviar / cobrar →
+                    </button>
+                  </div>
+                </div>
+              </Card>
+
+              {/* Sem resposta - separado */}
               <FocusActionCard
                 icon={<MessageCircleOff className="h-3.5 w-3.5 text-rose-700 dark:text-rose-400" />}
                 title="Sem resposta"
