@@ -148,7 +148,7 @@ export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpen
 
   return (
     <Card className="rounded-none border-x-0 border-t-0 bg-card shrink-0">
-      <div className="px-3 md:px-4 py-2.5 flex flex-col gap-2.5">
+      <div className="px-3 md:px-4 py-1.5 flex flex-col gap-1.5">
         {/* Header */}
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-2.5 min-w-0">
