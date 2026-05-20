@@ -103,12 +103,13 @@ Deno.serve(async (req) => {
       const msgId = item.message_id;
       const documentType = item.document_type || "Outro";
       try {
-        const { data: msg } = await ext
+        const msgQuery = ext
           .from("whatsapp_messages")
           .select("external_message_id, message_text, message_type, media_url, created_at, phone, metadata")
-          .like("external_message_id", `%${msgId}`)
-          .limit(1)
-          .maybeSingle();
+          .limit(1);
+        const { data: msg } = msgId.includes(":")
+          ? await msgQuery.eq("external_message_id", msgId).maybeSingle()
+          : await msgQuery.like("external_message_id", `%${msgId}`).maybeSingle();
 
         if (!msg) {
           results.push({ msgId, status: "not_found" });
