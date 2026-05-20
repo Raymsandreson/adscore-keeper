@@ -36,7 +36,63 @@ const ProfilePage = () => {
   const [oabNumber, setOabNumber] = useState((profile as any)?.oab_number || "");
   const [oabUf, setOabUf] = useState((profile as any)?.oab_uf || "");
   const [phone, setPhone] = useState((profile as any)?.phone || "");
+  const [defaultInstanceId, setDefaultInstanceId] = useState<string>("none");
+  const [instances, setInstances] = useState<Array<{ id: string; instance_name: string }>>([]);
+  const [loadingInstances, setLoadingInstances] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    const loadInstances = async () => {
+      if (!user?.id) return;
+      setLoadingInstances(true);
+      try {
+        const extUserId = await remapToExternal(user.id);
+        if (!extUserId) {
+          setLoadingInstances(false);
+          return;
+        }
+
+        // Load default_instance_id from External profile
+        const { data: profileData } = await db
+          .from('profiles')
+          .select('default_instance_id')
+          .eq('user_id', extUserId)
+          .maybeSingle();
+        if (profileData?.default_instance_id) {
+          setDefaultInstanceId(profileData.default_instance_id);
+        }
+
+        // Load instances assigned to this user
+        const { data: assignments } = await db
+          .from('whatsapp_instance_users')
+          .select('instance_id')
+          .eq('user_id', extUserId);
+
+        const ids = (assignments || []).map((a: any) => a.instance_id).filter(Boolean);
+        if (ids.length === 0) {
+          // Fallback: all active instances (admin or no restriction)
+          const { data: allInst } = await db
+            .from('whatsapp_instances')
+            .select('id, instance_name')
+            .eq('is_active', true)
+            .order('instance_name');
+          setInstances(allInst || []);
+        } else {
+          const { data: inst } = await db
+            .from('whatsapp_instances')
+            .select('id, instance_name')
+            .in('id', ids)
+            .order('instance_name');
+          setInstances(inst || []);
+        }
+      } catch (e) {
+        console.error('Erro ao carregar instâncias', e);
+      } finally {
+        setLoadingInstances(false);
+      }
+    };
+    loadInstances();
+  }, [user?.id]);
 
   const getInitials = () => {
     if (profile?.full_name) {
