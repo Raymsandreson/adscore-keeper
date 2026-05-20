@@ -363,6 +363,119 @@ Deno.serve(async (req) => {
       );
     }
 
+    if (action === "merge_drive_files") {
+      // Agrupa arquivos JÁ existentes no Drive em UM PDF único.
+      // Body: { lead_id, lead_name, file_ids: string[], output_name?: string, delete_originals?: boolean }
+      const { file_ids, output_name, delete_originals } = body as {
+        file_ids: string[];
+        output_name?: string;
+        delete_originals?: boolean;
+      };
+      if (!Array.isArray(file_ids) || file_ids.length < 2) {
+        throw new Error("file_ids[] com pelo menos 2 arquivos é obrigatório");
+      }
+
+      const folderId = await getOrCreateLeadFolder(lead_id, lead_name, ext);
+      const { PDFDocument } = await import("https://esm.sh/pdf-lib@1.17.1?target=deno");
+      const outDoc = await PDFDocument.create();
+      const skipped: Array<{ file_id: string; name?: string; reason: string }> = [];
+      const merged: Array<{ file_id: string; name: string }> = [];
+
+      // Baixa cada arquivo na ordem informada e empilha no PDF
+      for (const fid of file_ids) {
+        try {
+          const metaRes = await fetch(`${GATEWAY}/files/${fid}?fields=id,name,mimeType,size`, { headers: gwHeaders() });
+          if (!metaRes.ok) { skipped.push({ file_id: fid, reason: `meta ${metaRes.status}` }); continue; }
+          const meta = await metaRes.json();
+          const mime = (meta.mimeType || "").toLowerCase();
+
+          const dlRes = await fetch(`${GATEWAY}/files/${fid}?alt=media`, { headers: gwHeaders() });
+          if (!dlRes.ok) { skipped.push({ file_id: fid, name: meta.name, reason: `download ${dlRes.status}` }); continue; }
+          const bytes = new Uint8Array(await dlRes.arrayBuffer());
+
+          if (mime.includes("pdf")) {
+            const src = await PDFDocument.load(bytes, { ignoreEncryption: true });
+            const copied = await outDoc.copyPages(src, src.getPageIndices());
+            copied.forEach((p) => outDoc.addPage(p));
+          } else if (mime.includes("jpeg") || mime.includes("jpg")) {
+            const img = await outDoc.embedJpg(bytes);
+            const page = outDoc.addPage([img.width, img.height]);
+            page.drawImage(img, { x: 0, y: 0, width: img.width, height: img.height });
+          } else if (mime.includes("png")) {
+            const img = await outDoc.embedPng(bytes);
+            const page = outDoc.addPage([img.width, img.height]);
+            page.drawImage(img, { x: 0, y: 0, width: img.width, height: img.height });
+          } else {
+            skipped.push({ file_id: fid, name: meta.name, reason: `mime não suportado: ${mime}` });
+            continue;
+          }
+          merged.push({ file_id: fid, name: meta.name });
+        } catch (e) {
+          skipped.push({ file_id: fid, reason: (e as Error).message });
+        }
+      }
+
+      if (outDoc.getPageCount() === 0) {
+        return new Response(
+          JSON.stringify({ success: false, error: "Nenhum arquivo pôde ser agrupado", skipped }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+
+      const pdfBytes = await outDoc.save();
+      const baseName = (output_name && output_name.trim())
+        || (merged[0]?.name?.replace(/\.[^.]+$/, "") || "Documento agrupado");
+      const finalName = /\.pdf$/i.test(baseName) ? baseName : `${baseName}.pdf`;
+
+      const boundary = "----lovable-boundary-" + crypto.randomUUID();
+      const metadata = JSON.stringify({ name: finalName, parents: [folderId] });
+      const head = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n--${boundary}\r\nContent-Type: application/pdf\r\n\r\n`;
+      const tail = `\r\n--${boundary}--`;
+      const headBytes = new TextEncoder().encode(head);
+      const tailBytes = new TextEncoder().encode(tail);
+      const payload = new Uint8Array(headBytes.length + pdfBytes.length + tailBytes.length);
+      payload.set(headBytes, 0);
+      payload.set(pdfBytes, headBytes.length);
+      payload.set(tailBytes, headBytes.length + pdfBytes.length);
+
+      const upRes = await fetch(`${UPLOAD_GATEWAY}/files?uploadType=multipart&fields=id,name,webViewLink,mimeType,size,modifiedTime`, {
+        method: "POST",
+        headers: gwHeaders({ "Content-Type": `multipart/related; boundary=${boundary}` }),
+        body: payload,
+      });
+      if (!upRes.ok) throw new Error(`drive merge_drive_files upload failed [${upRes.status}]: ${await upRes.text()}`);
+      const file = await upRes.json();
+
+      // Apaga os originais que entraram no merge (somente se solicitado)
+      const deleted: string[] = [];
+      const deleteFailed: Array<{ file_id: string; reason: string }> = [];
+      if (delete_originals) {
+        for (const m of merged) {
+          try {
+            const del = await fetch(`${GATEWAY}/files/${m.file_id}`, { method: "DELETE", headers: gwHeaders() });
+            if (del.ok || del.status === 404) deleted.push(m.file_id);
+            else deleteFailed.push({ file_id: m.file_id, reason: `delete ${del.status}` });
+          } catch (e) {
+            deleteFailed.push({ file_id: m.file_id, reason: (e as Error).message });
+          }
+        }
+      }
+
+      console.log(`[lead-drive] MERGE_DRIVE_FILES ${JSON.stringify({
+        lead_id,
+        output_file_id: file.id,
+        output_name: file.name,
+        merged_count: merged.length,
+        skipped_count: skipped.length,
+        deleted_count: deleted.length,
+      })}`);
+
+      return new Response(
+        JSON.stringify({ ok: true, file, folder_id: folderId, merged, skipped, deleted, deleteFailed }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
     if (action === "analyze_file") {
       // Baixa um arquivo do Drive e usa Gemini Vision para identificar tipo + titular.
       // Opcionalmente extrai valores para campos personalizados informados em `custom_fields`.
