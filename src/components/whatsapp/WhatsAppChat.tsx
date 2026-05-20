@@ -507,8 +507,9 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
               : mime.startsWith('audio/') ? '.ogg' : '';
             const baseName = (m.message_text && m.message_text.length < 100 ? m.message_text : urlBase || `whatsapp_${m.id}`).replace(/[\\/:*?"<>|]/g, '_');
             const fileName = hasExt ? baseName : `${baseName}${extFromMime}`;
+            const dedupSourceId = m.external_message_id || m.id;
             const { data, error } = await supabase.functions.invoke('lead-drive', {
-              body: { action: 'upload_url', lead_id: leadId, lead_name: leadName, file_name: fileName, source_url: m.media_url, mime_type: mime || undefined },
+              body: { action: 'upload_url', lead_id: leadId, lead_name: leadName, file_name: fileName, source_url: m.media_url, mime_type: mime || undefined, dedup_key: dedupSourceId ? `wa:${leadId}:${dedupSourceId}` : undefined },
             });
             if (error || (data as any)?.error) throw new Error((data as any)?.error || error?.message);
             okCount++;
