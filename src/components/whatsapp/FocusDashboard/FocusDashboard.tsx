@@ -223,51 +223,37 @@ export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpen
 
         {!collapsed && (
           <>
-            {/* Linha única ultra-compacta: Leads (com fechados+conversão inline) + Inviáveis */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-1.5">
-              <Card className="px-2 py-1 border-0 bg-gradient-to-r from-blue-50 via-emerald-50 to-violet-50 dark:from-blue-950/30 dark:via-emerald-950/30 dark:to-violet-950/30 md:col-span-2">
-                <div className="flex items-center gap-2 flex-wrap text-[11px]">
-                  <div className="flex items-center gap-1">
-                    <UserIcon className="h-3 w-3 text-blue-700 dark:text-blue-300" />
-                    <span className="font-semibold text-blue-700 dark:text-blue-300">Leads</span>
-                    <span className="text-sm font-bold tabular-nums text-blue-700 dark:text-blue-300">{data.kpis.leadsReceived}</span>
-                    <span className="text-[10px] text-muted-foreground">recebidos</span>
-                    {data.kpis.leadsReceivedDelta !== '—' && (
-                      <span className="text-[10px] text-blue-600 dark:text-blue-400 font-medium">↗ {data.kpis.leadsReceivedDelta}</span>
-                    )}
-                  </div>
-                  <span className="h-3 w-px bg-border/60" />
-                  <div className="flex items-center gap-1">
-                    <Trophy className="h-3 w-3 text-emerald-700 dark:text-emerald-300" />
-                    <span className="font-semibold text-emerald-700 dark:text-emerald-300">Fechados</span>
-                    <span className="text-sm font-bold tabular-nums text-emerald-700 dark:text-emerald-300">{data.kpis.closed}</span>
-                    <span className="text-[10px] text-muted-foreground">/ {data.kpis.goal}</span>
-                    <div className="w-10 h-1 rounded-full bg-background/60 overflow-hidden">
-                      <div className="h-full bg-emerald-500" style={{ width: `${Math.round((data.kpis.goalProgress ?? 0) * 100)}%` }} />
-                    </div>
-                  </div>
-                  <span className="h-3 w-px bg-border/60" />
-                  <div className="flex items-center gap-1">
-                    <Percent className="h-3 w-3 text-violet-700 dark:text-violet-300" />
-                    <span className="font-semibold text-violet-700 dark:text-violet-300">Conversão</span>
-                    <span className="text-sm font-bold tabular-nums text-violet-700 dark:text-violet-300">{data.kpis.conversion}%</span>
-                    <span className="text-[10px] text-muted-foreground">({data.kpis.closed}/{data.kpis.leadsReceived})</span>
-                  </div>
+            {/* Linha única ultra-compacta: Leads + Fechados + Conversão + Inviáveis */}
+            <Card className="px-2 py-1 border-0 bg-gradient-to-r from-blue-50 via-emerald-50 to-amber-50 dark:from-blue-950/30 dark:via-emerald-950/30 dark:to-amber-950/30">
+              <div className="flex items-center gap-x-3 gap-y-1 flex-wrap text-[11px]">
+                <div className="flex items-center gap-1">
+                  <UserIcon className="h-3 w-3 text-blue-700 dark:text-blue-300" />
+                  <span className="font-semibold text-blue-700 dark:text-blue-300">Leads</span>
+                  <span className="font-bold tabular-nums text-blue-700 dark:text-blue-300">{data.kpis.leadsReceived}</span>
                 </div>
-              </Card>
-
-              <Card className="px-2 py-1 border-0 bg-amber-50 dark:bg-amber-950/30">
-                <div className="flex items-center gap-1.5 text-[11px]">
+                <span className="h-3 w-px bg-border/60" />
+                <div className="flex items-center gap-1">
+                  <Trophy className="h-3 w-3 text-emerald-700 dark:text-emerald-300" />
+                  <span className="font-semibold text-emerald-700 dark:text-emerald-300">Fechados</span>
+                  <span className="font-bold tabular-nums text-emerald-700 dark:text-emerald-300">{data.kpis.closed}/{data.kpis.goal}</span>
+                </div>
+                <span className="h-3 w-px bg-border/60" />
+                <div className="flex items-center gap-1">
+                  <Percent className="h-3 w-3 text-violet-700 dark:text-violet-300" />
+                  <span className="font-semibold text-violet-700 dark:text-violet-300">Conv.</span>
+                  <span className="font-bold tabular-nums text-violet-700 dark:text-violet-300">{data.kpis.conversion}%</span>
+                </div>
+                <span className="h-3 w-px bg-border/60" />
+                <div className="flex items-center gap-1 min-w-0">
                   <XCircle className="h-3 w-3 text-amber-700 dark:text-amber-300" />
                   <span className="font-semibold text-amber-700 dark:text-amber-300">Inviáveis</span>
-                  <span className="text-sm font-bold tabular-nums text-amber-700 dark:text-amber-300">{data.kpis.unviable}</span>
-                  <span className="text-[10px] text-muted-foreground">descartados</span>
+                  <span className="font-bold tabular-nums text-amber-700 dark:text-amber-300">{data.kpis.unviable}</span>
                   {data.kpis.unviableTopReason && (
-                    <span className="text-[10px] text-muted-foreground truncate ml-auto">Top: {data.kpis.unviableTopReason}</span>
+                    <span className="text-[10px] text-muted-foreground truncate">· {data.kpis.unviableTopReason}</span>
                   )}
                 </div>
-              </Card>
-            </div>
+              </div>
+            </Card>
 
             {/* FOCO AGORA */}
             <div className="flex items-center justify-between">
