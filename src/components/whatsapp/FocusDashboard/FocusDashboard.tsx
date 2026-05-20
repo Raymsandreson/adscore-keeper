@@ -55,8 +55,9 @@ export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpen
   if (compact) {
     const kpiCards = [
       {
-        label: `Fechados · ${data.kpis.leadsReceived} leads`,
-        value: `${data.kpis.closed}/${data.kpis.goal} · ${data.kpis.conversion}%`,
+        label: 'Fechados',
+        value: `${data.kpis.closed}/${data.kpis.goal} (${data.kpis.conversion}%)`,
+        sub: `${data.kpis.leadsReceived} leads`,
         icon: Trophy,
         tone: 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200/60 dark:border-emerald-900/40 text-emerald-700 dark:text-emerald-300',
       },
