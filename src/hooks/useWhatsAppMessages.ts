@@ -178,12 +178,18 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         return;
       }
 
-      // Members: only see explicitly assigned instances
-      // whatsapp_instance_users + profiles vivem no EXTERNO (fonte da verdade).
-      // O admin grava acessos só no Externo; o mirror no Cloud é stale.
+      // Members: only see explicitly assigned instances.
+      // Fonte principal: Externo. Fallback: Cloud metadata espelhado.
+      // Motivo: o Externo pode estar com sessão anônima no browser; nesse caso
+      // a RLS esconde whatsapp_instance_users mesmo quando o Cloud user tem acesso.
       const extUserId = await remapToExternal(user.id);
       const lookupId = extUserId || user.id;
-      const [{ data: permissions, error: permissionsError }, { data: profile, error: profileError }] = await Promise.all([
+      const [
+        { data: externalPermissions, error: externalPermissionsError },
+        { data: externalProfile, error: externalProfileError },
+        { data: cloudPermissions, error: cloudPermissionsError },
+        { data: cloudProfile, error: cloudProfileError },
+      ] = await Promise.all([
         db
           .from('whatsapp_instance_users')
           .select('instance_id')
@@ -193,15 +199,30 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
           .select('default_instance_id')
           .eq('user_id', lookupId)
           .maybeSingle(),
+        authClient
+          .from('whatsapp_instance_users')
+          .select('instance_id')
+          .eq('user_id', user.id),
+        authClient
+          .from('profiles')
+          .select('default_instance_id')
+          .eq('user_id', user.id)
+          .maybeSingle(),
       ]);
 
-      if (permissionsError) throw permissionsError;
-      if (profileError) throw profileError;
+      if (externalPermissionsError && cloudPermissionsError) throw externalPermissionsError;
+      if (externalProfileError && cloudProfileError) throw externalProfileError;
 
-      const allowedIds = new Set((permissions || []).map((permission) => permission.instance_id));
+      const allowedIds = new Set([
+        ...((externalPermissions || []).map((permission) => permission.instance_id)),
+        ...((cloudPermissions || []).map((permission) => permission.instance_id)),
+      ].filter(Boolean));
 
-      if ((profile as any)?.default_instance_id) {
-        allowedIds.add((profile as any).default_instance_id);
+      if ((externalProfile as any)?.default_instance_id) {
+        allowedIds.add((externalProfile as any).default_instance_id);
+      }
+      if ((cloudProfile as any)?.default_instance_id) {
+        allowedIds.add((cloudProfile as any).default_instance_id);
       }
 
 
