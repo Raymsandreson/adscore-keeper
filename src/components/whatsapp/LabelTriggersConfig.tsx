@@ -506,14 +506,20 @@ export function LabelTriggersConfig() {
             </div>
             <div>
               <Label className="text-xs">Cor</Label>
-              <Select value={labelFormColor} onValueChange={setLabelFormColor}>
+              <Select value={String(labelFormColor)} onValueChange={(v) => setLabelFormColor(Number(v))}>
                 <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {COLOR_OPTIONS.map(c => (
-                    <SelectItem key={c.value} value={c.value}>{c.name}</SelectItem>
+                    <SelectItem key={c.value} value={String(c.value)}>
+                      <span className="inline-flex items-center gap-2">
+                        <span className="inline-block w-3 h-3 rounded-sm border" style={{ background: c.hex }} />
+                        {c.name}
+                      </span>
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+
             </div>
           </div>
           <DialogFooter>
