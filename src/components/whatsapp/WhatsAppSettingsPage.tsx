@@ -173,7 +173,9 @@ export function WhatsAppSettingsPage({ onBack, initialTab = 'instances' }: Props
 
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden min-h-0">
         {/* Sidebar - lateral tabs (desktop) */}
-        <aside className="w-64 border-r bg-muted/30 overflow-y-auto shrink-0 hidden md:flex md:flex-col">
+        <ResizableSide defaultWidth={256} minWidth={200} maxWidth={520} className="border-r bg-muted/30 overflow-y-auto hidden md:flex md:flex-col" side="right">
+          <aside className="flex flex-col flex-1 min-h-0 overflow-y-auto w-full">
+
           <nav className="p-3 space-y-1 flex-1">
             <p className="text-[10px] font-semibold uppercase text-muted-foreground tracking-wider px-3 mb-3">
               WhatsApp
