@@ -695,7 +695,8 @@ export const handler: RequestHandler = async (req, res) => {
     }
 
     // ========== LABEL EVENT — dispara fluxo de procuração automática ==========
-    if (eventType === 'labels' && !isCallEvent) {
+    // UazAPI envia EventType="chat_labels" (com underscore). Aceitamos ambos por segurança.
+    if ((eventType === 'chat_labels' || eventType === 'labels') && !isCallEvent) {
       try {
         const chatId: string = body.chat?.wa_chatid || body.chat?.id || body.chatid || '';
         const waLabels: string[] = Array.isArray(body.chat?.wa_labels)
