@@ -30,6 +30,7 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
   'whatsapp-backfill-media': 'railway',
   'extract-conversation-data': 'railway',
   'list-uazapi-labels': 'railway',
+  'manage-uazapi-label': 'railway',
 
   // --- Todas as demais ficam no Cloud por padrão ---
 };

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Tag, Loader2, Plus, Trash2, RefreshCw, FileSignature, AlertCircle } from 'lucide-react';
+import { Tag, Loader2, Plus, Trash2, RefreshCw, FileSignature, AlertCircle, Wifi, WifiOff, Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -8,9 +8,11 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { db } from '@/integrations/supabase';
 import { cloudFunctions } from '@/lib/functionRouter';
+import { useWhatsAppInstanceStatus } from '@/hooks/useWhatsAppInstanceStatus';
 
 interface Instance {
   instance_name: string;
@@ -37,6 +39,17 @@ interface Trigger {
   enabled: boolean;
 }
 
+const COLOR_OPTIONS = [
+  { name: 'Vermelho', value: 'red' },
+  { name: 'Laranja', value: 'orange' },
+  { name: 'Amarelo', value: 'yellow' },
+  { name: 'Verde', value: 'green' },
+  { name: 'Azul', value: 'blue' },
+  { name: 'Roxo', value: 'purple' },
+  { name: 'Rosa', value: 'pink' },
+  { name: 'Cinza', value: 'gray' },
+];
+
 export function LabelTriggersConfig() {
   const [instances, setInstances] = useState<Instance[]>([]);
   const [selectedInstance, setSelectedInstance] = useState<string>('');
@@ -47,6 +60,11 @@ export function LabelTriggersConfig() {
   const [loadingTemplates, setLoadingTemplates] = useState(false);
   const [loadingTriggers, setLoadingTriggers] = useState(false);
 
+  // status de conexão das instâncias (mesma fonte usada nas conversas)
+  const { statuses } = useWhatsAppInstanceStatus(true);
+  const currentStatus = statuses.find(s => s.instance_name === selectedInstance);
+  const isConnected = currentStatus?.connected ?? null; // null = ainda carregando
+
   // Form pra adicionar novo gatilho
   const [newLabelId, setNewLabelId] = useState('');
   const [newTemplateId, setNewTemplateId] = useState('');
@@ -54,7 +72,13 @@ export function LabelTriggersConfig() {
   const [newAutoMedia, setNewAutoMedia] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  // 1. Carregar instâncias e templates uma vez
+  // Dialog de criar/editar etiqueta
+  const [labelDialogOpen, setLabelDialogOpen] = useState(false);
+  const [editingLabel, setEditingLabel] = useState<UazLabel | null>(null);
+  const [labelFormName, setLabelFormName] = useState('');
+  const [labelFormColor, setLabelFormColor] = useState<string>('blue');
+  const [labelSaving, setLabelSaving] = useState(false);
+
   useEffect(() => {
     (async () => {
       const { data: insts } = await db
@@ -86,7 +110,6 @@ export function LabelTriggersConfig() {
     })();
   }, []);
 
-  // 2. Quando trocar instância, recarregar labels + triggers
   useEffect(() => {
     if (!selectedInstance) return;
     loadLabels();
@@ -128,6 +151,62 @@ export function LabelTriggersConfig() {
     }
   }
 
+  function openCreateLabel() {
+    setEditingLabel(null);
+    setLabelFormName('');
+    setLabelFormColor('blue');
+    setLabelDialogOpen(true);
+  }
+  function openEditLabel(l: UazLabel) {
+    setEditingLabel(l);
+    setLabelFormName(l.name);
+    setLabelFormColor((l.color as string) || 'blue');
+    setLabelDialogOpen(true);
+  }
+
+  async function saveLabel() {
+    if (!labelFormName.trim()) {
+      toast.error('Nome obrigatório');
+      return;
+    }
+    setLabelSaving(true);
+    try {
+      const { data, error } = await cloudFunctions.invoke<any>('manage-uazapi-label', {
+        body: {
+          instance_name: selectedInstance,
+          action: editingLabel ? 'update' : 'create',
+          id: editingLabel?.id,
+          name: labelFormName.trim(),
+          color: labelFormColor,
+        },
+      });
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Falha');
+      toast.success(editingLabel ? 'Etiqueta atualizada' : 'Etiqueta criada');
+      setLabelDialogOpen(false);
+      await loadLabels(true);
+    } catch (e: any) {
+      toast.error(e?.message || 'Erro');
+    } finally {
+      setLabelSaving(false);
+    }
+  }
+
+  async function deleteLabel(l: UazLabel) {
+    if (!confirm(`Excluir a etiqueta "${l.name}" do WhatsApp?\n\nIsso remove em todas as conversas.`)) return;
+    try {
+      const { data, error } = await cloudFunctions.invoke<any>('manage-uazapi-label', {
+        body: { instance_name: selectedInstance, action: 'delete', id: l.id },
+      });
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Falha');
+      toast.success('Etiqueta removida');
+      await loadLabels(true);
+    } catch (e: any) {
+      toast.error(e?.message || 'Erro');
+    }
+  }
+
   async function handleAdd() {
     if (!newLabelId || !newTemplateId) {
       toast.error('Escolha etiqueta e template');
@@ -166,11 +245,8 @@ export function LabelTriggersConfig() {
       .from('label_document_triggers' as any)
       .update({ enabled: !t.enabled, updated_at: new Date().toISOString() })
       .eq('id', t.id);
-    if (error) {
-      toast.error('Erro: ' + error.message);
-    } else {
-      loadTriggers();
-    }
+    if (error) toast.error('Erro: ' + error.message);
+    else loadTriggers();
   }
 
   async function remove(t: Trigger) {
@@ -186,10 +262,7 @@ export function LabelTriggersConfig() {
     }
   }
 
-  // Etiquetas que ainda NÃO têm gatilho (pra não permitir duplicar)
-  const availableLabels = labels.filter(
-    l => !triggers.some(t => t.label_id === l.id),
-  );
+  const availableLabels = labels.filter(l => !triggers.some(t => t.label_id === l.id));
 
   return (
     <div className="space-y-6">
@@ -208,49 +281,94 @@ export function LabelTriggersConfig() {
         <CardContent className="space-y-4">
           <div>
             <Label className="text-xs">Instância</Label>
-            <Select value={selectedInstance} onValueChange={setSelectedInstance}>
-              <SelectTrigger className="mt-1">
-                <SelectValue placeholder="Escolha uma instância" />
-              </SelectTrigger>
-              <SelectContent>
-                {instances.map(i => (
-                  <SelectItem key={i.instance_name} value={i.instance_name}>
-                    {i.instance_name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="flex items-center gap-2 mt-1">
+              <div className="flex-1">
+                <Select value={selectedInstance} onValueChange={setSelectedInstance}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Escolha uma instância" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {instances.map(i => {
+                      const st = statuses.find(s => s.instance_name === i.instance_name);
+                      return (
+                        <SelectItem key={i.instance_name} value={i.instance_name}>
+                          <span className="flex items-center gap-2">
+                            <span
+                              className={`h-2 w-2 rounded-full ${
+                                st?.connected ? 'bg-green-500' : st ? 'bg-red-500' : 'bg-gray-400'
+                              }`}
+                            />
+                            {i.instance_name}
+                          </span>
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+              </div>
+              {isConnected !== null && (
+                <Badge variant={isConnected ? 'default' : 'destructive'} className="gap-1 whitespace-nowrap">
+                  {isConnected ? <Wifi className="h-3 w-3" /> : <WifiOff className="h-3 w-3" />}
+                  {isConnected ? 'Conectada' : 'Desconectada'}
+                </Badge>
+              )}
+            </div>
+            {isConnected === false && (
+              <div className="flex items-start gap-2 text-xs text-destructive bg-destructive/10 p-3 rounded-md mt-2">
+                <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                <span>
+                  Esta instância está desconectada do WhatsApp. Vá em <strong>Configurações → WhatsApp → Instâncias</strong> e
+                  escaneie o QR code pra reconectar antes de gerenciar etiquetas.
+                </span>
+              </div>
+            )}
           </div>
 
           {selectedInstance && (
             <>
               <Separator />
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between flex-wrap gap-2">
                 <div>
                   <p className="text-sm font-medium">Etiquetas dessa instância</p>
                   <p className="text-xs text-muted-foreground">
                     {labels.length} encontrada{labels.length === 1 ? '' : 's'}
                   </p>
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => loadLabels(true)}
-                  disabled={loadingLabels}
-                >
-                  {loadingLabels ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <RefreshCw className="h-4 w-4" />
-                  )}
-                  <span className="ml-1">Recarregar</span>
-                </Button>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={() => loadLabels(true)} disabled={loadingLabels}>
+                    {loadingLabels ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                    <span className="ml-1">Recarregar</span>
+                  </Button>
+                  <Button size="sm" onClick={openCreateLabel} disabled={!isConnected}>
+                    <Plus className="h-4 w-4 mr-1" /> Nova etiqueta
+                  </Button>
+                </div>
               </div>
 
               {labels.length === 0 && !loadingLabels && (
                 <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/30 p-3 rounded-md">
                   <AlertCircle className="h-4 w-4" />
-                  Nenhuma etiqueta encontrada. Crie etiquetas direto no WhatsApp Web e clique em "Recarregar".
+                  Nenhuma etiqueta encontrada. Crie uma acima ou pelo próprio WhatsApp Web.
+                </div>
+              )}
+
+              {labels.length > 0 && (
+                <div className="space-y-1.5">
+                  {labels.map(l => (
+                    <div key={l.id} className="flex items-center gap-2 p-2 border rounded-md hover:bg-muted/30">
+                      <Tag className="h-3.5 w-3.5 text-muted-foreground" />
+                      <span className="text-sm flex-1 truncate">{l.name}</span>
+                      {l.color && (
+                        <span className="text-[10px] text-muted-foreground uppercase">{l.color}</span>
+                      )}
+                      <Button variant="ghost" size="sm" onClick={() => openEditLabel(l)} disabled={!isConnected}>
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => deleteLabel(l)} disabled={!isConnected}>
+                        <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                      </Button>
+                    </div>
+                  ))}
                 </div>
               )}
             </>
@@ -258,7 +376,6 @@ export function LabelTriggersConfig() {
         </CardContent>
       </Card>
 
-      {/* Adicionar novo gatilho */}
       {selectedInstance && availableLabels.length > 0 && templates.length > 0 && (
         <Card>
           <CardHeader>
@@ -272,14 +389,10 @@ export function LabelTriggersConfig() {
               <div>
                 <Label className="text-xs">Etiqueta do WhatsApp</Label>
                 <Select value={newLabelId} onValueChange={setNewLabelId}>
-                  <SelectTrigger className="mt-1">
-                    <SelectValue placeholder="Escolha" />
-                  </SelectTrigger>
+                  <SelectTrigger className="mt-1"><SelectValue placeholder="Escolha" /></SelectTrigger>
                   <SelectContent>
                     {availableLabels.map(l => (
-                      <SelectItem key={l.id} value={l.id}>
-                        {l.name}
-                      </SelectItem>
+                      <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -292,9 +405,7 @@ export function LabelTriggersConfig() {
                   </SelectTrigger>
                   <SelectContent>
                     {templates.map(t => (
-                      <SelectItem key={t.id} value={t.id}>
-                        {t.name}
-                      </SelectItem>
+                      <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -327,7 +438,6 @@ export function LabelTriggersConfig() {
         </Card>
       )}
 
-      {/* Lista de gatilhos existentes */}
       {selectedInstance && (
         <Card>
           <CardHeader>
@@ -342,10 +452,7 @@ export function LabelTriggersConfig() {
             )}
             <div className="space-y-2">
               {triggers.map(t => (
-                <div
-                  key={t.id}
-                  className="flex items-center gap-3 p-3 border rounded-md hover:bg-muted/30"
-                >
+                <div key={t.id} className="flex items-center gap-3 p-3 border rounded-md hover:bg-muted/30">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <Badge variant="outline" className="gap-1">
@@ -372,6 +479,46 @@ export function LabelTriggersConfig() {
           </CardContent>
         </Card>
       )}
+
+      <Dialog open={labelDialogOpen} onOpenChange={setLabelDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editingLabel ? 'Editar etiqueta' : 'Nova etiqueta'}</DialogTitle>
+            <DialogDescription>
+              Aplica direto no WhatsApp da instância <strong>{selectedInstance}</strong>.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label className="text-xs">Nome</Label>
+              <Input
+                value={labelFormName}
+                onChange={(e) => setLabelFormName(e.target.value)}
+                placeholder="Ex: PROCURAÇÃO_GERAL"
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label className="text-xs">Cor</Label>
+              <Select value={labelFormColor} onValueChange={setLabelFormColor}>
+                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {COLOR_OPTIONS.map(c => (
+                    <SelectItem key={c.value} value={c.value}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setLabelDialogOpen(false)}>Cancelar</Button>
+            <Button onClick={saveLabel} disabled={labelSaving}>
+              {labelSaving && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+              {editingLabel ? 'Salvar' : 'Criar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

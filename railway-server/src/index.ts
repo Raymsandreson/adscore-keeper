@@ -23,6 +23,7 @@ import { handler as whatsappBackfillMedia } from './functions/whatsapp-backfill-
 import { handler as extractConversationData } from './functions/extract-conversation-data';
 import { handler as manageWhatsappGroupParticipants } from './functions/manage-whatsapp-group-participants';
 import { handler as listUazapiLabels } from './functions/list-uazapi-labels';
+import { handler as manageUazapiLabel } from './functions/manage-uazapi-label';
 
 const functionHandlers: Record<string, express.RequestHandler> = {
   'whatsapp-webhook': whatsappWebhook,
@@ -39,6 +40,7 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'extract-conversation-data': extractConversationData,
   'manage-whatsapp-group-participants': manageWhatsappGroupParticipants,
   'list-uazapi-labels': listUazapiLabels,
+  'manage-uazapi-label': manageUazapiLabel,
 };
 
 const app = express();
