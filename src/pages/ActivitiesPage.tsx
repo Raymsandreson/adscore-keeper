@@ -2636,10 +2636,22 @@ const ActivitiesPage = () => {
 
 
         {/* LEFT: Calendar + Activity list (chat-style) */}
-        <div className={cn(
-          "flex-col overflow-hidden transition-all",
-          viewMode === 'blocks' ? "hidden" : (isEditing ? "hidden md:flex w-[400px] min-w-[340px] border-r" : "flex flex-1")
-        )}>
+        <div
+          className={cn(
+            "relative flex-col overflow-hidden transition-all",
+            viewMode === 'blocks' ? "hidden" : (isEditing ? "hidden md:flex shrink-0 border-r" : "flex flex-1")
+          )}
+          style={isEditing && viewMode !== 'blocks' ? { width: listColWidth, minWidth: 280 } : undefined}
+        >
+          {isEditing && viewMode !== 'blocks' && (
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              title="Arraste para redimensionar • duplo clique reseta"
+              {...makeColDragHandlers(listColDragRef, listColWidth, setListColWidth, 280, 720, 400)}
+              className="hidden md:block absolute top-0 bottom-0 -right-0.5 w-1.5 z-30 cursor-col-resize hover:bg-primary/40 active:bg-primary/60 transition-colors"
+            />
+          )}
           {/* Calendar - collapsible */}
           <div className="shrink-0 border-b bg-card/50">
             {/* Calendar header - always visible, clickable to expand/collapse */}
