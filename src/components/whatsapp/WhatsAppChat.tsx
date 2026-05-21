@@ -109,6 +109,8 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const [sending, setSending] = useState(false);
   const [showLinkDialog, setShowLinkDialog] = useState(false);
   const [showLeadPanel, setShowLeadPanel] = useState(false);
+  const [leadPanelWidth, setLeadPanelWidth] = useState(480);
+  const leadPanelDragRef = useRef<{ startX: number; startW: number } | null>(null);
   const [showLeadEdit, setShowLeadEdit] = useState(false);
   const [editingLeadData, setEditingLeadData] = useState<any | null>(null);
   const [contactLinkedLeadIds, setContactLinkedLeadIds] = useState<string[]>([]);
@@ -2605,10 +2607,41 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         </DialogContent>
       </Dialog>
 
-      {/* Lead Preview - aba lateral */}
+      {/* Lead Preview - aba lateral (redimensionável via alça à esquerda) */}
       {conversation.lead_id && onCreateActivity && (
         <Sheet open={showLeadPanel} onOpenChange={setShowLeadPanel}>
-          <SheetContent side="right" className="w-full sm:w-[480px] p-0 overflow-y-auto">
+          <SheetContent
+            side="right"
+            className="p-0 overflow-y-auto !max-w-none w-full"
+            style={{ width: leadPanelWidth }}
+          >
+            {/* Alça de redimensionar — só em telas md+ */}
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              title="Arraste para redimensionar • duplo clique reseta"
+              onPointerDown={(e) => {
+                leadPanelDragRef.current = { startX: e.clientX, startW: leadPanelWidth };
+                (e.target as HTMLElement).setPointerCapture(e.pointerId);
+                document.body.style.cursor = 'col-resize';
+                document.body.style.userSelect = 'none';
+              }}
+              onPointerMove={(e) => {
+                const d = leadPanelDragRef.current;
+                if (!d) return;
+                const delta = d.startX - e.clientX;
+                const next = Math.min(900, Math.max(320, d.startW + delta));
+                setLeadPanelWidth(next);
+              }}
+              onPointerUp={(e) => {
+                leadPanelDragRef.current = null;
+                try { (e.target as HTMLElement).releasePointerCapture(e.pointerId); } catch {}
+                document.body.style.cursor = '';
+                document.body.style.userSelect = '';
+              }}
+              onDoubleClick={() => setLeadPanelWidth(480)}
+              className="hidden md:block absolute left-0 top-0 bottom-0 w-1.5 z-30 cursor-col-resize hover:bg-primary/40 active:bg-primary/60 transition-colors"
+            />
             <SheetHeader className="px-4 py-3 border-b">
               <SheetTitle className="text-sm">Detalhes do Lead</SheetTitle>
             </SheetHeader>
