@@ -66,6 +66,7 @@ const AccidentDataExtractor = lazy(() => import('@/components/leads/AccidentData
 import { ExtractedAccidentData, CurrentLeadData } from '@/components/leads/AccidentDataExtractor';
 import { LeadAIChatExtractor } from '@/components/leads/LeadAIChatExtractor';
 import { useAutoImportGroupDocs } from '@/hooks/useAutoImportGroupDocs';
+import { useAutoLinkGroupByName } from '@/hooks/useAutoLinkGroupByName';
 import { cn } from '@/lib/utils';
 import { KanbanBoard } from '@/hooks/useKanbanBoards';
 import { 
