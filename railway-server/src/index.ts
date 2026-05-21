@@ -24,6 +24,7 @@ import { handler as extractConversationData } from './functions/extract-conversa
 import { handler as manageWhatsappGroupParticipants } from './functions/manage-whatsapp-group-participants';
 import { handler as listUazapiLabels } from './functions/list-uazapi-labels';
 import { handler as manageUazapiLabel } from './functions/manage-uazapi-label';
+import { handler as prepareLabelDocumentTrigger } from './functions/prepare-label-document-trigger';
 
 const functionHandlers: Record<string, express.RequestHandler> = {
   'whatsapp-webhook': whatsappWebhook,
@@ -41,6 +42,7 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'manage-whatsapp-group-participants': manageWhatsappGroupParticipants,
   'list-uazapi-labels': listUazapiLabels,
   'manage-uazapi-label': manageUazapiLabel,
+  'prepare-label-document-trigger': prepareLabelDocumentTrigger,
 };
 
 const app = express();

@@ -688,10 +688,72 @@ export const handler: RequestHandler = async (req, res) => {
       });
     };
 
-    // Skip noise events
-    const skippableEvents = ['messages_update', 'presence', 'chats_update', 'chats_delete', 'contacts_update', 'labels', 'message_ack', 'chats'];
+    // Skip noise events (labels é tratado separadamente abaixo)
+    const skippableEvents = ['messages_update', 'presence', 'chats_update', 'chats_delete', 'contacts_update', 'message_ack', 'chats'];
     if (skippableEvents.includes(eventType) && !isCallEvent) {
       return res.json({ success: true, skipped: true, reason: `EventType ${eventType} filtered` });
+    }
+
+    // ========== LABEL EVENT — dispara fluxo de procuração automática ==========
+    if (eventType === 'labels' && !isCallEvent) {
+      try {
+        const chatId: string = body.chat?.wa_chatid || body.chat?.id || body.chatid || '';
+        const waLabels: string[] = Array.isArray(body.chat?.wa_labels)
+          ? body.chat.wa_labels.map((l: any) => String(l))
+          : (Array.isArray(body.labels) ? body.labels.map((l: any) => String(l?.id ?? l)) : []);
+
+        if (!chatId || !webhookInstanceName || waLabels.length === 0) {
+          return res.json({ success: true, skipped: true, reason: 'label_event_missing_data' });
+        }
+
+        const phoneDigits = chatId.replace(/@[^@]+$/, '').replace(/\D/g, '');
+
+        // Busca gatilhos ativos pra essa instância
+        const { data: triggers } = await supabase
+          .from('label_document_triggers')
+          .select('id, label_id, label_name, zapsign_template_id')
+          .ilike('instance_name', webhookInstanceName)
+          .eq('enabled', true)
+          .is('deleted_at', null);
+
+        if (!triggers || triggers.length === 0) {
+          return res.json({ success: true, skipped: true, reason: 'no_triggers_for_instance' });
+        }
+
+        const matched = triggers.filter((t: any) =>
+          waLabels.includes(String(t.label_id))
+        );
+
+        if (matched.length === 0) {
+          return res.json({ success: true, skipped: true, reason: 'no_matching_label_trigger' });
+        }
+
+        // Dispara prepare-label-document-trigger pra cada match (fire-and-forget)
+        const railwayBase = process.env.RAILWAY_PUBLIC_URL || `http://localhost:${process.env.PORT || 3000}`;
+        const apiKey = process.env.RAILWAY_API_KEY || '';
+        for (const t of matched) {
+          const payload = {
+            chatId,
+            phone: phoneDigits,
+            instance: webhookInstanceName,
+            labelName: t.label_name,
+            templateId: t.zapsign_template_id,
+            triggerId: t.id,
+          };
+          // Fire-and-forget: não bloqueia o webhook
+          fetch(`${railwayBase}/functions/prepare-label-document-trigger`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+            body: JSON.stringify(payload),
+          }).catch((e) => console.warn('[label-trigger] async dispatch failed:', e?.message));
+          console.log('[label-trigger] dispatched', { chatId, label: t.label_name, instance: webhookInstanceName });
+        }
+
+        return res.json({ success: true, type: 'label_triggered', count: matched.length, labels: matched.map((m: any) => m.label_name) });
+      } catch (e: any) {
+        console.error('[label-trigger] handler error:', e);
+        return res.json({ success: false, error: e?.message || 'label handler failed' });
+      }
     }
 
     logWebhook('received', { detected_event_type: eventType, body_type: bodyType, is_call_event: isCallEvent, keys: Object.keys(body).join(',') });
