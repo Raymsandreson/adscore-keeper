@@ -1002,6 +1002,22 @@ ${scrapeData.content || ''}
       return;
     }
 
+    // Validação obrigatória: resultado do lead é obrigatório quando o lead está/vai para etapa de fechamento.
+    {
+      const targetBoardId = selectedBoardId || (currentLead as any).board_id;
+      const targetBoard = boards.find(b => b.id === targetBoardId);
+      const stages = (targetBoard?.stages as any[]) || [];
+      const currentStageId = (currentLead as any).status;
+      const closedStageId = stages.length ? findClosedStageId(stages) : null;
+      const refusedStageId = stages.length ? findRefusedStageId(stages) : null;
+      const isOnFinalStage = currentStageId && (currentStageId === closedStageId || currentStageId === refusedStageId);
+      if (isOnFinalStage && !leadOutcome) {
+        toast.error('Selecione o resultado do lead (ganho, recusado, inviável ou cancelado) antes de salvar.');
+        setActiveTab('basic');
+        return;
+      }
+    }
+
     // Validação obrigatória: Nº do Caso só pode ficar vazio se o lead não está fechado.
     // Quem fecha o lead PRECISA digitar o número do caso manualmente.
     if (leadOutcome === 'closed' && !caseNumber.trim()) {
