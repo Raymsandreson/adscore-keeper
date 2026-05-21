@@ -1839,6 +1839,41 @@ const ActivitiesPage = () => {
 
   const isEditing = sheetMode !== null;
 
+  // Larguras das colunas laterais no modo edição (resetam ao desmontar a página)
+  const [weekColWidth, setWeekColWidth] = useState(220);
+  const [listColWidth, setListColWidth] = useState(400);
+  const weekColDragRef = useRef<{ startX: number; startW: number } | null>(null);
+  const listColDragRef = useRef<{ startX: number; startW: number } | null>(null);
+
+  const makeColDragHandlers = (
+    dragRef: React.MutableRefObject<{ startX: number; startW: number } | null>,
+    currentW: number,
+    setW: (n: number) => void,
+    min: number,
+    max: number,
+    resetTo: number,
+  ) => ({
+    onPointerDown: (e: React.PointerEvent<HTMLDivElement>) => {
+      dragRef.current = { startX: e.clientX, startW: currentW };
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    },
+    onPointerMove: (e: React.PointerEvent<HTMLDivElement>) => {
+      const d = dragRef.current;
+      if (!d) return;
+      const next = Math.min(max, Math.max(min, d.startW + (e.clientX - d.startX)));
+      setW(next);
+    },
+    onPointerUp: (e: React.PointerEvent<HTMLDivElement>) => {
+      dragRef.current = null;
+      try { (e.target as HTMLElement).releasePointerCapture(e.pointerId); } catch {}
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    },
+    onDoubleClick: () => setW(resetTo),
+  });
+
 
 
 
@@ -2322,8 +2357,19 @@ const ActivitiesPage = () => {
           })();
 
           return (
-            <div className={cn("flex flex-col overflow-hidden h-full", isEditing ? "w-[220px] shrink-0 border-r" : "flex-1")}>
-              {/* Weekly grid */}
+            <div
+              className={cn("relative flex flex-col overflow-hidden h-full", isEditing ? "shrink-0 border-r" : "flex-1")}
+              style={isEditing ? { width: weekColWidth } : undefined}
+            >
+              {isEditing && (
+                <div
+                  role="separator"
+                  aria-orientation="vertical"
+                  title="Arraste para redimensionar • duplo clique reseta"
+                  {...makeColDragHandlers(weekColDragRef, weekColWidth, setWeekColWidth, 160, 480, 220)}
+                  className="hidden md:block absolute top-0 bottom-0 -right-0.5 w-1.5 z-30 cursor-col-resize hover:bg-primary/40 active:bg-primary/60 transition-colors"
+                />
+              )}
               <div className={cn("overflow-auto", selectedBlockData ? "shrink-0 max-h-[45vh]" : "flex-1")}>
                 {/* Day headers */}
                 <div className="sticky top-0 z-10 bg-card border-b flex min-w-max sm:min-w-0">
@@ -2590,10 +2636,22 @@ const ActivitiesPage = () => {
 
 
         {/* LEFT: Calendar + Activity list (chat-style) */}
-        <div className={cn(
-          "flex-col overflow-hidden transition-all",
-          viewMode === 'blocks' ? "hidden" : (isEditing ? "hidden md:flex w-[400px] min-w-[340px] border-r" : "flex flex-1")
-        )}>
+        <div
+          className={cn(
+            "relative flex-col overflow-hidden transition-all",
+            viewMode === 'blocks' ? "hidden" : (isEditing ? "hidden md:flex shrink-0 border-r" : "flex flex-1")
+          )}
+          style={isEditing && viewMode !== 'blocks' ? { width: listColWidth, minWidth: 280 } : undefined}
+        >
+          {isEditing && viewMode !== 'blocks' && (
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              title="Arraste para redimensionar • duplo clique reseta"
+              {...makeColDragHandlers(listColDragRef, listColWidth, setListColWidth, 280, 720, 400)}
+              className="hidden md:block absolute top-0 bottom-0 -right-0.5 w-1.5 z-30 cursor-col-resize hover:bg-primary/40 active:bg-primary/60 transition-colors"
+            />
+          )}
           {/* Calendar - collapsible */}
           <div className="shrink-0 border-b bg-card/50">
             {/* Calendar header - always visible, clickable to expand/collapse */}
