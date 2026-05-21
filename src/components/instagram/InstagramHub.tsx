@@ -228,7 +228,9 @@ export function InstagramHub() {
               Use o Funil de Prospecção para organizar leads do Direct e acompanhe os comentários para engajar sua audiência.
             </p>
           </div>
-        </aside>
+          </aside>
+        </ResizableSide>
+
 
         {/* Mobile horizontal tabs */}
         <div className="md:hidden border-b bg-muted/30 shrink-0 w-full z-10 overflow-x-auto">
