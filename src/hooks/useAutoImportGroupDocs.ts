@@ -39,7 +39,38 @@ export function useAutoImportGroupDocs(
       try {
         await ensureExternalSession();
 
-        // 1) Conta mídias disponíveis no WhatsApp (grupo ou lead).
+        // 0) Coleta TODOS os group JIDs ligados a este lead:
+        //    a) whatsapp_group_id direto do lead (param)
+        //    b) qualquer contato vinculado ao lead cujo whatsapp_group_id != null
+        //       (= contato que é um grupo)
+        const groupIds = new Set<string>();
+        if (whatsappGroupId) groupIds.add(whatsappGroupId);
+
+        try {
+          // contatos vinculados via contact_leads
+          const { data: linked } = await externalSupabase
+            .from('contact_leads')
+            .select('contacts:contact_id(whatsapp_group_id)')
+            .eq('lead_id', leadId);
+          (linked || []).forEach((row: any) => {
+            const gid = row?.contacts?.whatsapp_group_id;
+            if (gid) groupIds.add(gid);
+          });
+
+          // contatos legados (contacts.lead_id == leadId)
+          const { data: legacy } = await externalSupabase
+            .from('contacts')
+            .select('whatsapp_group_id')
+            .eq('lead_id', leadId)
+            .not('whatsapp_group_id', 'is', null);
+          (legacy || []).forEach((row: any) => {
+            if (row?.whatsapp_group_id) groupIds.add(row.whatsapp_group_id);
+          });
+        } catch (e) {
+          console.warn('[useAutoImportGroupDocs] coletar group ids de contatos falhou', e);
+        }
+
+        // 1) Conta mídias disponíveis no WhatsApp (todos os grupos + lead).
         let mediaQuery = externalSupabase
           .from('whatsapp_messages')
           .select('external_message_id, message_type, media_url, created_at')
@@ -48,9 +79,14 @@ export function useAutoImportGroupDocs(
           .order('created_at', { ascending: false })
           .limit(200);
 
-        mediaQuery = whatsappGroupId
-          ? mediaQuery.or(`phone.eq.${whatsappGroupId},lead_id.eq.${leadId}`)
-          : mediaQuery.eq('lead_id', leadId);
+        if (groupIds.size > 0) {
+          const phoneIn = Array.from(groupIds)
+            .map((g) => `"${g}"`)
+            .join(',');
+          mediaQuery = mediaQuery.or(`phone.in.(${phoneIn}),lead_id.eq.${leadId}`);
+        } else {
+          mediaQuery = mediaQuery.eq('lead_id', leadId);
+        }
 
         const { data: mediaMsgs, error: mediaErr } = await mediaQuery;
         if (cancelled || mediaErr) return;
