@@ -768,6 +768,34 @@ export const handler: RequestHandler = async (req, res) => {
       try {
         const { chatId, labels: waLabels } = extractLabelEventData(body);
 
+        // DEBUG TEMP: envia mensagem na própria conversa confirmando recebimento do evento
+        if (chatId && webhookInstanceName) {
+          try {
+            const { data: inst } = await supabase
+              .from('whatsapp_instances')
+              .select('instance_token, base_url')
+              .ilike('instance_name', webhookInstanceName)
+              .eq('is_active', true)
+              .limit(1)
+              .maybeSingle();
+            if (inst?.instance_token) {
+              const baseUrl = inst.base_url || 'https://abraci.uazapi.com';
+              const phoneOnly = chatId.replace(/@[^@]+$/, '').replace(/\D/g, '');
+              const debugMsg = `🔔 [DEBUG] Webhook de etiqueta recebido\nInstância: ${webhookInstanceName}\nLabels IDs: ${waLabels.join(', ') || '(nenhum)'}\nEventType: ${eventType}`;
+              fetch(`${baseUrl}/send/text`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', token: inst.instance_token },
+                body: JSON.stringify({ number: phoneOnly, text: debugMsg }),
+              }).catch((e) => console.warn('[label-trigger][DEBUG-SEND] failed:', e?.message));
+              console.log('[label-trigger][DEBUG-SEND] sent confirmation to', phoneOnly);
+            } else {
+              console.warn('[label-trigger][DEBUG-SEND] instance not found or no token', webhookInstanceName);
+            }
+          } catch (e: any) {
+            console.warn('[label-trigger][DEBUG-SEND] error:', e?.message);
+          }
+        }
+
         if (!chatId || !webhookInstanceName || waLabels.length === 0) {
           console.warn('[label-trigger] missing data', { hasChatId: Boolean(chatId), webhookInstanceName, labelCount: waLabels.length, keys: Object.keys(body || {}) });
           return res.json({ success: true, skipped: true, reason: 'label_event_missing_data' });
