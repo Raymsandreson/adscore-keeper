@@ -751,6 +751,10 @@ export const handler: RequestHandler = async (req, res) => {
     const isLabelEvent = ['chat_labels', 'chat_label', 'labels', 'label'].includes(eventType);
     if (isLabelEvent && !isCallEvent) {
       console.log('[whatsapp-webhook] LABEL event received, EventType=', body.EventType, 'instance=', webhookInstanceName);
+      // DEBUG TEMP: dump payload completo pra mapear onde a UazAPI coloca os labels
+      try {
+        console.log('[label-trigger][DEBUG-PAYLOAD]', JSON.stringify(body).slice(0, 4000));
+      } catch {}
 
       try {
         const { chatId, labels: waLabels } = extractLabelEventData(body);
