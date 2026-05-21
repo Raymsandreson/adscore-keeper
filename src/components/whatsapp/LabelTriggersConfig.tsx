@@ -39,16 +39,21 @@ interface Trigger {
   enabled: boolean;
 }
 
-const COLOR_OPTIONS = [
-  { name: 'Vermelho', value: 'red' },
-  { name: 'Laranja', value: 'orange' },
-  { name: 'Amarelo', value: 'yellow' },
-  { name: 'Verde', value: 'green' },
-  { name: 'Azul', value: 'blue' },
-  { name: 'Roxo', value: 'purple' },
-  { name: 'Rosa', value: 'pink' },
-  { name: 'Cinza', value: 'gray' },
+// Paleta da UazAPI/WhatsApp — `color` é INT (0..19). Mostramos só as 10 cores
+// principais com swatches; cada uma já existe nativamente nas etiquetas do app.
+const COLOR_OPTIONS: { value: number; hex: string; name: string }[] = [
+  { value: 0, hex: '#ff6e6e', name: 'Vermelho' },
+  { value: 1, hex: '#ff9764', name: 'Laranja' },
+  { value: 2, hex: '#fbb33b', name: 'Amarelo' },
+  { value: 5, hex: '#75d572', name: 'Verde' },
+  { value: 6, hex: '#6ed3cf', name: 'Ciano' },
+  { value: 4, hex: '#95c4ff', name: 'Azul' },
+  { value: 7, hex: '#b9b7ff', name: 'Lilás' },
+  { value: 3, hex: '#dfaef0', name: 'Roxo' },
+  { value: 8, hex: '#ffb9ee', name: 'Rosa' },
+  { value: 10, hex: '#d4d4d4', name: 'Cinza' },
 ];
+
 
 export function LabelTriggersConfig() {
   const [instances, setInstances] = useState<Instance[]>([]);
@@ -76,7 +81,7 @@ export function LabelTriggersConfig() {
   const [labelDialogOpen, setLabelDialogOpen] = useState(false);
   const [editingLabel, setEditingLabel] = useState<UazLabel | null>(null);
   const [labelFormName, setLabelFormName] = useState('');
-  const [labelFormColor, setLabelFormColor] = useState<string>('blue');
+  const [labelFormColor, setLabelFormColor] = useState<number>(4);
   const [labelSaving, setLabelSaving] = useState(false);
 
   useEffect(() => {
@@ -154,13 +159,14 @@ export function LabelTriggersConfig() {
   function openCreateLabel() {
     setEditingLabel(null);
     setLabelFormName('');
-    setLabelFormColor('blue');
+    setLabelFormColor(4);
     setLabelDialogOpen(true);
   }
   function openEditLabel(l: UazLabel) {
     setEditingLabel(l);
     setLabelFormName(l.name);
-    setLabelFormColor((l.color as string) || 'blue');
+    setLabelFormColor(typeof l.color === 'number' ? l.color : 4);
+
     setLabelDialogOpen(true);
   }
 
@@ -500,14 +506,20 @@ export function LabelTriggersConfig() {
             </div>
             <div>
               <Label className="text-xs">Cor</Label>
-              <Select value={labelFormColor} onValueChange={setLabelFormColor}>
+              <Select value={String(labelFormColor)} onValueChange={(v) => setLabelFormColor(Number(v))}>
                 <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {COLOR_OPTIONS.map(c => (
-                    <SelectItem key={c.value} value={c.value}>{c.name}</SelectItem>
+                    <SelectItem key={c.value} value={String(c.value)}>
+                      <span className="inline-flex items-center gap-2">
+                        <span className="inline-block w-3 h-3 rounded-sm border" style={{ background: c.hex }} />
+                        {c.name}
+                      </span>
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+
             </div>
           </div>
           <DialogFooter>

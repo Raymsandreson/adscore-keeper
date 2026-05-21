@@ -1,11 +1,22 @@
 // Gerencia etiquetas (labels) de uma instância UazAPI: criar, editar, excluir.
 //
-// Body: {
+// IMPORTANTE — endpoints reais da UazAPI (descobertos via sondagem em 2026-05):
+//   - LISTAR: GET  /labels                       → header `token`
+//   - CRIAR : POST /label/edit  body { labelid: "new", name, color }
+//   - EDITAR: POST /label/edit  body { labelid, name, color }
+//   - DELETE: POST /label/edit  body { labelid, delete: true }
+// Não existe /labels/edit nem /labels/delete (devolvem 405). O endpoint é
+// singular `/label/edit` e a exclusão é "soft" via flag `delete:true`.
+//
+// `color` é INTEIRO (0..19+ — paleta da Meta), não hex.
+//
+// Body aceito por esta função:
+// {
 //   instance_name: string,
 //   action: 'create' | 'update' | 'delete',
 //   id?: string,        // obrigatório em update/delete
 //   name?: string,      // obrigatório em create/update
-//   color?: string,     // opcional (hex ou nome)
+//   color?: number,     // opcional (int). Default: 0
 // }
 // Retorno HTTP 200: { success, label?, error?, code? }
 import type { RequestHandler } from 'express';
@@ -42,19 +53,22 @@ export const handler: RequestHandler = async (req, res) => {
     const token = inst.instance_token;
     if (!token) return res.json({ success: false, error: 'instance_token ausente' });
 
-    let path = '';
-    let body: any = {};
-    if (action === 'delete') {
-      path = '/labels/delete';
-      body = { id };
+    // Sempre /label/edit (singular). labelid="new" cria; labelid=ID edita; delete:true remove.
+    const body: Record<string, unknown> = {};
+    if (action === 'create') {
+      body.labelid = 'new';
+      body.name = name;
+      body.color = typeof color === 'number' ? color : 0;
+    } else if (action === 'update') {
+      body.labelid = String(id);
+      body.name = name;
+      body.color = typeof color === 'number' ? color : 0;
     } else {
-      // UazAPI: /labels/edit faz create (sem id) e update (com id)
-      path = '/labels/edit';
-      body = { name, color: color || null };
-      if (action === 'update') body.id = id;
+      body.labelid = String(id);
+      body.delete = true;
     }
 
-    const r = await fetch(`${baseUrl}${path}`, {
+    const r = await fetch(`${baseUrl}/label/edit`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', token },
       body: JSON.stringify(body),
