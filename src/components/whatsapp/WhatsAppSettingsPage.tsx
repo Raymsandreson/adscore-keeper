@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { 
   Webhook, BarChart3, Megaphone, ArrowLeft, 
-  ChevronRight, Shield, Zap, ScrollText, Sparkles, Smartphone, Bell, Volume2, Users, Network, Brain, ClipboardCheck
+  ChevronRight, Shield, Zap, ScrollText, Sparkles, Smartphone, Bell, Volume2, Users, Network, Brain, ClipboardCheck, Tag
 } from 'lucide-react';
 
 import { OnboardingConfig } from './OnboardingConfig';
@@ -23,6 +23,7 @@ import { BoardGroupInstancesConfig } from './BoardGroupInstancesConfig';
 import { NucleiSettings } from './NucleiSettings';
 import { AgentAutomationsTab } from './AgentAutomationsTab';
 import { EnrichmentSettings } from '@/components/settings/EnrichmentSettings';
+import { LabelTriggersConfig } from './LabelTriggersConfig';
 
 interface Tab {
   id: string;
@@ -93,6 +94,15 @@ const tabs: Tab[] = [
     badge: '🆕 Novo',
     badgeVariant: 'default',
     accentColor: 'text-violet-500',
+  },
+  {
+    id: 'label-triggers',
+    label: 'Etiquetas-Gatilho',
+    icon: <Tag className="h-5 w-5" />,
+    description: 'Etiqueta do WhatsApp dispara procuração',
+    badge: '🆕 Novo',
+    badgeVariant: 'default',
+    accentColor: 'text-fuchsia-500',
   },
   {
     id: 'automations',
@@ -265,6 +275,7 @@ export function WhatsAppSettingsPage({ onBack, initialTab = 'instances' }: Props
             {activeTab === 'ads' && <WhatsAppAdLinkSettings />}
             
             {activeTab === 'onboarding' && <OnboardingConfig onOpenAgents={() => setActiveTab('commands')} />}
+            {activeTab === 'label-triggers' && <LabelTriggersConfig />}
             {activeTab === 'automations' && <AgentAutomationsTab />}
             {activeTab === 'nuclei' && <NucleiSettings />}
             {activeTab === 'enrichment' && <EnrichmentSettings />}
