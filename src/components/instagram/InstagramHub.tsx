@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { ResizableSide } from '@/components/ui/resizable-side';
+
 import {
   ArrowLeft, ChevronRight, Zap, Instagram,
   MessageCircle, MessagesSquare, Filter, Trophy,
