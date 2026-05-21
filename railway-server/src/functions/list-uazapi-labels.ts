@@ -49,6 +49,14 @@ export const handler: RequestHandler = async (req, res) => {
 
     if (!r.ok) {
       const txt = await r.text();
+      // Tratar erros conhecidos com mensagem amigável
+      if (/no session/i.test(txt) || r.status === 401) {
+        return res.json({
+          success: false,
+          error: `A instância "${instance_name}" está desconectada do WhatsApp. Reconecte escaneando o QR code e tente de novo.`,
+          code: 'INSTANCE_DISCONNECTED',
+        });
+      }
       return res.json({ success: false, error: `UazAPI ${r.status}: ${txt.slice(0, 200)}` });
     }
 
