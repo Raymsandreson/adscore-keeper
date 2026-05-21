@@ -727,6 +727,65 @@
     setTimeout(() => { if (container) container.innerHTML = ''; }, 4000);
   }
 
+  // ===================== PENDING LABEL DOCUMENTS BADGE =====================
+
+  let lastPolledPhone = null;
+  let pollTimer = null;
+
+  function ensureBadgeEl() {
+    let el = document.getElementById('adscore-pending-badge');
+    if (el) return el;
+    el = document.createElement('div');
+    el.id = 'adscore-pending-badge';
+    el.style.cssText = 'position:fixed;top:14px;right:80px;background:#10b981;color:#fff;padding:10px 14px;border-radius:8px;font:600 13px system-ui;box-shadow:0 4px 12px rgba(0,0,0,.18);cursor:pointer;z-index:99999;display:none;max-width:320px;';
+    el.addEventListener('click', () => {
+      const pid = el.dataset.pendingId;
+      const phone = el.dataset.phone;
+      if (pid) {
+        window.open(`${SYSTEM_URL}/whatsapp?phone=${phone}&pending=${pid}`, '_blank');
+      }
+    });
+    document.body.appendChild(el);
+    return el;
+  }
+
+  async function pollPendingLabelDocs() {
+    if (!isLoggedIn || !currentPhone) {
+      const el = document.getElementById('adscore-pending-badge');
+      if (el) el.style.display = 'none';
+      return;
+    }
+    chrome.runtime.sendMessage({
+      type: 'INVOKE_FUNCTION',
+      functionName: 'list-pending-label-documents',
+      body: { phone: currentPhone },
+    }, (res) => {
+      const el = ensureBadgeEl();
+      const pending = res?.data?.pending || [];
+      if (pending.length > 0) {
+        const top = pending[0];
+        el.dataset.pendingId = top.id;
+        el.dataset.phone = currentPhone;
+        el.innerHTML = `📄 <b>${top.label_name}</b> pronta pra revisão<br><span style="font-size:11px;opacity:.9">Clique pra abrir no CRM</span>`;
+        el.style.display = 'block';
+      } else {
+        el.style.display = 'none';
+      }
+    });
+  }
+
+  function startPolling() {
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = setInterval(() => {
+      if (currentPhone !== lastPolledPhone) {
+        lastPolledPhone = currentPhone;
+      }
+      pollPendingLabelDocs();
+    }, 10000);
+    // Primeiro check imediato
+    setTimeout(pollPendingLabelDocs, 1500);
+  }
+
   // ===================== OBSERVERS =====================
 
   const observer = new MutationObserver(() => {
@@ -748,6 +807,7 @@
       if (document.querySelector('#app') || document.querySelector('[data-testid="chat-list"]') || document.querySelector('header')) {
         clearInterval(checkReady);
         injectUI();
+        startPolling();
 
         const appEl = document.querySelector('#app') || document.body;
         observer.observe(appEl, { childList: true, subtree: true, characterData: true });
