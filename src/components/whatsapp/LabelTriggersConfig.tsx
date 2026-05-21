@@ -214,13 +214,13 @@ export function LabelTriggersConfig() {
   }
 
   async function handleAdd() {
-    if (!newLabelId || !newTemplateId) {
-      toast.error('Escolha etiqueta e template');
-      return;
-    }
+    if (!selectedInstance) { toast.error('Escolha uma instância'); return; }
+    if (!newLabelId) { toast.error('Escolha uma etiqueta do WhatsApp'); return; }
+    if (!newTemplateId) { toast.error('Escolha um template do ZapSign'); return; }
     const label = labels.find(l => l.id === newLabelId);
     const tmpl = templates.find(t => t.id === newTemplateId);
-    if (!label || !tmpl) return;
+    if (!label) { toast.error(`Etiqueta não encontrada (id=${newLabelId}). Tente recarregar.`); return; }
+    if (!tmpl) { toast.error(`Template não encontrado (id=${newTemplateId}). Tente recarregar a página.`); return; }
 
     setSaving(true);
     try {
