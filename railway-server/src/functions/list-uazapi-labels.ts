@@ -52,9 +52,9 @@ export const handler: RequestHandler = async (req, res) => {
       return res.json({ success: false, error: `UazAPI ${r.status}: ${txt.slice(0, 200)}` });
     }
 
-    const data = await r.json();
+    const data: any = await r.json();
     // UazAPI retorna array direto OU objeto { labels: [...] } dependendo da versão
-    const labels = Array.isArray(data) ? data : (data?.labels || []);
+    const labels: any[] = Array.isArray(data) ? data : (data?.labels || []);
 
     const normalized = labels.map((l: any) => ({
       id: String(l.id ?? l.labelId ?? l.labelid ?? ''),
