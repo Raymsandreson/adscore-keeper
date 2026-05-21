@@ -775,8 +775,15 @@ serve(async (req) => {
   } catch (error: unknown) {
     console.error('Error:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    return new Response(JSON.stringify({ error: errorMessage }), {
-      status: 500,
+    const code = (error as any)?.code;
+    const isUpstream = code === 'PLUGGY_UPSTREAM_UNAVAILABLE' || /Pluggy auth failed|502|503|504|Bad Gateway/i.test(errorMessage);
+    // Upstream do Pluggy instável → 200 com flag pra UI tratar sem tela branca
+    return new Response(JSON.stringify({
+      success: false,
+      error: isUpstream ? 'Serviço Pluggy temporariamente indisponível. Tente novamente em instantes.' : errorMessage,
+      upstream_unavailable: isUpstream,
+    }), {
+      status: isUpstream ? 200 : 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
