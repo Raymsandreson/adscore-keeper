@@ -158,6 +158,7 @@ const ArchivedItemsPage = lazyRetry(() => import("./pages/ArchivedItemsPage"), "
 const HookDebugPage = lazyRetry(() => import("./pages/HookDebugPage"), "HookDebugPage");
 const GroupAuditLogPage = lazyRetry(() => import("./pages/GroupAuditLogPage"), "GroupAuditLogPage");
 const DbDriftPage = lazyRetry(() => import("./pages/DbDriftPage"), "DbDriftPage");
+const DocumentReviewPage = lazyRetry(() => import("./pages/DocumentReviewPage"), "DocumentReviewPage");
 
 const queryClient = new QueryClient();
 
