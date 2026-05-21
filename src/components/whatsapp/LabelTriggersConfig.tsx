@@ -436,7 +436,7 @@ export function LabelTriggersConfig() {
                 </Label>
               </div>
             </div>
-            <Button onClick={handleAdd} disabled={saving || !newLabelId || !newTemplateId} className="w-full">
+            <Button onClick={handleAdd} disabled={saving} className="w-full">
               {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
               Criar gatilho
             </Button>
