@@ -2357,8 +2357,19 @@ const ActivitiesPage = () => {
           })();
 
           return (
-            <div className={cn("flex flex-col overflow-hidden h-full", isEditing ? "w-[220px] shrink-0 border-r" : "flex-1")}>
-              {/* Weekly grid */}
+            <div
+              className={cn("relative flex flex-col overflow-hidden h-full", isEditing ? "shrink-0 border-r" : "flex-1")}
+              style={isEditing ? { width: weekColWidth } : undefined}
+            >
+              {isEditing && (
+                <div
+                  role="separator"
+                  aria-orientation="vertical"
+                  title="Arraste para redimensionar • duplo clique reseta"
+                  {...makeColDragHandlers(weekColDragRef, weekColWidth, setWeekColWidth, 160, 480, 220)}
+                  className="hidden md:block absolute top-0 bottom-0 -right-0.5 w-1.5 z-30 cursor-col-resize hover:bg-primary/40 active:bg-primary/60 transition-colors"
+                />
+              )}
               <div className={cn("overflow-auto", selectedBlockData ? "shrink-0 max-h-[45vh]" : "flex-1")}>
                 {/* Day headers */}
                 <div className="sticky top-0 z-10 bg-card border-b flex min-w-max sm:min-w-0">
