@@ -116,7 +116,7 @@ export function useAutoImportGroupDocs(
         if (done >= total) return;
 
         // 4) 1x por sessão por lead — evita reprocessar a cada navegação.
-        const sessKey = `auto-import-docs:v3:${leadId}`;
+        const sessKey = `auto-import-docs:v4:${leadId}`;
         if (sessionStorage.getItem(sessKey)) return;
         sessionStorage.setItem(sessKey, '1');
 
