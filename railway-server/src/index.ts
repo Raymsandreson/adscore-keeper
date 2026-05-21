@@ -45,6 +45,8 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'list-uazapi-labels': listUazapiLabels,
   'manage-uazapi-label': manageUazapiLabel,
   'prepare-label-document-trigger': prepareLabelDocumentTrigger,
+  'get-pending-review': getPendingReview,
+  'submit-document-review': submitDocumentReview,
 };
 
 const app = express();
