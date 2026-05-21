@@ -1839,6 +1839,41 @@ const ActivitiesPage = () => {
 
   const isEditing = sheetMode !== null;
 
+  // Larguras das colunas laterais no modo edição (resetam ao desmontar a página)
+  const [weekColWidth, setWeekColWidth] = useState(220);
+  const [listColWidth, setListColWidth] = useState(400);
+  const weekColDragRef = useRef<{ startX: number; startW: number } | null>(null);
+  const listColDragRef = useRef<{ startX: number; startW: number } | null>(null);
+
+  const makeColDragHandlers = (
+    dragRef: React.MutableRefObject<{ startX: number; startW: number } | null>,
+    currentW: number,
+    setW: (n: number) => void,
+    min: number,
+    max: number,
+    resetTo: number,
+  ) => ({
+    onPointerDown: (e: React.PointerEvent<HTMLDivElement>) => {
+      dragRef.current = { startX: e.clientX, startW: currentW };
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    },
+    onPointerMove: (e: React.PointerEvent<HTMLDivElement>) => {
+      const d = dragRef.current;
+      if (!d) return;
+      const next = Math.min(max, Math.max(min, d.startW + (e.clientX - d.startX)));
+      setW(next);
+    },
+    onPointerUp: (e: React.PointerEvent<HTMLDivElement>) => {
+      dragRef.current = null;
+      try { (e.target as HTMLElement).releasePointerCapture(e.pointerId); } catch {}
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    },
+    onDoubleClick: () => setW(resetTo),
+  });
+
 
 
 
