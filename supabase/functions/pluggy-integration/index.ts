@@ -96,18 +96,34 @@ async function getPluggyApiKey(): Promise<string> {
     throw new Error('Pluggy credentials not configured');
   }
 
-  const response = await fetch(`${PLUGGY_API_URL}/auth`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ clientId, clientSecret }),
-  });
+  // Retry até 3x com backoff — Pluggy retorna 502/503 com frequência
+  let response: Response | null = null;
+  let responseText = '';
+  let lastErr: string = '';
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      response = await fetch(`${PLUGGY_API_URL}/auth`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientId, clientSecret }),
+      });
+      responseText = await response.text();
+      console.log(`Pluggy auth attempt ${attempt} status:`, response.status);
+      if (response.ok) break;
+      lastErr = `HTTP ${response.status}: ${responseText.substring(0, 200)}`;
+      // Só faz retry em 5xx (upstream instável)
+      if (response.status < 500) break;
+    } catch (e: any) {
+      lastErr = e?.message || String(e);
+      console.warn(`Pluggy auth attempt ${attempt} threw:`, lastErr);
+    }
+    if (attempt < 3) await new Promise((r) => setTimeout(r, 800 * attempt));
+  }
 
-  const responseText = await response.text();
-  console.log('Pluggy auth response status:', response.status);
-  console.log('Pluggy auth response:', responseText.substring(0, 200));
-
-  if (!response.ok) {
-    throw new Error(`Pluggy auth failed: ${responseText}`);
+  if (!response || !response.ok) {
+    const err = new Error(`Pluggy auth failed: ${lastErr}`);
+    (err as any).code = 'PLUGGY_UPSTREAM_UNAVAILABLE';
+    throw err;
   }
 
   const data = JSON.parse(responseText);
