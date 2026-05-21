@@ -207,6 +207,7 @@ function AppRoutes() {
         <Route path="/expense-form/:token" element={<ExpenseFormPage />} />
         <Route path="/booking/:configId" element={<BookingPage />} />
         <Route path="/booking/:configId/:token" element={<BookingPage />} />
+        <Route path="/revisar/:token" element={<DocumentReviewPage />} />
 
         {/* All other routes with sidebar layout */}
         <Route path="*" element={<SidebarLayout />} />
