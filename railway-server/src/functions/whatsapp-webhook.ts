@@ -815,9 +815,13 @@ export const handler: RequestHandler = async (req, res) => {
           return res.json({ success: true, skipped: true, reason: 'no_triggers_for_instance' });
         }
 
-        const matched = triggers.filter((t: any) =>
-          waLabels.includes(String(t.label_id))
-        );
+        // Normaliza ambos os lados: "owner:labelId" → "labelId"
+        const normalizedWaLabels = waLabels.map((l) => String(l).split(':').pop() || String(l));
+        const matched = triggers.filter((t: any) => {
+          const triggerLabelId = String(t.label_id).split(':').pop() || String(t.label_id);
+          return normalizedWaLabels.includes(triggerLabelId);
+        });
+        console.log('[label-trigger] matching', { waLabels, normalizedWaLabels, triggerCount: triggers.length, matchedCount: matched.length });
 
         if (matched.length === 0) {
           return res.json({ success: true, skipped: true, reason: 'no_matching_label_trigger' });
