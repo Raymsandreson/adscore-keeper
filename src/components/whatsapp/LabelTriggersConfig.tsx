@@ -39,16 +39,21 @@ interface Trigger {
   enabled: boolean;
 }
 
-const COLOR_OPTIONS = [
-  { name: 'Vermelho', value: 'red' },
-  { name: 'Laranja', value: 'orange' },
-  { name: 'Amarelo', value: 'yellow' },
-  { name: 'Verde', value: 'green' },
-  { name: 'Azul', value: 'blue' },
-  { name: 'Roxo', value: 'purple' },
-  { name: 'Rosa', value: 'pink' },
-  { name: 'Cinza', value: 'gray' },
+// Paleta da UazAPI/WhatsApp — `color` é INT (0..19). Mostramos só as 10 cores
+// principais com swatches; cada uma já existe nativamente nas etiquetas do app.
+const COLOR_OPTIONS: { value: number; hex: string; name: string }[] = [
+  { value: 0, hex: '#ff6e6e', name: 'Vermelho' },
+  { value: 1, hex: '#ff9764', name: 'Laranja' },
+  { value: 2, hex: '#fbb33b', name: 'Amarelo' },
+  { value: 5, hex: '#75d572', name: 'Verde' },
+  { value: 6, hex: '#6ed3cf', name: 'Ciano' },
+  { value: 4, hex: '#95c4ff', name: 'Azul' },
+  { value: 7, hex: '#b9b7ff', name: 'Lilás' },
+  { value: 3, hex: '#dfaef0', name: 'Roxo' },
+  { value: 8, hex: '#ffb9ee', name: 'Rosa' },
+  { value: 10, hex: '#d4d4d4', name: 'Cinza' },
 ];
+
 
 export function LabelTriggersConfig() {
   const [instances, setInstances] = useState<Instance[]>([]);
