@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -69,6 +69,15 @@ export function LeadGroupSearchDialog({
 }: Props) {
   const hasPhone = !!contactPhone;
   const [nameQuery, setNameQuery] = useState<string>(leadName || '');
+
+  // Sincroniza o campo de busca com o nome do lead toda vez que o dialog
+  // abrir para um lead diferente. Sem isso, o useState inicial gruda no
+  // primeiro valor (ou no que ficou de uma abertura anterior).
+  useEffect(() => {
+    if (open) {
+      setNameQuery(leadName || '');
+    }
+  }, [open, leadName, leadId]);
   const [step, setStep] = useState<Step>('groups');
   const [loadingGroups, setLoadingGroups] = useState(false);
   const [groups, setGroups] = useState<FoundGroup[]>([]);
