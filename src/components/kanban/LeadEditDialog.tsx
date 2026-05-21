@@ -66,6 +66,7 @@ const AccidentDataExtractor = lazy(() => import('@/components/leads/AccidentData
 import { ExtractedAccidentData, CurrentLeadData } from '@/components/leads/AccidentDataExtractor';
 import { LeadAIChatExtractor } from '@/components/leads/LeadAIChatExtractor';
 import { useAutoImportGroupDocs } from '@/hooks/useAutoImportGroupDocs';
+import { useAutoLinkGroupByName } from '@/hooks/useAutoLinkGroupByName';
 import { cn } from '@/lib/utils';
 import { KanbanBoard } from '@/hooks/useKanbanBoards';
 import { 
@@ -340,6 +341,17 @@ export function LeadEditDialog({
     currentLead?.lead_name || null,
     (currentLead as any)?.whatsapp_group_id || null,
   );
+  // Auto-vincular grupo do WhatsApp ao abrir lead com caso fechado e sem grupo
+  useAutoLinkGroupByName({
+    leadId: currentLead?.id || null,
+    leadName: currentLead?.lead_name || null,
+    hasCaseClosed: !!(currentLead as any)?.case_number || (currentLead as any)?.lead_status === 'closed',
+    currentGroupId: (currentLead as any)?.whatsapp_group_id || null,
+    onLinked: () => {
+      // Notifica componentes pais para recarregar o lead
+      window.dispatchEvent(new CustomEvent('adscore:lead-group-linked', { detail: { leadId: currentLead?.id } }));
+    },
+  });
   const layoutBoardId = selectedBoardId || (currentLead as any)?.board_id || null;
   const { resolved: resolvedFieldLayout } = useLeadFieldLayout(layoutBoardId);
   const { visibleTabs: visibleLayoutTabs } = useLeadTabLayout(layoutBoardId);
@@ -1000,6 +1012,22 @@ ${scrapeData.content || ''}
     if (!leadName.trim()) {
       toast.error('Nome é obrigatório');
       return;
+    }
+
+    // Validação obrigatória: resultado do lead é obrigatório quando o lead está/vai para etapa de fechamento.
+    {
+      const targetBoardId = selectedBoardId || (currentLead as any).board_id;
+      const targetBoard = boards.find(b => b.id === targetBoardId);
+      const stages = (targetBoard?.stages as any[]) || [];
+      const currentStageId = (currentLead as any).status;
+      const closedStageId = stages.length ? findClosedStageId(stages) : null;
+      const refusedStageId = stages.length ? findRefusedStageId(stages) : null;
+      const isOnFinalStage = currentStageId && (currentStageId === closedStageId || currentStageId === refusedStageId);
+      if (isOnFinalStage && !leadOutcome) {
+        toast.error('Selecione o resultado do lead (ganho, recusado, inviável ou cancelado) antes de salvar.');
+        setActiveTab('basic');
+        return;
+      }
     }
 
     // Validação obrigatória: Nº do Caso só pode ficar vazio se o lead não está fechado.
