@@ -340,6 +340,17 @@ export function LeadEditDialog({
     currentLead?.lead_name || null,
     (currentLead as any)?.whatsapp_group_id || null,
   );
+  // Auto-vincular grupo do WhatsApp ao abrir lead com caso fechado e sem grupo
+  useAutoLinkGroupByName({
+    leadId: currentLead?.id || null,
+    leadName: currentLead?.lead_name || null,
+    hasCaseClosed: !!(currentLead as any)?.case_number || (currentLead as any)?.lead_status === 'closed',
+    currentGroupId: (currentLead as any)?.whatsapp_group_id || null,
+    onLinked: () => {
+      // Notifica componentes pais para recarregar o lead
+      window.dispatchEvent(new CustomEvent('adscore:lead-group-linked', { detail: { leadId: currentLead?.id } }));
+    },
+  });
   const layoutBoardId = selectedBoardId || (currentLead as any)?.board_id || null;
   const { resolved: resolvedFieldLayout } = useLeadFieldLayout(layoutBoardId);
   const { visibleTabs: visibleLayoutTabs } = useLeadTabLayout(layoutBoardId);
