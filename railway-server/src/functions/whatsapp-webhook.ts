@@ -102,7 +102,15 @@ function extractLabelEventData(body: any) {
     || data?.chatid || data?.chatId || data?.jid || data?.remoteJid || body?.number || data?.number || ''
   );
   const labels: string[] = [];
-  pushLabelIds(labels, chat?.wa_labels);
+  // UazAPI usa `wa_label` (singular) como array de strings "owner:labelId"
+  const waLabel = chat?.wa_label ?? chat?.wa_labels ?? data?.wa_label ?? data?.wa_labels;
+  if (Array.isArray(waLabel)) {
+    for (const raw of waLabel) {
+      if (typeof raw !== 'string') continue;
+      const id = raw.includes(':') ? raw.split(':').pop() : raw;
+      if (id) labels.push(String(id).trim());
+    }
+  }
   pushLabelIds(labels, chat?.labels);
   pushLabelIds(labels, body?.labels);
   pushLabelIds(labels, data?.labels);
@@ -113,6 +121,7 @@ function extractLabelEventData(body: any) {
   pushLabelIds(labels, body?.labelid ?? body?.labelId ?? body?.label_id ?? body?.label);
   pushLabelIds(labels, data?.labelid ?? data?.labelId ?? data?.label_id ?? data?.label);
   return { chatId, labels: Array.from(new Set(labels)) };
+
 }
 
 // ============================================================
