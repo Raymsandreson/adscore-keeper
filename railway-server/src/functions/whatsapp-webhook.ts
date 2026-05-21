@@ -714,8 +714,8 @@ export const handler: RequestHandler = async (req, res) => {
     }
 
     // ========== EARLY FILTERS ==========
-    const webhookInstanceName = body.instanceName || body.chat?.instanceName || body.instance_name || null;
-    const eventType = String(body.EventType || '').toLowerCase();
+    const webhookInstanceName = body.instanceName || body.InstanceName || body.chat?.instanceName || body.data?.instanceName || body.instance_name || body.instance || null;
+    const eventType = normalizeUazEventType(body);
     const bodyType = String(body.type || '').toLowerCase();
     const bodyEventStr = (typeof body.event === 'string') ? body.event.toLowerCase() : '';
     const messageTypeHint = String(body.message?.messageType || body.chat?.wa_lastMessageType || '').toLowerCase();
@@ -753,12 +753,10 @@ export const handler: RequestHandler = async (req, res) => {
       console.log('[whatsapp-webhook] LABEL event received, EventType=', body.EventType, 'instance=', webhookInstanceName);
 
       try {
-        const chatId: string = body.chat?.wa_chatid || body.chat?.id || body.chatid || '';
-        const waLabels: string[] = Array.isArray(body.chat?.wa_labels)
-          ? body.chat.wa_labels.map((l: any) => String(l))
-          : (Array.isArray(body.labels) ? body.labels.map((l: any) => String(l?.id ?? l)) : []);
+        const { chatId, labels: waLabels } = extractLabelEventData(body);
 
         if (!chatId || !webhookInstanceName || waLabels.length === 0) {
+          console.warn('[label-trigger] missing data', { hasChatId: Boolean(chatId), webhookInstanceName, labelCount: waLabels.length, keys: Object.keys(body || {}) });
           return res.json({ success: true, skipped: true, reason: 'label_event_missing_data' });
         }
 
