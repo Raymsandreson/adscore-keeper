@@ -1829,6 +1829,13 @@ const ActivitiesPage = () => {
   }
 
 
+  // Larguras das colunas laterais no modo edição (declaradas ANTES de qualquer early return
+  // para preservar a ordem dos hooks entre renders).
+  const [weekColWidth, setWeekColWidth] = useState(220);
+  const [listColWidth, setListColWidth] = useState(400);
+  const weekColDragRef = useRef<{ startX: number; startW: number } | null>(null);
+  const listColDragRef = useRef<{ startX: number; startW: number } | null>(null);
+
   if (loading && activities.length === 0) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -1839,11 +1846,6 @@ const ActivitiesPage = () => {
 
   const isEditing = sheetMode !== null;
 
-  // Larguras das colunas laterais no modo edição (resetam ao desmontar a página)
-  const [weekColWidth, setWeekColWidth] = useState(220);
-  const [listColWidth, setListColWidth] = useState(400);
-  const weekColDragRef = useRef<{ startX: number; startW: number } | null>(null);
-  const listColDragRef = useRef<{ startX: number; startW: number } | null>(null);
 
   const makeColDragHandlers = (
     dragRef: React.MutableRefObject<{ startX: number; startW: number } | null>,
