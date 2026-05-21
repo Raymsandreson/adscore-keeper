@@ -158,6 +158,7 @@ const ArchivedItemsPage = lazyRetry(() => import("./pages/ArchivedItemsPage"), "
 const HookDebugPage = lazyRetry(() => import("./pages/HookDebugPage"), "HookDebugPage");
 const GroupAuditLogPage = lazyRetry(() => import("./pages/GroupAuditLogPage"), "GroupAuditLogPage");
 const DbDriftPage = lazyRetry(() => import("./pages/DbDriftPage"), "DbDriftPage");
+const DocumentReviewPage = lazyRetry(() => import("./pages/DocumentReviewPage"), "DocumentReviewPage");
 
 const queryClient = new QueryClient();
 
@@ -206,6 +207,7 @@ function AppRoutes() {
         <Route path="/expense-form/:token" element={<ExpenseFormPage />} />
         <Route path="/booking/:configId" element={<BookingPage />} />
         <Route path="/booking/:configId/:token" element={<BookingPage />} />
+        <Route path="/revisar/:token" element={<DocumentReviewPage />} />
 
         {/* All other routes with sidebar layout */}
         <Route path="*" element={<SidebarLayout />} />
