@@ -695,8 +695,12 @@ export const handler: RequestHandler = async (req, res) => {
     }
 
     // ========== LABEL EVENT — dispara fluxo de procuração automática ==========
-    // UazAPI envia EventType="chat_labels" (com underscore). Aceitamos ambos por segurança.
-    if ((eventType === 'chat_labels' || eventType === 'labels') && !isCallEvent) {
+    // Doc UazAPI usa "chat_labels" no payload, mas alguns ambientes mandam "chat_label" (singular)
+    // ou apenas "labels"/"label". Aceitamos todas as variações por segurança.
+    const isLabelEvent = ['chat_labels', 'chat_label', 'labels', 'label'].includes(eventType);
+    if (isLabelEvent && !isCallEvent) {
+      console.log('[whatsapp-webhook] LABEL event received, EventType=', body.EventType, 'instance=', webhookInstanceName);
+
       try {
         const chatId: string = body.chat?.wa_chatid || body.chat?.id || body.chatid || '';
         const waLabels: string[] = Array.isArray(body.chat?.wa_labels)
