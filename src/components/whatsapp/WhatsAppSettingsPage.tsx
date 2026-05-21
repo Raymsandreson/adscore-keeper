@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { ResizableSide } from '@/components/ui/resizable-side';
+
 import { 
   Webhook, BarChart3, Megaphone, ArrowLeft, 
   ChevronRight, Shield, Zap, ScrollText, Sparkles, Smartphone, Bell, Volume2, Users, Network, Brain, ClipboardCheck, Tag
@@ -173,7 +175,9 @@ export function WhatsAppSettingsPage({ onBack, initialTab = 'instances' }: Props
 
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden min-h-0">
         {/* Sidebar - lateral tabs (desktop) */}
-        <aside className="w-64 border-r bg-muted/30 overflow-y-auto shrink-0 hidden md:flex md:flex-col">
+        <ResizableSide defaultWidth={256} minWidth={200} maxWidth={520} className="border-r bg-muted/30 overflow-y-auto hidden md:flex md:flex-col" side="right">
+          <aside className="flex flex-col flex-1 min-h-0 overflow-y-auto w-full">
+
           <nav className="p-3 space-y-1 flex-1">
             <p className="text-[10px] font-semibold uppercase text-muted-foreground tracking-wider px-3 mb-3">
               WhatsApp
@@ -226,7 +230,10 @@ export function WhatsAppSettingsPage({ onBack, initialTab = 'instances' }: Props
               Configure Agentes IA para responder leads automaticamente e aumente em até 3x sua taxa de conversão.
             </p>
           </div>
-        </aside>
+          </aside>
+        </ResizableSide>
+
+
 
         {/* Mobile horizontal tabs */}
         <div className="md:hidden border-b bg-muted/30 shrink-0 w-full z-10 overflow-x-auto">
