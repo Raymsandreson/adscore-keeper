@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { ResizableSide } from '@/components/ui/resizable-side';
+
 import { 
   Webhook, BarChart3, Megaphone, ArrowLeft, 
   ChevronRight, Shield, Zap, ScrollText, Sparkles, Smartphone, Bell, Volume2, Users, Network, Brain, ClipboardCheck, Tag
