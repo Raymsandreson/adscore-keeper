@@ -16,7 +16,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { authClient as cloudClient } from '@/integrations/supabase';
-import { externalSupabase } from '@/integrations/supabase/externalClient';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { toast } from 'sonner';
 
 const SESSION_PREFIX = 'auto-link-group:v1:';
