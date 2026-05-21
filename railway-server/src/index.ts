@@ -74,6 +74,27 @@ app.get('/health', (_req, res) => {
   });
 });
 
+// Rota pública da UazAPI. A UazAPI não envia x-api-key, então a instância
+// vem pela URL e é repassada ao handler como instanceName quando o payload
+// não trouxer esse campo.
+app.post('/webhooks/uazapi/:instance_name', async (req, res) => {
+  const instanceName = req.params.instance_name;
+  req.body = {
+    ...(req.body || {}),
+    instanceName: req.body?.instanceName || req.body?.InstanceName || req.body?.instance_name || req.body?.instance || instanceName,
+  };
+
+  try {
+    await whatsappWebhook(req, res, () => {});
+  } catch (err) {
+    console.error('[webhooks/uazapi] Error:', err);
+    res.status(500).json({
+      error: 'Internal server error',
+      message: err instanceof Error ? err.message : 'Unknown error',
+    });
+  }
+});
+
 // Rota dinâmica para funções (protegida por x-api-key)
 app.post('/functions/:name', async (req, res) => {
   const { name } = req.params;
