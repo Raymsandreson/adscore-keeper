@@ -109,6 +109,8 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const [sending, setSending] = useState(false);
   const [showLinkDialog, setShowLinkDialog] = useState(false);
   const [showLeadPanel, setShowLeadPanel] = useState(false);
+  const [leadPanelWidth, setLeadPanelWidth] = useState(480);
+  const leadPanelDragRef = useRef<{ startX: number; startW: number } | null>(null);
   const [showLeadEdit, setShowLeadEdit] = useState(false);
   const [editingLeadData, setEditingLeadData] = useState<any | null>(null);
   const [contactLinkedLeadIds, setContactLinkedLeadIds] = useState<string[]>([]);
