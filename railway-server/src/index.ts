@@ -25,6 +25,8 @@ import { handler as manageWhatsappGroupParticipants } from './functions/manage-w
 import { handler as listUazapiLabels } from './functions/list-uazapi-labels';
 import { handler as manageUazapiLabel } from './functions/manage-uazapi-label';
 import { handler as prepareLabelDocumentTrigger } from './functions/prepare-label-document-trigger';
+import { handler as getPendingReview } from './functions/get-pending-review';
+import { handler as submitDocumentReview } from './functions/submit-document-review';
 
 const functionHandlers: Record<string, express.RequestHandler> = {
   'whatsapp-webhook': whatsappWebhook,
