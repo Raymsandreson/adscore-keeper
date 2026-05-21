@@ -768,34 +768,6 @@ export const handler: RequestHandler = async (req, res) => {
       try {
         const { chatId, labels: waLabels } = extractLabelEventData(body);
 
-        // DEBUG TEMP: envia mensagem na própria conversa confirmando recebimento do evento
-        if (chatId && webhookInstanceName) {
-          try {
-            const { data: inst } = await supabase
-              .from('whatsapp_instances')
-              .select('instance_token, base_url')
-              .ilike('instance_name', webhookInstanceName)
-              .eq('is_active', true)
-              .limit(1)
-              .maybeSingle();
-            if (inst?.instance_token) {
-              const baseUrl = inst.base_url || 'https://abraci.uazapi.com';
-              const phoneOnly = chatId.replace(/@[^@]+$/, '').replace(/\D/g, '');
-              const debugMsg = `🔔 [DEBUG] Webhook de etiqueta recebido\nInstância: ${webhookInstanceName}\nLabels IDs: ${waLabels.join(', ') || '(nenhum)'}\nEventType: ${eventType}`;
-              fetch(`${baseUrl}/send/text`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', token: inst.instance_token },
-                body: JSON.stringify({ number: phoneOnly, text: debugMsg }),
-              }).catch((e) => console.warn('[label-trigger][DEBUG-SEND] failed:', e?.message));
-              console.log('[label-trigger][DEBUG-SEND] sent confirmation to', phoneOnly);
-            } else {
-              console.warn('[label-trigger][DEBUG-SEND] instance not found or no token', webhookInstanceName);
-            }
-          } catch (e: any) {
-            console.warn('[label-trigger][DEBUG-SEND] error:', e?.message);
-          }
-        }
-
         if (!chatId || !webhookInstanceName || waLabels.length === 0) {
           console.warn('[label-trigger] missing data', { hasChatId: Boolean(chatId), webhookInstanceName, labelCount: waLabels.length, keys: Object.keys(body || {}) });
           return res.json({ success: true, skipped: true, reason: 'label_event_missing_data' });
@@ -827,9 +799,10 @@ export const handler: RequestHandler = async (req, res) => {
           return res.json({ success: true, skipped: true, reason: 'no_matching_label_trigger' });
         }
 
-        // Dispara prepare-label-document-trigger pra cada match (fire-and-forget)
+        // Dispara prepare-label-document-trigger pra cada match e registra o resultado.
         const railwayBase = process.env.RAILWAY_PUBLIC_URL || `http://localhost:${process.env.PORT || 3000}`;
         const apiKey = process.env.RAILWAY_API_KEY || '';
+        const dispatchResults: any[] = [];
         for (const t of matched) {
           const payload = {
             chatId,
@@ -839,16 +812,22 @@ export const handler: RequestHandler = async (req, res) => {
             templateId: t.zapsign_template_id,
             triggerId: t.id,
           };
-          // Fire-and-forget: não bloqueia o webhook
-          fetch(`${railwayBase}/functions/prepare-label-document-trigger`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-            body: JSON.stringify(payload),
-          }).catch((e) => console.warn('[label-trigger] async dispatch failed:', e?.message));
-          console.log('[label-trigger] dispatched', { chatId, label: t.label_name, instance: webhookInstanceName });
+          try {
+            const dispatchResponse = await fetch(`${railwayBase}/functions/prepare-label-document-trigger`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+              body: JSON.stringify(payload),
+            });
+            const dispatchJson = await dispatchResponse.json().catch(() => null);
+            dispatchResults.push({ label: t.label_name, ok: dispatchResponse.ok, status: dispatchResponse.status, result: dispatchJson });
+            console.log('[label-trigger] dispatched', { chatId, label: t.label_name, instance: webhookInstanceName, status: dispatchResponse.status, result: dispatchJson });
+          } catch (e: any) {
+            dispatchResults.push({ label: t.label_name, ok: false, error: e?.message });
+            console.warn('[label-trigger] dispatch failed:', e?.message);
+          }
         }
 
-        return res.json({ success: true, type: 'label_triggered', count: matched.length, labels: matched.map((m: any) => m.label_name) });
+        return res.json({ success: true, type: 'label_triggered', count: matched.length, labels: matched.map((m: any) => m.label_name), dispatchResults });
       } catch (e: any) {
         console.error('[label-trigger] handler error:', e);
         return res.json({ success: false, error: e?.message || 'label handler failed' });
