@@ -95,7 +95,27 @@ app.post('/webhooks/uazapi/:instance_name', async (req, res) => {
     res.status(500).json({
       error: 'Internal server error',
       message: err instanceof Error ? err.message : 'Unknown error',
-    });
+});
+
+// Rotas PÚBLICAS de revisão (sem x-api-key) — chamadas direto pelo navegador via link
+// recebido no WhatsApp. A segurança vem do review_token (16 chars aleatórios) + expires_at.
+app.post('/public/review/get', async (req, res) => {
+  try {
+    await getPendingReview(req, res, () => {});
+  } catch (err) {
+    console.error('[public/review/get] Error:', err);
+    res.status(200).json({ success: false, error: err instanceof Error ? err.message : 'Unknown error' });
+  }
+});
+
+app.post('/public/review/submit', async (req, res) => {
+  try {
+    await submitDocumentReview(req, res, () => {});
+  } catch (err) {
+    console.error('[public/review/submit] Error:', err);
+    res.status(200).json({ success: false, error: err instanceof Error ? err.message : 'Unknown error' });
+  }
+});
   }
 });
 
