@@ -159,13 +159,14 @@ export function LabelTriggersConfig() {
   function openCreateLabel() {
     setEditingLabel(null);
     setLabelFormName('');
-    setLabelFormColor('blue');
+    setLabelFormColor(4);
     setLabelDialogOpen(true);
   }
   function openEditLabel(l: UazLabel) {
     setEditingLabel(l);
     setLabelFormName(l.name);
-    setLabelFormColor((l.color as string) || 'blue');
+    setLabelFormColor(typeof l.color === 'number' ? l.color : 4);
+
     setLabelDialogOpen(true);
   }
 
