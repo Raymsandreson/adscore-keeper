@@ -81,7 +81,7 @@ export function LabelTriggersConfig() {
   const [labelDialogOpen, setLabelDialogOpen] = useState(false);
   const [editingLabel, setEditingLabel] = useState<UazLabel | null>(null);
   const [labelFormName, setLabelFormName] = useState('');
-  const [labelFormColor, setLabelFormColor] = useState<string>('blue');
+  const [labelFormColor, setLabelFormColor] = useState<number>(4);
   const [labelSaving, setLabelSaving] = useState(false);
 
   useEffect(() => {
