@@ -228,7 +228,10 @@ export function WhatsAppSettingsPage({ onBack, initialTab = 'instances' }: Props
               Configure Agentes IA para responder leads automaticamente e aumente em até 3x sua taxa de conversão.
             </p>
           </div>
-        </aside>
+          </aside>
+        </ResizableSide>
+
+
 
         {/* Mobile horizontal tabs */}
         <div className="md:hidden border-b bg-muted/30 shrink-0 w-full z-10 overflow-x-auto">
