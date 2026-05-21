@@ -166,7 +166,9 @@ export function InstagramHub() {
 
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden min-h-0">
         {/* Sidebar - desktop */}
-        <aside className="w-64 border-r bg-muted/30 overflow-y-auto shrink-0 hidden md:flex md:flex-col">
+        <ResizableSide defaultWidth={256} minWidth={200} maxWidth={520} className="border-r bg-muted/30 overflow-y-auto hidden md:flex md:flex-col" side="right">
+          <aside className="flex flex-col flex-1 min-h-0 overflow-y-auto w-full">
+
           <nav className="p-3 space-y-1 flex-1">
             {sections.map((section) => {
               const sectionTabs = tabs.filter(t => t.section === section.id);
