@@ -1,118 +1,103 @@
 ## Objetivo
 
-Quando o operador colocar uma etiqueta no chat do WhatsApp (ex: `PROCURAÇÃO_GERAL_`), o sistema:
+Quando o operador colocar a etiqueta `Proc.BPC` na conversa do WhatsApp, o sistema:
 1. Detecta via webhook UazAPI
-2. Olha o mapeamento "etiqueta → template ZapSign" configurado
-3. Puxa a conversa inteira **da UazAPI** (não do nosso banco) + mídias
-4. Extrai dados com IA (texto + OCR dos documentos enviados)
-5. Notifica o operador na **extensão Chrome** (sem sair do WhatsApp Web)
-6. Operador revisa/edita os campos preenchidos e clica "Gerar"
-7. ZapSign cria o documento e envia
+2. Puxa últimas N mensagens + mídias diretamente da UazAPI (não do nosso banco)
+3. Roda OCR + extração de campos com IA
+4. Notifica o operador na extensão Chrome
+5. Operador revisa/edita e clica "Gerar" → ZapSign envia o documento
 
-Pense assim: a etiqueta é o "botão invisível" que o operador aperta dentro do próprio WhatsApp. A extensão é o "balcão de revisão" que aparece pra ele conferir antes de mandar.
+Hoje 2 gatilhos já estão configurados (`Proc.BPC` em ISRAEL e João Manoel), mas o webhook ignora o evento `labels`. Nada dispara.
 
 ---
 
-## Por que puxar tudo da UazAPI e não do nosso banco?
+## Escopo desta entrega
 
-Você levantou o ponto certo. Hoje a extração lê de `whatsapp_messages` (banco Externo), que tem dois problemas:
-- Depende da instância ter estado conectada quando a mensagem chegou
-- Mídias antigas podem não ter sido baixadas ou estarem expiradas
+### Peça 1 — Webhook ouve etiquetas (Railway)
+**Arquivo:** `railway-server/src/functions/whatsapp-webhook.ts`
 
-Indo direto na UazAPI (`/message/find` + `/message/download`) a gente garante:
-- Histórico completo, mesmo se a instância caiu e voltou
-- Acesso fresh às mídias pra OCR
+- Remover `labels` da lista de eventos ignorados (linha 692)
+- Adicionar handler que, quando label é **adicionada** (não removida):
+  - Normaliza `instance_name` + `label_name` (case-insensitive)
+  - Busca em `label_document_triggers` (Externo) gatilho ativo
+  - Se achar, chama `prepare-label-document-trigger` (HTTP POST async, fire-and-forget)
+- **Anti-duplicação:** antes de disparar, checa se já existe `pending_label_documents` com status `pending` pra esse chat+label
 
----
+### Peça 2 — Função de extração (Railway, nova)
+**Arquivo:** `railway-server/src/functions/prepare-label-document-trigger.ts`
 
-## Peças a construir
+Recebe `{ chatId, phone, instance, labelName, templateId, triggerId }`. Fluxo:
 
-### 1. Tabela de mapeamento (Externo)
-`label_document_triggers`
-- `label_name` (texto, case-insensitive)
-- `instance_name` (qual instância dispara)
-- `zapsign_template_id` (qual template usar)
-- `auto_extract_media` (bool — fazer OCR dos docs do chat?)
-- `enabled` (bool)
-- `created_by`, `created_at`
+1. Token UazAPI da instância (de `whatsapp_instances` no Cloud)
+2. `GET /message/find` na UazAPI → últimas 50 mensagens do chat
+3. `GET /message/download` pra cada mídia imagem/PDF
+4. Roda extração de texto + OCR via `ai.gateway.lovable.dev` (Gemini Vision)
+5. Insere em `pending_label_documents` (Externo): `chat_id, phone, instance, label_name, template_id, trigger_id, extracted_fields jsonb, media_urls jsonb, status='pending', expires_at = now() + 24h`
+6. Cria notificação no chat interno (toast pro operador dono da instância)
 
-### 2. Tela de configuração
-Em `Configurações → WhatsApp → Etiquetas-Gatilho`:
-- Listar etiquetas existentes (puxar via `GET /labels` da UazAPI por instância)
-- Pra cada etiqueta, escolher o template ZapSign
-- Toggle de ativo/inativo
+### Peça 3 — Tabela `pending_label_documents` (migration Externo)
+Campos: `id, chat_id, phone, instance_name, label_name, template_id, trigger_id, extracted_fields jsonb, media_urls jsonb, status (pending|generated|discarded), created_by, created_at, expires_at, deleted_at`
 
-### 3. Webhook — tratar evento `labels`
-Em `railway-server/src/functions/whatsapp-webhook.ts`:
-- Tirar `labels` da lista de skip
-- Quando chegar evento de label **adicionada** (não removida):
-  - Buscar mapeamento ativo pra essa `label_name` + `instance_name`
-  - Se achar, chamar a função `prepare-label-document-trigger`
+Índice único parcial: `(chat_id, label_name) WHERE status='pending' AND deleted_at IS NULL` — evita rascunho duplicado.
 
-### 4. Função `prepare-label-document-trigger` (Railway)
-- Recebe `{ chatId, phone, instance, labelName, templateId }`
-- Puxa últimas N mensagens via UazAPI `/message/find`
-- Baixa mídias (imagens/PDFs) via `/message/download`
-- Roda OCR + extração de campos (reaproveita `extract-conversation-data` + `classify-document`)
-- Salva resultado em `pending_label_documents` (rascunho com TTL de 24h)
-- Notifica operador via:
-  - Toast no chat interno
-  - Push pra extensão Chrome (via `chrome.storage` + polling)
+### Peça 4 — Painel na extensão Chrome
+**Arquivo:** `chrome-extension/content.js` (já tem infra de sidebar)
 
-### 5. Extensão Chrome — painel de revisão
-- Quando há `pending_label_document` pra esse chat, mostra **selo flutuante** no header da conversa do WhatsApp Web ("📄 Procuração pronta pra revisão")
-- Clicando, abre **drawer lateral** dentro do próprio WhatsApp Web (não popup):
-  - Lista de campos extraídos (nome, CPF, RG, endereço, etc.) editáveis
-  - Preview do template
-  - Botão "Gerar e enviar" → chama `zapsign-api/generate-document`
-  - Botão "Descartar"
+- Polling de 10s em `pending-label-documents?phone=X&instance=Y` quando há conversa aberta
+- Se houver pendente: **selo flutuante** no header ("📄 Procuração pronta pra revisão")
+- Click → drawer lateral com:
+  - Campos extraídos editáveis (nome, CPF, RG, endereço, etc.)
+  - Lista de mídias usadas
+  - Botão **Gerar e enviar** → chama `zapsign-api/generate-document` com dados editados + marca pending como `generated`
+  - Botão **Descartar** → soft-delete
 
-### 6. Reuso do que já existe
-- `extract-conversation-data` (Railway) — só adicionar parâmetro `source: 'uazapi'` pra puxar da UazAPI ao invés do DB
-- `classify-document` (edge) — já faz OCR multi-imagem, perfeito
-- `zapsign-api` (edge) — já gera documento, só chamar com dados prontos
-
----
-
-## Detalhes técnicos
-
-### Roteamento das funções novas
-- `prepare-label-document-trigger` → **Railway** (puxa muita mídia, faz OCR pesado)
-- Tabela `label_document_triggers` e `pending_label_documents` → **Supabase Externo** (dados de negócio)
-- Tela de config → frontend Lovable normal usando `db` do barrel
-
-### Secrets necessários
-Tudo que já temos: `UAZAPI_TOKEN` por instância, `LOVABLE_API_KEY` pra IA, `ZAPSIGN_API_KEY`. Nada novo.
-
-### Anti-duplicação
-`pending_label_documents` tem unique em `(chat_id, label_name, status='pending')` — se já existe rascunho pendente, webhook não cria outro.
-
-### Polling da extensão
-A extensão já tem infra pra renderizar na sidebar (memória `chrome-extension-whatsapp`). Adicionar polling de 10s em `/pending-label-documents?phone=X` quando estiver numa conversa aberta.
-
----
-
-## Ordem de execução proposta
-
-1. Migration: criar `label_document_triggers` + `pending_label_documents`
-2. Tela de Configurações com listagem de etiquetas via UazAPI
-3. Webhook: ativar tratamento de `labels` + chamar trigger
-4. Função `prepare-label-document-trigger` no Railway
-5. Extensão: selo flutuante + drawer de revisão
-6. Teste end-to-end com etiqueta real
-
----
-
-## Rota de fuga
-
-- Flag `enabled` por linha — desliga gatilho sem deletar
-- `pending_label_documents` com soft-delete e TTL — operador pode descartar sem perder rascunho
-- Webhook ignora se mapeamento não existir → adicionar etiqueta sem config é no-op seguro
+### Peça 5 — Endpoint de leitura pra extensão
+**Edge function Cloud nova:** `list-pending-label-documents` (proxy leve, lê do Externo + valida que o user logado tem acesso à instância)
 
 ---
 
 ## O que NÃO vou mexer
 
-- Fluxo atual do popup "Gerar Documento para Assinatura" — continua existindo igual, é só uma rota paralela
-- `whatsapp_messages` / banco de mensagens — leitura UazAPI é adicional, não substitui
-- Outros eventos de webhook (`messages.upsert` etc.) — só destravo `labels`
+- Fluxo atual do popup "Gerar Documento para Assinatura" — continua igual em paralelo
+- Tela de configuração de gatilhos (`/settings` → Etiquetas-Gatilho) — já está pronta
+- Eventos do webhook que não são `labels`
+- `zapsign-api/generate-document` — só chamo, não altero
+
+---
+
+## Rota de fuga
+
+- Flag `enabled=false` no gatilho desliga sem deletar
+- `pending_label_documents` com TTL 24h + soft-delete — operador descarta sem perder rascunho
+- Webhook: se mapeamento não existir, no-op silencioso (adicionar etiqueta nova é seguro)
+- Se a função de extração falhar, ela grava `pending` com `extracted_fields={}` e `error` no payload — operador ainda vê o card e preenche manual
+
+---
+
+## Ordem de execução
+
+1. Migration `pending_label_documents` no Externo
+2. `prepare-label-document-trigger.ts` no Railway + registro em `index.ts`
+3. Ativar handler de `labels` no `whatsapp-webhook.ts`
+4. Edge `list-pending-label-documents` no Cloud
+5. Painel + polling na extensão Chrome
+6. Rebuild do ZIP da extensão e teste end-to-end com a etiqueta **Proc.BPC** que você já aplicou
+
+---
+
+## Importante sobre o teste atual
+
+A etiqueta que você acabou de aplicar **agora** no chat do João Manoel + 86 8130-2092 **vai se perder** — o webhook ignorou o evento. Depois que eu subir tudo, você precisa:
+
+- Tirar a etiqueta `Proc.BPC` e botar de novo → aí o webhook captura e o fluxo roda
+- OU eu disparo manualmente uma vez via curl pra processar essa conversa específica
+
+---
+
+## Tempo estimado
+
+- Peças 1–3 (backend): ~30 min
+- Peça 4 (extensão Chrome): ~20 min
+- Teste end-to-end: ~10 min
+
+Total: ~1h de implementação. Pode confirmar que sigo?
