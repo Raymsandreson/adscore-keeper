@@ -17,6 +17,7 @@ import { useWhatsAppInstanceStatus } from '@/hooks/useWhatsAppInstanceStatus';
 interface Instance {
   instance_name: string;
   is_active: boolean | null;
+  review_notification_phone?: string | null;
 }
 interface UazLabel {
   id: string;
@@ -77,6 +78,11 @@ export function LabelTriggersConfig() {
   const [newAutoMedia, setNewAutoMedia] = useState(true);
   const [saving, setSaving] = useState(false);
 
+  // Telefone do operador que recebe a notificação de revisão (por instância)
+  const [reviewPhone, setReviewPhone] = useState('');
+  const [reviewPhoneSaving, setReviewPhoneSaving] = useState(false);
+  const [reviewPhoneSavedAt, setReviewPhoneSavedAt] = useState<number | null>(null);
+
   // Dialog de criar/editar etiqueta
   const [labelDialogOpen, setLabelDialogOpen] = useState(false);
   const [editingLabel, setEditingLabel] = useState<UazLabel | null>(null);
@@ -88,11 +94,11 @@ export function LabelTriggersConfig() {
     (async () => {
       const { data: insts } = await db
         .from('whatsapp_instances')
-        .select('instance_name, is_active')
+        .select('instance_name, is_active, review_notification_phone' as any)
         .eq('is_active', true)
         .order('instance_name');
-      setInstances((insts as Instance[]) || []);
-      if (insts && insts.length > 0) setSelectedInstance(insts[0].instance_name);
+      setInstances(((insts as unknown) as Instance[]) || []);
+      if (insts && insts.length > 0) setSelectedInstance((insts[0] as any).instance_name);
 
       setLoadingTemplates(true);
       try {
@@ -119,7 +125,36 @@ export function LabelTriggersConfig() {
     if (!selectedInstance) return;
     loadLabels();
     loadTriggers();
-  }, [selectedInstance]);
+    const inst = instances.find(i => i.instance_name === selectedInstance);
+    setReviewPhone(inst?.review_notification_phone || '');
+    setReviewPhoneSavedAt(null);
+  }, [selectedInstance, instances]);
+
+  async function saveReviewPhone() {
+    if (!selectedInstance) return;
+    const phone = reviewPhone.replace(/\D/g, '');
+    if (phone && phone.length < 10) {
+      toast.error('Telefone inválido. Use DDD + número.');
+      return;
+    }
+    setReviewPhoneSaving(true);
+    try {
+      const { error } = await db
+        .from('whatsapp_instances')
+        .update({ review_notification_phone: phone || null } as any)
+        .eq('instance_name', selectedInstance);
+      if (error) throw error;
+      setInstances(prev => prev.map(i =>
+        i.instance_name === selectedInstance ? { ...i, review_notification_phone: phone || null } : i
+      ));
+      setReviewPhoneSavedAt(Date.now());
+      toast.success('Telefone salvo');
+    } catch (e: any) {
+      toast.error('Erro ao salvar: ' + (e?.message || ''));
+    } finally {
+      setReviewPhoneSaving(false);
+    }
+  }
 
   async function loadLabels(forceRefresh = false) {
     setLoadingLabels(true);
@@ -329,6 +364,40 @@ export function LabelTriggersConfig() {
               </div>
             )}
           </div>
+
+          {selectedInstance && (
+            <div className="rounded-md border p-3 bg-muted/20 space-y-2">
+              <Label className="text-xs font-medium flex items-center gap-1.5">
+                📱 Telefone do operador (revisão da procuração)
+              </Label>
+              <p className="text-[11px] text-muted-foreground leading-snug">
+                Quando essa instância dispara uma etiqueta-gatilho, o link de revisão é enviado
+                via WhatsApp pra este número. Cai como notificação normal do WhatsApp (aparece
+                sobre o app aberto), o operador toca, revisa e confirma o envio ao cliente.
+                Use DDD + número (ex: 11999998888).
+              </p>
+              <div className="flex gap-2">
+                <Input
+                  value={reviewPhone}
+                  onChange={(e) => { setReviewPhone(e.target.value); setReviewPhoneSavedAt(null); }}
+                  placeholder="11999998888"
+                  inputMode="numeric"
+                  className="flex-1"
+                />
+                <Button
+                  size="sm"
+                  onClick={saveReviewPhone}
+                  disabled={reviewPhoneSaving}
+                  variant={reviewPhoneSavedAt ? 'secondary' : 'default'}
+                >
+                  {reviewPhoneSaving ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : reviewPhoneSavedAt ? '✓ Salvo' : 'Salvar'}
+                </Button>
+              </div>
+            </div>
+          )}
+
 
           {selectedInstance && (
             <>
