@@ -305,7 +305,7 @@ export const useLeads = (adAccountId?: string) => {
         .from('leads')
         .insert([{
           ...lead,
-          lead_status: lead.lead_status ?? 'active',
+          lead_status: lead.lead_status ?? 'no_response',
           became_client_date: lead.became_client_date ?? null,
           classification_date: lead.classification_date ?? null,
           in_progress_date: lead.in_progress_date ?? null,
