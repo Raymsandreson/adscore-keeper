@@ -2077,6 +2077,31 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
           </div>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={!!resyncResult} onOpenChange={(o) => !o && setResyncResult(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Sincronização da etiqueta #{resyncResult?.agentName}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2 max-h-[60vh] overflow-y-auto">
+            <div className="text-xs text-muted-foreground">
+              {resyncResult?.results.filter(r => r.ok).length} sucesso(s) · {resyncResult?.results.filter(r => !r.ok).length} falha(s) · {resyncResult?.results.length} total
+            </div>
+            <div className="border rounded divide-y">
+              {(resyncResult?.results || []).map((r, i) => (
+                <div key={i} className="p-2 text-xs flex items-start gap-2">
+                  <span className={r.ok ? 'text-green-600' : 'text-red-600'}>{r.ok ? '✓' : '✗'}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-mono font-medium">{r.instance_name}</div>
+                    <div className="text-muted-foreground">ação: {r.action}</div>
+                    {r.error && <div className="text-red-600 break-words mt-1">erro: {r.error}</div>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
