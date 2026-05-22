@@ -675,6 +675,22 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
     onReload();
   };
 
+  const handleResyncLabel = async (id: string, name: string) => {
+    const t = toast.loading(`Sincronizando etiqueta de #${name}...`);
+    try {
+      const { data, error } = await cloudFunctions.invoke('sync-agent-labels', {
+        body: { agent_id: id, operation: 'upsert' },
+      });
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Falha no sync');
+      const ok = (data.results || []).filter((r: any) => r.ok).length;
+      const fail = (data.results || []).filter((r: any) => !r.ok).length;
+      toast.success(`Etiqueta sincronizada: ${ok} ok${fail ? `, ${fail} falha(s)` : ''}`, { id: t });
+    } catch (e: any) {
+      toast.error('Erro: ' + (e?.message || ''), { id: t });
+    }
+  };
+
   const actionLabels: Record<string, { label: string; icon: any; color: string }> = {
     whatsapp_message: { label: 'Mensagem WhatsApp', icon: MessageSquare, color: 'text-green-500' },
     call: { label: 'Ligação', icon: Phone, color: 'text-blue-500' },
