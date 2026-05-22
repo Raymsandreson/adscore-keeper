@@ -20,8 +20,10 @@ import { toast } from 'sonner';
 import { 
   Bot, Plus, Trash2, MessageSquare, Sparkles, 
   Zap, Phone, FileText, Bell, Pencil, Wand2, Settings2, Volume2, Maximize2, RefreshCw,
-  ChevronUp, ChevronDown, Eye
+  ChevronUp, ChevronDown, Eye, Check, ChevronsUpDown, Megaphone, Filter
 } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { AIShortcutGenerator } from './AIShortcutGenerator';
@@ -834,90 +836,183 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                   </div>
                 </div>
 
-                {/* QUANDO RESPONDER — Filtro Funil × Resultado do Lead */}
-                <div className="space-y-3 border rounded-lg p-3 bg-muted/30">
-                  <div className="space-y-0.5">
-                    <Label className="text-xs font-semibold">🎯 Quando esse agente deve responder</Label>
-                    <p className="text-[10px] text-muted-foreground">
-                      Filtra por <strong>funil</strong> e <strong>resultado do lead</strong>. Se nada for marcado em uma seção, não filtra por ela (responde sempre).
-                    </p>
-                  </div>
+                {/* QUANDO RESPONDER — Filtro Funil × Resultado do Lead (fallback p/ não-CTWA) */}
+                {(() => {
+                  const selectedBoards = boards.filter(b => form.lead_status_board_ids.includes(b.id));
+                  const unselectedBoards = boards.filter(b => !form.lead_status_board_ids.includes(b.id));
+                  const orderedBoards = [...selectedBoards, ...unselectedBoards];
 
-                  <div className="space-y-1.5">
-                    <Label className="text-[11px] font-medium">Funis permitidos</Label>
-                    {boards.length === 0 ? (
-                      <p className="text-[10px] text-muted-foreground italic">Nenhum funil encontrado.</p>
-                    ) : (
-                      <div className="grid grid-cols-2 gap-1.5 max-h-40 overflow-y-auto p-1">
-                        {boards.map(b => {
-                          const checked = form.lead_status_board_ids.includes(b.id);
-                          return (
-                            <label key={b.id} className="flex items-center gap-2 text-xs cursor-pointer hover:bg-accent/50 rounded px-1.5 py-1">
-                              <Checkbox
-                                checked={checked}
-                                onCheckedChange={(v) => {
-                                  setForm(f => ({
-                                    ...f,
-                                    lead_status_board_ids: v
-                                      ? [...f.lead_status_board_ids, b.id]
-                                      : f.lead_status_board_ids.filter(id => id !== b.id),
-                                  }));
-                                }}
-                              />
-                              <span className="truncate">{b.name}</span>
-                            </label>
-                          );
-                        })}
+                  const selectedResults = LEAD_RESULT_OPTIONS.filter(o => form.lead_status_filter.includes(o.value));
+                  const unselectedResults = LEAD_RESULT_OPTIONS.filter(o => !form.lead_status_filter.includes(o.value));
+                  const orderedResults = [...selectedResults, ...unselectedResults];
+
+                  const toggleBoard = (id: string) => setForm(f => ({
+                    ...f,
+                    lead_status_board_ids: f.lead_status_board_ids.includes(id)
+                      ? f.lead_status_board_ids.filter(x => x !== id)
+                      : [...f.lead_status_board_ids, id],
+                  }));
+                  const toggleResult = (v: string) => setForm(f => ({
+                    ...f,
+                    lead_status_filter: f.lead_status_filter.includes(v)
+                      ? f.lead_status_filter.filter(x => x !== v)
+                      : [...f.lead_status_filter, v],
+                  }));
+
+                  return (
+                    <div className="space-y-3 border rounded-lg p-4 bg-muted/30">
+                      <div className="space-y-1.5">
+                        <Label className="text-sm font-semibold flex items-center gap-1.5">
+                          <Filter className="h-4 w-4" />
+                          Quando esse agente deve responder
+                        </Label>
+                        <p className="text-[11px] text-muted-foreground leading-relaxed">
+                          Esses filtros funcionam como <strong>fallback</strong>: valem apenas para leads que <strong>não vieram de anúncio</strong> (entrada manual, indicação, contato direto etc.).
+                        </p>
                       </div>
-                    )}
-                    {form.lead_status_board_ids.length === 0 && (
-                      <p className="text-[10px] text-muted-foreground italic">Sem filtro por funil — responde em qualquer funil.</p>
-                    )}
-                  </div>
 
-                  <div className="space-y-1.5">
-                    <Label className="text-[11px] font-medium">Resultado do lead permitido</Label>
-                    <div className="grid grid-cols-2 gap-1.5">
-                      {LEAD_RESULT_OPTIONS.map(opt => {
-                        const checked = form.lead_status_filter.includes(opt.value);
-                        return (
-                          <label key={opt.value} className="flex items-center gap-2 text-xs cursor-pointer hover:bg-accent/50 rounded px-1.5 py-1">
-                            <Checkbox
-                              checked={checked}
-                              onCheckedChange={(v) => {
-                                setForm(f => ({
-                                  ...f,
-                                  lead_status_filter: v
-                                    ? [...f.lead_status_filter, opt.value]
-                                    : f.lead_status_filter.filter(s => s !== opt.value),
-                                }));
-                              }}
-                            />
-                            <span>{opt.label}</span>
-                          </label>
-                        );
-                      })}
+                      {/* Caixa de prioridade — explicação visual */}
+                      <div className="rounded-md border bg-background/60 p-2.5 space-y-1.5">
+                        <div className="flex items-start gap-2 text-[11px]">
+                          <Megaphone className="h-3.5 w-3.5 text-orange-500 mt-0.5 shrink-0" />
+                          <div>
+                            <span className="font-medium">Lead veio de anúncio (CTWA)</span>
+                            <span className="text-muted-foreground"> → obedece <strong>Configurações → Anúncios → Automação CTWA</strong>.</span>
+                          </div>
+                        </div>
+                        <div className="flex items-start gap-2 text-[11px]">
+                          <Filter className="h-3.5 w-3.5 text-primary mt-0.5 shrink-0" />
+                          <div>
+                            <span className="font-medium">Lead não veio de anúncio</span>
+                            <span className="text-muted-foreground"> → obedece os filtros abaixo. Vazio = responde sempre.</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Funis permitidos — multi-select dropdown */}
+                      <div className="space-y-1.5">
+                        <Label className="text-[11px] font-medium">Funis permitidos (fallback)</Label>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              role="combobox"
+                              className="w-full h-9 justify-between text-xs font-normal"
+                            >
+                              <span className="truncate text-left">
+                                {selectedBoards.length === 0
+                                  ? <span className="text-muted-foreground italic">Qualquer funil</span>
+                                  : selectedBoards.length <= 2
+                                    ? selectedBoards.map(b => b.name).join(', ')
+                                    : `${selectedBoards.slice(0, 2).map(b => b.name).join(', ')} +${selectedBoards.length - 2}`}
+                              </span>
+                              <ChevronsUpDown className="h-3.5 w-3.5 opacity-50 shrink-0 ml-2" />
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="p-0 w-[var(--radix-popover-trigger-width)]" align="start">
+                            <div className="max-h-60 overflow-y-auto p-1">
+                              {orderedBoards.length === 0 ? (
+                                <p className="text-[11px] text-muted-foreground italic p-3">Nenhum funil encontrado.</p>
+                              ) : orderedBoards.map((b, idx) => {
+                                const checked = form.lead_status_board_ids.includes(b.id);
+                                const isLastSelected = checked && idx === selectedBoards.length - 1 && unselectedBoards.length > 0;
+                                return (
+                                  <div key={b.id}>
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleBoard(b.id)}
+                                      className={cn(
+                                        'flex items-center gap-2 w-full text-xs px-2 py-1.5 rounded-sm hover:bg-accent text-left',
+                                        checked && 'bg-primary/5'
+                                      )}
+                                    >
+                                      <div className={cn(
+                                        'h-3.5 w-3.5 rounded border flex items-center justify-center shrink-0',
+                                        checked ? 'bg-primary border-primary' : 'border-input'
+                                      )}>
+                                        {checked && <Check className="h-3 w-3 text-primary-foreground" />}
+                                      </div>
+                                      <span className="truncate">{b.name}</span>
+                                    </button>
+                                    {isLastSelected && <div className="border-t my-1" />}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </PopoverContent>
+                        </Popover>
+                      </div>
+
+                      {/* Resultado do lead — multi-select dropdown */}
+                      <div className="space-y-1.5">
+                        <Label className="text-[11px] font-medium">Resultado do lead permitido (fallback)</Label>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              role="combobox"
+                              className="w-full h-9 justify-between text-xs font-normal"
+                            >
+                              <span className="truncate text-left">
+                                {selectedResults.length === 0
+                                  ? <span className="text-muted-foreground italic">Qualquer resultado</span>
+                                  : selectedResults.map(o => o.label).join(', ')}
+                              </span>
+                              <ChevronsUpDown className="h-3.5 w-3.5 opacity-50 shrink-0 ml-2" />
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="p-0 w-[var(--radix-popover-trigger-width)]" align="start">
+                            <div className="p-1">
+                              {orderedResults.map((opt, idx) => {
+                                const checked = form.lead_status_filter.includes(opt.value);
+                                const isLastSelected = checked && idx === selectedResults.length - 1 && unselectedResults.length > 0;
+                                return (
+                                  <div key={opt.value}>
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleResult(opt.value)}
+                                      className={cn(
+                                        'flex items-center gap-2 w-full text-xs px-2 py-1.5 rounded-sm hover:bg-accent text-left',
+                                        checked && 'bg-primary/5'
+                                      )}
+                                    >
+                                      <div className={cn(
+                                        'h-3.5 w-3.5 rounded border flex items-center justify-center shrink-0',
+                                        checked ? 'bg-primary border-primary' : 'border-input'
+                                      )}>
+                                        {checked && <Check className="h-3 w-3 text-primary-foreground" />}
+                                      </div>
+                                      <span>{opt.label}</span>
+                                    </button>
+                                    {isLastSelected && <div className="border-t my-1" />}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </PopoverContent>
+                        </Popover>
+                      </div>
+
+                      <div className="border-t pt-2.5 space-y-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-8 text-xs w-full"
+                          onClick={() => setFilterTestOpen(true)}
+                        >
+                          🧪 Testar filtro com um lead real
+                        </Button>
+                        <p className="text-[10px] text-muted-foreground leading-relaxed">
+                          ⚠️ Aplicação no responder de IA depende da edge function externa <code className="text-[9px]">wjia-agent</code>. Para leads CTWA, o roteamento por anúncio sempre tem prioridade.
+                        </p>
+                      </div>
                     </div>
-                    {form.lead_status_filter.length === 0 && (
-                      <p className="text-[10px] text-muted-foreground italic">Sem filtro por resultado — responde em qualquer resultado.</p>
-                    )}
-                  </div>
+                  );
+                })()}
 
-                  <div className="border-t pt-2 space-y-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-8 text-xs w-full"
-                      onClick={() => setFilterTestOpen(true)}
-                    >
-                      🧪 Testar filtro
-                    </Button>
-                    <p className="text-[10px] text-muted-foreground">
-                      ⚠️ A aplicação desse filtro no responder de IA depende da edge function externa <code className="text-[9px]">wjia-agent</code>. Se o agente continuar respondendo em casos filtrados, avise — preciso aplicar o guard no servidor externo.
-                    </p>
-                  </div>
-                </div>
 
               </div>
             )}
