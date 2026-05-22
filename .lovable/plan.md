@@ -1,98 +1,113 @@
 
-# Agentes ↔ Etiquetas WhatsApp — Sincronia Bidirecional
+# Etiquetas de Resultado + Prefixo 🤖 em Agentes
 
 ## Metáfora
-Cada agente vira uma "credencial visual" no WhatsApp. Quando você cria um agente "Carlos", o sistema cola um adesivo verde "Carlos" em todas as carteiras (instâncias). Quando alguém cola esse adesivo numa conversa pelo WhatsApp, o Carlos entra naquela conversa. Quando tira o adesivo, ele sai. Quando o agente é desligado no sistema, o adesivo fica cinza em todas as carteiras.
+Hoje a etiqueta funciona como "crachá" do agente IA. Vou adicionar 5 crachás novos que representam o **resultado do lead** (Em andamento, Fechado, Recusado, Inviável, Cancelado). Esses crachás conversam nos 2 sentidos: se você cola no WhatsApp, o status do lead muda no CRM; se você muda o status no CRM, o crachá certo aparece automaticamente na conversa do WhatsApp.
+
+Além disso, prefixo 🤖 em todos os crachás de agente pra você diferenciar de relance "isso é IA" vs "isso é resultado".
+
+---
 
 ## O que vai mudar
 
-### 1. Sync agente → etiqueta (sistema → WhatsApp)
-- **Criar agente**: cria etiqueta com mesmo nome em TODAS as instâncias UazAPI conectadas, cor **verde** (id 3) se `is_active=true`, **cinza** (id 7) se não.
-- **Renomear agente**: renomeia etiqueta em todas instâncias (mantém o `labelid`).
-- **Ativar/desativar agente** (`is_active`): re-aplica a cor (verde ↔ cinza) em todas instâncias. Não apaga a etiqueta.
-- **Apagar agente**: apaga etiqueta em todas instâncias (com soft-delete na tabela de mapeamento).
-- **Adicionar nova instância**: ao detectar instância nova, cria todas etiquetas de agentes existentes nela.
+### 1. Prefixo 🤖 em agentes (mudança pequena, conservadora)
+- `sync-agent-labels.ts`: nome enviado pra UazAPI vira `🤖 {agent_name}` em vez de só `{agent_name}`.
+- Como a sync é idempotente e compara `mapping.label_name === agentName`, na próxima sync ela detecta mismatch e faz `update` em todas as instâncias. Sem migration de dados — UazAPI renomeia in-place.
 
-Tabela nova no Externo: `agent_instance_labels` (agent_id, instance_name, label_id, label_name, color, deleted_at) — guarda o mapeamento para conseguir editar/deletar depois.
+### 2. Nova tabela `result_instance_labels` (Externo)
+Espelha a `agent_instance_labels` mas pra resultados. Não reaproveito a mesma tabela pra manter o domínio limpo (agente ≠ resultado).
 
-### 2. Sync etiqueta na conversa → agente (WhatsApp → sistema)
-Estender o handler de `chat_labels` já existente em `whatsapp-webhook.ts`:
-- Para cada evento, comparar `wa_labels` atuais com snapshot anterior (cache em `whatsapp_conversation_label_state`).
-- **Label adicionada** que mapeia a agente: ativa o agente naquela conversa (`whatsapp_conversation_agents.is_active=true`, `agent_id=X`, `activated_by='label_wa'`).
-- **Label removida** que mapeia a agente: desativa (`is_active=false`).
-- Mantém compat com triggers de documento existentes.
-
-### 3. Sync agente na conversa → etiqueta no WA (UI → WhatsApp)
-Em `WhatsAppAgentToggle` (ativar/desativar agente numa conversa):
-- Ao ativar: chamar UazAPI para colar a etiqueta do agente naquele chat.
-- Ao desativar/remover: chamar UazAPI para descolar a etiqueta.
-- Guarda contra loop: marcar a operação como "origem=sistema" via flag pra ignorar o webhook subsequente do mesmo chat/label nos próximos 5s.
-
-### 4. UI
-- Aba "Agentes" passa a mostrar bolinha verde/cinza por instância, indicando se a etiqueta está sincronizada e ativa.
-- Botão "Re-sincronizar etiquetas" como fallback manual.
-- Aba "Etiquetas-Gatilho" continua existindo, mas mostra também as etiquetas-agente (read-only com badge "auto").
-
-## Detalhes técnicos
-
-### Tabelas novas (Externo via `run-external-migration`)
-```sql
-CREATE TABLE agent_instance_labels (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  agent_id uuid NOT NULL,
-  instance_name text NOT NULL,
-  label_id text NOT NULL,
-  label_name text NOT NULL,
-  color int NOT NULL DEFAULT 3,
-  created_at timestamptz DEFAULT now(),
-  updated_at timestamptz DEFAULT now(),
-  deleted_at timestamptz,
-  UNIQUE(agent_id, instance_name)
-);
-CREATE INDEX idx_ail_instance_label ON agent_instance_labels(instance_name, label_id) WHERE deleted_at IS NULL;
-
-CREATE TABLE whatsapp_conversation_label_state (
-  phone text NOT NULL,
-  instance_name text NOT NULL,
-  label_ids text[] NOT NULL DEFAULT '{}',
-  updated_at timestamptz DEFAULT now(),
-  PRIMARY KEY(phone, instance_name)
-);
+```text
+result_instance_labels
+  id uuid pk
+  result_key text     -- 'in_progress' | 'closed' | 'refused' | 'inviavel' | 'cancelled'
+  instance_name text
+  label_id text       -- id retornado pela UazAPI
+  label_name text     -- '✅ Fechado' etc
+  color int           -- paleta UazAPI 0-19
+  created_at, updated_at, deleted_at
+  UNIQUE (result_key, instance_name)
 ```
 
-### Funções novas (Railway)
-1. **`sync-agent-labels`** — POST `{ agent_id, operation: 'create'|'rename'|'recolor'|'delete' }`. Itera todas `whatsapp_instances` ativas, chama `/label/edit` em cada, persiste em `agent_instance_labels`. Idempotente.
-2. **`apply-label-to-chat`** — POST `{ phone, instance_name, label_id, action: 'add'|'remove' }`. Chama UazAPI `/chat/labels` (endpoint a confirmar via sondagem) e grava lock antiloop.
+Mapeamento fixo (hardcoded — não vira tela de admin, é regra de negócio):
 
-### Funções alteradas
-- **`whatsapp-webhook.ts`** — handler `chat_labels` ganha diff de labels (vs `whatsapp_conversation_label_state`) e cruzamento com `agent_instance_labels` pra ativar/desativar agente.
-- **`WhatsAppAgentToggle.tsx`** — chama `apply-label-to-chat` ao ativar/desativar.
-- **Form do agente** (criar/editar/deletar) — chama `sync-agent-labels` no afterSave.
+| result_key | label_name | UazAPI color | lead_status (no banco) |
+|---|---|---|---|
+| `in_progress` | 🕐 Em andamento | 6 (amarelo) | `active` ou `open` |
+| `closed` | ✅ Fechado | 5 (verde) | `closed` |
+| `refused` | ❌ Recusado | 7 (vermelho) | `refused` |
+| `inviavel` | ⚠️ Inviável | 9 (cinza claro) | `inviavel` |
+| `cancelled` | 🚫 Cancelado | 1 (cinza escuro) | `cancelled` (novo valor) |
 
-### Cores UazAPI
-A paleta Meta usa int: 0=cinza claro, 3=verde, 7=cinza escuro. Confirmo com sondagem rápida na 1ª chamada — se a UazAPI ignorar `color` em update, alerto e desisto da parte "também no WhatsApp" da pergunta 2 (mantenho só verde/cinza na UI do sistema).
+**Importante sobre cores**: a paleta UazAPI é 0–19 sem documentação clara. Os índices acima são minha melhor aposta baseada no padrão Meta, mas pode acontecer de uma cor sair "errada" no WA igual aconteceu com cinza/azul antes. Se sair errado, ajusto a constante e re-sincronizo (1 linha).
 
-## O que NÃO vai mexer
-- Lógica de `label_document_triggers` (ZapSign automático por etiqueta) — fica intacta. Etiqueta-agente é um TIPO separado, conviva.
-- `auto_swap_agent_on_stage_change` (troca por etapa do Kanban) — independente.
-- `wjia_command_shortcuts` (tabela do agente) — só leituras, sem alterar schema.
+### 3. Nova função Railway: `sync-result-labels`
+- Igual `sync-agent-labels`, mas itera os 5 resultados fixos e cria/atualiza em todas instâncias conectadas.
+- Botão único na tela de Settings (ou em /agent-monitor) "Sincronizar etiquetas de resultado".
+- Idempotente — pode rodar quantas vezes quiser.
+
+### 4. Webhook WA → CRM (whatsapp-webhook.ts)
+Estende o bloco que já existe (linhas 789-832 do whatsapp-webhook.ts) que detecta etiquetas de agente. Adiciono lookup paralelo em `result_instance_labels`:
+
+```text
+quando webhook recebe label aplicada na conversa:
+  1. Já roda: agent label sync → ativa agente
+  2. NOVO: result label sync → resolve lead_id da conversa
+     - tenta whatsapp_conversation_agents (phone+instance) → lead_id
+     - se vazio, tenta contact_leads via contact pelo phone
+     - se vazio, ignora (sem lead vinculado = nada a atualizar)
+  3. Se achou lead_id E o novo lead_status é diferente do atual:
+     - update leads set lead_status = X, updated_at = now()
+     - grava em lead_activities um registro 'status_changed_via_label'
+```
+
+**Importante**: só atualizo se vínculo for explícito (sua escolha #2). Sem chute por telefone solto.
+
+### 5. CRM → WA (gatilho no Postgres Externo)
+Trigger `AFTER UPDATE OF lead_status ON leads`:
+- Se `lead_status` mudou pra um dos 5 valores mapeados:
+  - Acha a conversa vinculada (phone + instance via `whatsapp_conversation_agents` do lead)
+  - Chama edge function `apply-result-label-to-conversation` (Externo) que:
+    - Remove as outras 4 etiquetas de resultado da conversa (pra não acumular)
+    - Aplica a etiqueta nova via UazAPI `/chat/labels`
+- Trigger é `SECURITY DEFINER` e usa `net.http_post` (mesmo padrão dos bridges existentes).
+
+**Por que essa edge mora no Externo e não no Railway**: trigger SQL chama via HTTP. Tanto faz onde a edge roda, mas como ela precisa ler `whatsapp_instances.instance_token` que já é Externo, fica mais simples colocar lá.
+
+### 6. Loop infinito — prevenção
+Risco real: webhook muda status → trigger aplica etiqueta → webhook reentra → trigger reentra…
+
+Trava: webhook detecta que a etiqueta sendo aplicada **já está no estado correto** (status atual do lead já corresponde) e faz no-op. Trigger faz a mesma checagem (se etiqueta correta já está aplicada na conversa, no-op). Idempotência mata o loop.
+
+### 7. Sem novo valor `cancelled` em `lead_status`
+Hoje os valores válidos são: `active, open, closed, refused, inviavel`. `cancelled` não existe. Vou adicionar como valor aceito (sem CHECK constraint — só uso semântico) e mostrar nas listagens existentes.
+
+---
+
+## Rota de fuga (Regra 1 do CLAUDE.md)
+- Tabela nova `result_instance_labels` — drop simples se der ruim.
+- Trigger SQL — `DROP TRIGGER` reverte.
+- Edge function nova — delete pelo painel.
+- `sync-agent-labels.ts` prefixo 🤖 — `git revert` no commit + 1 sync = nomes voltam.
+- **Nada apaga dado de cliente**. Pior caso: lead com `lead_status` errado, ajustável manualmente.
+
+---
 
 ## Ordem de execução
-1. Migration tabelas novas
-2. Função `sync-agent-labels` (Railway) + sondagem da paleta de cores UazAPI numa instância de teste
-3. Hooks no form do agente (chamar após criar/editar/deletar/toggle)
-4. Função `apply-label-to-chat` (Railway) + sondagem do endpoint `/chat/labels`
-5. `WhatsAppAgentToggle` chama `apply-label-to-chat`
-6. Estender handler `chat_labels` no webhook (diff + cruzamento com agent_instance_labels)
-7. Lock anti-loop (5s) no Redis-equivalente ou tabela `agent_label_apply_locks`
-8. UI: bolinhas verde/cinza por instância no painel de agentes + botão "Re-sincronizar"
+1. Migration: cria `result_instance_labels` + valor `cancelled` aceito + trigger
+2. Edge function Externo `apply-result-label-to-conversation`
+3. Railway: nova função `sync-result-labels` + edita `sync-agent-labels` pra prefixo 🤖
+4. Railway: edita `whatsapp-webhook.ts` pra detectar etiquetas de resultado
+5. UI: botão "Sincronizar etiquetas de resultado" no Settings (perto do botão de sync de agentes)
+6. Testes manuais: aplicar cada uma das 5 etiquetas numa conversa de teste, conferir lead_status mudou; mudar lead_status no CRM, conferir etiqueta apareceu no WA.
 
-## Riscos
-- **Endpoint UazAPI `/chat/labels`** não confirmado em código existente — preciso sondar antes da etapa 4. Se não existir como esperamos, etapa 5 muda.
-- **Loop infinito** (sistema aplica label → webhook chega → sistema reage → reaplica). Resolvido pelo lock de 5s + `activated_by='label_wa'` vs `'system'` na origem.
-- **Custo**: criar agente passa a fazer N chamadas UazAPI (1 por instância). Com 5-10 instâncias, ~2-5s. Aceitável.
+---
 
-## Rollback
-- Cada função nova é isolada. Pra reverter: desplugar chamada no form do agente + desabilitar handler estendido no webhook via feature flag `LABEL_AGENT_SYNC_ENABLED`. Tabelas novas ficam (sem efeito colateral).
+## O que NÃO vou mexer
+- Nenhuma tabela existente além de `leads` (só leitura de status atual).
+- Nenhum outro webhook.
+- `agent_instance_labels` continua igual — agentes e resultados ficam separados.
+- Cores dos agentes (verde/cinza) seguem como estão.
+- Fluxo de label_document_triggers (ZapSign) intocado.
 
-Posso começar pela etapa 1+2 (migration + sondagem da UazAPI) pra confirmar que a paleta de cores funciona como descrito, e a partir daí seguir o resto?
+Posso seguir?

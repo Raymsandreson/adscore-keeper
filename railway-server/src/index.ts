@@ -28,6 +28,7 @@ import { handler as prepareLabelDocumentTrigger } from './functions/prepare-labe
 import { handler as getPendingReview } from './functions/get-pending-review';
 import { handler as submitDocumentReview } from './functions/submit-document-review';
 import { handler as syncAgentLabels } from './functions/sync-agent-labels';
+import { handler as syncResultLabels } from './functions/sync-result-labels';
 
 const functionHandlers: Record<string, express.RequestHandler> = {
   'whatsapp-webhook': whatsappWebhook,
@@ -49,6 +50,7 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'get-pending-review': getPendingReview,
   'submit-document-review': submitDocumentReview,
   'sync-agent-labels': syncAgentLabels,
+  'sync-result-labels': syncResultLabels,
 };
 
 const app = express();

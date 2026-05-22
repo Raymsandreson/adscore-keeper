@@ -832,6 +832,104 @@ export const handler: RequestHandler = async (req, res) => {
           }
         }
 
+        // === NOVO: etiquetas de RESULTADO do lead (WA → CRM)
+        // Quando o operador cola "✅ Fechado", "❌ Recusado" etc, atualiza lead_status.
+        // Só atua se houver vínculo EXPLÍCITO conversa→lead (whatsapp_conversation_agents ou contact_leads).
+        const RESULT_KEY_TO_STATUS: Record<string, string> = {
+          in_progress: 'active',
+          closed: 'closed',
+          refused: 'refused',
+          inviavel: 'inviavel',
+          cancelled: 'cancelled',
+        };
+        try {
+          const { data: resultLabelMappings } = await supabase
+            .from('result_instance_labels')
+            .select('result_key, label_id, label_name, instance_name')
+            .ilike('instance_name', webhookInstanceName)
+            .is('deleted_at', null);
+
+          const matchedResultLabels = (resultLabelMappings || []).filter((m: any) => {
+            const lid = String(m.label_id).split(':').pop() || String(m.label_id);
+            return normalizedWaLabels.includes(lid);
+          });
+
+          if (matchedResultLabels.length > 0) {
+            // Resolve lead_id da conversa via vínculo explícito
+            let leadId: string | null = null;
+            try {
+              const { data: convoLead } = await supabase
+                .from('whatsapp_conversation_agents')
+                .select('lead_id')
+                .ilike('instance_name', webhookInstanceName)
+                .like('phone', `%${phoneDigits.slice(-8)}`)
+                .not('lead_id', 'is', null)
+                .order('updated_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+              leadId = (convoLead as any)?.lead_id || null;
+            } catch {}
+            if (!leadId) {
+              try {
+                const { data: contact } = await supabase
+                  .from('contacts')
+                  .select('id')
+                  .like('phone', `%${phoneDigits.slice(-8)}`)
+                  .limit(1)
+                  .maybeSingle();
+                if (contact?.id) {
+                  const { data: cl } = await supabase
+                    .from('contact_leads')
+                    .select('lead_id')
+                    .eq('contact_id', (contact as any).id)
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+                  leadId = (cl as any)?.lead_id || null;
+                }
+              } catch {}
+            }
+
+            if (!leadId) {
+              console.log('[label-trigger][result] no explicit lead link, skipping', { phone: phoneDigits, labels: matchedResultLabels.map((m: any) => m.label_name) });
+            } else {
+              // Pega APENAS a última etiqueta de resultado aplicada (se vieram várias na mesma chamada)
+              const lastMatch: any = matchedResultLabels[matchedResultLabels.length - 1];
+              const newStatus = RESULT_KEY_TO_STATUS[lastMatch.result_key];
+              if (newStatus) {
+                const { data: leadRow } = await supabase
+                  .from('leads')
+                  .select('id, lead_status')
+                  .eq('id', leadId)
+                  .maybeSingle();
+                if (leadRow && (leadRow as any).lead_status !== newStatus) {
+                  await supabase
+                    .from('leads')
+                    .update({ lead_status: newStatus, updated_at: new Date().toISOString() })
+                    .eq('id', leadId);
+                  console.log('[label-trigger][result] lead_status updated', { leadId, from: (leadRow as any).lead_status, to: newStatus, via: lastMatch.label_name });
+                  try {
+                    await supabase.from('lead_activities').insert({
+                      lead_id: leadId,
+                      title: `Status alterado via etiqueta WhatsApp: ${lastMatch.label_name}`,
+                      description: `Status do lead atualizado para "${newStatus}" pelo operador aplicando a etiqueta no WhatsApp.`,
+                      activity_type: 'notificacao',
+                      status: 'concluida',
+                      priority: 'normal',
+                    } as any);
+                  } catch (e: any) {
+                    console.warn('[label-trigger][result] activity log failed:', e?.message);
+                  }
+                } else {
+                  console.log('[label-trigger][result] no-op, status already correct', { leadId, status: newStatus });
+                }
+              }
+            }
+          }
+        } catch (e: any) {
+          console.warn('[label-trigger][result] block failed:', e?.message);
+        }
+
         if (!triggers || triggers.length === 0) {
           if (matchedAgentLabels.length > 0) {
             return res.json({ success: true, type: 'agent_activated_via_label_sync', count: matchedAgentLabels.length, labels: matchedAgentLabels.map((m: any) => m.label_name) });

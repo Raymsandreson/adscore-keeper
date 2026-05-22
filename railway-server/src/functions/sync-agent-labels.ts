@@ -40,6 +40,9 @@ export const handler: RequestHandler = async (req, res) => {
     if (!agent) return res.json({ success: false, error: `agent ${agent_id} not found` });
 
     const agentName: string = (agent as any).shortcut_name || '';
+    // Prefixo 🤖 identifica visualmente que é etiqueta de AGENTE IA
+    // (diferencia das etiquetas de RESULTADO do lead).
+    const labelName = `🤖 ${agentName}`;
     const isActive: boolean = !!(agent as any).is_active;
     const color = isActive ? COLOR_ACTIVE : COLOR_INACTIVE;
     const effectiveOp = operation === 'delete' ? 'delete' : 'upsert';
@@ -96,11 +99,11 @@ export const handler: RequestHandler = async (req, res) => {
 
       try {
         if (mapping && !mapping.deleted_at) {
-          if (mapping.label_name === agentName && mapping.color === color) {
+          if (mapping.label_name === labelName && mapping.color === color) {
             results.push({ instance_name: inst.instance_name, ok: true, action: 'unchanged' });
             continue;
           }
-          const r = await uazapiUpdateLabel(baseUrl, inst.instance_token, mapping.label_id, agentName, color);
+          const r = await uazapiUpdateLabel(baseUrl, inst.instance_token, mapping.label_id, labelName, color);
           if (!r.ok) {
             const rawErr = `HTTP ${r.status} — ${r.text.slice(0, 300)}`;
             console.warn(`[sync-agent-labels] update FAIL ${inst.instance_name}: ${rawErr}`);
@@ -109,12 +112,12 @@ export const handler: RequestHandler = async (req, res) => {
           }
           await ext
             .from('agent_instance_labels')
-            .update({ label_name: agentName, color, updated_at: new Date().toISOString(), deleted_at: null })
+            .update({ label_name: labelName, color, updated_at: new Date().toISOString(), deleted_at: null })
             .eq('id', mapping.id);
           results.push({ instance_name: inst.instance_name, ok: true, action: 'update' });
         } else {
           // CREATE — exatamente igual ao dialog "Nova etiqueta"
-          const r = await uazapiCreateLabel(baseUrl, inst.instance_token, agentName, color);
+          const r = await uazapiCreateLabel(baseUrl, inst.instance_token, labelName, color);
           if (!r.ok) {
             const rawErr = `HTTP ${r.status} — ${r.text.slice(0, 300)}`;
             console.warn(`[sync-agent-labels] create FAIL ${inst.instance_name}: ${rawErr}`);
@@ -125,7 +128,7 @@ export const handler: RequestHandler = async (req, res) => {
           const newId = String(
             r.data?.label?.id ?? r.data?.label?.labelid ?? r.data?.id ?? r.data?.labelid ?? '',
           );
-          const resolvedId = newId || (await uazapiFindLabelByName(baseUrl, inst.instance_token, agentName))?.id || '';
+          const resolvedId = newId || (await uazapiFindLabelByName(baseUrl, inst.instance_token, labelName))?.id || '';
           if (!resolvedId) {
             results.push({ instance_name: inst.instance_name, ok: false, action: 'create', error: 'created sem label_id retornado' });
             continue;
@@ -136,7 +139,7 @@ export const handler: RequestHandler = async (req, res) => {
               agent_id,
               instance_name: inst.instance_name,
               label_id: resolvedId,
-              label_name: agentName,
+              label_name: labelName,
               color,
               updated_at: new Date().toISOString(),
               deleted_at: null,
