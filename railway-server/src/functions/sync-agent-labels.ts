@@ -14,9 +14,11 @@ import {
   uazapiFindLabelByName,
 } from '../lib/uazapi-labels';
 
-// Paleta UazAPI/Meta (0..9): 0 Vermelho, 1 Laranja, 2 Amarelo, 3 Verde,
-// 4 Ciano, 5 Azul, 6 Lilás, 7 Roxo, 8 Rosa, 9 Cinza.
-const COLOR_ACTIVE = 3;   // verde
+// COLOR_ACTIVE=5 já vem renderizando como verde no WhatsApp (mesmo
+// índice do swatch "Verde" no dialog). COLOR_INACTIVE=10 estava virando
+// azul porque a paleta da UazAPI só vai até 9 — 10 dá overflow.
+// Cinza = 9 (último item do dropdown "Nova etiqueta").
+const COLOR_ACTIVE = 5;   // verde
 const COLOR_INACTIVE = 9; // cinza
 
 export const handler: RequestHandler = async (req, res) => {
