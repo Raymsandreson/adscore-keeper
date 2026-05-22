@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, ReactNode } from 'react';
 import { useAuth } from '@/hooks/useAuth';
+import { useInstancePermissionsWatcher } from '@/hooks/useInstancePermissionsWatcher';
 import { ensureExternalSession } from '@/integrations/supabase/external-client';
 import { User, Session } from '@supabase/supabase-js';
 
@@ -40,6 +41,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.warn('[AuthProvider] ensureExternalSession failed:', err?.message);
     });
   }, []);
+
+  useInstancePermissionsWatcher(auth.user?.id);
 
   return (
     <AuthContext.Provider value={auth}>

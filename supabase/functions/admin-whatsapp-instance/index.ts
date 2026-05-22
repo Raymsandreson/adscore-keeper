@@ -74,6 +74,33 @@ Deno.serve(async (req) => {
     const SUPABASE_SR = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const cloudAdmin = createClient(SUPABASE_URL, SUPABASE_SR);
 
+    const broadcastPermissionsUpdate = async (_client: ReturnType<typeof createClient>, cloudUserIds: string[]) => {
+      const unique = Array.from(new Set(cloudUserIds.filter(Boolean)));
+      if (unique.length === 0) return;
+      try {
+        const messages = unique.map((uid) => ({
+          topic: `user-perms:${uid}`,
+          event: "instances-updated",
+          payload: { updated_at: new Date().toISOString() },
+          private: false,
+        }));
+        const res = await fetch(`${SUPABASE_URL}/realtime/v1/api/broadcast`, {
+          method: "POST",
+          headers: {
+            apikey: SUPABASE_SR,
+            Authorization: `Bearer ${SUPABASE_SR}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ messages }),
+        });
+        if (!res.ok) {
+          console.warn("[admin-whatsapp-instance] broadcast failed:", res.status, await res.text());
+        }
+      } catch (err) {
+        console.warn("[admin-whatsapp-instance] broadcast error:", (err as Error).message);
+      }
+    };
+
     const mapAccessRowsToCloud = async (rows: any[]) => {
       const { data: mappings } = await ext
         .from("auth_uuid_mapping")
@@ -103,6 +130,7 @@ Deno.serve(async (req) => {
 
       const grantedRows: any[] = [];
       let revoked = 0;
+      const affectedCloudIds = new Set<string>();
       for (const op of ops) {
         const cloudUserId = op.cloud_user_id || op.user_id;
         if (!cloudUserId || !op.instance_id || typeof op.grant !== "boolean") {
@@ -119,6 +147,10 @@ Deno.serve(async (req) => {
             .single();
           if (error) return json({ success: false, error: error.message });
           if (data) grantedRows.push(data);
+          const { error: cErr } = await cloudAdmin
+            .from("whatsapp_instance_users")
+            .upsert({ user_id: cloudUserId, instance_id: op.instance_id }, { onConflict: "instance_id,user_id" });
+          if (cErr) console.warn("[admin-whatsapp-instance] cloud mirror upsert failed:", cErr.message);
         } else {
           const { error, count } = await ext
             .from("whatsapp_instance_users")
@@ -127,8 +159,17 @@ Deno.serve(async (req) => {
             .eq("instance_id", op.instance_id);
           if (error) return json({ success: false, error: error.message });
           revoked += count || 0;
+          const { error: cErr } = await cloudAdmin
+            .from("whatsapp_instance_users")
+            .delete()
+            .eq("user_id", cloudUserId)
+            .eq("instance_id", op.instance_id);
+          if (cErr) console.warn("[admin-whatsapp-instance] cloud mirror delete failed:", cErr.message);
         }
+        affectedCloudIds.add(cloudUserId);
       }
+
+      await broadcastPermissionsUpdate(cloudAdmin, Array.from(affectedCloudIds));
 
       return json({ success: true, revoked, access_rows: await mapAccessRowsToCloud(grantedRows) });
     }
@@ -143,7 +184,12 @@ Deno.serve(async (req) => {
 
       const { error: delErr } = await ext.from("whatsapp_instance_users").delete().eq("user_id", extUserId);
       if (delErr) return json({ success: false, error: delErr.message });
-      if (instance_ids.length === 0) return json({ success: true, access_rows: [] });
+      const { error: cDelErr } = await cloudAdmin.from("whatsapp_instance_users").delete().eq("user_id", user_id);
+      if (cDelErr) console.warn("[admin-whatsapp-instance] cloud mirror replace-delete failed:", cDelErr.message);
+      if (instance_ids.length === 0) {
+        await broadcastPermissionsUpdate(cloudAdmin, [user_id]);
+        return json({ success: true, access_rows: [] });
+      }
 
       const rows = Array.from(new Set(instance_ids)).map((id) => ({ user_id: extUserId, instance_id: id }));
       const { data, error } = await ext
@@ -151,6 +197,12 @@ Deno.serve(async (req) => {
         .insert(rows)
         .select("id, instance_id, user_id");
       if (error) return json({ success: false, error: error.message });
+      const cloudRows = Array.from(new Set(instance_ids)).map((id) => ({ user_id, instance_id: id }));
+      const { error: cInsErr } = await cloudAdmin
+        .from("whatsapp_instance_users")
+        .upsert(cloudRows, { onConflict: "instance_id,user_id" });
+      if (cInsErr) console.warn("[admin-whatsapp-instance] cloud mirror replace-insert failed:", cInsErr.message);
+      await broadcastPermissionsUpdate(cloudAdmin, [user_id]);
       return json({ success: true, access_rows: await mapAccessRowsToCloud(data || []) });
     }
 
