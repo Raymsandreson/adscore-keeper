@@ -876,35 +876,80 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                       : [...f.lead_status_filter, v],
                   }));
 
+                  const audienceModes = [
+                    {
+                      value: 'ctwa_only' as const,
+                      label: 'Só anúncio (CTWA)',
+                      icon: <Megaphone className="h-4 w-4" />,
+                      desc: 'Atende somente leads que clicaram em anúncio. Obedece Configurações → Anúncios → Automação CTWA.',
+                      color: 'border-orange-500/40 bg-orange-500/5',
+                      activeColor: 'border-orange-500 bg-orange-500/10 ring-2 ring-orange-500/30',
+                    },
+                    {
+                      value: 'outbound_only' as const,
+                      label: 'Só manual/outbound',
+                      icon: <Filter className="h-4 w-4" />,
+                      desc: 'Atende somente leads de entrada manual, indicação ou contato direto. Obedece os filtros abaixo.',
+                      color: 'border-primary/40 bg-primary/5',
+                      activeColor: 'border-primary bg-primary/10 ring-2 ring-primary/30',
+                    },
+                    {
+                      value: 'both' as const,
+                      label: 'Ambos',
+                      icon: <Bot className="h-4 w-4" />,
+                      desc: 'Lead de anúncio → obedece CTWA. Lead manual → obedece os filtros abaixo.',
+                      color: 'border-violet-500/40 bg-violet-500/5',
+                      activeColor: 'border-violet-500 bg-violet-500/10 ring-2 ring-violet-500/30',
+                    },
+                  ];
+
                   return (
                     <div className="space-y-3 border rounded-lg p-4 bg-muted/30">
                       <div className="space-y-1.5">
                         <Label className="text-sm font-semibold flex items-center gap-1.5">
                           <Filter className="h-4 w-4" />
-                          Quando esse agente deve responder
+                          Quem esse agente atende
                         </Label>
                         <p className="text-[11px] text-muted-foreground leading-relaxed">
-                          Esses filtros funcionam como <strong>fallback</strong>: valem apenas para leads que <strong>não vieram de anúncio</strong> (entrada manual, indicação, contato direto etc.).
+                          Escolha de onde vêm os leads que esse agente vai responder.
                         </p>
                       </div>
 
-                      {/* Caixa de prioridade — explicação visual */}
-                      <div className="rounded-md border bg-background/60 p-2.5 space-y-1.5">
-                        <div className="flex items-start gap-2 text-[11px]">
+                      {/* Seletor de modo de público — 3 botões grandes */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        {audienceModes.map(mode => {
+                          const active = form.audience_mode === mode.value;
+                          return (
+                            <button
+                              key={mode.value}
+                              type="button"
+                              onClick={() => setForm(f => ({ ...f, audience_mode: mode.value }))}
+                              className={cn(
+                                'text-left rounded-md border-2 p-2.5 transition-all',
+                                active ? mode.activeColor : `${mode.color} hover:bg-accent/50`
+                              )}
+                            >
+                              <div className="flex items-center gap-1.5 text-xs font-semibold mb-1">
+                                {mode.icon}
+                                {mode.label}
+                              </div>
+                              <p className="text-[10px] text-muted-foreground leading-snug">{mode.desc}</p>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Aviso quando ctwa_only */}
+                      {form.audience_mode === 'ctwa_only' && (
+                        <div className="rounded-md border border-orange-500/30 bg-orange-500/5 p-2.5 flex items-start gap-2 text-[11px]">
                           <Megaphone className="h-3.5 w-3.5 text-orange-500 mt-0.5 shrink-0" />
                           <div>
-                            <span className="font-medium">Lead veio de anúncio (CTWA)</span>
-                            <span className="text-muted-foreground"> → obedece <strong>Configurações → Anúncios → Automação CTWA</strong>.</span>
+                            <span className="font-medium">Modo CTWA exclusivo.</span>
+                            <span className="text-muted-foreground"> Filtros de funil/resultado desativados — quem manda é a automação do anúncio.</span>
                           </div>
                         </div>
-                        <div className="flex items-start gap-2 text-[11px]">
-                          <Filter className="h-3.5 w-3.5 text-primary mt-0.5 shrink-0" />
-                          <div>
-                            <span className="font-medium">Lead não veio de anúncio</span>
-                            <span className="text-muted-foreground"> → obedece os filtros abaixo. Vazio = responde sempre.</span>
-                          </div>
-                        </div>
-                      </div>
+                      )}
+
 
                       {/* Funis permitidos — multi-select dropdown */}
                       <div className="space-y-1.5">
