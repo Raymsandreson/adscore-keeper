@@ -266,7 +266,7 @@ export function LeadEditDialog({
   const [groupSearchInstance, setGroupSearchInstance] = useState<string | undefined>(undefined);
   const [clientClassification, setClientClassification] = useState<string>('');
   const [expectedBirthDate, setExpectedBirthDate] = useState('');
-  const [leadOutcome, setLeadOutcome] = useState<'' | 'closed' | 'refused' | 'in_progress' | 'inviavel' | 'cancelled'>('');
+  const [leadOutcome, setLeadOutcome] = useState<'' | 'no_response' | 'closed' | 'refused' | 'in_progress' | 'inviavel' | 'cancelled'>('');
   const [leadOutcomeDate, setLeadOutcomeDate] = useState('');
   const [leadOutcomeReason, setLeadOutcomeReason] = useState('');
   const [isGeneratingReason, setIsGeneratingReason] = useState(false);
@@ -424,7 +424,10 @@ export function LeadEditDialog({
     setLeadOutcomeReason(leadAny.lead_status_reason || '');
     // Use lead_status field as primary source of truth
     const leadStatus = leadAny.lead_status;
-    if (leadStatus === 'closed' || leadAny.became_client_date) {
+    if (leadStatus === 'no_response') {
+      setLeadOutcome('no_response');
+      setLeadOutcomeDate('');
+    } else if (leadStatus === 'closed' || leadAny.became_client_date) {
       setLeadOutcome('closed');
       setLeadOutcomeDate(leadAny.became_client_date || '');
     } else if (leadStatus === 'cancelled' || leadAny.cancelled_date) {
@@ -1201,6 +1204,7 @@ ${scrapeData.content || ''}
           return {};
         })(),
         expected_birth_date: normalizeDateInput(expectedBirthDate),
+        lead_status: leadOutcome || 'active',
         became_client_date: leadOutcome === 'closed' ? (normalizeDateInput(leadOutcomeDate) || new Date().toISOString().slice(0, 10)) : null,
         classification_date: leadOutcome === 'refused' ? (normalizeDateInput(leadOutcomeDate) || new Date().toISOString().slice(0, 10)) : null,
         in_progress_date: leadOutcome === 'in_progress' ? (normalizeDateInput(leadOutcomeDate) || new Date().toISOString().slice(0, 10)) : null,
