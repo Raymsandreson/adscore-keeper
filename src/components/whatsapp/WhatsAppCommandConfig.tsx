@@ -145,6 +145,8 @@ const DEFAULT_FORM: ShortcutFormState = {
 
 
 const LEAD_RESULT_OPTIONS: { value: string; label: string }[] = [
+  { value: 'no_response', label: 'Não respondeu' },
+  { value: 'no_status', label: 'Sem status' },
   { value: 'in_progress', label: 'Em Andamento' },
   { value: 'closed', label: 'Fechado' },
   { value: 'refused', label: 'Recusado' },
