@@ -95,6 +95,9 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
   const getConversationKey = (phone: string, instanceName?: string | null) =>
     `${normalizeWhatsAppConversationPhone(phone)}__${(instanceName || '').trim().toLowerCase()}`;
 
+  const isOpenLeadStatus = (status?: string | null) =>
+    !status || ['no_response', 'in_progress', 'active', 'novo', 'new', 'open'].includes(status);
+
   // Track lead IDs to avoid unnecessary re-fetches
   const prevLeadIdsRef = useRef<string>('');
   
@@ -261,7 +264,7 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
     if (quickFilter === 'shared' && !sharedPhonesAll.has(c.phone)) return false;
     if (quickFilter === 'lead_active') {
       const status = c.lead_id ? leadInfoMap.get(c.lead_id)?.lead_status : null;
-      if (!c.lead_id || !(status === 'active' || status === 'novo' || status == null)) return false;
+      if (!c.lead_id || !isOpenLeadStatus(status)) return false;
     }
     if (quickFilter === 'lead_closed') {
       const status = c.lead_id ? leadInfoMap.get(c.lead_id)?.lead_status : null;
@@ -385,7 +388,7 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
     lead_active: conversations.filter(c => {
       if (!c.lead_id) return false;
       const s = statusOf(c);
-      return s === 'active' || s === 'novo' || s == null;
+      return isOpenLeadStatus(s);
     }).length,
     lead_closed: conversations.filter(c => statusOf(c) === 'closed').length,
     lead_inviavel: conversations.filter(c => statusOf(c) === 'inviavel').length,
