@@ -683,17 +683,20 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       });
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || 'Falha no sync');
-      const ok = (data.results || []).filter((r: any) => r.ok).length;
-      const fail = (data.results || []).filter((r: any) => !r.ok).length;
-      const firstError = (data.results || []).find((r: any) => !r.ok)?.error;
+      const results = (data.results || []) as Array<{ instance_name: string; ok: boolean; action: string; error?: string }>;
+      console.log('[sync-agent-labels] resultado completo:', data);
+      const ok = results.filter(r => r.ok).length;
+      const fail = results.filter(r => !r.ok).length;
+      setResyncResult({ agentName: name, results });
       if (ok === 0 && fail > 0) {
-        throw new Error(firstError || `${fail} instâncias falharam`);
-      }
-      if (fail > 0) {
-        toast.warning(`Etiqueta sincronizada parcialmente: ${ok} ok, ${fail} falha(s)`, { id: t });
+        toast.error(`Nenhuma instância sincronizada (${fail} falhas) — clique pra ver detalhes`, { id: t, duration: 8000, action: { label: 'Ver', onClick: () => setResyncResult(r => r) } });
         return;
       }
-      toast.success(`Etiqueta sincronizada: ${ok} ok`, { id: t });
+      if (fail > 0) {
+        toast.warning(`Parcial: ${ok} ok, ${fail} falha(s) — abrindo detalhes`, { id: t, duration: 5000 });
+        return;
+      }
+      toast.success(`Etiqueta sincronizada em ${ok} instância(s)`, { id: t });
     } catch (e: any) {
       toast.error('Erro: ' + (e?.message || ''), { id: t });
     }
