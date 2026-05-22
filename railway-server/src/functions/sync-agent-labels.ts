@@ -96,7 +96,9 @@ export const handler: RequestHandler = async (req, res) => {
           }
           const r = await uazapiUpdateLabel(baseUrl, inst.instance_token, mapping.label_id, agentName, color);
           if (!r.ok) {
-            results.push({ instance_name: inst.instance_name, ok: false, action: 'update', error: r.disconnected ? 'desconectado' : r.text.slice(0, 200) });
+            const rawErr = `HTTP ${r.status} — ${r.text.slice(0, 300)}`;
+            console.warn(`[sync-agent-labels] update FAIL ${inst.instance_name}: ${rawErr}`);
+            results.push({ instance_name: inst.instance_name, ok: false, action: 'update', error: rawErr });
             continue;
           }
           await ext
@@ -108,7 +110,9 @@ export const handler: RequestHandler = async (req, res) => {
           // CREATE — exatamente igual ao dialog "Nova etiqueta"
           const r = await uazapiCreateLabel(baseUrl, inst.instance_token, agentName, color);
           if (!r.ok) {
-            results.push({ instance_name: inst.instance_name, ok: false, action: 'create', error: r.disconnected ? 'desconectado' : r.text.slice(0, 200) });
+            const rawErr = `HTTP ${r.status} — ${r.text.slice(0, 300)}`;
+            console.warn(`[sync-agent-labels] create FAIL ${inst.instance_name}: ${rawErr}`);
+            results.push({ instance_name: inst.instance_name, ok: false, action: 'create', error: rawErr });
             continue;
           }
           // UazAPI nem sempre devolve o id na resposta; buscar via /labels se faltar
