@@ -1378,12 +1378,12 @@ ${scrapeData.content || ''}
            ctwa_context: (currentLead as any).ctwa_context,
            campaign_id: (currentLead as any).campaign_id,
          }, 'cancelled');
-       } else if (
+        } else if (!leadOutcome && (
          (currentLead as any).became_client_date ||
          (currentLead as any).inviavel_date ||
          (currentLead as any).cancelled_date ||
          ['closed', 'refused', 'inviavel', 'cancelled'].includes((currentLead as any).lead_status)
-       ) {
+        )) {
          await externalSupabase.from('leads').update({ lead_status: 'active' } as any).eq('id', currentLead.id);
        }
 
@@ -2349,6 +2349,18 @@ ${scrapeData.content || ''}
                     )}
                   </div>
                   <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant={leadOutcome === 'no_response' ? 'default' : 'outline'}
+                      size="sm"
+                      className={`flex-1 min-w-[100px] ${leadOutcome === 'no_response' ? 'bg-slate-600 hover:bg-slate-700 text-white' : ''}`}
+                      onClick={() => {
+                        if (leadOutcome === 'no_response') { setLeadOutcome(''); setLeadOutcomeDate(''); }
+                        else { setLeadOutcome('no_response'); setLeadOutcomeDate(''); }
+                      }}
+                    >
+                      <MessageSquare className="h-4 w-4 mr-1" /> Não respondeu
+                    </Button>
                     <Button
                       type="button"
                       variant={leadOutcome === 'in_progress' ? 'default' : 'outline'}
