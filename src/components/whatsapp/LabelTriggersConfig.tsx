@@ -89,11 +89,11 @@ export function LabelTriggersConfig() {
     (async () => {
       const { data: insts } = await db
         .from('whatsapp_instances')
-        .select('instance_name, is_active, review_notification_phone')
+        .select('instance_name, is_active, review_notification_phone' as any)
         .eq('is_active', true)
         .order('instance_name');
-      setInstances((insts as Instance[]) || []);
-      if (insts && insts.length > 0) setSelectedInstance(insts[0].instance_name);
+      setInstances(((insts as unknown) as Instance[]) || []);
+      if (insts && insts.length > 0) setSelectedInstance((insts[0] as any).instance_name);
 
       setLoadingTemplates(true);
       try {
