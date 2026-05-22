@@ -38,6 +38,12 @@ interface Trigger {
   auto_extract_media: boolean;
   message_lookback_count: number;
   enabled: boolean;
+  agent_id: string | null;
+}
+interface Agent {
+  id: string;
+  shortcut_name: string;
+  is_active: boolean;
 }
 
 // Paleta da UazAPI/WhatsApp — `color` é INT (0..19). Mostramos só as 10 cores
@@ -62,6 +68,7 @@ export function LabelTriggersConfig() {
   const [labels, setLabels] = useState<UazLabel[]>([]);
   const [templates, setTemplates] = useState<ZapTemplate[]>([]);
   const [triggers, setTriggers] = useState<Trigger[]>([]);
+  const [agents, setAgents] = useState<Agent[]>([]);
   const [loadingLabels, setLoadingLabels] = useState(false);
   const [loadingTemplates, setLoadingTemplates] = useState(false);
   const [loadingTriggers, setLoadingTriggers] = useState(false);
@@ -74,6 +81,7 @@ export function LabelTriggersConfig() {
   // Form pra adicionar novo gatilho
   const [newLabelId, setNewLabelId] = useState('');
   const [newTemplateId, setNewTemplateId] = useState('');
+  const [newAgentId, setNewAgentId] = useState<string>('none');
   const [newLookback, setNewLookback] = useState(200);
   const [newAutoMedia, setNewAutoMedia] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -117,6 +125,19 @@ export function LabelTriggersConfig() {
         toast.error('Erro carregando templates ZapSign: ' + (e?.message || ''));
       } finally {
         setLoadingTemplates(false);
+      }
+
+      // Carrega agentes (wjia_command_shortcuts) — pra vincular ao gatilho
+      try {
+        const { data: agentsData } = await db
+          .from('wjia_command_shortcuts' as any)
+          .select('id, shortcut_name, is_active')
+          .is('deleted_at', null)
+          .eq('is_active', true)
+          .order('shortcut_name');
+        setAgents(((agentsData as unknown) as Agent[]) || []);
+      } catch (e: any) {
+        console.warn('Erro carregando agentes:', e?.message);
       }
     })();
   }, []);
@@ -268,11 +289,13 @@ export function LabelTriggersConfig() {
         auto_extract_media: newAutoMedia,
         message_lookback_count: newLookback,
         enabled: true,
+        agent_id: newAgentId && newAgentId !== 'none' ? newAgentId : null,
       });
       if (error) throw error;
       toast.success('Gatilho criado!');
       setNewLabelId('');
       setNewTemplateId('');
+      setNewAgentId('none');
       loadTriggers();
     } catch (e: any) {
       toast.error('Erro ao salvar: ' + (e?.message || ''));
@@ -486,6 +509,23 @@ export function LabelTriggersConfig() {
                 </Select>
               </div>
             </div>
+            <div>
+              <Label className="text-xs">🤖 Agente que assume após a etiqueta (opcional)</Label>
+              <Select value={newAgentId} onValueChange={setNewAgentId}>
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="Sem agente — só dispara a procuração" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Sem agente — só dispara a procuração</SelectItem>
+                  {agents.map(a => (
+                    <SelectItem key={a.id} value={a.id}>{a.shortcut_name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-muted-foreground mt-1">
+                Se escolher um agente, ele passa a conduzir a conversa (e dispara a procuração se estiver configurada na aba <strong>Documento</strong> dele).
+              </p>
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div>
                 <Label className="text-xs">Quantas mensagens analisar</Label>
@@ -538,6 +578,14 @@ export function LabelTriggersConfig() {
                         <FileSignature className="h-3 w-3" />
                         {t.zapsign_template_name || t.zapsign_template_id}
                       </Badge>
+                      {t.agent_id && (
+                        <>
+                          <span className="text-xs text-muted-foreground">+</span>
+                          <Badge variant="default" className="gap-1">
+                            🤖 {agents.find(a => a.id === t.agent_id)?.shortcut_name || 'Agente'}
+                          </Badge>
+                        </>
+                      )}
                     </div>
                     <p className="text-[11px] text-muted-foreground mt-1">
                       Analisa últimas {t.message_lookback_count} mensagens
