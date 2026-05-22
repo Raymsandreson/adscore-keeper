@@ -374,7 +374,7 @@ Deno.serve(async (req) => {
                     status: matchedRule.stage_id,
                     contact_id: contactId,
                     source: "zapsign_funnel_rule",
-                    lead_status: "active",
+                    lead_status: "no_response",
                     created_by: createdByUserId,
                   };
                   if (matchedRule.inherit_lead_fields) Object.assign(newLead, leadPatch);
