@@ -17,6 +17,7 @@ import { useWhatsAppInstanceStatus } from '@/hooks/useWhatsAppInstanceStatus';
 interface Instance {
   instance_name: string;
   is_active: boolean | null;
+  review_notification_phone?: string | null;
 }
 interface UazLabel {
   id: string;
