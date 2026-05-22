@@ -38,6 +38,12 @@ interface Trigger {
   auto_extract_media: boolean;
   message_lookback_count: number;
   enabled: boolean;
+  agent_id: string | null;
+}
+interface Agent {
+  id: string;
+  shortcut_name: string;
+  is_active: boolean;
 }
 
 // Paleta da UazAPI/WhatsApp — `color` é INT (0..19). Mostramos só as 10 cores
