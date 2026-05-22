@@ -221,6 +221,23 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
     setVoiceId((data as any)?.voice_id || '');
     setVoiceName((data as any)?.voice_name || '');
 
+    try {
+      const { data: voiceData, error: voiceError } = await cloudFunctions.invoke('elevenlabs-voice-clone', {
+        body: { action: 'list_presets', user_id: member.user_id },
+      });
+
+      if (voiceError) throw voiceError;
+
+      const customVoices = (voiceData?.custom_voices || [])
+        .filter((voice: any) => voice.status === 'ready' && voice.elevenlabs_voice_id)
+        .map((voice: any) => ({ id: voice.elevenlabs_voice_id, name: `🎤 ${voice.name}` }));
+
+      setVoices([...PRESET_VOICES, ...customVoices]);
+    } catch (voiceErr) {
+      console.warn('Member custom voices load failed (using presets only):', voiceErr);
+      setVoices(PRESET_VOICES);
+    }
+
     // Fetch multiple OAB entries
     const { data: oabs } = await supabase
       .from('profile_oab_entries')
