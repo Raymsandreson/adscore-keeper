@@ -685,7 +685,15 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       if (!data?.success) throw new Error(data?.error || 'Falha no sync');
       const ok = (data.results || []).filter((r: any) => r.ok).length;
       const fail = (data.results || []).filter((r: any) => !r.ok).length;
-      toast.success(`Etiqueta sincronizada: ${ok} ok${fail ? `, ${fail} falha(s)` : ''}`, { id: t });
+      const firstError = (data.results || []).find((r: any) => !r.ok)?.error;
+      if (ok === 0 && fail > 0) {
+        throw new Error(firstError || `${fail} instâncias falharam`);
+      }
+      if (fail > 0) {
+        toast.warning(`Etiqueta sincronizada parcialmente: ${ok} ok, ${fail} falha(s)`, { id: t });
+        return;
+      }
+      toast.success(`Etiqueta sincronizada: ${ok} ok`, { id: t });
     } catch (e: any) {
       toast.error('Erro: ' + (e?.message || ''), { id: t });
     }
