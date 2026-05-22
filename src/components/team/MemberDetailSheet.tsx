@@ -130,7 +130,7 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
           { id: 'pFZP5JQG7iQjIQuC4Bku', name: 'Lily' },
           { id: 'SAz9YHcvj6GT2YYXdXww', name: 'River' },
         ]),
-        supabase.from('custom_voices').select('id, name, elevenlabs_voice_id').eq('status', 'ready'),
+        db.from('custom_voices').select('id, name, elevenlabs_voice_id').eq('status', 'ready'),
         supabase.from('access_profiles').select('id, name, description, module_permissions, whatsapp_instance_ids').eq('is_active', true).order('name'),
       ]);
       setInstances(instRes.data || []);
