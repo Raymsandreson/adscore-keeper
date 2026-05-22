@@ -10,7 +10,7 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
   try {
-    const { agent_id, lead_status_board_ids, lead_status_filter } = await req.json();
+    const { agent_id, lead_status_board_ids, lead_status_filter, audience_mode } = await req.json();
 
     if (!agent_id) {
       return new Response(JSON.stringify({ error: 'agent_id is required' }), {
@@ -30,6 +30,10 @@ Deno.serve(async (req) => {
       ? lead_status_filter
       : null;
 
+    // audience_mode: 'ctwa_only' | 'outbound_only' | 'both' (default 'both')
+    const validModes = ['ctwa_only', 'outbound_only', 'both'];
+    const safeMode = validModes.includes(audience_mode) ? audience_mode : 'both';
+
     // Upsert por agent_id (constraint unique já existe)
     const { error } = await supabase
       .from('agent_filter_settings')
@@ -37,8 +41,10 @@ Deno.serve(async (req) => {
         agent_id,
         lead_status_board_ids: boardIds,
         lead_status_filter: statusFilter,
+        audience_mode: safeMode,
         updated_at: new Date().toISOString(),
       }, { onConflict: 'agent_id' });
+
 
     if (error) {
       console.error('Upsert error:', error);

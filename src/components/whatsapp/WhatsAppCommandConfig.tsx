@@ -123,6 +123,7 @@ interface ShortcutFormState {
   notify_instance_name: string | null;
   lead_status_board_ids: string[];
   lead_status_filter: string[];
+  audience_mode: 'ctwa_only' | 'outbound_only' | 'both';
 }
 
 const DEFAULT_FORM: ShortcutFormState = {
@@ -139,8 +140,9 @@ const DEFAULT_FORM: ShortcutFormState = {
   max_tts_chars: 1000, send_window_start_hour: 8, send_window_end_hour: 20,
   send_call_followup_audio: false, zapsign_mode: 'final_document', zapsign_settings: {},
   forward_questions_to_group: false, notify_instance_name: null,
-  lead_status_board_ids: [], lead_status_filter: [],
+  lead_status_board_ids: [], lead_status_filter: [], audience_mode: 'both',
 };
+
 
 const LEAD_RESULT_OPTIONS: { value: string; label: string }[] = [
   { value: 'in_progress', label: 'Em Andamento' },
@@ -521,7 +523,20 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       notify_instance_name: (s as any).notify_instance_name || null,
       lead_status_board_ids: (s as any).lead_status_board_ids || [],
       lead_status_filter: (s as any).lead_status_filter || [],
+      audience_mode: (s as any).audience_mode || 'both',
     });
+    // Carrega audience_mode do Cloud (agent_filter_settings) — sobrescreve se existir registro
+    supabase
+      .from('agent_filter_settings' as any)
+      .select('audience_mode')
+      .eq('agent_id', s.id)
+      .maybeSingle()
+      .then(({ data }: any) => {
+        if (data?.audience_mode) {
+          setForm(f => ({ ...f, audience_mode: data.audience_mode }));
+        }
+      });
+
     setFollowupSteps(s.followup_steps || []);
     setHumanReplyPauseMinutes(s.human_reply_pause_minutes ?? 0);
     setFollowupRepeatForever((s as any).followup_repeat_forever ?? false);
@@ -617,8 +632,10 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
             agent_id: savedAgentId,
             lead_status_board_ids: form.lead_status_board_ids || [],
             lead_status_filter: form.lead_status_filter || [],
+            audience_mode: form.audience_mode || 'both',
           },
         });
+
       } catch (e) {
         console.error('Failed to save agent filters:', e);
         toast.error('Agente salvo, mas filtros de funil/resultado não foram persistidos.');
@@ -859,35 +876,81 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                       : [...f.lead_status_filter, v],
                   }));
 
+                  const audienceModes = [
+                    {
+                      value: 'ctwa_only' as const,
+                      label: 'Só anúncio (CTWA)',
+                      icon: <Megaphone className="h-4 w-4" />,
+                      desc: 'Atende somente leads que clicaram em anúncio. Obedece Configurações → Anúncios → Automação CTWA.',
+                      color: 'border-orange-500/40 bg-orange-500/5',
+                      activeColor: 'border-orange-500 bg-orange-500/10 ring-2 ring-orange-500/30',
+                    },
+                    {
+                      value: 'outbound_only' as const,
+                      label: 'Só manual/outbound',
+                      icon: <Filter className="h-4 w-4" />,
+                      desc: 'Atende somente leads de entrada manual, indicação ou contato direto. Obedece os filtros abaixo.',
+                      color: 'border-primary/40 bg-primary/5',
+                      activeColor: 'border-primary bg-primary/10 ring-2 ring-primary/30',
+                    },
+                    {
+                      value: 'both' as const,
+                      label: 'Ambos',
+                      icon: <Bot className="h-4 w-4" />,
+                      desc: 'Lead de anúncio → obedece CTWA. Lead manual → obedece os filtros abaixo.',
+                      color: 'border-violet-500/40 bg-violet-500/5',
+                      activeColor: 'border-violet-500 bg-violet-500/10 ring-2 ring-violet-500/30',
+                    },
+                  ];
+
                   return (
                     <div className="space-y-3 border rounded-lg p-4 bg-muted/30">
                       <div className="space-y-1.5">
                         <Label className="text-sm font-semibold flex items-center gap-1.5">
                           <Filter className="h-4 w-4" />
-                          Quando esse agente deve responder
+                          Quem esse agente atende
                         </Label>
                         <p className="text-[11px] text-muted-foreground leading-relaxed">
-                          Esses filtros funcionam como <strong>fallback</strong>: valem apenas para leads que <strong>não vieram de anúncio</strong> (entrada manual, indicação, contato direto etc.).
+                          Escolha de onde vêm os leads que esse agente vai responder.
                         </p>
                       </div>
 
-                      {/* Caixa de prioridade — explicação visual */}
-                      <div className="rounded-md border bg-background/60 p-2.5 space-y-1.5">
-                        <div className="flex items-start gap-2 text-[11px]">
+                      {/* Seletor de modo de público — 3 botões grandes */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        {audienceModes.map(mode => {
+                          const active = form.audience_mode === mode.value;
+                          return (
+                            <button
+                              key={mode.value}
+                              type="button"
+                              onClick={() => setForm(f => ({ ...f, audience_mode: mode.value }))}
+                              className={cn(
+                                'text-left rounded-md border-2 p-2.5 transition-all',
+                                active ? mode.activeColor : `${mode.color} hover:bg-accent/50`
+                              )}
+                            >
+                              <div className="flex items-center gap-1.5 text-xs font-semibold mb-1">
+                                {mode.icon}
+                                {mode.label}
+                              </div>
+                              <p className="text-[10px] text-muted-foreground leading-snug">{mode.desc}</p>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Aviso quando ctwa_only */}
+                      {form.audience_mode === 'ctwa_only' && (
+                        <div className="rounded-md border border-orange-500/30 bg-orange-500/5 p-2.5 flex items-start gap-2 text-[11px]">
                           <Megaphone className="h-3.5 w-3.5 text-orange-500 mt-0.5 shrink-0" />
                           <div>
-                            <span className="font-medium">Lead veio de anúncio (CTWA)</span>
-                            <span className="text-muted-foreground"> → obedece <strong>Configurações → Anúncios → Automação CTWA</strong>.</span>
+                            <span className="font-medium">Modo CTWA exclusivo.</span>
+                            <span className="text-muted-foreground"> Filtros de funil/resultado desativados — quem manda é a automação do anúncio.</span>
                           </div>
                         </div>
-                        <div className="flex items-start gap-2 text-[11px]">
-                          <Filter className="h-3.5 w-3.5 text-primary mt-0.5 shrink-0" />
-                          <div>
-                            <span className="font-medium">Lead não veio de anúncio</span>
-                            <span className="text-muted-foreground"> → obedece os filtros abaixo. Vazio = responde sempre.</span>
-                          </div>
-                        </div>
-                      </div>
+                      )}
+
+                      {form.audience_mode !== 'ctwa_only' && (<>
 
                       {/* Funis permitidos — multi-select dropdown */}
                       <div className="space-y-1.5">
@@ -994,8 +1057,10 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                           </PopoverContent>
                         </Popover>
                       </div>
+                      </>)}
 
                       <div className="border-t pt-2.5 space-y-2">
+
                         <Button
                           type="button"
                           variant="outline"

@@ -476,6 +476,7 @@ export type Database = {
       agent_filter_settings: {
         Row: {
           agent_id: string
+          audience_mode: string
           created_at: string
           id: string
           lead_status_board_ids: string[] | null
@@ -484,6 +485,7 @@ export type Database = {
         }
         Insert: {
           agent_id: string
+          audience_mode?: string
           created_at?: string
           id?: string
           lead_status_board_ids?: string[] | null
@@ -492,6 +494,7 @@ export type Database = {
         }
         Update: {
           agent_id?: string
+          audience_mode?: string
           created_at?: string
           id?: string
           lead_status_board_ids?: string[] | null
