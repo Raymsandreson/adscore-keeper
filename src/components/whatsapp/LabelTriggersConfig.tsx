@@ -366,6 +366,40 @@ export function LabelTriggersConfig() {
           </div>
 
           {selectedInstance && (
+            <div className="rounded-md border p-3 bg-muted/20 space-y-2">
+              <Label className="text-xs font-medium flex items-center gap-1.5">
+                📱 Telefone do operador (revisão da procuração)
+              </Label>
+              <p className="text-[11px] text-muted-foreground leading-snug">
+                Quando essa instância dispara uma etiqueta-gatilho, o link de revisão é enviado
+                via WhatsApp pra este número. Cai como notificação normal do WhatsApp (aparece
+                sobre o app aberto), o operador toca, revisa e confirma o envio ao cliente.
+                Use DDD + número (ex: 11999998888).
+              </p>
+              <div className="flex gap-2">
+                <Input
+                  value={reviewPhone}
+                  onChange={(e) => { setReviewPhone(e.target.value); setReviewPhoneSavedAt(null); }}
+                  placeholder="11999998888"
+                  inputMode="numeric"
+                  className="flex-1"
+                />
+                <Button
+                  size="sm"
+                  onClick={saveReviewPhone}
+                  disabled={reviewPhoneSaving}
+                  variant={reviewPhoneSavedAt ? 'secondary' : 'default'}
+                >
+                  {reviewPhoneSaving ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : reviewPhoneSavedAt ? '✓ Salvo' : 'Salvar'}
+                </Button>
+              </div>
+            </div>
+          )}
+
+
+          {selectedInstance && (
             <>
               <Separator />
               <div className="flex items-center justify-between flex-wrap gap-2">
