@@ -55,9 +55,9 @@ export const handler: RequestHandler = async (req, res) => {
     const { data: instances, error: instErr } = await ext
       .from('whatsapp_instances')
       .select('instance_name, instance_token, base_url')
-      .not('instance_token', 'is', null)
-      .is('deleted_at', null);
+      .not('instance_token', 'is', null);
     if (instErr) return res.json({ success: false, error: `instances lookup: ${instErr.message}` });
+
 
     // 3. Lista mapeamentos existentes do agente
     const { data: existingMappings } = await ext
