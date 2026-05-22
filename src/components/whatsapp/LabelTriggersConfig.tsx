@@ -78,6 +78,11 @@ export function LabelTriggersConfig() {
   const [newAutoMedia, setNewAutoMedia] = useState(true);
   const [saving, setSaving] = useState(false);
 
+  // Telefone do operador que recebe a notificação de revisão (por instância)
+  const [reviewPhone, setReviewPhone] = useState('');
+  const [reviewPhoneSaving, setReviewPhoneSaving] = useState(false);
+  const [reviewPhoneSavedAt, setReviewPhoneSavedAt] = useState<number | null>(null);
+
   // Dialog de criar/editar etiqueta
   const [labelDialogOpen, setLabelDialogOpen] = useState(false);
   const [editingLabel, setEditingLabel] = useState<UazLabel | null>(null);
