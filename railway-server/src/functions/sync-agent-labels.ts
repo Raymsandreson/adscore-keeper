@@ -14,8 +14,10 @@ import {
   uazapiFindLabelByName,
 } from '../lib/uazapi-labels';
 
-const COLOR_ACTIVE = 5;   // verde (paleta Meta — bate com swatch "Verde" do dialog)
-const COLOR_INACTIVE = 10; // cinza
+// Paleta UazAPI/Meta (0..9): 0 Vermelho, 1 Laranja, 2 Amarelo, 3 Verde,
+// 4 Ciano, 5 Azul, 6 Lilás, 7 Roxo, 8 Rosa, 9 Cinza.
+const COLOR_ACTIVE = 3;   // verde
+const COLOR_INACTIVE = 9; // cinza
 
 export const handler: RequestHandler = async (req, res) => {
   try {
