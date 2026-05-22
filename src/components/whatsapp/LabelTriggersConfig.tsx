@@ -509,6 +509,23 @@ export function LabelTriggersConfig() {
                 </Select>
               </div>
             </div>
+            <div>
+              <Label className="text-xs">🤖 Agente que assume após a etiqueta (opcional)</Label>
+              <Select value={newAgentId} onValueChange={setNewAgentId}>
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="Sem agente — só dispara a procuração" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Sem agente — só dispara a procuração</SelectItem>
+                  {agents.map(a => (
+                    <SelectItem key={a.id} value={a.id}>{a.shortcut_name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-muted-foreground mt-1">
+                Se escolher um agente, ele passa a conduzir a conversa (e dispara a procuração se estiver configurada na aba <strong>Documento</strong> dele).
+              </p>
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div>
                 <Label className="text-xs">Quantas mensagens analisar</Label>
