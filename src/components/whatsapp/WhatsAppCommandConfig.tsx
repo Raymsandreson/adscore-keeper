@@ -308,6 +308,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
     willRespond: boolean;
     reason: string;
   } | null>(null);
+  const [resyncResult, setResyncResult] = useState<{ agentName: string; results: Array<{ instance_name: string; ok: boolean; action: string; error?: string }> } | null>(null);
 
   useEffect(() => {
     const fetchInstances = async () => {
