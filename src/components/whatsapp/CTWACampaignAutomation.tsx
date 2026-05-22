@@ -78,6 +78,9 @@ interface ConversationInfo {
 type ConvResponseFilter = 'all' | 'responded' | 'waiting';
 type ConvLeadFilter = 'all' | 'has_lead' | 'no_lead' | 'closed' | 'refused' | 'funnel';
 
+const isOpenLeadStatus = (status?: string | null) =>
+  !status || ['no_response', 'in_progress', 'active', 'novo', 'new', 'open'].includes(status);
+
 export function CTWACampaignAutomation() {
   const [links, setLinks] = useState<CampaignLink[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -414,7 +417,7 @@ export function CTWACampaignAutomation() {
       const leadMap = new Map<string, { name: string; status: string }>();
       (leads || []).forEach((l: any) => {
         const norm = l.lead_phone?.replace(/\D/g, '');
-        if (norm) leadMap.set(norm, { name: l.lead_name, status: l.lead_status || 'active' });
+        if (norm) leadMap.set(norm, { name: l.lead_name, status: l.lead_status || 'no_response' });
       });
 
       // Check contacts
@@ -578,7 +581,7 @@ export function CTWACampaignAutomation() {
       if (convResponseFilter === 'waiting' && conv.was_responded) return false;
       if (convLeadFilter === 'has_lead' && !conv.has_lead) return false;
       if (convLeadFilter === 'no_lead' && conv.has_lead) return false;
-      if (convLeadFilter === 'funnel' && !(conv.has_lead && conv.lead_status === 'active')) return false;
+      if (convLeadFilter === 'funnel' && !(conv.has_lead && isOpenLeadStatus(conv.lead_status))) return false;
       if (convLeadFilter === 'closed' && !(conv.has_lead && conv.lead_status === 'closed')) return false;
       if (convLeadFilter === 'refused' && !(conv.has_lead && conv.lead_status === 'refused')) return false;
       return true;
@@ -1785,7 +1788,7 @@ export function CTWACampaignAutomation() {
                 const count = f.key === 'all' ? convs.length :
                   f.key === 'has_lead' ? convs.filter(c => c.has_lead).length :
                   f.key === 'no_lead' ? convs.filter(c => !c.has_lead).length :
-                  f.key === 'funnel' ? convs.filter(c => c.has_lead && c.lead_status === 'active').length :
+                  f.key === 'funnel' ? convs.filter(c => c.has_lead && isOpenLeadStatus(c.lead_status)).length :
                   f.key === 'closed' ? convs.filter(c => c.has_lead && c.lead_status === 'closed').length :
                   convs.filter(c => c.has_lead && c.lead_status === 'refused').length;
                 return (
@@ -1875,7 +1878,7 @@ export function CTWACampaignAutomation() {
                       if (convResponseFilter === 'waiting' && conv.was_responded) return false;
                       if (convLeadFilter === 'has_lead' && !conv.has_lead) return false;
                       if (convLeadFilter === 'no_lead' && conv.has_lead) return false;
-                      if (convLeadFilter === 'funnel' && !(conv.has_lead && conv.lead_status === 'active')) return false;
+                      if (convLeadFilter === 'funnel' && !(conv.has_lead && isOpenLeadStatus(conv.lead_status))) return false;
                       if (convLeadFilter === 'closed' && !(conv.has_lead && conv.lead_status === 'closed')) return false;
                       if (convLeadFilter === 'refused' && !(conv.has_lead && conv.lead_status === 'refused')) return false;
                       if (dateFrom && conv.first_message_at) {
@@ -1909,7 +1912,7 @@ export function CTWACampaignAutomation() {
                     if (convResponseFilter === 'waiting' && conv.was_responded) return false;
                     if (convLeadFilter === 'has_lead' && !conv.has_lead) return false;
                     if (convLeadFilter === 'no_lead' && conv.has_lead) return false;
-                    if (convLeadFilter === 'funnel' && !(conv.has_lead && conv.lead_status === 'active')) return false;
+                    if (convLeadFilter === 'funnel' && !(conv.has_lead && isOpenLeadStatus(conv.lead_status))) return false;
                     if (convLeadFilter === 'closed' && !(conv.has_lead && conv.lead_status === 'closed')) return false;
                     if (convLeadFilter === 'refused' && !(conv.has_lead && conv.lead_status === 'refused')) return false;
                     if (dateFrom && conv.first_message_at) {
@@ -1949,7 +1952,7 @@ export function CTWACampaignAutomation() {
                             <p className="text-sm font-medium truncate">{displayName}</p>
                             {conv.has_lead && conv.lead_status === 'closed' && <Badge variant="default" className="text-[8px] px-1 py-0 h-3.5 shrink-0 bg-emerald-600">Fechado</Badge>}
                             {conv.has_lead && conv.lead_status === 'refused' && <Badge variant="destructive" className="text-[8px] px-1 py-0 h-3.5 shrink-0">Recusado</Badge>}
-                            {conv.has_lead && conv.lead_status === 'active' && <Badge variant="default" className="text-[8px] px-1 py-0 h-3.5 shrink-0">Lead</Badge>}
+                            {conv.has_lead && isOpenLeadStatus(conv.lead_status) && <Badge variant="default" className="text-[8px] px-1 py-0 h-3.5 shrink-0">Lead</Badge>}
                             {conv.has_contact && !conv.has_lead && <Badge variant="secondary" className="text-[8px] px-1 py-0 h-3.5 shrink-0">Contato</Badge>}
                             {!conv.has_lead && !conv.has_contact && <Badge variant="outline" className="text-[8px] px-1 py-0 h-3.5 shrink-0 text-muted-foreground">Sem vínculo</Badge>}
                           </div>

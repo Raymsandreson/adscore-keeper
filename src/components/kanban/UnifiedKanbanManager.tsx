@@ -671,7 +671,7 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
               // of its board, otherwise the card stays visually in the "Fechados" column because the
               // Kanban groups by `status` (stage), not by `lead_status`.
               const updatePayload: any = { lead_status: newStatus };
-              if (newStatus === 'active') {
+              if (newStatus === 'no_response' || newStatus === 'active') {
                 // Resolve target board (lead might be on a different board than the currently selected one)
                 const targetBoard =
                   boards.find(b => b.id === currentLead?.board_id) || selectedBoard;
@@ -690,7 +690,7 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
               // Record in lead_stage_history so productivity metrics track it
               await externalSupabase.from('lead_stage_history').insert({
                 lead_id: leadId,
-                from_stage: (currentLead as any)?.lead_status || 'active',
+                from_stage: (currentLead as any)?.lead_status || 'no_response',
                 to_stage: newStatus,
                 from_board_id: currentLead?.board_id || selectedBoardId,
                 to_board_id: currentLead?.board_id || selectedBoardId,
@@ -701,7 +701,7 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
               // Record in lead_status_history
               await supabase.from('lead_status_history' as any).insert({
                 lead_id: leadId,
-                from_status: (currentLead as any)?.lead_status || 'active',
+                from_status: (currentLead as any)?.lead_status || 'no_response',
                 to_status: newStatus,
                 changed_by: user?.id || null,
                 changed_by_type: 'manual',

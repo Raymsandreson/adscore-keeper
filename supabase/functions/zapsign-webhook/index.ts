@@ -1021,7 +1021,7 @@ Deno.serve(async (req) => {
                 lead_email: extractedData.lead_email || null,
                 board_id: boardId,
                 status: leadStatus,
-                lead_status: 'active',
+                lead_status: 'no_response',
                 source: 'zapsign',
                 city: extractedData.city || null,
                 state: extractedData.state || null,

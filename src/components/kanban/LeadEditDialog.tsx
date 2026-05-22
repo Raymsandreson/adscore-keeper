@@ -1204,7 +1204,7 @@ ${scrapeData.content || ''}
           return {};
         })(),
         expected_birth_date: normalizeDateInput(expectedBirthDate),
-        lead_status: leadOutcome || 'active',
+        lead_status: leadOutcome || 'no_response',
         became_client_date: leadOutcome === 'closed' ? (normalizeDateInput(leadOutcomeDate) || new Date().toISOString().slice(0, 10)) : null,
         classification_date: leadOutcome === 'refused' ? (normalizeDateInput(leadOutcomeDate) || new Date().toISOString().slice(0, 10)) : null,
         in_progress_date: leadOutcome === 'in_progress' ? (normalizeDateInput(leadOutcomeDate) || new Date().toISOString().slice(0, 10)) : null,
@@ -1221,7 +1221,7 @@ ${scrapeData.content || ''}
        }
 
       // Save status history if outcome changed
-       const previousOutcome = (currentLead as any).became_client_date ? 'closed' : (currentLead as any).cancelled_date ? 'cancelled' : (currentLead as any).inviavel_date ? 'inviavel' : (currentLead as any).classification_date ? 'refused' : (currentLead as any).in_progress_date ? 'in_progress' : 'active';
+       const previousOutcome = (currentLead as any).became_client_date ? 'closed' : (currentLead as any).cancelled_date ? 'cancelled' : (currentLead as any).inviavel_date ? 'inviavel' : (currentLead as any).classification_date ? 'refused' : (currentLead as any).in_progress_date ? 'in_progress' : ((currentLead as any).lead_status || 'no_response');
        if (leadOutcome && leadOutcome !== previousOutcome) {
          const { data: { user } } = await supabase.auth.getUser();
          await supabase.from('lead_status_history' as any).insert({

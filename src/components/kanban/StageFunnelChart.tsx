@@ -40,6 +40,8 @@ export function StageFunnelChart({ board, leadsPerStage, conversionAlerts = [] }
         .select('lead_status, is_blocked')
         .eq('board_id', board.id);
       if (error) throw error;
+      const isOpenLeadStatus = (status?: string | null) =>
+        !status || ['no_response', 'in_progress', 'active', 'novo', 'new', 'open'].includes(status);
       const counts = { closed: 0, refused: 0, inviavel: 0, cancelled: 0, blocked: 0, active: 0 };
       for (const l of data || []) {
         if ((l as any).is_blocked) { counts.blocked++; continue; }
@@ -47,7 +49,7 @@ export function StageFunnelChart({ board, leadsPerStage, conversionAlerts = [] }
         else if (l.lead_status === 'refused') counts.refused++;
         else if (l.lead_status === 'inviavel') counts.inviavel++;
         else if ((l as any).lead_status === 'cancelled') counts.cancelled++;
-        else if (l.lead_status === 'active' || !l.lead_status) counts.active++;
+        else if (isOpenLeadStatus(l.lead_status)) counts.active++;
       }
       return counts;
     },
@@ -68,7 +70,7 @@ export function StageFunnelChart({ board, leadsPerStage, conversionAlerts = [] }
       } else if (activeFilter === 'blocked') {
         query = query.eq('is_blocked', true);
       } else if (activeFilter === 'active') {
-        query = query.or('lead_status.eq.active,lead_status.is.null').eq('is_blocked', false);
+        query = query.in('lead_status', ['no_response', 'in_progress', 'active', 'novo', 'new', 'open']).eq('is_blocked', false);
       } else if (activeFilter) {
         query = query.eq('lead_status', activeFilter);
       }
