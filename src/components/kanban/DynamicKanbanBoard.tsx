@@ -264,8 +264,11 @@ export function DynamicKanbanBoard({
     fetchStageEntries();
   }, [leads]);
 
+  const isOpenLeadStatus = (status?: string | null) =>
+    !status || ['no_response', 'in_progress', 'active', 'novo', 'new', 'open'].includes(status);
+
   // Separate leads by business status
-  const activeLeads = useMemo(() => leads.filter(l => (l as any).lead_status === 'active' || !(l as any).lead_status), [leads]);
+  const activeLeads = useMemo(() => leads.filter(l => isOpenLeadStatus((l as any).lead_status)), [leads]);
   const closedLeads = useMemo(() => leads.filter(l => (l as any).lead_status === 'closed'), [leads]);
   const refusedLeads = useMemo(() => leads.filter(l => (l as any).lead_status === 'refused'), [leads]);
   const inviavelLeads = useMemo(() => leads.filter(l => (l as any).lead_status === 'inviavel'), [leads]);
@@ -762,7 +765,7 @@ export function DynamicKanbanBoard({
                                         )}
 
                                         {/* Quick actions: Fechado / Recusado / Inviável (status-based) */}
-                                        {onChangeLeadStatus && ((lead as any).lead_status === 'active' || !(lead as any).lead_status) && (
+                                        {onChangeLeadStatus && isOpenLeadStatus((lead as any).lead_status) && (
                                           <>
                                             <DropdownMenuSeparator />
                                             <DropdownMenuItem
