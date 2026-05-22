@@ -39,24 +39,25 @@ export const handler: RequestHandler = async (req, res) => {
     // 1. Carrega agente
     const { data: agent, error: agentErr } = await ext
       .from('wjia_command_shortcuts')
-      .select('id, shortcut_name, is_active, deleted_at')
+      .select('id, shortcut_name, is_active')
       .eq('id', agent_id)
       .maybeSingle();
     if (agentErr) return res.json({ success: false, error: `agent lookup: ${agentErr.message}` });
     if (!agent) return res.json({ success: false, error: `agent ${agent_id} not found` });
 
     const agentName: string = (agent as any).shortcut_name || '';
-    const isActive: boolean = !!(agent as any).is_active && !(agent as any).deleted_at;
-    const effectiveOp = operation === 'delete' || (agent as any).deleted_at ? 'delete' : 'upsert';
+    const isActive: boolean = !!(agent as any).is_active;
+    const effectiveOp = operation === 'delete' ? 'delete' : 'upsert';
     const color = isActive ? COLOR_ACTIVE : COLOR_INACTIVE;
+
 
     // 2. Lista instâncias UazAPI ativas (tem token)
     const { data: instances, error: instErr } = await ext
       .from('whatsapp_instances')
       .select('instance_name, instance_token, base_url')
-      .not('instance_token', 'is', null)
-      .is('deleted_at', null);
+      .not('instance_token', 'is', null);
     if (instErr) return res.json({ success: false, error: `instances lookup: ${instErr.message}` });
+
 
     // 3. Lista mapeamentos existentes do agente
     const { data: existingMappings } = await ext
