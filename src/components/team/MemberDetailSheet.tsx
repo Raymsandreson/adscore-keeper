@@ -223,8 +223,9 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
 
     try {
       const { data: voiceData, error: voiceError } = await cloudFunctions.invoke('elevenlabs-voice-clone', {
-        body: { action: 'list_presets', user_id: member.user_id },
+        body: { action: 'list_presets', user_id: member.user_id, all_voices: true },
       });
+
 
       if (voiceError) throw voiceError;
 

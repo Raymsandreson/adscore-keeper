@@ -47,12 +47,19 @@ serve(async (req) => {
         { id: "XrExE9yKIg1WjnnlVkGX", name: "Matilda", gender: "female", lang: "en" },
       ];
 
-      // Also fetch user's custom voices
-      const { data: customVoices } = await supabase
+      // Fetch custom voices: all ready ones if `all_voices` is true, otherwise just the user's
+      const { all_voices } = body;
+      let voicesQuery = supabase
         .from("custom_voices")
         .select("*")
-        .eq("user_id", userId)
         .order("created_at", { ascending: false });
+      if (all_voices) {
+        voicesQuery = voicesQuery.eq("status", "ready");
+      } else {
+        voicesQuery = voicesQuery.eq("user_id", userId);
+      }
+      const { data: customVoices } = await voicesQuery;
+
 
       // Get user's current preference
       const { data: pref } = await supabase
