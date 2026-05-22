@@ -77,7 +77,7 @@ interface DynamicKanbanBoardProps {
   onEditLead?: (lead: Lead) => void;
   onManageContacts?: (lead: Lead) => void;
   availableBoards?: KanbanBoard[];
-  onChangeLeadStatus?: (leadId: string, newStatus: 'active' | 'closed' | 'refused' | 'inviavel' | 'cancelled') => void;
+  onChangeLeadStatus?: (leadId: string, newStatus: 'no_response' | 'active' | 'closed' | 'refused' | 'inviavel' | 'cancelled') => void;
 }
 
 export function DynamicKanbanBoard({
@@ -1084,7 +1084,7 @@ export function DynamicKanbanBoard({
                                     </Button>
                                   </DropdownMenuTrigger>
                                   <DropdownMenuContent align="end">
-                                    <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onChangeLeadStatus(lead.id, 'active'); }}>
+                                    <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onChangeLeadStatus(lead.id, 'no_response'); }}>
                                       <ArrowRightLeft className="h-3 w-3 mr-2" />
                                       Voltar para Em Andamento
                                     </DropdownMenuItem>
