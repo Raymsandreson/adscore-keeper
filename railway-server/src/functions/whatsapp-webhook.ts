@@ -778,7 +778,7 @@ export const handler: RequestHandler = async (req, res) => {
         // Busca gatilhos ativos pra essa instância
         const { data: triggers } = await supabase
           .from('label_document_triggers')
-          .select('id, label_id, label_name, zapsign_template_id')
+          .select('id, label_id, label_name, zapsign_template_id, agent_id')
           .ilike('instance_name', webhookInstanceName)
           .eq('enabled', true)
           .is('deleted_at', null);
