@@ -126,6 +126,19 @@ export function LabelTriggersConfig() {
       } finally {
         setLoadingTemplates(false);
       }
+
+      // Carrega agentes (wjia_command_shortcuts) — pra vincular ao gatilho
+      try {
+        const { data: agentsData } = await db
+          .from('wjia_command_shortcuts' as any)
+          .select('id, shortcut_name, is_active')
+          .is('deleted_at', null)
+          .eq('is_active', true)
+          .order('shortcut_name');
+        setAgents(((agentsData as unknown) as Agent[]) || []);
+      } catch (e: any) {
+        console.warn('Erro carregando agentes:', e?.message);
+      }
     })();
   }, []);
 
