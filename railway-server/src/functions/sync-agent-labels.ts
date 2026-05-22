@@ -26,6 +26,27 @@ async function callUazapi(baseUrl: string, token: string, body: any): Promise<{ 
   return { ok: r.ok, data, status: r.status, text };
 }
 
+async function findUazapiLabelByName(baseUrl: string, token: string, labelName: string): Promise<{ id: string; name: string; color: number | null } | null> {
+  const r = await fetch(`${baseUrl.replace(/\/$/, '')}/labels`, {
+    method: 'GET',
+    headers: { token },
+  });
+  if (!r.ok) return null;
+
+  const data: any = await r.json().catch(() => null);
+  const labels: any[] = Array.isArray(data) ? data : (data?.labels || []);
+  const normalizedName = labelName.trim().toLowerCase();
+  const matches = labels
+    .map((l: any) => ({
+      id: String(l.id ?? l.labelId ?? l.labelid ?? ''),
+      name: String(l.name ?? l.label ?? ''),
+      color: typeof l.color === 'number' ? l.color : null,
+    }))
+    .filter((l) => l.id && l.name.trim().toLowerCase() === normalizedName);
+
+  return matches[matches.length - 1] || null;
+}
+
 export const handler: RequestHandler = async (req, res) => {
   try {
     const { agent_id, operation } = (req.body || {}) as { agent_id?: string; operation?: 'upsert' | 'delete' };
@@ -125,6 +146,26 @@ export const handler: RequestHandler = async (req, res) => {
           results.push({ instance_name: inst.instance_name, ok: true, action: 'update' });
         } else {
           // Criar
+          const found = await findUazapiLabelByName(baseUrl, inst.instance_token, agentName);
+          if (found) {
+            await ext
+              .from('agent_instance_labels')
+              .upsert({
+                agent_id,
+                instance_name: inst.instance_name,
+                label_id: found.id,
+                label_name: agentName,
+                color,
+                updated_at: new Date().toISOString(),
+                deleted_at: null,
+              } as any, { onConflict: 'agent_id,instance_name' });
+            if (found.color !== color) {
+              await callUazapi(baseUrl, inst.instance_token, { labelid: found.id, name: agentName, color });
+            }
+            results.push({ instance_name: inst.instance_name, ok: true, action: 'adopt-existing' });
+            continue;
+          }
+
           const r = await callUazapi(baseUrl, inst.instance_token, {
             labelid: 'new',
             name: agentName,
@@ -138,14 +179,15 @@ export const handler: RequestHandler = async (req, res) => {
           const newId = String(
             r.data?.label?.id ?? r.data?.label?.labelid ?? r.data?.id ?? r.data?.labelid ?? '',
           );
-          if (!newId) {
+          const resolvedId = newId || (await findUazapiLabelByName(baseUrl, inst.instance_token, agentName))?.id || '';
+          if (!resolvedId) {
             results.push({ instance_name: inst.instance_name, ok: false, action: 'create', error: 'no label_id in response' });
             continue;
           }
           const upsertPayload = {
             agent_id,
             instance_name: inst.instance_name,
-            label_id: newId,
+            label_id: resolvedId,
             label_name: agentName,
             color,
             updated_at: new Date().toISOString(),
