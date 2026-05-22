@@ -266,7 +266,7 @@ export function LeadEditDialog({
   const [groupSearchInstance, setGroupSearchInstance] = useState<string | undefined>(undefined);
   const [clientClassification, setClientClassification] = useState<string>('');
   const [expectedBirthDate, setExpectedBirthDate] = useState('');
-  const [leadOutcome, setLeadOutcome] = useState<'' | 'closed' | 'refused' | 'in_progress' | 'inviavel' | 'cancelled'>('');
+  const [leadOutcome, setLeadOutcome] = useState<'' | 'no_response' | 'closed' | 'refused' | 'in_progress' | 'inviavel' | 'cancelled'>('');
   const [leadOutcomeDate, setLeadOutcomeDate] = useState('');
   const [leadOutcomeReason, setLeadOutcomeReason] = useState('');
   const [isGeneratingReason, setIsGeneratingReason] = useState(false);
@@ -424,7 +424,10 @@ export function LeadEditDialog({
     setLeadOutcomeReason(leadAny.lead_status_reason || '');
     // Use lead_status field as primary source of truth
     const leadStatus = leadAny.lead_status;
-    if (leadStatus === 'closed' || leadAny.became_client_date) {
+    if (leadStatus === 'no_response') {
+      setLeadOutcome('no_response');
+      setLeadOutcomeDate('');
+    } else if (leadStatus === 'closed' || leadAny.became_client_date) {
       setLeadOutcome('closed');
       setLeadOutcomeDate(leadAny.became_client_date || '');
     } else if (leadStatus === 'cancelled' || leadAny.cancelled_date) {
@@ -1201,6 +1204,7 @@ ${scrapeData.content || ''}
           return {};
         })(),
         expected_birth_date: normalizeDateInput(expectedBirthDate),
+        lead_status: leadOutcome || 'active',
         became_client_date: leadOutcome === 'closed' ? (normalizeDateInput(leadOutcomeDate) || new Date().toISOString().slice(0, 10)) : null,
         classification_date: leadOutcome === 'refused' ? (normalizeDateInput(leadOutcomeDate) || new Date().toISOString().slice(0, 10)) : null,
         in_progress_date: leadOutcome === 'in_progress' ? (normalizeDateInput(leadOutcomeDate) || new Date().toISOString().slice(0, 10)) : null,
@@ -1374,12 +1378,12 @@ ${scrapeData.content || ''}
            ctwa_context: (currentLead as any).ctwa_context,
            campaign_id: (currentLead as any).campaign_id,
          }, 'cancelled');
-       } else if (
+        } else if (!leadOutcome && (
          (currentLead as any).became_client_date ||
          (currentLead as any).inviavel_date ||
          (currentLead as any).cancelled_date ||
          ['closed', 'refused', 'inviavel', 'cancelled'].includes((currentLead as any).lead_status)
-       ) {
+        )) {
          await externalSupabase.from('leads').update({ lead_status: 'active' } as any).eq('id', currentLead.id);
        }
 
@@ -2345,6 +2349,18 @@ ${scrapeData.content || ''}
                     )}
                   </div>
                   <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant={leadOutcome === 'no_response' ? 'default' : 'outline'}
+                      size="sm"
+                      className={`flex-1 min-w-[100px] ${leadOutcome === 'no_response' ? 'bg-slate-600 hover:bg-slate-700 text-white' : ''}`}
+                      onClick={() => {
+                        if (leadOutcome === 'no_response') { setLeadOutcome(''); setLeadOutcomeDate(''); }
+                        else { setLeadOutcome('no_response'); setLeadOutcomeDate(''); }
+                      }}
+                    >
+                      <MessageSquare className="h-4 w-4 mr-1" /> Não respondeu
+                    </Button>
                     <Button
                       type="button"
                       variant={leadOutcome === 'in_progress' ? 'default' : 'outline'}
