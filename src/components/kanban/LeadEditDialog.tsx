@@ -1384,7 +1384,7 @@ ${scrapeData.content || ''}
          (currentLead as any).cancelled_date ||
          ['closed', 'refused', 'inviavel', 'cancelled'].includes((currentLead as any).lead_status)
         )) {
-         await externalSupabase.from('leads').update({ lead_status: 'active' } as any).eq('id', currentLead.id);
+         await externalSupabase.from('leads').update({ lead_status: 'no_response' } as any).eq('id', currentLead.id);
        }
 
       toast.success('Lead atualizado com sucesso!');

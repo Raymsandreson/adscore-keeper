@@ -310,7 +310,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
           lead_name: fallbackName,
           lead_phone: isGroup ? null : conversation.phone,
           source: 'whatsapp',
-          lead_status: 'new',
+          lead_status: 'no_response',
           created_by: extCreatedBy,
           notes: 'Lead criado automaticamente para salvar documento no Drive.',
         } as any)
