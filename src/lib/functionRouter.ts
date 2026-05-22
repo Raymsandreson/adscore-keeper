@@ -32,6 +32,7 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
   'list-uazapi-labels': 'railway',
   'manage-uazapi-label': 'railway',
   'sync-agent-labels': 'railway',
+  'sync-result-labels': 'railway',
 
   // --- Todas as demais ficam no Cloud por padrão ---
 };
