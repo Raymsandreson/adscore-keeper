@@ -523,7 +523,20 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       notify_instance_name: (s as any).notify_instance_name || null,
       lead_status_board_ids: (s as any).lead_status_board_ids || [],
       lead_status_filter: (s as any).lead_status_filter || [],
+      audience_mode: (s as any).audience_mode || 'both',
     });
+    // Carrega audience_mode do Cloud (agent_filter_settings) — sobrescreve se existir registro
+    supabase
+      .from('agent_filter_settings' as any)
+      .select('audience_mode')
+      .eq('agent_id', s.id)
+      .maybeSingle()
+      .then(({ data }: any) => {
+        if (data?.audience_mode) {
+          setForm(f => ({ ...f, audience_mode: data.audience_mode }));
+        }
+      });
+
     setFollowupSteps(s.followup_steps || []);
     setHumanReplyPauseMinutes(s.human_reply_pause_minutes ?? 0);
     setFollowupRepeatForever((s as any).followup_repeat_forever ?? false);
