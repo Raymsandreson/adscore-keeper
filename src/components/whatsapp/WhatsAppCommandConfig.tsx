@@ -1017,9 +1017,9 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                     <Slider
                       value={[form.max_tokens]}
                       onValueChange={([v]) => setForm(f => ({ ...f, max_tokens: v }))}
-                      min={256}
+                      min={32}
                       max={8192}
-                      step={256}
+                      step={32}
                     />
                     {(() => {
                       const words = Math.floor(form.max_tokens * 0.75);
