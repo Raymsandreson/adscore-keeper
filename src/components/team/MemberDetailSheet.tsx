@@ -79,6 +79,19 @@ interface ActivityLog {
   metadata: any;
 }
 
+const PRESET_VOICES = [
+  { id: 'FGY2WhTYpPnrIDTdsKH5', name: 'Laura' },
+  { id: 'CwhRBWXzGAHq8TQ4Fs17', name: 'Roger' },
+  { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Sarah' },
+  { id: 'IKne3meq5aSn9XLyUdCD', name: 'Charlie' },
+  { id: 'JBFqnCBsd6RMkjVDRZzb', name: 'George' },
+  { id: 'onwK4e9ZLuTAKqWW03F9', name: 'Daniel' },
+  { id: 'nPczCjzI2devNBz1zQrb', name: 'Brian' },
+  { id: 'TX3LPaxmHKxFdv7VOQHJ', name: 'Liam' },
+  { id: 'pFZP5JQG7iQjIQuC4Bku', name: 'Lily' },
+  { id: 'SAz9YHcvj6GT2YYXdXww', name: 'River' },
+];
+
 export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: MemberDetailSheetProps) {
   const [activeTab, setActiveTab] = useState('profile');
   const [fullName, setFullName] = useState('');
@@ -116,26 +129,12 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
 
   useEffect(() => {
     const fetchInstances = async () => {
-      const [instRes, presetRes, customRes, profilesRes] = await Promise.all([
+      const [instRes, profilesRes] = await Promise.all([
         db.from('whatsapp_instances').select('id, instance_name').eq('is_active', true).order('instance_name'),
-        Promise.resolve([
-          { id: 'FGY2WhTYpPnrIDTdsKH5', name: 'Laura' },
-          { id: 'CwhRBWXzGAHq8TQ4Fs17', name: 'Roger' },
-          { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Sarah' },
-          { id: 'IKne3meq5aSn9XLyUdCD', name: 'Charlie' },
-          { id: 'JBFqnCBsd6RMkjVDRZzb', name: 'George' },
-          { id: 'onwK4e9ZLuTAKqWW03F9', name: 'Daniel' },
-          { id: 'nPczCjzI2devNBz1zQrb', name: 'Brian' },
-          { id: 'TX3LPaxmHKxFdv7VOQHJ', name: 'Liam' },
-          { id: 'pFZP5JQG7iQjIQuC4Bku', name: 'Lily' },
-          { id: 'SAz9YHcvj6GT2YYXdXww', name: 'River' },
-        ]),
-        db.from('custom_voices').select('id, name, elevenlabs_voice_id').eq('status', 'ready'),
         supabase.from('access_profiles').select('id, name, description, module_permissions, whatsapp_instance_ids').eq('is_active', true).order('name'),
       ]);
       setInstances(instRes.data || []);
-      const customVoices = (customRes.data || []).map((v: any) => ({ id: v.elevenlabs_voice_id, name: `🎤 ${v.name}` }));
-      setVoices([...presetRes, ...customVoices]);
+      setVoices(PRESET_VOICES);
       setAccessProfiles((profilesRes.data || []).map((p: any) => ({
         ...p,
         module_permissions: Array.isArray(p.module_permissions) ? p.module_permissions : [],
@@ -221,6 +220,23 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
     setDefaultInstanceId(data?.default_instance_id || '');
     setVoiceId((data as any)?.voice_id || '');
     setVoiceName((data as any)?.voice_name || '');
+
+    try {
+      const { data: voiceData, error: voiceError } = await cloudFunctions.invoke('elevenlabs-voice-clone', {
+        body: { action: 'list_presets', user_id: member.user_id },
+      });
+
+      if (voiceError) throw voiceError;
+
+      const customVoices = (voiceData?.custom_voices || [])
+        .filter((voice: any) => voice.status === 'ready' && voice.elevenlabs_voice_id)
+        .map((voice: any) => ({ id: voice.elevenlabs_voice_id, name: `🎤 ${voice.name}` }));
+
+      setVoices([...PRESET_VOICES, ...customVoices]);
+    } catch (voiceErr) {
+      console.warn('Member custom voices load failed (using presets only):', voiceErr);
+      setVoices(PRESET_VOICES);
+    }
 
     // Fetch multiple OAB entries
     const { data: oabs } = await supabase
