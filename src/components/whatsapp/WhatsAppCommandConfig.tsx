@@ -123,6 +123,7 @@ interface ShortcutFormState {
   notify_instance_name: string | null;
   lead_status_board_ids: string[];
   lead_status_filter: string[];
+  audience_mode: 'ctwa_only' | 'outbound_only' | 'both';
 }
 
 const DEFAULT_FORM: ShortcutFormState = {
@@ -139,8 +140,9 @@ const DEFAULT_FORM: ShortcutFormState = {
   max_tts_chars: 1000, send_window_start_hour: 8, send_window_end_hour: 20,
   send_call_followup_audio: false, zapsign_mode: 'final_document', zapsign_settings: {},
   forward_questions_to_group: false, notify_instance_name: null,
-  lead_status_board_ids: [], lead_status_filter: [],
+  lead_status_board_ids: [], lead_status_filter: [], audience_mode: 'both',
 };
+
 
 const LEAD_RESULT_OPTIONS: { value: string; label: string }[] = [
   { value: 'in_progress', label: 'Em Andamento' },
