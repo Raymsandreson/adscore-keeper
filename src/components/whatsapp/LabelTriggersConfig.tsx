@@ -68,6 +68,7 @@ export function LabelTriggersConfig() {
   const [labels, setLabels] = useState<UazLabel[]>([]);
   const [templates, setTemplates] = useState<ZapTemplate[]>([]);
   const [triggers, setTriggers] = useState<Trigger[]>([]);
+  const [agents, setAgents] = useState<Agent[]>([]);
   const [loadingLabels, setLoadingLabels] = useState(false);
   const [loadingTemplates, setLoadingTemplates] = useState(false);
   const [loadingTriggers, setLoadingTriggers] = useState(false);
@@ -80,6 +81,7 @@ export function LabelTriggersConfig() {
   // Form pra adicionar novo gatilho
   const [newLabelId, setNewLabelId] = useState('');
   const [newTemplateId, setNewTemplateId] = useState('');
+  const [newAgentId, setNewAgentId] = useState<string>('none');
   const [newLookback, setNewLookback] = useState(200);
   const [newAutoMedia, setNewAutoMedia] = useState(true);
   const [saving, setSaving] = useState(false);
