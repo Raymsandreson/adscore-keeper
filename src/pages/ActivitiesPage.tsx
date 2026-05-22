@@ -1481,7 +1481,12 @@ const ActivitiesPage = () => {
       return `${format(d, 'dd/MM/yyyy')} ${dias[d.getDay()]}`;
     })() : '';
     const valueMap: Record<string, string> = { what_was_done: stripHtml(formWhatWasDone), current_status: stripHtml(formCurrentStatus), next_steps: stripHtml(formNextSteps), solicitacao: stripHtml(formSolicitacao), resposta_juizo: stripHtml(formRespostaJuizo), notes: stripHtml(formNotes) };
-    const fieldLines = fieldSettings.filter(f => f.include_in_message).map(f => `*${f.label}:* ${valueMap[f.field_key] || '—'}`).join('\n\n');
+    const fieldLines = fieldSettings
+      .filter(f => f.include_in_message)
+      .map(f => ({ label: f.label, value: (valueMap[f.field_key] || '').trim() }))
+      .filter(({ value }) => value.length > 0)
+      .map(({ label, value }) => `*${label}:* ${value}`)
+      .join('\n\n');
     const createdByName = selectedActivity ? resolveUserName(selectedActivity.created_by) : resolveUserName(user?.id || null);
     const createdAtFmt = selectedActivity ? format(parseISO(selectedActivity.created_at), "dd/MM/yyyy 'às' HH:mm") : format(new Date(), "dd/MM/yyyy 'às' HH:mm");
     const updatedByName = selectedActivity ? resolveUserName((selectedActivity as any).updated_by) : null;
