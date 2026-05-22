@@ -40,6 +40,9 @@ export const handler: RequestHandler = async (req, res) => {
     if (!agent) return res.json({ success: false, error: `agent ${agent_id} not found` });
 
     const agentName: string = (agent as any).shortcut_name || '';
+    // Prefixo 🤖 identifica visualmente que é etiqueta de AGENTE IA
+    // (diferencia das etiquetas de RESULTADO do lead).
+    const labelName = `🤖 ${agentName}`;
     const isActive: boolean = !!(agent as any).is_active;
     const color = isActive ? COLOR_ACTIVE : COLOR_INACTIVE;
     const effectiveOp = operation === 'delete' ? 'delete' : 'upsert';
