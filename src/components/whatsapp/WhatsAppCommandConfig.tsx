@@ -746,6 +746,9 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
           Agentes IA — cada um com IA, documentos e follow-up integrados.
         </p>
         <div className="flex gap-2">
+          <Button size="sm" variant="outline" onClick={handleSyncResultLabels} className="gap-1" title="Cria/atualiza as 5 etiquetas de resultado (Em andamento, Fechado, Recusado, Inviável, Cancelado) em todas as instâncias conectadas">
+            🏁 Sync resultados
+          </Button>
           <Button size="sm" variant="outline" onClick={() => { setAiEditConfig(null); setEditingId(null); setShowAI(!showAI); setShowForm(false); }} className="gap-1">
             <Wand2 className="h-3.5 w-3.5" /> IA
           </Button>
