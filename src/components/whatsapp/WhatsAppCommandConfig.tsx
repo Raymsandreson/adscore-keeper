@@ -525,15 +525,20 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       lead_status_filter: (s as any).lead_status_filter || [],
       audience_mode: (s as any).audience_mode || 'both',
     });
-    // Carrega audience_mode do Cloud (agent_filter_settings) — sobrescreve se existir registro
+    // Carrega filtros do Cloud (agent_filter_settings) — fonte de verdade, sobrescreve o que veio do shortcut
     supabase
       .from('agent_filter_settings' as any)
-      .select('audience_mode')
+      .select('audience_mode, lead_status_board_ids, lead_status_filter')
       .eq('agent_id', s.id)
       .maybeSingle()
       .then(({ data }: any) => {
-        if (data?.audience_mode) {
-          setForm(f => ({ ...f, audience_mode: data.audience_mode }));
+        if (data) {
+          setForm(f => ({
+            ...f,
+            audience_mode: data.audience_mode || f.audience_mode,
+            lead_status_board_ids: data.lead_status_board_ids || f.lead_status_board_ids,
+            lead_status_filter: data.lead_status_filter || f.lead_status_filter,
+          }));
         }
       });
 
