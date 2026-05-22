@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { MessageSquare, Smartphone, Search, X } from 'lucide-react';
+import { MessageSquare, Smartphone, Search, X, Loader2 } from 'lucide-react';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { supabase } from '@/integrations/supabase/client';
 import { db } from '@/integrations/supabase';
@@ -110,6 +110,10 @@ export function WhatsAppInstancePermissions() {
   const toggleAccess = async (userId: string, instanceId: string) => {
     const key = `${userId}-${instanceId}`;
     setSaving(key);
+    const memberName = members.find(m => m.user_id === userId)?.full_name
+      || members.find(m => m.user_id === userId)?.email
+      || 'membro';
+    const instanceName = instances.find(i => i.id === instanceId)?.instance_name || 'instância';
     try {
       const existing = instanceUsers.find(iu => iu.user_id === userId && iu.instance_id === instanceId);
       if (existing) {
@@ -118,9 +122,11 @@ export function WhatsAppInstancePermissions() {
           await supabase.from('profiles').update({ default_instance_id: null } as any).eq('user_id', userId);
         }
         setInstanceUsers(prev => prev.filter(iu => iu.id !== existing.id));
+        toast.success(`Acesso removido: ${memberName} → ${instanceName}`);
       } else {
         const rows = await saveAccessOperations([{ user_id: userId, instance_id: instanceId, grant: true }]);
         setInstanceUsers(prev => [...prev.filter(iu => !(iu.user_id === userId && iu.instance_id === instanceId)), ...rows]);
+        toast.success(`Acesso concedido: ${memberName} → ${instanceName}`);
       }
     } catch (error: any) {
       toast.error(error?.message || 'Erro ao atualizar acesso');
@@ -387,16 +393,20 @@ export function WhatsAppInstancePermissions() {
                               (isColHover || isRowHover) && 'bg-accent/40',
                               isColHover && isRowHover && 'bg-accent',
                               checked && 'bg-emerald-50 dark:bg-emerald-950/20',
-                              isSaving && 'opacity-50'
+                              isSaving && 'bg-amber-50 dark:bg-amber-950/30'
                             )}
                             style={{ width: COL_W, minWidth: COL_W, height: ROW_H }}
+                            title={isSaving ? 'Salvando…' : checked ? 'Tem acesso (clique para revogar)' : 'Sem acesso (clique para conceder)'}
                           >
-                            <Checkbox
-                              checked={checked}
-                              disabled={isSaving}
-                              onCheckedChange={() => toggleAccess(member.user_id, inst.id)}
-                              className="mx-auto pointer-events-none"
-                            />
+                            {isSaving ? (
+                              <Loader2 className="h-4 w-4 mx-auto animate-spin text-amber-600 dark:text-amber-400" />
+                            ) : (
+                              <Checkbox
+                                checked={checked}
+                                onCheckedChange={() => toggleAccess(member.user_id, inst.id)}
+                                className="mx-auto pointer-events-none"
+                              />
+                            )}
                           </td>
                         );
                       })}
