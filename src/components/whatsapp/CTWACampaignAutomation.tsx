@@ -78,6 +78,9 @@ interface ConversationInfo {
 type ConvResponseFilter = 'all' | 'responded' | 'waiting';
 type ConvLeadFilter = 'all' | 'has_lead' | 'no_lead' | 'closed' | 'refused' | 'funnel';
 
+const isOpenLeadStatus = (status?: string | null) =>
+  !status || ['no_response', 'in_progress', 'active', 'novo', 'new', 'open'].includes(status);
+
 export function CTWACampaignAutomation() {
   const [links, setLinks] = useState<CampaignLink[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -414,7 +417,7 @@ export function CTWACampaignAutomation() {
       const leadMap = new Map<string, { name: string; status: string }>();
       (leads || []).forEach((l: any) => {
         const norm = l.lead_phone?.replace(/\D/g, '');
-        if (norm) leadMap.set(norm, { name: l.lead_name, status: l.lead_status || 'active' });
+        if (norm) leadMap.set(norm, { name: l.lead_name, status: l.lead_status || 'no_response' });
       });
 
       // Check contacts
@@ -578,7 +581,7 @@ export function CTWACampaignAutomation() {
       if (convResponseFilter === 'waiting' && conv.was_responded) return false;
       if (convLeadFilter === 'has_lead' && !conv.has_lead) return false;
       if (convLeadFilter === 'no_lead' && conv.has_lead) return false;
-      if (convLeadFilter === 'funnel' && !(conv.has_lead && conv.lead_status === 'active')) return false;
+      if (convLeadFilter === 'funnel' && !(conv.has_lead && isOpenLeadStatus(conv.lead_status))) return false;
       if (convLeadFilter === 'closed' && !(conv.has_lead && conv.lead_status === 'closed')) return false;
       if (convLeadFilter === 'refused' && !(conv.has_lead && conv.lead_status === 'refused')) return false;
       return true;
