@@ -632,8 +632,10 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
             agent_id: savedAgentId,
             lead_status_board_ids: form.lead_status_board_ids || [],
             lead_status_filter: form.lead_status_filter || [],
+            audience_mode: form.audience_mode || 'both',
           },
         });
+
       } catch (e) {
         console.error('Failed to save agent filters:', e);
         toast.error('Agente salvo, mas filtros de funil/resultado não foram persistidos.');
