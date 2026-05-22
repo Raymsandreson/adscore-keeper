@@ -321,7 +321,7 @@ export function LabelTriggersConfig() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
-            <Label className="text-xs">Instância</Label>
+            <Label className="text-xs">Etiqueta-Gatilho (instância que dispara)</Label>
             <div className="flex items-center gap-2 mt-1">
               <div className="flex-1">
                 <Select value={selectedInstance} onValueChange={setSelectedInstance}>
