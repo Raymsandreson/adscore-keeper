@@ -31,6 +31,7 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
   'extract-conversation-data': 'railway',
   'list-uazapi-labels': 'railway',
   'manage-uazapi-label': 'railway',
+  'sync-agent-labels': 'railway',
 
   // --- Todas as demais ficam no Cloud por padrão ---
 };

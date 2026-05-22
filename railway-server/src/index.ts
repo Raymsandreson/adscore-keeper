@@ -27,6 +27,7 @@ import { handler as manageUazapiLabel } from './functions/manage-uazapi-label';
 import { handler as prepareLabelDocumentTrigger } from './functions/prepare-label-document-trigger';
 import { handler as getPendingReview } from './functions/get-pending-review';
 import { handler as submitDocumentReview } from './functions/submit-document-review';
+import { handler as syncAgentLabels } from './functions/sync-agent-labels';
 
 const functionHandlers: Record<string, express.RequestHandler> = {
   'whatsapp-webhook': whatsappWebhook,
@@ -47,6 +48,7 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'prepare-label-document-trigger': prepareLabelDocumentTrigger,
   'get-pending-review': getPendingReview,
   'submit-document-review': submitDocumentReview,
+  'sync-agent-labels': syncAgentLabels,
 };
 
 const app = express();
