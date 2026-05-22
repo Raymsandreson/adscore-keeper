@@ -1,62 +1,21 @@
 // Sincroniza um agente IA com etiquetas UazAPI em TODAS as instâncias ativas.
 //
-// Metáfora: o agente é uma pessoa, a etiqueta é o crachá dele. Esta função
-// garante que o crachá esteja pendurado em todas as portarias (instâncias):
-// verde se o agente está ativo no sistema, cinza se está desativado.
-// Se você renomear o agente, o crachá é renomeado em todo lugar.
-// Se apagar o agente, o crachá é recolhido em todo lugar.
+// Usa EXATAMENTE o mesmo helper que o dialog "Nova etiqueta" da tela
+// Etiquetas-Gatilho usa (manage-uazapi-label). Se uma cria, a outra cria.
 //
 // Body: { agent_id: string, operation: 'upsert' | 'delete' }
 // Retorno HTTP 200: { success, results: Array<{instance_name, ok, action, error?}> }
 import type { RequestHandler } from 'express';
 import { supabase as ext } from '../lib/supabase';
+import {
+  uazapiCreateLabel,
+  uazapiUpdateLabel,
+  uazapiDeleteLabel,
+  uazapiFindLabelByName,
+} from '../lib/uazapi-labels';
 
-const COLOR_ACTIVE = 3;   // verde (paleta Meta)
-const COLOR_INACTIVE = 0; // cinza (paleta Meta)
-const UAZAPI_TIMEOUT_MS = 8000;
-
-async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), UAZAPI_TIMEOUT_MS);
-  try {
-    return await fetch(url, { ...init, signal: controller.signal });
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-async function callUazapi(baseUrl: string, token: string, body: any): Promise<{ ok: boolean; data: any; status: number; text: string }> {
-  const r = await fetchWithTimeout(`${baseUrl.replace(/\/$/, '')}/label/edit`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', token },
-    body: JSON.stringify(body),
-  });
-  const text = await r.text();
-  let data: any = null;
-  try { data = JSON.parse(text); } catch { data = { raw: text }; }
-  return { ok: r.ok, data, status: r.status, text };
-}
-
-async function findUazapiLabelByName(baseUrl: string, token: string, labelName: string): Promise<{ id: string; name: string; color: number | null } | null> {
-  const r = await fetchWithTimeout(`${baseUrl.replace(/\/$/, '')}/labels`, {
-    method: 'GET',
-    headers: { token },
-  });
-  if (!r.ok) return null;
-
-  const data: any = await r.json().catch(() => null);
-  const labels: any[] = Array.isArray(data) ? data : (data?.labels || []);
-  const normalizedName = labelName.trim().toLowerCase();
-  const matches = labels
-    .map((l: any) => ({
-      id: String(l.id ?? l.labelId ?? l.labelid ?? ''),
-      name: String(l.name ?? l.label ?? ''),
-      color: typeof l.color === 'number' ? l.color : null,
-    }))
-    .filter((l) => l.id && l.name.trim().toLowerCase() === normalizedName);
-
-  return matches[matches.length - 1] || null;
-}
+const COLOR_ACTIVE = 5;   // verde (paleta Meta — bate com swatch "Verde" do dialog)
+const COLOR_INACTIVE = 10; // cinza
 
 export const handler: RequestHandler = async (req, res) => {
   try {
@@ -68,7 +27,6 @@ export const handler: RequestHandler = async (req, res) => {
       return res.json({ success: false, error: "operation deve ser 'upsert' ou 'delete'" });
     }
 
-    // 1. Carrega agente
     const { data: agent, error: agentErr } = await ext
       .from('wjia_command_shortcuts')
       .select('id, shortcut_name, is_active')
@@ -79,19 +37,15 @@ export const handler: RequestHandler = async (req, res) => {
 
     const agentName: string = (agent as any).shortcut_name || '';
     const isActive: boolean = !!(agent as any).is_active;
-    const effectiveOp = operation === 'delete' ? 'delete' : 'upsert';
     const color = isActive ? COLOR_ACTIVE : COLOR_INACTIVE;
+    const effectiveOp = operation === 'delete' ? 'delete' : 'upsert';
 
-
-    // 2. Lista instâncias UazAPI ativas (tem token)
     const { data: instances, error: instErr } = await ext
       .from('whatsapp_instances')
       .select('instance_name, instance_token, base_url')
       .not('instance_token', 'is', null);
     if (instErr) return res.json({ success: false, error: `instances lookup: ${instErr.message}` });
 
-
-    // 3. Lista mapeamentos existentes do agente
     const { data: existingMappings } = await ext
       .from('agent_instance_labels')
       .select('id, instance_name, label_id, label_name, color, deleted_at')
@@ -103,7 +57,7 @@ export const handler: RequestHandler = async (req, res) => {
 
     const results: Array<{ instance_name: string; ok: boolean; action: string; error?: string }> = [];
 
-    // 4. DELETE: apaga em todas instâncias que tiverem mapeamento
+    // DELETE
     if (effectiveOp === 'delete') {
       for (const inst of (instances || []) as any[]) {
         const key = String(inst.instance_name).toLowerCase();
@@ -111,9 +65,9 @@ export const handler: RequestHandler = async (req, res) => {
         if (!mapping || mapping.deleted_at) continue;
         const baseUrl = inst.base_url || 'https://abraci.uazapi.com';
         try {
-          const r = await callUazapi(baseUrl, inst.instance_token, { labelid: mapping.label_id, delete: true });
+          const r = await uazapiDeleteLabel(baseUrl, inst.instance_token, mapping.label_id);
           if (!r.ok) {
-            results.push({ instance_name: inst.instance_name, ok: false, action: 'delete', error: r.text.slice(0, 200) });
+            results.push({ instance_name: inst.instance_name, ok: false, action: 'delete', error: r.disconnected ? 'desconectado' : r.text.slice(0, 200) });
             continue;
           }
           await ext
@@ -128,7 +82,7 @@ export const handler: RequestHandler = async (req, res) => {
       return res.json({ success: true, agent_id, agent_name: agentName, operation: 'delete', results });
     }
 
-    // 5. UPSERT: cria ou atualiza (rename + recolor) em cada instância
+    // UPSERT
     for (const inst of (instances || []) as any[]) {
       const key = String(inst.instance_name).toLowerCase();
       const mapping = mappingByInstance.get(key);
@@ -136,18 +90,13 @@ export const handler: RequestHandler = async (req, res) => {
 
       try {
         if (mapping && !mapping.deleted_at) {
-          // Já existe — só renomeia/recolore se mudou
           if (mapping.label_name === agentName && mapping.color === color) {
             results.push({ instance_name: inst.instance_name, ok: true, action: 'unchanged' });
             continue;
           }
-          const r = await callUazapi(baseUrl, inst.instance_token, {
-            labelid: mapping.label_id,
-            name: agentName,
-            color,
-          });
+          const r = await uazapiUpdateLabel(baseUrl, inst.instance_token, mapping.label_id, agentName, color);
           if (!r.ok) {
-            results.push({ instance_name: inst.instance_name, ok: false, action: 'update', error: r.text.slice(0, 200) });
+            results.push({ instance_name: inst.instance_name, ok: false, action: 'update', error: r.disconnected ? 'desconectado' : r.text.slice(0, 200) });
             continue;
           }
           await ext
@@ -156,57 +105,32 @@ export const handler: RequestHandler = async (req, res) => {
             .eq('id', mapping.id);
           results.push({ instance_name: inst.instance_name, ok: true, action: 'update' });
         } else {
-          // Criar
-          const found = await findUazapiLabelByName(baseUrl, inst.instance_token, agentName);
-          if (found) {
-            await ext
-              .from('agent_instance_labels')
-              .upsert({
-                agent_id,
-                instance_name: inst.instance_name,
-                label_id: found.id,
-                label_name: agentName,
-                color,
-                updated_at: new Date().toISOString(),
-                deleted_at: null,
-              } as any, { onConflict: 'agent_id,instance_name' });
-            if (found.color !== color) {
-              await callUazapi(baseUrl, inst.instance_token, { labelid: found.id, name: agentName, color });
-            }
-            results.push({ instance_name: inst.instance_name, ok: true, action: 'adopt-existing' });
-            continue;
-          }
-
-          const r = await callUazapi(baseUrl, inst.instance_token, {
-            labelid: 'new',
-            name: agentName,
-            color,
-          });
+          // CREATE — exatamente igual ao dialog "Nova etiqueta"
+          const r = await uazapiCreateLabel(baseUrl, inst.instance_token, agentName, color);
           if (!r.ok) {
-            results.push({ instance_name: inst.instance_name, ok: false, action: 'create', error: r.text.slice(0, 200) });
+            results.push({ instance_name: inst.instance_name, ok: false, action: 'create', error: r.disconnected ? 'desconectado' : r.text.slice(0, 200) });
             continue;
           }
-          // Extrai label_id da resposta (UazAPI varia o nome do campo)
+          // UazAPI nem sempre devolve o id na resposta; buscar via /labels se faltar
           const newId = String(
             r.data?.label?.id ?? r.data?.label?.labelid ?? r.data?.id ?? r.data?.labelid ?? '',
           );
-          const resolvedId = newId || (await findUazapiLabelByName(baseUrl, inst.instance_token, agentName))?.id || '';
+          const resolvedId = newId || (await uazapiFindLabelByName(baseUrl, inst.instance_token, agentName))?.id || '';
           if (!resolvedId) {
-            results.push({ instance_name: inst.instance_name, ok: false, action: 'create', error: 'no label_id in response' });
+            results.push({ instance_name: inst.instance_name, ok: false, action: 'create', error: 'created sem label_id retornado' });
             continue;
           }
-          const upsertPayload = {
-            agent_id,
-            instance_name: inst.instance_name,
-            label_id: resolvedId,
-            label_name: agentName,
-            color,
-            updated_at: new Date().toISOString(),
-            deleted_at: null,
-          };
           await ext
             .from('agent_instance_labels')
-            .upsert(upsertPayload as any, { onConflict: 'agent_id,instance_name' });
+            .upsert({
+              agent_id,
+              instance_name: inst.instance_name,
+              label_id: resolvedId,
+              label_name: agentName,
+              color,
+              updated_at: new Date().toISOString(),
+              deleted_at: null,
+            } as any, { onConflict: 'agent_id,instance_name' });
           results.push({ instance_name: inst.instance_name, ok: true, action: 'create' });
         }
       } catch (e: any) {
