@@ -1057,8 +1057,10 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                           </PopoverContent>
                         </Popover>
                       </div>
+                      </>)}
 
                       <div className="border-t pt-2.5 space-y-2">
+
                         <Button
                           type="button"
                           variant="outline"
