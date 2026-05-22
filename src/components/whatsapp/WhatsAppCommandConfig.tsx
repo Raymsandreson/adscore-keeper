@@ -703,6 +703,30 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
     }
   };
 
+  const handleSyncResultLabels = async () => {
+    const t = toast.loading('Sincronizando etiquetas de resultado (🕐 ✅ ❌ ⚠️ 🚫)...');
+    try {
+      const { data, error } = await cloudFunctions.invoke('sync-result-labels', { body: { operation: 'upsert' } });
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Falha no sync');
+      const results = (data.results || []) as Array<{ instance_name: string; result_key: string; ok: boolean; action: string; error?: string }>;
+      console.log('[sync-result-labels] resultado completo:', data);
+      const ok = results.filter(r => r.ok).length;
+      const fail = results.filter(r => !r.ok).length;
+      if (ok === 0 && fail > 0) {
+        toast.error(`Nenhuma etiqueta sincronizada (${fail} falhas)`, { id: t, duration: 8000 });
+        return;
+      }
+      if (fail > 0) {
+        toast.warning(`Parcial: ${ok} ok, ${fail} falha(s) — veja console`, { id: t, duration: 6000 });
+        return;
+      }
+      toast.success(`5 etiquetas de resultado sincronizadas em ${new Set(results.map(r => r.instance_name)).size} instância(s)`, { id: t });
+    } catch (e: any) {
+      toast.error('Erro: ' + (e?.message || ''), { id: t });
+    }
+  };
+
   const actionLabels: Record<string, { label: string; icon: any; color: string }> = {
     whatsapp_message: { label: 'Mensagem WhatsApp', icon: MessageSquare, color: 'text-green-500' },
     call: { label: 'Ligação', icon: Phone, color: 'text-blue-500' },
