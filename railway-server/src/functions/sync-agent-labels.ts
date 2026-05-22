@@ -13,9 +13,20 @@ import { supabase as ext } from '../lib/supabase';
 
 const COLOR_ACTIVE = 3;   // verde (paleta Meta)
 const COLOR_INACTIVE = 0; // cinza (paleta Meta)
+const UAZAPI_TIMEOUT_MS = 8000;
+
+async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), UAZAPI_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 async function callUazapi(baseUrl: string, token: string, body: any): Promise<{ ok: boolean; data: any; status: number; text: string }> {
-  const r = await fetch(`${baseUrl.replace(/\/$/, '')}/label/edit`, {
+  const r = await fetchWithTimeout(`${baseUrl.replace(/\/$/, '')}/label/edit`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', token },
     body: JSON.stringify(body),
@@ -27,7 +38,7 @@ async function callUazapi(baseUrl: string, token: string, body: any): Promise<{ 
 }
 
 async function findUazapiLabelByName(baseUrl: string, token: string, labelName: string): Promise<{ id: string; name: string; color: number | null } | null> {
-  const r = await fetch(`${baseUrl.replace(/\/$/, '')}/labels`, {
+  const r = await fetchWithTimeout(`${baseUrl.replace(/\/$/, '')}/labels`, {
     method: 'GET',
     headers: { token },
   });
