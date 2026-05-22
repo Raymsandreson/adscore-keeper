@@ -835,12 +835,16 @@ export const handler: RequestHandler = async (req, res) => {
         // === NOVO: etiquetas de RESULTADO do lead (WA → CRM)
         // Quando o operador cola "✅ Fechado", "❌ Recusado" etc, atualiza lead_status.
         // Só atua se houver vínculo EXPLÍCITO conversa→lead (whatsapp_conversation_agents ou contact_leads).
-        const RESULT_KEY_TO_STATUS: Record<string, string> = {
-          in_progress: 'active',
-          closed: 'closed',
-          refused: 'refused',
-          inviavel: 'inviavel',
-          cancelled: 'cancelled',
+        // Cada outcome precisa de lead_status + um *_date próprio. Os outros dates
+        // têm que ser zerados — o LeadEditDialog deduz o outcome pelo date preenchido,
+        // não pelo lead_status.
+        const today = new Date().toISOString().slice(0, 10);
+        const RESULT_KEY_TO_PATCH: Record<string, Record<string, any>> = {
+          in_progress: { lead_status: 'active',    in_progress_date: today, became_client_date: null, classification_date: null, inviavel_date: null, cancelled_date: null },
+          closed:      { lead_status: 'closed',    became_client_date: today, in_progress_date: null, classification_date: null, inviavel_date: null, cancelled_date: null },
+          refused:     { lead_status: 'refused',   classification_date: today, in_progress_date: null, became_client_date: null, inviavel_date: null, cancelled_date: null },
+          inviavel:    { lead_status: 'inviavel',  inviavel_date: today, in_progress_date: null, became_client_date: null, classification_date: null, cancelled_date: null },
+          cancelled:   { lead_status: 'cancelled', cancelled_date: today, in_progress_date: null, became_client_date: null, classification_date: null, inviavel_date: null },
         };
         try {
           const { data: resultLabelMappings } = await supabase
@@ -855,7 +859,7 @@ export const handler: RequestHandler = async (req, res) => {
           });
 
           if (matchedResultLabels.length > 0) {
-            // Resolve lead_id da conversa via vínculo explícito
+            // Resolve lead_id: 1) conversa→agent, 2) contact→lead, 3) telefone direto no lead
             let leadId: string | null = null;
             try {
               const { data: convoLead } = await supabase
@@ -889,39 +893,42 @@ export const handler: RequestHandler = async (req, res) => {
                 }
               } catch {}
             }
+            if (!leadId) {
+              try {
+                const { data: leadByPhone } = await supabase
+                  .from('leads')
+                  .select('id')
+                  .like('lead_phone', `%${phoneDigits.slice(-8)}`)
+                  .is('deleted_at', null)
+                  .order('updated_at', { ascending: false })
+                  .limit(1)
+                  .maybeSingle();
+                leadId = (leadByPhone as any)?.id || null;
+              } catch {}
+            }
 
             if (!leadId) {
-              console.log('[label-trigger][result] no explicit lead link, skipping', { phone: phoneDigits, labels: matchedResultLabels.map((m: any) => m.label_name) });
+              console.log('[label-trigger][result] no lead link, skipping', { phone: phoneDigits, labels: matchedResultLabels.map((m: any) => m.label_name) });
             } else {
-              // Pega APENAS a última etiqueta de resultado aplicada (se vieram várias na mesma chamada)
               const lastMatch: any = matchedResultLabels[matchedResultLabels.length - 1];
-              const newStatus = RESULT_KEY_TO_STATUS[lastMatch.result_key];
-              if (newStatus) {
-                const { data: leadRow } = await supabase
+              const patch = RESULT_KEY_TO_PATCH[lastMatch.result_key];
+              if (patch) {
+                await supabase
                   .from('leads')
-                  .select('id, lead_status')
-                  .eq('id', leadId)
-                  .maybeSingle();
-                if (leadRow && (leadRow as any).lead_status !== newStatus) {
-                  await supabase
-                    .from('leads')
-                    .update({ lead_status: newStatus, updated_at: new Date().toISOString() })
-                    .eq('id', leadId);
-                  console.log('[label-trigger][result] lead_status updated', { leadId, from: (leadRow as any).lead_status, to: newStatus, via: lastMatch.label_name });
-                  try {
-                    await supabase.from('lead_activities').insert({
-                      lead_id: leadId,
-                      title: `Status alterado via etiqueta WhatsApp: ${lastMatch.label_name}`,
-                      description: `Status do lead atualizado para "${newStatus}" pelo operador aplicando a etiqueta no WhatsApp.`,
-                      activity_type: 'notificacao',
-                      status: 'concluida',
-                      priority: 'normal',
-                    } as any);
-                  } catch (e: any) {
-                    console.warn('[label-trigger][result] activity log failed:', e?.message);
-                  }
-                } else {
-                  console.log('[label-trigger][result] no-op, status already correct', { leadId, status: newStatus });
+                  .update({ ...patch, updated_at: new Date().toISOString() } as any)
+                  .eq('id', leadId);
+                console.log('[label-trigger][result] lead outcome updated', { leadId, outcome: lastMatch.result_key, via: lastMatch.label_name });
+                try {
+                  await supabase.from('lead_activities').insert({
+                    lead_id: leadId,
+                    title: `Resultado alterado via etiqueta WhatsApp: ${lastMatch.label_name}`,
+                    description: `Resultado do lead definido como "${lastMatch.result_key}" pelo operador aplicando a etiqueta no WhatsApp.`,
+                    activity_type: 'notificacao',
+                    status: 'concluida',
+                    priority: 'normal',
+                  } as any);
+                } catch (e: any) {
+                  console.warn('[label-trigger][result] activity log failed:', e?.message);
                 }
               }
             }
