@@ -125,7 +125,36 @@ export function LabelTriggersConfig() {
     if (!selectedInstance) return;
     loadLabels();
     loadTriggers();
-  }, [selectedInstance]);
+    const inst = instances.find(i => i.instance_name === selectedInstance);
+    setReviewPhone(inst?.review_notification_phone || '');
+    setReviewPhoneSavedAt(null);
+  }, [selectedInstance, instances]);
+
+  async function saveReviewPhone() {
+    if (!selectedInstance) return;
+    const phone = reviewPhone.replace(/\D/g, '');
+    if (phone && phone.length < 10) {
+      toast.error('Telefone inválido. Use DDD + número.');
+      return;
+    }
+    setReviewPhoneSaving(true);
+    try {
+      const { error } = await db
+        .from('whatsapp_instances')
+        .update({ review_notification_phone: phone || null } as any)
+        .eq('instance_name', selectedInstance);
+      if (error) throw error;
+      setInstances(prev => prev.map(i =>
+        i.instance_name === selectedInstance ? { ...i, review_notification_phone: phone || null } : i
+      ));
+      setReviewPhoneSavedAt(Date.now());
+      toast.success('Telefone salvo');
+    } catch (e: any) {
+      toast.error('Erro ao salvar: ' + (e?.message || ''));
+    } finally {
+      setReviewPhoneSaving(false);
+    }
+  }
 
   async function loadLabels(forceRefresh = false) {
     setLoadingLabels(true);
