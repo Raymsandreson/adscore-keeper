@@ -67,7 +67,9 @@ export const handler: RequestHandler = async (req, res) => {
         try {
           const r = await uazapiDeleteLabel(baseUrl, inst.instance_token, mapping.label_id);
           if (!r.ok) {
-            results.push({ instance_name: inst.instance_name, ok: false, action: 'delete', error: r.disconnected ? 'desconectado' : r.text.slice(0, 200) });
+            const rawErr = `HTTP ${r.status} — ${r.text.slice(0, 300)}`;
+            console.warn(`[sync-agent-labels] delete FAIL ${inst.instance_name}: ${rawErr}`);
+            results.push({ instance_name: inst.instance_name, ok: false, action: 'delete', error: rawErr });
             continue;
           }
           await ext
