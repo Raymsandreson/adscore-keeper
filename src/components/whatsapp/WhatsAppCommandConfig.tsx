@@ -308,6 +308,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
     willRespond: boolean;
     reason: string;
   } | null>(null);
+  const [resyncResult, setResyncResult] = useState<{ agentName: string; results: Array<{ instance_name: string; ok: boolean; action: string; error?: string }> } | null>(null);
 
   useEffect(() => {
     const fetchInstances = async () => {
@@ -683,17 +684,20 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       });
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || 'Falha no sync');
-      const ok = (data.results || []).filter((r: any) => r.ok).length;
-      const fail = (data.results || []).filter((r: any) => !r.ok).length;
-      const firstError = (data.results || []).find((r: any) => !r.ok)?.error;
+      const results = (data.results || []) as Array<{ instance_name: string; ok: boolean; action: string; error?: string }>;
+      console.log('[sync-agent-labels] resultado completo:', data);
+      const ok = results.filter(r => r.ok).length;
+      const fail = results.filter(r => !r.ok).length;
+      setResyncResult({ agentName: name, results });
       if (ok === 0 && fail > 0) {
-        throw new Error(firstError || `${fail} instâncias falharam`);
-      }
-      if (fail > 0) {
-        toast.warning(`Etiqueta sincronizada parcialmente: ${ok} ok, ${fail} falha(s)`, { id: t });
+        toast.error(`Nenhuma instância sincronizada (${fail} falhas) — clique pra ver detalhes`, { id: t, duration: 8000, action: { label: 'Ver', onClick: () => setResyncResult(r => r) } });
         return;
       }
-      toast.success(`Etiqueta sincronizada: ${ok} ok`, { id: t });
+      if (fail > 0) {
+        toast.warning(`Parcial: ${ok} ok, ${fail} falha(s) — abrindo detalhes`, { id: t, duration: 5000 });
+        return;
+      }
+      toast.success(`Etiqueta sincronizada em ${ok} instância(s)`, { id: t });
     } catch (e: any) {
       toast.error('Erro: ' + (e?.message || ''), { id: t });
     }
@@ -2070,6 +2074,31 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                 </div>
               </div>
             )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!resyncResult} onOpenChange={(o) => !o && setResyncResult(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Sincronização da etiqueta #{resyncResult?.agentName}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2 max-h-[60vh] overflow-y-auto">
+            <div className="text-xs text-muted-foreground">
+              {resyncResult?.results.filter(r => r.ok).length} sucesso(s) · {resyncResult?.results.filter(r => !r.ok).length} falha(s) · {resyncResult?.results.length} total
+            </div>
+            <div className="border rounded divide-y">
+              {(resyncResult?.results || []).map((r, i) => (
+                <div key={i} className="p-2 text-xs flex items-start gap-2">
+                  <span className={r.ok ? 'text-green-600' : 'text-red-600'}>{r.ok ? '✓' : '✗'}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-mono font-medium">{r.instance_name}</div>
+                    <div className="text-muted-foreground">ação: {r.action}</div>
+                    {r.error && <div className="text-red-600 break-words mt-1">erro: {r.error}</div>}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </DialogContent>
       </Dialog>
