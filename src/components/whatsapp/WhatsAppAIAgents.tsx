@@ -574,14 +574,17 @@ export function WhatsAppAIAgents() {
                     <Slider
                       value={[editingAgent.max_tokens ?? 2048]}
                       onValueChange={([v]) => setEditingAgent({ ...editingAgent, max_tokens: v })}
-                      min={256}
+                      min={32}
                       max={8192}
-                      step={256}
+                      step={32}
                     />
                     <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
-                      <span>Curta</span>
+                      <span>Ultra curta (~24 palavras)</span>
                       <span>~{Math.round((editingAgent.max_tokens ?? 2048) * 0.75)} palavras</span>
                     </div>
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      Dica: para respostas bem curtas (estilo "uma frase só"), use entre 32 e 128 tokens.
+                    </p>
                   </div>
                 </div>
 
