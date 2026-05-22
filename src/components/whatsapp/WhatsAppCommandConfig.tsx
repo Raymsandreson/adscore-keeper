@@ -1829,6 +1829,9 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
               <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => startEdit(s)} title="Editar manual">
                 <Pencil className="h-3.5 w-3.5" />
               </Button>
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleResyncLabel(s.id, s.shortcut_name)} title="Re-sincronizar etiqueta no WhatsApp">
+                <RefreshCw className="h-3.5 w-3.5" />
+              </Button>
               <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleDelete(s.id)}>
                 <Trash2 className="h-3.5 w-3.5" />
               </Button>
