@@ -778,7 +778,7 @@ export const handler: RequestHandler = async (req, res) => {
         // Busca gatilhos ativos pra essa instância
         const { data: triggers } = await supabase
           .from('label_document_triggers')
-          .select('id, label_id, label_name, zapsign_template_id')
+          .select('id, label_id, label_name, zapsign_template_id, agent_id')
           .ilike('instance_name', webhookInstanceName)
           .eq('enabled', true)
           .is('deleted_at', null);
@@ -804,6 +804,45 @@ export const handler: RequestHandler = async (req, res) => {
         const apiKey = process.env.RAILWAY_API_KEY || '';
         const dispatchResults: any[] = [];
         for (const t of matched) {
+          // 1) Se o gatilho tem agente vinculado, ativa-o na conversa (igual auto_swap_agent_on_stage_change)
+          if ((t as any).agent_id) {
+            try {
+              const last8 = phoneDigits.slice(-8);
+              const { error: agentErr } = await supabase
+                .from('whatsapp_conversation_agents')
+                .upsert({
+                  phone: phoneDigits,
+                  instance_name: webhookInstanceName,
+                  agent_id: (t as any).agent_id,
+                  is_active: true,
+                  human_paused_until: null,
+                  activated_by: 'label_trigger',
+                  updated_at: new Date().toISOString(),
+                }, { onConflict: 'phone,instance_name' });
+              if (agentErr) {
+                // Fallback: tenta update por LIKE em telefone (algumas linhas têm formato variável)
+                await supabase
+                  .from('whatsapp_conversation_agents')
+                  .update({
+                    agent_id: (t as any).agent_id,
+                    is_active: true,
+                    human_paused_until: null,
+                    activated_by: 'label_trigger',
+                  })
+                  .ilike('instance_name', webhookInstanceName)
+                  .like('phone', `%${last8}`);
+              }
+              console.log('[label-trigger] agent activated', { phone: phoneDigits, agent_id: (t as any).agent_id });
+            } catch (e: any) {
+              console.warn('[label-trigger] agent activation failed:', e?.message);
+            }
+          }
+
+          // 2) Se tem template ZapSign, dispara o preparo da procuração (comportamento antigo)
+          if (!t.zapsign_template_id) {
+            dispatchResults.push({ label: t.label_name, ok: true, skipped: 'no_template_only_agent' });
+            continue;
+          }
           const payload = {
             chatId,
             phone: phoneDigits,
