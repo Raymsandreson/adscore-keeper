@@ -50,6 +50,7 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'get-pending-review': getPendingReview,
   'submit-document-review': submitDocumentReview,
   'sync-agent-labels': syncAgentLabels,
+  'sync-result-labels': syncResultLabels,
 };
 
 const app = express();
