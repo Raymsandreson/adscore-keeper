@@ -783,19 +783,72 @@ export const handler: RequestHandler = async (req, res) => {
           .eq('enabled', true)
           .is('deleted_at', null);
 
+        // Normaliza labels do WA: "owner:labelId" → "labelId"
+        const normalizedWaLabels = waLabels.map((l) => String(l).split(':').pop() || String(l));
+
+        // === NOVO: busca também em agent_instance_labels (sync automático
+        // criado pela tela de Agentes). Aqui não tem template ZapSign,
+        // só ativa o agente correspondente quando o operador aplica a etiqueta.
+        const { data: agentLabelMappings } = await supabase
+          .from('agent_instance_labels')
+          .select('agent_id, label_id, label_name, instance_name')
+          .ilike('instance_name', webhookInstanceName)
+          .is('deleted_at', null);
+
+        const matchedAgentLabels = (agentLabelMappings || []).filter((m: any) => {
+          const lid = String(m.label_id).split(':').pop() || String(m.label_id);
+          return normalizedWaLabels.includes(lid);
+        });
+
+        for (const m of matchedAgentLabels) {
+          try {
+            const last8 = phoneDigits.slice(-8);
+            const { error: agentErr } = await supabase
+              .from('whatsapp_conversation_agents')
+              .upsert({
+                phone: phoneDigits,
+                instance_name: webhookInstanceName,
+                agent_id: (m as any).agent_id,
+                is_active: true,
+                human_paused_until: null,
+                activated_by: 'label_sync',
+                updated_at: new Date().toISOString(),
+              }, { onConflict: 'phone,instance_name' });
+            if (agentErr && last8) {
+              await supabase
+                .from('whatsapp_conversation_agents')
+                .update({
+                  agent_id: (m as any).agent_id,
+                  is_active: true,
+                  human_paused_until: null,
+                  activated_by: 'label_sync',
+                })
+                .ilike('instance_name', webhookInstanceName)
+                .like('phone', `%${last8}`);
+            }
+            console.log('[label-trigger] agent activated via sync', { chatId, phone: phoneDigits, agent_id: (m as any).agent_id, label: (m as any).label_name });
+          } catch (e: any) {
+            console.warn('[label-trigger] sync activation failed:', e?.message);
+          }
+        }
+
         if (!triggers || triggers.length === 0) {
+          if (matchedAgentLabels.length > 0) {
+            return res.json({ success: true, type: 'agent_activated_via_label_sync', count: matchedAgentLabels.length, labels: matchedAgentLabels.map((m: any) => m.label_name) });
+          }
           return res.json({ success: true, skipped: true, reason: 'no_triggers_for_instance' });
         }
 
-        // Normaliza ambos os lados: "owner:labelId" → "labelId"
-        const normalizedWaLabels = waLabels.map((l) => String(l).split(':').pop() || String(l));
         const matched = triggers.filter((t: any) => {
           const triggerLabelId = String(t.label_id).split(':').pop() || String(t.label_id);
           return normalizedWaLabels.includes(triggerLabelId);
         });
-        console.log('[label-trigger] matching', { waLabels, normalizedWaLabels, triggerCount: triggers.length, matchedCount: matched.length });
+        console.log('[label-trigger] matching', { waLabels, normalizedWaLabels, triggerCount: triggers.length, matchedCount: matched.length, agentLabelSyncMatches: matchedAgentLabels.length });
 
         if (matched.length === 0) {
+          if (matchedAgentLabels.length > 0) {
+            return res.json({ success: true, type: 'agent_activated_via_label_sync', count: matchedAgentLabels.length, labels: matchedAgentLabels.map((m: any) => m.label_name) });
+          }
           return res.json({ success: true, skipped: true, reason: 'no_matching_label_trigger' });
         }
 
