@@ -624,6 +624,21 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
 
     toast.success(editingId ? 'Agente atualizado!' : 'Agente criado!');
     logAudit({ action: editingId ? 'update' : 'create', entityType: 'agent', entityId: editingId || undefined, entityName: form.shortcut_name });
+
+    // 🏷️ Sincroniza etiqueta-crachá em todas as instâncias UazAPI (cor verde se ativo, cinza se não).
+    // Não bloqueia o save: roda em background; se falhar, o usuário pode re-sincronizar manualmente depois.
+    if (savedAgentId) {
+      cloudFunctions
+        .invoke('sync-agent-labels', { body: { agent_id: savedAgentId, operation: 'upsert' } })
+        .then((res: any) => {
+          const failed = (res?.data?.results || []).filter((r: any) => !r.ok);
+          if (failed.length > 0) {
+            toast.warning(`Etiqueta sincronizada em parte das instâncias. ${failed.length} falharam — veja painel.`);
+          }
+        })
+        .catch((e: any) => console.warn('sync-agent-labels failed:', e?.message));
+    }
+
     resetForm();
     onReload();
   };
@@ -639,12 +654,24 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
     
     // Soft delete instead of hard delete
     await (db.from('wjia_command_shortcuts') as any).update({ deleted_at: new Date().toISOString() }).eq('id', id);
+
+    // 🏷️ Recolhe a etiqueta-crachá de todas as instâncias UazAPI
+    cloudFunctions
+      .invoke('sync-agent-labels', { body: { agent_id: id, operation: 'delete' } })
+      .catch((e: any) => console.warn('sync-agent-labels (delete) failed:', e?.message));
+
     onReload();
     toast.success('Agente arquivado (pode ser restaurado)');
   };
 
   const handleToggle = async (id: string, isActive: boolean) => {
     await (db.from('wjia_command_shortcuts') as any).update({ is_active: !isActive }).eq('id', id);
+
+    // 🏷️ Recolora a etiqueta-crachá (verde ↔ cinza) em todas as instâncias
+    cloudFunctions
+      .invoke('sync-agent-labels', { body: { agent_id: id, operation: 'upsert' } })
+      .catch((e: any) => console.warn('sync-agent-labels (toggle) failed:', e?.message));
+
     onReload();
   };
 
