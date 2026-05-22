@@ -289,11 +289,13 @@ export function LabelTriggersConfig() {
         auto_extract_media: newAutoMedia,
         message_lookback_count: newLookback,
         enabled: true,
+        agent_id: newAgentId && newAgentId !== 'none' ? newAgentId : null,
       });
       if (error) throw error;
       toast.success('Gatilho criado!');
       setNewLabelId('');
       setNewTemplateId('');
+      setNewAgentId('none');
       loadTriggers();
     } catch (e: any) {
       toast.error('Erro ao salvar: ' + (e?.message || ''));
