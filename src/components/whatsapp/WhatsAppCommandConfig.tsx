@@ -950,6 +950,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                         </div>
                       )}
 
+                      {form.audience_mode !== 'ctwa_only' && (<>
 
                       {/* Funis permitidos — multi-select dropdown */}
                       <div className="space-y-1.5">
