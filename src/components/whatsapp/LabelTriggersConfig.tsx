@@ -578,6 +578,14 @@ export function LabelTriggersConfig() {
                         <FileSignature className="h-3 w-3" />
                         {t.zapsign_template_name || t.zapsign_template_id}
                       </Badge>
+                      {t.agent_id && (
+                        <>
+                          <span className="text-xs text-muted-foreground">+</span>
+                          <Badge variant="default" className="gap-1">
+                            🤖 {agents.find(a => a.id === t.agent_id)?.shortcut_name || 'Agente'}
+                          </Badge>
+                        </>
+                      )}
                     </div>
                     <p className="text-[11px] text-muted-foreground mt-1">
                       Analisa últimas {t.message_lookback_count} mensagens
