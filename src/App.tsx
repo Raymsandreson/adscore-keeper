@@ -147,6 +147,7 @@ const InstagramPage = lazyRetry(() => import("./pages/InstagramPage"), "Instagra
 const SettingsPage = lazyRetry(() => import("./pages/SettingsPage"), "SettingsPage");
 const ReferralSearchPage = lazyRetry(() => import("./pages/ReferralSearchPage"), "ReferralSearchPage");
 const AgentMonitorPage = lazyRetry(() => import("./pages/AgentMonitorPage"), "AgentMonitorPage");
+const GerarProcuracaoPage = lazyRetry(() => import("./pages/GerarProcuracaoPage"), "GerarProcuracaoPage");
 
 const LandingPage = lazyRetry(() => import("./pages/LandingPage"), "LandingPage");
 const BookingPage = lazyRetry(() => import("./pages/BookingPage"), "BookingPage");
@@ -256,6 +257,7 @@ function SidebarLayout() {
                 <Route path="/whatsapp/cloud" element={<ProtectedRoute><WhatsAppCloudPage /></ProtectedRoute>} />
                 <Route path="/instagram" element={<ProtectedRoute><InstagramPage /></ProtectedRoute>} />
                 <Route path="/contacts" element={<ProtectedRoute><ContactsPage /></ProtectedRoute>} />
+                <Route path="/gerar-procuracao" element={<ProtectedRoute><GerarProcuracaoPage /></ProtectedRoute>} />
                 <Route path="/referrals" element={<ProtectedRoute><ReferralSearchPage /></ProtectedRoute>} />
                 <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
                 <Route path="/agent-monitor" element={<ProtectedRoute><AgentMonitorPage /></ProtectedRoute>} />

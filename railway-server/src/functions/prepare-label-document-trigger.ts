@@ -329,7 +329,13 @@ export const handler: RequestHandler = async (req, res) => {
           countToday(createdBy),
         ]);
 
-        const reviewUrl = `${settings.review_base_url.replace(/\/$/, '')}/revisar/${reviewToken}`;
+        // Novo modelo: link genérico /gerar-procuracao (operador autentica e
+        // tudo é puxado do telefone). O review_token continua sendo gerado
+        // por compatibilidade com /revisar/{token} antigo, mas o link
+        // principal aponta pra porta fixa.
+        const base = settings.review_base_url.replace(/\/$/, '');
+        const generateUrl = `${base}/gerar-procuracao?phone=${encodeURIComponent(normPhone)}&instance=${encodeURIComponent(normInstance)}${templateId ? `&template=${encodeURIComponent(templateId)}` : ''}`;
+        const reviewUrl = generateUrl; // sobrescreve {review_url} dos templates antigos
         const msg = renderTemplate(settings.message_template, {
           label_name: labelName,
           contact_name: ctx.signerName,
@@ -340,6 +346,7 @@ export const handler: RequestHandler = async (req, res) => {
           personal_count: counts.personal,
           team_count: counts.team,
           review_url: reviewUrl,
+          generate_url: generateUrl,
         });
 
         notificationSent = await sendWhatsAppText(settings.notifier_instance_name, normalizePhone(destPhone), msg);

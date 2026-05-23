@@ -1,90 +1,81 @@
-# Fluxo: Agente Gerador de Documento (Etiqueta → Link → Procuração)
+# Fluxo: Agente Gerador de Documento
 
 > Documentação viva. Atualizar sempre que mudar algo do fluxo.
-> Última atualização: 2026-05-23
+> Última atualização: 2026-05-23 (link único)
+
+## TL;DR — Modelo atual (link único)
+
+Existe uma **porta fixa** no app: `/gerar-procuracao` (com login).
+O operador entra, digita o telefone do cliente, e o sistema:
+1. Acha contato/lead pelo telefone (Externo)
+2. Abre o `ZapSignDocumentDialog` (mesmo popup do chat)
+3. IA puxa campos da conversa
+4. Operador revisa, opcionalmente faz upload de docs (RG, etc.), e envia.
+
+A **etiqueta UazAPI** vira apenas um *atalho*: dispara o webhook,
+o Railway monta o link pré-preenchido e manda no WhatsApp pro operador
+configurado em `whatsapp_instances.review_notification_phone`.
 
 ## 1. Configuração do agente (aba "Documento")
 
-**Arquivo:** `src/components/whatsapp/WhatsAppCommandConfig.tsx` (linhas 1356–1620+)
-**Quando aparece:** apenas para agentes do tipo `📄 Gerador de Documentos` ou `🔄 Híbrido`.
+**Arquivo:** `src/components/whatsapp/WhatsAppCommandConfig.tsx`
+**Quando aparece:** agentes do tipo `📄 Gerador de Documentos` ou `🔄 Híbrido`.
 
-Campos disponíveis hoje:
+Campos principais armazenados em `whatsapp_agent_commands`:
+- `template_token` / `template_name` — modelo ZapSign
+- `notify_on_signature`, `send_signed_pdf`
+- `request_documents`, `document_types[]`, `document_type_modes`
+- `zapsign_mode` — `final_document` ou `prefilled_form`
+- `skip_confirmation`, `partial_min_fields[]`
 
-| Campo | Descrição | Storage |
-|---|---|---|
-| `template_token` / `template_name` | Modelo ZapSign selecionado | `agent.template_token` |
-| `notify_on_signature` | Avisa quando documento for assinado | `agent.notify_on_signature` |
-| `send_signed_pdf` | Envia PDF assinado pelo WhatsApp | `agent.send_signed_pdf` |
-| `request_documents` + `document_types` + `document_type_modes` | Pede RG/CNH, comprovante endereço, renda, outros (required/optional) | `agent.document_types[]` |
-| `zapsign_mode` | `final_document` (só assinar) ou `prefilled_form` (formulário pré-preenchido) | `agent.zapsign_mode` |
-| `skip_confirmation` + `partial_min_fields` | Gera com dados parciais (modo prefilled_form) | `agent.partial_min_fields[]` |
+## 2. Página `/gerar-procuracao` (novo modelo)
 
-## 2. Trigger por etiqueta (Railway)
+**Arquivo:** `src/pages/GerarProcuracaoPage.tsx`
+**Rota:** protegida por `<ProtectedRoute>` (mesmo login do app — atende LGPD).
+
+Query params aceitos (link pré-preenchido):
+- `?phone=5511999999999` — abre automaticamente
+- `&instance=oficial` — instância de origem
+- `&template=BPC_LOAS_TOKEN` — modelo sugerido (pré-seleciona no popup)
+
+Internamente apenas:
+- Busca `contacts`/`leads` pelo telefone no Externo
+- Renderiza `<ZapSignDocumentDialog open phone=... contactId=... leadId=... />`
+
+Toda a inteligência (upload, extração IA, edição, preview, envio) está **dentro**
+do dialog já existente — zero código duplicado.
+
+## 3. Trigger por etiqueta (Railway)
 
 **Arquivo:** `railway-server/src/functions/prepare-label-document-trigger.ts`
-**Fluxo:**
 
-1. Webhook UazAPI dispara quando etiqueta é colocada no chat.
-2. Função extrai dados da conversa (IA) e identifica campos preenchidos vs faltantes.
-3. Insere em `pending_label_documents` (Externo) com:
-   - `status: 'awaiting_operator_review'`
-   - `review_token` (token curto único)
-   - `expires_at` (48h)
-   - `extracted_fields`, `extracted_documents` (mídia já enviada no chat)
-4. Gera URL: `https://adscore-keeper.lovable.app/revisar/{token}`
-5. **HOJE:** envia notificação no WhatsApp **PARA O OPERADOR** (número configurado em `notifier_instance_settings.reviewPhone`).
+Fluxo (atualizado):
+1. Webhook UazAPI dispara quando a etiqueta entra no chat.
+2. Função extrai dados da conversa (IA) e grava `pending_label_documents`
+   com `status: 'awaiting_operator_review'` + `review_token` + `expires_at`
+   (mantido por compatibilidade/auditoria).
+3. Monta URL **nova**:
+   `https://adscore-keeper.lovable.app/gerar-procuracao?phone=X&instance=Y&template=Z`
+4. Renderiza `settings.message_template` com `{review_url}` e `{generate_url}`
+   apontando pra essa URL nova.
+5. Envia no WhatsApp pro `review_notification_phone` da instância de origem.
 
-## 3. Página de revisão pública
+## 4. Rota `/revisar/:token` (legado)
 
-**Rota:** `/revisar/:token` → `src/pages/DocumentReviewPage.tsx`
-**Backend:** Railway `/public/review/get` e `/public/review/submit` (`submit-document-review.ts`)
+Mantida. Links já enviados antes da mudança continuam funcionando.
+Não geramos novos tokens pra esse fluxo a partir de agora.
+- Página: `src/pages/DocumentReviewPage.tsx`
+- Backend: `get-pending-review.ts` + `submit-document-review.ts`
 
-**O que faz hoje:**
-- Carrega campos do template + valores extraídos pela IA (marcados com ✨).
-- Operador revisa os campos no celular/desktop.
-- Botão "Confirmar e enviar ao cliente" → gera ZapSign → envia link de assinatura no WhatsApp do cliente.
-- Botão descartar.
+## 5. Tabelas e endpoints chave
 
-**O que NÃO faz hoje (gaps vs popup do print):**
-- ❌ Upload de novos documentos (RG, comprovante) para extração adicional.
-- ❌ Re-rodar extração da IA depois de upload.
-- ❌ Seleção/troca de template (já vem fixo do agente).
-- ❌ Configuração de signatários múltiplos.
-- ❌ Preview do PDF antes de enviar.
+- **Externo:** `pending_label_documents`, `zapsign_documents`, `contacts`, `leads`, `whatsapp_messages`
+- **Cloud:** `label_review_notification_settings`, `whatsapp_instances`
+- **Railway:** `POST /functions/prepare-label-document-trigger`, `POST /public/review/get`, `POST /public/review/submit`
+- **Cloud edge function:** `zapsign-api` (actions: `list_templates`, `get_template`, `extract_data`/`extract_fields`, `create_doc`, `preview_extract_prompt`)
 
-## 4. Popup "do print" (referência do que o usuário quer no link)
+## 6. Como reverter (rollback)
 
-**Arquivo:** `src/components/whatsapp/ZapSignDocumentDialog.tsx` (1197 linhas)
-**Steps:** `select` → `signers` → `fill` → `creating`
-
-Funções principais (que o usuário quer ver dentro do `/revisar/:token`):
-- Upload de arquivos (RG, CNH, comprovantes) com extração via IA (`zapsign-api` action `extract_fields`).
-- Texto colado adicional (`pastedText`).
-- Origem da extração: `upload_only` ou `upload_and_chat`.
-- Preview do prompt enviado à IA.
-- Edição de campos com badge "✨ preenchido pela IA".
-- Confirmação dupla (pré-create + pré-send).
-- Preview do PDF gerado antes de mandar.
-
-## 5. Pedido atual do usuário (em construção)
-
-> "Quando agente com função 'gerar documento' for acionado pela etiqueta:
->  - Sistema posta nota no contato (via UazAPI) com link.
->  - Link abre formulário online no WhatsJUD (mobile-first).
->  - Formulário tem MESMAS funções do popup do print (upload, extração IA, edição).
->  - Após coleta completa → gera procuração → envia pro número que originou o link."
-
-### Gaps a fechar
-1. **UazAPI Note Update:** adicionar chamada `POST /chat/edit` (ou equivalente) no `prepare-label-document-trigger.ts` para gravar o link na nota do contato. Endpoint a confirmar na doc UazAPI.
-2. **Expandir `DocumentReviewPage`** para suportar:
-   - Upload de arquivos → enviar pro `zapsign-api` `extract_fields` → re-popular campos com badge ✨.
-   - Texto colado adicional.
-   - Preview do PDF antes do submit.
-3. **Backend `submit-document-review.ts`** já gera ZapSign e envia link pro telefone do `pending_label_documents.phone` — não muda.
-
-## 6. Tabelas e endpoints chave
-
-- **Externo:** `pending_label_documents` (revisão), `zapsign_documents` (docs gerados).
-- **Cloud:** `notifier_instance_settings` (config de notificação).
-- **Railway:** `POST /public/review/get`, `POST /public/review/submit`, `POST /internal/prepare-label-document-trigger`.
-- **Cloud function:** `zapsign-api` (actions: `create_doc`, `extract_fields`, `preview_extract_prompt`, `list_templates`, `get_template_fields`).
+1. `/gerar-procuracao` → remover rota em `src/App.tsx` e deletar `GerarProcuracaoPage.tsx`
+2. Trigger → reverter o bloco da URL em `prepare-label-document-trigger.ts` pra `/revisar/{reviewToken}`
+3. Rota `/revisar/:token` nunca foi tocada — não precisa reverter.
