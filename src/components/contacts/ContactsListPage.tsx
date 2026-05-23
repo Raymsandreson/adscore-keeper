@@ -884,6 +884,13 @@ export function ContactsListPage() {
                           <p className="text-xs text-muted-foreground">Agrupa pelo início do nome (letras antes do número).</p>
                         </Label>
                       </div>
+                      <div className="flex items-center gap-2 p-3 rounded-lg border hover:bg-muted/50">
+                        <RadioGroupItem value="date" id="sort-date" />
+                        <Label htmlFor="sort-date" className="flex-1 cursor-pointer text-sm">
+                          <p>Data de criação</p>
+                          <p className="text-xs text-muted-foreground">Ordena pela data em que o grupo foi criado no WhatsApp.</p>
+                        </Label>
+                      </div>
                     </RadioGroup>
                   </div>
 
