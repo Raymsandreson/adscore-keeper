@@ -178,6 +178,7 @@ export function ContactsListPage() {
               contact_count: 0,
               instance_name: r.instance_name || null,
               created_at: null,
+              lead_created_at: null,
             });
           }
         }
