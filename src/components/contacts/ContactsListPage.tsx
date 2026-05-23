@@ -128,7 +128,7 @@ export function ContactsListPage() {
   const [classifyingClients, setClassifyingClients] = useState(false);
 
   // Groups data
-  const [groups, setGroups] = useState<{ group_jid: string; group_name: string; lead_name: string; lead_status: string; lead_id: string | null; contact_count: number; instance_name: string | null; created_at: string | null }[]>([]);
+  const [groups, setGroups] = useState<{ group_jid: string; group_name: string; lead_name: string; lead_status: string; lead_id: string | null; contact_count: number; instance_name: string | null; created_at: string | null; lead_created_at: string | null }[]>([]);
   const [groupsLoading, setGroupsLoading] = useState(false);
   const [groupSearch, setGroupSearch] = useState('');
   const [groupSort, setGroupSort] = useState<'alpha' | 'number' | 'prefix' | 'date'>('alpha');
@@ -178,6 +178,7 @@ export function ContactsListPage() {
               contact_count: 0,
               instance_name: r.instance_name || null,
               created_at: null,
+              lead_created_at: null,
             });
           }
         }
@@ -190,7 +191,7 @@ export function ContactsListPage() {
         const to = from + pageSize - 1;
         const { data: page, error } = await externalSupabase
           .from('lead_whatsapp_groups')
-          .select('group_jid, group_name, lead_id, leads!lead_whatsapp_groups_lead_id_fkey(lead_name, lead_status)')
+          .select('group_jid, group_name, lead_id, leads!lead_whatsapp_groups_lead_id_fkey(lead_name, lead_status, created_at)')
           .order('created_at', { ascending: false })
           .range(from, to);
         if (error) { console.error('fetchGroups lwg page error:', error); break; }
@@ -203,6 +204,7 @@ export function ContactsListPage() {
             if (!existing.lead_name && lead?.lead_name) existing.lead_name = lead.lead_name;
             if (!existing.lead_status && lead?.lead_status) existing.lead_status = lead.lead_status;
             if (!existing.lead_id && g.lead_id) existing.lead_id = g.lead_id;
+            if (!existing.lead_created_at && lead?.created_at) existing.lead_created_at = lead.created_at;
           } else {
             groupMap.set(g.group_jid, {
               group_jid: g.group_jid,
@@ -213,6 +215,7 @@ export function ContactsListPage() {
               contact_count: 0,
               instance_name: null,
               created_at: null,
+              lead_created_at: lead?.created_at || null,
             });
           }
         }
@@ -1256,8 +1259,8 @@ export function ContactsListPage() {
                   const nb = ((b as any)[sortField] || '').trim();
                   let cmp = 0;
                   if (groupSort === 'date') {
-                    const ta = a.created_at ? new Date(a.created_at).getTime() : null;
-                    const tb = b.created_at ? new Date(b.created_at).getTime() : null;
+                    const ta = a.created_at ? new Date(a.created_at).getTime() : (a.lead_created_at ? new Date(a.lead_created_at).getTime() : null);
+                    const tb = b.created_at ? new Date(b.created_at).getTime() : (b.lead_created_at ? new Date(b.lead_created_at).getTime() : null);
                     if (ta == null && tb == null) cmp = 0;
                     else if (ta == null) cmp = 1;
                     else if (tb == null) cmp = -1;
@@ -1458,7 +1461,10 @@ export function ContactsListPage() {
                           )}{' '}
                           • {group.contact_count} contato(s)
                           {group.created_at && (
-                            <> • {new Date(group.created_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}</>
+                            <> • Grupo: {new Date(group.created_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}</>
+                          )}
+                          {group.lead_created_at && (
+                            <> • Lead: {new Date(group.lead_created_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}</>
                           )}
                         </p>
 
