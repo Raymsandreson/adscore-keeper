@@ -1442,9 +1442,11 @@ Deno.serve(async (req) => {
     // O bloco anterior já cobriu o caso `post_sign_mode = 'group'`; aqui
     // tratamos somente leads que ficaram sem grupo após aquele bloco.
     // ====================================================
-    // [2026-05-11] Fallback reativado SOMENTE quando o documento veio do chat
-    // (lead_id + contact_id presentes). Sem isso, segue manual via checkpoint.
-    if (isDocFullySigned && localDoc.lead_id && localDoc.contact_id && localDoc.whatsapp_phone) {
+    // [2026-05-11] Fallback reativado quando documento tem lead_id + telefone.
+    // [2026-05-23] Removida exigência de contact_id — procurações geradas via
+    // GerarProcuracaoPage (sem chat prévio) não têm contact_id, e estavam
+    // ficando sem grupo criado. Grupo não depende de contato.
+    if (isDocFullySigned && localDoc.lead_id && localDoc.whatsapp_phone) {
       try {
         const { data: leadForGroup } = await supabase
           .from('leads')
