@@ -1241,15 +1241,20 @@ export function ZapSignDocumentDialog({
                 onClick={async () => {
                   if (!pendingSignUrl) return;
                   try {
-                    await navigator.clipboard.writeText(pendingSignUrl);
-                    toast.success('Link copiado!');
+                    const { template, signerName, emptyFieldsList } = pendingDocData || {};
+                    const missingList = emptyFieldsList?.length > 0
+                      ? `\n\n⚠️ *Campos para você preencher:*\n${emptyFieldsList.map((f: any) => `• ${formatFieldLabel(f.de)}`).join('\n')}`
+                      : '';
+                    const message = `📝 *Documento para assinatura*\n\nOlá ${signerName}! Segue o link para assinar o documento *${template?.name || 'Documento'}*:\n\n👉 ${pendingSignUrl}${missingList}\n\n*Instruções:*\n1. Clique no link acima\n2. ${emptyFieldsList?.length > 0 ? 'Preencha os campos indicados' : 'Confira seus dados'}\n3. Assine digitalmente no local indicado\n4. Pronto! Você receberá uma cópia por email.\n\nQualquer dúvida, estou à disposição! 🙏`;
+                    await navigator.clipboard.writeText(message);
+                    toast.success('Mensagem completa copiada!');
                   } catch {
                     toast.error('Não foi possível copiar');
                   }
                 }}
                 disabled={!pendingSignUrl}
               >
-                <Copy className="h-4 w-4" /> Copiar link
+                <Copy className="h-4 w-4" /> Copiar mensagem
               </Button>
               <Button className="flex-1 gap-2" onClick={() => handleSendSigningLink(false)} disabled={sendingLink}>
                 {sendingLink ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
