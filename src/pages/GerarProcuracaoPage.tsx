@@ -116,46 +116,46 @@ export default function GerarProcuracaoPage() {
       toast.error('Informe um telefone válido (com DDD)');
       return;
     }
+    // Abre o popup imediatamente — a busca de contato/lead roda em paralelo
+    // e atualiza o estado quando chega. Isso evita a sensação de "travado".
+    setResolved({ phone });
+    setDialogOpen(true);
     setLoading(true);
+
     try {
-      // Procura contato/lead pelo telefone no Externo (busca leve)
-      const { data: contact } = await db
-        .from('contacts')
-        .select('id, full_name, lead_id')
-        .eq('phone', phone)
-        .is('deleted_at', null)
-        .order('updated_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      let leadId: string | undefined = (contact as any)?.lead_id || undefined;
-      let contactName: string | undefined = (contact as any)?.full_name || undefined;
-
-      if (!leadId) {
-        const { data: lead } = await db
+      const [contactRes, leadRes] = await Promise.all([
+        db
+          .from('contacts')
+          .select('id, full_name, lead_id')
+          .eq('phone', phone)
+          .is('deleted_at', null)
+          .order('updated_at', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+        db
           .from('leads')
           .select('id, lead_name')
           .eq('lead_phone', phone)
           .is('deleted_at', null)
           .order('updated_at', { ascending: false })
           .limit(1)
-          .maybeSingle();
-        if (lead) {
-          leadId = (lead as any).id;
-          if (!contactName) contactName = (lead as any).lead_name;
-        }
-      }
+          .maybeSingle(),
+      ]);
+
+      const contact: any = contactRes.data;
+      const lead: any = leadRes.data;
+      const leadId: string | undefined = contact?.lead_id || lead?.id || undefined;
+      const contactName: string | undefined =
+        contact?.full_name || lead?.lead_name || undefined;
 
       setResolved({
         phone,
-        contactId: (contact as any)?.id,
+        contactId: contact?.id,
         leadId,
         contactName,
       });
-      setDialogOpen(true);
     } catch (err: any) {
       console.error('[GerarProcuracao] erro ao resolver telefone:', err);
-      toast.error('Erro ao buscar conversa');
     } finally {
       setLoading(false);
     }
