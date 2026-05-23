@@ -62,6 +62,8 @@ export default function GerarProcuracaoPage() {
   const [loading, setLoading] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [defaultInstance, setDefaultInstance] = useState<string | undefined>(undefined);
+  const [selectedInstance, setSelectedInstance] = useState<string | undefined>(undefined);
+  const [availableInstances, setAvailableInstances] = useState<Array<{ id: string; instance_name: string }>>([]);
   const [resolved, setResolved] = useState<{
     phone: string;
     contactId?: string;
@@ -69,29 +71,43 @@ export default function GerarProcuracaoPage() {
     contactName?: string;
   } | null>(null);
 
-  // Instância efetiva: URL > perfil do usuário
-  const instance = urlInstance || defaultInstance;
+  // Instância efetiva: URL > seleção manual > perfil do usuário
+  const instance = urlInstance || selectedInstance || defaultInstance;
 
-  // Carrega instância padrão do perfil (Cloud) e resolve nome no Externo
+  // Carrega instâncias acessíveis e default do perfil
   useEffect(() => {
-    if (urlInstance || !user) return;
+    if (!user) return;
     (async () => {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('default_instance_id')
-        .eq('user_id', user.id)
-        .maybeSingle();
-      if (!profile?.default_instance_id) return;
-      const { data: inst } = await db
-        .from('whatsapp_instances')
-        .select('instance_name')
-        .eq('id', profile.default_instance_id)
-        .maybeSingle();
-      if ((inst as any)?.instance_name) {
-        setDefaultInstance((inst as any).instance_name);
+      try {
+        const allowedIds = await getMyAllowedInstanceIds(user.id);
+        if (allowedIds.length === 0) return;
+        const { data: instances } = await db
+          .from('whatsapp_instances')
+          .select('id, instance_name')
+          .in('id', allowedIds)
+          .eq('is_active', true)
+          .order('instance_name');
+        setAvailableInstances((instances as any) || []);
+
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('default_instance_id')
+          .eq('user_id', user.id)
+          .maybeSingle();
+        const defaultId = (profile as any)?.default_instance_id;
+        const defaultInst = (instances as any)?.find((i: any) => i.id === defaultId);
+        if (defaultInst?.instance_name) {
+          setDefaultInstance(defaultInst.instance_name);
+          setSelectedInstance(defaultInst.instance_name);
+        } else if ((instances as any)?.[0]?.instance_name) {
+          // Sem default no perfil: usa a primeira acessível como pré-seleção
+          setSelectedInstance((instances as any)[0].instance_name);
+        }
+      } catch (err) {
+        console.error('[GerarProcuracao] erro ao carregar instâncias acessíveis:', err);
       }
     })();
-  }, [user, urlInstance]);
+  }, [user]);
 
 
   const openForPhone = async (rawPhone: string) => {
