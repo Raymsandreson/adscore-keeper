@@ -163,6 +163,11 @@ export function ZapSignDocumentDialog({
     send_signed_pdf: boolean;
   }>({ signer_auth_mode: 'assinaturaTela', notify_on_signature: true, send_signed_pdf: true });
 
+  // Funil vinculado ao lead (ou escolhido manualmente quando não há lead)
+  const [boards, setBoards] = useState<Array<{ id: string; name: string }>>([]);
+  const [selectedBoardId, setSelectedBoardId] = useState<string | null>(null);
+  const [leadBoardId, setLeadBoardId] = useState<string | null>(null);
+
   const applyFunnelDefaults = (data: any) => {
     const auth = data?.signer_auth_mode || 'assinaturaTela';
     const nextDefaults = {
