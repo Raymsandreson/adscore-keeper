@@ -682,8 +682,15 @@ export function ZapSignDocumentDialog({
     }
   };
 
-  const filledFields = templateFields.filter(f => f.para.trim() && !f.editing);
-  const emptyFields = templateFields.filter(f => f.de && (!f.para.trim() || f.editing));
+  const isFieldComplete = (f: ExtractedField) => {
+    if (!f.para.trim() || f.editing) return false;
+    if (detectLocationFieldType(f.de) === 'cep') {
+      return f.para.replace(/\D/g, '').length === 8;
+    }
+    return true;
+  };
+  const filledFields = templateFields.filter(f => isFieldComplete(f));
+  const emptyFields = templateFields.filter(f => f.de && !isFieldComplete(f));
 
   const findStateValue = () => {
     const f = templateFields.find(tf => detectLocationFieldType(tf.de) === 'state');
