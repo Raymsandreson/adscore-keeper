@@ -235,19 +235,27 @@ export function ZapSignDocumentDialog({
 
   // Fetch full message history from database when dialog opens
   const fetchDbMessages = async () => {
-    if (!phone) return;
+    const lookupPhone = conversationPhone || phone;
+    if (!lookupPhone) return;
     try {
+      const candidates = phoneCandidatesForConversation(lookupPhone);
+      setMessageLoadNote('Buscando conversa direta do número informado...');
       const { data, error } = await externalSupabase
         .from('whatsapp_messages')
         .select('direction, message_text, media_url, media_type, message_type, created_at')
-        .eq('phone', phone)
+        .in('phone', candidates)
+        .match(instanceName ? { instance_name: instanceName } : {})
         .order('created_at', { ascending: false })
         .limit(200);
       if (!error && data && data.length > 0) {
-        setDbMessages(data);
+        setDbMessages(data.slice().reverse());
+        setMessageLoadNote(`${data.length} mensagem(ns) carregada(s) da conversa direta${instanceName ? ` na instância ${instanceName}` : ''}.`);
+      } else {
+        setMessageLoadNote('Nenhuma mensagem encontrada para esse número na conversa direta.');
       }
     } catch (err) {
       console.error('Error fetching messages for ZapSign extraction:', err);
+      setMessageLoadNote('Erro ao carregar mensagens da conversa direta.');
     }
   };
 
