@@ -1366,6 +1366,12 @@ export function ZapSignDocumentDialog({
                         <div className="text-xs font-semibold text-muted-foreground uppercase">Lead / Caso</div>
                         {nextLeadNumber && <div>➡️ Próximo: <span className="font-mono font-medium">{nextLeadNumber}</span></div>}
                         {lastLeadNumber && <div>📌 Último fechado: <span className="font-mono">{lastLeadNumber}</span></div>}
+                        {previewGroupName && (
+                          <div className="mt-2 p-2 rounded bg-muted/50 border">
+                            <div className="text-[10px] uppercase text-muted-foreground">Nome do grupo (preview)</div>
+                            <div className="font-mono text-xs break-words">💬 {previewGroupName}</div>
+                          </div>
+                        )}
                       </div>
                       <div className="space-y-1">
                         <div className="text-xs font-semibold text-muted-foreground uppercase">Signatário principal</div>
