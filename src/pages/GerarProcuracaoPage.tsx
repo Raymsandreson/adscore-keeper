@@ -171,6 +171,59 @@ export default function GerarProcuracaoPage() {
           contactId={resolved.contactId}
           leadId={resolved.leadId}
           instanceName={instance}
+          onSendMessage={async (message: string) => {
+            try {
+              // Acha a instância (pela query string ou primeira ativa disponível)
+              let inst: any = null;
+              if (instance) {
+                const { data } = await supabase
+                  .from('whatsapp_instances')
+                  .select('id, instance_name')
+                  .ilike('instance_name', instance)
+                  .eq('is_active', true)
+                  .limit(1)
+                  .maybeSingle();
+                inst = data;
+              }
+              if (!inst) {
+                const { data } = await supabase
+                  .from('whatsapp_instances')
+                  .select('id, instance_name')
+                  .eq('is_active', true)
+                  .order('created_at', { ascending: true })
+                  .limit(1)
+                  .maybeSingle();
+                inst = data;
+              }
+              if (!inst?.id) {
+                toast.error('Nenhuma instância WhatsApp ativa encontrada');
+                return false;
+              }
+              const { data, error } = await cloudFunctions.invoke('send-whatsapp', {
+                body: {
+                  phone: resolved.phone,
+                  message,
+                  instance_id: inst.id,
+                  contact_id: resolved.contactId,
+                  lead_id: resolved.leadId,
+                },
+              });
+              if (error) {
+                console.error('[GerarProcuracao] send-whatsapp error', error);
+                toast.error('Erro ao enviar: ' + (error.message || 'falha desconhecida'));
+                return false;
+              }
+              if (data && (data as any).success === false) {
+                toast.error('Erro ao enviar: ' + ((data as any).error || 'falha'));
+                return false;
+              }
+              return true;
+            } catch (err: any) {
+              console.error('[GerarProcuracao] onSendMessage exception', err);
+              toast.error('Erro ao enviar: ' + err.message);
+              return false;
+            }
+          }}
         />
       )}
     </div>
