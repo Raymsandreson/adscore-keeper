@@ -7,6 +7,8 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { ZapSignDocumentDialog } from '@/components/whatsapp/ZapSignDocumentDialog';
 import { db } from '@/integrations/supabase';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuthContext } from '@/contexts/AuthContext';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { toast } from 'sonner';
 
