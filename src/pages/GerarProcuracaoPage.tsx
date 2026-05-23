@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { ZapSignDocumentDialog } from '@/components/whatsapp/ZapSignDocumentDialog';
-import { externalSupabase } from '@/integrations/supabase/external-client';
+import { db } from '@/integrations/supabase';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { toast } from 'sonner';
 
@@ -60,7 +60,7 @@ export default function GerarProcuracaoPage() {
     setLoading(true);
     try {
       // Procura contato/lead pelo telefone no Externo (busca leve)
-      const { data: contact } = await externalSupabase
+      const { data: contact } = await db
         .from('contacts')
         .select('id, full_name, lead_id')
         .eq('phone', phone)
@@ -73,7 +73,7 @@ export default function GerarProcuracaoPage() {
       let contactName: string | undefined = (contact as any)?.full_name || undefined;
 
       if (!leadId) {
-        const { data: lead } = await externalSupabase
+        const { data: lead } = await db
           .from('leads')
           .select('id, lead_name')
           .eq('lead_phone', phone)
@@ -190,7 +190,7 @@ export default function GerarProcuracaoPage() {
               // edge devolve sucesso e o popup diz "enviou").
               let inst: any = null;
               if (instance) {
-                const { data } = await externalSupabase
+                const { data } = await db
                   .from('whatsapp_instances')
                   .select('id, instance_name')
                   .ilike('instance_name', instance)
@@ -200,7 +200,7 @@ export default function GerarProcuracaoPage() {
                 inst = data;
               }
               if (!inst) {
-                const { data } = await externalSupabase
+                const { data } = await db
                   .from('whatsapp_instances')
                   .select('id, instance_name')
                   .eq('is_active', true)
