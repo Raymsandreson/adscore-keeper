@@ -173,10 +173,13 @@ export default function GerarProcuracaoPage() {
           instanceName={instance}
           onSendMessage={async (message: string) => {
             try {
-              // Acha a instância (pela query string ou primeira ativa disponível)
+              // whatsapp_instances vive no Externo (dado de negócio).
+              // Buscar no Cloud devolve IDs errados → send-whatsapp chama
+              // a UazAPI com instance_id inválido e a msg nunca sai (mas a
+              // edge devolve sucesso e o popup diz "enviou").
               let inst: any = null;
               if (instance) {
-                const { data } = await supabase
+                const { data } = await externalSupabase
                   .from('whatsapp_instances')
                   .select('id, instance_name')
                   .ilike('instance_name', instance)
@@ -186,7 +189,7 @@ export default function GerarProcuracaoPage() {
                 inst = data;
               }
               if (!inst) {
-                const { data } = await supabase
+                const { data } = await externalSupabase
                   .from('whatsapp_instances')
                   .select('id, instance_name')
                   .eq('is_active', true)
@@ -199,6 +202,7 @@ export default function GerarProcuracaoPage() {
                 toast.error('Nenhuma instância WhatsApp ativa encontrada');
                 return false;
               }
+              console.log('[GerarProcuracao] enviando via instance', inst);
               const { data, error } = await cloudFunctions.invoke('send-whatsapp', {
                 body: {
                   phone: resolved.phone,
@@ -214,9 +218,11 @@ export default function GerarProcuracaoPage() {
                 return false;
               }
               if (data && (data as any).success === false) {
+                console.error('[GerarProcuracao] send-whatsapp business error', data);
                 toast.error('Erro ao enviar: ' + ((data as any).error || 'falha'));
                 return false;
               }
+              console.log('[GerarProcuracao] send-whatsapp ok', data);
               return true;
             } catch (err: any) {
               console.error('[GerarProcuracao] onSendMessage exception', err);
