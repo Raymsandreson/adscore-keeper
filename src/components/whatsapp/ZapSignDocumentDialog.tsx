@@ -124,6 +124,12 @@ export function ZapSignDocumentDialog({
   // Signers state
   const [signers, setSigners] = useState<SignerInfo[]>([]);
   const [messagePeriod, setMessagePeriod] = useState<string>('7d');
+  const [selectedMessageKeys, setSelectedMessageKeys] = useState<Set<string>>(new Set());
+  const messageKey = (m: any, idx: number) => {
+    const ts = m?.created_at || m?.timestamp || '';
+    const txt = (m?.message_text || '').slice(0, 40);
+    return `${ts}|${m?.direction || ''}|${txt}|${idx}`;
+  };
   const [nextLeadNumber, setNextLeadNumber] = useState<string | null>(null);
   const [lastLeadNumber, setLastLeadNumber] = useState<string | null>(null);
   const [showNumberConfirm, setShowNumberConfirm] = useState(false);
