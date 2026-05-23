@@ -584,13 +584,16 @@ export function ZapSignDocumentDialog({
     try {
       const template = templates.find(t => t.token === selectedTemplate);
       const mainSigner = signers[0];
-      const filledFieldsData = templateFields.filter(f => f.de && f.para.trim());
+      const normalizedSigningPhone = normalizeBrazilMobilePhoneForDoc(phone || mainSigner.phone || '');
+      const filledFieldsData = templateFields
+        .map(f => /whatsapp|telefone|celular/i.test(formatFieldLabel(f.de)) ? { ...f, para: normalizedSigningPhone, source: 'manual' as const } : f)
+        .filter(f => f.de && f.para.trim());
 
       // Build signers array for the API
-      const signersPayload = signers.map(s => ({
+      const signersPayload = signers.map((s, idx) => ({
         name: s.name,
         email: s.email || undefined,
-        phone: s.phone || undefined,
+        phone: idx === 0 ? normalizedSigningPhone : (s.phone || undefined),
         role: s.role,
         auth_mode: s.auth_mode || 'assinaturaTela',
       }));
@@ -601,7 +604,7 @@ export function ZapSignDocumentDialog({
           template_id: selectedTemplate,
           signer_name: mainSigner.name,
           signer_email: mainSigner.email || undefined,
-          signer_phone: mainSigner.phone || undefined,
+          signer_phone: normalizedSigningPhone || undefined,
           signers: signersPayload,
           data: filledFieldsData,
           document_name: template?.name || 'Documento',
@@ -610,7 +613,7 @@ export function ZapSignDocumentDialog({
           legal_case_id: legalCaseId || null,
           created_by: user?.id || null,
           send_via_whatsapp: false,
-           whatsapp_phone: phone,
+           whatsapp_phone: normalizedSigningPhone,
            notify_on_signature: funnelDefaults.notify_on_signature,
            send_signed_pdf: funnelDefaults.send_signed_pdf,
            instance_name: instanceName || null,
@@ -625,7 +628,7 @@ export function ZapSignDocumentDialog({
       const emptyFieldsList = templateFields.filter(f => f.de && !f.para.trim());
 
       setPendingSignUrl(url);
-      setPendingDocData({ template, signerName: mainSigner.name, signerPhone: mainSigner.phone, emptyFieldsList, allSignUrls: data.all_sign_urls || [] });
+      setPendingDocData({ template, signerName: mainSigner.name, signerPhone: normalizedSigningPhone, emptyFieldsList, allSignUrls: data.all_sign_urls || [] });
 
       if (originalPdfUrl) setPreviewPdfUrl(originalPdfUrl);
       setShowPreview(true);
