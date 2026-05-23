@@ -153,6 +153,7 @@ export function ZapSignDocumentDialog({
   };
   const [nextLeadNumber, setNextLeadNumber] = useState<string | null>(null);
   const [lastLeadNumber, setLastLeadNumber] = useState<string | null>(null);
+  const [previewGroupName, setPreviewGroupName] = useState<string | null>(null);
   const [showNumberConfirm, setShowNumberConfirm] = useState(false);
   const [confirmStep, setConfirmStep] = useState<null | 'pre-create' | 'pre-send'>(null);
 
@@ -355,20 +356,33 @@ export function ZapSignDocumentDialog({
         if (!boardId) return defaults;
       }
 
-      // Fetch next/last lead numbering for confirmation step
+      // Fetch group naming config + REAL closed-leads count (source of truth for sequence)
       const { data: settings } = await (externalSupabase as any)
         .from('board_group_settings')
-        .select('closed_group_name_prefix, closed_current_sequence, group_name_prefix, current_sequence')
+        .select('closed_group_name_prefix, group_name_prefix, sync_lead_name_with_group')
         .eq('board_id', boardId)
         .maybeSingle();
-      if (settings) {
-        const prefix = settings.closed_group_name_prefix || settings.group_name_prefix || '';
-        const currentSeq = settings.closed_current_sequence ?? settings.current_sequence ?? 0;
-        const next = currentSeq + 1;
-        const fmt = (n: number) => String(n);
-        setNextLeadNumber(prefix ? `${prefix} ${fmt(next)}` : fmt(next));
-        setLastLeadNumber(currentSeq > 0 ? (prefix ? `${prefix} ${fmt(currentSeq)}` : fmt(currentSeq)) : null);
-      }
+
+      // Posição real = quantidade de leads fechados no funil
+      const { count: closedCount } = await (externalSupabase as any)
+        .from('leads')
+        .select('id', { count: 'exact', head: true })
+        .eq('board_id', boardId)
+        .eq('lead_status', 'closed');
+
+      const currentSeq = closedCount || 0;
+      const next = currentSeq + 1;
+      const prefix = settings?.closed_group_name_prefix || settings?.group_name_prefix || '';
+      const fmt = (n: number) => String(n);
+      const nextLabel = prefix ? `${prefix} ${fmt(next)}` : fmt(next);
+      const lastLabel = currentSeq > 0 ? (prefix ? `${prefix} ${fmt(currentSeq)}` : fmt(currentSeq)) : null;
+      setNextLeadNumber(nextLabel);
+      setLastLeadNumber(lastLabel);
+
+      // Preview do nome do grupo que será criado/renomeado
+      const signerName = signers[0]?.name?.trim() || contactName || contactData?.full_name || leadData?.lead_name || '';
+      const previewParts = [nextLabel, signerName].filter(Boolean);
+      setPreviewGroupName(previewParts.join(' - '));
     } catch (err) {
       console.error('Error fetching funnel defaults:', err);
     }
@@ -1352,6 +1366,12 @@ export function ZapSignDocumentDialog({
                         <div className="text-xs font-semibold text-muted-foreground uppercase">Lead / Caso</div>
                         {nextLeadNumber && <div>➡️ Próximo: <span className="font-mono font-medium">{nextLeadNumber}</span></div>}
                         {lastLeadNumber && <div>📌 Último fechado: <span className="font-mono">{lastLeadNumber}</span></div>}
+                        {previewGroupName && (
+                          <div className="mt-2 p-2 rounded bg-muted/50 border">
+                            <div className="text-[10px] uppercase text-muted-foreground">Nome do grupo (preview)</div>
+                            <div className="font-mono text-xs break-words">💬 {previewGroupName}</div>
+                          </div>
+                        )}
                       </div>
                       <div className="space-y-1">
                         <div className="text-xs font-semibold text-muted-foreground uppercase">Signatário principal</div>
