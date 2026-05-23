@@ -67,6 +67,34 @@ function phoneCandidatesForConversation(raw: string): string[] {
   return Array.from(new Set([normalized, digits, local].filter(Boolean)));
 }
 
+function cleanGroupSequencePrefix(value?: string | null): string {
+  return String(value || '').replace(/[✅\s|:–—-]+$/g, '').trim();
+}
+
+function decodeTemplateTextToken(field: string): string {
+  try { return decodeURIComponent(field.slice(5)); } catch { return field.slice(5); }
+}
+
+function inferSequencePrefix(settings: any): string {
+  const direct = cleanGroupSequencePrefix(settings?.closed_group_name_prefix || settings?.group_name_prefix);
+  if (direct) return direct;
+  let literal = '';
+  for (const field of (settings?.lead_fields || [])) {
+    if (field === 'case_number' || field === 'closed_seq') break;
+    if (typeof field === 'string' && field.startsWith('text:')) literal += decodeTemplateTextToken(field);
+    else if (literal.trim()) break;
+  }
+  return cleanGroupSequencePrefix(literal.match(/[A-Za-zÀ-ÿ]+/)?.[0] || '');
+}
+
+function extractGroupSequence(name: string | null | undefined, prefix: string): number | null {
+  const p = cleanGroupSequencePrefix(prefix);
+  if (!name || !p) return null;
+  const match = String(name).match(new RegExp(`^\\s*(?:✅\\s*)?${p.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')}\\s*[-|:]?\\s*(\\d{1,6})\\b`, 'i'));
+  const n = match ? Number(match[1]) : NaN;
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -356,26 +384,30 @@ export function ZapSignDocumentDialog({
         if (!boardId) return defaults;
       }
 
-      // Fetch group naming config + REAL closed-leads count (source of truth for sequence)
+      // Fetch group naming config + REAL group snapshot number by configured prefix
       const { data: settings } = await (externalSupabase as any)
         .from('board_group_settings')
-        .select('closed_group_name_prefix, group_name_prefix, sync_lead_name_with_group')
+        .select('closed_group_name_prefix, group_name_prefix, lead_fields, sync_lead_name_with_group')
         .eq('board_id', boardId)
         .maybeSingle();
 
-      // Posição real = quantidade de leads fechados no funil
-      const { count: closedCount } = await (externalSupabase as any)
-        .from('leads')
-        .select('id', { count: 'exact', head: true })
-        .eq('board_id', boardId)
-        .eq('lead_status', 'closed');
+      const prefix = inferSequencePrefix(settings);
+      let currentSeq = 0;
+      if (prefix) {
+        const { data: groups } = await (externalSupabase as any)
+          .from('whatsapp_groups_uazapi_snapshot')
+          .select('group_name')
+          .ilike('group_name', `%${prefix}%`)
+          .limit(1000);
+        for (const row of (groups || [])) {
+          const seq = extractGroupSequence(row.group_name, prefix);
+          if (seq && seq > currentSeq) currentSeq = seq;
+        }
+      }
 
-      const currentSeq = closedCount || 0;
       const next = currentSeq + 1;
-      const prefix = settings?.closed_group_name_prefix || settings?.group_name_prefix || '';
-      const fmt = (n: number) => String(n);
-      const nextLabel = prefix ? `${prefix} ${fmt(next)}` : fmt(next);
-      const lastLabel = currentSeq > 0 ? (prefix ? `${prefix} ${fmt(currentSeq)}` : fmt(currentSeq)) : null;
+      const nextLabel = prefix ? `${prefix} ${next}` : String(next);
+      const lastLabel = currentSeq > 0 ? (prefix ? `${prefix} ${currentSeq}` : String(currentSeq)) : null;
       setNextLeadNumber(nextLabel);
       setLastLeadNumber(lastLabel);
 
