@@ -838,8 +838,89 @@ export function ZapSignDocumentDialog({
                         <SelectItem value="15d">Últimos 15 dias ({messageCountByPeriod['15d']} msgs)</SelectItem>
                         <SelectItem value="30d">Últimos 30 dias ({messageCountByPeriod['30d']} msgs)</SelectItem>
                         <SelectItem value="all">Todas ({messageCountByPeriod.all} msgs)</SelectItem>
+                        <SelectItem value="custom">✋ Selecionar manualmente</SelectItem>
                       </SelectContent>
                     </Select>
+
+                    {messagePeriod === 'custom' && (() => {
+                      const source = dbMessages.length > 0 ? dbMessages : messages;
+                      const recent = source.slice(-100);
+                      const offset = source.length - recent.length;
+                      const allChecked = recent.length > 0 && recent.every((m, i) => selectedMessageKeys.has(messageKey(m, offset + i)));
+                      return (
+                        <div className="rounded-md border bg-muted/30 p-2 space-y-2">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-muted-foreground">
+                              Marque as mensagens que a IA deve usar ({selectedMessageKeys.size} selecionadas)
+                            </span>
+                            <div className="flex gap-1">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 px-2 text-xs"
+                                onClick={() => {
+                                  if (allChecked) {
+                                    setSelectedMessageKeys(new Set());
+                                  } else {
+                                    const next = new Set<string>();
+                                    recent.forEach((m, i) => next.add(messageKey(m, offset + i)));
+                                    setSelectedMessageKeys(next);
+                                  }
+                                }}
+                              >
+                                {allChecked ? 'Limpar' : 'Marcar todas'}
+                              </Button>
+                            </div>
+                          </div>
+                          <ScrollArea className="h-56 pr-2">
+                            <div className="space-y-1">
+                              {recent.length === 0 && (
+                                <p className="text-xs text-muted-foreground py-4 text-center">
+                                  Nenhuma mensagem carregada ainda.
+                                </p>
+                              )}
+                              {recent.map((m, i) => {
+                                const realIdx = offset + i;
+                                const key = messageKey(m, realIdx);
+                                const checked = selectedMessageKeys.has(key);
+                                const ts = (m as any).created_at || (m as any).timestamp;
+                                const tsLabel = ts ? format(new Date(ts), "dd/MM HH:mm", { locale: ptBR }) : '';
+                                const isOut = m.direction === 'outbound';
+                                const text = (m.message_text || `[${(m as any).media_type || 'mídia'}]`).slice(0, 200);
+                                return (
+                                  <label
+                                    key={key}
+                                    className={`flex items-start gap-2 rounded-md p-2 text-xs cursor-pointer hover:bg-accent ${checked ? 'bg-accent/60' : ''}`}
+                                  >
+                                    <Checkbox
+                                      checked={checked}
+                                      onCheckedChange={(v) => {
+                                        setSelectedMessageKeys(prev => {
+                                          const next = new Set(prev);
+                                          if (v) next.add(key); else next.delete(key);
+                                          return next;
+                                        });
+                                      }}
+                                      className="mt-0.5"
+                                    />
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                                        <span className={isOut ? 'text-primary' : ''}>
+                                          {isOut ? 'Atendente' : 'Cliente'}
+                                        </span>
+                                        {tsLabel && <span>· {tsLabel}</span>}
+                                      </div>
+                                      <p className="text-foreground break-words whitespace-pre-wrap">{text}</p>
+                                    </div>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </ScrollArea>
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
               </>
