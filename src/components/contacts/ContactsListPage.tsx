@@ -128,10 +128,10 @@ export function ContactsListPage() {
   const [classifyingClients, setClassifyingClients] = useState(false);
 
   // Groups data
-  const [groups, setGroups] = useState<{ group_jid: string; group_name: string; lead_name: string; lead_status: string; lead_id: string | null; contact_count: number; instance_name: string | null }[]>([]);
+  const [groups, setGroups] = useState<{ group_jid: string; group_name: string; lead_name: string; lead_status: string; lead_id: string | null; contact_count: number; instance_name: string | null; created_at: string | null }[]>([]);
   const [groupsLoading, setGroupsLoading] = useState(false);
   const [groupSearch, setGroupSearch] = useState('');
-  const [groupSort, setGroupSort] = useState<'alpha' | 'number' | 'prefix'>('alpha');
+  const [groupSort, setGroupSort] = useState<'alpha' | 'number' | 'prefix' | 'date'>('alpha');
   const [groupSortDir, setGroupSortDir] = useState<'asc' | 'desc'>('asc');
   const [groupSearchScope, setGroupSearchScope] = useState<'group' | 'lead'>('group');
   const [excludedGroups, setExcludedGroups] = useState<Set<string>>(new Set());
@@ -177,6 +177,7 @@ export function ContactsListPage() {
               lead_id: null,
               contact_count: 0,
               instance_name: r.instance_name || null,
+              created_at: null,
             });
           }
         }
@@ -211,6 +212,7 @@ export function ContactsListPage() {
               lead_id: g.lead_id || null,
               contact_count: 0,
               instance_name: null,
+              created_at: null,
             });
           }
         }
@@ -265,6 +267,22 @@ export function ContactsListPage() {
         for (const c of rows) {
           const g = groupMap.get(c.whatsapp_group_id as string);
           if (g) g.contact_count++;
+        }
+        if (rows.length < pageSize) break;
+      }
+
+      // 5) Data de criação do grupo via snapshot UazAPI
+      for (let from = 0; ; from += pageSize) {
+        const to = from + pageSize - 1;
+        const { data: page, error } = await (externalSupabase as any)
+          .from('whatsapp_groups_uazapi_snapshot')
+          .select('jid, group_created_at')
+          .range(from, to);
+        if (error) { console.error('fetchGroups snapshot page error:', error); break; }
+        const rows = (page as any[]) || [];
+        for (const s of rows) {
+          const g = groupMap.get(s.jid);
+          if (g && s.group_created_at) g.created_at = s.group_created_at;
         }
         if (rows.length < pageSize) break;
       }
@@ -866,6 +884,13 @@ export function ContactsListPage() {
                           <p className="text-xs text-muted-foreground">Agrupa pelo início do nome (letras antes do número).</p>
                         </Label>
                       </div>
+                      <div className="flex items-center gap-2 p-3 rounded-lg border hover:bg-muted/50">
+                        <RadioGroupItem value="date" id="sort-date" />
+                        <Label htmlFor="sort-date" className="flex-1 cursor-pointer text-sm">
+                          <p>Data de criação</p>
+                          <p className="text-xs text-muted-foreground">Ordena pela data em que o grupo foi criado no WhatsApp.</p>
+                        </Label>
+                      </div>
                     </RadioGroup>
                   </div>
 
@@ -1055,7 +1080,7 @@ export function ContactsListPage() {
                 )}
               </Badge>
               <Badge variant="secondary" className="gap-1 pl-2 pr-1">
-                Ordem: {groupSort === 'alpha' ? 'Alfabética' : groupSort === 'number' ? 'Numérica' : 'Prefixo'} ·
+                Ordem: {groupSort === 'alpha' ? 'Alfabética' : groupSort === 'number' ? 'Numérica' : groupSort === 'date' ? 'Data de criação' : 'Prefixo'} ·
                 {groupSortDir === 'asc' ? ' ↑' : ' ↓'}
                 {(groupSort !== 'alpha' || groupSortDir !== 'asc') && (
                   <button
@@ -1230,7 +1255,14 @@ export function ContactsListPage() {
                   const na = ((a as any)[sortField] || '').trim();
                   const nb = ((b as any)[sortField] || '').trim();
                   let cmp = 0;
-                  if (groupSort === 'number') {
+                  if (groupSort === 'date') {
+                    const ta = a.created_at ? new Date(a.created_at).getTime() : null;
+                    const tb = b.created_at ? new Date(b.created_at).getTime() : null;
+                    if (ta == null && tb == null) cmp = 0;
+                    else if (ta == null) cmp = 1;
+                    else if (tb == null) cmp = -1;
+                    else cmp = ta - tb;
+                  } else if (groupSort === 'number') {
                     const numA = parseInt(na.match(/\d+/)?.[0] || '', 10);
                     const numB = parseInt(nb.match(/\d+/)?.[0] || '', 10);
                     const aHas = !isNaN(numA);
