@@ -1163,8 +1163,24 @@ export function ZapSignDocumentDialog({
 
         <DialogFooter className="mt-2">
           {showPreview && (
-            <div className="flex gap-2 w-full">
+            <div className="flex gap-2 w-full flex-wrap">
               <Button variant="outline" onClick={() => onOpenChange(false)}>Fechar</Button>
+              <Button
+                variant="outline"
+                className="gap-2"
+                onClick={async () => {
+                  if (!pendingSignUrl) return;
+                  try {
+                    await navigator.clipboard.writeText(pendingSignUrl);
+                    toast.success('Link copiado!');
+                  } catch {
+                    toast.error('Não foi possível copiar');
+                  }
+                }}
+                disabled={!pendingSignUrl}
+              >
+                <Copy className="h-4 w-4" /> Copiar link
+              </Button>
               <Button className="flex-1 gap-2" onClick={() => handleSendSigningLink(false)} disabled={sendingLink}>
                 {sendingLink ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                 Enviar link de assinatura
