@@ -294,10 +294,11 @@ export function ZapSignDocumentDialog({
       setPendingDocData(null);
       setSendingLink(false);
       setDbMessages([]);
+      setMessageLoadNote('');
       // Initialize with default signer from contact/lead
       const defaultName = contactName || contactData?.full_name || leadData?.lead_name || '';
       const defaultEmail = contactData?.email || leadData?.email || '';
-      const defaultPhone = phone || contactData?.phone || leadData?.phone || '';
+      const defaultPhone = normalizeBrazilMobilePhoneForDoc(phone || contactData?.phone || leadData?.phone || '');
       setSigners([{ name: defaultName, email: defaultEmail, phone: defaultPhone, role: 'sign', auth_mode: 'assinaturaTela' }]);
     }
   }, [open]);
@@ -437,7 +438,7 @@ export function ZapSignDocumentDialog({
         const defaultSigner = signers[0];
         if (extracted[0]) {
           if (!extracted[0].email && defaultSigner?.email) extracted[0].email = defaultSigner.email;
-          if (!extracted[0].phone && defaultSigner?.phone) extracted[0].phone = defaultSigner.phone;
+          extracted[0].phone = normalizeBrazilMobilePhoneForDoc(phone || defaultSigner?.phone || extracted[0].phone || '');
           if (!extracted[0].name && defaultSigner?.name) extracted[0].name = defaultSigner.name;
         }
         setSigners(extracted);
