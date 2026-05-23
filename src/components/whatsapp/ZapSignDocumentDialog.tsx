@@ -282,6 +282,7 @@ export function ZapSignDocumentDialog({
   useEffect(() => {
     if (open) {
       loadTemplates();
+      loadBoards();
       fetchCrmData();
       fetchDbMessages();
       fetchFunnelDefaults();
@@ -308,13 +309,30 @@ export function ZapSignDocumentDialog({
     }
   }, [open]);
 
-  // Load funnel defaults (configured in Onboarding > Grupo) — source of truth
-  const fetchFunnelDefaults = async (templateToken?: string) => {
+  // Carrega a lista de funis disponíveis para o seletor
+  const loadBoards = async () => {
     try {
-      let boardId: string | null = null;
-      if (leadId) {
+      const { data } = await externalSupabase
+        .from('kanban_boards')
+        .select('id, name')
+        .order('display_order', { ascending: true });
+      setBoards((data as any) || []);
+    } catch (err) {
+      console.error('Error loading boards:', err);
+    }
+  };
+
+  // Load funnel defaults (configured in Onboarding > Grupo) — source of truth
+  const fetchFunnelDefaults = async (templateToken?: string, overrideBoardId?: string | null) => {
+    try {
+      let boardId: string | null = overrideBoardId ?? selectedBoardId ?? null;
+      if (!boardId && leadId) {
         const { data: lead } = await externalSupabase.from('leads').select('board_id').eq('id', leadId).maybeSingle();
         boardId = (lead as any)?.board_id || null;
+        if (boardId) {
+          setLeadBoardId(boardId);
+          setSelectedBoardId(prev => prev ?? boardId);
+        }
       }
       if (!boardId && !templateToken) return null;
 
@@ -353,6 +371,15 @@ export function ZapSignDocumentDialog({
       console.error('Error fetching funnel defaults:', err);
     }
   };
+
+  // Quando usuário troca o funil manualmente, recarrega defaults
+  useEffect(() => {
+    if (!open) return;
+    if (selectedBoardId) {
+      fetchFunnelDefaults(undefined, selectedBoardId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedBoardId, open]);
 
   const loadTemplates = async () => {
     setLoading(true);
