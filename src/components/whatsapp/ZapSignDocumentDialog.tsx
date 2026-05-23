@@ -163,6 +163,11 @@ export function ZapSignDocumentDialog({
     send_signed_pdf: boolean;
   }>({ signer_auth_mode: 'assinaturaTela', notify_on_signature: true, send_signed_pdf: true });
 
+  // Funil vinculado ao lead (ou escolhido manualmente quando não há lead)
+  const [boards, setBoards] = useState<Array<{ id: string; name: string }>>([]);
+  const [selectedBoardId, setSelectedBoardId] = useState<string | null>(null);
+  const [leadBoardId, setLeadBoardId] = useState<string | null>(null);
+
   const applyFunnelDefaults = (data: any) => {
     const auth = data?.signer_auth_mode || 'assinaturaTela';
     const nextDefaults = {
@@ -277,6 +282,7 @@ export function ZapSignDocumentDialog({
   useEffect(() => {
     if (open) {
       loadTemplates();
+      loadBoards();
       fetchCrmData();
       fetchDbMessages();
       fetchFunnelDefaults();
@@ -295,6 +301,8 @@ export function ZapSignDocumentDialog({
       setSendingLink(false);
       setDbMessages([]);
       setMessageLoadNote('');
+      setSelectedBoardId(null);
+      setLeadBoardId(null);
       // Initialize with default signer from contact/lead
       const defaultName = contactName || contactData?.full_name || leadData?.lead_name || '';
       const defaultEmail = contactData?.email || leadData?.email || '';
@@ -303,13 +311,30 @@ export function ZapSignDocumentDialog({
     }
   }, [open]);
 
-  // Load funnel defaults (configured in Onboarding > Grupo) — source of truth
-  const fetchFunnelDefaults = async (templateToken?: string) => {
+  // Carrega a lista de funis disponíveis para o seletor
+  const loadBoards = async () => {
     try {
-      let boardId: string | null = null;
-      if (leadId) {
+      const { data } = await externalSupabase
+        .from('kanban_boards')
+        .select('id, name')
+        .order('display_order', { ascending: true });
+      setBoards((data as any) || []);
+    } catch (err) {
+      console.error('Error loading boards:', err);
+    }
+  };
+
+  // Load funnel defaults (configured in Onboarding > Grupo) — source of truth
+  const fetchFunnelDefaults = async (templateToken?: string, overrideBoardId?: string | null) => {
+    try {
+      let boardId: string | null = overrideBoardId ?? selectedBoardId ?? null;
+      if (!boardId && leadId) {
         const { data: lead } = await externalSupabase.from('leads').select('board_id').eq('id', leadId).maybeSingle();
         boardId = (lead as any)?.board_id || null;
+        if (boardId) {
+          setLeadBoardId(boardId);
+          setSelectedBoardId(prev => prev ?? boardId);
+        }
       }
       if (!boardId && !templateToken) return null;
 
@@ -348,6 +373,15 @@ export function ZapSignDocumentDialog({
       console.error('Error fetching funnel defaults:', err);
     }
   };
+
+  // Quando usuário troca o funil manualmente, recarrega defaults
+  useEffect(() => {
+    if (!open) return;
+    if (selectedBoardId) {
+      fetchFunnelDefaults(undefined, selectedBoardId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedBoardId, open]);
 
   const loadTemplates = async () => {
     setLoading(true);
@@ -797,6 +831,35 @@ export function ZapSignDocumentDialog({
               </div>
             ) : (
               <>
+                <div className={`rounded-md border p-3 space-y-2 ${!leadId && !selectedBoardId ? 'border-amber-500/60 bg-amber-500/10' : 'bg-muted/30'}`}>
+                  <Label className="flex items-center gap-1.5">
+                    <FileSignature className="h-3.5 w-3.5" />
+                    Funil vinculado
+                  </Label>
+                  {!leadId && !selectedBoardId && (
+                    <p className="text-xs text-amber-700 dark:text-amber-400">
+                      ⚠️ Este contato não tem lead vinculado. Escolha em qual funil o documento deve ser tratado.
+                    </p>
+                  )}
+                  {leadId && leadBoardId && (
+                    <p className="text-xs text-muted-foreground">
+                      Vinculado ao lead — você pode trocar se quiser usar outro funil.
+                    </p>
+                  )}
+                  <Select value={selectedBoardId || ''} onValueChange={(v) => setSelectedBoardId(v || null)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione um funil" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {boards.map(b => (
+                        <SelectItem key={b.id} value={b.id}>
+                          {b.name}{leadBoardId === b.id ? ' (do lead)' : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
                 <div>
                   <Label>Template / Modelo</Label>
                   <Select value={selectedTemplate} onValueChange={setSelectedTemplate}>
