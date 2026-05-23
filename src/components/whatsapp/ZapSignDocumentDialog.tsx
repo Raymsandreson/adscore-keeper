@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Loader2, FileSignature, Sparkles, Send, Pencil, Check, CheckCircle2, AlertCircle, Upload, FileText, X, Plus, Trash2, UserPlus, MessageSquare, Eye, Copy } from 'lucide-react';
+import { Loader2, FileSignature, Sparkles, Send, Pencil, Check, CheckCircle2, AlertCircle, Upload, FileText, X, Plus, Trash2, UserPlus, MessageSquare, Eye, Copy, ExternalLink } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
@@ -48,10 +48,30 @@ interface SignerInfo {
   auth_mode: string;
 }
 
+function onlyDigits(value: string): string {
+  return (value || '').replace(/\D/g, '');
+}
+
+function normalizeBrazilMobilePhoneForDoc(raw: string): string {
+  const digits = onlyDigits(raw);
+  if (!digits) return '';
+  const local = digits.startsWith('55') ? digits.slice(2) : digits;
+  if (local.length === 10) return `55${local.slice(0, 2)}9${local.slice(2)}`;
+  return digits.startsWith('55') ? digits : `55${digits}`;
+}
+
+function phoneCandidatesForConversation(raw: string): string[] {
+  const digits = onlyDigits(raw);
+  const normalized = normalizeBrazilMobilePhoneForDoc(raw);
+  const local = normalized.startsWith('55') ? normalized.slice(2) : normalized;
+  return Array.from(new Set([normalized, digits, local].filter(Boolean)));
+}
+
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   phone: string;
+  conversationPhone?: string;
   contactName?: string;
   contactId?: string;
   leadId?: string;
@@ -64,7 +84,7 @@ interface Props {
 }
 
 export function ZapSignDocumentDialog({
-  open, onOpenChange, phone, contactName, contactId, leadId, legalCaseId, instanceName,
+  open, onOpenChange, phone, conversationPhone, contactName, contactId, leadId, legalCaseId, instanceName,
   messages = [], leadData, contactData, onSendMessage
 }: Props) {
   const { user } = useAuthContext();
@@ -120,6 +140,7 @@ export function ZapSignDocumentDialog({
   const [fetchedLeadData, setFetchedLeadData] = useState<Record<string, any>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dbMessages, setDbMessages] = useState<Array<{ direction: string; message_text: string | null; media_url?: string | null; media_type?: string | null; created_at?: string }>>([]);
+  const [messageLoadNote, setMessageLoadNote] = useState('');
 
   // Signers state
   const [signers, setSigners] = useState<SignerInfo[]>([]);
@@ -214,19 +235,27 @@ export function ZapSignDocumentDialog({
 
   // Fetch full message history from database when dialog opens
   const fetchDbMessages = async () => {
-    if (!phone) return;
+    const lookupPhone = conversationPhone || phone;
+    if (!lookupPhone) return;
     try {
+      const candidates = phoneCandidatesForConversation(lookupPhone);
+      setMessageLoadNote('Buscando conversa direta do número informado...');
       const { data, error } = await externalSupabase
         .from('whatsapp_messages')
         .select('direction, message_text, media_url, media_type, message_type, created_at')
-        .eq('phone', phone)
+        .in('phone', candidates)
+        .match(instanceName ? { instance_name: instanceName } : {})
         .order('created_at', { ascending: false })
         .limit(200);
       if (!error && data && data.length > 0) {
-        setDbMessages(data);
+        setDbMessages(data.slice().reverse());
+        setMessageLoadNote(`${data.length} mensagem(ns) carregada(s) da conversa direta${instanceName ? ` na instância ${instanceName}` : ''}.`);
+      } else {
+        setMessageLoadNote('Nenhuma mensagem encontrada para esse número na conversa direta.');
       }
     } catch (err) {
       console.error('Error fetching messages for ZapSign extraction:', err);
+      setMessageLoadNote('Erro ao carregar mensagens da conversa direta.');
     }
   };
 
@@ -265,10 +294,11 @@ export function ZapSignDocumentDialog({
       setPendingDocData(null);
       setSendingLink(false);
       setDbMessages([]);
+      setMessageLoadNote('');
       // Initialize with default signer from contact/lead
       const defaultName = contactName || contactData?.full_name || leadData?.lead_name || '';
       const defaultEmail = contactData?.email || leadData?.email || '';
-      const defaultPhone = phone || contactData?.phone || leadData?.phone || '';
+      const defaultPhone = normalizeBrazilMobilePhoneForDoc(phone || contactData?.phone || leadData?.phone || '');
       setSigners([{ name: defaultName, email: defaultEmail, phone: defaultPhone, role: 'sign', auth_mode: 'assinaturaTela' }]);
     }
   }, [open]);
@@ -408,7 +438,7 @@ export function ZapSignDocumentDialog({
         const defaultSigner = signers[0];
         if (extracted[0]) {
           if (!extracted[0].email && defaultSigner?.email) extracted[0].email = defaultSigner.email;
-          if (!extracted[0].phone && defaultSigner?.phone) extracted[0].phone = defaultSigner.phone;
+          extracted[0].phone = normalizeBrazilMobilePhoneForDoc(phone || defaultSigner?.phone || extracted[0].phone || '');
           if (!extracted[0].name && defaultSigner?.name) extracted[0].name = defaultSigner.name;
         }
         setSigners(extracted);
@@ -554,13 +584,16 @@ export function ZapSignDocumentDialog({
     try {
       const template = templates.find(t => t.token === selectedTemplate);
       const mainSigner = signers[0];
-      const filledFieldsData = templateFields.filter(f => f.de && f.para.trim());
+      const normalizedSigningPhone = normalizeBrazilMobilePhoneForDoc(phone || mainSigner.phone || '');
+      const filledFieldsData = templateFields
+        .map(f => /whatsapp|telefone|celular/i.test(formatFieldLabel(f.de)) ? { ...f, para: normalizedSigningPhone, source: 'manual' as const } : f)
+        .filter(f => f.de && f.para.trim());
 
       // Build signers array for the API
-      const signersPayload = signers.map(s => ({
+      const signersPayload = signers.map((s, idx) => ({
         name: s.name,
         email: s.email || undefined,
-        phone: s.phone || undefined,
+        phone: idx === 0 ? normalizedSigningPhone : (s.phone || undefined),
         role: s.role,
         auth_mode: s.auth_mode || 'assinaturaTela',
       }));
@@ -571,7 +604,7 @@ export function ZapSignDocumentDialog({
           template_id: selectedTemplate,
           signer_name: mainSigner.name,
           signer_email: mainSigner.email || undefined,
-          signer_phone: mainSigner.phone || undefined,
+          signer_phone: normalizedSigningPhone || undefined,
           signers: signersPayload,
           data: filledFieldsData,
           document_name: template?.name || 'Documento',
@@ -580,7 +613,7 @@ export function ZapSignDocumentDialog({
           legal_case_id: legalCaseId || null,
           created_by: user?.id || null,
           send_via_whatsapp: false,
-           whatsapp_phone: phone,
+           whatsapp_phone: normalizedSigningPhone,
            notify_on_signature: funnelDefaults.notify_on_signature,
            send_signed_pdf: funnelDefaults.send_signed_pdf,
            instance_name: instanceName || null,
@@ -595,7 +628,7 @@ export function ZapSignDocumentDialog({
       const emptyFieldsList = templateFields.filter(f => f.de && !f.para.trim());
 
       setPendingSignUrl(url);
-      setPendingDocData({ template, signerName: mainSigner.name, signerPhone: mainSigner.phone, emptyFieldsList, allSignUrls: data.all_sign_urls || [] });
+      setPendingDocData({ template, signerName: mainSigner.name, signerPhone: normalizedSigningPhone, emptyFieldsList, allSignUrls: data.all_sign_urls || [] });
 
       if (originalPdfUrl) setPreviewPdfUrl(originalPdfUrl);
       setShowPreview(true);

@@ -3,6 +3,7 @@
 
 export interface ZapSignOpenPayload {
   phone: string;
+  conversationPhone?: string;
   contactName?: string;
   contactId?: string;
   leadId?: string;

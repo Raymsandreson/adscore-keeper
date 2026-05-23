@@ -26,6 +26,7 @@ export function ZapSignDialogHost() {
       open={open}
       onOpenChange={setOpen}
       phone={payload.phone}
+      conversationPhone={payload.conversationPhone}
       contactName={payload.contactName}
       contactId={payload.contactId}
       leadId={payload.leadId}
