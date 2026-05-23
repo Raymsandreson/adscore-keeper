@@ -831,6 +831,35 @@ export function ZapSignDocumentDialog({
               </div>
             ) : (
               <>
+                <div className={`rounded-md border p-3 space-y-2 ${!leadId && !selectedBoardId ? 'border-amber-500/60 bg-amber-500/10' : 'bg-muted/30'}`}>
+                  <Label className="flex items-center gap-1.5">
+                    <FileSignature className="h-3.5 w-3.5" />
+                    Funil vinculado
+                  </Label>
+                  {!leadId && !selectedBoardId && (
+                    <p className="text-xs text-amber-700 dark:text-amber-400">
+                      ⚠️ Este contato não tem lead vinculado. Escolha em qual funil o documento deve ser tratado.
+                    </p>
+                  )}
+                  {leadId && leadBoardId && (
+                    <p className="text-xs text-muted-foreground">
+                      Vinculado ao lead — você pode trocar se quiser usar outro funil.
+                    </p>
+                  )}
+                  <Select value={selectedBoardId || ''} onValueChange={(v) => setSelectedBoardId(v || null)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione um funil" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {boards.map(b => (
+                        <SelectItem key={b.id} value={b.id}>
+                          {b.name}{leadBoardId === b.id ? ' (do lead)' : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
                 <div>
                   <Label>Template / Modelo</Label>
                   <Select value={selectedTemplate} onValueChange={setSelectedTemplate}>
