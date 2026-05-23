@@ -74,8 +74,8 @@ Não geramos novos tokens pra esse fluxo a partir de agora.
 
 ## 5. Tabelas e endpoints chave
 
-- **Externo:** `pending_label_documents`, `zapsign_documents`, `contacts`, `leads`, `whatsapp_messages`
-- **Cloud:** `label_review_notification_settings`, `whatsapp_instances`
+- **Externo:** `pending_label_documents`, `zapsign_documents`, `contacts`, `leads`, `whatsapp_messages`, `whatsapp_instances`
+- **Cloud:** `label_review_notification_settings` e metadados/autenticação
 - **Railway:** `POST /functions/prepare-label-document-trigger`, `POST /public/review/get`, `POST /public/review/submit`
 - **Cloud edge function:** `zapsign-api` (actions: `list_templates`, `get_template`, `extract_data`/`extract_fields`, `create_doc`, `preview_extract_prompt`)
 
