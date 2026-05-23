@@ -1259,8 +1259,8 @@ export function ContactsListPage() {
                   const nb = ((b as any)[sortField] || '').trim();
                   let cmp = 0;
                   if (groupSort === 'date') {
-                    const ta = a.created_at ? new Date(a.created_at).getTime() : null;
-                    const tb = b.created_at ? new Date(b.created_at).getTime() : null;
+                    const ta = a.created_at ? new Date(a.created_at).getTime() : (a.lead_created_at ? new Date(a.lead_created_at).getTime() : null);
+                    const tb = b.created_at ? new Date(b.created_at).getTime() : (b.lead_created_at ? new Date(b.lead_created_at).getTime() : null);
                     if (ta == null && tb == null) cmp = 0;
                     else if (ta == null) cmp = 1;
                     else if (tb == null) cmp = -1;
