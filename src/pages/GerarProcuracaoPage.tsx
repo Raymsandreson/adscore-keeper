@@ -26,6 +26,18 @@ function normalizeBrazilMobilePhone(raw: string): string {
   return digits.startsWith('55') ? digits : `55${digits}`;
 }
 
+function phoneCandidatesForConversation(raw: string): string[] {
+  const digits = normalizePhone(raw);
+  const normalized = normalizeBrazilMobilePhone(raw);
+  const local = normalized.startsWith('55') ? normalized.slice(2) : normalized;
+  return Array.from(new Set([normalized, digits, local].filter(Boolean)));
+}
+
+function maskPhone(raw?: string | null): string | null {
+  const digits = normalizePhone(raw || '');
+  return digits ? `***${digits.slice(-4)}` : null;
+}
+
 /**
  * Página unificada de Gerar Procuração.
  *
@@ -38,7 +50,7 @@ export default function GerarProcuracaoPage() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const initialPhone = normalizePhone(params.get('phone') || '');
-  const instance = params.get('instance') || undefined;
+  const instance = params.get('instance')?.trim() || undefined;
   const templateHint = params.get('template') || undefined;
 
   const [phoneInput, setPhoneInput] = useState(initialPhone);
@@ -185,44 +197,68 @@ export default function GerarProcuracaoPage() {
           onSendMessage={async (message: string, recipientPhone?: string) => {
             try {
               // whatsapp_instances vive no Externo (dado de negócio).
-              // Buscar no Cloud devolve IDs errados → send-whatsapp chama
-              // a UazAPI com instance_id inválido e a msg nunca sai (mas a
-              // edge devolve sucesso e o popup diz "enviou").
+              // Nunca cair para "primeira instância ativa": isso envia por um
+              // número aleatório quando a instância pedida não é encontrada.
               let inst: any = null;
               if (instance) {
                 const { data } = await db
                   .from('whatsapp_instances')
                   .select('id, instance_name')
-                  .ilike('instance_name', instance)
+                  .ilike('instance_name', instance.trim())
                   .eq('is_active', true)
                   .limit(1)
                   .maybeSingle();
                 inst = data;
+                if (!inst?.id) {
+                  console.error('[GerarProcuracao] instância informada não encontrada/sem acesso', { instance });
+                  toast.error(`Instância "${instance}" não encontrada ou sem acesso. Nada foi enviado.`);
+                  return false;
+                }
               }
               if (!inst) {
-                const { data } = await db
-                  .from('whatsapp_instances')
-                  .select('id, instance_name')
-                  .eq('is_active', true)
-                  .order('created_at', { ascending: true })
+                const candidates = phoneCandidatesForConversation(recipientPhone || resolved.phone);
+                const { data: lastMessage } = await db
+                  .from('whatsapp_messages')
+                  .select('instance_name')
+                  .in('phone', candidates)
+                  .not('instance_name', 'is', null)
+                  .order('created_at', { ascending: false })
                   .limit(1)
                   .maybeSingle();
-                inst = data;
+
+                if ((lastMessage as any)?.instance_name) {
+                  const { data } = await db
+                    .from('whatsapp_instances')
+                    .select('id, instance_name')
+                    .ilike('instance_name', (lastMessage as any).instance_name)
+                    .eq('is_active', true)
+                    .limit(1)
+                    .maybeSingle();
+                  inst = data;
+                }
               }
               if (!inst?.id) {
-                toast.error('Nenhuma instância WhatsApp ativa encontrada');
+                toast.error('Não identifiquei a instância da conversa. Abra com ?instance=NomeDaInstancia para enviar.');
                 return false;
               }
-              console.log('[GerarProcuracao] enviando via instance', inst);
               const targetPhone = normalizeBrazilMobilePhone(recipientPhone || resolved.phone);
+              const payload = {
+                phone: targetPhone,
+                message,
+                instance_id: inst.id,
+                contact_id: resolved.contactId,
+                lead_id: resolved.leadId,
+              };
+              console.log('[GerarProcuracao] send-whatsapp payload', {
+                phoneLast4: maskPhone(payload.phone),
+                messageLength: message.length,
+                instanceName: inst.instance_name,
+                instanceId: inst.id,
+                hasContactId: Boolean(resolved.contactId),
+                hasLeadId: Boolean(resolved.leadId),
+              });
               const { data, error } = await cloudFunctions.invoke('send-whatsapp', {
-                body: {
-                  phone: targetPhone,
-                  message,
-                  instance_id: inst.id,
-                  contact_id: resolved.contactId,
-                  lead_id: resolved.leadId,
-                },
+                body: payload,
               });
               if (error) {
                 console.error('[GerarProcuracao] send-whatsapp error', error);
