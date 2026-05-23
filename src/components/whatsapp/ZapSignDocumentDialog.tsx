@@ -48,6 +48,25 @@ interface SignerInfo {
   auth_mode: string;
 }
 
+function onlyDigits(value: string): string {
+  return (value || '').replace(/\D/g, '');
+}
+
+function normalizeBrazilMobilePhoneForDoc(raw: string): string {
+  const digits = onlyDigits(raw);
+  if (!digits) return '';
+  const local = digits.startsWith('55') ? digits.slice(2) : digits;
+  if (local.length === 10) return `55${local.slice(0, 2)}9${local.slice(2)}`;
+  return digits.startsWith('55') ? digits : `55${digits}`;
+}
+
+function phoneCandidatesForConversation(raw: string): string[] {
+  const digits = onlyDigits(raw);
+  const normalized = normalizeBrazilMobilePhoneForDoc(raw);
+  const local = normalized.startsWith('55') ? normalized.slice(2) : normalized;
+  return Array.from(new Set([normalized, digits, local].filter(Boolean)));
+}
+
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -121,6 +140,7 @@ export function ZapSignDocumentDialog({
   const [fetchedLeadData, setFetchedLeadData] = useState<Record<string, any>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dbMessages, setDbMessages] = useState<Array<{ direction: string; message_text: string | null; media_url?: string | null; media_type?: string | null; created_at?: string }>>([]);
+  const [messageLoadNote, setMessageLoadNote] = useState('');
 
   // Signers state
   const [signers, setSigners] = useState<SignerInfo[]>([]);
