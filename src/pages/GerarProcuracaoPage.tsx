@@ -221,9 +221,27 @@ export default function GerarProcuracaoPage() {
               Modelo sugerido: <span className="font-mono">{templateHint}</span> — será pré-selecionado no popup.
             </p>
           )}
-          {instance && (
+          {!urlInstance && availableInstances.length > 0 && (
+            <div className="space-y-2">
+              <Label htmlFor="instance">Enviar pela instância</Label>
+              <Select value={selectedInstance} onValueChange={setSelectedInstance}>
+                <SelectTrigger id="instance">
+                  <SelectValue placeholder="Selecione a instância" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableInstances.map((i) => (
+                    <SelectItem key={i.id} value={i.instance_name}>
+                      {i.instance_name}
+                      {i.instance_name === defaultInstance ? ' (padrão)' : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+          {urlInstance && (
             <p className="text-xs text-muted-foreground">
-              Instância: <span className="font-mono">{instance}</span>
+              Instância (via link): <span className="font-mono">{urlInstance}</span>
             </p>
           )}
         </CardContent>
