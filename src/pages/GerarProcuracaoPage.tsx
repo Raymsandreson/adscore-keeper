@@ -51,19 +51,46 @@ function maskPhone(raw?: string | null): string | null {
 export default function GerarProcuracaoPage() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
+  const { user } = useAuthContext();
   const initialPhone = normalizePhone(params.get('phone') || '');
-  const instance = params.get('instance')?.trim() || undefined;
+  const urlInstance = params.get('instance')?.trim() || undefined;
   const templateHint = params.get('template') || undefined;
 
   const [phoneInput, setPhoneInput] = useState(initialPhone);
   const [loading, setLoading] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [defaultInstance, setDefaultInstance] = useState<string | undefined>(undefined);
   const [resolved, setResolved] = useState<{
     phone: string;
     contactId?: string;
     leadId?: string;
     contactName?: string;
   } | null>(null);
+
+  // Instância efetiva: URL > perfil do usuário
+  const instance = urlInstance || defaultInstance;
+
+  // Carrega instância padrão do perfil (Cloud) e resolve nome no Externo
+  useEffect(() => {
+    if (urlInstance || !user) return;
+    (async () => {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('default_instance_id')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      if (!profile?.default_instance_id) return;
+      const { data: inst } = await db
+        .from('whatsapp_instances')
+        .select('instance_name')
+        .eq('id', profile.default_instance_id)
+        .maybeSingle();
+      if ((inst as any)?.instance_name) {
+        setDefaultInstance((inst as any).instance_name);
+      }
+    })();
+  }, [user, urlInstance]);
+
 
   const openForPhone = async (rawPhone: string) => {
     const phone = normalizePhone(rawPhone);
