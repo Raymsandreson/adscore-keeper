@@ -1461,7 +1461,10 @@ export function ContactsListPage() {
                           )}{' '}
                           • {group.contact_count} contato(s)
                           {group.created_at && (
-                            <> • {new Date(group.created_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}</>
+                            <> • Grupo: {new Date(group.created_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}</>
+                          )}
+                          {group.lead_created_at && (
+                            <> • Lead: {new Date(group.lead_created_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}</>
                           )}
                         </p>
 
