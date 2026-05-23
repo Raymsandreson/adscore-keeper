@@ -212,6 +212,7 @@ export function ContactsListPage() {
               lead_id: g.lead_id || null,
               contact_count: 0,
               instance_name: null,
+              created_at: null,
             });
           }
         }
