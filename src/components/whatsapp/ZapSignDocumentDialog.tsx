@@ -631,8 +631,9 @@ export function ZapSignDocumentDialog({
 
       const message = `📝 *Documento para assinatura*\n\nOlá ${signerName}! Segue o link para assinar o documento *${template?.name || 'Documento'}*:\n\n👉 ${pendingSignUrl}${missingList}\n\n*Instruções:*\n1. Clique no link acima\n2. ${emptyFieldsList?.length > 0 ? 'Preencha os campos indicados' : 'Confira seus dados'}\n3. Assine digitalmente no local indicado\n4. Pronto! Você receberá uma cópia por email.\n\nQualquer dúvida, estou à disposição! 🙏`;
 
-      console.log('[ZapSignDialog] calling onSendMessage', { messageLength: message.length });
-      const sent = await onSendMessage(message, signerPhone || phone);
+      console.log('[ZapSignDialog] calling onSendMessage', { messageLength: message.length, sendTo: phone, signerPhoneIgnored: signerPhone });
+      // Sempre pro telefone da conversa/input — nunca pro extraído pela IA
+      const sent = await onSendMessage(message, phone);
       console.log('[ZapSignDialog] onSendMessage returned', { sent });
       if (sent) {
         toast.success('Link de assinatura enviado pelo WhatsApp!');
