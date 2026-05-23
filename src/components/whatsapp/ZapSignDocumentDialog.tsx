@@ -301,6 +301,8 @@ export function ZapSignDocumentDialog({
       setSendingLink(false);
       setDbMessages([]);
       setMessageLoadNote('');
+      setSelectedBoardId(null);
+      setLeadBoardId(null);
       // Initialize with default signer from contact/lead
       const defaultName = contactName || contactData?.full_name || leadData?.lead_name || '';
       const defaultEmail = contactData?.email || leadData?.email || '';
