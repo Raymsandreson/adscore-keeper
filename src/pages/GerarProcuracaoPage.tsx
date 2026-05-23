@@ -7,6 +7,8 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { ZapSignDocumentDialog } from '@/components/whatsapp/ZapSignDocumentDialog';
 import { externalSupabase } from '@/integrations/supabase/external-client';
+import { supabase } from '@/integrations/supabase/client';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { toast } from 'sonner';
 
 function normalizePhone(p: string): string {
