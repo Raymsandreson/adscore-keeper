@@ -11,6 +11,7 @@ O operador entra, digita o telefone do cliente, e o sistema:
 2. Abre o `ZapSignDocumentDialog` (mesmo popup do chat)
 3. IA puxa campos da conversa
 4. Operador revisa, opcionalmente faz upload de docs (RG, etc.), e envia.
+5. O WhatsApp de destino do link é sempre o **celular revisado do signatário principal** no popup. Se vier número BR antigo com 10 dígitos, o sistema adiciona o 9º dígito antes de chamar o envio.
 
 A **etiqueta UazAPI** vira apenas um *atalho*: dispara o webhook,
 o Railway monta o link pré-preenchido e manda no WhatsApp pro operador
@@ -44,6 +45,10 @@ Internamente apenas:
 
 Toda a inteligência (upload, extração IA, edição, preview, envio) está **dentro**
 do dialog já existente — zero código duplicado.
+
+Regra crítica de envio: o link de assinatura não usa cegamente o `phone` da URL/conversa.
+Ele usa o telefone editado no bloco **Signatário principal** do `ZapSignDocumentDialog`,
+porque a IA/ZapSign pode corrigir um número antigo como `86 8181-2709` para `86 98181-2709`.
 
 ## 3. Trigger por etiqueta (Railway)
 
