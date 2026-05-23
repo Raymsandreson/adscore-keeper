@@ -1457,7 +1457,11 @@ export function ContactsListPage() {
                             <span>—</span>
                           )}{' '}
                           • {group.contact_count} contato(s)
+                          {group.created_at && (
+                            <> • {new Date(group.created_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}</>
+                          )}
                         </p>
+
                       </div>
                       <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0" title="Abrir conversa do grupo" onClick={(e) => { e.stopPropagation(); openGroupChat(group.group_jid); }}>
                         <MessageCircle className="h-4 w-4" />
