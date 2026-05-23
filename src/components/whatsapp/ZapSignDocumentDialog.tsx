@@ -258,6 +258,7 @@ export function ZapSignDocumentDialog({
       setPastedText('');
       setExtractionSource('upload_and_chat');
       setMessagePeriod('7d');
+      setSelectedMessageKeys(new Set());
       setPreviewPdfUrl(null);
       setShowPreview(false);
       setPendingSignUrl(null);
