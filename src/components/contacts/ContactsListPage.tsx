@@ -1255,7 +1255,14 @@ export function ContactsListPage() {
                   const na = ((a as any)[sortField] || '').trim();
                   const nb = ((b as any)[sortField] || '').trim();
                   let cmp = 0;
-                  if (groupSort === 'number') {
+                  if (groupSort === 'date') {
+                    const ta = a.created_at ? new Date(a.created_at).getTime() : null;
+                    const tb = b.created_at ? new Date(b.created_at).getTime() : null;
+                    if (ta == null && tb == null) cmp = 0;
+                    else if (ta == null) cmp = 1;
+                    else if (tb == null) cmp = -1;
+                    else cmp = ta - tb;
+                  } else if (groupSort === 'number') {
                     const numA = parseInt(na.match(/\d+/)?.[0] || '', 10);
                     const numB = parseInt(nb.match(/\d+/)?.[0] || '', 10);
                     const aHas = !isNaN(numA);
