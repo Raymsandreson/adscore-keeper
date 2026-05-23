@@ -154,6 +154,66 @@ function stripExistingSequenceFromName(name: string | null | undefined, prefix: 
     .trim()
 }
 
+function cleanSequencePrefix(value: string | null | undefined): string {
+  return String(value || '').replace(/[✅\s|:–—-]+$/g, '').trim()
+}
+
+function decodeTemplateTextToken(field: string): string {
+  try { return decodeURIComponent(field.slice(5)) } catch { return field.slice(5) }
+}
+
+function getSequencePrefixFromSettings(settings: any, useClosed: boolean): string {
+  const direct = cleanSequencePrefix(useClosed && settings?.closed_group_name_prefix ? settings.closed_group_name_prefix : settings?.group_name_prefix)
+  if (direct) return direct
+  let literal = ''
+  for (const field of (settings?.lead_fields || [])) {
+    if (field === 'case_number' || field === 'closed_seq') break
+    if (typeof field === 'string' && field.startsWith('text:')) literal += decodeTemplateTextToken(field)
+    else if (literal.trim()) break
+  }
+  return cleanSequencePrefix(literal.match(/[A-Za-zÀ-ÿ]+/)?.[0] || '')
+}
+
+function extractGroupSequence(name: string | null | undefined, prefix: string): number | null {
+  const p = cleanSequencePrefix(prefix)
+  if (!name || !p) return null
+  const match = String(name).match(new RegExp(`^\\s*(?:✅\\s*)?${escapeRegExp(p)}\\s*[-|:]?\\s*(\\d{1,6})\\b`, 'i'))
+  const n = match ? Number(match[1]) : NaN
+  return Number.isFinite(n) && n > 0 ? n : null
+}
+
+async function getExistingGroupSequence(supabase: any, groupJid: string | null | undefined, prefix: string): Promise<number | null> {
+  const raw = String(groupJid || '').trim()
+  if (!raw || raw.startsWith('PENDING:')) return null
+  const jid = raw.includes('@g.us') ? raw : `${raw}@g.us`
+  const { data } = await supabase
+    .from('whatsapp_groups_uazapi_snapshot')
+    .select('group_name')
+    .eq('jid', jid)
+    .maybeSingle()
+  return extractGroupSequence(data?.group_name, prefix)
+}
+
+async function getNextGroupSequenceFromSnapshot(supabase: any, prefix: string): Promise<number | null> {
+  const p = cleanSequencePrefix(prefix)
+  if (!p) return null
+  let max = 0
+  for (let from = 0; from < 10000; from += 1000) {
+    const { data, error } = await supabase
+      .from('whatsapp_groups_uazapi_snapshot')
+      .select('group_name')
+      .ilike('group_name', `%${p}%`)
+      .range(from, from + 999)
+    if (error) break
+    for (const row of (data || [])) {
+      const seq = extractGroupSequence(row.group_name, p)
+      if (seq && seq > max) max = seq
+    }
+    if (!data || data.length < 1000) break
+  }
+  return max > 0 ? max + 1 : null
+}
+
 function isRateLimited(status: number, bodyText: string): boolean {
   return status === 429 || /rate[-_ ]?overlimit|too\s+many\s+requests|429/i.test(bodyText || '')
 }
@@ -638,51 +698,21 @@ Deno.serve(async (req) => {
     let shouldPersistClosedSequence = false
 
     if (settings) {
-      // When phase=closed, prefer closed_group_name_prefix + closed_sequence (MAT 0001 padrão)
-      const useClosed = phase === 'closed' && !!settings.closed_group_name_prefix
-      const activePrefix = useClosed ? settings.closed_group_name_prefix : settings.group_name_prefix
-      const activeSeqStart = useClosed ? 1 : (settings.sequence_start || 1)
-      const activeCurrentSeq = useClosed ? 0 : (settings.current_sequence || 0)
+      // Aberto mantém a sequência legada; fechado usa o snapshot real dos grupos por prefixo.
+      const useClosed = phase === 'closed'
+      const activePrefix = useClosed && settings.closed_group_name_prefix ? settings.closed_group_name_prefix : settings.group_name_prefix
+      const sequencePrefix = getSequencePrefixFromSettings(settings, useClosed)
+      const activeSeqStart = settings.sequence_start || 1
+      const activeCurrentSeq = settings.current_sequence || 0
 
       const existingLeadSequence = extractExistingSequenceFromName(leadData?.lead_name || lead_name, activePrefix)
       if (existingLeadSequence !== null && !useClosed) {
-        // Mantém sequência detectada apenas para phase open (caso fechado precisa de nova numeração MAT)
         nextSeq = existingLeadSequence
         shouldPersistSequence = false
       } else if (useClosed) {
-        // Fechados: posição determinística via MIN(zapsign_documents.signed_at) por board_id (RANK ASC)
-        // Mesma fonte do snippet `posicao_fechamento`. Ignora seq inicial configurada.
-        try {
-          const { data: boardLeads } = await supabase
-            .from('leads')
-            .select('id')
-            .eq('board_id', board_id)
-          const ids = (boardLeads || []).map((l: any) => l.id)
-          const targetLeadId = lead_id || leadData?.id
-          let computedPos = 1
-          if (ids.length > 0) {
-            const { data: signedDocs } = await supabase
-              .from('zapsign_documents')
-              .select('lead_id, signed_at')
-              .in('lead_id', ids)
-              .eq('status', 'signed')
-              .not('signed_at', 'is', null)
-            const firstByLead = new Map<string, string>()
-            for (const d of (signedDocs || [])) {
-              const cur = firstByLead.get(d.lead_id)
-              if (!cur || (d.signed_at && d.signed_at < cur)) firstByLead.set(d.lead_id, d.signed_at)
-            }
-            const seq = [...firstByLead.entries()]
-              .map(([id, when]) => ({ id, when }))
-              .sort((a, b) => (a.when || '').localeCompare(b.when || ''))
-            const idx = targetLeadId ? seq.findIndex(s => s.id === targetLeadId) : -1
-            computedPos = idx >= 0 ? idx + 1 : seq.length + 1
-          }
-          nextSeq = computedPos
-        } catch (e) {
-          console.warn('[create-whatsapp-group] computeClosedPosition failed, falling back to current_sequence:', e)
-          nextSeq = Math.max((settings.closed_current_sequence || 0) + 1, 1)
-        }
+        const existingGroupSeq = await getExistingGroupSequence(supabase, leadData?.whatsapp_group_id || explicitExistingGroupJid, sequencePrefix)
+        const nextSnapshotSeq = existingGroupSeq || await getNextGroupSequenceFromSnapshot(supabase, sequencePrefix)
+        nextSeq = nextSnapshotSeq || Math.max((settings.closed_current_sequence || 0) + 1, 1)
         shouldPersistClosedSequence = false
       } else {
         nextSeq = Math.max(activeCurrentSeq + 1, activeSeqStart)

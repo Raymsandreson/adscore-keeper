@@ -609,13 +609,7 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
       ? settings.closed_group_name_prefix
       : settings.group_name_prefix;
     if (prefix) parts.push(prefix);
-    let seq: number;
-    if (useClosed && settings.closed_group_name_prefix) {
-      seq = settings.closed_current_sequence > 0 ? settings.closed_current_sequence + 1 : settings.closed_sequence_start;
-    } else {
-      seq = settings.current_sequence > 0 ? settings.current_sequence + 1 : settings.sequence_start;
-    }
-    const seqStr = String(seq);
+    const seqStr = '[Nº do Caso]';
     const fields = settings.lead_fields || [];
     // Legacy: se não houver token de sequência (case_number/closed_seq), injeta a seq logo após o prefixo
     const hasSeqToken = fields.includes('case_number') || fields.includes('closed_seq');
@@ -741,30 +735,18 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
               <h4 className="font-medium text-xs">Nome do Grupo</h4>
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-1">
-                <Label className="text-[11px] text-muted-foreground">Prefixo (antes de fechar)</Label>
-                <Input
-                  value={settings.group_name_prefix}
-                  onChange={e => setSettings(prev => ({ ...prev, group_name_prefix: e.target.value }))}
-                  placeholder="Ex: LEAD, GRP"
-                  className="h-8 text-xs"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-[11px] text-muted-foreground">Seq. inicia em</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  value={settings.sequence_start}
-                  onChange={e => setSettings(prev => ({ ...prev, sequence_start: parseInt(e.target.value) || 1 }))}
-                  className="h-8 text-xs"
-                />
-              </div>
+            <div className="space-y-1">
+              <Label className="text-[11px] text-muted-foreground">Prefixo do grupo</Label>
+              <Input
+                value={settings.group_name_prefix}
+                onChange={e => setSettings(prev => ({ ...prev, group_name_prefix: e.target.value }))}
+                placeholder="Ex: PREV, MAT"
+                className="h-8 text-xs"
+              />
             </div>
 
             <p className="text-[10px] text-muted-foreground">
-              A sequência de fechados (Nº do Caso) é automática: usa a posição do lead na fila pela data de assinatura no ZapSign (ex: 47º caso assinado = "0047"). Escreva o nome diretamente no editor abaixo e clique nos campos para inserir <code className="px-1 rounded bg-muted">{'{{Campo}}'}</code> no cursor.
+              O Nº do Caso não é configurado aqui: no fechamento ele vem do número real do caso/grupo do funil. Escreva o nome diretamente no editor abaixo e clique nos campos para inserir <code className="px-1 rounded bg-muted">{'{{Campo}}'}</code> no cursor.
             </p>
 
             <div className="space-y-1.5">
