@@ -534,7 +534,9 @@ export function ZapSignDocumentDialog({
     const name = signers[0]?.name || contactName || '';
     const message = `Olá ${name}! 👋\n\nPara dar andamento ao seu documento, preciso que me envie os seguintes dados:\n\n• ${fieldNames}\n\nPor favor, envie as informações aqui pelo chat. Obrigado! 🙏`;
     if (onSendMessage) {
-      const sent = await onSendMessage(message, signers[0]?.phone || phone);
+      // Sempre envia pro telefone da conversa/input, não pro do signatário
+      // (a IA pode extrair outro número da conversa e enviar pro destino errado)
+      const sent = await onSendMessage(message, phone);
       if (sent) toast.success('Mensagem enviada pedindo os dados faltantes!');
     } else {
       await navigator.clipboard.writeText(message);
