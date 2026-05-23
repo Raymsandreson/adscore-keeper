@@ -1080,7 +1080,7 @@ export function ContactsListPage() {
                 )}
               </Badge>
               <Badge variant="secondary" className="gap-1 pl-2 pr-1">
-                Ordem: {groupSort === 'alpha' ? 'Alfabética' : groupSort === 'number' ? 'Numérica' : 'Prefixo'} ·
+                Ordem: {groupSort === 'alpha' ? 'Alfabética' : groupSort === 'number' ? 'Numérica' : groupSort === 'date' ? 'Data de criação' : 'Prefixo'} ·
                 {groupSortDir === 'asc' ? ' ↑' : ' ↓'}
                 {(groupSort !== 'alpha' || groupSortDir !== 'asc') && (
                   <button
