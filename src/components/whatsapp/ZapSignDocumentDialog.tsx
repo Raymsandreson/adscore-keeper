@@ -60,7 +60,7 @@ interface Props {
   messages?: Array<{ direction: string; message_text: string | null; media_url?: string | null; media_type?: string | null; created_at?: string; timestamp?: string }>;
   leadData?: Record<string, any>;
   contactData?: Record<string, any>;
-  onSendMessage?: (message: string) => Promise<boolean>;
+  onSendMessage?: (message: string, recipientPhone?: string) => Promise<boolean>;
 }
 
 export function ZapSignDocumentDialog({
@@ -523,7 +523,7 @@ export function ZapSignDocumentDialog({
     const name = signers[0]?.name || contactName || '';
     const message = `Olá ${name}! 👋\n\nPara dar andamento ao seu documento, preciso que me envie os seguintes dados:\n\n• ${fieldNames}\n\nPor favor, envie as informações aqui pelo chat. Obrigado! 🙏`;
     if (onSendMessage) {
-      const sent = await onSendMessage(message);
+      const sent = await onSendMessage(message, signers[0]?.phone || phone);
       if (sent) toast.success('Mensagem enviada pedindo os dados faltantes!');
     } else {
       await navigator.clipboard.writeText(message);
@@ -582,7 +582,7 @@ export function ZapSignDocumentDialog({
       const emptyFieldsList = templateFields.filter(f => f.de && !f.para.trim());
 
       setPendingSignUrl(url);
-      setPendingDocData({ template, signerName: mainSigner.name, emptyFieldsList, allSignUrls: data.all_sign_urls || [] });
+      setPendingDocData({ template, signerName: mainSigner.name, signerPhone: mainSigner.phone, emptyFieldsList, allSignUrls: data.all_sign_urls || [] });
 
       if (originalPdfUrl) setPreviewPdfUrl(originalPdfUrl);
       setShowPreview(true);
@@ -611,7 +611,7 @@ export function ZapSignDocumentDialog({
     }
     setSendingLink(true);
     try {
-      const { template, signerName, emptyFieldsList } = pendingDocData || {};
+      const { template, signerName, signerPhone, emptyFieldsList } = pendingDocData || {};
       const missingList = emptyFieldsList?.length > 0
         ? `\n\n⚠️ *Campos para você preencher:*\n${emptyFieldsList.map((f: any) => `• ${formatFieldLabel(f.de)}`).join('\n')}`
         : '';
@@ -619,7 +619,7 @@ export function ZapSignDocumentDialog({
       const message = `📝 *Documento para assinatura*\n\nOlá ${signerName}! Segue o link para assinar o documento *${template?.name || 'Documento'}*:\n\n👉 ${pendingSignUrl}${missingList}\n\n*Instruções:*\n1. Clique no link acima\n2. ${emptyFieldsList?.length > 0 ? 'Preencha os campos indicados' : 'Confira seus dados'}\n3. Assine digitalmente no local indicado\n4. Pronto! Você receberá uma cópia por email.\n\nQualquer dúvida, estou à disposição! 🙏`;
 
       console.log('[ZapSignDialog] calling onSendMessage', { messageLength: message.length });
-      const sent = await onSendMessage(message);
+      const sent = await onSendMessage(message, signerPhone || phone);
       console.log('[ZapSignDialog] onSendMessage returned', { sent });
       if (sent) {
         toast.success('Link de assinatura enviado pelo WhatsApp!');

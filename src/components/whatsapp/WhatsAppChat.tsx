@@ -2083,13 +2083,13 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                     media_type: m.media_type,
                     created_at: (m as any).created_at || (m as any).timestamp,
                   })),
-                  onSendMessage: async (msg: string) => {
+                  onSendMessage: async (msg: string, recipientPhone?: string) => {
                     const rawChatId =
                       conversation.messages.find((message) => typeof message.metadata?.chat?.wa_chatid === 'string')?.metadata?.chat?.wa_chatid ||
                       conversation.messages.find((message) => typeof message.metadata?.message?.chatid === 'string')?.metadata?.message?.chatid;
                     const conversationChatId = canonicalizeChatTarget(rawChatId);
                     return await onSendMessage(
-                      conversation.phone, msg,
+                      recipientPhone || conversation.phone, msg,
                       conversation.contact_id || undefined,
                       conversation.lead_id || undefined,
                       conversation.instance_name,
