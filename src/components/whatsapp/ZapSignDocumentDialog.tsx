@@ -87,10 +87,14 @@ function inferSequencePrefix(settings: any): string {
   return cleanGroupSequencePrefix(literal.match(/[A-Za-zÀ-ÿ]+/)?.[0] || '');
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 function extractGroupSequence(name: string | null | undefined, prefix: string): number | null {
   const p = cleanGroupSequencePrefix(prefix);
   if (!name || !p) return null;
-  const match = String(name).match(new RegExp(`^\\s*(?:✅\\s*)?${p.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')}\\s*[-|:]?\\s*(\\d{1,6})\\b`, 'i'));
+  const match = String(name).match(new RegExp(`^\\s*(?:✅\\s*)?${escapeRegExp(p)}\\s*[-|:]?\\s*(\\d{1,6})\\b`, 'i'));
   const n = match ? Number(match[1]) : NaN;
   return Number.isFinite(n) && n > 0 ? n : null;
 }
