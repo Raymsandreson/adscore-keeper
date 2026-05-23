@@ -167,6 +167,10 @@ export function ZapSignDocumentDialog({
   const filteredMessages = useMemo(() => {
     // Use DB messages (full history) when available, fall back to props
     const source = dbMessages.length > 0 ? dbMessages : messages;
+    if (messagePeriod === 'custom') {
+      if (selectedMessageKeys.size === 0) return [];
+      return source.filter((m, i) => selectedMessageKeys.has(messageKey(m, i)));
+    }
     if (messagePeriod === 'all') return source;
     const now = new Date();
     let cutoff: Date;
@@ -184,7 +188,7 @@ export function ZapSignDocumentDialog({
       if (!ts) return true;
       return new Date(ts).getTime() >= cutoffTs;
     });
-  }, [messages, dbMessages, messagePeriod]);
+  }, [messages, dbMessages, messagePeriod, selectedMessageKeys]);
 
   const messageCountByPeriod = useMemo(() => {
     const now = new Date();
