@@ -15,6 +15,18 @@ function normalizePhone(p: string): string {
   return (p || '').replace(/\D/g, '');
 }
 
+function normalizeBrazilMobilePhone(raw: string): string {
+  const digits = normalizePhone(raw);
+  if (!digits) return '';
+  const local = digits.startsWith('55') ? digits.slice(2) : digits;
+  if (local.length === 10) {
+    const ddd = local.slice(0, 2);
+    const number = local.slice(2);
+    return `55${ddd}9${number}`;
+  }
+  return digits.startsWith('55') ? digits : `55${digits}`;
+}
+
 /**
  * Página unificada de Gerar Procuração.
  *
@@ -171,7 +183,7 @@ export default function GerarProcuracaoPage() {
           contactId={resolved.contactId}
           leadId={resolved.leadId}
           instanceName={instance}
-          onSendMessage={async (message: string) => {
+          onSendMessage={async (message: string, recipientPhone?: string) => {
             try {
               // whatsapp_instances vive no Externo (dado de negócio).
               // Buscar no Cloud devolve IDs errados → send-whatsapp chama
@@ -203,9 +215,10 @@ export default function GerarProcuracaoPage() {
                 return false;
               }
               console.log('[GerarProcuracao] enviando via instance', inst);
+              const targetPhone = normalizeBrazilMobilePhone(recipientPhone || resolved.phone);
               const { data, error } = await cloudFunctions.invoke('send-whatsapp', {
                 body: {
-                  phone: resolved.phone,
+                  phone: targetPhone,
                   message,
                   instance_id: inst.id,
                   contact_id: resolved.contactId,
