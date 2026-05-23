@@ -271,6 +271,22 @@ export function ContactsListPage() {
         if (rows.length < pageSize) break;
       }
 
+      // 5) Data de criação do grupo via snapshot UazAPI
+      for (let from = 0; ; from += pageSize) {
+        const to = from + pageSize - 1;
+        const { data: page, error } = await (externalSupabase as any)
+          .from('whatsapp_groups_uazapi_snapshot')
+          .select('jid, group_created_at')
+          .range(from, to);
+        if (error) { console.error('fetchGroups snapshot page error:', error); break; }
+        const rows = (page as any[]) || [];
+        for (const s of rows) {
+          const g = groupMap.get(s.jid);
+          if (g && s.group_created_at) g.created_at = s.group_created_at;
+        }
+        if (rows.length < pageSize) break;
+      }
+
       setGroups(Array.from(groupMap.values()));
     } catch (err) {
       console.error('Error fetching groups:', err);
