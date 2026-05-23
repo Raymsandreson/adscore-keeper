@@ -177,6 +177,7 @@ export function ContactsListPage() {
               lead_id: null,
               contact_count: 0,
               instance_name: r.instance_name || null,
+              created_at: null,
             });
           }
         }
