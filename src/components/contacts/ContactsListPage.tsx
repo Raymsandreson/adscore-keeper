@@ -1070,6 +1070,47 @@ export function ContactsListPage() {
                     );
                   })()}
 
+                  {availableBoards.length > 0 && (
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <Label className="text-sm font-medium">Funil (board do lead)</Label>
+                        {boardFilter.size > 0 && (
+                          <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setBoardFilter(new Set())}>
+                            Limpar
+                          </Button>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground mb-2">
+                        {boardFilter.size === 0
+                          ? 'Mostrando todos os funis.'
+                          : `Mostrando ${boardFilter.size} funil(is) selecionado(s).`}
+                      </p>
+                      <div className="space-y-1 max-h-56 overflow-y-auto pr-1">
+                        {availableBoards.map(b => {
+                          const count = groups.filter(g => g.board_id === b.id).length;
+                          return (
+                            <div key={b.id} className="flex items-center gap-2 p-2 rounded-lg border hover:bg-muted/50">
+                              <Checkbox
+                                id={`board-${b.id}`}
+                                checked={boardFilter.has(b.id)}
+                                onCheckedChange={(v) => {
+                                  setBoardFilter(prev => {
+                                    const next = new Set(prev);
+                                    if (v) next.add(b.id); else next.delete(b.id);
+                                    return next;
+                                  });
+                                }}
+                              />
+                              <Label htmlFor={`board-${b.id}`} className="flex-1 cursor-pointer text-sm truncate">{b.name}</Label>
+                              <Badge variant="outline" className="text-[10px]">{count}</Badge>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+
                   <div>
                     <div className="flex items-center justify-between mb-2">
                       <Label className="text-sm font-medium">Data de criação do grupo</Label>
