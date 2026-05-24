@@ -738,23 +738,23 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
             </div>
 
             <div className="space-y-1">
-              <Label className="text-[11px] text-muted-foreground">Prefixo do grupo</Label>
+              <Label className="text-[11px] text-muted-foreground">Prefixo do caso fechado (ex: MAT, PREV)</Label>
               <Input
                 value={settings.group_name_prefix}
                 onChange={e => setSettings(prev => ({ ...prev, group_name_prefix: e.target.value }))}
                 placeholder="Ex: PREV, MAT"
                 className="h-8 text-xs"
               />
+              <p className="text-[10px] text-muted-foreground">
+                O prefixo e o <strong>Nº do Caso</strong> são adicionados <strong>automaticamente</strong> quando o lead é fechado.
+                Antes disso, o grupo usa só o template abaixo.
+              </p>
             </div>
-
-            <p className="text-[10px] text-muted-foreground">
-              O Nº do Caso não é configurado aqui: no fechamento ele vem do número real do caso/grupo do funil. Escreva o nome diretamente no editor abaixo e clique nos campos para inserir <code className="px-1 rounded bg-muted">{'{{Campo}}'}</code> no cursor.
-            </p>
 
             <div className="space-y-1.5">
               <Label className="text-[11px] text-muted-foreground">Inserir campo no cursor</Label>
               <div className="flex flex-wrap gap-1.5">
-                {LEAD_FIELD_OPTIONS.filter(opt => !hiddenFieldKeys.has(opt.value)).map(opt => (
+                {LEAD_FIELD_OPTIONS.filter(opt => !hiddenFieldKeys.has(opt.value) && opt.value !== 'case_number').map(opt => (
                   <button
                     key={opt.value}
                     type="button"
