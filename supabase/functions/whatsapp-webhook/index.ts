@@ -1081,6 +1081,97 @@ Deno.serve(async (req) => {
       } catch (e) {
         console.warn("[wa-webhook] passive group mirror error:", e);
       }
+
+      // Incremental snapshot enrichment: se for um JID de grupo e ainda não
+      // existe linha em whatsapp_groups_uazapi_snapshot, busca info na UazAPI
+      // (data de criação, dono, etc) e grava. Fire-and-forget — não bloqueia.
+      try {
+        const chatObj2 = body.chat || {};
+        const jid2: string = String(chatObj2.wa_chatid || chatObj2.id || "");
+        const inst2 = webhookInstanceName || chatObj2.instanceName;
+        if (jid2.includes("@g.us") && inst2) {
+          const externalUrl = Deno.env.get("EXTERNAL_SUPABASE_URL");
+          const externalKey = Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY");
+          if (externalUrl && externalKey) {
+            // Fire-and-forget — não usar await no fluxo principal
+            (async () => {
+              try {
+                // 1) Snapshot já tem? HEAD count
+                const checkRes = await fetch(
+                  `${externalUrl}/rest/v1/whatsapp_groups_uazapi_snapshot?jid=eq.${encodeURIComponent(jid2)}&select=jid`,
+                  {
+                    headers: {
+                      "apikey": externalKey,
+                      "Authorization": `Bearer ${externalKey}`,
+                      "Accept": "application/json",
+                    },
+                  },
+                );
+                if (!checkRes.ok) return;
+                const existing = await checkRes.json().catch(() => []);
+                if (Array.isArray(existing) && existing.length > 0) return; // já tem
+                // 2) Buscar token+base_url da instância (Cloud)
+                const { data: inst } = await supabase
+                  .from("whatsapp_instances")
+                  .select("instance_token, base_url")
+                  .eq("instance_name", inst2)
+                  .maybeSingle();
+                const token = inst?.instance_token;
+                const baseUrl = inst?.base_url || "https://abraci.uazapi.com";
+                if (!token) return;
+                // 3) Chamar UazAPI /group/info
+                const infoRes = await fetch(`${baseUrl}/group/info`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", token },
+                  body: JSON.stringify({ id: jid2 }),
+                });
+                if (!infoRes.ok) return;
+                const info: any = await infoRes.json().catch(() => null);
+                if (!info) return;
+                const data = info.data || info;
+                const creationTs = data?.creation || data?.GroupCreated || data?.created_at;
+                let groupCreatedAt: string | null = null;
+                if (typeof creationTs === "number") {
+                  groupCreatedAt = new Date(creationTs * 1000).toISOString();
+                } else if (creationTs) {
+                  const d = new Date(creationTs);
+                  if (!isNaN(d.getTime())) groupCreatedAt = d.toISOString();
+                }
+                const row: Record<string, unknown> = {
+                  jid: jid2,
+                  group_name: data?.subject || data?.name || null,
+                  owner_jid: data?.owner || data?.GroupOwner || null,
+                  is_locked: data?.locked ?? data?.IsLocked ?? null,
+                  is_announce: data?.announce ?? data?.IsAnnounce ?? null,
+                  topic: data?.topic || data?.GroupTopic || null,
+                  seen_in_instances: [inst2],
+                  last_synced_at: new Date().toISOString(),
+                  participants_count: Array.isArray(data?.participants) ? data.participants.length : null,
+                };
+                if (groupCreatedAt) row.group_created_at = groupCreatedAt;
+                await fetch(
+                  `${externalUrl}/rest/v1/whatsapp_groups_uazapi_snapshot?on_conflict=jid`,
+                  {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                      "apikey": externalKey,
+                      "Authorization": `Bearer ${externalKey}`,
+                      "Prefer": "resolution=merge-duplicates,return=minimal",
+                    },
+                    body: JSON.stringify(row),
+                  },
+                );
+                console.log(`[wa-webhook] snapshot enriched for new group ${jid2}`);
+              } catch (e) {
+                console.warn("[wa-webhook] snapshot enrichment failed:", e);
+              }
+            })();
+          }
+        }
+      } catch (e) {
+        console.warn("[wa-webhook] snapshot enrichment outer error:", e);
+      }
       return new Response(
         JSON.stringify({
           success: true,
