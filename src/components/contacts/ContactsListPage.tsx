@@ -1231,6 +1231,12 @@ export function ContactsListPage() {
                 if (leadLinkFilter === 'with' && !g.lead_name) return false;
                 if (leadLinkFilter === 'without' && g.lead_name) return false;
                 if (leadStatusFilter.size > 0 && !leadStatusFilter.has(g.lead_status)) return false;
+                if (dateFrom || dateTo) {
+                  const t = g.created_at ? new Date(g.created_at).getTime() : null;
+                  if (t === null) return false;
+                  if (dateFrom && t < new Date(dateFrom + 'T00:00:00').getTime()) return false;
+                  if (dateTo && t > new Date(dateTo + 'T23:59:59').getTime()) return false;
+                }
                 return true;
               });
 
