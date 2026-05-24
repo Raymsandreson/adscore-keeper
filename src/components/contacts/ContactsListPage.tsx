@@ -1370,6 +1370,7 @@ export function ContactsListPage() {
                 if (leadLinkFilter === 'with' && !g.lead_name) return false;
                 if (leadLinkFilter === 'without' && g.lead_name) return false;
                 if (leadStatusFilter.size > 0 && !leadStatusFilter.has(g.lead_status)) return false;
+                if (boardFilter.size > 0 && (!g.board_id || !boardFilter.has(g.board_id))) return false;
                 if (dateFrom || dateTo) {
                   const t = g.created_at ? new Date(g.created_at).getTime() : null;
                   if (t === null) return false;
