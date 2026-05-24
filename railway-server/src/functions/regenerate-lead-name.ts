@@ -144,6 +144,35 @@ export const handler: RequestHandler = async (req, res) => {
       nextSeq = useClosed ? position : Math.max(position, activeSeqStart);
     }
 
+    // Token de prefixo (igual ao rename-whatsapp-group):
+    //  - FECHADO: legal_cases.case_number ("PREV-5")
+    //  - ABERTO:  "LEAD-{lead_number}({case_prefix do produto})"
+    let prefixToken = '';
+    let caseNumberFromDb = '';
+    {
+      const { data: legalCase } = await ext
+        .from('legal_cases')
+        .select('case_number')
+        .eq('lead_id', lead_id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      caseNumberFromDb = (legalCase?.case_number || '').trim();
+      if (useClosed && caseNumberFromDb) {
+        prefixToken = caseNumberFromDb;
+      } else if (lead.lead_number && lead.product_service_id) {
+        const { data: prod } = await ext
+          .from('products_services')
+          .select('case_prefix')
+          .eq('id', lead.product_service_id)
+          .maybeSingle();
+        const pfx = ((prod as any)?.case_prefix || '').trim().toUpperCase();
+        prefixToken = pfx
+          ? `LEAD-${lead.lead_number}(${pfx})`
+          : `LEAD-${lead.lead_number}`;
+      }
+    }
+
     const { data: boardData } = await ext
       .from('kanban_boards')
       .select('name')
@@ -152,16 +181,8 @@ export const handler: RequestHandler = async (req, res) => {
     const boardName = boardData?.name || '';
 
     const parts: string[] = [];
-    // Prefixo + Nº do Caso só entram na frente quando o lead JÁ FECHOU.
-    // Antes de fechar, o grupo usa apenas os campos do template.
-    if (useClosed && activePrefix) parts.push(activePrefix);
-    const seqStr = String(nextSeq);
-
-    const leadFields: string[] = settings.lead_fields || ['lead_name'];
-    // Legacy: se houver token case_number/closed_seq no template, ele cuida da posição da seq.
-    // Senão, injeta a seq logo após o prefixo — mas SÓ no estado fechado.
-    const hasSeqToken = leadFields.includes('case_number') || leadFields.includes('closed_seq');
-    if (useClosed && !hasSeqToken) parts.push(seqStr);
+    // Em ambas as fases agora colocamos o token de prefixo na frente
+    if (prefixToken) parts.push(prefixToken);
 
     // Pré-carrega valores de campos personalizados se houver tokens cf:<id>
     const cfIds = leadFields
