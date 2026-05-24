@@ -1089,6 +1089,8 @@ export function ContactsListPage() {
                       setAuditOnlyMismatch(false);
                       setLeadStatusFilter(new Set());
                       setLeadLinkFilter('all');
+                      setDateFrom('');
+                      setDateTo('');
                     }}
                   >
                     Limpar filtros
