@@ -187,7 +187,7 @@ export const handler: RequestHandler = async (req, res) => {
     const missingFields: string[] = [];
     for (const field of leadFields) {
       if (field === 'closed_seq' || field === 'case_number') {
-        parts.push(seqStr);
+        if (useClosed) parts.push(seqStr);
       } else if (typeof field === 'string' && field.startsWith('text:')) {
         try { parts.push(decodeURIComponent(field.slice(5))); } catch { parts.push(field.slice(5)); }
       } else if (field === 'board_name') {
