@@ -816,12 +816,20 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
               </div>
             </div>
 
-            <div className="space-y-1">
+            <div className="space-y-1.5">
               <div className="flex items-center gap-2 p-2 rounded bg-muted/50 border">
                 <Eye className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                <span className="text-[10px] text-muted-foreground">Antes:</span>
-                <span className="text-[11px] font-medium truncate">{getPreviewName(false)}</span>
+                <span className="text-[10px] text-muted-foreground shrink-0">Lead aberto:</span>
+                <span className="text-[11px] font-medium truncate">{getPreviewName(false) || <em className="text-muted-foreground">(vazio)</em>}</span>
               </div>
+              <div className="flex items-center gap-2 p-2 rounded bg-primary/5 border border-primary/30">
+                <Eye className="h-3.5 w-3.5 text-primary shrink-0" />
+                <span className="text-[10px] text-primary/80 shrink-0">Caso fechado:</span>
+                <span className="text-[11px] font-medium truncate">{getPreviewName(true) || <em className="text-muted-foreground">(vazio)</em>}</span>
+              </div>
+              <p className="text-[10px] text-muted-foreground/70">
+                Quando o lead fecha, o sistema acrescenta <code className="px-1 rounded bg-muted">{settings.group_name_prefix || 'PREFIXO'} {'<nº>'}</code> na frente automaticamente.
+              </p>
             </div>
 
             <div className="flex items-start gap-2 p-2 rounded-md border bg-background">
