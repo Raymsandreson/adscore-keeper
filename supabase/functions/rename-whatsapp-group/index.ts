@@ -198,7 +198,7 @@ Deno.serve(async (req) => {
       .eq('id', lead.board_id)
       .maybeSingle()
     const parts: string[] = []
-    if (caseNumber) parts.push(caseNumber)
+    if (prefixToken) parts.push(prefixToken)
 
     // Pré-carrega valores de campos personalizados (tokens cf:<id>)
     const cfIds: string[] = (leadFields as string[])
