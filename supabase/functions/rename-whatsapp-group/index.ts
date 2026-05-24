@@ -354,12 +354,11 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Persist sequence + group name
+    // Persistir nome do grupo. O contador legado closed_current_sequence ficou obsoleto —
+    // a sequência agora vive em products_services.case_sequence_counter, alimentada pela
+    // RPC generate_case_number(p_product_id) no momento do fechamento.
     if (renamed) {
-      await supabase
-        .from('board_group_settings')
-        .update({ closed_current_sequence: closedSeq })
-        .eq('board_id', lead.board_id)
+
 
       await supabase
         .from('whatsapp_group_links')
