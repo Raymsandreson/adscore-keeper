@@ -301,7 +301,8 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
         current_sequence: data.current_sequence || 0,
         closed_sequence_start: data.closed_sequence_start || 1,
         closed_current_sequence: data.closed_current_sequence || 0,
-        lead_fields: data.lead_fields || ['lead_name'],
+        // Legado: campos `case_number`/`closed_seq` saem do template, agora são automáticos no fechamento
+        lead_fields: (data.lead_fields || ['lead_name']).filter((f: string) => f !== 'case_number' && f !== 'closed_seq'),
         initial_message_template: data.initial_message_template || '',
         use_ai_message: data.use_ai_message || false,
         ai_generated_message: data.ai_generated_message || '',
