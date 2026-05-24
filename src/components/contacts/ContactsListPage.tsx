@@ -128,11 +128,11 @@ export function ContactsListPage() {
   const [classifyingClients, setClassifyingClients] = useState(false);
 
   // Groups data
-  const [groups, setGroups] = useState<{ group_jid: string; group_name: string; lead_name: string; lead_status: string; lead_id: string | null; contact_count: number; instance_name: string | null; created_at: string | null; lead_created_at: string | null }[]>([]);
+  const [groups, setGroups] = useState<{ group_jid: string; group_name: string; lead_name: string; lead_status: string; lead_id: string | null; contact_count: number; instance_name: string | null; created_at: string | null; lead_created_at: string | null; board_id: string | null; board_name: string | null; case_number: string | null }[]>([]);
   const [groupsLoading, setGroupsLoading] = useState(false);
   const [groupSearch, setGroupSearch] = useState('');
-  const [groupSort, setGroupSort] = useState<'alpha' | 'number' | 'prefix' | 'date'>('alpha');
-  const [groupSortDir, setGroupSortDir] = useState<'asc' | 'desc'>('asc');
+  const [groupSort, setGroupSort] = useState<'alpha' | 'number' | 'prefix' | 'date'>('date');
+  const [groupSortDir, setGroupSortDir] = useState<'asc' | 'desc'>('desc');
   const [groupSearchScope, setGroupSearchScope] = useState<'group' | 'lead'>('group');
   const [excludedGroups, setExcludedGroups] = useState<Set<string>>(new Set());
   const [showGroupFilters, setShowGroupFilters] = useState(false);
@@ -140,6 +140,8 @@ export function ContactsListPage() {
   const [auditOnlyMismatch, setAuditOnlyMismatch] = useState(false);
   const [leadStatusFilter, setLeadStatusFilter] = useState<Set<string>>(new Set());
   const [leadLinkFilter, setLeadLinkFilter] = useState<'all' | 'with' | 'without'>('all');
+  const [boardFilter, setBoardFilter] = useState<Set<string>>(new Set());
+  const [availableBoards, setAvailableBoards] = useState<{ id: string; name: string }[]>([]);
   const [dateFrom, setDateFrom] = useState<string>('');
   const [dateTo, setDateTo] = useState<string>('');
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
@@ -181,19 +183,22 @@ export function ContactsListPage() {
               instance_name: r.instance_name || null,
               created_at: null,
               lead_created_at: null,
+              board_id: null,
+              board_name: null,
+              case_number: null,
             });
           }
         }
         if (rows.length < pageSize) break;
       }
 
-      // 2) Enriquecimento: vínculo com lead (nome + status). LEFT JOIN feito em JS.
+      // 2) Enriquecimento: vínculo com lead (nome + status + board). LEFT JOIN feito em JS.
       //    Também garante grupos que existem só em lead_whatsapp_groups e não no index.
       for (let from = 0; ; from += pageSize) {
         const to = from + pageSize - 1;
         const { data: page, error } = await externalSupabase
           .from('lead_whatsapp_groups')
-          .select('group_jid, group_name, lead_id, leads!lead_whatsapp_groups_lead_id_fkey(lead_name, lead_status, created_at)')
+          .select('group_jid, group_name, lead_id, leads!lead_whatsapp_groups_lead_id_fkey(lead_name, lead_status, created_at, board_id)')
           .order('created_at', { ascending: false })
           .range(from, to);
         if (error) { console.error('fetchGroups lwg page error:', error); break; }
@@ -207,6 +212,7 @@ export function ContactsListPage() {
             if (!existing.lead_status && lead?.lead_status) existing.lead_status = lead.lead_status;
             if (!existing.lead_id && g.lead_id) existing.lead_id = g.lead_id;
             if (!existing.lead_created_at && lead?.created_at) existing.lead_created_at = lead.created_at;
+            if (!existing.board_id && lead?.board_id) existing.board_id = lead.board_id;
           } else {
             groupMap.set(g.group_jid, {
               group_jid: g.group_jid,
@@ -218,10 +224,91 @@ export function ContactsListPage() {
               instance_name: null,
               created_at: null,
               lead_created_at: lead?.created_at || null,
+              board_id: lead?.board_id || null,
+              board_name: null,
+              case_number: null,
             });
           }
         }
         if (rows.length < pageSize) break;
+      }
+
+      // 2.b) Fallback: se o join veio sem lead_name (cache de FK falhando), buscar leads
+      //      diretamente por IN(lead_id) para garantir que o nome aparece na auditoria.
+      const leadIdsNeeded = Array.from(groupMap.values())
+        .filter(g => g.lead_id && (!g.lead_name || !g.board_id))
+        .map(g => g.lead_id as string);
+      if (leadIdsNeeded.length > 0) {
+        const uniq = Array.from(new Set(leadIdsNeeded));
+        const chunkSize = 200;
+        for (let i = 0; i < uniq.length; i += chunkSize) {
+          const chunk = uniq.slice(i, i + chunkSize);
+          const { data: leadsData } = await externalSupabase
+            .from('leads')
+            .select('id, lead_name, lead_status, created_at, board_id')
+            .in('id', chunk);
+          const leadMap = new Map<string, any>();
+          (leadsData || []).forEach((l: any) => leadMap.set(l.id, l));
+          groupMap.forEach((g) => {
+            if (g.lead_id && leadMap.has(g.lead_id)) {
+              const l = leadMap.get(g.lead_id);
+              if (!g.lead_name && l.lead_name) g.lead_name = l.lead_name;
+              if (!g.lead_status && l.lead_status) g.lead_status = l.lead_status;
+              if (!g.lead_created_at && l.created_at) g.lead_created_at = l.created_at;
+              if (!g.board_id && l.board_id) g.board_id = l.board_id;
+            }
+          });
+        }
+      }
+
+      // 2.c) Buscar nº do caso (legal_cases.case_number) para todos os lead_ids vinculados
+      const leadIdsForCase = Array.from(new Set(
+        Array.from(groupMap.values()).filter(g => g.lead_id).map(g => g.lead_id as string)
+      ));
+      if (leadIdsForCase.length > 0) {
+        const chunkSize = 200;
+        const caseByLead = new Map<string, string>();
+        for (let i = 0; i < leadIdsForCase.length; i += chunkSize) {
+          const chunk = leadIdsForCase.slice(i, i + chunkSize);
+          const { data: cases } = await externalSupabase
+            .from('legal_cases')
+            .select('lead_id, case_number, created_at')
+            .in('lead_id', chunk)
+            .order('created_at', { ascending: false });
+          (cases || []).forEach((c: any) => {
+            if (c.lead_id && c.case_number && !caseByLead.has(c.lead_id)) {
+              caseByLead.set(c.lead_id, String(c.case_number));
+            }
+          });
+        }
+        groupMap.forEach((g) => {
+          if (g.lead_id && caseByLead.has(g.lead_id)) {
+            g.case_number = caseByLead.get(g.lead_id) || null;
+          }
+        });
+      }
+
+      // 2.d) Resolver nome dos boards (no Cloud) para os board_ids encontrados
+      const boardIds = Array.from(new Set(
+        Array.from(groupMap.values()).filter(g => g.board_id).map(g => g.board_id as string)
+      ));
+      if (boardIds.length > 0) {
+        const { data: boardsData } = await supabase
+          .from('kanban_boards')
+          .select('id, name')
+          .in('id', boardIds);
+        const boardMap = new Map<string, string>();
+        (boardsData || []).forEach((b: any) => boardMap.set(b.id, b.name));
+        groupMap.forEach((g) => {
+          if (g.board_id && boardMap.has(g.board_id)) {
+            g.board_name = boardMap.get(g.board_id) || null;
+          }
+        });
+        setAvailableBoards(
+          Array.from(boardMap.entries())
+            .map(([id, name]) => ({ id, name }))
+            .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
+        );
       }
 
       // 3) Fallback de nome via whatsapp_messages para os que ainda não têm nome
@@ -824,16 +911,17 @@ export function ContactsListPage() {
                 <Button variant="outline" size="sm" className="shrink-0 gap-2">
                   <SlidersHorizontal className="h-4 w-4" />
                   Filtrar e ordenar
-                  {(excludedGroups.size > 0 || groupSort !== 'alpha' || groupSortDir !== 'asc' || groupSearchScope !== 'group' || auditMode || leadStatusFilter.size > 0 || leadLinkFilter !== 'all' || dateFrom || dateTo) && (
+                  {(excludedGroups.size > 0 || groupSort !== 'date' || groupSortDir !== 'desc' || groupSearchScope !== 'group' || auditMode || leadStatusFilter.size > 0 || leadLinkFilter !== 'all' || boardFilter.size > 0 || dateFrom || dateTo) && (
                     <Badge variant="secondary" className="h-5 px-1.5 text-[10px] rounded-full">
                       {[
                         groupSearchScope !== 'group',
-                        groupSort !== 'alpha',
-                        groupSortDir !== 'asc',
+                        groupSort !== 'date',
+                        groupSortDir !== 'desc',
                         excludedGroups.size > 0,
                         auditMode,
                         leadStatusFilter.size > 0,
                         leadLinkFilter !== 'all',
+                        boardFilter.size > 0,
                         !!(dateFrom || dateTo),
                       ].filter(Boolean).length}
                     </Badge>
@@ -983,6 +1071,47 @@ export function ContactsListPage() {
                     );
                   })()}
 
+                  {availableBoards.length > 0 && (
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <Label className="text-sm font-medium">Funil (board do lead)</Label>
+                        {boardFilter.size > 0 && (
+                          <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setBoardFilter(new Set())}>
+                            Limpar
+                          </Button>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground mb-2">
+                        {boardFilter.size === 0
+                          ? 'Mostrando todos os funis.'
+                          : `Mostrando ${boardFilter.size} funil(is) selecionado(s).`}
+                      </p>
+                      <div className="space-y-1 max-h-56 overflow-y-auto pr-1">
+                        {availableBoards.map(b => {
+                          const count = groups.filter(g => g.board_id === b.id).length;
+                          return (
+                            <div key={b.id} className="flex items-center gap-2 p-2 rounded-lg border hover:bg-muted/50">
+                              <Checkbox
+                                id={`board-${b.id}`}
+                                checked={boardFilter.has(b.id)}
+                                onCheckedChange={(v) => {
+                                  setBoardFilter(prev => {
+                                    const next = new Set(prev);
+                                    if (v) next.add(b.id); else next.delete(b.id);
+                                    return next;
+                                  });
+                                }}
+                              />
+                              <Label htmlFor={`board-${b.id}`} className="flex-1 cursor-pointer text-sm truncate">{b.name}</Label>
+                              <Badge variant="outline" className="text-[10px]">{count}</Badge>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+
                   <div>
                     <div className="flex items-center justify-between mb-2">
                       <Label className="text-sm font-medium">Data de criação do grupo</Label>
@@ -1082,13 +1211,14 @@ export function ContactsListPage() {
                     className="w-full"
                     onClick={() => {
                       setGroupSearchScope('group');
-                      setGroupSort('alpha');
-                      setGroupSortDir('asc');
+                      setGroupSort('date');
+                      setGroupSortDir('desc');
                       setExcludedGroups(new Set());
                       setAuditMode(false);
                       setAuditOnlyMismatch(false);
                       setLeadStatusFilter(new Set());
                       setLeadLinkFilter('all');
+                      setBoardFilter(new Set());
                       setDateFrom('');
                       setDateTo('');
                     }}
@@ -1139,9 +1269,9 @@ export function ContactsListPage() {
               <Badge variant="secondary" className="gap-1 pl-2 pr-1">
                 Ordem: {groupSort === 'alpha' ? 'Alfabética' : groupSort === 'number' ? 'Numérica' : groupSort === 'date' ? 'Data de criação' : 'Prefixo'} ·
                 {groupSortDir === 'asc' ? ' ↑' : ' ↓'}
-                {(groupSort !== 'alpha' || groupSortDir !== 'asc') && (
+                {(groupSort !== 'date' || groupSortDir !== 'desc') && (
                   <button
-                    onClick={() => { setGroupSort('alpha'); setGroupSortDir('asc'); }}
+                    onClick={() => { setGroupSort('date'); setGroupSortDir('desc'); }}
                     className="ml-1 rounded-full hover:bg-muted p-0.5"
                     aria-label="Restaurar ordem padrão"
                   >
@@ -1193,6 +1323,20 @@ export function ContactsListPage() {
                     onClick={() => setLeadLinkFilter('all')}
                     className="ml-1 rounded-full hover:bg-muted p-0.5"
                     aria-label="Limpar filtro de vínculo"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              )}
+              {boardFilter.size > 0 && (
+                <Badge variant="secondary" className="gap-1 pl-2 pr-1">
+                  Funil: {boardFilter.size === 1
+                    ? (availableBoards.find(b => b.id === Array.from(boardFilter)[0])?.name || '1')
+                    : `${boardFilter.size} selecionados`}
+                  <button
+                    onClick={() => setBoardFilter(new Set())}
+                    className="ml-1 rounded-full hover:bg-muted p-0.5"
+                    aria-label="Limpar filtro de funil"
                   >
                     <X className="h-3 w-3" />
                   </button>
@@ -1283,6 +1427,7 @@ export function ContactsListPage() {
                 if (leadLinkFilter === 'with' && !g.lead_name) return false;
                 if (leadLinkFilter === 'without' && g.lead_name) return false;
                 if (leadStatusFilter.size > 0 && !leadStatusFilter.has(g.lead_status)) return false;
+                if (boardFilter.size > 0 && (!g.board_id || !boardFilter.has(g.board_id))) return false;
                 if (dateFrom || dateTo) {
                   const t = g.created_at ? new Date(g.created_at).getTime() : null;
                   if (t === null) return false;
@@ -1406,23 +1551,33 @@ export function ContactsListPage() {
                         {mismatched} divergente(s)
                       </span>
                     </div>
-                    <div className="grid grid-cols-[40px_60px_1fr_1fr_64px] gap-2 px-3 py-2 text-[11px] font-medium text-muted-foreground border-b">
+                    <div className="grid grid-cols-[36px_60px_70px_1fr_1fr_64px] gap-2 px-3 py-2 text-[11px] font-medium text-muted-foreground border-b">
                       <span></span>
-                      <span>Nº caso</span>
+                      <span title="Nº extraído do nome do grupo">Nº grupo</span>
+                      <span title="Nº oficial do caso (legal_cases.case_number)">Nº caso</span>
                       <span className="pr-3">Nome do grupo</span>
                       <span className="pl-3 text-center">Nome do lead</span>
                       <span></span>
                     </div>
                     {capped.map(group => {
-                      const caseNum = extractCaseNum(group.group_name) ?? extractCaseNum(group.lead_name);
+                      const groupNum = extractCaseNum(group.group_name);
+                      const caseNum = group.case_number;
                       const ng = normalizeName(group.group_name);
                       const nl = normalizeName(group.lead_name);
                       const hasBoth = !!ng && !!nl;
-                      const matches = hasBoth && (ng.includes(nl) || nl.includes(ng));
+                      const nameMatches = hasBoth && (ng.includes(nl) || nl.includes(ng));
+                      // Confere se o nº extraído do grupo bate com o nº oficial do caso
+                      const numericGroup = groupNum != null ? String(groupNum) : null;
+                      const numericCase = caseNum ? caseNum.replace(/\D/g, '').replace(/^0+/, '') : null;
+                      const numberMatches =
+                        numericGroup && numericCase
+                          ? numericGroup === numericCase || numericCase.endsWith(numericGroup) || numericGroup.endsWith(numericCase)
+                          : !numericCase; // sem nº de caso oficial não conta como divergência numérica
+                      const matches = nameMatches && numberMatches;
                       return (
                         <div
                           key={group.group_jid}
-                          className={`grid grid-cols-[40px_60px_1fr_1fr_64px] gap-2 items-center p-3 rounded-lg border transition-colors hover:bg-accent/50 ${!matches ? 'border-amber-500/40 bg-amber-500/5' : ''}`}
+                          className={`grid grid-cols-[36px_60px_70px_1fr_1fr_64px] gap-2 items-center p-3 rounded-lg border transition-colors hover:bg-accent/50 ${!matches ? 'border-amber-500/40 bg-amber-500/5' : ''}`}
                         >
                           <Checkbox
                             checked={!excludedGroups.has(group.group_jid)}
@@ -1438,7 +1593,13 @@ export function ContactsListPage() {
                             aria-label="Incluir grupo no filtro"
                           />
                           <span className="text-sm font-mono font-semibold tabular-nums">
-                            {caseNum != null ? caseNum : <span className="text-muted-foreground">—</span>}
+                            {groupNum != null ? groupNum : <span className="text-muted-foreground">—</span>}
+                          </span>
+                          <span
+                            className={`text-xs font-mono tabular-nums ${caseNum ? 'text-foreground' : 'text-muted-foreground'}`}
+                            title={caseNum ? `Caso oficial: ${caseNum}` : 'Lead sem caso oficial vinculado'}
+                          >
+                            {caseNum || '—'}
                           </span>
                           <span
                             className="text-sm truncate cursor-pointer hover:underline pr-3"
@@ -1448,11 +1609,13 @@ export function ContactsListPage() {
                             {highlight(group.group_name, groupSearchScope === 'group')}
                           </span>
                           <span
-                            className={`relative text-sm truncate pl-3 text-center before:content-[''] before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-3/5 before:w-px before:bg-border/50 ${group.lead_id ? 'cursor-pointer hover:underline' : 'text-muted-foreground'}`}
+                            className={`relative text-sm truncate pl-3 text-center before:content-[''] before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-3/5 before:w-px before:bg-border/50 ${group.lead_id ? 'cursor-pointer hover:underline' : 'text-muted-foreground italic'}`}
                             title={group.lead_id ? 'Abrir lead' : 'Sem lead vinculado'}
                             onClick={() => group.lead_id && openGroupLead(group.group_jid)}
                           >
-                            {highlight(group.lead_name, groupSearchScope === 'lead')}
+                            {group.lead_name
+                              ? highlight(group.lead_name, groupSearchScope === 'lead')
+                              : (group.lead_id ? '(sem nome)' : '— sem vínculo —')}
                           </span>
                           <div className="flex items-center gap-1">
                             {matches ? (
@@ -1460,7 +1623,7 @@ export function ContactsListPage() {
                             ) : (
                               <AlertTriangle
                                 className="h-4 w-4 text-amber-500"
-                                aria-label={hasBoth ? 'Nomes diferentes' : 'Faltando nome'}
+                                aria-label={hasBoth ? 'Divergente' : 'Faltando dados'}
                               />
                             )}
                             <Button size="icon" variant="ghost" className="h-6 w-6" title="Ver contatos do grupo" onClick={(e) => { e.stopPropagation(); handleSelectGroup(group.group_jid); }}>
