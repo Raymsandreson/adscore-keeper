@@ -67,19 +67,22 @@ Deno.serve(async (req) => {
       })
     }
 
-    // Posição determinística por board via SQL (RPC). Resolve em uma única query
-    // no Postgres — sem o limite de 1000 linhas do PostgREST que falhava em boards grandes.
-    let closedSeq = 1
+    // Nº do Caso vem do produto vinculado ao lead (legal_cases.case_number),
+    // gerado pela RPC generate_case_number(p_product_id) que incrementa
+    // products_services.case_sequence_counter. Aqui a gente só LÊ o que já existe.
+    let caseNumber = ''
     {
-      const { data: posData, error: posErr } = await supabase
-        .rpc('get_lead_closed_position', { p_lead_id: lead.id, p_board_id: lead.board_id })
-      if (posErr) {
-        console.error('[rename] get_lead_closed_position error:', posErr)
-      } else if (typeof posData === 'number') {
-        closedSeq = posData
-      }
-      console.log(`[rename] closedSeq=${closedSeq} for lead ${lead.id} board ${lead.board_id}`)
+      const { data: legalCase } = await supabase
+        .from('legal_cases')
+        .select('case_number')
+        .eq('lead_id', lead.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      caseNumber = legalCase?.case_number?.trim() || ''
+      console.log(`[rename] caseNumber="${caseNumber}" for lead ${lead.id}`)
     }
+
 
     // Find a connected instance to operate on the group.
     // We collect all candidates marked as connected and probe each one with a real
@@ -171,8 +174,8 @@ Deno.serve(async (req) => {
 
     const executorPhone = normalizePhone(instance.owner_phone || instance.phone || '')
 
-    // Build new name
-    const closedPrefix = settings.group_name_prefix || ''
+    // Build new name — fonte única do nº do caso = legal_cases.case_number (do produto).
+    // group_name_prefix legado ignorado: o prefixo já vem embutido em caseNumber (ex: "PREV-1").
     const leadFields = settings.lead_fields || ['lead_name']
     const { data: board } = await supabase
       .from('kanban_boards')
@@ -180,10 +183,7 @@ Deno.serve(async (req) => {
       .eq('id', lead.board_id)
       .maybeSingle()
     const parts: string[] = []
-    if (closedPrefix) parts.push(closedPrefix)
-    const seqStr = String(closedSeq)
-    const hasSeqToken = leadFields.includes('closed_seq') || leadFields.includes('case_number')
-    if (!hasSeqToken) parts.push(seqStr)
+    if (caseNumber) parts.push(caseNumber)
 
     // Pré-carrega valores de campos personalizados (tokens cf:<id>)
     const cfIds: string[] = (leadFields as string[])
@@ -207,7 +207,8 @@ Deno.serve(async (req) => {
     }
 
     for (const field of leadFields) {
-      if (field === 'closed_seq' || field === 'case_number') parts.push(seqStr)
+      // tokens legados de número já estão cobertos por caseNumber acima
+      if (field === 'closed_seq' || field === 'case_number') continue
       else if (typeof field === 'string' && field.startsWith('text:')) {
         try { parts.push(decodeURIComponent(field.slice(5))) } catch { parts.push(field.slice(5)) }
       }
@@ -220,6 +221,7 @@ Deno.serve(async (req) => {
     }
     let newName = parts.join(' ')
     if (newName.length > 100) newName = newName.slice(0, 100).trim()
+
 
     console.log(`Renaming group from "${currentName}" to "${newName}"`)
 
@@ -352,12 +354,11 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Persist sequence + group name
+    // Persistir nome do grupo. O contador legado closed_current_sequence ficou obsoleto —
+    // a sequência agora vive em products_services.case_sequence_counter, alimentada pela
+    // RPC generate_case_number(p_product_id) no momento do fechamento.
     if (renamed) {
-      await supabase
-        .from('board_group_settings')
-        .update({ closed_current_sequence: closedSeq })
-        .eq('board_id', lead.board_id)
+
 
       await supabase
         .from('whatsapp_group_links')

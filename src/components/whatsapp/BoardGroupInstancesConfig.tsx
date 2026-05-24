@@ -183,7 +183,7 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
   const [adminNotes, setAdminNotes] = useState<string | null>(null);
   const [nuclei, setNuclei] = useState<{id: string; name: string; prefix: string}[]>([]);
   const [teamMembers, setTeamMembers] = useState<{user_id: string; full_name: string}[]>([]);
-  const [products, setProducts] = useState<{id: string; name: string; nucleus_id: string | null}[]>([]);
+  const [products, setProducts] = useState<{id: string; name: string; nucleus_id: string | null; case_prefix: string | null}[]>([]);
   const [boardCustomFields, setBoardCustomFields] = useState<{ id: string; field_name: string; field_type: string }[]>([]);
   const lastSyncedBoardRef = useRef<string | null>(null);
   const [hiddenFieldKeys, setHiddenFieldKeys] = useState<Set<string>>(new Set());
@@ -248,14 +248,14 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
       (db as any).from('custom_voices').select('id, name, elevenlabs_voice_id').eq('status', 'ready'),
       (db as any).from('specialized_nuclei').select('id, name, prefix').eq('is_active', true).order('name'),
       (db as any).from('profiles').select('user_id, full_name').order('full_name'),
-      (db as any).from('products_services').select('id, name, nucleus_id'),
+      (db as any).from('products_services').select('id, name, nucleus_id, case_prefix'),
     ]);
     setBoards((boardsRes.data as any[]) || []);
     setInstances((instancesRes.data as any[]) || []);
     setCustomVoices((voicesRes.data || []).map((v: any) => ({ id: v.elevenlabs_voice_id, name: `🎤 ${v.name}` })));
     setNuclei((nucleiRes.data || []).map((n: any) => ({ id: n.id, name: n.name, prefix: n.prefix })));
     setTeamMembers((profilesRes.data || []).filter((p: any) => p.full_name));
-    setProducts((productsRes.data || []).map((p: any) => ({ id: p.id, name: p.name, nucleus_id: p.nucleus_id })));
+    setProducts((productsRes.data || []).map((p: any) => ({ id: p.id, name: p.name, nucleus_id: p.nucleus_id, case_prefix: p.case_prefix })));
     const funnelBoards = ((boardsRes.data as any[]) || []).filter(b => b.board_type === 'funnel');
     if (boardId === undefined && funnelBoards.length > 0) {
       setInternalSelectedBoard(funnelBoards[0].id);
@@ -604,13 +604,20 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
     });
   };
 
+  // Prefixo + Nº do Caso agora vêm SEMPRE do produto vinculado ao funil
+  // (products_services.case_prefix + case_sequence_counter, refletido em legal_cases.case_number).
+  // O campo legado `group_name_prefix` foi descontinuado.
+  const selectedBoardObj = boards.find(b => b.id === selectedBoard);
+  const linkedProduct = selectedBoardObj?.product_service_id
+    ? products.find(p => p.id === selectedBoardObj.product_service_id)
+    : null;
+  const productPrefix = linkedProduct?.case_prefix?.trim() || '';
+
   const getPreviewName = (useClosed = false) => {
     const parts: string[] = [];
-    // Prefixo + Nº só aparecem quando o caso fecha. Antes disso, só o template.
+    // Prefixo + Nº do Caso só aparecem quando o caso fecha. Antes disso, só o template.
     if (useClosed) {
-      const prefix = settings.group_name_prefix || '';
-      if (prefix) parts.push(prefix);
-      parts.push('0047');
+      parts.push(productPrefix ? `${productPrefix}-1` : 'CASO-1');
     }
     const fields = settings.lead_fields || [];
     for (const f of fields) {
@@ -738,18 +745,31 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
             </div>
 
             <div className="space-y-1">
-              <Label className="text-[11px] text-muted-foreground">Prefixo do caso fechado (ex: MAT, PREV)</Label>
-              <Input
-                value={settings.group_name_prefix}
-                onChange={e => setSettings(prev => ({ ...prev, group_name_prefix: e.target.value }))}
-                placeholder="Ex: PREV, MAT"
-                className="h-8 text-xs"
-              />
+              <Label className="text-[11px] text-muted-foreground">Prefixo do caso fechado</Label>
+              <div className="flex items-center gap-2 p-2 rounded-md border bg-background">
+                {productPrefix ? (
+                  <>
+                    <Badge variant="secondary" className="font-mono text-[11px]">{productPrefix}-N</Badge>
+                    <span className="text-[10px] text-muted-foreground">
+                      vem do produto <strong>{linkedProduct?.name}</strong>
+                    </span>
+                  </>
+                ) : linkedProduct ? (
+                  <span className="text-[10px] text-amber-600">
+                    O produto <strong>{linkedProduct.name}</strong> não tem prefixo definido. Configure em <em>Custos &amp; Organização → Produtos</em>.
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-amber-600">
+                    Este funil não tem produto vinculado. Vincule um produto para gerar o nº do caso automaticamente.
+                  </span>
+                )}
+              </div>
               <p className="text-[10px] text-muted-foreground">
-                O prefixo e o <strong>Nº do Caso</strong> são adicionados <strong>automaticamente</strong> quando o lead é fechado.
-                Antes disso, o grupo usa só o template abaixo.
+                O prefixo e o <strong>Nº do Caso</strong> são adicionados <strong>automaticamente</strong> quando o lead é fechado,
+                usando o contador do produto. Antes disso, o grupo usa só o template abaixo.
               </p>
             </div>
+
 
             <div className="space-y-1.5">
               <Label className="text-[11px] text-muted-foreground">Inserir campo no cursor</Label>
@@ -828,8 +848,9 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
                 <span className="text-[11px] font-medium truncate">{getPreviewName(true) || <em className="text-muted-foreground">(vazio)</em>}</span>
               </div>
               <p className="text-[10px] text-muted-foreground/70">
-                Quando o lead fecha, o sistema acrescenta <code className="px-1 rounded bg-muted">{settings.group_name_prefix || 'PREFIXO'} {'<nº>'}</code> na frente automaticamente.
+                Quando o lead fecha, o sistema acrescenta <code className="px-1 rounded bg-muted">{productPrefix ? `${productPrefix}-<nº>` : 'CASO-<nº>'}</code> na frente automaticamente (vem do produto).
               </p>
+
             </div>
 
             <div className="flex items-start gap-2 p-2 rounded-md border bg-background">
