@@ -65,33 +65,48 @@ async function syncInstance(
       noParticipants: !opts.include_participants,
     });
 
-    const rows = groups
-      .map((g: any) => {
-        const jid: string | null = g.JID || g.jid || g.id || null;
-        if (!jid || !jid.includes("@g.us")) return null;
-        const name: string | null =
-          g.Name || g.name || g.subject || g.Topic || null;
-        const participants =
-          g.Participants?.length || g.participants?.length || 0;
-        const created = g.GroupCreated || g.creation || g.GroupCreatedAt || null;
-        return {
-          group_jid: jid,
-          instance_name: inst.instance_name,
-          contact_name: name,
-          // Usa created_at do grupo se vier; senão now() (será atualizado por trigger se voltar)
-          last_seen: created ? new Date(created).toISOString() : new Date().toISOString(),
-          message_count: 0,
-          updated_at: new Date().toISOString(),
-          // colunas extras opcionais (podem não existir; ignoradas pelo PG se schema permitir)
-        };
-      })
-      .filter(Boolean) as any[];
+    const rows: any[] = [];
+    const snapshotRows: any[] = [];
+    for (const g of groups as any[]) {
+      const jid: string | null = g.JID || g.jid || g.id || null;
+      if (!jid || !jid.includes("@g.us")) continue;
+      const name: string | null =
+        g.Name || g.name || g.subject || g.Topic || null;
+      const partsArr = g.Participants || g.participants || [];
+      const participantsCount = Array.isArray(partsArr) ? partsArr.length : 0;
+      const ownerJid: string | null = g.Owner || g.owner || g.GroupOwner || null;
+      const isLocked = !!(g.IsLocked ?? g.locked ?? false);
+      const isAnnounce = !!(g.IsAnnounce ?? g.announce ?? false);
+      const topic: string | null = g.Topic || g.topic || g.description || null;
+      const createdRaw = g.GroupCreated || g.creation || g.GroupCreatedAt || g.created_at || null;
+      const createdIso = createdRaw ? new Date(createdRaw).toISOString() : null;
+
+      rows.push({
+        group_jid: jid,
+        instance_name: inst.instance_name,
+        contact_name: name,
+        last_seen: createdIso || new Date().toISOString(),
+        message_count: 0,
+        updated_at: new Date().toISOString(),
+      });
+
+      snapshotRows.push({
+        jid,
+        group_name: name,
+        group_created_at: createdIso,
+        owner_jid: ownerJid,
+        is_locked: isLocked,
+        is_announce: isAnnounce,
+        topic,
+        participants_count: participantsCount,
+      });
+    }
 
     if (rows.length === 0) {
       return { instance: inst.instance_name, ok: true, total: 0, ms: Date.now() - t0 };
     }
 
-    // Upsert em lotes de 500
+    // Upsert em lotes de 500 — whatsapp_groups_index
     let upserted = 0;
     for (let i = 0; i < rows.length; i += 500) {
       const slice = rows.slice(i, i + 500);
@@ -100,6 +115,15 @@ async function syncInstance(
         .upsert(slice, { onConflict: "group_jid,instance_name" });
       if (error) throw new Error(error.message);
       upserted += slice.length;
+    }
+
+    // Upsert em lotes de 500 — whatsapp_groups_uazapi_snapshot (chave: jid)
+    for (let i = 0; i < snapshotRows.length; i += 500) {
+      const slice = snapshotRows.slice(i, i + 500);
+      const { error: snapErr } = await external
+        .from("whatsapp_groups_uazapi_snapshot")
+        .upsert(slice, { onConflict: "jid" });
+      if (snapErr) console.warn(`[sync] snapshot upsert error (${inst.instance_name}):`, snapErr.message);
     }
 
     return { instance: inst.instance_name, ok: true, total: upserted, ms: Date.now() - t0 };
