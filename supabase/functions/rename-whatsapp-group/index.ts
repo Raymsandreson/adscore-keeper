@@ -174,8 +174,8 @@ Deno.serve(async (req) => {
 
     const executorPhone = normalizePhone(instance.owner_phone || instance.phone || '')
 
-    // Build new name
-    const closedPrefix = settings.group_name_prefix || ''
+    // Build new name — fonte única do nº do caso = legal_cases.case_number (do produto).
+    // group_name_prefix legado ignorado: o prefixo já vem embutido em caseNumber (ex: "PREV-1").
     const leadFields = settings.lead_fields || ['lead_name']
     const { data: board } = await supabase
       .from('kanban_boards')
@@ -183,10 +183,7 @@ Deno.serve(async (req) => {
       .eq('id', lead.board_id)
       .maybeSingle()
     const parts: string[] = []
-    if (closedPrefix) parts.push(closedPrefix)
-    const seqStr = String(closedSeq)
-    const hasSeqToken = leadFields.includes('closed_seq') || leadFields.includes('case_number')
-    if (!hasSeqToken) parts.push(seqStr)
+    if (caseNumber) parts.push(caseNumber)
 
     // Pré-carrega valores de campos personalizados (tokens cf:<id>)
     const cfIds: string[] = (leadFields as string[])
@@ -210,7 +207,8 @@ Deno.serve(async (req) => {
     }
 
     for (const field of leadFields) {
-      if (field === 'closed_seq' || field === 'case_number') parts.push(seqStr)
+      // tokens legados de número já estão cobertos por caseNumber acima
+      if (field === 'closed_seq' || field === 'case_number') continue
       else if (typeof field === 'string' && field.startsWith('text:')) {
         try { parts.push(decodeURIComponent(field.slice(5))) } catch { parts.push(field.slice(5)) }
       }
@@ -223,6 +221,7 @@ Deno.serve(async (req) => {
     }
     let newName = parts.join(' ')
     if (newName.length > 100) newName = newName.slice(0, 100).trim()
+
 
     console.log(`Renaming group from "${currentName}" to "${newName}"`)
 
