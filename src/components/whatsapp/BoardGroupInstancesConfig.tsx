@@ -604,13 +604,20 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
     });
   };
 
+  // Prefixo + Nº do Caso agora vêm SEMPRE do produto vinculado ao funil
+  // (products_services.case_prefix + case_sequence_counter, refletido em legal_cases.case_number).
+  // O campo legado `group_name_prefix` foi descontinuado.
+  const selectedBoardObj = boards.find(b => b.id === selectedBoard);
+  const linkedProduct = selectedBoardObj?.product_service_id
+    ? products.find(p => p.id === selectedBoardObj.product_service_id)
+    : null;
+  const productPrefix = linkedProduct?.case_prefix?.trim() || '';
+
   const getPreviewName = (useClosed = false) => {
     const parts: string[] = [];
-    // Prefixo + Nº só aparecem quando o caso fecha. Antes disso, só o template.
+    // Prefixo + Nº do Caso só aparecem quando o caso fecha. Antes disso, só o template.
     if (useClosed) {
-      const prefix = settings.group_name_prefix || '';
-      if (prefix) parts.push(prefix);
-      parts.push('0047');
+      parts.push(productPrefix ? `${productPrefix}-1` : 'CASO-1');
     }
     const fields = settings.lead_fields || [];
     for (const f of fields) {
