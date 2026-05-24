@@ -1269,9 +1269,9 @@ export function ContactsListPage() {
               <Badge variant="secondary" className="gap-1 pl-2 pr-1">
                 Ordem: {groupSort === 'alpha' ? 'Alfabética' : groupSort === 'number' ? 'Numérica' : groupSort === 'date' ? 'Data de criação' : 'Prefixo'} ·
                 {groupSortDir === 'asc' ? ' ↑' : ' ↓'}
-                {(groupSort !== 'alpha' || groupSortDir !== 'asc') && (
+                {(groupSort !== 'date' || groupSortDir !== 'desc') && (
                   <button
-                    onClick={() => { setGroupSort('alpha'); setGroupSortDir('asc'); }}
+                    onClick={() => { setGroupSort('date'); setGroupSortDir('desc'); }}
                     className="ml-1 rounded-full hover:bg-muted p-0.5"
                     aria-label="Restaurar ordem padrão"
                   >
