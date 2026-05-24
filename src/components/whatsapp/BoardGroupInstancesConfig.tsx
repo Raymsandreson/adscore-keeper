@@ -301,7 +301,8 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
         current_sequence: data.current_sequence || 0,
         closed_sequence_start: data.closed_sequence_start || 1,
         closed_current_sequence: data.closed_current_sequence || 0,
-        lead_fields: data.lead_fields || ['lead_name'],
+        // Legado: campos `case_number`/`closed_seq` saem do template, agora são automáticos no fechamento
+        lead_fields: (data.lead_fields || ['lead_name']).filter((f: string) => f !== 'case_number' && f !== 'closed_seq'),
         initial_message_template: data.initial_message_template || '',
         use_ai_message: data.use_ai_message || false,
         ai_generated_message: data.ai_generated_message || '',
@@ -605,25 +606,20 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
 
   const getPreviewName = (useClosed = false) => {
     const parts: string[] = [];
-    const prefix = useClosed && settings.closed_group_name_prefix
-      ? settings.closed_group_name_prefix
-      : settings.group_name_prefix;
-    if (prefix) parts.push(prefix);
-    const seqStr = '[Nº do Caso]';
+    // Prefixo + Nº só aparecem quando o caso fecha. Antes disso, só o template.
+    if (useClosed) {
+      const prefix = settings.group_name_prefix || '';
+      if (prefix) parts.push(prefix);
+      parts.push('0047');
+    }
     const fields = settings.lead_fields || [];
-    // Legacy: se não houver token de sequência (case_number/closed_seq), injeta a seq logo após o prefixo
-    const hasSeqToken = fields.includes('case_number') || fields.includes('closed_seq');
-    if (!hasSeqToken) parts.push(seqStr);
-    const prefixNorm = (prefix || '').toLowerCase().replace(/[-\s]+$/, '').trim();
     for (const f of fields) {
       if (f === 'closed_seq' || f === 'case_number') {
-        parts.push(seqStr);
+        // legacy — ignora, número é automático
+        continue;
       } else if (f.startsWith('text:')) {
         let txt = '';
         try { txt = decodeURIComponent(f.slice(5)); } catch { txt = f.slice(5); }
-        // Ignora tokens-texto que são apenas repetição do prefixo (legado: "MAT-", "MAT", etc.)
-        const txtNorm = txt.toLowerCase().replace(/[-\s]+$/, '').trim();
-        if (prefixNorm && txtNorm === prefixNorm) continue;
         parts.push(txt);
       } else if (f.startsWith('cf:')) {
         const cfId = f.slice(3);
@@ -742,23 +738,23 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
             </div>
 
             <div className="space-y-1">
-              <Label className="text-[11px] text-muted-foreground">Prefixo do grupo</Label>
+              <Label className="text-[11px] text-muted-foreground">Prefixo do caso fechado (ex: MAT, PREV)</Label>
               <Input
                 value={settings.group_name_prefix}
                 onChange={e => setSettings(prev => ({ ...prev, group_name_prefix: e.target.value }))}
                 placeholder="Ex: PREV, MAT"
                 className="h-8 text-xs"
               />
+              <p className="text-[10px] text-muted-foreground">
+                O prefixo e o <strong>Nº do Caso</strong> são adicionados <strong>automaticamente</strong> quando o lead é fechado.
+                Antes disso, o grupo usa só o template abaixo.
+              </p>
             </div>
-
-            <p className="text-[10px] text-muted-foreground">
-              O Nº do Caso não é configurado aqui: no fechamento ele vem do número real do caso/grupo do funil. Escreva o nome diretamente no editor abaixo e clique nos campos para inserir <code className="px-1 rounded bg-muted">{'{{Campo}}'}</code> no cursor.
-            </p>
 
             <div className="space-y-1.5">
               <Label className="text-[11px] text-muted-foreground">Inserir campo no cursor</Label>
               <div className="flex flex-wrap gap-1.5">
-                {LEAD_FIELD_OPTIONS.filter(opt => !hiddenFieldKeys.has(opt.value)).map(opt => (
+                {LEAD_FIELD_OPTIONS.filter(opt => !hiddenFieldKeys.has(opt.value) && opt.value !== 'case_number').map(opt => (
                   <button
                     key={opt.value}
                     type="button"
@@ -820,12 +816,20 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
               </div>
             </div>
 
-            <div className="space-y-1">
+            <div className="space-y-1.5">
               <div className="flex items-center gap-2 p-2 rounded bg-muted/50 border">
                 <Eye className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                <span className="text-[10px] text-muted-foreground">Antes:</span>
-                <span className="text-[11px] font-medium truncate">{getPreviewName(false)}</span>
+                <span className="text-[10px] text-muted-foreground shrink-0">Lead aberto:</span>
+                <span className="text-[11px] font-medium truncate">{getPreviewName(false) || <em className="text-muted-foreground">(vazio)</em>}</span>
               </div>
+              <div className="flex items-center gap-2 p-2 rounded bg-primary/5 border border-primary/30">
+                <Eye className="h-3.5 w-3.5 text-primary shrink-0" />
+                <span className="text-[10px] text-primary/80 shrink-0">Caso fechado:</span>
+                <span className="text-[11px] font-medium truncate">{getPreviewName(true) || <em className="text-muted-foreground">(vazio)</em>}</span>
+              </div>
+              <p className="text-[10px] text-muted-foreground/70">
+                Quando o lead fecha, o sistema acrescenta <code className="px-1 rounded bg-muted">{settings.group_name_prefix || 'PREFIXO'} {'<nº>'}</code> na frente automaticamente.
+              </p>
             </div>
 
             <div className="flex items-start gap-2 p-2 rounded-md border bg-background">

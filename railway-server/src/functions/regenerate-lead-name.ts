@@ -152,13 +152,16 @@ export const handler: RequestHandler = async (req, res) => {
     const boardName = boardData?.name || '';
 
     const parts: string[] = [];
-    if (activePrefix) parts.push(activePrefix);
+    // Prefixo + Nº do Caso só entram na frente quando o lead JÁ FECHOU.
+    // Antes de fechar, o grupo usa apenas os campos do template.
+    if (useClosed && activePrefix) parts.push(activePrefix);
     const seqStr = String(nextSeq);
 
     const leadFields: string[] = settings.lead_fields || ['lead_name'];
-    // Legacy: se não houver token de seq (case_number/closed_seq), seq logo após prefixo
+    // Legacy: se houver token case_number/closed_seq no template, ele cuida da posição da seq.
+    // Senão, injeta a seq logo após o prefixo — mas SÓ no estado fechado.
     const hasSeqToken = leadFields.includes('case_number') || leadFields.includes('closed_seq');
-    if (!hasSeqToken) parts.push(seqStr);
+    if (useClosed && !hasSeqToken) parts.push(seqStr);
 
     // Pré-carrega valores de campos personalizados se houver tokens cf:<id>
     const cfIds = leadFields
@@ -184,7 +187,7 @@ export const handler: RequestHandler = async (req, res) => {
     const missingFields: string[] = [];
     for (const field of leadFields) {
       if (field === 'closed_seq' || field === 'case_number') {
-        parts.push(seqStr);
+        if (useClosed) parts.push(seqStr);
       } else if (typeof field === 'string' && field.startsWith('text:')) {
         try { parts.push(decodeURIComponent(field.slice(5))); } catch { parts.push(field.slice(5)); }
       } else if (field === 'board_name') {
