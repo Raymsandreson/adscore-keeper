@@ -183,19 +183,22 @@ export function ContactsListPage() {
               instance_name: r.instance_name || null,
               created_at: null,
               lead_created_at: null,
+              board_id: null,
+              board_name: null,
+              case_number: null,
             });
           }
         }
         if (rows.length < pageSize) break;
       }
 
-      // 2) Enriquecimento: vínculo com lead (nome + status). LEFT JOIN feito em JS.
+      // 2) Enriquecimento: vínculo com lead (nome + status + board). LEFT JOIN feito em JS.
       //    Também garante grupos que existem só em lead_whatsapp_groups e não no index.
       for (let from = 0; ; from += pageSize) {
         const to = from + pageSize - 1;
         const { data: page, error } = await externalSupabase
           .from('lead_whatsapp_groups')
-          .select('group_jid, group_name, lead_id, leads!lead_whatsapp_groups_lead_id_fkey(lead_name, lead_status, created_at)')
+          .select('group_jid, group_name, lead_id, leads!lead_whatsapp_groups_lead_id_fkey(lead_name, lead_status, created_at, board_id)')
           .order('created_at', { ascending: false })
           .range(from, to);
         if (error) { console.error('fetchGroups lwg page error:', error); break; }
@@ -209,6 +212,7 @@ export function ContactsListPage() {
             if (!existing.lead_status && lead?.lead_status) existing.lead_status = lead.lead_status;
             if (!existing.lead_id && g.lead_id) existing.lead_id = g.lead_id;
             if (!existing.lead_created_at && lead?.created_at) existing.lead_created_at = lead.created_at;
+            if (!existing.board_id && lead?.board_id) existing.board_id = lead.board_id;
           } else {
             groupMap.set(g.group_jid, {
               group_jid: g.group_jid,
@@ -220,10 +224,91 @@ export function ContactsListPage() {
               instance_name: null,
               created_at: null,
               lead_created_at: lead?.created_at || null,
+              board_id: lead?.board_id || null,
+              board_name: null,
+              case_number: null,
             });
           }
         }
         if (rows.length < pageSize) break;
+      }
+
+      // 2.b) Fallback: se o join veio sem lead_name (cache de FK falhando), buscar leads
+      //      diretamente por IN(lead_id) para garantir que o nome aparece na auditoria.
+      const leadIdsNeeded = Array.from(groupMap.values())
+        .filter(g => g.lead_id && (!g.lead_name || !g.board_id))
+        .map(g => g.lead_id as string);
+      if (leadIdsNeeded.length > 0) {
+        const uniq = Array.from(new Set(leadIdsNeeded));
+        const chunkSize = 200;
+        for (let i = 0; i < uniq.length; i += chunkSize) {
+          const chunk = uniq.slice(i, i + chunkSize);
+          const { data: leadsData } = await externalSupabase
+            .from('leads')
+            .select('id, lead_name, lead_status, created_at, board_id')
+            .in('id', chunk);
+          const leadMap = new Map<string, any>();
+          (leadsData || []).forEach((l: any) => leadMap.set(l.id, l));
+          groupMap.forEach((g) => {
+            if (g.lead_id && leadMap.has(g.lead_id)) {
+              const l = leadMap.get(g.lead_id);
+              if (!g.lead_name && l.lead_name) g.lead_name = l.lead_name;
+              if (!g.lead_status && l.lead_status) g.lead_status = l.lead_status;
+              if (!g.lead_created_at && l.created_at) g.lead_created_at = l.created_at;
+              if (!g.board_id && l.board_id) g.board_id = l.board_id;
+            }
+          });
+        }
+      }
+
+      // 2.c) Buscar nº do caso (legal_cases.case_number) para todos os lead_ids vinculados
+      const leadIdsForCase = Array.from(new Set(
+        Array.from(groupMap.values()).filter(g => g.lead_id).map(g => g.lead_id as string)
+      ));
+      if (leadIdsForCase.length > 0) {
+        const chunkSize = 200;
+        const caseByLead = new Map<string, string>();
+        for (let i = 0; i < leadIdsForCase.length; i += chunkSize) {
+          const chunk = leadIdsForCase.slice(i, i + chunkSize);
+          const { data: cases } = await externalSupabase
+            .from('legal_cases')
+            .select('lead_id, case_number, created_at')
+            .in('lead_id', chunk)
+            .order('created_at', { ascending: false });
+          (cases || []).forEach((c: any) => {
+            if (c.lead_id && c.case_number && !caseByLead.has(c.lead_id)) {
+              caseByLead.set(c.lead_id, String(c.case_number));
+            }
+          });
+        }
+        groupMap.forEach((g) => {
+          if (g.lead_id && caseByLead.has(g.lead_id)) {
+            g.case_number = caseByLead.get(g.lead_id) || null;
+          }
+        });
+      }
+
+      // 2.d) Resolver nome dos boards (no Cloud) para os board_ids encontrados
+      const boardIds = Array.from(new Set(
+        Array.from(groupMap.values()).filter(g => g.board_id).map(g => g.board_id as string)
+      ));
+      if (boardIds.length > 0) {
+        const { data: boardsData } = await supabase
+          .from('kanban_boards')
+          .select('id, name')
+          .in('id', boardIds);
+        const boardMap = new Map<string, string>();
+        (boardsData || []).forEach((b: any) => boardMap.set(b.id, b.name));
+        groupMap.forEach((g) => {
+          if (g.board_id && boardMap.has(g.board_id)) {
+            g.board_name = boardMap.get(g.board_id) || null;
+          }
+        });
+        setAvailableBoards(
+          Array.from(boardMap.entries())
+            .map(([id, name]) => ({ id, name }))
+            .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
+        );
       }
 
       // 3) Fallback de nome via whatsapp_messages para os que ainda não têm nome
