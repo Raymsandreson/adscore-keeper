@@ -1211,13 +1211,14 @@ export function ContactsListPage() {
                     className="w-full"
                     onClick={() => {
                       setGroupSearchScope('group');
-                      setGroupSort('alpha');
-                      setGroupSortDir('asc');
+                      setGroupSort('date');
+                      setGroupSortDir('desc');
                       setExcludedGroups(new Set());
                       setAuditMode(false);
                       setAuditOnlyMismatch(false);
                       setLeadStatusFilter(new Set());
                       setLeadLinkFilter('all');
+                      setBoardFilter(new Set());
                       setDateFrom('');
                       setDateTo('');
                     }}
