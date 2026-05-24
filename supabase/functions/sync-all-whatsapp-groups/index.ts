@@ -99,7 +99,6 @@ async function syncInstance(
         is_announce: isAnnounce,
         topic,
         participants_count: participantsCount,
-        updated_at: new Date().toISOString(),
       });
     }
 
