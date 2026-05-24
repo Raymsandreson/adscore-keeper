@@ -67,10 +67,12 @@ Deno.serve(async (req) => {
       })
     }
 
-    // Nº do Caso vem do produto vinculado ao lead (legal_cases.case_number),
-    // gerado pela RPC generate_case_number(p_product_id) que incrementa
-    // products_services.case_sequence_counter. Aqui a gente só LÊ o que já existe.
-    let caseNumber = ''
+    // Token de prefixo do nome do grupo. Duas fases:
+    //  - FECHADO: legal_cases.case_number (ex: "PREV-5") — gerado pela RPC
+    //    generate_case_number(p_product_id) quando o lead vira cliente.
+    //  - ABERTO:  "LEAD-{lead.lead_number}({produto.case_prefix})" — atribuído
+    //    no INSERT do lead pela RPC generate_lead_number(p_product_id).
+    let prefixToken = ''
     {
       const { data: legalCase } = await supabase
         .from('legal_cases')
@@ -79,8 +81,21 @@ Deno.serve(async (req) => {
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle()
-      caseNumber = legalCase?.case_number?.trim() || ''
-      console.log(`[rename] caseNumber="${caseNumber}" for lead ${lead.id}`)
+      const caseNumber = legalCase?.case_number?.trim() || ''
+      if (caseNumber) {
+        prefixToken = caseNumber
+      } else if (lead.lead_number && lead.product_service_id) {
+        const { data: prod } = await supabase
+          .from('products_services')
+          .select('case_prefix')
+          .eq('id', lead.product_service_id)
+          .maybeSingle()
+        const pfx = (prod?.case_prefix || '').trim().toUpperCase()
+        prefixToken = pfx
+          ? `LEAD-${lead.lead_number}(${pfx})`
+          : `LEAD-${lead.lead_number}`
+      }
+      console.log(`[rename] prefixToken="${prefixToken}" for lead ${lead.id}`)
     }
 
 
