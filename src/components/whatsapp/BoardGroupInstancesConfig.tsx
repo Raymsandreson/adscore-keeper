@@ -848,8 +848,9 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
                 <span className="text-[11px] font-medium truncate">{getPreviewName(true) || <em className="text-muted-foreground">(vazio)</em>}</span>
               </div>
               <p className="text-[10px] text-muted-foreground/70">
-                Quando o lead fecha, o sistema acrescenta <code className="px-1 rounded bg-muted">{settings.group_name_prefix || 'PREFIXO'} {'<nº>'}</code> na frente automaticamente.
+                Quando o lead fecha, o sistema acrescenta <code className="px-1 rounded bg-muted">{productPrefix ? `${productPrefix}-<nº>` : 'CASO-<nº>'}</code> na frente automaticamente (vem do produto).
               </p>
+
             </div>
 
             <div className="flex items-start gap-2 p-2 rounded-md border bg-background">
