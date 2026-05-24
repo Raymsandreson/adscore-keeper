@@ -194,6 +194,95 @@ Deno.serve(async (req) => {
     const okCount = results.filter((r) => r.ok).length;
     const failCount = results.length - okCount;
 
+    // ============================================================
+    // FALLBACK BACKFILL — para grupos que estão no index mas sem
+    // group_created_at no snapshot, tenta /group/info em cada
+    // instância conectada que enxerga o grupo, até uma responder.
+    // Útil quando /group/list devolve resumo sem `creation`.
+    // ============================================================
+    let backfilled = 0;
+    let backfillTried = 0;
+    let backfillSkipped = 0;
+    try {
+      const okInstanceNames = new Set(
+        results.filter((r) => r.ok).map((r) => String(r.instance).toLowerCase()),
+      );
+      const instByName = new Map(
+        instances.map((i) => [i.instance_name.toLowerCase(), i as Inst]),
+      );
+
+      // 1) Lista JIDs ainda sem data
+      const { data: missingRows } = await external
+        .from("whatsapp_groups_index" as any)
+        .select("group_jid, instance_name")
+        .limit(20000);
+      const snapshotJids = new Set<string>();
+      {
+        const { data: snapRows } = await external
+          .from("whatsapp_groups_uazapi_snapshot" as any)
+          .select("jid, group_created_at")
+          .not("group_created_at", "is", null)
+          .limit(50000);
+        for (const r of (snapRows as any[]) || []) snapshotJids.add(r.jid);
+      }
+      // jid -> instâncias conectadas que o veem
+      const candidates = new Map<string, string[]>();
+      for (const row of (missingRows as any[]) || []) {
+        const jid = row.group_jid as string;
+        if (!jid || snapshotJids.has(jid)) continue;
+        if (!okInstanceNames.has(String(row.instance_name).toLowerCase())) continue;
+        const arr = candidates.get(jid) || [];
+        if (!arr.includes(row.instance_name)) arr.push(row.instance_name);
+        candidates.set(jid, arr);
+      }
+
+      for (const [jid, instNames] of candidates) {
+        backfillTried++;
+        let got: any = null;
+        let gotFrom: string | null = null;
+        for (const instName of instNames) {
+          const inst = instByName.get(instName.toLowerCase());
+          if (!inst) continue;
+          try {
+            const url = `${(inst.base_url || "https://abraci.uazapi.com").replace(/\/$/, "")}/group/info`;
+            const res = await fetch(url, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", token: inst.token },
+              body: JSON.stringify({ groupjid: jid, getInviteLink: false }),
+            });
+            if (!res.ok) continue;
+            const data = await res.json().catch(() => null);
+            const g = data?.group || data;
+            const created = g?.GroupCreated || g?.creation || g?.GroupCreatedAt || g?.created_at;
+            if (created) {
+              got = g;
+              gotFrom = instName;
+              break;
+            }
+          } catch (_) { /* try next */ }
+        }
+        if (!got) { backfillSkipped++; continue; }
+        const createdRaw = got.GroupCreated || got.creation || got.GroupCreatedAt || got.created_at;
+        await external
+          .from("whatsapp_groups_uazapi_snapshot" as any)
+          .upsert({
+            jid,
+            group_name: got.Name || got.name || got.subject || null,
+            group_created_at: new Date(createdRaw).toISOString(),
+            owner_jid: got.Owner || got.owner || null,
+            is_locked: !!(got.IsLocked ?? got.locked ?? false),
+            is_announce: !!(got.IsAnnounce ?? got.announce ?? false),
+            topic: got.Topic || got.topic || null,
+            participants_count: Array.isArray(got.Participants || got.participants)
+              ? (got.Participants || got.participants).length : 0,
+          }, { onConflict: "jid" });
+        backfilled++;
+        console.log(`[backfill] ${jid} recuperado via ${gotFrom}`);
+      }
+    } catch (e: any) {
+      console.warn("[backfill] erro:", e?.message || e);
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
@@ -201,6 +290,7 @@ Deno.serve(async (req) => {
         instances_ok: okCount,
         instances_failed: failCount,
         total_groups_upserted: totalGroups,
+        backfill: { tried: backfillTried, recovered: backfilled, still_missing: backfillSkipped },
         results,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
