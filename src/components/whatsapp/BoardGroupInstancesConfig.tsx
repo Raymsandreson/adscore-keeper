@@ -606,25 +606,20 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
 
   const getPreviewName = (useClosed = false) => {
     const parts: string[] = [];
-    const prefix = useClosed && settings.closed_group_name_prefix
-      ? settings.closed_group_name_prefix
-      : settings.group_name_prefix;
-    if (prefix) parts.push(prefix);
-    const seqStr = '[Nº do Caso]';
+    // Prefixo + Nº só aparecem quando o caso fecha. Antes disso, só o template.
+    if (useClosed) {
+      const prefix = settings.group_name_prefix || '';
+      if (prefix) parts.push(prefix);
+      parts.push('0047');
+    }
     const fields = settings.lead_fields || [];
-    // Legacy: se não houver token de sequência (case_number/closed_seq), injeta a seq logo após o prefixo
-    const hasSeqToken = fields.includes('case_number') || fields.includes('closed_seq');
-    if (!hasSeqToken) parts.push(seqStr);
-    const prefixNorm = (prefix || '').toLowerCase().replace(/[-\s]+$/, '').trim();
     for (const f of fields) {
       if (f === 'closed_seq' || f === 'case_number') {
-        parts.push(seqStr);
+        // legacy — ignora, número é automático
+        continue;
       } else if (f.startsWith('text:')) {
         let txt = '';
         try { txt = decodeURIComponent(f.slice(5)); } catch { txt = f.slice(5); }
-        // Ignora tokens-texto que são apenas repetição do prefixo (legado: "MAT-", "MAT", etc.)
-        const txtNorm = txt.toLowerCase().replace(/[-\s]+$/, '').trim();
-        if (prefixNorm && txtNorm === prefixNorm) continue;
         parts.push(txt);
       } else if (f.startsWith('cf:')) {
         const cfId = f.slice(3);
