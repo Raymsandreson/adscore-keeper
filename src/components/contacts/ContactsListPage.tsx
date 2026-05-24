@@ -1261,10 +1261,11 @@ export function ContactsListPage() {
                   if (groupSort === 'date') {
                     const ta = a.created_at ? new Date(a.created_at).getTime() : (a.lead_created_at ? new Date(a.lead_created_at).getTime() : null);
                     const tb = b.created_at ? new Date(b.created_at).getTime() : (b.lead_created_at ? new Date(b.lead_created_at).getTime() : null);
-                    if (ta == null && tb == null) cmp = 0;
-                    else if (ta == null) cmp = 1;
-                    else if (tb == null) cmp = -1;
-                    else cmp = ta - tb;
+                    // Nulos sempre no fim, independente da direção
+                    if (ta == null && tb == null) return 0;
+                    if (ta == null) return 1;
+                    if (tb == null) return -1;
+                    cmp = ta - tb;
                   } else if (groupSort === 'number') {
                     const numA = parseInt(na.match(/\d+/)?.[0] || '', 10);
                     const numB = parseInt(nb.match(/\d+/)?.[0] || '', 10);
