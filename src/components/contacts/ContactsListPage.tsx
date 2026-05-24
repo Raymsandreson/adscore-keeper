@@ -140,6 +140,8 @@ export function ContactsListPage() {
   const [auditOnlyMismatch, setAuditOnlyMismatch] = useState(false);
   const [leadStatusFilter, setLeadStatusFilter] = useState<Set<string>>(new Set());
   const [leadLinkFilter, setLeadLinkFilter] = useState<'all' | 'with' | 'without'>('all');
+  const [dateFrom, setDateFrom] = useState<string>('');
+  const [dateTo, setDateTo] = useState<string>('');
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
   const [groupContacts, setGroupContacts] = useState<Contact[]>([]);
   const [groupContactsLoading, setGroupContactsLoading] = useState(false);
@@ -822,7 +824,7 @@ export function ContactsListPage() {
                 <Button variant="outline" size="sm" className="shrink-0 gap-2">
                   <SlidersHorizontal className="h-4 w-4" />
                   Filtrar e ordenar
-                  {(excludedGroups.size > 0 || groupSort !== 'alpha' || groupSortDir !== 'asc' || groupSearchScope !== 'group' || auditMode || leadStatusFilter.size > 0 || leadLinkFilter !== 'all') && (
+                  {(excludedGroups.size > 0 || groupSort !== 'alpha' || groupSortDir !== 'asc' || groupSearchScope !== 'group' || auditMode || leadStatusFilter.size > 0 || leadLinkFilter !== 'all' || dateFrom || dateTo) && (
                     <Badge variant="secondary" className="h-5 px-1.5 text-[10px] rounded-full">
                       {[
                         groupSearchScope !== 'group',
@@ -832,6 +834,7 @@ export function ContactsListPage() {
                         auditMode,
                         leadStatusFilter.size > 0,
                         leadLinkFilter !== 'all',
+                        !!(dateFrom || dateTo),
                       ].filter(Boolean).length}
                     </Badge>
                   )}
@@ -980,6 +983,55 @@ export function ContactsListPage() {
                     );
                   })()}
 
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <Label className="text-sm font-medium">Data de criação do grupo</Label>
+                      {(dateFrom || dateTo) && (
+                        <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => { setDateFrom(''); setDateTo(''); }}>
+                          Limpar
+                        </Button>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground mb-2">
+                      Filtra pelo dia em que o grupo foi criado no WhatsApp. Grupos sem data são ocultados quando o filtro está ativo.
+                    </p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <Label htmlFor="date-from" className="text-xs text-muted-foreground">De</Label>
+                        <Input id="date-from" type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-9" />
+                      </div>
+                      <div>
+                        <Label htmlFor="date-to" className="text-xs text-muted-foreground">Até</Label>
+                        <Input id="date-to" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-9" />
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {[
+                        { label: 'Hoje', days: 0 },
+                        { label: '7 dias', days: 7 },
+                        { label: '30 dias', days: 30 },
+                        { label: '90 dias', days: 90 },
+                      ].map(p => (
+                        <Button
+                          key={p.label}
+                          variant="outline"
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={() => {
+                            const to = new Date();
+                            const from = new Date();
+                            from.setDate(from.getDate() - p.days);
+                            const fmt = (d: Date) => d.toISOString().slice(0, 10);
+                            setDateFrom(fmt(from));
+                            setDateTo(fmt(to));
+                          }}
+                        >
+                          {p.label}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+
                   {excludedGroups.size > 0 && (
                     <div>
                       <div className="flex items-center justify-between mb-2">
@@ -1037,6 +1089,8 @@ export function ContactsListPage() {
                       setAuditOnlyMismatch(false);
                       setLeadStatusFilter(new Set());
                       setLeadLinkFilter('all');
+                      setDateFrom('');
+                      setDateTo('');
                     }}
                   >
                     Limpar filtros
@@ -1229,6 +1283,12 @@ export function ContactsListPage() {
                 if (leadLinkFilter === 'with' && !g.lead_name) return false;
                 if (leadLinkFilter === 'without' && g.lead_name) return false;
                 if (leadStatusFilter.size > 0 && !leadStatusFilter.has(g.lead_status)) return false;
+                if (dateFrom || dateTo) {
+                  const t = g.created_at ? new Date(g.created_at).getTime() : null;
+                  if (t === null) return false;
+                  if (dateFrom && t < new Date(dateFrom + 'T00:00:00').getTime()) return false;
+                  if (dateTo && t > new Date(dateTo + 'T23:59:59').getTime()) return false;
+                }
                 return true;
               });
 
