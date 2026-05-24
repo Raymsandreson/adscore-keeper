@@ -1615,10 +1615,41 @@ Deno.serve(async (req) => {
     let mediaTranscription: string | null = null;
     const isMediaMessage = messageType === "image" || messageType === "audio" ||
       messageType === "video" || messageType === "document";
-    // Baixa mídia de TODAS as conversas (incluindo grupos) para evitar links .enc expirados
+
+    // Para grupos: só baixa mídia se o grupo estiver vinculado a um lead.
+    // Economiza armazenamento/banda em grupos genéricos (sem CRM ativo).
+    let allowGroupMediaDownload = true;
+    if (isGroup && isMediaMessage) {
+      try {
+        const { data: linkedGroup } = await supabase
+          .from("lead_whatsapp_groups")
+          .select("lead_id")
+          .eq("group_jid", chatId)
+          .limit(1)
+          .maybeSingle();
+        allowGroupMediaDownload = !!linkedGroup?.lead_id;
+        if (!allowGroupMediaDownload) {
+          console.log(
+            `[wa-webhook] skip media download — group ${chatId} sem lead vinculado`,
+          );
+        } else {
+          console.log(
+            `[wa-webhook] group ${chatId} vinculado ao lead ${linkedGroup?.lead_id} — baixando mídia`,
+          );
+        }
+      } catch (e) {
+        console.warn(
+          "[wa-webhook] lead_whatsapp_groups lookup failed, defaulting to skip:",
+          e,
+        );
+        allowGroupMediaDownload = false;
+      }
+    }
+
     if (
       (mediaUrl || isMediaMessage) && messageType !== "text" &&
-      externalMessageId
+      externalMessageId &&
+      (!isGroup || allowGroupMediaDownload)
     ) {
       // Look up instance token from DB if not in payload
       let resolvedToken = instanceToken;
