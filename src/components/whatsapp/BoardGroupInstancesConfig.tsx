@@ -745,18 +745,31 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
             </div>
 
             <div className="space-y-1">
-              <Label className="text-[11px] text-muted-foreground">Prefixo do caso fechado (ex: MAT, PREV)</Label>
-              <Input
-                value={settings.group_name_prefix}
-                onChange={e => setSettings(prev => ({ ...prev, group_name_prefix: e.target.value }))}
-                placeholder="Ex: PREV, MAT"
-                className="h-8 text-xs"
-              />
+              <Label className="text-[11px] text-muted-foreground">Prefixo do caso fechado</Label>
+              <div className="flex items-center gap-2 p-2 rounded-md border bg-background">
+                {productPrefix ? (
+                  <>
+                    <Badge variant="secondary" className="font-mono text-[11px]">{productPrefix}-N</Badge>
+                    <span className="text-[10px] text-muted-foreground">
+                      vem do produto <strong>{linkedProduct?.name}</strong>
+                    </span>
+                  </>
+                ) : linkedProduct ? (
+                  <span className="text-[10px] text-amber-600">
+                    O produto <strong>{linkedProduct.name}</strong> não tem prefixo definido. Configure em <em>Custos &amp; Organização → Produtos</em>.
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-amber-600">
+                    Este funil não tem produto vinculado. Vincule um produto para gerar o nº do caso automaticamente.
+                  </span>
+                )}
+              </div>
               <p className="text-[10px] text-muted-foreground">
-                O prefixo e o <strong>Nº do Caso</strong> são adicionados <strong>automaticamente</strong> quando o lead é fechado.
-                Antes disso, o grupo usa só o template abaixo.
+                O prefixo e o <strong>Nº do Caso</strong> são adicionados <strong>automaticamente</strong> quando o lead é fechado,
+                usando o contador do produto. Antes disso, o grupo usa só o template abaixo.
               </p>
             </div>
+
 
             <div className="space-y-1.5">
               <Label className="text-[11px] text-muted-foreground">Inserir campo no cursor</Label>
