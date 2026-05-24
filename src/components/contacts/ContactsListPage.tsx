@@ -140,6 +140,8 @@ export function ContactsListPage() {
   const [auditOnlyMismatch, setAuditOnlyMismatch] = useState(false);
   const [leadStatusFilter, setLeadStatusFilter] = useState<Set<string>>(new Set());
   const [leadLinkFilter, setLeadLinkFilter] = useState<'all' | 'with' | 'without'>('all');
+  const [dateFrom, setDateFrom] = useState<string>('');
+  const [dateTo, setDateTo] = useState<string>('');
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
   const [groupContacts, setGroupContacts] = useState<Contact[]>([]);
   const [groupContactsLoading, setGroupContactsLoading] = useState(false);
