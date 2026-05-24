@@ -1494,23 +1494,33 @@ export function ContactsListPage() {
                         {mismatched} divergente(s)
                       </span>
                     </div>
-                    <div className="grid grid-cols-[40px_60px_1fr_1fr_64px] gap-2 px-3 py-2 text-[11px] font-medium text-muted-foreground border-b">
+                    <div className="grid grid-cols-[36px_60px_70px_1fr_1fr_64px] gap-2 px-3 py-2 text-[11px] font-medium text-muted-foreground border-b">
                       <span></span>
-                      <span>Nº caso</span>
+                      <span title="Nº extraído do nome do grupo">Nº grupo</span>
+                      <span title="Nº oficial do caso (legal_cases.case_number)">Nº caso</span>
                       <span className="pr-3">Nome do grupo</span>
                       <span className="pl-3 text-center">Nome do lead</span>
                       <span></span>
                     </div>
                     {capped.map(group => {
-                      const caseNum = extractCaseNum(group.group_name) ?? extractCaseNum(group.lead_name);
+                      const groupNum = extractCaseNum(group.group_name);
+                      const caseNum = group.case_number;
                       const ng = normalizeName(group.group_name);
                       const nl = normalizeName(group.lead_name);
                       const hasBoth = !!ng && !!nl;
-                      const matches = hasBoth && (ng.includes(nl) || nl.includes(ng));
+                      const nameMatches = hasBoth && (ng.includes(nl) || nl.includes(ng));
+                      // Confere se o nº extraído do grupo bate com o nº oficial do caso
+                      const numericGroup = groupNum != null ? String(groupNum) : null;
+                      const numericCase = caseNum ? caseNum.replace(/\D/g, '').replace(/^0+/, '') : null;
+                      const numberMatches =
+                        numericGroup && numericCase
+                          ? numericGroup === numericCase || numericCase.endsWith(numericGroup) || numericGroup.endsWith(numericCase)
+                          : !numericCase; // sem nº de caso oficial não conta como divergência numérica
+                      const matches = nameMatches && numberMatches;
                       return (
                         <div
                           key={group.group_jid}
-                          className={`grid grid-cols-[40px_60px_1fr_1fr_64px] gap-2 items-center p-3 rounded-lg border transition-colors hover:bg-accent/50 ${!matches ? 'border-amber-500/40 bg-amber-500/5' : ''}`}
+                          className={`grid grid-cols-[36px_60px_70px_1fr_1fr_64px] gap-2 items-center p-3 rounded-lg border transition-colors hover:bg-accent/50 ${!matches ? 'border-amber-500/40 bg-amber-500/5' : ''}`}
                         >
                           <Checkbox
                             checked={!excludedGroups.has(group.group_jid)}
@@ -1526,7 +1536,13 @@ export function ContactsListPage() {
                             aria-label="Incluir grupo no filtro"
                           />
                           <span className="text-sm font-mono font-semibold tabular-nums">
-                            {caseNum != null ? caseNum : <span className="text-muted-foreground">—</span>}
+                            {groupNum != null ? groupNum : <span className="text-muted-foreground">—</span>}
+                          </span>
+                          <span
+                            className={`text-xs font-mono tabular-nums ${caseNum ? 'text-foreground' : 'text-muted-foreground'}`}
+                            title={caseNum ? `Caso oficial: ${caseNum}` : 'Lead sem caso oficial vinculado'}
+                          >
+                            {caseNum || '—'}
                           </span>
                           <span
                             className="text-sm truncate cursor-pointer hover:underline pr-3"
@@ -1536,11 +1552,13 @@ export function ContactsListPage() {
                             {highlight(group.group_name, groupSearchScope === 'group')}
                           </span>
                           <span
-                            className={`relative text-sm truncate pl-3 text-center before:content-[''] before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-3/5 before:w-px before:bg-border/50 ${group.lead_id ? 'cursor-pointer hover:underline' : 'text-muted-foreground'}`}
+                            className={`relative text-sm truncate pl-3 text-center before:content-[''] before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-3/5 before:w-px before:bg-border/50 ${group.lead_id ? 'cursor-pointer hover:underline' : 'text-muted-foreground italic'}`}
                             title={group.lead_id ? 'Abrir lead' : 'Sem lead vinculado'}
                             onClick={() => group.lead_id && openGroupLead(group.group_jid)}
                           >
-                            {highlight(group.lead_name, groupSearchScope === 'lead')}
+                            {group.lead_name
+                              ? highlight(group.lead_name, groupSearchScope === 'lead')
+                              : (group.lead_id ? '(sem nome)' : '— sem vínculo —')}
                           </span>
                           <div className="flex items-center gap-1">
                             {matches ? (
@@ -1548,7 +1566,7 @@ export function ContactsListPage() {
                             ) : (
                               <AlertTriangle
                                 className="h-4 w-4 text-amber-500"
-                                aria-label={hasBoth ? 'Nomes diferentes' : 'Faltando nome'}
+                                aria-label={hasBoth ? 'Divergente' : 'Faltando dados'}
                               />
                             )}
                             <Button size="icon" variant="ghost" className="h-6 w-6" title="Ver contatos do grupo" onClick={(e) => { e.stopPropagation(); handleSelectGroup(group.group_jid); }}>
