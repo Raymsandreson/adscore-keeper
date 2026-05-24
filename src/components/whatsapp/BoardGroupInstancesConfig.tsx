@@ -248,14 +248,14 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
       (db as any).from('custom_voices').select('id, name, elevenlabs_voice_id').eq('status', 'ready'),
       (db as any).from('specialized_nuclei').select('id, name, prefix').eq('is_active', true).order('name'),
       (db as any).from('profiles').select('user_id, full_name').order('full_name'),
-      (db as any).from('products_services').select('id, name, nucleus_id'),
+      (db as any).from('products_services').select('id, name, nucleus_id, case_prefix'),
     ]);
     setBoards((boardsRes.data as any[]) || []);
     setInstances((instancesRes.data as any[]) || []);
     setCustomVoices((voicesRes.data || []).map((v: any) => ({ id: v.elevenlabs_voice_id, name: `🎤 ${v.name}` })));
     setNuclei((nucleiRes.data || []).map((n: any) => ({ id: n.id, name: n.name, prefix: n.prefix })));
     setTeamMembers((profilesRes.data || []).filter((p: any) => p.full_name));
-    setProducts((productsRes.data || []).map((p: any) => ({ id: p.id, name: p.name, nucleus_id: p.nucleus_id })));
+    setProducts((productsRes.data || []).map((p: any) => ({ id: p.id, name: p.name, nucleus_id: p.nucleus_id, case_prefix: p.case_prefix })));
     const funnelBoards = ((boardsRes.data as any[]) || []).filter(b => b.board_type === 'funnel');
     if (boardId === undefined && funnelBoards.length > 0) {
       setInternalSelectedBoard(funnelBoards[0].id);
