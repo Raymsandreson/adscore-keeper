@@ -184,6 +184,10 @@ export const handler: RequestHandler = async (req, res) => {
     // Em ambas as fases agora colocamos o token de prefixo na frente
     if (prefixToken) parts.push(prefixToken);
 
+    const leadFields: string[] = settings.lead_fields || ['lead_name'];
+    const seqStr = caseNumberFromDb || String(nextSeq);
+
+
     // Pré-carrega valores de campos personalizados se houver tokens cf:<id>
     const cfIds = leadFields
       .filter((f) => typeof f === 'string' && f.startsWith('cf:'))
