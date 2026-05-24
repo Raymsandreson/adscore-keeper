@@ -1033,13 +1033,9 @@ ${scrapeData.content || ''}
       }
     }
 
-    // Validação obrigatória: Nº do Caso só pode ficar vazio se o lead não está fechado.
-    // Quem fecha o lead PRECISA digitar o número do caso manualmente.
-    if (leadOutcome === 'closed' && !caseNumber.trim()) {
-      toast.error('Nº do Caso é obrigatório ao fechar um lead. Preencha manualmente antes de salvar.');
-      setActiveTab('basic');
-      return;
-    }
+    // Nº do Caso é AUTO-gerado pelo prefixo do produto ao fechar o lead.
+    // Não há mais validação manual aqui — se faltar produto, avisamos no fluxo de criação do caso.
+
 
     console.log('[handleSave] Starting save for lead:', currentLead.id);
     setSaving(true);
@@ -1314,14 +1310,28 @@ ${scrapeData.content || ''}
               }
             }
 
-            // Nº do caso é manual obrigatório no fechamento — não geramos mais automaticamente.
-            // A validação no início do handleSave garante que caseNumber não está vazio aqui.
-            const finalCaseNumber = caseNumber?.trim();
-            if (!finalCaseNumber) {
-              toast.error('Nº do Caso ausente. Preencha manualmente.');
+            // Nº do caso é AUTO-gerado pelo prefixo do produto vinculado ao lead.
+            // Buscamos o product_service_id do lead e chamamos a RPC no Externo.
+            const { data: leadProdRow } = await externalSupabase
+              .from('leads')
+              .select('product_service_id')
+              .eq('id', currentLead.id)
+              .maybeSingle();
+            const productId = (leadProdRow as any)?.product_service_id || null;
+            if (!productId) {
+              toast.error('Lead sem Produto definido. Preencha o Produto antes de fechar (Nº do caso é gerado por produto).');
+              setActiveTab('basic');
               setSaving(false);
               return;
             }
+            const { data: generated, error: genErr } = await externalSupabase
+              .rpc('generate_case_number', { p_product_id: productId } as any);
+            if (genErr || !generated) {
+              toast.error(`Erro ao gerar Nº do Caso: ${genErr?.message || 'desconhecido'}`);
+              setSaving(false);
+              return;
+            }
+            const finalCaseNumber = String(generated);
             const { data: insertedCase, error: insertError } = await externalSupabase
               .from('legal_cases')
                 .insert({
@@ -1339,13 +1349,15 @@ ${scrapeData.content || ''}
               console.error('Error inserting legal case:', insertError);
               toast.error(`Erro ao criar caso: ${insertError.message}`);
             } else {
-              toast.success(`Caso ${insertedCase?.case_number || finalCaseNumber} criado! Cadastre os processos na aba Casos.`);
+              toast.success(`Caso ${insertedCase?.case_number || finalCaseNumber} criado automaticamente! Cadastre os processos na aba Casos.`);
+              setCaseNumber(insertedCase?.case_number || finalCaseNumber);
               // Switch to Casos tab so user can add processes
               setActiveTab('casos');
               setSaving(false);
               return; // Keep dialog open for process registration
             }
           }
+
         } catch (caseErr) {
           console.error('Error auto-creating case:', caseErr);
           // Don't block the save
@@ -2497,16 +2509,16 @@ ${scrapeData.content || ''}
                   )}
                   <div>
                     <Label className="flex items-center gap-1">
-                      Nº do Caso {leadOutcome === 'closed' && <span className="text-destructive">*</span>}
+                      Nº do Caso <span className="text-[10px] text-muted-foreground font-normal">(auto-gerado pelo Produto)</span>
                     </Label>
                     <Input
                       value={caseNumber}
-                      onChange={(e) => setCaseNumber(e.target.value)}
-                      placeholder={leadOutcome === 'closed' ? 'Digite o número (obrigatório)' : 'Ex: 1095'}
-                      className="font-mono"
+                      readOnly
+                      placeholder="Será gerado automaticamente ao fechar o lead"
+                      className="font-mono bg-muted/40 cursor-not-allowed"
                     />
                     <p className="text-[11px] text-muted-foreground mt-1">
-                      Preenchimento <strong>manual</strong>. Esta é a numeração oficial do caso e não é mais gerada automaticamente — confira a ordem real antes de salvar.
+                      O número é <strong>gerado automaticamente</strong> a partir do <strong>prefixo do Produto</strong> vinculado ao lead (ex: <span className="font-mono">PREV-1</span>, <span className="font-mono">PREV-2</span>...). Configure o prefixo no cadastro do produto em <strong>Custos & Organização</strong>.
                     </p>
                     {caseSyncCheck?.needsUpdate && (
                       <div className="mt-2 rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800 p-2 text-xs flex items-start gap-2">

@@ -31,6 +31,7 @@ export function ProductFormDialog({ open, onOpenChange, product, companies, onSa
     area: 'operations',
     price_range_min: '',
     price_range_max: '',
+    case_prefix: '',
   });
   const [aiLoading, setAiLoading] = useState(false);
   const [aiRationale, setAiRationale] = useState<string | null>(null);
@@ -47,9 +48,10 @@ export function ProductFormDialog({ open, onOpenChange, product, companies, onSa
         area: product.area || 'operations',
         price_range_min: product.price_range_min?.toString() || '',
         price_range_max: product.price_range_max?.toString() || '',
+        case_prefix: product.case_prefix || '',
       });
     } else {
-      setForm({ name: '', description: '', company_id: '', ticket_tier: 'medium', product_type: 'service', strategy_focus: 'cash', area: 'operations', price_range_min: '', price_range_max: '' });
+      setForm({ name: '', description: '', company_id: '', ticket_tier: 'medium', product_type: 'service', strategy_focus: 'cash', area: 'operations', price_range_min: '', price_range_max: '', case_prefix: '' });
     }
     setAiRationale(null);
   }, [product, open]);
@@ -212,6 +214,19 @@ export function ProductFormDialog({ open, onOpenChange, product, companies, onSa
               <Label>Preço Máx (R$)</Label>
               <Input type="number" value={form.price_range_max} onChange={e => setForm({ ...form, price_range_max: e.target.value })} />
             </div>
+          </div>
+          <div>
+            <Label>Prefixo do Nº do Caso</Label>
+            <Input
+              value={form.case_prefix}
+              onChange={e => setForm({ ...form, case_prefix: e.target.value.toUpperCase() })}
+              placeholder="Ex: PREV, IND, BPC"
+              maxLength={12}
+              className="font-mono uppercase"
+            />
+            <p className="text-[11px] text-muted-foreground mt-1">
+              Usado para gerar automaticamente os números (ex: <span className="font-mono">PREV-1</span>, <span className="font-mono">PREV-2</span>...). Sequência é por produto. Em branco = usa <span className="font-mono">CASO-N</span> global.
+            </p>
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>

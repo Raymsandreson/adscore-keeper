@@ -750,8 +750,15 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
                     }
                   }
 
-                  const { data: caseNumber } = await supabase
-                    .rpc('generate_case_number', { p_nucleus_id: matchedNucleusId });
+                  // Lookup product_service_id on lead to drive per-product sequence
+                  const { data: leadProdRow } = await externalSupabase
+                    .from('leads')
+                    .select('product_service_id')
+                    .eq('id', leadId)
+                    .maybeSingle();
+                  const productId = (leadProdRow as any)?.product_service_id || null;
+                  const { data: caseNumber } = await externalSupabase
+                    .rpc('generate_case_number', { p_product_id: productId } as any);
 
                   const { data: createdCase } = await externalSupabase.from('legal_cases').insert({
                     lead_id: leadId,

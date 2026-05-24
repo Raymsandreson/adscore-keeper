@@ -100,7 +100,7 @@ export function useLegalCases(leadId?: string) {
     }
   }, [leadId]);
 
-  const createCase = useCallback(async (caseData: { lead_id?: string | null; nucleus_id?: string | null; title: string; description?: string; notes?: string; case_number?: string; acolhedor?: string; closed_at?: string }) => {
+  const createCase = useCallback(async (caseData: { lead_id?: string | null; nucleus_id?: string | null; title: string; description?: string; notes?: string; case_number?: string; acolhedor?: string; closed_at?: string; product_service_id?: string | null }) => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       
@@ -118,12 +118,22 @@ export function useLegalCases(leadId?: string) {
           throw new Error('Número de caso duplicado');
         }
       } else {
-        // Auto-generate if not provided
-        const { data: generated, error: numError } = await supabase
-          .rpc('generate_case_number', { p_nucleus_id: caseData.nucleus_id || null });
+        // Auto-generate per product. Resolve product_service_id from lead if not passed.
+        let productId = caseData.product_service_id || null;
+        if (!productId && caseData.lead_id) {
+          const { data: leadRow } = await externalSupabase
+            .from('leads')
+            .select('product_service_id')
+            .eq('id', caseData.lead_id)
+            .maybeSingle();
+          productId = (leadRow as any)?.product_service_id || null;
+        }
+        const { data: generated, error: numError } = await externalSupabase
+          .rpc('generate_case_number', { p_product_id: productId } as any);
         if (numError) throw numError;
-        caseNumber = generated;
+        caseNumber = generated as unknown as string;
       }
+
 
       const extCreatedByCase = await remapToExternal(user?.id);
       const { leadId: externalLeadId, leadData: externalLeadData } = await ensureExternalLeadForCase(

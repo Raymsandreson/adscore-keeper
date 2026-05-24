@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { toast } from 'sonner';
 
 export interface ProductService {
@@ -16,6 +16,8 @@ export interface ProductService {
   price_range_max: number | null;
   is_active: boolean;
   display_order: number;
+  case_prefix: string | null;
+  case_sequence_counter: number;
   created_at: string;
   updated_at: string;
 }
@@ -27,7 +29,7 @@ export function useProductsServices() {
   const fetchProducts = useCallback(async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      const { data, error } = await externalSupabase
         .from('products_services')
         .select('*')
         .order('display_order', { ascending: true });
@@ -43,7 +45,7 @@ export function useProductsServices() {
   useEffect(() => { fetchProducts(); }, [fetchProducts]);
 
   const addProduct = useCallback(async (p: Partial<ProductService>) => {
-    const { data, error } = await supabase
+    const { data, error } = await externalSupabase
       .from('products_services')
       .insert([{
         company_id: p.company_id || null,
@@ -58,7 +60,8 @@ export function useProductsServices() {
         price_range_max: p.price_range_max || null,
         is_active: true,
         display_order: p.display_order || 0,
-      }])
+        case_prefix: p.case_prefix?.trim() ? p.case_prefix.trim().toUpperCase() : null,
+      } as never])
       .select().single();
     if (error) throw error;
     toast.success('Produto/serviço criado');
@@ -67,14 +70,18 @@ export function useProductsServices() {
   }, [fetchProducts]);
 
   const updateProduct = useCallback(async (id: string, updates: Partial<ProductService>) => {
-    const { error } = await supabase.from('products_services').update(updates).eq('id', id);
+    const payload: any = { ...updates };
+    if (typeof updates.case_prefix === 'string') {
+      payload.case_prefix = updates.case_prefix.trim() ? updates.case_prefix.trim().toUpperCase() : null;
+    }
+    const { error } = await externalSupabase.from('products_services').update(payload).eq('id', id);
     if (error) throw error;
     toast.success('Produto/serviço atualizado');
     await fetchProducts();
   }, [fetchProducts]);
 
   const deleteProduct = useCallback(async (id: string) => {
-    const { error } = await supabase.from('products_services').delete().eq('id', id);
+    const { error } = await externalSupabase.from('products_services').delete().eq('id', id);
     if (error) throw error;
     toast.success('Produto/serviço removido');
     await fetchProducts();
