@@ -236,36 +236,49 @@ Deno.serve(async (req) => {
         candidates.set(jid, arr);
       }
 
-      for (const [jid, instNames] of candidates) {
-        backfillTried++;
-        let got: any = null;
-        let gotFrom: string | null = null;
-        for (const instName of instNames) {
-          const inst = instByName.get(instName.toLowerCase());
-          if (!inst) continue;
-          try {
-            const url = `${(inst.base_url || "https://abraci.uazapi.com").replace(/\/$/, "")}/group/info`;
-            const res = await fetch(url, {
-              method: "POST",
-              headers: { "Content-Type": "application/json", token: inst.token },
-              body: JSON.stringify({ groupjid: jid, getInviteLink: false }),
-            });
-            if (!res.ok) continue;
-            const data = await res.json().catch(() => null);
-            const g = data?.group || data;
-            const created = g?.GroupCreated || g?.creation || g?.GroupCreatedAt || g?.created_at;
-            if (created) {
-              got = g;
-              gotFrom = instName;
-              break;
-            }
-          } catch (_) { /* try next */ }
-        }
-        if (!got) { backfillSkipped++; continue; }
-        const createdRaw = got.GroupCreated || got.creation || got.GroupCreatedAt || got.created_at;
+      const entries = Array.from(candidates.entries());
+      const BACKFILL_CONCURRENCY = 12;
+      const BACKFILL_TIME_BUDGET_MS = 110_000; // deixa folga pro response
+      const bf_t0 = Date.now();
+      const snapshotBuffer: any[] = [];
+
+      async function flushBuffer() {
+        if (snapshotBuffer.length === 0) return;
+        const slice = snapshotBuffer.splice(0, snapshotBuffer.length);
         await external
           .from("whatsapp_groups_uazapi_snapshot" as any)
-          .upsert({
+          .upsert(slice, { onConflict: "jid" });
+      }
+
+      let bfIdx = 0;
+      async function bfWorker() {
+        while (bfIdx < entries.length) {
+          if (Date.now() - bf_t0 > BACKFILL_TIME_BUDGET_MS) return;
+          const i = bfIdx++;
+          const [jid, instNames] = entries[i];
+          backfillTried++;
+          let got: any = null;
+          let gotFrom: string | null = null;
+          for (const instName of instNames) {
+            const inst = instByName.get(instName.toLowerCase());
+            if (!inst) continue;
+            try {
+              const url = `${(inst.base_url || "https://abraci.uazapi.com").replace(/\/$/, "")}/group/info`;
+              const res = await fetch(url, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", token: inst.token },
+                body: JSON.stringify({ groupjid: jid, getInviteLink: false }),
+              });
+              if (!res.ok) continue;
+              const data = await res.json().catch(() => null);
+              const g = data?.group || data;
+              const created = g?.GroupCreated || g?.creation || g?.GroupCreatedAt || g?.created_at;
+              if (created) { got = g; gotFrom = instName; break; }
+            } catch (_) { /* try next */ }
+          }
+          if (!got) { backfillSkipped++; continue; }
+          const createdRaw = got.GroupCreated || got.creation || got.GroupCreatedAt || got.created_at;
+          snapshotBuffer.push({
             jid,
             group_name: got.Name || got.name || got.subject || null,
             group_created_at: new Date(createdRaw).toISOString(),
@@ -275,10 +288,14 @@ Deno.serve(async (req) => {
             topic: got.Topic || got.topic || null,
             participants_count: Array.isArray(got.Participants || got.participants)
               ? (got.Participants || got.participants).length : 0,
-          }, { onConflict: "jid" });
-        backfilled++;
-        console.log(`[backfill] ${jid} recuperado via ${gotFrom}`);
+          });
+          backfilled++;
+          if (snapshotBuffer.length >= 100) await flushBuffer();
+          if (backfilled % 50 === 0) console.log(`[backfill] progresso: ${backfilled}/${entries.length} (último via ${gotFrom})`);
+        }
       }
+      await Promise.all(Array.from({ length: BACKFILL_CONCURRENCY }, bfWorker));
+      await flushBuffer();
     } catch (e: any) {
       console.warn("[backfill] erro:", e?.message || e);
     }
