@@ -614,11 +614,17 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
     // Legacy: se não houver token de sequência (case_number/closed_seq), injeta a seq logo após o prefixo
     const hasSeqToken = fields.includes('case_number') || fields.includes('closed_seq');
     if (!hasSeqToken) parts.push(seqStr);
+    const prefixNorm = (prefix || '').toLowerCase().replace(/[-\s]+$/, '').trim();
     for (const f of fields) {
       if (f === 'closed_seq' || f === 'case_number') {
         parts.push(seqStr);
       } else if (f.startsWith('text:')) {
-        try { parts.push(decodeURIComponent(f.slice(5))); } catch { parts.push(f.slice(5)); }
+        let txt = '';
+        try { txt = decodeURIComponent(f.slice(5)); } catch { txt = f.slice(5); }
+        // Ignora tokens-texto que são apenas repetição do prefixo (legado: "MAT-", "MAT", etc.)
+        const txtNorm = txt.toLowerCase().replace(/[-\s]+$/, '').trim();
+        if (prefixNorm && txtNorm === prefixNorm) continue;
+        parts.push(txt);
       } else if (f.startsWith('cf:')) {
         const cfId = f.slice(3);
         const cf = boardCustomFields.find(c => c.id === cfId);
