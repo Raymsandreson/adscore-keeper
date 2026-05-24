@@ -1328,6 +1328,20 @@ export function ContactsListPage() {
                   </button>
                 </Badge>
               )}
+              {boardFilter.size > 0 && (
+                <Badge variant="secondary" className="gap-1 pl-2 pr-1">
+                  Funil: {boardFilter.size === 1
+                    ? (availableBoards.find(b => b.id === Array.from(boardFilter)[0])?.name || '1')
+                    : `${boardFilter.size} selecionados`}
+                  <button
+                    onClick={() => setBoardFilter(new Set())}
+                    className="ml-1 rounded-full hover:bg-muted p-0.5"
+                    aria-label="Limpar filtro de funil"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              )}
               {Array.from(leadStatusFilter).map(st => (
                 <Badge key={st} variant="secondary" className="gap-1 pl-2 pr-1 capitalize">
                   Status: {st}
