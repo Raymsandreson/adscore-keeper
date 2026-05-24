@@ -128,11 +128,11 @@ export function ContactsListPage() {
   const [classifyingClients, setClassifyingClients] = useState(false);
 
   // Groups data
-  const [groups, setGroups] = useState<{ group_jid: string; group_name: string; lead_name: string; lead_status: string; lead_id: string | null; contact_count: number; instance_name: string | null; created_at: string | null; lead_created_at: string | null }[]>([]);
+  const [groups, setGroups] = useState<{ group_jid: string; group_name: string; lead_name: string; lead_status: string; lead_id: string | null; contact_count: number; instance_name: string | null; created_at: string | null; lead_created_at: string | null; board_id: string | null; board_name: string | null; case_number: string | null }[]>([]);
   const [groupsLoading, setGroupsLoading] = useState(false);
   const [groupSearch, setGroupSearch] = useState('');
-  const [groupSort, setGroupSort] = useState<'alpha' | 'number' | 'prefix' | 'date'>('alpha');
-  const [groupSortDir, setGroupSortDir] = useState<'asc' | 'desc'>('asc');
+  const [groupSort, setGroupSort] = useState<'alpha' | 'number' | 'prefix' | 'date'>('date');
+  const [groupSortDir, setGroupSortDir] = useState<'asc' | 'desc'>('desc');
   const [groupSearchScope, setGroupSearchScope] = useState<'group' | 'lead'>('group');
   const [excludedGroups, setExcludedGroups] = useState<Set<string>>(new Set());
   const [showGroupFilters, setShowGroupFilters] = useState(false);
@@ -140,6 +140,8 @@ export function ContactsListPage() {
   const [auditOnlyMismatch, setAuditOnlyMismatch] = useState(false);
   const [leadStatusFilter, setLeadStatusFilter] = useState<Set<string>>(new Set());
   const [leadLinkFilter, setLeadLinkFilter] = useState<'all' | 'with' | 'without'>('all');
+  const [boardFilter, setBoardFilter] = useState<Set<string>>(new Set());
+  const [availableBoards, setAvailableBoards] = useState<{ id: string; name: string }[]>([]);
   const [dateFrom, setDateFrom] = useState<string>('');
   const [dateTo, setDateTo] = useState<string>('');
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
