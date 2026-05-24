@@ -67,19 +67,22 @@ Deno.serve(async (req) => {
       })
     }
 
-    // Posição determinística por board via SQL (RPC). Resolve em uma única query
-    // no Postgres — sem o limite de 1000 linhas do PostgREST que falhava em boards grandes.
-    let closedSeq = 1
+    // Nº do Caso vem do produto vinculado ao lead (legal_cases.case_number),
+    // gerado pela RPC generate_case_number(p_product_id) que incrementa
+    // products_services.case_sequence_counter. Aqui a gente só LÊ o que já existe.
+    let caseNumber = ''
     {
-      const { data: posData, error: posErr } = await supabase
-        .rpc('get_lead_closed_position', { p_lead_id: lead.id, p_board_id: lead.board_id })
-      if (posErr) {
-        console.error('[rename] get_lead_closed_position error:', posErr)
-      } else if (typeof posData === 'number') {
-        closedSeq = posData
-      }
-      console.log(`[rename] closedSeq=${closedSeq} for lead ${lead.id} board ${lead.board_id}`)
+      const { data: legalCase } = await supabase
+        .from('legal_cases')
+        .select('case_number')
+        .eq('lead_id', lead.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      caseNumber = legalCase?.case_number?.trim() || ''
+      console.log(`[rename] caseNumber="${caseNumber}" for lead ${lead.id}`)
     }
+
 
     // Find a connected instance to operate on the group.
     // We collect all candidates marked as connected and probe each one with a real
