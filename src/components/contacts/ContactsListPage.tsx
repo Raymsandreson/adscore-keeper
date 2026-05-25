@@ -201,7 +201,7 @@ export function ContactsListPage() {
         const to = from + pageSize - 1;
         const { data: page, error } = await externalSupabase
           .from('lead_whatsapp_groups')
-          .select('group_jid, group_name, lead_id, leads!lead_whatsapp_groups_lead_id_fkey(lead_name, lead_status, created_at, board_id)')
+          .select('group_jid, group_name, lead_id, leads!lead_whatsapp_groups_lead_id_fkey(lead_name, lead_status, created_at, board_id, lead_number, product_service_id)')
           .order('created_at', { ascending: false })
           .range(from, to);
         if (error) { console.error('fetchGroups lwg page error:', error); break; }
@@ -216,6 +216,8 @@ export function ContactsListPage() {
             if (!existing.lead_id && g.lead_id) existing.lead_id = g.lead_id;
             if (!existing.lead_created_at && lead?.created_at) existing.lead_created_at = lead.created_at;
             if (!existing.board_id && lead?.board_id) existing.board_id = lead.board_id;
+            if (existing.lead_number == null && lead?.lead_number != null) existing.lead_number = lead.lead_number;
+            if (!existing.product_service_id && lead?.product_service_id) existing.product_service_id = lead.product_service_id;
           } else {
             groupMap.set(g.group_jid, {
               group_jid: g.group_jid,
@@ -230,6 +232,9 @@ export function ContactsListPage() {
               board_id: lead?.board_id || null,
               board_name: null,
               case_number: null,
+              lead_number: lead?.lead_number ?? null,
+              product_case_prefix: null,
+              product_service_id: lead?.product_service_id || null,
             });
           }
         }
