@@ -20,92 +20,126 @@ const ResetPasswordPage = () => {
   const [initializing, setInitializing] = useState(true);
   const [recoveryError, setRecoveryError] = useState<string | null>(null);
 
+  // Capturar o hash IMEDIATAMENTE no module-load, antes do supabase client
+  // (detectSessionInUrl=true) consumi-lo.
+  const [initialHash] = useState(() =>
+    typeof window !== 'undefined' ? window.location.hash : ''
+  );
+  const [initialSearch] = useState(() =>
+    typeof window !== 'undefined' ? window.location.search : ''
+  );
+
   useEffect(() => {
     let isMounted = true;
+    let safetyTimer: ReturnType<typeof setTimeout> | null = null;
 
-    const establishRecoverySession = async () => {
+    const hashParams = new URLSearchParams(initialHash.replace(/^#/, ''));
+    const queryParams = new URLSearchParams(initialSearch);
+    const urlType = hashParams.get('type') ?? queryParams.get('type');
+    const hashAccessToken = hashParams.get('access_token');
+    const hashRefreshToken = hashParams.get('refresh_token');
+    const queryCode = queryParams.get('code');
+    const looksLikeRecovery =
+      urlType === 'recovery' || !!hashAccessToken || !!queryCode;
+
+    const cleanUrl = () => {
       try {
-        const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
-        const queryParams = new URLSearchParams(window.location.search);
+        window.history.replaceState({}, document.title, window.location.pathname);
+      } catch {}
+    };
 
-        const type = hashParams.get('type') ?? queryParams.get('type');
-        const accessToken = hashParams.get('access_token');
-        const refreshToken = hashParams.get('refresh_token');
-        const code = queryParams.get('code');
+    const markRecovery = () => {
+      if (!isMounted) return;
+      setIsRecovery(true);
+      setRecoveryError(null);
+      setInitializing(false);
+      cleanUrl();
+    };
 
-        if (accessToken && refreshToken && type === 'recovery') {
-          const { error } = await supabase.auth.setSession({
-            access_token: accessToken,
-            refresh_token: refreshToken,
-          });
+    const markInvalid = (msg?: string) => {
+      if (!isMounted) return;
+      setIsRecovery(false);
+      if (msg) setRecoveryError(msg);
+      setInitializing(false);
+    };
 
-          if (error) throw error;
-
-          if (!isMounted) return;
-
-          setIsRecovery(true);
-          setRecoveryError(null);
-          window.history.replaceState({}, document.title, window.location.pathname);
-          return;
-        }
-
-        if (code) {
-          const { data, error } = await supabase.auth.exchangeCodeForSession(code);
-
-          if (error) throw error;
-
-          if (!isMounted) return;
-
-          setIsRecovery(type === 'recovery' || !!data.session);
-          setRecoveryError(null);
-          window.history.replaceState({}, document.title, window.location.pathname);
-          return;
-        }
-
-        const { data: { session } } = await supabase.auth.getSession();
-
+    // Listener primeiro — captura PASSWORD_RECOVERY / SIGNED_IN /
+    // INITIAL_SESSION disparados pelo detectSessionInUrl do supabase client.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
         if (!isMounted) return;
+        if (event === 'PASSWORD_RECOVERY') {
+          markRecovery();
+          return;
+        }
+        if (
+          (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') &&
+          session?.user &&
+          looksLikeRecovery
+        ) {
+          markRecovery();
+        }
+      }
+    );
 
-        if (type === 'recovery' && session?.user) {
-          setIsRecovery(true);
-          setRecoveryError(null);
+    (async () => {
+      try {
+        if (hashAccessToken && hashRefreshToken && urlType === 'recovery') {
+          const { error } = await supabase.auth.setSession({
+            access_token: hashAccessToken,
+            refresh_token: hashRefreshToken,
+          });
+          if (error) throw error;
+          markRecovery();
           return;
         }
 
-        setIsRecovery(false);
-        if (type === 'recovery') {
-          setRecoveryError('Sua sessão de recuperação expirou. Solicite um novo link.');
+        if (queryCode) {
+          const { data, error } = await supabase.auth.exchangeCodeForSession(queryCode);
+          if (error) throw error;
+          if (urlType === 'recovery' || data?.session) {
+            markRecovery();
+          } else {
+            markInvalid('Link inválido ou expirado. Solicite um novo link.');
+          }
+          return;
+        }
+
+        // Hash já consumido pelo detectSessionInUrl — verificar sessão atual.
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user && looksLikeRecovery) {
+          markRecovery();
+          return;
+        }
+
+        if (looksLikeRecovery) {
+          markInvalid('Sua sessão de recuperação expirou. Solicite um novo link.');
+        } else {
+          markInvalid();
         }
       } catch (error: any) {
         console.error('[RESET] Error establishing recovery session:', error);
+        markInvalid(error?.message || 'Link inválido ou expirado. Solicite um novo link.');
+      }
+    })();
 
-        if (!isMounted) return;
-
-        setIsRecovery(false);
-        setRecoveryError(error?.message || 'Link inválido ou expirado. Solicite um novo link.');
-      } finally {
-        if (isMounted) {
-          setInitializing(false);
+    // Safety net: nunca deixar o spinner travado indefinidamente.
+    safetyTimer = setTimeout(() => {
+      if (!isMounted) return;
+      setInitializing((cur) => {
+        if (cur) {
+          setRecoveryError('Não foi possível validar o link. Tente novamente ou solicite um novo.');
         }
-      }
-    };
-
-    // Listen for password recovery event
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'PASSWORD_RECOVERY' || (event === 'SIGNED_IN' && session)) {
-        setIsRecovery(true);
-        setRecoveryError(null);
-        setInitializing(false);
-      }
-    });
-
-    establishRecoverySession();
+        return false;
+      });
+    }, 10000);
 
     return () => {
       isMounted = false;
+      if (safetyTimer) clearTimeout(safetyTimer);
       subscription.unsubscribe();
     };
-  }, []);
+  }, [initialHash, initialSearch]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
