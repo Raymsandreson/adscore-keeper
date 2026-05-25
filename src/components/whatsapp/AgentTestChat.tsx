@@ -232,7 +232,27 @@ export function AgentTestChat({ systemPrompt, model = 'google/gemini-2.5-flash',
         });
         if (opts.length >= 8) break;
       }
+
+      // Enriquecer com nome do contato cadastrado (quando msg veio sem pushName)
+      const phonesToLookup = opts.filter(o => !o.contact_name?.trim()).map(o => o.phone);
+      if (phonesToLookup.length > 0) {
+        const { data: contacts } = await db
+          .from('contacts')
+          .select('phone, full_name')
+          .in('phone', phonesToLookup)
+          .is('deleted_at', null);
+        const byPhone = new Map<string, string>();
+        for (const c of (contacts || []) as any[]) {
+          if (c.phone && c.full_name && !byPhone.has(c.phone)) byPhone.set(c.phone, c.full_name);
+        }
+        for (const o of opts) {
+          if (!o.contact_name?.trim() && byPhone.has(o.phone)) {
+            o.contact_name = byPhone.get(o.phone)!;
+          }
+        }
+      }
       setConvOptions(opts);
+
     } catch (e: any) {
       console.error(e);
       toast.error('Erro ao buscar conversas');
