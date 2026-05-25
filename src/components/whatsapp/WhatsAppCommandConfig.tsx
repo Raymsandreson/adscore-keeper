@@ -529,6 +529,8 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       lead_status_board_ids: (s as any).lead_status_board_ids || [],
       lead_status_filter: (s as any).lead_status_filter || [],
       audience_mode: (s as any).audience_mode || 'both',
+      proactive_first_message_enabled: (s as any).proactive_first_message_enabled ?? false,
+      proactive_first_message_instruction: (s as any).proactive_first_message_instruction ?? '',
     });
     // Carrega filtros do Cloud (agent_filter_settings) — fonte de verdade, sobrescreve o que veio do shortcut
     supabase
