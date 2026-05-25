@@ -1688,9 +1688,9 @@ export function ContactsListPage() {
                 // Lista única de criadores (a partir dos grupos atualmente filtrados, antes do recorte por criador)
                 const creatorMap = new Map<string, string>();
                 for (const g of groups) {
-                  const digits = jidToPhone(g.owner_jid);
+                  const digits = g.owner_phone;
                   if (!digits) continue;
-                  if (!creatorMap.has(digits)) creatorMap.set(digits, creatorLabel(g.owner_jid));
+                  if (!creatorMap.has(digits)) creatorMap.set(digits, creatorLabel(g));
                 }
                 const creatorOptions = Array.from(creatorMap.entries())
                   .map(([value, label]) => ({ value, label }))
