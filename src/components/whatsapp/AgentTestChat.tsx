@@ -578,9 +578,28 @@ export function AgentTestChat({ systemPrompt, model = 'google/gemini-2.5-flash',
                         }`}
                         style={{ wordBreak: 'break-word' }}
                       >
-                        <div className="whitespace-pre-wrap">
-                          {renderWhatsAppText(m.content || '…')}
-                        </div>
+                        {m.attachments && m.attachments.length > 0 && (
+                          <div className="space-y-1 mb-1">
+                            {m.attachments.map((a, ai) => (
+                              <div key={ai}>
+                                {a.kind === 'image' ? (
+                                  <img
+                                    src={a.dataUrl}
+                                    alt={a.name || 'imagem'}
+                                    className="rounded max-w-full max-h-60 object-cover block"
+                                  />
+                                ) : (
+                                  <audio src={a.dataUrl} controls className="w-full max-w-[260px] h-9" />
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {(m.content || (!m.attachments?.length)) && (
+                          <div className="whitespace-pre-wrap">
+                            {renderWhatsAppText(m.content || (m.attachments?.length ? '' : '…'))}
+                          </div>
+                        )}
                         <div className="flex items-center justify-end gap-1 mt-0.5 -mb-0.5 text-[10px] text-[#667781]">
                           <span>
                             {new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
