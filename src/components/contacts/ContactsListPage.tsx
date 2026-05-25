@@ -399,20 +399,30 @@ export function ContactsListPage() {
         if (rows.length < pageSize) break;
       }
 
-      // 5) Data de criação do grupo via snapshot UazAPI
+      // 5) Data de criação do grupo + criador via snapshot UazAPI.
+      //    owner_jid vem como @lid (id opaco) — quem é "pessoa" mesmo é o
+      //    owner_pn (phone number). seen_in_instances dá a lista de instâncias
+      //    que enxergaram o grupo, com o telefone do dono de cada instância.
+      //    Se o telefone do criador bater com o de alguma instância nossa,
+      //    rotulamos como a própria instância.
       for (let from = 0; ; from += pageSize) {
         const to = from + pageSize - 1;
         const { data: page, error } = await (externalSupabase as any)
           .from('whatsapp_groups_uazapi_snapshot')
-          .select('jid, group_created_at, owner_jid')
+          .select('jid, group_created_at, owner_pn, seen_in_instances')
           .range(from, to);
         if (error) { console.error('fetchGroups snapshot page error:', error); break; }
         const rows = (page as any[]) || [];
         for (const s of rows) {
           const g = groupMap.get(s.jid);
-          if (g) {
-            if (s.group_created_at) g.created_at = s.group_created_at;
-            if (s.owner_jid) g.owner_jid = s.owner_jid;
+          if (!g) continue;
+          if (s.group_created_at) g.created_at = s.group_created_at;
+          const ownerPnRaw = String(s.owner_pn || '').split('@')[0].replace(/\D/g, '');
+          if (ownerPnRaw) g.owner_phone = ownerPnRaw;
+          const seen = Array.isArray(s.seen_in_instances) ? s.seen_in_instances : [];
+          if (ownerPnRaw) {
+            const match = seen.find((x: any) => String(x?.owner_phone || '').replace(/\D/g, '') === ownerPnRaw);
+            if (match?.name) g.creator_instance_name = match.name;
           }
         }
         if (rows.length < pageSize) break;
