@@ -1568,8 +1568,8 @@ export function ContactsListPage() {
                 }
                 if (creatorFilter !== 'all') {
                   if (creatorFilter === '__none__') {
-                    if (g.owner_jid) return false;
-                  } else if (jidToPhone(g.owner_jid) !== creatorFilter) {
+                    if (g.owner_phone) return false;
+                  } else if ((g.owner_phone || '') !== creatorFilter) {
                     return false;
                   }
                 }
