@@ -177,7 +177,7 @@ export function AgentTestChat({ systemPrompt, model = 'google/gemini-2.5-flash',
 
   const sendMessage = async () => {
     if (!input.trim() || isLoading) return;
-    if (!systemPrompt.trim()) {
+    if (!draftPrompt.trim()) {
       toast.error('Configure o prompt do agente antes de testar');
       return;
     }
@@ -196,7 +196,7 @@ export function AgentTestChat({ systemPrompt, model = 'google/gemini-2.5-flash',
           Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
         },
         body: JSON.stringify({
-          system_prompt: systemPrompt,
+          system_prompt: draftPrompt,
           messages: newMessages,
           model,
           variables,
