@@ -111,6 +111,15 @@ export function useWhatsAppInstanceStatus(enabled: boolean = true) {
     if (!enabled) return;
     setLoading(true);
     try {
+      // Check if disconnect alerts are enabled in config
+      const { data: config } = await db
+        .from('whatsapp_notification_config')
+        .select('notify_instance_disconnect')
+        .limit(1)
+        .maybeSingle();
+      const disconnectAlertsEnabled = config?.notify_instance_disconnect !== false;
+      setNotifyDisconnectEnabled(disconnectAlertsEnabled);
+
       const { data, error } = await cloudFunctions.invoke('check-whatsapp-status');
       if (error) throw error;
       const now = new Date();
