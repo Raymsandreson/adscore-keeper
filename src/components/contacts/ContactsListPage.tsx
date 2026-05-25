@@ -145,6 +145,7 @@ export function ContactsListPage() {
   const [availableBoards, setAvailableBoards] = useState<{ id: string; name: string }[]>([]);
   const [dateFrom, setDateFrom] = useState<string>('');
   const [dateTo, setDateTo] = useState<string>('');
+  const [creatorFilter, setCreatorFilter] = useState<string>('all');
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
   const [groupContacts, setGroupContacts] = useState<Contact[]>([]);
   const [groupContactsLoading, setGroupContactsLoading] = useState(false);
