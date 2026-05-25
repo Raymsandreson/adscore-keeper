@@ -202,14 +202,23 @@ export function AgentTestChat({ systemPrompt, model = 'google/gemini-2.5-flash',
     setSearchingConv(true);
     try {
       const t = term.trim();
-      const { data, error } = await db
+      const digits = t.replace(/\D/g, '');
+      const isPhoneSearch = digits.length >= 4;
+
+      let query = db
         .from('whatsapp_messages')
-        .select('phone, contact_name, instance_name, created_at')
-        .or(`phone.ilike.%${t}%,contact_name.ilike.%${t}%`)
+        .select('phone, contact_name, instance_name, created_at');
+
+      if (isPhoneSearch) {
+        query = query.like('phone', `%${digits}%`);
+      } else {
+        query = query.ilike('contact_name', `%${t}%`);
+      }
+
+      const { data, error } = await query
         .order('created_at', { ascending: false })
-        .limit(80);
+        .limit(40);
       if (error) throw error;
-      // dedupe por phone (mantém a mais recente)
       const seen = new Set<string>();
       const opts: ConvOpt[] = [];
       for (const r of (data || []) as any[]) {
