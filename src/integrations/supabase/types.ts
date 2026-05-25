@@ -9189,6 +9189,7 @@ export type Database = {
           notify_checklist_steps: boolean | null
           notify_daily_summary: boolean | null
           notify_goal_progress: boolean | null
+          notify_instance_disconnect: boolean | null
           notify_overdue_tasks: boolean | null
           notify_session_reminder: boolean | null
           notify_weekly_summary: boolean | null
@@ -9215,6 +9216,7 @@ export type Database = {
           notify_checklist_steps?: boolean | null
           notify_daily_summary?: boolean | null
           notify_goal_progress?: boolean | null
+          notify_instance_disconnect?: boolean | null
           notify_overdue_tasks?: boolean | null
           notify_session_reminder?: boolean | null
           notify_weekly_summary?: boolean | null
@@ -9241,6 +9243,7 @@ export type Database = {
           notify_checklist_steps?: boolean | null
           notify_daily_summary?: boolean | null
           notify_goal_progress?: boolean | null
+          notify_instance_disconnect?: boolean | null
           notify_overdue_tasks?: boolean | null
           notify_session_reminder?: boolean | null
           notify_weekly_summary?: boolean | null
