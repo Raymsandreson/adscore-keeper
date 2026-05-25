@@ -1908,9 +1908,9 @@ export function ContactsListPage() {
                           </span>
                           <span
                             className={`text-[11px] truncate ${(group.owner_phone || group.creator_instance_name) ? 'text-foreground' : 'text-muted-foreground italic'}`}
-                            title={group.owner_phone ? `Telefone do criador: +${group.owner_phone}${group.creator_instance_name ? ` · Instância: ${group.creator_instance_name}` : ''}` : 'Criador do grupo desconhecido'}
+                            title={creatorTooltip(group)}
                           >
-                            {(group.owner_phone || group.creator_instance_name) ? creatorLabel(group) : '—'}
+                            {creatorDisplay(group)}
                           </span>
                           <div className="flex items-center gap-1">
                             {matches ? (
