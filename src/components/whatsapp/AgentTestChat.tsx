@@ -6,7 +6,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/components/ui/sheet';
-import { Loader2, Send, Play, RotateCcw, User, Search, X, Pencil, Save, Download, CheckCheck, Paperclip, Mic, Square } from 'lucide-react';
+import { Loader2, Send, Play, RotateCcw, User, Search, X, Pencil, Save, Download, CheckCheck, Paperclip, Mic, Square, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 import { renderWhatsAppText } from '@/lib/whatsappFormat';
 import { db } from '@/integrations/supabase';
@@ -16,6 +16,8 @@ interface Props {
   model?: string;
   agentName?: string;
   onPromptChange?: (prompt: string) => void;
+  proactiveEnabled?: boolean;
+  proactiveInstruction?: string;
 }
 
 interface Attachment {
@@ -95,7 +97,7 @@ function buildVariablesFromLead(lead: any, contact: any): Record<string, string>
   return v;
 }
 
-export function AgentTestChat({ systemPrompt, model = 'google/gemini-2.5-flash', agentName, onPromptChange }: Props) {
+export function AgentTestChat({ systemPrompt, model = 'google/gemini-2.5-flash', agentName, onPromptChange, proactiveEnabled, proactiveInstruction }: Props) {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState('');
@@ -181,6 +183,91 @@ export function AgentTestChat({ systemPrompt, model = 'google/gemini-2.5-flash',
   const reset = () => {
     setMessages([]);
     setInput('');
+  };
+
+  const fireProactive = async () => {
+    if (isLoading) return;
+    if (!draftPrompt.trim()) {
+      toast.error('Configure o prompt do agente antes de testar');
+      return;
+    }
+    const extraInstr = (proactiveInstruction || '').trim();
+    const proactiveSystem =
+      draftPrompt +
+      '\n\n[INSTRUÇÃO DE ABERTURA — DISPARO PROATIVO]\n' +
+      'Você foi acionado pela etiqueta antes do cliente falar. Inicie a conversa AGORA, ' +
+      'de forma natural, humanizada e curta, seguindo seu prompt principal e a instrução abaixo.\n' +
+      (extraInstr ? extraInstr : '(Sem instrução extra — use o prompt principal pra montar a abordagem.)');
+
+    setMessages(prev => [...prev, { role: 'assistant', content: '' }]);
+    setIsLoading(true);
+
+    const wireMessages = [
+      { role: 'user' as const, content: '(__INICIAR_CONVERSA_PROATIVA__)' },
+    ];
+
+    let assistantText = '';
+    try {
+      const resp = await fetch(TEST_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({
+          system_prompt: proactiveSystem,
+          messages: wireMessages,
+          model,
+          variables,
+        }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ error: `Erro ${resp.status}` }));
+        throw new Error(err.error || `Erro ${resp.status}`);
+      }
+      if (!resp.body) throw new Error('Sem stream');
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let done = false;
+      while (!done) {
+        const { done: d, value } = await reader.read();
+        if (d) break;
+        buffer += decoder.decode(value, { stream: true });
+        let idx: number;
+        while ((idx = buffer.indexOf('\n')) !== -1) {
+          let line = buffer.slice(0, idx);
+          buffer = buffer.slice(idx + 1);
+          if (line.endsWith('\r')) line = line.slice(0, -1);
+          if (!line.startsWith('data: ')) continue;
+          const jsonStr = line.slice(6).trim();
+          if (jsonStr === '[DONE]') { done = true; break; }
+          try {
+            const parsed = JSON.parse(jsonStr);
+            const content = parsed.choices?.[0]?.delta?.content;
+            if (content) {
+              assistantText += content;
+              const { cleanText, actions } = detectActions(assistantText);
+              setMessages(prev => {
+                const arr = [...prev];
+                arr[arr.length - 1] = { role: 'assistant', content: cleanText, actions };
+                return arr;
+              });
+            }
+          } catch {
+            buffer = line + '\n' + buffer;
+            break;
+          }
+        }
+      }
+      toast.success('Mensagem proativa gerada');
+    } catch (e: any) {
+      console.error(e);
+      toast.error(e.message || 'Erro ao gerar proativa');
+      setMessages(prev => prev.slice(0, -1));
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const loadRealConversation = async () => {
@@ -546,6 +633,25 @@ export function AgentTestChat({ systemPrompt, model = 'google/gemini-2.5-flash',
                 <p className="text-[10px] text-muted-foreground">
                   Sem lead selecionado, as variáveis ficam vazias no prompt (você vê o que falta).
                 </p>
+              </div>
+            )}
+
+            {proactiveEnabled && (
+              <div className="flex items-center justify-between gap-2 pt-1 border-t border-dashed">
+                <p className="text-[10px] text-muted-foreground flex-1">
+                  ⚡ Proativa ligada — simule o disparo da 1ª mensagem (sem esperar o cliente).
+                </p>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  className="h-7 text-[11px] gap-1 px-2 shrink-0"
+                  onClick={fireProactive}
+                  disabled={isLoading}
+                  title="Gera a 1ª mensagem como se o agente fosse acionado pela etiqueta"
+                >
+                  <Zap className="h-3 w-3" /> Disparar 1ª proativa
+                </Button>
               </div>
             )}
           </div>
