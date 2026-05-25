@@ -87,11 +87,26 @@ function buildVariablesFromLead(lead: any, contact: any): Record<string, string>
   return v;
 }
 
-export function AgentTestChat({ systemPrompt, model = 'google/gemini-2.5-flash', agentName }: Props) {
+export function AgentTestChat({ systemPrompt, model = 'google/gemini-2.5-flash', agentName, onPromptChange }: Props) {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+
+  // Prompt editor (sidesheet dentro do dialog)
+  const [promptEditorOpen, setPromptEditorOpen] = useState(false);
+  const [draftPrompt, setDraftPrompt] = useState(systemPrompt);
+  useEffect(() => { setDraftPrompt(systemPrompt); }, [systemPrompt]);
+  const promptDirty = draftPrompt !== systemPrompt;
+  const savePrompt = () => {
+    if (!onPromptChange) {
+      toast.error('Edição não disponível neste contexto');
+      return;
+    }
+    onPromptChange(draftPrompt);
+    toast.success('Prompt atualizado (lembre de salvar o agente)');
+    setPromptEditorOpen(false);
+  };
 
   // Lead picker
   const [leadSearch, setLeadSearch] = useState('');
