@@ -1481,16 +1481,24 @@ export function ContactsListPage() {
 
               const matchesSearch = (g: typeof groups[number]) => {
                 if (!groupSearch) return true;
-                const q = groupSearch.toLowerCase();
-                if (groupSearchScope === 'lead') return (g.lead_name || '').toLowerCase().includes(q);
+                const rawQuery = groupSearch.toLowerCase().trim();
+                const queryDigits = rawQuery.replace(/\D/g, '');
+                if (groupSearchScope === 'lead') {
+                  const leadText = (g.lead_name || '').toLowerCase();
+                  return leadText.includes(rawQuery) || (!!queryDigits && leadText.replace(/\D/g, '').includes(queryDigits));
+                }
                 const caseDigits = g.case_number ? String(g.case_number).replace(/\D/g, '') : '';
+                const groupDigits = (g.group_name || '').replace(/\D/g, '');
+                const leadDigits = g.lead_number != null ? String(g.lead_number) : '';
                 const leadLabel = g.lead_number != null
                   ? `lead ${g.lead_number} lead-${g.lead_number} ${g.product_case_prefix ? `lead-${g.lead_number}(${g.product_case_prefix})` : ''}`
                   : '';
                 const caseLabel = caseDigits
                   ? `caso ${caseDigits} ${g.product_case_prefix ? `${g.product_case_prefix}-${caseDigits}` : ''}`
                   : '';
-                return [g.group_name, leadLabel, caseLabel].join(' ').toLowerCase().includes(q);
+                const textMatch = [g.group_name, leadLabel, caseLabel].join(' ').toLowerCase().includes(rawQuery);
+                const numberMatch = !!queryDigits && [groupDigits, caseDigits, leadDigits].some(value => value.includes(queryDigits));
+                return textMatch || numberMatch;
               };
 
               let visible = [...groups].filter(g => {
