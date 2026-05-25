@@ -152,6 +152,15 @@ const ResetPasswordPage = () => {
       return;
     }
     setLoading(true);
+
+    // Safety net: nunca deixar o botão travado em loading.
+    const safetyTimer = setTimeout(() => {
+      setLoading(false);
+      toast.error('Tempo limite excedido', {
+        description: 'A operação demorou demais. Tente novamente ou solicite um novo link.',
+      });
+    }, 15000);
+
     try {
       const { data: { session } } = await supabase.auth.getSession();
 
@@ -164,14 +173,31 @@ const ResetPasswordPage = () => {
       const { error } = await supabase.auth.updateUser({ password });
       if (error) throw error;
 
-      await supabase.auth.signOut({ scope: 'local' });
+      try {
+        await supabase.auth.signOut({ scope: 'local' });
+      } catch {
+        // best-effort
+      }
 
       setSuccess(true);
       toast.success('Senha redefinida com sucesso!');
       setTimeout(() => navigate('/dashboard', { replace: true }), 2000);
     } catch (error: any) {
-      toast.error('Erro ao redefinir senha', { description: error.message });
+      console.error('[RESET] updateUser falhou:', error);
+      const raw = String(error?.message || '');
+      let friendly = raw || 'Não foi possível redefinir a senha.';
+      if (/same_password|should be different/i.test(raw)) {
+        friendly = 'A nova senha precisa ser diferente da atual.';
+      } else if (/pwned|leaked|compromised|weak/i.test(raw)) {
+        friendly = 'Esta senha apareceu em vazamentos públicos. Escolha outra mais forte.';
+      } else if (/expired|invalid|jwt|token/i.test(raw)) {
+        friendly = 'Sua sessão de recuperação expirou. Solicite um novo link.';
+        setIsRecovery(false);
+        setRecoveryError(friendly);
+      }
+      toast.error('Erro ao redefinir senha', { description: friendly });
     } finally {
+      clearTimeout(safetyTimer);
       setLoading(false);
     }
   };
