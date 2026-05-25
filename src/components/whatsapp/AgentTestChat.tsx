@@ -175,6 +175,47 @@ export function AgentTestChat({ systemPrompt, model = 'google/gemini-2.5-flash',
     setInput('');
   };
 
+  const loadRealConversation = async () => {
+    const phone = selectedLead?.lead_phone || selectedLead?.phone;
+    if (!phone) {
+      toast.error('Lead sem telefone — não dá pra carregar conversa');
+      return;
+    }
+    try {
+      const digits = String(phone).replace(/\D/g, '');
+      const tail = digits.slice(-8);
+      const { data, error } = await db
+        .from('whatsapp_messages')
+        .select('direction, message_text, created_at')
+        .ilike('phone', `%${tail}%`)
+        .not('message_text', 'is', null)
+        .order('created_at', { ascending: false })
+        .limit(30);
+      if (error) throw error;
+      const ordered = (data || []).reverse();
+      if (ordered.length === 0) {
+        toast.error('Nenhuma mensagem encontrada pra esse lead');
+        return;
+      }
+      // inbound (cliente) → user no teste; outbound (nosso) → assistant
+      const seeded: Msg[] = ordered
+        .filter((m: any) => m.message_text && String(m.message_text).trim())
+        .map((m: any) => {
+          const text = String(m.message_text);
+          if (m.direction === 'outbound') {
+            const { cleanText, actions } = detectActions(text);
+            return { role: 'assistant' as const, content: cleanText, actions };
+          }
+          return { role: 'user' as const, content: text };
+        });
+      setMessages(seeded);
+      toast.success(`Carregadas ${seeded.length} mensagens reais`);
+    } catch (e: any) {
+      console.error(e);
+      toast.error('Erro ao carregar conversa real');
+    }
+  };
+
   const sendMessage = async () => {
     if (!input.trim() || isLoading) return;
     if (!draftPrompt.trim()) {
