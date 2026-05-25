@@ -1486,6 +1486,33 @@ export function ContactsListPage() {
               const normalizeName = (s: string | null | undefined) =>
                 (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
 
+              const jidToPhone = (jid: string | null | undefined): string => {
+                if (!jid) return '';
+                return String(jid).split('@')[0].replace(/\D/g, '');
+              };
+              const formatPhoneBR = (digits: string): string => {
+                if (!digits) return '';
+                if (digits.length === 13 && digits.startsWith('55')) {
+                  return `+55 (${digits.slice(2, 4)}) ${digits.slice(4, 9)}-${digits.slice(9)}`;
+                }
+                if (digits.length === 12 && digits.startsWith('55')) {
+                  return `+55 (${digits.slice(2, 4)}) ${digits.slice(4, 8)}-${digits.slice(8)}`;
+                }
+                return `+${digits}`;
+              };
+              const contactNameByPhone = new Map<string, string>();
+              for (const c of contacts) {
+                const d = String((c as any).phone || '').replace(/\D/g, '');
+                if (d && (c as any).full_name) contactNameByPhone.set(d, (c as any).full_name);
+              }
+              const creatorLabel = (jid: string | null): string => {
+                const digits = jidToPhone(jid);
+                if (!digits) return '—';
+                const name = contactNameByPhone.get(digits);
+                const phone = formatPhoneBR(digits);
+                return name ? `${name} (${phone})` : phone;
+              };
+
               const matchesSearch = (g: typeof groups[number]) => {
                 if (!deferredGroupSearch) return true;
                 const norm = (s: string) => normalizeName(s);
