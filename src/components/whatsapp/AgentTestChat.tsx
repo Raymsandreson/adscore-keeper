@@ -224,17 +224,134 @@ export function AgentTestChat({ systemPrompt, model = 'google/gemini-2.5-flash',
     }
   };
 
+  // ===== Anexos pendentes (mídia/voz) =====
+  const [pendingAttachments, setPendingAttachments] = useState<Attachment[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const fileToDataUrl = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(String(r.result));
+      r.onerror = reject;
+      r.readAsDataURL(file);
+    });
+
+  const handleFilePick = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = ''; // permite re-selecionar mesmo arquivo
+    for (const f of files) {
+      try {
+        if (f.size > 8 * 1024 * 1024) { toast.error(`${f.name}: máx 8MB`); continue; }
+        const dataUrl = await fileToDataUrl(f);
+        const kind: 'image' | 'audio' = f.type.startsWith('audio/') ? 'audio' : 'image';
+        setPendingAttachments(prev => [...prev, { kind, dataUrl, mime: f.type, name: f.name }]);
+      } catch (err) {
+        console.error(err);
+        toast.error(`Erro ao ler ${f.name}`);
+      }
+    }
+  };
+
+  const removePending = (idx: number) => {
+    setPendingAttachments(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  // ===== Gravação de voz =====
+  const [recording, setRecording] = useState(false);
+  const [recSeconds, setRecSeconds] = useState(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recChunksRef = useRef<Blob[]>([]);
+  const recTimerRef = useRef<number | null>(null);
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : (MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '');
+      const mr = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+      recChunksRef.current = [];
+      mr.ondataavailable = (ev) => { if (ev.data.size > 0) recChunksRef.current.push(ev.data); };
+      mr.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop());
+        const blob = new Blob(recChunksRef.current, { type: mr.mimeType || 'audio/webm' });
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const r = new FileReader();
+          r.onload = () => resolve(String(r.result));
+          r.onerror = reject;
+          r.readAsDataURL(blob);
+        });
+        setPendingAttachments(prev => [...prev, {
+          kind: 'audio',
+          dataUrl,
+          mime: blob.type || 'audio/webm',
+          name: `voz-${Date.now()}.webm`,
+        }]);
+      };
+      mediaRecorderRef.current = mr;
+      mr.start();
+      setRecording(true);
+      setRecSeconds(0);
+      recTimerRef.current = window.setInterval(() => setRecSeconds(s => s + 1), 1000);
+    } catch (e: any) {
+      console.error(e);
+      toast.error('Permissão de microfone negada');
+    }
+  };
+
+  const stopRecording = () => {
+    if (recTimerRef.current) { clearInterval(recTimerRef.current); recTimerRef.current = null; }
+    mediaRecorderRef.current?.stop();
+    mediaRecorderRef.current = null;
+    setRecording(false);
+  };
+
+  useEffect(() => () => {
+    if (recTimerRef.current) clearInterval(recTimerRef.current);
+    try { mediaRecorderRef.current?.stop(); } catch {}
+  }, []);
+
+  // Constrói o content multimodal pra Gemini (campo content como array de parts)
+  const buildMessageContent = (text: string, atts: Attachment[]): any => {
+    if (atts.length === 0) return text;
+    const parts: any[] = [];
+    if (text) parts.push({ type: 'text', text });
+    for (const a of atts) {
+      if (a.kind === 'image') {
+        parts.push({ type: 'image_url', image_url: { url: a.dataUrl } });
+      } else if (a.kind === 'audio') {
+        // base64 puro pra input_audio
+        const base64 = a.dataUrl.split(',')[1] || '';
+        const format = (a.mime.includes('webm') ? 'webm' : a.mime.includes('mp3') ? 'mp3' : a.mime.includes('ogg') ? 'ogg' : 'wav');
+        parts.push({ type: 'input_audio', input_audio: { data: base64, format } });
+      }
+    }
+    if (!text) parts.unshift({ type: 'text', text: '' });
+    return parts;
+  };
+
   const sendMessage = async () => {
-    if (!input.trim() || isLoading) return;
+    if ((!input.trim() && pendingAttachments.length === 0) || isLoading) return;
     if (!draftPrompt.trim()) {
       toast.error('Configure o prompt do agente antes de testar');
       return;
     }
-    const userMsg: Msg = { role: 'user', content: input.trim() };
+    const text = input.trim();
+    const atts = pendingAttachments;
+    const userMsg: Msg = { role: 'user', content: text, attachments: atts.length ? atts : undefined };
     const newMessages = [...messages, userMsg];
     setMessages([...newMessages, { role: 'assistant', content: '' }]);
     setInput('');
+    setPendingAttachments([]);
     setIsLoading(true);
+
+    // Mensagens enviadas ao backend usam content multimodal
+    const wireMessages = newMessages.map(m => ({
+      role: m.role,
+      content: m.role === 'user'
+        ? buildMessageContent(m.content, m.attachments || [])
+        : m.content,
+    }));
 
     let assistantText = '';
     try {
@@ -246,7 +363,7 @@ export function AgentTestChat({ systemPrompt, model = 'google/gemini-2.5-flash',
         },
         body: JSON.stringify({
           system_prompt: draftPrompt,
-          messages: newMessages,
+          messages: wireMessages,
           model,
           variables,
         }),
