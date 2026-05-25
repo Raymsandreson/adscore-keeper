@@ -143,6 +143,7 @@ const DEFAULT_FORM: ShortcutFormState = {
   send_call_followup_audio: false, zapsign_mode: 'final_document', zapsign_settings: {},
   forward_questions_to_group: false, notify_instance_name: null,
   lead_status_board_ids: [], lead_status_filter: [], audience_mode: 'both',
+  proactive_first_message_enabled: false, proactive_first_message_instruction: '',
 };
 
 
