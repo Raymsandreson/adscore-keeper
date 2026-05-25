@@ -128,7 +128,7 @@ export function ContactsListPage() {
   const [classifyingClients, setClassifyingClients] = useState(false);
 
   // Groups data
-  const [groups, setGroups] = useState<{ group_jid: string; group_name: string; lead_name: string; lead_status: string; lead_id: string | null; contact_count: number; instance_name: string | null; created_at: string | null; lead_created_at: string | null; board_id: string | null; board_name: string | null; case_number: string | null; lead_number: number | null; product_case_prefix: string | null; product_service_id: string | null }[]>([]);
+  const [groups, setGroups] = useState<{ group_jid: string; group_name: string; lead_name: string; lead_status: string; lead_id: string | null; contact_count: number; instance_name: string | null; created_at: string | null; lead_created_at: string | null; board_id: string | null; board_name: string | null; case_number: string | null; lead_number: number | null; product_case_prefix: string | null; product_service_id: string | null; owner_jid: string | null }[]>([]);
   const [groupsLoading, setGroupsLoading] = useState(false);
   const [groupSearch, setGroupSearch] = useState('');
   const deferredGroupSearch = useDeferredValue(groupSearch);
@@ -145,6 +145,7 @@ export function ContactsListPage() {
   const [availableBoards, setAvailableBoards] = useState<{ id: string; name: string }[]>([]);
   const [dateFrom, setDateFrom] = useState<string>('');
   const [dateTo, setDateTo] = useState<string>('');
+  const [creatorFilter, setCreatorFilter] = useState<string>('all');
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
   const [groupContacts, setGroupContacts] = useState<Contact[]>([]);
   const [groupContactsLoading, setGroupContactsLoading] = useState(false);
@@ -190,6 +191,7 @@ export function ContactsListPage() {
               lead_number: null,
               product_case_prefix: null,
               product_service_id: null,
+              owner_jid: null,
             });
           }
         }
@@ -236,6 +238,7 @@ export function ContactsListPage() {
               lead_number: lead?.lead_number ?? null,
               product_case_prefix: null,
               product_service_id: lead?.product_service_id || null,
+              owner_jid: null,
             });
           }
         }
@@ -399,13 +402,16 @@ export function ContactsListPage() {
         const to = from + pageSize - 1;
         const { data: page, error } = await (externalSupabase as any)
           .from('whatsapp_groups_uazapi_snapshot')
-          .select('jid, group_created_at')
+          .select('jid, group_created_at, owner_jid')
           .range(from, to);
         if (error) { console.error('fetchGroups snapshot page error:', error); break; }
         const rows = (page as any[]) || [];
         for (const s of rows) {
           const g = groupMap.get(s.jid);
-          if (g && s.group_created_at) g.created_at = s.group_created_at;
+          if (g) {
+            if (s.group_created_at) g.created_at = s.group_created_at;
+            if (s.owner_jid) g.owner_jid = s.owner_jid;
+          }
         }
         if (rows.length < pageSize) break;
       }
@@ -1480,6 +1486,33 @@ export function ContactsListPage() {
               const normalizeName = (s: string | null | undefined) =>
                 (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
 
+              const jidToPhone = (jid: string | null | undefined): string => {
+                if (!jid) return '';
+                return String(jid).split('@')[0].replace(/\D/g, '');
+              };
+              const formatPhoneBR = (digits: string): string => {
+                if (!digits) return '';
+                if (digits.length === 13 && digits.startsWith('55')) {
+                  return `+55 (${digits.slice(2, 4)}) ${digits.slice(4, 9)}-${digits.slice(9)}`;
+                }
+                if (digits.length === 12 && digits.startsWith('55')) {
+                  return `+55 (${digits.slice(2, 4)}) ${digits.slice(4, 8)}-${digits.slice(8)}`;
+                }
+                return `+${digits}`;
+              };
+              const contactNameByPhone = new Map<string, string>();
+              for (const c of contacts) {
+                const d = String((c as any).phone || '').replace(/\D/g, '');
+                if (d && (c as any).full_name) contactNameByPhone.set(d, (c as any).full_name);
+              }
+              const creatorLabel = (jid: string | null): string => {
+                const digits = jidToPhone(jid);
+                if (!digits) return '—';
+                const name = contactNameByPhone.get(digits);
+                const phone = formatPhoneBR(digits);
+                return name ? `${name} (${phone})` : phone;
+              };
+
               const matchesSearch = (g: typeof groups[number]) => {
                 if (!deferredGroupSearch) return true;
                 const norm = (s: string) => normalizeName(s);
@@ -1520,6 +1553,13 @@ export function ContactsListPage() {
                   if (t === null) return false;
                   if (dateFrom && t < new Date(dateFrom + 'T00:00:00').getTime()) return false;
                   if (dateTo && t > new Date(dateTo + 'T23:59:59').getTime()) return false;
+                }
+                if (creatorFilter !== 'all') {
+                  if (creatorFilter === '__none__') {
+                    if (g.owner_jid) return false;
+                  } else if (jidToPhone(g.owner_jid) !== creatorFilter) {
+                    return false;
+                  }
                 }
                 return true;
               });
@@ -1629,21 +1669,53 @@ export function ContactsListPage() {
                   if (!ng || !nl) return true;
                   return !ng.includes(nl) && !nl.includes(ng);
                 }).length;
+                // Lista única de criadores (a partir dos grupos atualmente filtrados, antes do recorte por criador)
+                const creatorMap = new Map<string, string>();
+                for (const g of groups) {
+                  const digits = jidToPhone(g.owner_jid);
+                  if (!digits) continue;
+                  if (!creatorMap.has(digits)) creatorMap.set(digits, creatorLabel(g.owner_jid));
+                }
+                const creatorOptions = Array.from(creatorMap.entries())
+                  .map(([value, label]) => ({ value, label }))
+                  .sort((a, b) => a.label.localeCompare(b.label, 'pt-BR'));
                 return (
                   <div className="space-y-2">
-                    <div className="flex items-center gap-3 px-1 text-xs text-muted-foreground">
+                    <div className="flex flex-wrap items-center gap-3 px-1 text-xs text-muted-foreground">
                       <span>{total} caso(s) fechado(s)</span>
                       <span className="flex items-center gap-1">
                         <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
                         {mismatched} divergente(s)
                       </span>
+                      <div className="flex items-center gap-2 ml-auto">
+                        <span className="text-[11px]">Criado por:</span>
+                        <Select value={creatorFilter} onValueChange={setCreatorFilter}>
+                          <SelectTrigger className="h-7 w-[240px] text-xs">
+                            <SelectValue placeholder="Todos" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">Todos</SelectItem>
+                            <SelectItem value="__none__">Sem criador identificado</SelectItem>
+                            {creatorOptions.map(opt => (
+                              <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {creatorFilter !== 'all' && (
+                          <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setCreatorFilter('all')}>
+                            <X className="h-3 w-3" />
+                          </Button>
+                        )}
+                      </div>
                     </div>
-                    <div className="grid grid-cols-[36px_110px_70px_1fr_1fr_64px] gap-2 px-3 py-2 text-[11px] font-medium text-muted-foreground border-b">
+                    <div className="grid grid-cols-[36px_90px_60px_1.4fr_1fr_140px_160px_56px] gap-2 px-3 py-2 text-[11px] font-medium text-muted-foreground border-b">
                       <span></span>
                       <span title="Sequência do lead (LEAD-N(PFX))">Nº lead</span>
                       <span title="Nº oficial do caso (legal_cases.case_number)">Nº caso</span>
                       <span className="pr-3">Nome do grupo</span>
                       <span className="pl-3 text-center">Nome do lead</span>
+                      <span title="Data e hora de criação do grupo no WhatsApp">Criado em</span>
+                      <span title="Telefone/nome do criador do grupo no WhatsApp">Criado por</span>
                       <span></span>
                     </div>
                     {capped.map(group => {
@@ -1666,7 +1738,7 @@ export function ContactsListPage() {
                       return (
                         <div
                           key={group.group_jid}
-                          className={`grid grid-cols-[36px_110px_70px_1fr_1fr_64px] gap-2 items-center p-3 rounded-lg border transition-colors hover:bg-accent/50 ${!matches ? 'border-amber-500/40 bg-amber-500/5' : ''}`}
+                          className={`grid grid-cols-[36px_90px_60px_1.4fr_1fr_140px_160px_56px] gap-2 items-center p-3 rounded-lg border transition-colors hover:bg-accent/50 ${!matches ? 'border-amber-500/40 bg-amber-500/5' : ''}`}
                         >
                           <Checkbox
                             checked={!excludedGroups.has(group.group_jid)}
@@ -1710,6 +1782,20 @@ export function ContactsListPage() {
                             {group.lead_name
                               ? highlight(group.lead_name, groupSearchScope === 'lead')
                               : (group.lead_id ? '(sem nome)' : '— sem vínculo —')}
+                          </span>
+                          <span
+                            className={`text-[11px] tabular-nums ${group.created_at ? 'text-foreground' : 'text-muted-foreground italic'}`}
+                            title={group.created_at ? new Date(group.created_at).toLocaleString('pt-BR') : 'Data de criação do grupo desconhecida'}
+                          >
+                            {group.created_at
+                              ? new Date(group.created_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })
+                              : '—'}
+                          </span>
+                          <span
+                            className={`text-[11px] truncate ${group.owner_jid ? 'text-foreground' : 'text-muted-foreground italic'}`}
+                            title={group.owner_jid ? `JID: ${group.owner_jid}` : 'Criador do grupo desconhecido'}
+                          >
+                            {group.owner_jid ? creatorLabel(group.owner_jid) : '—'}
                           </span>
                           <div className="flex items-center gap-1">
                             {matches ? (
