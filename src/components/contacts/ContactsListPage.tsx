@@ -1669,21 +1669,53 @@ export function ContactsListPage() {
                   if (!ng || !nl) return true;
                   return !ng.includes(nl) && !nl.includes(ng);
                 }).length;
+                // Lista única de criadores (a partir dos grupos atualmente filtrados, antes do recorte por criador)
+                const creatorMap = new Map<string, string>();
+                for (const g of groups) {
+                  const digits = jidToPhone(g.owner_jid);
+                  if (!digits) continue;
+                  if (!creatorMap.has(digits)) creatorMap.set(digits, creatorLabel(g.owner_jid));
+                }
+                const creatorOptions = Array.from(creatorMap.entries())
+                  .map(([value, label]) => ({ value, label }))
+                  .sort((a, b) => a.label.localeCompare(b.label, 'pt-BR'));
                 return (
                   <div className="space-y-2">
-                    <div className="flex items-center gap-3 px-1 text-xs text-muted-foreground">
+                    <div className="flex flex-wrap items-center gap-3 px-1 text-xs text-muted-foreground">
                       <span>{total} caso(s) fechado(s)</span>
                       <span className="flex items-center gap-1">
                         <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
                         {mismatched} divergente(s)
                       </span>
+                      <div className="flex items-center gap-2 ml-auto">
+                        <span className="text-[11px]">Criado por:</span>
+                        <Select value={creatorFilter} onValueChange={setCreatorFilter}>
+                          <SelectTrigger className="h-7 w-[240px] text-xs">
+                            <SelectValue placeholder="Todos" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">Todos</SelectItem>
+                            <SelectItem value="__none__">Sem criador identificado</SelectItem>
+                            {creatorOptions.map(opt => (
+                              <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {creatorFilter !== 'all' && (
+                          <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setCreatorFilter('all')}>
+                            <X className="h-3 w-3" />
+                          </Button>
+                        )}
+                      </div>
                     </div>
-                    <div className="grid grid-cols-[36px_110px_70px_1fr_1fr_64px] gap-2 px-3 py-2 text-[11px] font-medium text-muted-foreground border-b">
+                    <div className="grid grid-cols-[36px_90px_60px_1.4fr_1fr_140px_160px_56px] gap-2 px-3 py-2 text-[11px] font-medium text-muted-foreground border-b">
                       <span></span>
                       <span title="Sequência do lead (LEAD-N(PFX))">Nº lead</span>
                       <span title="Nº oficial do caso (legal_cases.case_number)">Nº caso</span>
                       <span className="pr-3">Nome do grupo</span>
                       <span className="pl-3 text-center">Nome do lead</span>
+                      <span title="Data e hora de criação do grupo no WhatsApp">Criado em</span>
+                      <span title="Telefone/nome do criador do grupo no WhatsApp">Criado por</span>
                       <span></span>
                     </div>
                     {capped.map(group => {
