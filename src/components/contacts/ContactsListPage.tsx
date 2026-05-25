@@ -186,6 +186,9 @@ export function ContactsListPage() {
               board_id: null,
               board_name: null,
               case_number: null,
+              lead_number: null,
+              product_case_prefix: null,
+              product_service_id: null,
             });
           }
         }
