@@ -1,10 +1,12 @@
 import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Loader2, Send, Play, RotateCcw, User, Search, X } from 'lucide-react';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/components/ui/sheet';
+import { Loader2, Send, Play, RotateCcw, User, Search, X, Pencil, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import ReactMarkdown from 'react-markdown';
 import { db } from '@/integrations/supabase';
@@ -13,6 +15,7 @@ interface Props {
   systemPrompt: string;
   model?: string;
   agentName?: string;
+  onPromptChange?: (prompt: string) => void;
 }
 
 interface Msg {
