@@ -137,7 +137,7 @@ export function ContactsListPage() {
   const [groupSearchScope, setGroupSearchScope] = useState<'group' | 'lead'>('group');
   const [excludedGroups, setExcludedGroups] = useState<Set<string>>(new Set());
   const [showGroupFilters, setShowGroupFilters] = useState(false);
-  const [auditMode, setAuditMode] = useState(false);
+  const [auditMode, setAuditMode] = useState(true);
   const [auditOnlyMismatch, setAuditOnlyMismatch] = useState(false);
   const [leadStatusFilter, setLeadStatusFilter] = useState<Set<string>>(new Set());
   const [leadLinkFilter, setLeadLinkFilter] = useState<'all' | 'with' | 'without'>('all');
