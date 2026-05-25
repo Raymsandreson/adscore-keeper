@@ -15,6 +15,136 @@ import { getLocationFromDDD } from '../lib/ddd-mapping';
 import { transcribeAudio } from '../lib/stt';
 
 // ============================================================
+// Proactive first message — disparado quando o agente é ativado
+// via etiqueta. Gera a 1ª mensagem com a IA e envia pelo UazAPI
+// sem esperar o cliente abrir a conversa.
+// Idempotente por (phone, instance_name, agent_id).
+// ============================================================
+async function triggerProactiveFirstMessage(
+  supabase: any,
+  phone: string,
+  instanceName: string,
+  agentId: string,
+): Promise<void> {
+  try {
+    if (!agentId || !phone || !instanceName) return;
+
+    const { data: agent } = await supabase
+      .from('wjia_command_shortcuts')
+      .select('id, shortcut_name, base_prompt, prompt_instructions, proactive_first_message_enabled, proactive_first_message_instruction')
+      .eq('id', agentId)
+      .maybeSingle();
+
+    if (!agent || !(agent as any).proactive_first_message_enabled) return;
+
+    // Idempotência: já mandou pra esse phone+instance+agent? não repete.
+    const { data: prior } = await supabase
+      .from('whatsapp_messages')
+      .select('id')
+      .eq('phone', phone)
+      .ilike('instance_name', instanceName)
+      .eq('action_source', 'proactive_first_message')
+      .eq('action_source_detail', String(agentId))
+      .limit(1)
+      .maybeSingle();
+    if (prior) {
+      console.log('[proactive] já disparado antes, skip', { phone, instanceName, agentId });
+      return;
+    }
+
+    // Credenciais da instância
+    const { data: inst } = await supabase
+      .from('whatsapp_instances')
+      .select('instance_token, base_url')
+      .ilike('instance_name', instanceName)
+      .limit(1)
+      .maybeSingle();
+    const token = (inst as any)?.instance_token;
+    const baseUrl = (inst as any)?.base_url || 'https://abraci.uazapi.com';
+    if (!token) {
+      console.warn('[proactive] instância sem token, abortando', { instanceName });
+      return;
+    }
+
+    // Monta prompt
+    const basePrompt = (agent as any).base_prompt || '';
+    const extra = (agent as any).prompt_instructions || '';
+    const proactiveExtra = (agent as any).proactive_first_message_instruction || '';
+    const system = [
+      basePrompt,
+      extra,
+      '--- DISPARO PROATIVO ---',
+      'Esta é a PRIMEIRA mensagem que o cliente vai receber. Ele ainda não escreveu nada.',
+      'Inicie a conversa de forma natural, curta e humana, no tom do agente acima.',
+      'Não diga "estou de volta", "vi sua mensagem" nem coisas do tipo — é o primeiro contato.',
+      proactiveExtra ? `Instrução extra do operador: ${proactiveExtra}` : '',
+    ].filter(Boolean).join('\n\n');
+
+    let aiText = '';
+    try {
+      const aiResp = await geminiChat({
+        model: 'google/gemini-2.5-flash',
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: 'Gere agora a primeira mensagem para iniciar a conversa.' },
+        ],
+        temperature: 0.7,
+        max_tokens: 400,
+      });
+      aiText = String(aiResp?.choices?.[0]?.message?.content || '').trim();
+    } catch (e: any) {
+      console.error('[proactive] erro na IA:', e?.message);
+      return;
+    }
+    if (!aiText) {
+      console.warn('[proactive] IA retornou vazio, abortando');
+      return;
+    }
+
+    // Envia via UazAPI
+    let externalId: string | null = null;
+    try {
+      const sendResp = await fetch(`${String(baseUrl).replace(/\/$/, '')}/send/text`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', token },
+        body: JSON.stringify({ number: phone, text: aiText }),
+      });
+      const sendJson: any = await sendResp.json().catch(() => null);
+      externalId = sendJson?.id || sendJson?.messageId || sendJson?.key?.id || null;
+      if (!sendResp.ok) {
+        console.warn('[proactive] UazAPI retornou erro', sendResp.status, sendJson);
+        return;
+      }
+    } catch (e: any) {
+      console.error('[proactive] erro enviando UazAPI:', e?.message);
+      return;
+    }
+
+    // Loga como outbound + marca idempotência
+    try {
+      await supabase.from('whatsapp_messages').insert({
+        phone,
+        instance_name: instanceName,
+        message_text: aiText,
+        message_type: 'text',
+        direction: 'outbound',
+        external_message_id: externalId,
+        action_source: 'proactive_first_message',
+        action_source_detail: String(agentId),
+      } as any);
+    } catch (e: any) {
+      console.warn('[proactive] falha registrando mensagem (não-fatal):', e?.message);
+    }
+
+    console.log('[proactive] 1ª mensagem enviada', { phone, instanceName, agentId, length: aiText.length });
+  } catch (e: any) {
+    console.error('[proactive] erro inesperado:', e?.message);
+  }
+}
+
+
+
+// ============================================================
 // WhatsApp media decryption (HKDF + AES-256-CBC)
 // Used as fallback when UazAPI /message/download fails to return
 // decrypted bytes. Requires the mediaKey from the original message
@@ -827,6 +957,8 @@ export const handler: RequestHandler = async (req, res) => {
                 .like('phone', `%${last8}`);
             }
             console.log('[label-trigger] agent activated via sync', { chatId, phone: phoneDigits, agent_id: (m as any).agent_id, label: (m as any).label_name });
+            // Dispara 1ª mensagem proativa se o agente tiver configurado
+            triggerProactiveFirstMessage(supabase, phoneDigits, webhookInstanceName, (m as any).agent_id).catch(err => console.warn('[proactive] sync trigger error:', err?.message));
           } catch (e: any) {
             console.warn('[label-trigger] sync activation failed:', e?.message);
           }
@@ -991,6 +1123,8 @@ export const handler: RequestHandler = async (req, res) => {
                   .like('phone', `%${last8}`);
               }
               console.log('[label-trigger] agent activated', { phone: phoneDigits, agent_id: (t as any).agent_id });
+              // Dispara 1ª mensagem proativa se o agente tiver configurado
+              triggerProactiveFirstMessage(supabase, phoneDigits, webhookInstanceName, (t as any).agent_id).catch(err => console.warn('[proactive] trigger error:', err?.message));
             } catch (e: any) {
               console.warn('[label-trigger] agent activation failed:', e?.message);
             }
