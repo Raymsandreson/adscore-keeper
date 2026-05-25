@@ -128,7 +128,7 @@ export function ContactsListPage() {
   const [classifyingClients, setClassifyingClients] = useState(false);
 
   // Groups data
-  const [groups, setGroups] = useState<{ group_jid: string; group_name: string; lead_name: string; lead_status: string; lead_id: string | null; contact_count: number; instance_name: string | null; created_at: string | null; lead_created_at: string | null; board_id: string | null; board_name: string | null; case_number: string | null }[]>([]);
+  const [groups, setGroups] = useState<{ group_jid: string; group_name: string; lead_name: string; lead_status: string; lead_id: string | null; contact_count: number; instance_name: string | null; created_at: string | null; lead_created_at: string | null; board_id: string | null; board_name: string | null; case_number: string | null; lead_number: number | null; product_case_prefix: string | null; product_service_id: string | null }[]>([]);
   const [groupsLoading, setGroupsLoading] = useState(false);
   const [groupSearch, setGroupSearch] = useState('');
   const [groupSort, setGroupSort] = useState<'alpha' | 'number' | 'prefix' | 'date'>('date');
@@ -186,6 +186,9 @@ export function ContactsListPage() {
               board_id: null,
               board_name: null,
               case_number: null,
+              lead_number: null,
+              product_case_prefix: null,
+              product_service_id: null,
             });
           }
         }
@@ -198,7 +201,7 @@ export function ContactsListPage() {
         const to = from + pageSize - 1;
         const { data: page, error } = await externalSupabase
           .from('lead_whatsapp_groups')
-          .select('group_jid, group_name, lead_id, leads!lead_whatsapp_groups_lead_id_fkey(lead_name, lead_status, created_at, board_id)')
+          .select('group_jid, group_name, lead_id, leads!lead_whatsapp_groups_lead_id_fkey(lead_name, lead_status, created_at, board_id, lead_number, product_service_id)')
           .order('created_at', { ascending: false })
           .range(from, to);
         if (error) { console.error('fetchGroups lwg page error:', error); break; }
@@ -213,6 +216,8 @@ export function ContactsListPage() {
             if (!existing.lead_id && g.lead_id) existing.lead_id = g.lead_id;
             if (!existing.lead_created_at && lead?.created_at) existing.lead_created_at = lead.created_at;
             if (!existing.board_id && lead?.board_id) existing.board_id = lead.board_id;
+            if (existing.lead_number == null && lead?.lead_number != null) existing.lead_number = lead.lead_number;
+            if (!existing.product_service_id && lead?.product_service_id) existing.product_service_id = lead.product_service_id;
           } else {
             groupMap.set(g.group_jid, {
               group_jid: g.group_jid,
@@ -227,6 +232,9 @@ export function ContactsListPage() {
               board_id: lead?.board_id || null,
               board_name: null,
               case_number: null,
+              lead_number: lead?.lead_number ?? null,
+              product_case_prefix: null,
+              product_service_id: lead?.product_service_id || null,
             });
           }
         }
@@ -245,7 +253,7 @@ export function ContactsListPage() {
           const chunk = uniq.slice(i, i + chunkSize);
           const { data: leadsData } = await externalSupabase
             .from('leads')
-            .select('id, lead_name, lead_status, created_at, board_id')
+            .select('id, lead_name, lead_status, created_at, board_id, lead_number, product_service_id')
             .in('id', chunk);
           const leadMap = new Map<string, any>();
           (leadsData || []).forEach((l: any) => leadMap.set(l.id, l));
@@ -256,9 +264,31 @@ export function ContactsListPage() {
               if (!g.lead_status && l.lead_status) g.lead_status = l.lead_status;
               if (!g.lead_created_at && l.created_at) g.lead_created_at = l.created_at;
               if (!g.board_id && l.board_id) g.board_id = l.board_id;
+              if (g.lead_number == null && l.lead_number != null) g.lead_number = l.lead_number;
+              if (!g.product_service_id && l.product_service_id) g.product_service_id = l.product_service_id;
             }
           });
         }
+      }
+
+      // 2.b.2) Buscar case_prefix dos produtos para montar LEAD-N(PFX)
+      const productIds = Array.from(new Set(
+        Array.from(groupMap.values()).filter(g => g.product_service_id).map(g => g.product_service_id as string)
+      ));
+      if (productIds.length > 0) {
+        const { data: prods } = await externalSupabase
+          .from('products_services')
+          .select('id, case_prefix')
+          .in('id', productIds);
+        const prefixById = new Map<string, string>();
+        (prods || []).forEach((p: any) => {
+          if (p.case_prefix) prefixById.set(p.id, String(p.case_prefix).trim().toUpperCase());
+        });
+        groupMap.forEach((g) => {
+          if (g.product_service_id && prefixById.has(g.product_service_id)) {
+            g.product_case_prefix = prefixById.get(g.product_service_id) || null;
+          }
+        });
       }
 
       // 2.c) Buscar nº do caso (legal_cases.case_number) para todos os lead_ids vinculados
@@ -1551,9 +1581,10 @@ export function ContactsListPage() {
                         {mismatched} divergente(s)
                       </span>
                     </div>
-                    <div className="grid grid-cols-[36px_60px_70px_1fr_1fr_64px] gap-2 px-3 py-2 text-[11px] font-medium text-muted-foreground border-b">
+                    <div className="grid grid-cols-[36px_60px_110px_70px_1fr_1fr_64px] gap-2 px-3 py-2 text-[11px] font-medium text-muted-foreground border-b">
                       <span></span>
                       <span title="Nº extraído do nome do grupo">Nº grupo</span>
+                      <span title="Sequência do lead (LEAD-N(PFX))">Nº lead</span>
                       <span title="Nº oficial do caso (legal_cases.case_number)">Nº caso</span>
                       <span className="pr-3">Nome do grupo</span>
                       <span className="pl-3 text-center">Nome do lead</span>
@@ -1577,7 +1608,7 @@ export function ContactsListPage() {
                       return (
                         <div
                           key={group.group_jid}
-                          className={`grid grid-cols-[36px_60px_70px_1fr_1fr_64px] gap-2 items-center p-3 rounded-lg border transition-colors hover:bg-accent/50 ${!matches ? 'border-amber-500/40 bg-amber-500/5' : ''}`}
+                          className={`grid grid-cols-[36px_60px_110px_70px_1fr_1fr_64px] gap-2 items-center p-3 rounded-lg border transition-colors hover:bg-accent/50 ${!matches ? 'border-amber-500/40 bg-amber-500/5' : ''}`}
                         >
                           <Checkbox
                             checked={!excludedGroups.has(group.group_jid)}
@@ -1594,6 +1625,14 @@ export function ContactsListPage() {
                           />
                           <span className="text-sm font-mono font-semibold tabular-nums">
                             {groupNum != null ? groupNum : <span className="text-muted-foreground">—</span>}
+                          </span>
+                          <span
+                            className={`text-xs font-mono tabular-nums ${group.lead_number != null ? 'text-foreground' : 'text-muted-foreground'}`}
+                            title={group.lead_number != null ? `Lead nº ${group.lead_number}${group.product_case_prefix ? ` (${group.product_case_prefix})` : ''}` : 'Lead sem sequência'}
+                          >
+                            {group.lead_number != null
+                              ? `LEAD-${group.lead_number}${group.product_case_prefix ? `(${group.product_case_prefix})` : ''}`
+                              : '—'}
                           </span>
                           <span
                             className={`text-xs font-mono tabular-nums ${caseNum ? 'text-foreground' : 'text-muted-foreground'}`}
