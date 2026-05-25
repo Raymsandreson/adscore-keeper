@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
+import { requireAdmin, forbidden } from "../_shared/require-auth.ts";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 
@@ -21,6 +22,9 @@ const handler = async (req: Request): Promise<Response> => {
   }
 
   try {
+    const admin = await requireAdmin(req);
+    if (!admin) return forbidden(corsHeaders);
+
     const { email, role, invitedByName, appUrl }: InvitationRequest = await req.json();
 
     if (!email || !appUrl) {
