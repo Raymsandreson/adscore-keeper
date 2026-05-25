@@ -373,49 +373,64 @@ export function AgentTestChat({ systemPrompt, model = 'google/gemini-2.5-flash',
             )}
           </div>
 
-          {/* Chat */}
-          <ScrollArea className="flex-1 px-4 py-3">
-            <div className="space-y-3">
+          {/* Chat — visual WhatsApp */}
+          <ScrollArea
+            className="flex-1 px-3 py-3"
+            style={{
+              backgroundColor: '#ECE5DD',
+              backgroundImage:
+                "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='40' height='40'><circle cx='20' cy='20' r='1' fill='%23000' opacity='0.04'/></svg>\")",
+            }}
+          >
+            <div className="space-y-1.5">
               {messages.length === 0 && (
-                <div className="text-center text-xs text-muted-foreground py-8">
-                  Mande uma mensagem como se fosse o cliente. A IA responde usando o prompt configurado.
+                <div className="text-center text-xs text-muted-foreground py-8 bg-white/70 rounded-md mx-8 px-3 py-2">
+                  Mande uma mensagem como se fosse o cliente. A IA (agente) responde no balão verde, como vai aparecer no WhatsApp.
                 </div>
               )}
-              {messages.map((m, i) => (
-                <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[85%] space-y-1`}>
-                    <div className={`rounded-lg px-3 py-2 text-xs ${
-                      m.role === 'user'
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-card border'
-                    }`}>
-                      {m.role === 'assistant' ? (
-                        <div className="prose prose-xs dark:prose-invert max-w-none [&_p]:my-1 [&_ul]:my-1 [&_li]:my-0.5">
-                          <ReactMarkdown>{m.content || '…'}</ReactMarkdown>
+              {messages.map((m, i) => {
+                // cliente (quem escreve no teste) = inbound, esquerda branca
+                // agente IA = outbound, direita verde-claro (estilo WhatsApp)
+                const isAgent = m.role === 'assistant';
+                return (
+                  <div key={i} className={`flex ${isAgent ? 'justify-end' : 'justify-start'} px-1`}>
+                    <div className="max-w-[85%] space-y-1">
+                      <div
+                        className={`relative rounded-lg px-2.5 py-1.5 text-[13px] leading-snug shadow-sm ${
+                          isAgent ? 'bg-[#DCF8C6] text-[#111B21]' : 'bg-white text-[#111B21]'
+                        }`}
+                        style={{ wordBreak: 'break-word' }}
+                      >
+                        <div className="whitespace-pre-wrap">
+                          {renderWhatsAppText(m.content || '…')}
                         </div>
-                      ) : (
-                        <p className="whitespace-pre-wrap">{m.content}</p>
+                        <div className="flex items-center justify-end gap-1 mt-0.5 -mb-0.5 text-[10px] text-[#667781]">
+                          <span>
+                            {new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                          {isAgent && <CheckCheck className="h-3 w-3 text-[#53BDEB]" />}
+                        </div>
+                      </div>
+                      {m.actions && m.actions.length > 0 && (
+                        <div className={`flex flex-wrap gap-1 ${isAgent ? 'justify-end' : ''}`}>
+                          {m.actions.map((a, idx) => {
+                            const meta = ACTION_LABELS[a.tag] || { label: a.tag, variant: 'outline' as const };
+                            return (
+                              <Badge key={idx} variant={meta.variant} className="text-[10px]">
+                                {meta.label}{a.value ? `: ${a.value}` : ''}
+                              </Badge>
+                            );
+                          })}
+                        </div>
                       )}
                     </div>
-                    {m.actions && m.actions.length > 0 && (
-                      <div className="flex flex-wrap gap-1">
-                        {m.actions.map((a, idx) => {
-                          const meta = ACTION_LABELS[a.tag] || { label: a.tag, variant: 'outline' as const };
-                          return (
-                            <Badge key={idx} variant={meta.variant} className="text-[10px]">
-                              {meta.label}{a.value ? `: ${a.value}` : ''}
-                            </Badge>
-                          );
-                        })}
-                      </div>
-                    )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
               {isLoading && messages[messages.length - 1]?.role === 'assistant' && !messages[messages.length - 1]?.content && (
-                <div className="flex justify-start">
-                  <div className="bg-card border rounded-lg px-3 py-2 text-xs flex items-center gap-1.5 text-muted-foreground">
-                    <Loader2 className="h-3 w-3 animate-spin" /> Pensando...
+                <div className="flex justify-end px-1">
+                  <div className="bg-[#DCF8C6] rounded-lg px-3 py-2 text-xs flex items-center gap-1.5 text-[#667781] shadow-sm">
+                    <Loader2 className="h-3 w-3 animate-spin" /> digitando...
                   </div>
                 </div>
               )}
