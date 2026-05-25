@@ -15,6 +15,7 @@ export function useWhatsAppInstanceStatus(enabled: boolean = true) {
   const [statuses, setStatuses] = useState<InstanceStatus[]>([]);
   const [loading, setLoading] = useState(false);
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
+  const [notifyDisconnectEnabled, setNotifyDisconnectEnabled] = useState<boolean>(true);
   const disconnectedTimestamps = useRef<Record<string, Date>>({});
   const notifiedInstances = useRef<Set<string>>(new Set());
 
