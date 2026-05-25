@@ -145,12 +145,12 @@ export function useWhatsAppInstanceStatus(enabled: boolean = true) {
 
       // Auto-notify offline instances via WhatsApp
       const offline = enriched.filter(s => !s.connected);
-      if (offline.length > 0) {
+      if (offline.length > 0 && disconnectAlertsEnabled) {
         notifyOfflineViaWhatsApp(offline);
       }
 
       // Notify reconnected instances
-      if (reconnected.length > 0) {
+      if (reconnected.length > 0 && disconnectAlertsEnabled) {
         notifyReconnectedViaWhatsApp(reconnected);
         // Auto-process queued group creations when instances come back online
         cloudFunctions.invoke('process-group-queue').catch(err => 
