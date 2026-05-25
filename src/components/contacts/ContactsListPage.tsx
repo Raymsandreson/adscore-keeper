@@ -1710,7 +1710,7 @@ export function ContactsListPage() {
                 for (const g of groups) {
                   const digits = g.owner_phone;
                   if (!digits) continue;
-                  if (!creatorMap.has(digits)) creatorMap.set(digits, creatorLabel(g));
+                  if (!creatorMap.has(digits)) creatorMap.set(digits, creatorDisplay(g));
                 }
                 const creatorOptions = Array.from(creatorMap.entries())
                   .map(([value, label]) => ({ value, label }))
