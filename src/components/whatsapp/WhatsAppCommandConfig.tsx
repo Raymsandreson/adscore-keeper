@@ -622,6 +622,8 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       zapsign_settings: form.zapsign_settings || {},
       forward_questions_to_group: form.forward_questions_to_group ?? false,
       notify_instance_name: form.notify_instance_name || null,
+      proactive_first_message_enabled: form.proactive_first_message_enabled ?? false,
+      proactive_first_message_instruction: form.proactive_first_message_instruction || null,
     };
 
     let error;
