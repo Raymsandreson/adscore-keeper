@@ -413,6 +413,12 @@ export function ContactsListPage() {
       //    que enxergaram o grupo, com o telefone do dono de cada instância.
       //    Se o telefone do criador bater com o de alguma instância nossa,
       //    rotulamos como a própria instância.
+      // Primeiro passe: agrega TODAS as instâncias vistas em qualquer snapshot
+      // para construir um mapa global { telefone -> nome_da_instancia }.
+      // Assim, mesmo grupos cujo "seen_in_instances" não contém a instância dona
+      // ainda conseguem ser rotulados como "Instância X" se o owner_pn bater.
+      const instancePhoneToName = new Map<string, string>();
+      const snapshotRows: any[] = [];
       for (let from = 0; ; from += pageSize) {
         const to = from + pageSize - 1;
         const { data: page, error } = await (externalSupabase as any)
@@ -422,19 +428,30 @@ export function ContactsListPage() {
         if (error) { console.error('fetchGroups snapshot page error:', error); break; }
         const rows = (page as any[]) || [];
         for (const s of rows) {
-          const g = groupMap.get(s.jid);
-          if (!g) continue;
-          if (s.group_created_at) g.created_at = s.group_created_at;
-          const ownerPnRaw = String(s.owner_pn || '').split('@')[0].replace(/\D/g, '');
-          if (ownerPnRaw) g.owner_phone = ownerPnRaw;
           const seen = Array.isArray(s.seen_in_instances) ? s.seen_in_instances : [];
-          if (ownerPnRaw) {
-            const match = seen.find((x: any) => String(x?.owner_phone || '').replace(/\D/g, '') === ownerPnRaw);
-            if (match?.name) g.creator_instance_name = match.name;
+          for (const inst of seen) {
+            const ph = String(inst?.owner_phone || '').replace(/\D/g, '');
+            const nm = inst?.name ? String(inst.name) : '';
+            if (ph && nm && !instancePhoneToName.has(ph)) instancePhoneToName.set(ph, nm);
           }
+          snapshotRows.push(s);
         }
         if (rows.length < pageSize) break;
       }
+
+      // Segundo passe: aplica aos grupos usando o mapa global.
+      for (const s of snapshotRows) {
+        const g = groupMap.get(s.jid);
+        if (!g) continue;
+        if (s.group_created_at) g.created_at = s.group_created_at;
+        const ownerPnRaw = String(s.owner_pn || '').split('@')[0].replace(/\D/g, '');
+        if (ownerPnRaw) {
+          g.owner_phone = ownerPnRaw;
+          const instName = instancePhoneToName.get(ownerPnRaw);
+          if (instName) g.creator_instance_name = instName;
+        }
+      }
+
 
       setGroups(Array.from(groupMap.values()));
     } catch (err) {
