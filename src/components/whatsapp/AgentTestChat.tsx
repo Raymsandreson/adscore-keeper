@@ -636,16 +636,87 @@ export function AgentTestChat({ systemPrompt, model = 'google/gemini-2.5-flash',
 
           {/* Composer */}
           <div className="border-t p-3 space-y-2">
-            <div className="flex gap-2">
+            {/* Preview de anexos pendentes */}
+            {pendingAttachments.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {pendingAttachments.map((a, idx) => (
+                  <div key={idx} className="relative border rounded-md p-1 bg-muted/40">
+                    {a.kind === 'image' ? (
+                      <img src={a.dataUrl} alt={a.name} className="h-14 w-14 object-cover rounded" />
+                    ) : (
+                      <div className="h-14 px-2 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                        <Mic className="h-3.5 w-3.5" />
+                        <audio src={a.dataUrl} controls className="h-8 max-w-[180px]" />
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => removePending(idx)}
+                      className="absolute -top-1.5 -right-1.5 bg-background border rounded-full h-5 w-5 flex items-center justify-center hover:bg-muted"
+                      title="Remover"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {recording && (
+              <div className="flex items-center gap-2 text-xs text-destructive">
+                <span className="inline-block h-2 w-2 rounded-full bg-destructive animate-pulse" />
+                Gravando... {Math.floor(recSeconds / 60).toString().padStart(2, '0')}:{(recSeconds % 60).toString().padStart(2, '0')}
+                <Button size="sm" variant="outline" className="h-7 ml-auto gap-1" onClick={stopRecording}>
+                  <Square className="h-3 w-3" /> Parar
+                </Button>
+              </div>
+            )}
+
+            <div className="flex gap-2 items-center">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,audio/*"
+                multiple
+                className="hidden"
+                onChange={handleFilePick}
+              />
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                className="h-9 w-9 shrink-0"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isLoading || recording}
+                title="Anexar imagem ou áudio"
+              >
+                <Paperclip className="h-4 w-4" />
+              </Button>
+              <Button
+                type="button"
+                size="icon"
+                variant={recording ? 'destructive' : 'ghost'}
+                className="h-9 w-9 shrink-0"
+                onClick={recording ? stopRecording : startRecording}
+                disabled={isLoading}
+                title={recording ? 'Parar gravação' : 'Gravar mensagem de voz'}
+              >
+                {recording ? <Square className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+              </Button>
               <Input
-                placeholder="Mensagem como cliente... (Enter envia)"
+                placeholder={pendingAttachments.length ? 'Legenda (opcional)...' : 'Mensagem como cliente... (Enter envia)'}
                 value={input}
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
                 className="text-xs flex-1"
-                disabled={isLoading}
+                disabled={isLoading || recording}
               />
-              <Button size="icon" onClick={sendMessage} disabled={!input.trim() || isLoading} className="h-9 w-9 shrink-0">
+              <Button
+                size="icon"
+                onClick={sendMessage}
+                disabled={(!input.trim() && pendingAttachments.length === 0) || isLoading || recording}
+                className="h-9 w-9 shrink-0"
+              >
                 {isLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
               </Button>
               <Button size="icon" variant="outline" onClick={reset} disabled={isLoading || messages.length === 0} className="h-9 w-9 shrink-0" title="Limpar conversa">
@@ -653,7 +724,7 @@ export function AgentTestChat({ systemPrompt, model = 'google/gemini-2.5-flash',
               </Button>
             </div>
             <p className="text-[10px] text-muted-foreground text-center">
-              Sandbox — comandos como [STATUS:], [TRANSFERIR:], [FOLLOWUP:] aparecem como etiquetas e não executam nada.
+              Sandbox — imagens e áudio são enviados pra IA testar OCR/transcrição. Comandos [STATUS:], [TRANSFERIR:], [FOLLOWUP:] aparecem como etiquetas e não executam nada.
             </p>
           </div>
         </DialogContent>
