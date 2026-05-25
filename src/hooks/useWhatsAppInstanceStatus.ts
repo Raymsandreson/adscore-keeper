@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/integrations/supabase';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 export interface InstanceStatus {
@@ -14,6 +15,7 @@ export function useWhatsAppInstanceStatus(enabled: boolean = true) {
   const [statuses, setStatuses] = useState<InstanceStatus[]>([]);
   const [loading, setLoading] = useState(false);
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
+  const [notifyDisconnectEnabled, setNotifyDisconnectEnabled] = useState<boolean>(true);
   const disconnectedTimestamps = useRef<Record<string, Date>>({});
   const notifiedInstances = useRef<Set<string>>(new Set());
 
@@ -109,6 +111,15 @@ export function useWhatsAppInstanceStatus(enabled: boolean = true) {
     if (!enabled) return;
     setLoading(true);
     try {
+      // Check if disconnect alerts are enabled in config
+      const { data: config } = await db
+        .from('whatsapp_notification_config')
+        .select('notify_instance_disconnect')
+        .limit(1)
+        .maybeSingle();
+      const disconnectAlertsEnabled = config?.notify_instance_disconnect !== false;
+      setNotifyDisconnectEnabled(disconnectAlertsEnabled);
+
       const { data, error } = await cloudFunctions.invoke('check-whatsapp-status');
       if (error) throw error;
       const now = new Date();
@@ -134,12 +145,12 @@ export function useWhatsAppInstanceStatus(enabled: boolean = true) {
 
       // Auto-notify offline instances via WhatsApp
       const offline = enriched.filter(s => !s.connected);
-      if (offline.length > 0) {
+      if (offline.length > 0 && disconnectAlertsEnabled) {
         notifyOfflineViaWhatsApp(offline);
       }
 
       // Notify reconnected instances
-      if (reconnected.length > 0) {
+      if (reconnected.length > 0 && disconnectAlertsEnabled) {
         notifyReconnectedViaWhatsApp(reconnected);
         // Auto-process queued group creations when instances come back online
         cloudFunctions.invoke('process-group-queue').catch(err => 

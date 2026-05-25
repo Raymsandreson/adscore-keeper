@@ -11,7 +11,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, Save, Plus, X, Bell, Clock, Target, AlertTriangle, CalendarDays, UserPlus, User, Send } from 'lucide-react';
+import { Loader2, Save, Plus, X, Bell, Clock, Target, AlertTriangle, CalendarDays, UserPlus, User, Send, WifiOff } from 'lucide-react';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 const DAYS_OF_WEEK = [
@@ -48,6 +48,7 @@ interface NotificationConfig {
   notify_checklist_steps: boolean;
   notify_zapsign_documents: boolean;
   notify_callface_calls: boolean;
+  notify_instance_disconnect: boolean;
   dashboard_instance_names: string[];
   schedule_times: string[];
   schedule_days: number[];
@@ -70,6 +71,7 @@ const DEFAULT_CONFIG: NotificationConfig = {
   notify_checklist_steps: false,
   notify_zapsign_documents: false,
   notify_callface_calls: false,
+  notify_instance_disconnect: true,
   dashboard_instance_names: [],
   schedule_times: ['08:00', '18:00'],
   schedule_days: [1, 2, 3, 4, 5],
@@ -119,6 +121,7 @@ export function WhatsAppNotificationSettings() {
         notify_checklist_steps: d.notify_checklist_steps ?? false,
         notify_zapsign_documents: d.notify_zapsign_documents ?? false,
         notify_callface_calls: d.notify_callface_calls ?? false,
+        notify_instance_disconnect: d.notify_instance_disconnect ?? true,
         dashboard_instance_names: d.dashboard_instance_names || [],
         schedule_times: d.schedule_times || d.dashboard_schedule_times || ['08:00', '18:00'],
         schedule_days: d.schedule_days || d.dashboard_schedule_days || [1, 2, 3, 4, 5],
@@ -153,6 +156,7 @@ export function WhatsAppNotificationSettings() {
         notify_checklist_steps: config.notify_checklist_steps,
         notify_zapsign_documents: config.notify_zapsign_documents,
         notify_callface_calls: config.notify_callface_calls,
+        notify_instance_disconnect: config.notify_instance_disconnect,
         dashboard_instance_names: config.dashboard_instance_names,
         schedule_times: config.schedule_times,
         schedule_days: config.schedule_days,
@@ -361,6 +365,7 @@ export function WhatsAppNotificationSettings() {
             { key: 'notify_checklist_steps', icon: <Target className="h-4 w-4 text-cyan-500" />, label: 'Passos Dados (Checklist)', desc: 'Quantidade de itens de checklist concluídos no dia' },
             { key: 'notify_zapsign_documents', icon: <CalendarDays className="h-4 w-4 text-indigo-500" />, label: 'Documentos ZapSign', desc: 'Documentos gerados e assinados no dia' },
             { key: 'notify_callface_calls', icon: <Clock className="h-4 w-4 text-rose-500" />, label: 'Ligações CallFace', desc: 'Quantidade de ligações, atendidas, não atendidas e tempo total' },
+            { key: 'notify_instance_disconnect', icon: <WifiOff className="h-4 w-4 text-amber-500" />, label: 'Alerta de Desconexão', desc: 'Aviso quando instâncias WhatsApp ficam offline' },
           ].map(({ key, icon, label, desc }) => (
             <div key={key} className="flex items-center justify-between gap-4 py-2 border-b last:border-0">
               <div className="flex items-center gap-3">
