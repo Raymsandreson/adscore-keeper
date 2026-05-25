@@ -185,6 +185,91 @@ export function AgentTestChat({ systemPrompt, model = 'google/gemini-2.5-flash',
     setInput('');
   };
 
+  const fireProactive = async () => {
+    if (isLoading) return;
+    if (!draftPrompt.trim()) {
+      toast.error('Configure o prompt do agente antes de testar');
+      return;
+    }
+    const extraInstr = (proactiveInstruction || '').trim();
+    const proactiveSystem =
+      draftPrompt +
+      '\n\n[INSTRUÇÃO DE ABERTURA — DISPARO PROATIVO]\n' +
+      'Você foi acionado pela etiqueta antes do cliente falar. Inicie a conversa AGORA, ' +
+      'de forma natural, humanizada e curta, seguindo seu prompt principal e a instrução abaixo.\n' +
+      (extraInstr ? extraInstr : '(Sem instrução extra — use o prompt principal pra montar a abordagem.)');
+
+    setMessages(prev => [...prev, { role: 'assistant', content: '' }]);
+    setIsLoading(true);
+
+    const wireMessages = [
+      { role: 'user' as const, content: '(__INICIAR_CONVERSA_PROATIVA__)' },
+    ];
+
+    let assistantText = '';
+    try {
+      const resp = await fetch(TEST_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({
+          system_prompt: proactiveSystem,
+          messages: wireMessages,
+          model,
+          variables,
+        }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ error: `Erro ${resp.status}` }));
+        throw new Error(err.error || `Erro ${resp.status}`);
+      }
+      if (!resp.body) throw new Error('Sem stream');
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let done = false;
+      while (!done) {
+        const { done: d, value } = await reader.read();
+        if (d) break;
+        buffer += decoder.decode(value, { stream: true });
+        let idx: number;
+        while ((idx = buffer.indexOf('\n')) !== -1) {
+          let line = buffer.slice(0, idx);
+          buffer = buffer.slice(idx + 1);
+          if (line.endsWith('\r')) line = line.slice(0, -1);
+          if (!line.startsWith('data: ')) continue;
+          const jsonStr = line.slice(6).trim();
+          if (jsonStr === '[DONE]') { done = true; break; }
+          try {
+            const parsed = JSON.parse(jsonStr);
+            const content = parsed.choices?.[0]?.delta?.content;
+            if (content) {
+              assistantText += content;
+              const { cleanText, actions } = detectActions(assistantText);
+              setMessages(prev => {
+                const arr = [...prev];
+                arr[arr.length - 1] = { role: 'assistant', content: cleanText, actions };
+                return arr;
+              });
+            }
+          } catch {
+            buffer = line + '\n' + buffer;
+            break;
+          }
+        }
+      }
+      toast.success('Mensagem proativa gerada');
+    } catch (e: any) {
+      console.error(e);
+      toast.error(e.message || 'Erro ao gerar proativa');
+      setMessages(prev => prev.slice(0, -1));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const loadRealConversation = async () => {
     const phone = selectedLead?.lead_phone || selectedLead?.phone;
     if (!phone) {
