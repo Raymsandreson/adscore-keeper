@@ -37,7 +37,11 @@ serve(async (req) => {
 
     const payload = [
       { role: "system", content: finalSystem },
-      ...messages.map((m: any) => ({ role: m.role, content: String(m.content || "") })),
+      ...messages.map((m: any) => ({
+        role: m.role,
+        // mantém arrays (multimodal: texto + imagem + áudio); senão coage pra string
+        content: Array.isArray(m.content) ? m.content : String(m.content || ""),
+      })),
     ];
 
     const response = await callGemini({ model, messages: payload, stream: true });

@@ -6,7 +6,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/components/ui/sheet';
-import { Loader2, Send, Play, RotateCcw, User, Search, X, Pencil, Save, Download, CheckCheck } from 'lucide-react';
+import { Loader2, Send, Play, RotateCcw, User, Search, X, Pencil, Save, Download, CheckCheck, Paperclip, Mic, Square } from 'lucide-react';
 import { toast } from 'sonner';
 import { renderWhatsAppText } from '@/lib/whatsappFormat';
 import { db } from '@/integrations/supabase';
@@ -18,9 +18,17 @@ interface Props {
   onPromptChange?: (prompt: string) => void;
 }
 
+interface Attachment {
+  kind: 'image' | 'audio';
+  dataUrl: string; // data:...;base64,...
+  mime: string;
+  name?: string;
+}
+
 interface Msg {
   role: 'user' | 'assistant';
   content: string;
+  attachments?: Attachment[];
   actions?: DetectedAction[];
 }
 
@@ -216,17 +224,134 @@ export function AgentTestChat({ systemPrompt, model = 'google/gemini-2.5-flash',
     }
   };
 
+  // ===== Anexos pendentes (mídia/voz) =====
+  const [pendingAttachments, setPendingAttachments] = useState<Attachment[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const fileToDataUrl = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(String(r.result));
+      r.onerror = reject;
+      r.readAsDataURL(file);
+    });
+
+  const handleFilePick = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = ''; // permite re-selecionar mesmo arquivo
+    for (const f of files) {
+      try {
+        if (f.size > 8 * 1024 * 1024) { toast.error(`${f.name}: máx 8MB`); continue; }
+        const dataUrl = await fileToDataUrl(f);
+        const kind: 'image' | 'audio' = f.type.startsWith('audio/') ? 'audio' : 'image';
+        setPendingAttachments(prev => [...prev, { kind, dataUrl, mime: f.type, name: f.name }]);
+      } catch (err) {
+        console.error(err);
+        toast.error(`Erro ao ler ${f.name}`);
+      }
+    }
+  };
+
+  const removePending = (idx: number) => {
+    setPendingAttachments(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  // ===== Gravação de voz =====
+  const [recording, setRecording] = useState(false);
+  const [recSeconds, setRecSeconds] = useState(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recChunksRef = useRef<Blob[]>([]);
+  const recTimerRef = useRef<number | null>(null);
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : (MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '');
+      const mr = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+      recChunksRef.current = [];
+      mr.ondataavailable = (ev) => { if (ev.data.size > 0) recChunksRef.current.push(ev.data); };
+      mr.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop());
+        const blob = new Blob(recChunksRef.current, { type: mr.mimeType || 'audio/webm' });
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const r = new FileReader();
+          r.onload = () => resolve(String(r.result));
+          r.onerror = reject;
+          r.readAsDataURL(blob);
+        });
+        setPendingAttachments(prev => [...prev, {
+          kind: 'audio',
+          dataUrl,
+          mime: blob.type || 'audio/webm',
+          name: `voz-${Date.now()}.webm`,
+        }]);
+      };
+      mediaRecorderRef.current = mr;
+      mr.start();
+      setRecording(true);
+      setRecSeconds(0);
+      recTimerRef.current = window.setInterval(() => setRecSeconds(s => s + 1), 1000);
+    } catch (e: any) {
+      console.error(e);
+      toast.error('Permissão de microfone negada');
+    }
+  };
+
+  const stopRecording = () => {
+    if (recTimerRef.current) { clearInterval(recTimerRef.current); recTimerRef.current = null; }
+    mediaRecorderRef.current?.stop();
+    mediaRecorderRef.current = null;
+    setRecording(false);
+  };
+
+  useEffect(() => () => {
+    if (recTimerRef.current) clearInterval(recTimerRef.current);
+    try { mediaRecorderRef.current?.stop(); } catch {}
+  }, []);
+
+  // Constrói o content multimodal pra Gemini (campo content como array de parts)
+  const buildMessageContent = (text: string, atts: Attachment[]): any => {
+    if (atts.length === 0) return text;
+    const parts: any[] = [];
+    if (text) parts.push({ type: 'text', text });
+    for (const a of atts) {
+      if (a.kind === 'image') {
+        parts.push({ type: 'image_url', image_url: { url: a.dataUrl } });
+      } else if (a.kind === 'audio') {
+        // base64 puro pra input_audio
+        const base64 = a.dataUrl.split(',')[1] || '';
+        const format = (a.mime.includes('webm') ? 'webm' : a.mime.includes('mp3') ? 'mp3' : a.mime.includes('ogg') ? 'ogg' : 'wav');
+        parts.push({ type: 'input_audio', input_audio: { data: base64, format } });
+      }
+    }
+    if (!text) parts.unshift({ type: 'text', text: '' });
+    return parts;
+  };
+
   const sendMessage = async () => {
-    if (!input.trim() || isLoading) return;
+    if ((!input.trim() && pendingAttachments.length === 0) || isLoading) return;
     if (!draftPrompt.trim()) {
       toast.error('Configure o prompt do agente antes de testar');
       return;
     }
-    const userMsg: Msg = { role: 'user', content: input.trim() };
+    const text = input.trim();
+    const atts = pendingAttachments;
+    const userMsg: Msg = { role: 'user', content: text, attachments: atts.length ? atts : undefined };
     const newMessages = [...messages, userMsg];
     setMessages([...newMessages, { role: 'assistant', content: '' }]);
     setInput('');
+    setPendingAttachments([]);
     setIsLoading(true);
+
+    // Mensagens enviadas ao backend usam content multimodal
+    const wireMessages = newMessages.map(m => ({
+      role: m.role,
+      content: m.role === 'user'
+        ? buildMessageContent(m.content, m.attachments || [])
+        : m.content,
+    }));
 
     let assistantText = '';
     try {
@@ -238,7 +363,7 @@ export function AgentTestChat({ systemPrompt, model = 'google/gemini-2.5-flash',
         },
         body: JSON.stringify({
           system_prompt: draftPrompt,
-          messages: newMessages,
+          messages: wireMessages,
           model,
           variables,
         }),
@@ -453,9 +578,28 @@ export function AgentTestChat({ systemPrompt, model = 'google/gemini-2.5-flash',
                         }`}
                         style={{ wordBreak: 'break-word' }}
                       >
-                        <div className="whitespace-pre-wrap">
-                          {renderWhatsAppText(m.content || '…')}
-                        </div>
+                        {m.attachments && m.attachments.length > 0 && (
+                          <div className="space-y-1 mb-1">
+                            {m.attachments.map((a, ai) => (
+                              <div key={ai}>
+                                {a.kind === 'image' ? (
+                                  <img
+                                    src={a.dataUrl}
+                                    alt={a.name || 'imagem'}
+                                    className="rounded max-w-full max-h-60 object-cover block"
+                                  />
+                                ) : (
+                                  <audio src={a.dataUrl} controls className="w-full max-w-[260px] h-9" />
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {(m.content || (!m.attachments?.length)) && (
+                          <div className="whitespace-pre-wrap">
+                            {renderWhatsAppText(m.content || (m.attachments?.length ? '' : '…'))}
+                          </div>
+                        )}
                         <div className="flex items-center justify-end gap-1 mt-0.5 -mb-0.5 text-[10px] text-[#667781]">
                           <span>
                             {new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
@@ -492,16 +636,87 @@ export function AgentTestChat({ systemPrompt, model = 'google/gemini-2.5-flash',
 
           {/* Composer */}
           <div className="border-t p-3 space-y-2">
-            <div className="flex gap-2">
+            {/* Preview de anexos pendentes */}
+            {pendingAttachments.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {pendingAttachments.map((a, idx) => (
+                  <div key={idx} className="relative border rounded-md p-1 bg-muted/40">
+                    {a.kind === 'image' ? (
+                      <img src={a.dataUrl} alt={a.name} className="h-14 w-14 object-cover rounded" />
+                    ) : (
+                      <div className="h-14 px-2 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                        <Mic className="h-3.5 w-3.5" />
+                        <audio src={a.dataUrl} controls className="h-8 max-w-[180px]" />
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => removePending(idx)}
+                      className="absolute -top-1.5 -right-1.5 bg-background border rounded-full h-5 w-5 flex items-center justify-center hover:bg-muted"
+                      title="Remover"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {recording && (
+              <div className="flex items-center gap-2 text-xs text-destructive">
+                <span className="inline-block h-2 w-2 rounded-full bg-destructive animate-pulse" />
+                Gravando... {Math.floor(recSeconds / 60).toString().padStart(2, '0')}:{(recSeconds % 60).toString().padStart(2, '0')}
+                <Button size="sm" variant="outline" className="h-7 ml-auto gap-1" onClick={stopRecording}>
+                  <Square className="h-3 w-3" /> Parar
+                </Button>
+              </div>
+            )}
+
+            <div className="flex gap-2 items-center">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,audio/*"
+                multiple
+                className="hidden"
+                onChange={handleFilePick}
+              />
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                className="h-9 w-9 shrink-0"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isLoading || recording}
+                title="Anexar imagem ou áudio"
+              >
+                <Paperclip className="h-4 w-4" />
+              </Button>
+              <Button
+                type="button"
+                size="icon"
+                variant={recording ? 'destructive' : 'ghost'}
+                className="h-9 w-9 shrink-0"
+                onClick={recording ? stopRecording : startRecording}
+                disabled={isLoading}
+                title={recording ? 'Parar gravação' : 'Gravar mensagem de voz'}
+              >
+                {recording ? <Square className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+              </Button>
               <Input
-                placeholder="Mensagem como cliente... (Enter envia)"
+                placeholder={pendingAttachments.length ? 'Legenda (opcional)...' : 'Mensagem como cliente... (Enter envia)'}
                 value={input}
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
                 className="text-xs flex-1"
-                disabled={isLoading}
+                disabled={isLoading || recording}
               />
-              <Button size="icon" onClick={sendMessage} disabled={!input.trim() || isLoading} className="h-9 w-9 shrink-0">
+              <Button
+                size="icon"
+                onClick={sendMessage}
+                disabled={(!input.trim() && pendingAttachments.length === 0) || isLoading || recording}
+                className="h-9 w-9 shrink-0"
+              >
                 {isLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
               </Button>
               <Button size="icon" variant="outline" onClick={reset} disabled={isLoading || messages.length === 0} className="h-9 w-9 shrink-0" title="Limpar conversa">
@@ -509,7 +724,7 @@ export function AgentTestChat({ systemPrompt, model = 'google/gemini-2.5-flash',
               </Button>
             </div>
             <p className="text-[10px] text-muted-foreground text-center">
-              Sandbox — comandos como [STATUS:], [TRANSFERIR:], [FOLLOWUP:] aparecem como etiquetas e não executam nada.
+              Sandbox — imagens e áudio são enviados pra IA testar OCR/transcrição. Comandos [STATUS:], [TRANSFERIR:], [FOLLOWUP:] aparecem como etiquetas e não executam nada.
             </p>
           </div>
         </DialogContent>
