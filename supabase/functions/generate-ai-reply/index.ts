@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { geminiChat } from "../_shared/gemini.ts";
+import { requireAuth, unauthorized } from "../_shared/require-auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -12,6 +13,9 @@ serve(async (req) => {
   }
 
   try {
+    const user = await requireAuth(req);
+    if (!user) return unauthorized(corsHeaders);
+
     const { comment, authorUsername, postContext, parentComment, tone, generateDM, customPrompt } = await req.json();
 
     const toneInstructions: Record<string, string> = {

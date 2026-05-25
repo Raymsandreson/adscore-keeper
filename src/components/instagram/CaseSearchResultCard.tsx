@@ -1,3 +1,4 @@
+import DOMPurify from 'dompurify';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -168,7 +169,7 @@ function CommentItem({
           {/* Texto do comentário */}
           <p
             className="text-muted-foreground text-sm mb-2"
-            dangerouslySetInnerHTML={{ __html: highlightKeywords(comment.text) }}
+            dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(highlightKeywords(comment.text), { ALLOWED_TAGS: ['mark'], ALLOWED_ATTR: [] }) }}
           />
           
           {/* Link para ver post */}
