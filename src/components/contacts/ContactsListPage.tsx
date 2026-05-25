@@ -1703,10 +1703,83 @@ export function ContactsListPage() {
                 const creatorOptions = Array.from(creatorMap.entries())
                   .map(([value, label]) => ({ value, label }))
                   .sort((a, b) => a.label.localeCompare(b.label, 'pt-BR'));
+
+                // Filtro por coluna (substring case-insensitive, igual planilha)
+                const colFilterActive = Object.values(auditColFilter).some(v => v.trim() !== '');
+                const cellText = (g: typeof groups[number], col: string): string => {
+                  switch (col) {
+                    case 'leadN': return g.lead_number != null ? `LEAD-${g.lead_number}${g.product_case_prefix ? `(${g.product_case_prefix})` : ''}` : '';
+                    case 'caseN': return g.case_number || '';
+                    case 'groupName': return g.group_name || '';
+                    case 'leadName': return g.lead_name || '';
+                    case 'createdAt': return g.created_at ? new Date(g.created_at).toLocaleString('pt-BR') : '';
+                    case 'createdBy': return (g.owner_phone || g.creator_instance_name) ? creatorLabel(g) : '';
+                    default: return '';
+                  }
+                };
+                if (colFilterActive) {
+                  const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+                  visible = visible.filter(g =>
+                    Object.entries(auditColFilter).every(([col, q]) => {
+                      const query = norm(q.trim());
+                      if (!query) return true;
+                      return norm(cellText(g, col)).includes(query);
+                    })
+                  );
+                }
+                const visibleAfterCols = visible;
+                const cappedAfterCols = colFilterActive ? visibleAfterCols.slice(0, RENDER_CAP) : capped;
+
+                // Grid template a partir das larguras (px). Última coluna em 1fr seria ruim aqui — manter px.
+                const cols = ['check', 'leadN', 'caseN', 'groupName', 'leadName', 'createdAt', 'createdBy', 'actions'] as const;
+                const gridTemplate = cols.map(c => `${auditColW[c]}px`).join(' ');
+                const startResize = (col: string, e: React.MouseEvent) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  const startX = e.clientX;
+                  const startW = auditColW[col];
+                  const onMove = (ev: MouseEvent) => {
+                    const dx = ev.clientX - startX;
+                    const next = Math.max(40, Math.min(800, startW + dx));
+                    setAuditColW(prev => ({ ...prev, [col]: next }));
+                  };
+                  const onUp = () => {
+                    window.removeEventListener('mousemove', onMove);
+                    window.removeEventListener('mouseup', onUp);
+                    document.body.style.cursor = '';
+                    document.body.style.userSelect = '';
+                  };
+                  document.body.style.cursor = 'col-resize';
+                  document.body.style.userSelect = 'none';
+                  window.addEventListener('mousemove', onMove);
+                  window.addEventListener('mouseup', onUp);
+                };
+                const ResizeHandle = ({ col }: { col: string }) => (
+                  <span
+                    onMouseDown={(e) => startResize(col, e)}
+                    className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-primary/40 active:bg-primary/60"
+                    aria-label={`Redimensionar ${col}`}
+                  />
+                );
+                const HeaderCell = ({ col, label, title, align }: { col: string; label: string; title?: string; align?: 'left'|'center' }) => (
+                  <div className="relative pr-2" style={{ textAlign: align || 'left' }}>
+                    <div className="text-[11px] font-medium text-muted-foreground truncate" title={title || label}>{label}</div>
+                    {auditColFilter[col] !== undefined && (
+                      <Input
+                        value={auditColFilter[col]}
+                        onChange={(e) => setAuditColFilter(prev => ({ ...prev, [col]: e.target.value }))}
+                        placeholder="filtrar…"
+                        className="h-6 text-[11px] mt-1 px-1.5"
+                      />
+                    )}
+                    <ResizeHandle col={col} />
+                  </div>
+                );
+
                 return (
                   <div className="space-y-2">
                     <div className="flex flex-wrap items-center gap-3 px-1 text-xs text-muted-foreground">
-                      <span>{total} caso(s) fechado(s)</span>
+                      <span>{visibleAfterCols.length} caso(s) fechado(s)</span>
                       <span className="flex items-center gap-1">
                         <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
                         {mismatched} divergente(s)
@@ -1730,17 +1803,22 @@ export function ContactsListPage() {
                             <X className="h-3 w-3" />
                           </Button>
                         )}
+                        {colFilterActive && (
+                          <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setAuditColFilter({ leadN: '', caseN: '', groupName: '', leadName: '', createdAt: '', createdBy: '' })}>
+                            Limpar filtros de coluna
+                          </Button>
+                        )}
                       </div>
                     </div>
-                    <div className="grid grid-cols-[36px_90px_60px_1.4fr_1fr_140px_160px_56px] gap-2 px-3 py-2 text-[11px] font-medium text-muted-foreground border-b">
-                      <span></span>
-                      <span title="Sequência do lead (LEAD-N(PFX))">Nº lead</span>
-                      <span title="Nº oficial do caso (legal_cases.case_number)">Nº caso</span>
-                      <span className="pr-3">Nome do grupo</span>
-                      <span className="pl-3 text-center">Nome do lead</span>
-                      <span title="Data e hora de criação do grupo no WhatsApp">Criado em</span>
-                      <span title="Telefone/nome do criador do grupo no WhatsApp">Criado por</span>
-                      <span></span>
+                    <div className="grid gap-2 px-3 py-2 border-b items-start" style={{ gridTemplateColumns: gridTemplate }}>
+                      <div className="relative"><span></span></div>
+                      <HeaderCell col="leadN" label="Nº lead" title="Sequência do lead (LEAD-N(PFX))" />
+                      <HeaderCell col="caseN" label="Nº caso" title="Nº oficial do caso (legal_cases.case_number)" />
+                      <HeaderCell col="groupName" label="Nome do grupo" />
+                      <HeaderCell col="leadName" label="Nome do lead" align="center" />
+                      <HeaderCell col="createdAt" label="Criado em" title="Data e hora de criação do grupo no WhatsApp" />
+                      <HeaderCell col="createdBy" label="Criado por" title="Telefone/instância de quem criou o grupo" />
+                      <div className="relative"><span></span></div>
                     </div>
                     {capped.map(group => {
                       const caseNum = group.case_number;
