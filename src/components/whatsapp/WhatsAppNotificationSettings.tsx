@@ -48,6 +48,7 @@ interface NotificationConfig {
   notify_checklist_steps: boolean;
   notify_zapsign_documents: boolean;
   notify_callface_calls: boolean;
+  notify_instance_disconnect: boolean;
   dashboard_instance_names: string[];
   schedule_times: string[];
   schedule_days: number[];
@@ -70,6 +71,7 @@ const DEFAULT_CONFIG: NotificationConfig = {
   notify_checklist_steps: false,
   notify_zapsign_documents: false,
   notify_callface_calls: false,
+  notify_instance_disconnect: true,
   dashboard_instance_names: [],
   schedule_times: ['08:00', '18:00'],
   schedule_days: [1, 2, 3, 4, 5],
@@ -119,6 +121,7 @@ export function WhatsAppNotificationSettings() {
         notify_checklist_steps: d.notify_checklist_steps ?? false,
         notify_zapsign_documents: d.notify_zapsign_documents ?? false,
         notify_callface_calls: d.notify_callface_calls ?? false,
+        notify_instance_disconnect: d.notify_instance_disconnect ?? true,
         dashboard_instance_names: d.dashboard_instance_names || [],
         schedule_times: d.schedule_times || d.dashboard_schedule_times || ['08:00', '18:00'],
         schedule_days: d.schedule_days || d.dashboard_schedule_days || [1, 2, 3, 4, 5],
@@ -153,6 +156,7 @@ export function WhatsAppNotificationSettings() {
         notify_checklist_steps: config.notify_checklist_steps,
         notify_zapsign_documents: config.notify_zapsign_documents,
         notify_callface_calls: config.notify_callface_calls,
+        notify_instance_disconnect: config.notify_instance_disconnect,
         dashboard_instance_names: config.dashboard_instance_names,
         schedule_times: config.schedule_times,
         schedule_days: config.schedule_days,
