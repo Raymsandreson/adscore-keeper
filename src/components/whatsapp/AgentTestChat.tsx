@@ -18,9 +18,17 @@ interface Props {
   onPromptChange?: (prompt: string) => void;
 }
 
+interface Attachment {
+  kind: 'image' | 'audio';
+  dataUrl: string; // data:...;base64,...
+  mime: string;
+  name?: string;
+}
+
 interface Msg {
   role: 'user' | 'assistant';
   content: string;
+  attachments?: Attachment[];
   actions?: DetectedAction[];
 }
 
