@@ -6,7 +6,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/components/ui/sheet';
-import { Loader2, Send, Play, RotateCcw, User, Search, X, Pencil, Save, Download, Check, CheckCheck } from 'lucide-react';
+import { Loader2, Send, Play, RotateCcw, User, Search, X, Pencil, Save, Download, CheckCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { renderWhatsAppText } from '@/lib/whatsappFormat';
 import { db } from '@/integrations/supabase';
