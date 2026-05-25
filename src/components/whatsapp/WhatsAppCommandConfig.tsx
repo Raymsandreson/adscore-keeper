@@ -1147,6 +1147,11 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                     <Eye className="h-3.5 w-3.5" />
                     🔍 Diagnóstico do Agente
                   </Button>
+                  <AgentTestChat
+                    systemPrompt={form.prompt_instructions || ''}
+                    model={form.model}
+                    agentName={form.shortcut_name}
+                  />
                 </div>
                 
                 <div className="mt-3">
