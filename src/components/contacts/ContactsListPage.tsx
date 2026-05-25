@@ -1481,11 +1481,15 @@ export function ContactsListPage() {
 
               const matchesSearch = (g: typeof groups[number]) => {
                 if (!groupSearch) return true;
+                const norm = (s: string) => normalizeName(s);
                 const rawQuery = groupSearch.toLowerCase().trim();
+                const normQuery = norm(groupSearch);
+                const tokens = normQuery.split(/\s+/).filter(Boolean);
                 const queryDigits = rawQuery.replace(/\D/g, '');
                 if (groupSearchScope === 'lead') {
-                  const leadText = (g.lead_name || '').toLowerCase();
-                  return leadText.includes(rawQuery) || (!!queryDigits && leadText.replace(/\D/g, '').includes(queryDigits));
+                  const leadText = norm(g.lead_name || '');
+                  const tokenMatch = tokens.length > 0 && tokens.every(t => leadText.includes(t));
+                  return tokenMatch || (!!queryDigits && leadText.replace(/\D/g, '').includes(queryDigits));
                 }
                 const caseDigits = g.case_number ? String(g.case_number).replace(/\D/g, '') : '';
                 const groupDigits = (g.group_name || '').replace(/\D/g, '');
@@ -1496,10 +1500,12 @@ export function ContactsListPage() {
                 const caseLabel = caseDigits
                   ? `caso ${caseDigits} ${g.product_case_prefix ? `${g.product_case_prefix}-${caseDigits}` : ''}`
                   : '';
-                const textMatch = [g.group_name, leadLabel, caseLabel].join(' ').toLowerCase().includes(rawQuery);
+                const haystack = norm([g.group_name, leadLabel, caseLabel].join(' '));
+                const textMatch = tokens.length > 0 && tokens.every(t => haystack.includes(t));
                 const numberMatch = !!queryDigits && [groupDigits, caseDigits, leadDigits].some(value => value.includes(queryDigits));
                 return textMatch || numberMatch;
               };
+
 
               let visible = [...groups].filter(g => {
                 if (excludedGroups.has(g.group_jid)) return false;
