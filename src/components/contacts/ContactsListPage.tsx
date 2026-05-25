@@ -1517,11 +1517,15 @@ export function ContactsListPage() {
                 const d = String((c as any).phone || '').replace(/\D/g, '');
                 if (d && (c as any).full_name) contactNameByPhone.set(d, (c as any).full_name);
               }
-              const creatorLabel = (jid: string | null): string => {
-                const digits = jidToPhone(jid);
-                if (!digits) return '—';
-                const name = contactNameByPhone.get(digits);
-                const phone = formatPhoneBR(digits);
+              const creatorLabel = (g: { owner_phone: string | null; creator_instance_name: string | null }): string => {
+                if (g.creator_instance_name) {
+                  return g.owner_phone
+                    ? `Instância ${g.creator_instance_name} (${formatPhoneBR(g.owner_phone)})`
+                    : `Instância ${g.creator_instance_name}`;
+                }
+                if (!g.owner_phone) return '—';
+                const name = contactNameByPhone.get(g.owner_phone);
+                const phone = formatPhoneBR(g.owner_phone);
                 return name ? `${name} (${phone})` : phone;
               };
 
