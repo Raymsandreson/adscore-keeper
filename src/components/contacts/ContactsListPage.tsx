@@ -1738,7 +1738,7 @@ export function ContactsListPage() {
                       return (
                         <div
                           key={group.group_jid}
-                          className={`grid grid-cols-[36px_110px_70px_1fr_1fr_64px] gap-2 items-center p-3 rounded-lg border transition-colors hover:bg-accent/50 ${!matches ? 'border-amber-500/40 bg-amber-500/5' : ''}`}
+                          className={`grid grid-cols-[36px_90px_60px_1.4fr_1fr_140px_160px_56px] gap-2 items-center p-3 rounded-lg border transition-colors hover:bg-accent/50 ${!matches ? 'border-amber-500/40 bg-amber-500/5' : ''}`}
                         >
                           <Checkbox
                             checked={!excludedGroups.has(group.group_jid)}
