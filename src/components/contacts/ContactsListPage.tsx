@@ -418,6 +418,24 @@ export function ContactsListPage() {
       // Assim, mesmo grupos cujo "seen_in_instances" não contém a instância dona
       // ainda conseguem ser rotulados como "Instância X" se o owner_pn bater.
       const instancePhoneToName = new Map<string, string>();
+
+      // Seed do mapa direto da tabela whatsapp_instances (fonte primária).
+      // seen_in_instances só lista instâncias que ENXERGARAM cada grupo, então
+      // muitos criadores nunca apareciam ali. A tabela tem TODAS as instâncias.
+      try {
+        const { data: instRows } = await (externalSupabase as any)
+          .from('whatsapp_instances')
+          .select('instance_name, owner_phone');
+        for (const r of (instRows as any[]) || []) {
+          const ph = String(r?.owner_phone || '').replace(/\D/g, '');
+          const nm = r?.instance_name ? String(r.instance_name) : '';
+          if (ph && nm) instancePhoneToName.set(ph, nm);
+        }
+        console.log('[ContactsListPage] instances seeded:', instancePhoneToName.size);
+      } catch (e) {
+        console.warn('fetchGroups whatsapp_instances seed failed:', e);
+      }
+
       const snapshotRows: any[] = [];
       for (let from = 0; ; from += pageSize) {
         const to = from + pageSize - 1;
