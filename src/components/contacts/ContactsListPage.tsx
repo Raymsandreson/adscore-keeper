@@ -146,6 +146,14 @@ export function ContactsListPage() {
   const [dateFrom, setDateFrom] = useState<string>('');
   const [dateTo, setDateTo] = useState<string>('');
   const [creatorFilter, setCreatorFilter] = useState<string>('all');
+  // Larguras das colunas do modo auditoria (estilo planilha — usuário arrasta o limite direito)
+  const [auditColW, setAuditColW] = useState<Record<string, number>>({
+    check: 36, leadN: 90, caseN: 70, groupName: 280, leadName: 220, createdAt: 130, createdBy: 220, actions: 60,
+  });
+  // Filtros por coluna (texto livre, "contém") — estilo Google Sheets
+  const [auditColFilter, setAuditColFilter] = useState<Record<string, string>>({
+    leadN: '', caseN: '', groupName: '', leadName: '', createdAt: '', createdBy: '',
+  });
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
   const [groupContacts, setGroupContacts] = useState<Contact[]>([]);
   const [groupContactsLoading, setGroupContactsLoading] = useState(false);
