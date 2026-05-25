@@ -1590,24 +1590,26 @@ export function ContactsListPage() {
                       <span></span>
                     </div>
                     {capped.map(group => {
-                      const groupNum = extractCaseNum(group.group_name);
                       const caseNum = group.case_number;
                       const ng = normalizeName(group.group_name);
                       const nl = normalizeName(group.lead_name);
                       const hasBoth = !!ng && !!nl;
                       const nameMatches = hasBoth && (ng.includes(nl) || nl.includes(ng));
-                      // Confere se o nº extraído do grupo bate com o nº oficial do caso
-                      const numericGroup = groupNum != null ? String(groupNum) : null;
+                      // Confere se o nº do lead (sequência oficial) aparece no nome do grupo
+                      const numericLead = group.lead_number != null ? String(group.lead_number) : null;
                       const numericCase = caseNum ? caseNum.replace(/\D/g, '').replace(/^0+/, '') : null;
+                      const groupDigits = (group.group_name || '').replace(/\D/g, '');
                       const numberMatches =
-                        numericGroup && numericCase
-                          ? numericGroup === numericCase || numericCase.endsWith(numericGroup) || numericGroup.endsWith(numericCase)
-                          : !numericCase; // sem nº de caso oficial não conta como divergência numérica
+                        numericCase
+                          ? groupDigits.includes(numericCase)
+                          : numericLead
+                            ? groupDigits.includes(numericLead)
+                            : true;
                       const matches = nameMatches && numberMatches;
                       return (
                         <div
                           key={group.group_jid}
-                          className={`grid grid-cols-[36px_60px_110px_70px_1fr_1fr_64px] gap-2 items-center p-3 rounded-lg border transition-colors hover:bg-accent/50 ${!matches ? 'border-amber-500/40 bg-amber-500/5' : ''}`}
+                          className={`grid grid-cols-[36px_110px_70px_1fr_1fr_64px] gap-2 items-center p-3 rounded-lg border transition-colors hover:bg-accent/50 ${!matches ? 'border-amber-500/40 bg-amber-500/5' : ''}`}
                         >
                           <Checkbox
                             checked={!excludedGroups.has(group.group_jid)}
@@ -1622,8 +1624,13 @@ export function ContactsListPage() {
                             onClick={(e) => e.stopPropagation()}
                             aria-label="Incluir grupo no filtro"
                           />
-                          <span className="text-sm font-mono font-semibold tabular-nums">
-                            {groupNum != null ? groupNum : <span className="text-muted-foreground">—</span>}
+                          <span
+                            className={`text-xs font-mono font-semibold tabular-nums ${group.lead_number != null ? 'text-foreground' : 'text-muted-foreground'}`}
+                            title={group.lead_number != null ? `Lead nº ${group.lead_number}${group.product_case_prefix ? ` (${group.product_case_prefix})` : ''}` : 'Lead sem sequência'}
+                          >
+                            {group.lead_number != null
+                              ? `LEAD-${group.lead_number}${group.product_case_prefix ? `(${group.product_case_prefix})` : ''}`
+                              : '—'}
                           </span>
                           <span
                             className={`text-xs font-mono tabular-nums ${group.lead_number != null ? 'text-foreground' : 'text-muted-foreground'}`}
