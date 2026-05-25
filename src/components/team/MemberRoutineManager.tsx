@@ -131,15 +131,15 @@ function MemberRoutineView({ userId, memberName }: { userId: string; memberName:
 export function MemberRoutineManager() {
   const { members, loading } = useTeamMembers();
   const { user } = useAuthContext();
-  const { isAdmin, loading: roleLoading } = useUserRole();
+  const { loading: roleLoading } = useUserRole();
   const [selectedUserId, setSelectedUserId] = useState<string>('');
 
-  // Não-admins editam apenas a própria rotina: força seleção no próprio user
+  // Pré-seleciona o próprio usuário, mas permite trocar para qualquer membro.
   useEffect(() => {
-    if (!roleLoading && !isAdmin && user?.id && selectedUserId !== user.id) {
+    if (!roleLoading && user?.id && !selectedUserId) {
       setSelectedUserId(user.id);
     }
-  }, [roleLoading, isAdmin, user?.id, selectedUserId]);
+  }, [roleLoading, user?.id, selectedUserId]);
 
   if (loading || roleLoading) {
     return (
@@ -167,7 +167,8 @@ export function MemberRoutineManager() {
         </p>
       </CardHeader>
       <CardContent className="space-y-6">
-        {isAdmin && (
+        {(
+
 
         <div className="flex items-center gap-3">
           <label className="text-sm font-medium text-muted-foreground whitespace-nowrap">
