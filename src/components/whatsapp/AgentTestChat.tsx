@@ -178,12 +178,112 @@ export function AgentTestChat({ systemPrompt, model = 'google/gemini-2.5-flash',
     }
   };
 
-  const clearLead = () => { setSelectedLead(null); setSelectedContact(null); };
+  const clearLead = () => { setSelectedLead(null); setSelectedContact(null); setSelectedConversation(null); };
 
   const reset = () => {
     setMessages([]);
     setInput('');
   };
+
+  // ===== Buscar conversa direto (sem lead) =====
+  interface ConvOpt {
+    phone: string;
+    contact_name?: string | null;
+    instance_name?: string | null;
+    last_at?: string | null;
+  }
+  const [convSearch, setConvSearch] = useState('');
+  const [convOptions, setConvOptions] = useState<ConvOpt[]>([]);
+  const [searchingConv, setSearchingConv] = useState(false);
+  const [selectedConversation, setSelectedConversation] = useState<ConvOpt | null>(null);
+
+  const searchConversations = async (term: string) => {
+    if (!term.trim() || term.trim().length < 2) { setConvOptions([]); return; }
+    setSearchingConv(true);
+    try {
+      const t = term.trim();
+      const { data, error } = await db
+        .from('whatsapp_messages')
+        .select('phone, contact_name, instance_name, created_at')
+        .or(`phone.ilike.%${t}%,contact_name.ilike.%${t}%`)
+        .order('created_at', { ascending: false })
+        .limit(80);
+      if (error) throw error;
+      // dedupe por phone (mantém a mais recente)
+      const seen = new Set<string>();
+      const opts: ConvOpt[] = [];
+      for (const r of (data || []) as any[]) {
+        if (!r.phone || seen.has(r.phone)) continue;
+        seen.add(r.phone);
+        opts.push({
+          phone: r.phone,
+          contact_name: r.contact_name,
+          instance_name: r.instance_name,
+          last_at: r.created_at,
+        });
+        if (opts.length >= 8) break;
+      }
+      setConvOptions(opts);
+    } catch (e: any) {
+      console.error(e);
+      toast.error('Erro ao buscar conversas');
+    } finally {
+      setSearchingConv(false);
+    }
+  };
+
+  const seedMessagesFromPhone = async (phone: string): Promise<number> => {
+    const digits = String(phone).replace(/\D/g, '');
+    const tail = digits.slice(-8);
+    const { data, error } = await db
+      .from('whatsapp_messages')
+      .select('direction, message_text, created_at')
+      .ilike('phone', `%${tail}%`)
+      .not('message_text', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(30);
+    if (error) throw error;
+    const ordered = (data || []).reverse();
+    const seeded: Msg[] = ordered
+      .filter((m: any) => m.message_text && String(m.message_text).trim())
+      .map((m: any) => {
+        const text = String(m.message_text);
+        if (m.direction === 'outbound') {
+          const { cleanText, actions } = detectActions(text);
+          return { role: 'assistant' as const, content: cleanText, actions };
+        }
+        return { role: 'user' as const, content: text };
+      });
+    setMessages(seeded);
+    return seeded.length;
+  };
+
+  const pickConversation = async (opt: ConvOpt) => {
+    try {
+      setSelectedConversation(opt);
+      setConvOptions([]);
+      setConvSearch('');
+      // tenta achar contato pelo telefone p/ preencher variáveis
+      const digits = String(opt.phone).replace(/\D/g, '');
+      const tail = digits.slice(-8);
+      const { data: c } = await db
+        .from('contacts')
+        .select('*')
+        .ilike('phone', `%${tail}%`)
+        .limit(1)
+        .maybeSingle();
+      if (c) setSelectedContact(c);
+      const n = await seedMessagesFromPhone(opt.phone);
+      if (n === 0) toast.error('Conversa sem texto pra carregar');
+      else toast.success(`Carregadas ${n} mensagens reais`);
+    } catch (e: any) {
+      console.error(e);
+      toast.error('Erro ao carregar conversa');
+    }
+  };
+
+  const clearConversation = () => { setSelectedConversation(null); setSelectedContact(null); };
+
 
   const fireProactive = async () => {
     if (isLoading) return;
