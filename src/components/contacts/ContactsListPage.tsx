@@ -1627,6 +1627,14 @@ export function ContactsListPage() {
                             {groupNum != null ? groupNum : <span className="text-muted-foreground">—</span>}
                           </span>
                           <span
+                            className={`text-xs font-mono tabular-nums ${group.lead_number != null ? 'text-foreground' : 'text-muted-foreground'}`}
+                            title={group.lead_number != null ? `Lead nº ${group.lead_number}${group.product_case_prefix ? ` (${group.product_case_prefix})` : ''}` : 'Lead sem sequência'}
+                          >
+                            {group.lead_number != null
+                              ? `LEAD-${group.lead_number}${group.product_case_prefix ? `(${group.product_case_prefix})` : ''}`
+                              : '—'}
+                          </span>
+                          <span
                             className={`text-xs font-mono tabular-nums ${caseNum ? 'text-foreground' : 'text-muted-foreground'}`}
                             title={caseNum ? `Caso oficial: ${caseNum}` : 'Lead sem caso oficial vinculado'}
                           >
