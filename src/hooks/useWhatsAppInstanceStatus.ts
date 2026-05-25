@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/integrations/supabase';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 export interface InstanceStatus {
