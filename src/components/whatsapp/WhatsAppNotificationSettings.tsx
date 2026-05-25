@@ -365,6 +365,7 @@ export function WhatsAppNotificationSettings() {
             { key: 'notify_checklist_steps', icon: <Target className="h-4 w-4 text-cyan-500" />, label: 'Passos Dados (Checklist)', desc: 'Quantidade de itens de checklist concluídos no dia' },
             { key: 'notify_zapsign_documents', icon: <CalendarDays className="h-4 w-4 text-indigo-500" />, label: 'Documentos ZapSign', desc: 'Documentos gerados e assinados no dia' },
             { key: 'notify_callface_calls', icon: <Clock className="h-4 w-4 text-rose-500" />, label: 'Ligações CallFace', desc: 'Quantidade de ligações, atendidas, não atendidas e tempo total' },
+            { key: 'notify_instance_disconnect', icon: <WifiOff className="h-4 w-4 text-amber-500" />, label: 'Alerta de Desconexão', desc: 'Aviso quando instâncias WhatsApp ficam offline' },
           ].map(({ key, icon, label, desc }) => (
             <div key={key} className="flex items-center justify-between gap-4 py-2 border-b last:border-0">
               <div className="flex items-center gap-3">
