@@ -1481,10 +1481,10 @@ export function ContactsListPage() {
                 (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
 
               const matchesSearch = (g: typeof groups[number]) => {
-                if (!groupSearch) return true;
+                if (!deferredGroupSearch) return true;
                 const norm = (s: string) => normalizeName(s);
-                const rawQuery = groupSearch.toLowerCase().trim();
-                const normQuery = norm(groupSearch);
+                const rawQuery = deferredGroupSearch.toLowerCase().trim();
+                const normQuery = norm(deferredGroupSearch);
                 const tokens = normQuery.split(/\s+/).filter(Boolean);
                 const queryDigits = rawQuery.replace(/\D/g, '');
                 if (groupSearchScope === 'lead') {
