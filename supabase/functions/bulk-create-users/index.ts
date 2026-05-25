@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { resolveSupabaseUrl, resolveServiceRoleKey } from "../_shared/supabase-url-resolver.ts";
+import { requireAdmin, forbidden } from "../_shared/require-auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -12,6 +13,9 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const admin = await requireAdmin(req);
+    if (!admin) return forbidden(corsHeaders);
+
     // CLOUD Supabase - where auth lives
     const cloudUrl = Deno.env.get('SUPABASE_URL')!;
     const cloudServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
