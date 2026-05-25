@@ -1151,6 +1151,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                     systemPrompt={form.prompt_instructions || ''}
                     model={form.model}
                     agentName={form.shortcut_name}
+                    onPromptChange={(prompt) => setForm(f => ({ ...f, prompt_instructions: prompt }))}
                   />
                 </div>
                 
