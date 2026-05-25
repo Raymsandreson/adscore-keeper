@@ -1,10 +1,12 @@
 import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Loader2, Send, Play, RotateCcw, User, Search, X } from 'lucide-react';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/components/ui/sheet';
+import { Loader2, Send, Play, RotateCcw, User, Search, X, Pencil, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import ReactMarkdown from 'react-markdown';
 import { db } from '@/integrations/supabase';
@@ -13,6 +15,7 @@ interface Props {
   systemPrompt: string;
   model?: string;
   agentName?: string;
+  onPromptChange?: (prompt: string) => void;
 }
 
 interface Msg {
@@ -84,11 +87,26 @@ function buildVariablesFromLead(lead: any, contact: any): Record<string, string>
   return v;
 }
 
-export function AgentTestChat({ systemPrompt, model = 'google/gemini-2.5-flash', agentName }: Props) {
+export function AgentTestChat({ systemPrompt, model = 'google/gemini-2.5-flash', agentName, onPromptChange }: Props) {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+
+  // Prompt editor (sidesheet dentro do dialog)
+  const [promptEditorOpen, setPromptEditorOpen] = useState(false);
+  const [draftPrompt, setDraftPrompt] = useState(systemPrompt);
+  useEffect(() => { setDraftPrompt(systemPrompt); }, [systemPrompt]);
+  const promptDirty = draftPrompt !== systemPrompt;
+  const savePrompt = () => {
+    if (!onPromptChange) {
+      toast.error('Edição não disponível neste contexto');
+      return;
+    }
+    onPromptChange(draftPrompt);
+    toast.success('Prompt atualizado (lembre de salvar o agente)');
+    setPromptEditorOpen(false);
+  };
 
   // Lead picker
   const [leadSearch, setLeadSearch] = useState('');
@@ -159,7 +177,7 @@ export function AgentTestChat({ systemPrompt, model = 'google/gemini-2.5-flash',
 
   const sendMessage = async () => {
     if (!input.trim() || isLoading) return;
-    if (!systemPrompt.trim()) {
+    if (!draftPrompt.trim()) {
       toast.error('Configure o prompt do agente antes de testar');
       return;
     }
@@ -178,7 +196,7 @@ export function AgentTestChat({ systemPrompt, model = 'google/gemini-2.5-flash',
           Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
         },
         body: JSON.stringify({
-          system_prompt: systemPrompt,
+          system_prompt: draftPrompt,
           messages: newMessages,
           model,
           variables,
@@ -251,11 +269,59 @@ export function AgentTestChat({ systemPrompt, model = 'google/gemini-2.5-flash',
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-2xl h-[85vh] flex flex-col p-0">
           <DialogHeader className="px-4 pt-4 pb-2 border-b">
-            <DialogTitle className="text-sm flex items-center gap-2">
-              💬 Testar agente {agentName ? `· ${agentName}` : ''}
-              <Badge variant="outline" className="text-[10px]">sandbox</Badge>
-            </DialogTitle>
+            <div className="flex items-center justify-between gap-2">
+              <DialogTitle className="text-sm flex items-center gap-2 min-w-0">
+                <span className="truncate">💬 Testar agente {agentName ? `· ${agentName}` : ''}</span>
+                <Badge variant="outline" className="text-[10px] shrink-0">sandbox</Badge>
+                {promptDirty && <Badge variant="secondary" className="text-[10px] shrink-0">prompt editado</Badge>}
+              </DialogTitle>
+              {onPromptChange && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-[11px] gap-1 shrink-0 mr-6"
+                  onClick={() => setPromptEditorOpen(true)}
+                >
+                  <Pencil className="h-3 w-3" />
+                  Editar prompt
+                </Button>
+              )}
+            </div>
           </DialogHeader>
+
+          {/* Editor do prompt — sheet lateral dentro do dialog */}
+          <Sheet open={promptEditorOpen} onOpenChange={setPromptEditorOpen}>
+            <SheetContent side="right" className="w-full sm:max-w-lg flex flex-col p-0">
+              <SheetHeader className="px-4 pt-4 pb-2 border-b">
+                <SheetTitle className="text-sm flex items-center gap-2">
+                  <Pencil className="h-3.5 w-3.5" /> Editar prompt do agente
+                </SheetTitle>
+              </SheetHeader>
+              <div className="flex-1 overflow-hidden p-3">
+                <Textarea
+                  value={draftPrompt}
+                  onChange={e => setDraftPrompt(e.target.value)}
+                  className="h-full w-full text-xs font-mono resize-none"
+                  placeholder="Prompt do agente..."
+                />
+              </div>
+              <SheetFooter className="border-t p-3 flex-row gap-2 sm:justify-between">
+                <p className="text-[10px] text-muted-foreground self-center">
+                  Alterações entram em vigor no próximo teste. Salve o agente pra persistir.
+                </p>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="ghost" onClick={() => { setDraftPrompt(systemPrompt); setPromptEditorOpen(false); }}>
+                    Cancelar
+                  </Button>
+                  <Button size="sm" onClick={savePrompt} disabled={!promptDirty} className="gap-1">
+                    <Save className="h-3 w-3" /> Aplicar
+                  </Button>
+                </div>
+              </SheetFooter>
+            </SheetContent>
+          </Sheet>
+
 
           {/* Lead selector */}
           <div className="px-4 py-2 border-b bg-muted/30 space-y-2">
