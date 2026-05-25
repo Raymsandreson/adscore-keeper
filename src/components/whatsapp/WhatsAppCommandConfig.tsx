@@ -28,6 +28,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { AIShortcutGenerator } from './AIShortcutGenerator';
 import { SuperPromptDiagnostic } from './SuperPromptDiagnostic';
+import { AgentTestChat } from './AgentTestChat';
 import { MemberAssistantSettings } from './MemberAssistantSettings';
 import { AgentAutomationRules } from './AgentAutomationRules';
 import { AgentConversationsList } from './AgentConversationsList';
