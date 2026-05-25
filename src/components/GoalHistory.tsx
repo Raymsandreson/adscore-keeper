@@ -394,10 +394,13 @@ const GoalHistory = ({ currentGoals, onArchiveGoal }: GoalHistoryProps) => {
                 <div 
                   className="whitespace-pre-wrap"
                   dangerouslySetInnerHTML={{ 
-                    __html: aiSuggestion
-                      .replace(/## /g, '<h3 class="text-lg font-semibold mt-4 mb-2">')
-                      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                      .replace(/\n/g, '<br/>') 
+                    __html: DOMPurify.sanitize(
+                      aiSuggestion
+                        .replace(/## /g, '<h3 class="text-lg font-semibold mt-4 mb-2">')
+                        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                        .replace(/\n/g, '<br/>'),
+                      { ALLOWED_TAGS: ['h3', 'strong', 'br', 'em', 'p'], ALLOWED_ATTR: ['class'] }
+                    )
                   }} 
                 />
               </div>
