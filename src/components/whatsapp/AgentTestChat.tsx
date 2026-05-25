@@ -59,19 +59,19 @@ function detectActions(text: string): { cleanText: string; actions: DetectedActi
 function buildVariablesFromLead(lead: any, contact: any): Record<string, string> {
   const v: Record<string, string> = {};
   if (lead) {
-    v['lead.nome'] = lead.name || lead.nome || '';
-    v['lead.telefone'] = lead.phone || lead.telefone || '';
-    v['lead.email'] = lead.email || '';
+    v['lead.nome'] = lead.lead_name || lead.name || '';
+    v['lead.telefone'] = lead.lead_phone || lead.phone || '';
+    v['lead.email'] = lead.lead_email || lead.email || '';
     v['lead.status'] = lead.status || '';
-    v['lead.funil'] = lead.funnel_name || lead.funil || '';
-    v['lead.etapa'] = lead.stage_name || lead.etapa || '';
-    v['lead.acolhedor'] = lead.acolhedor_name || lead.acolhedor || '';
-    v['lead.produto'] = lead.product_name || lead.produto || '';
+    v['lead.funil'] = lead.funnel_name || '';
+    v['lead.etapa'] = lead.stage_name || '';
+    v['lead.acolhedor'] = lead.acolhedor || '';
+    v['lead.produto'] = lead.product_name || lead.case_type || '';
     v['lead.data_criacao'] = lead.created_at ? new Date(lead.created_at).toLocaleDateString('pt-BR') : '';
-    v['lead.observacoes'] = lead.notes || lead.observacoes || '';
+    v['lead.observacoes'] = lead.notes || '';
   }
   if (contact) {
-    v['contato.nome'] = contact.name || '';
+    v['contato.nome'] = contact.full_name || contact.name || '';
     v['contato.telefone'] = contact.phone || '';
     v['contato.email'] = contact.email || '';
     v['contato.cpf'] = contact.cpf || '';
