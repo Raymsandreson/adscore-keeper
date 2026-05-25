@@ -1483,7 +1483,14 @@ export function ContactsListPage() {
                 if (!groupSearch) return true;
                 const q = groupSearch.toLowerCase();
                 if (groupSearchScope === 'lead') return (g.lead_name || '').toLowerCase().includes(q);
-                return g.group_name.toLowerCase().includes(q);
+                const caseDigits = g.case_number ? String(g.case_number).replace(/\D/g, '') : '';
+                const leadLabel = g.lead_number != null
+                  ? `lead ${g.lead_number} lead-${g.lead_number} ${g.product_case_prefix ? `lead-${g.lead_number}(${g.product_case_prefix})` : ''}`
+                  : '';
+                const caseLabel = caseDigits
+                  ? `caso ${caseDigits} ${g.product_case_prefix ? `${g.product_case_prefix}-${caseDigits}` : ''}`
+                  : '';
+                return [g.group_name, leadLabel, caseLabel].join(' ').toLowerCase().includes(q);
               };
 
               let visible = [...groups].filter(g => {
