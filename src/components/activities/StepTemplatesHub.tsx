@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import DOMPurify from 'dompurify';
 import { Sparkles, ChevronDown, Pencil, Trash2, Plus, Eye, Check, CircleCheck, Circle, Wand2, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
