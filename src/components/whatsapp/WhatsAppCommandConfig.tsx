@@ -1152,6 +1152,8 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                     model={form.model}
                     agentName={form.shortcut_name}
                     onPromptChange={(prompt) => setForm(f => ({ ...f, prompt_instructions: prompt }))}
+                    proactiveEnabled={form.proactive_first_message_enabled ?? false}
+                    proactiveInstruction={form.proactive_first_message_instruction ?? ''}
                   />
                 </div>
                 
