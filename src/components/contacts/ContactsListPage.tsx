@@ -1581,9 +1581,8 @@ export function ContactsListPage() {
                         {mismatched} divergente(s)
                       </span>
                     </div>
-                    <div className="grid grid-cols-[36px_60px_110px_70px_1fr_1fr_64px] gap-2 px-3 py-2 text-[11px] font-medium text-muted-foreground border-b">
+                    <div className="grid grid-cols-[36px_110px_70px_1fr_1fr_64px] gap-2 px-3 py-2 text-[11px] font-medium text-muted-foreground border-b">
                       <span></span>
-                      <span title="Nº extraído do nome do grupo">Nº grupo</span>
                       <span title="Sequência do lead (LEAD-N(PFX))">Nº lead</span>
                       <span title="Nº oficial do caso (legal_cases.case_number)">Nº caso</span>
                       <span className="pr-3">Nome do grupo</span>
