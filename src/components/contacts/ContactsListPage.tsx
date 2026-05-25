@@ -8,7 +8,7 @@ import { ContactDetailSheet } from './ContactDetailSheet';
 import { CreateContactDialog } from './CreateContactDialog';
 import { useBroadcastLists, BroadcastList, BroadcastListMember } from '@/hooks/useBroadcastLists';
 import { supabase } from '@/integrations/supabase/client';
-import { db } from '@/integrations/supabase';
+import { db, ensureExternalSession } from '@/integrations/supabase';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -416,6 +416,41 @@ export function ContactsListPage() {
       setGroupsLoading(false);
     }
   };
+
+  useEffect(() => {
+    let cancelled = false;
+    let channel: ReturnType<typeof externalSupabase.channel> | null = null;
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const scheduleGroupsRefresh = () => {
+      if (cancelled) return;
+      if (refreshTimer) clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(() => {
+        fetchGroups();
+      }, 800);
+    };
+
+    ensureExternalSession()
+      .catch((err) => {
+        console.warn('[ContactsListPage] external realtime session failed:', err?.message || err);
+      })
+      .finally(() => {
+        if (cancelled) return;
+        channel = externalSupabase
+          .channel('contacts-groups-realtime')
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'whatsapp_groups_index' }, scheduleGroupsRefresh)
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'lead_whatsapp_groups' }, scheduleGroupsRefresh)
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'whatsapp_groups_uazapi_snapshot' }, scheduleGroupsRefresh)
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'legal_cases' }, scheduleGroupsRefresh)
+          .subscribe();
+      });
+
+    return () => {
+      cancelled = true;
+      if (refreshTimer) clearTimeout(refreshTimer);
+      if (channel) externalSupabase.removeChannel(channel);
+    };
+  }, []);
 
   const handleSelectGroup = async (groupJid: string) => {
     setSelectedGroup(groupJid);
