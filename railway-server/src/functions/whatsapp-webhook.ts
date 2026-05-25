@@ -1123,6 +1123,8 @@ export const handler: RequestHandler = async (req, res) => {
                   .like('phone', `%${last8}`);
               }
               console.log('[label-trigger] agent activated', { phone: phoneDigits, agent_id: (t as any).agent_id });
+              // Dispara 1ª mensagem proativa se o agente tiver configurado
+              triggerProactiveFirstMessage(supabase, phoneDigits, webhookInstanceName, (t as any).agent_id).catch(err => console.warn('[proactive] trigger error:', err?.message));
             } catch (e: any) {
               console.warn('[label-trigger] agent activation failed:', e?.message);
             }
