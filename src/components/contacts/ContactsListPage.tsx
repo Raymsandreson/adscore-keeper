@@ -131,6 +131,7 @@ export function ContactsListPage() {
   const [groups, setGroups] = useState<{ group_jid: string; group_name: string; lead_name: string; lead_status: string; lead_id: string | null; contact_count: number; instance_name: string | null; created_at: string | null; lead_created_at: string | null; board_id: string | null; board_name: string | null; case_number: string | null; lead_number: number | null; product_case_prefix: string | null; product_service_id: string | null }[]>([]);
   const [groupsLoading, setGroupsLoading] = useState(false);
   const [groupSearch, setGroupSearch] = useState('');
+  const deferredGroupSearch = useDeferredValue(groupSearch);
   const [groupSort, setGroupSort] = useState<'alpha' | 'number' | 'prefix' | 'date'>('date');
   const [groupSortDir, setGroupSortDir] = useState<'asc' | 'desc'>('desc');
   const [groupSearchScope, setGroupSearchScope] = useState<'group' | 'lead'>('group');
