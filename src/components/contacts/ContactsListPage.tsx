@@ -1808,10 +1808,10 @@ export function ContactsListPage() {
                               : '—'}
                           </span>
                           <span
-                            className={`text-[11px] truncate ${group.owner_jid ? 'text-foreground' : 'text-muted-foreground italic'}`}
-                            title={group.owner_jid ? `JID: ${group.owner_jid}` : 'Criador do grupo desconhecido'}
+                            className={`text-[11px] truncate ${(group.owner_phone || group.creator_instance_name) ? 'text-foreground' : 'text-muted-foreground italic'}`}
+                            title={group.owner_phone ? `Telefone do criador: +${group.owner_phone}${group.creator_instance_name ? ` · Instância: ${group.creator_instance_name}` : ''}` : 'Criador do grupo desconhecido'}
                           >
-                            {group.owner_jid ? creatorLabel(group.owner_jid) : '—'}
+                            {(group.owner_phone || group.creator_instance_name) ? creatorLabel(group) : '—'}
                           </span>
                           <div className="flex items-center gap-1">
                             {matches ? (
