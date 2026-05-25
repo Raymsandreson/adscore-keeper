@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireAdmin, forbidden } from "../_shared/require-auth.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -11,6 +12,9 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const admin = await requireAdmin(req);
+    if (!admin) return forbidden(corsHeaders);
+
     const { email, password, full_name } = await req.json();
 
     if (!email || !password) {
