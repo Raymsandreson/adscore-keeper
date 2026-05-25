@@ -202,14 +202,23 @@ export function AgentTestChat({ systemPrompt, model = 'google/gemini-2.5-flash',
     setSearchingConv(true);
     try {
       const t = term.trim();
-      const { data, error } = await db
+      const digits = t.replace(/\D/g, '');
+      const isPhoneSearch = digits.length >= 4;
+
+      let query = db
         .from('whatsapp_messages')
-        .select('phone, contact_name, instance_name, created_at')
-        .or(`phone.ilike.%${t}%,contact_name.ilike.%${t}%`)
+        .select('phone, contact_name, instance_name, created_at');
+
+      if (isPhoneSearch) {
+        query = query.like('phone', `%${digits}%`);
+      } else {
+        query = query.ilike('contact_name', `%${t}%`);
+      }
+
+      const { data, error } = await query
         .order('created_at', { ascending: false })
-        .limit(80);
+        .limit(40);
       if (error) throw error;
-      // dedupe por phone (mantém a mais recente)
       const seen = new Set<string>();
       const opts: ConvOpt[] = [];
       for (const r of (data || []) as any[]) {
@@ -232,14 +241,14 @@ export function AgentTestChat({ systemPrompt, model = 'google/gemini-2.5-flash',
     }
   };
 
-  const seedMessagesFromPhone = async (phone: string): Promise<number> => {
-    const digits = String(phone).replace(/\D/g, '');
-    const tail = digits.slice(-8);
-    const { data, error } = await db
+  const seedMessagesFromPhone = async (phone: string, instanceName?: string | null): Promise<number> => {
+    let q = db
       .from('whatsapp_messages')
       .select('direction, message_text, created_at')
-      .ilike('phone', `%${tail}%`)
-      .not('message_text', 'is', null)
+      .eq('phone', phone)
+      .not('message_text', 'is', null);
+    if (instanceName) q = q.eq('instance_name', instanceName);
+    const { data, error } = await q
       .order('created_at', { ascending: false })
       .limit(30);
     if (error) throw error;
@@ -263,17 +272,14 @@ export function AgentTestChat({ systemPrompt, model = 'google/gemini-2.5-flash',
       setSelectedConversation(opt);
       setConvOptions([]);
       setConvSearch('');
-      // tenta achar contato pelo telefone p/ preencher variáveis
-      const digits = String(opt.phone).replace(/\D/g, '');
-      const tail = digits.slice(-8);
       const { data: c } = await db
         .from('contacts')
         .select('*')
-        .ilike('phone', `%${tail}%`)
+        .eq('phone', opt.phone)
         .limit(1)
         .maybeSingle();
       if (c) setSelectedContact(c);
-      const n = await seedMessagesFromPhone(opt.phone);
+      const n = await seedMessagesFromPhone(opt.phone, opt.instance_name);
       if (n === 0) toast.error('Conversa sem texto pra carregar');
       else toast.success(`Carregadas ${n} mensagens reais`);
     } catch (e: any) {
