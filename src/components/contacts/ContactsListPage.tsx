@@ -323,7 +323,7 @@ export function ContactsListPage() {
         Array.from(groupMap.values()).filter(g => g.board_id).map(g => g.board_id as string)
       ));
       if (boardIds.length > 0) {
-        const { data: boardsData } = await supabase
+        const { data: boardsData } = await externalSupabase
           .from('kanban_boards')
           .select('id, name')
           .in('id', boardIds);
