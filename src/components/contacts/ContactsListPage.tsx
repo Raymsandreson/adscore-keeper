@@ -1944,6 +1944,8 @@ export function ContactsListPage() {
                           <span
                             className={`text-[11px] truncate ${(group.owner_phone || group.creator_instance_name) ? 'text-foreground' : 'text-muted-foreground italic'}`}
                             title={creatorTooltip(group)}
+                            data-n-ignore="true"
+                            data-callface-ignore="true"
                           >
                             {creatorDisplay(group)}
                           </span>
