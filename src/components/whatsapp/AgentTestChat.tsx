@@ -97,7 +97,7 @@ function buildVariablesFromLead(lead: any, contact: any): Record<string, string>
   return v;
 }
 
-export function AgentTestChat({ systemPrompt, model = 'google/gemini-2.5-flash', agentName, onPromptChange }: Props) {
+export function AgentTestChat({ systemPrompt, model = 'google/gemini-2.5-flash', agentName, onPromptChange, proactiveEnabled, proactiveInstruction }: Props) {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState('');
