@@ -1525,16 +1525,28 @@ export function ContactsListPage() {
                 const d = String((c as any).phone || '').replace(/\D/g, '');
                 if (d && (c as any).full_name) contactNameByPhone.set(d, (c as any).full_name);
               }
-              const creatorLabel = (g: { owner_phone: string | null; creator_instance_name: string | null }): string => {
-                if (g.creator_instance_name) {
-                  return g.owner_phone
-                    ? `Instância ${g.creator_instance_name} (${formatPhoneBR(g.owner_phone)})`
-                    : `Instância ${g.creator_instance_name}`;
+              const creatorDisplay = (g: { owner_phone: string | null; creator_instance_name: string | null }): string => {
+                if (g.creator_instance_name) return `Instância ${g.creator_instance_name}`;
+                if (g.owner_phone) {
+                  const name = contactNameByPhone.get(g.owner_phone);
+                  if (name) return name;
+                  return formatPhoneBR(g.owner_phone);
                 }
-                if (!g.owner_phone) return '—';
-                const name = contactNameByPhone.get(g.owner_phone);
-                const phone = formatPhoneBR(g.owner_phone);
-                return name ? `${name} (${phone})` : phone;
+                return '—';
+              };
+              const creatorTooltip = (g: { owner_phone: string | null; creator_instance_name: string | null }): string => {
+                const parts: string[] = [];
+                if (g.creator_instance_name) parts.push(`Instância: ${g.creator_instance_name}`);
+                if (g.owner_phone) parts.push(`Telefone: ${formatPhoneBR(g.owner_phone)}`);
+                return parts.length ? parts.join(' · ') : 'Criador do grupo desconhecido';
+              };
+              // Compat: usado em filtro e ordenação (texto único pesquisável)
+              const creatorLabel = (g: { owner_phone: string | null; creator_instance_name: string | null }): string => {
+                const disp = creatorDisplay(g);
+                if (g.owner_phone && !g.creator_instance_name && contactNameByPhone.get(g.owner_phone)) {
+                  return `${disp} (${formatPhoneBR(g.owner_phone)})`;
+                }
+                return disp;
               };
 
               const matchesSearch = (g: typeof groups[number]) => {
