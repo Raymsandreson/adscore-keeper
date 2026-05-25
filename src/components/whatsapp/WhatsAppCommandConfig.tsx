@@ -124,6 +124,8 @@ interface ShortcutFormState {
   lead_status_board_ids: string[];
   lead_status_filter: string[];
   audience_mode: 'ctwa_only' | 'outbound_only' | 'both';
+  proactive_first_message_enabled: boolean;
+  proactive_first_message_instruction: string;
 }
 
 const DEFAULT_FORM: ShortcutFormState = {
