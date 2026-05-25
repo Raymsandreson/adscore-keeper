@@ -1820,7 +1820,7 @@ export function ContactsListPage() {
                       <HeaderCell col="createdBy" label="Criado por" title="Telefone/instância de quem criou o grupo" />
                       <div className="relative"><span></span></div>
                     </div>
-                    {capped.map(group => {
+                    {cappedAfterCols.map(group => {
                       const caseNum = group.case_number;
                       const ng = normalizeName(group.group_name);
                       const nl = normalizeName(group.lead_name);
