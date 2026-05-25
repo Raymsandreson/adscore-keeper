@@ -370,13 +370,24 @@ export function AgentTestChat({ systemPrompt, model = 'google/gemini-2.5-flash',
               <div className="flex items-center justify-between gap-2 text-xs">
                 <div className="flex items-center gap-2 min-w-0">
                   <User className="h-3.5 w-3.5 text-primary shrink-0" />
-                  <span className="font-medium truncate">{selectedLead.name || 'Sem nome'}</span>
-                  <span className="text-muted-foreground truncate">{selectedLead.phone || ''}</span>
+                  <span className="font-medium truncate">{selectedLead.lead_name || selectedLead.name || 'Sem nome'}</span>
+                  <span className="text-muted-foreground truncate">{selectedLead.lead_phone || selectedLead.phone || ''}</span>
                   {selectedContact && <Badge variant="secondary" className="text-[9px]">+contato</Badge>}
                 </div>
-                <Button size="icon" variant="ghost" className="h-6 w-6" onClick={clearLead}>
-                  <X className="h-3 w-3" />
-                </Button>
+                <div className="flex items-center gap-1 shrink-0">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-6 text-[10px] gap-1 px-2"
+                    onClick={loadRealConversation}
+                    title="Pré-carrega as últimas mensagens reais do WhatsApp como histórico"
+                  >
+                    <Download className="h-3 w-3" /> Carregar conversa
+                  </Button>
+                  <Button size="icon" variant="ghost" className="h-6 w-6" onClick={clearLead}>
+                    <X className="h-3 w-3" />
+                  </Button>
+                </div>
               </div>
             ) : (
               <div className="space-y-1.5">
