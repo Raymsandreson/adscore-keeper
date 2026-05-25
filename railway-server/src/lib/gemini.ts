@@ -98,6 +98,16 @@ export async function callGemini(options: GeminiCallOptions): Promise<Response> 
   const genConfig: any = {};
   if (options.max_tokens) genConfig.maxOutputTokens = options.max_tokens;
   if (options.temperature !== undefined) genConfig.temperature = options.temperature;
+  // Gemini 2.5 "thinking" consome tokens do maxOutputTokens antes de gerar texto,
+  // o que causa truncamento (ex.: resposta cortada no meio da palavra). Para chamadas
+  // de texto puro (sem tools), desabilita o thinking pra todo o orçamento ir pro texto.
+  // Callers que precisam de reasoning podem passar `thinking_budget` explicitamente.
+  const thinkingBudget = (options as any).thinking_budget;
+  if (typeof thinkingBudget === "number") {
+    genConfig.thinkingConfig = { thinkingBudget };
+  } else if (!options.tools?.length) {
+    genConfig.thinkingConfig = { thinkingBudget: 0 };
+  }
   if (Object.keys(genConfig).length > 0) body.generationConfig = genConfig;
 
   if (options.tools?.length) {
