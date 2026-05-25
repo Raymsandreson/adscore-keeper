@@ -418,7 +418,7 @@ export function StepTemplatesHub({
             <AlertDialogDescription asChild>
               <div
                 className="text-xs max-h-[50vh] overflow-y-auto border rounded-md p-3 bg-muted/30 prose prose-sm dark:prose-invert max-w-none"
-                dangerouslySetInnerHTML={{ __html: previewing?.content || '' }}
+                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(previewing?.content || '') }}
               />
             </AlertDialogDescription>
           </AlertDialogHeader>
