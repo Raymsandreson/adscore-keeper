@@ -1554,6 +1554,13 @@ export function ContactsListPage() {
                   if (dateFrom && t < new Date(dateFrom + 'T00:00:00').getTime()) return false;
                   if (dateTo && t > new Date(dateTo + 'T23:59:59').getTime()) return false;
                 }
+                if (creatorFilter !== 'all') {
+                  if (creatorFilter === '__none__') {
+                    if (g.owner_jid) return false;
+                  } else if (jidToPhone(g.owner_jid) !== creatorFilter) {
+                    return false;
+                  }
+                }
                 return true;
               });
 
