@@ -400,13 +400,16 @@ export function ContactsListPage() {
         const to = from + pageSize - 1;
         const { data: page, error } = await (externalSupabase as any)
           .from('whatsapp_groups_uazapi_snapshot')
-          .select('jid, group_created_at')
+          .select('jid, group_created_at, owner_jid')
           .range(from, to);
         if (error) { console.error('fetchGroups snapshot page error:', error); break; }
         const rows = (page as any[]) || [];
         for (const s of rows) {
           const g = groupMap.get(s.jid);
-          if (g && s.group_created_at) g.created_at = s.group_created_at;
+          if (g) {
+            if (s.group_created_at) g.created_at = s.group_created_at;
+            if (s.owner_jid) g.owner_jid = s.owner_jid;
+          }
         }
         if (rows.length < pageSize) break;
       }
