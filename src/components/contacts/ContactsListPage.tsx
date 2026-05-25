@@ -191,6 +191,7 @@ export function ContactsListPage() {
               lead_number: null,
               product_case_prefix: null,
               product_service_id: null,
+              owner_jid: null,
             });
           }
         }
