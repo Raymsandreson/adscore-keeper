@@ -108,12 +108,16 @@ export function AgentTestChat({ systemPrompt, model = 'google/gemini-2.5-flash',
     try {
       const { data, error } = await db
         .from('leads')
-        .select('id, name, phone, email')
-        .or(`name.ilike.%${term}%,phone.ilike.%${term}%`)
-        .is('deleted_at', null)
+        .select('id, lead_name, lead_phone, lead_email')
+        .or(`lead_name.ilike.%${term}%,lead_phone.ilike.%${term}%`)
         .limit(8);
       if (error) throw error;
-      setLeadOptions(data || []);
+      setLeadOptions((data || []).map((l: any) => ({
+        id: l.id,
+        name: l.lead_name,
+        phone: l.lead_phone,
+        email: l.lead_email,
+      })));
     } catch (e: any) {
       console.error(e);
       toast.error('Erro ao buscar leads');
@@ -126,13 +130,13 @@ export function AgentTestChat({ systemPrompt, model = 'google/gemini-2.5-flash',
     try {
       const { data: lead } = await db.from('leads').select('*').eq('id', opt.id).maybeSingle();
       setSelectedLead(lead || opt);
-      // try fetch primary contact
-      if (lead?.phone) {
+      // try fetch primary contact pelo telefone do lead
+      const phone = (lead as any)?.lead_phone || opt.phone;
+      if (phone) {
         const { data: c } = await db
           .from('contacts')
           .select('*')
-          .eq('phone', lead.phone)
-          .is('deleted_at', null)
+          .eq('phone', phone)
           .limit(1)
           .maybeSingle();
         setSelectedContact(c || null);
