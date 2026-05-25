@@ -1783,6 +1783,20 @@ export function ContactsListPage() {
                               ? highlight(group.lead_name, groupSearchScope === 'lead')
                               : (group.lead_id ? '(sem nome)' : '— sem vínculo —')}
                           </span>
+                          <span
+                            className={`text-[11px] tabular-nums ${group.created_at ? 'text-foreground' : 'text-muted-foreground italic'}`}
+                            title={group.created_at ? new Date(group.created_at).toLocaleString('pt-BR') : 'Data de criação do grupo desconhecida'}
+                          >
+                            {group.created_at
+                              ? new Date(group.created_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })
+                              : '—'}
+                          </span>
+                          <span
+                            className={`text-[11px] truncate ${group.owner_jid ? 'text-foreground' : 'text-muted-foreground italic'}`}
+                            title={group.owner_jid ? `JID: ${group.owner_jid}` : 'Criador do grupo desconhecido'}
+                          >
+                            {group.owner_jid ? creatorLabel(group.owner_jid) : '—'}
+                          </span>
                           <div className="flex items-center gap-1">
                             {matches ? (
                               <CheckCircle2 className="h-4 w-4 text-emerald-500" aria-label="Bate" />
