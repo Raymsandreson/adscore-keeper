@@ -128,7 +128,7 @@ export function ContactsListPage() {
   const [classifyingClients, setClassifyingClients] = useState(false);
 
   // Groups data
-  const [groups, setGroups] = useState<{ group_jid: string; group_name: string; lead_name: string; lead_status: string; lead_id: string | null; contact_count: number; instance_name: string | null; created_at: string | null; lead_created_at: string | null; board_id: string | null; board_name: string | null; case_number: string | null; lead_number: number | null; product_case_prefix: string | null; product_service_id: string | null; owner_jid: string | null }[]>([]);
+  const [groups, setGroups] = useState<{ group_jid: string; group_name: string; lead_name: string; lead_status: string; lead_id: string | null; contact_count: number; instance_name: string | null; created_at: string | null; lead_created_at: string | null; board_id: string | null; board_name: string | null; case_number: string | null; lead_number: number | null; product_case_prefix: string | null; product_service_id: string | null; owner_phone: string | null; creator_instance_name: string | null }[]>([]);
   const [groupsLoading, setGroupsLoading] = useState(false);
   const [groupSearch, setGroupSearch] = useState('');
   const deferredGroupSearch = useDeferredValue(groupSearch);
@@ -146,6 +146,14 @@ export function ContactsListPage() {
   const [dateFrom, setDateFrom] = useState<string>('');
   const [dateTo, setDateTo] = useState<string>('');
   const [creatorFilter, setCreatorFilter] = useState<string>('all');
+  // Larguras das colunas do modo auditoria (estilo planilha — usuário arrasta o limite direito)
+  const [auditColW, setAuditColW] = useState<Record<string, number>>({
+    check: 36, leadN: 90, caseN: 70, groupName: 280, leadName: 220, createdAt: 130, createdBy: 220, actions: 60,
+  });
+  // Filtros por coluna (texto livre, "contém") — estilo Google Sheets
+  const [auditColFilter, setAuditColFilter] = useState<Record<string, string>>({
+    leadN: '', caseN: '', groupName: '', leadName: '', createdAt: '', createdBy: '',
+  });
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
   const [groupContacts, setGroupContacts] = useState<Contact[]>([]);
   const [groupContactsLoading, setGroupContactsLoading] = useState(false);
@@ -191,7 +199,8 @@ export function ContactsListPage() {
               lead_number: null,
               product_case_prefix: null,
               product_service_id: null,
-              owner_jid: null,
+              owner_phone: null,
+              creator_instance_name: null,
             });
           }
         }
@@ -238,7 +247,8 @@ export function ContactsListPage() {
               lead_number: lead?.lead_number ?? null,
               product_case_prefix: null,
               product_service_id: lead?.product_service_id || null,
-              owner_jid: null,
+              owner_phone: null,
+              creator_instance_name: null,
             });
           }
         }
@@ -397,20 +407,30 @@ export function ContactsListPage() {
         if (rows.length < pageSize) break;
       }
 
-      // 5) Data de criação do grupo via snapshot UazAPI
+      // 5) Data de criação do grupo + criador via snapshot UazAPI.
+      //    owner_jid vem como @lid (id opaco) — quem é "pessoa" mesmo é o
+      //    owner_pn (phone number). seen_in_instances dá a lista de instâncias
+      //    que enxergaram o grupo, com o telefone do dono de cada instância.
+      //    Se o telefone do criador bater com o de alguma instância nossa,
+      //    rotulamos como a própria instância.
       for (let from = 0; ; from += pageSize) {
         const to = from + pageSize - 1;
         const { data: page, error } = await (externalSupabase as any)
           .from('whatsapp_groups_uazapi_snapshot')
-          .select('jid, group_created_at, owner_jid')
+          .select('jid, group_created_at, owner_pn, seen_in_instances')
           .range(from, to);
         if (error) { console.error('fetchGroups snapshot page error:', error); break; }
         const rows = (page as any[]) || [];
         for (const s of rows) {
           const g = groupMap.get(s.jid);
-          if (g) {
-            if (s.group_created_at) g.created_at = s.group_created_at;
-            if (s.owner_jid) g.owner_jid = s.owner_jid;
+          if (!g) continue;
+          if (s.group_created_at) g.created_at = s.group_created_at;
+          const ownerPnRaw = String(s.owner_pn || '').split('@')[0].replace(/\D/g, '');
+          if (ownerPnRaw) g.owner_phone = ownerPnRaw;
+          const seen = Array.isArray(s.seen_in_instances) ? s.seen_in_instances : [];
+          if (ownerPnRaw) {
+            const match = seen.find((x: any) => String(x?.owner_phone || '').replace(/\D/g, '') === ownerPnRaw);
+            if (match?.name) g.creator_instance_name = match.name;
           }
         }
         if (rows.length < pageSize) break;
@@ -1505,11 +1525,15 @@ export function ContactsListPage() {
                 const d = String((c as any).phone || '').replace(/\D/g, '');
                 if (d && (c as any).full_name) contactNameByPhone.set(d, (c as any).full_name);
               }
-              const creatorLabel = (jid: string | null): string => {
-                const digits = jidToPhone(jid);
-                if (!digits) return '—';
-                const name = contactNameByPhone.get(digits);
-                const phone = formatPhoneBR(digits);
+              const creatorLabel = (g: { owner_phone: string | null; creator_instance_name: string | null }): string => {
+                if (g.creator_instance_name) {
+                  return g.owner_phone
+                    ? `Instância ${g.creator_instance_name} (${formatPhoneBR(g.owner_phone)})`
+                    : `Instância ${g.creator_instance_name}`;
+                }
+                if (!g.owner_phone) return '—';
+                const name = contactNameByPhone.get(g.owner_phone);
+                const phone = formatPhoneBR(g.owner_phone);
                 return name ? `${name} (${phone})` : phone;
               };
 
@@ -1556,8 +1580,8 @@ export function ContactsListPage() {
                 }
                 if (creatorFilter !== 'all') {
                   if (creatorFilter === '__none__') {
-                    if (g.owner_jid) return false;
-                  } else if (jidToPhone(g.owner_jid) !== creatorFilter) {
+                    if (g.owner_phone) return false;
+                  } else if ((g.owner_phone || '') !== creatorFilter) {
                     return false;
                   }
                 }
@@ -1672,17 +1696,90 @@ export function ContactsListPage() {
                 // Lista única de criadores (a partir dos grupos atualmente filtrados, antes do recorte por criador)
                 const creatorMap = new Map<string, string>();
                 for (const g of groups) {
-                  const digits = jidToPhone(g.owner_jid);
+                  const digits = g.owner_phone;
                   if (!digits) continue;
-                  if (!creatorMap.has(digits)) creatorMap.set(digits, creatorLabel(g.owner_jid));
+                  if (!creatorMap.has(digits)) creatorMap.set(digits, creatorLabel(g));
                 }
                 const creatorOptions = Array.from(creatorMap.entries())
                   .map(([value, label]) => ({ value, label }))
                   .sort((a, b) => a.label.localeCompare(b.label, 'pt-BR'));
+
+                // Filtro por coluna (substring case-insensitive, igual planilha)
+                const colFilterActive = Object.values(auditColFilter).some(v => v.trim() !== '');
+                const cellText = (g: typeof groups[number], col: string): string => {
+                  switch (col) {
+                    case 'leadN': return g.lead_number != null ? `LEAD-${g.lead_number}${g.product_case_prefix ? `(${g.product_case_prefix})` : ''}` : '';
+                    case 'caseN': return g.case_number || '';
+                    case 'groupName': return g.group_name || '';
+                    case 'leadName': return g.lead_name || '';
+                    case 'createdAt': return g.created_at ? new Date(g.created_at).toLocaleString('pt-BR') : '';
+                    case 'createdBy': return (g.owner_phone || g.creator_instance_name) ? creatorLabel(g) : '';
+                    default: return '';
+                  }
+                };
+                if (colFilterActive) {
+                  const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+                  visible = visible.filter(g =>
+                    Object.entries(auditColFilter).every(([col, q]) => {
+                      const query = norm(q.trim());
+                      if (!query) return true;
+                      return norm(cellText(g, col)).includes(query);
+                    })
+                  );
+                }
+                const visibleAfterCols = visible;
+                const cappedAfterCols = colFilterActive ? visibleAfterCols.slice(0, RENDER_CAP) : capped;
+
+                // Grid template a partir das larguras (px). Última coluna em 1fr seria ruim aqui — manter px.
+                const cols = ['check', 'leadN', 'caseN', 'groupName', 'leadName', 'createdAt', 'createdBy', 'actions'] as const;
+                const gridTemplate = cols.map(c => `${auditColW[c]}px`).join(' ');
+                const startResize = (col: string, e: React.MouseEvent) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  const startX = e.clientX;
+                  const startW = auditColW[col];
+                  const onMove = (ev: MouseEvent) => {
+                    const dx = ev.clientX - startX;
+                    const next = Math.max(40, Math.min(800, startW + dx));
+                    setAuditColW(prev => ({ ...prev, [col]: next }));
+                  };
+                  const onUp = () => {
+                    window.removeEventListener('mousemove', onMove);
+                    window.removeEventListener('mouseup', onUp);
+                    document.body.style.cursor = '';
+                    document.body.style.userSelect = '';
+                  };
+                  document.body.style.cursor = 'col-resize';
+                  document.body.style.userSelect = 'none';
+                  window.addEventListener('mousemove', onMove);
+                  window.addEventListener('mouseup', onUp);
+                };
+                const ResizeHandle = ({ col }: { col: string }) => (
+                  <span
+                    onMouseDown={(e) => startResize(col, e)}
+                    className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-primary/40 active:bg-primary/60"
+                    aria-label={`Redimensionar ${col}`}
+                  />
+                );
+                const HeaderCell = ({ col, label, title, align }: { col: string; label: string; title?: string; align?: 'left'|'center' }) => (
+                  <div className="relative pr-2" style={{ textAlign: align || 'left' }}>
+                    <div className="text-[11px] font-medium text-muted-foreground truncate" title={title || label}>{label}</div>
+                    {auditColFilter[col] !== undefined && (
+                      <Input
+                        value={auditColFilter[col]}
+                        onChange={(e) => setAuditColFilter(prev => ({ ...prev, [col]: e.target.value }))}
+                        placeholder="filtrar…"
+                        className="h-6 text-[11px] mt-1 px-1.5"
+                      />
+                    )}
+                    <ResizeHandle col={col} />
+                  </div>
+                );
+
                 return (
                   <div className="space-y-2">
                     <div className="flex flex-wrap items-center gap-3 px-1 text-xs text-muted-foreground">
-                      <span>{total} caso(s) fechado(s)</span>
+                      <span>{visibleAfterCols.length} caso(s) fechado(s)</span>
                       <span className="flex items-center gap-1">
                         <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
                         {mismatched} divergente(s)
@@ -1706,19 +1803,24 @@ export function ContactsListPage() {
                             <X className="h-3 w-3" />
                           </Button>
                         )}
+                        {colFilterActive && (
+                          <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setAuditColFilter({ leadN: '', caseN: '', groupName: '', leadName: '', createdAt: '', createdBy: '' })}>
+                            Limpar filtros de coluna
+                          </Button>
+                        )}
                       </div>
                     </div>
-                    <div className="grid grid-cols-[36px_90px_60px_1.4fr_1fr_140px_160px_56px] gap-2 px-3 py-2 text-[11px] font-medium text-muted-foreground border-b">
-                      <span></span>
-                      <span title="Sequência do lead (LEAD-N(PFX))">Nº lead</span>
-                      <span title="Nº oficial do caso (legal_cases.case_number)">Nº caso</span>
-                      <span className="pr-3">Nome do grupo</span>
-                      <span className="pl-3 text-center">Nome do lead</span>
-                      <span title="Data e hora de criação do grupo no WhatsApp">Criado em</span>
-                      <span title="Telefone/nome do criador do grupo no WhatsApp">Criado por</span>
-                      <span></span>
+                    <div className="grid gap-2 px-3 py-2 border-b items-start" style={{ gridTemplateColumns: gridTemplate }}>
+                      <div className="relative"><span></span></div>
+                      <HeaderCell col="leadN" label="Nº lead" title="Sequência do lead (LEAD-N(PFX))" />
+                      <HeaderCell col="caseN" label="Nº caso" title="Nº oficial do caso (legal_cases.case_number)" />
+                      <HeaderCell col="groupName" label="Nome do grupo" />
+                      <HeaderCell col="leadName" label="Nome do lead" align="center" />
+                      <HeaderCell col="createdAt" label="Criado em" title="Data e hora de criação do grupo no WhatsApp" />
+                      <HeaderCell col="createdBy" label="Criado por" title="Telefone/instância de quem criou o grupo" />
+                      <div className="relative"><span></span></div>
                     </div>
-                    {capped.map(group => {
+                    {cappedAfterCols.map(group => {
                       const caseNum = group.case_number;
                       const ng = normalizeName(group.group_name);
                       const nl = normalizeName(group.lead_name);
@@ -1738,7 +1840,8 @@ export function ContactsListPage() {
                       return (
                         <div
                           key={group.group_jid}
-                          className={`grid grid-cols-[36px_90px_60px_1.4fr_1fr_140px_160px_56px] gap-2 items-center p-3 rounded-lg border transition-colors hover:bg-accent/50 ${!matches ? 'border-amber-500/40 bg-amber-500/5' : ''}`}
+                          className={`grid gap-2 items-center p-3 rounded-lg border transition-colors hover:bg-accent/50 ${!matches ? 'border-amber-500/40 bg-amber-500/5' : ''}`}
+                          style={{ gridTemplateColumns: gridTemplate }}
                         >
                           <Checkbox
                             checked={!excludedGroups.has(group.group_jid)}
@@ -1792,10 +1895,10 @@ export function ContactsListPage() {
                               : '—'}
                           </span>
                           <span
-                            className={`text-[11px] truncate ${group.owner_jid ? 'text-foreground' : 'text-muted-foreground italic'}`}
-                            title={group.owner_jid ? `JID: ${group.owner_jid}` : 'Criador do grupo desconhecido'}
+                            className={`text-[11px] truncate ${(group.owner_phone || group.creator_instance_name) ? 'text-foreground' : 'text-muted-foreground italic'}`}
+                            title={group.owner_phone ? `Telefone do criador: +${group.owner_phone}${group.creator_instance_name ? ` · Instância: ${group.creator_instance_name}` : ''}` : 'Criador do grupo desconhecido'}
                           >
-                            {group.owner_jid ? creatorLabel(group.owner_jid) : '—'}
+                            {(group.owner_phone || group.creator_instance_name) ? creatorLabel(group) : '—'}
                           </span>
                           <div className="flex items-center gap-1">
                             {matches ? (
