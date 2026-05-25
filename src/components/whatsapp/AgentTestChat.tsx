@@ -178,12 +178,112 @@ export function AgentTestChat({ systemPrompt, model = 'google/gemini-2.5-flash',
     }
   };
 
-  const clearLead = () => { setSelectedLead(null); setSelectedContact(null); };
+  const clearLead = () => { setSelectedLead(null); setSelectedContact(null); setSelectedConversation(null); };
 
   const reset = () => {
     setMessages([]);
     setInput('');
   };
+
+  // ===== Buscar conversa direto (sem lead) =====
+  interface ConvOpt {
+    phone: string;
+    contact_name?: string | null;
+    instance_name?: string | null;
+    last_at?: string | null;
+  }
+  const [convSearch, setConvSearch] = useState('');
+  const [convOptions, setConvOptions] = useState<ConvOpt[]>([]);
+  const [searchingConv, setSearchingConv] = useState(false);
+  const [selectedConversation, setSelectedConversation] = useState<ConvOpt | null>(null);
+
+  const searchConversations = async (term: string) => {
+    if (!term.trim() || term.trim().length < 2) { setConvOptions([]); return; }
+    setSearchingConv(true);
+    try {
+      const t = term.trim();
+      const { data, error } = await db
+        .from('whatsapp_messages')
+        .select('phone, contact_name, instance_name, created_at')
+        .or(`phone.ilike.%${t}%,contact_name.ilike.%${t}%`)
+        .order('created_at', { ascending: false })
+        .limit(80);
+      if (error) throw error;
+      // dedupe por phone (mantém a mais recente)
+      const seen = new Set<string>();
+      const opts: ConvOpt[] = [];
+      for (const r of (data || []) as any[]) {
+        if (!r.phone || seen.has(r.phone)) continue;
+        seen.add(r.phone);
+        opts.push({
+          phone: r.phone,
+          contact_name: r.contact_name,
+          instance_name: r.instance_name,
+          last_at: r.created_at,
+        });
+        if (opts.length >= 8) break;
+      }
+      setConvOptions(opts);
+    } catch (e: any) {
+      console.error(e);
+      toast.error('Erro ao buscar conversas');
+    } finally {
+      setSearchingConv(false);
+    }
+  };
+
+  const seedMessagesFromPhone = async (phone: string): Promise<number> => {
+    const digits = String(phone).replace(/\D/g, '');
+    const tail = digits.slice(-8);
+    const { data, error } = await db
+      .from('whatsapp_messages')
+      .select('direction, message_text, created_at')
+      .ilike('phone', `%${tail}%`)
+      .not('message_text', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(30);
+    if (error) throw error;
+    const ordered = (data || []).reverse();
+    const seeded: Msg[] = ordered
+      .filter((m: any) => m.message_text && String(m.message_text).trim())
+      .map((m: any) => {
+        const text = String(m.message_text);
+        if (m.direction === 'outbound') {
+          const { cleanText, actions } = detectActions(text);
+          return { role: 'assistant' as const, content: cleanText, actions };
+        }
+        return { role: 'user' as const, content: text };
+      });
+    setMessages(seeded);
+    return seeded.length;
+  };
+
+  const pickConversation = async (opt: ConvOpt) => {
+    try {
+      setSelectedConversation(opt);
+      setConvOptions([]);
+      setConvSearch('');
+      // tenta achar contato pelo telefone p/ preencher variáveis
+      const digits = String(opt.phone).replace(/\D/g, '');
+      const tail = digits.slice(-8);
+      const { data: c } = await db
+        .from('contacts')
+        .select('*')
+        .ilike('phone', `%${tail}%`)
+        .limit(1)
+        .maybeSingle();
+      if (c) setSelectedContact(c);
+      const n = await seedMessagesFromPhone(opt.phone);
+      if (n === 0) toast.error('Conversa sem texto pra carregar');
+      else toast.success(`Carregadas ${n} mensagens reais`);
+    } catch (e: any) {
+      console.error(e);
+      toast.error('Erro ao carregar conversa');
+    }
+  };
+
+  const clearConversation = () => { setSelectedConversation(null); setSelectedContact(null); };
+
 
   const fireProactive = async () => {
     if (isLoading) return;
@@ -277,34 +377,9 @@ export function AgentTestChat({ systemPrompt, model = 'google/gemini-2.5-flash',
       return;
     }
     try {
-      const digits = String(phone).replace(/\D/g, '');
-      const tail = digits.slice(-8);
-      const { data, error } = await db
-        .from('whatsapp_messages')
-        .select('direction, message_text, created_at')
-        .ilike('phone', `%${tail}%`)
-        .not('message_text', 'is', null)
-        .order('created_at', { ascending: false })
-        .limit(30);
-      if (error) throw error;
-      const ordered = (data || []).reverse();
-      if (ordered.length === 0) {
-        toast.error('Nenhuma mensagem encontrada pra esse lead');
-        return;
-      }
-      // inbound (cliente) → user no teste; outbound (nosso) → assistant
-      const seeded: Msg[] = ordered
-        .filter((m: any) => m.message_text && String(m.message_text).trim())
-        .map((m: any) => {
-          const text = String(m.message_text);
-          if (m.direction === 'outbound') {
-            const { cleanText, actions } = detectActions(text);
-            return { role: 'assistant' as const, content: cleanText, actions };
-          }
-          return { role: 'user' as const, content: text };
-        });
-      setMessages(seeded);
-      toast.success(`Carregadas ${seeded.length} mensagens reais`);
+      const n = await seedMessagesFromPhone(phone);
+      if (n === 0) toast.error('Nenhuma mensagem encontrada pra esse lead');
+      else toast.success(`Carregadas ${n} mensagens reais`);
     } catch (e: any) {
       console.error(e);
       toast.error('Erro ao carregar conversa real');
@@ -601,6 +676,23 @@ export function AgentTestChat({ systemPrompt, model = 'google/gemini-2.5-flash',
                   </Button>
                 </div>
               </div>
+            ) : selectedConversation ? (
+              <div className="flex items-center justify-between gap-2 text-xs">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Download className="h-3.5 w-3.5 text-primary shrink-0" />
+                  <span className="font-medium truncate">
+                    {selectedConversation.contact_name || 'Sem nome'}
+                  </span>
+                  <span className="text-muted-foreground truncate">{selectedConversation.phone}</span>
+                  {selectedConversation.instance_name && (
+                    <Badge variant="outline" className="text-[9px]">{selectedConversation.instance_name}</Badge>
+                  )}
+                  {selectedContact && <Badge variant="secondary" className="text-[9px]">+contato</Badge>}
+                </div>
+                <Button size="icon" variant="ghost" className="h-6 w-6 shrink-0" onClick={clearConversation}>
+                  <X className="h-3 w-3" />
+                </Button>
+              </div>
             ) : (
               <div className="space-y-1.5">
                 <div className="flex gap-2">
@@ -614,7 +706,7 @@ export function AgentTestChat({ systemPrompt, model = 'google/gemini-2.5-flash',
                     />
                   </div>
                 </div>
-                {searchingLeads && <div className="text-[10px] text-muted-foreground">Buscando...</div>}
+                {searchingLeads && <div className="text-[10px] text-muted-foreground">Buscando leads...</div>}
                 {leadOptions.length > 0 && (
                   <div className="border rounded-md max-h-32 overflow-auto bg-background">
                     {leadOptions.map(o => (
@@ -630,8 +722,48 @@ export function AgentTestChat({ systemPrompt, model = 'google/gemini-2.5-flash',
                     ))}
                   </div>
                 )}
+
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 h-px bg-border" />
+                  <span className="text-[9px] text-muted-foreground uppercase tracking-wide">ou</span>
+                  <div className="flex-1 h-px bg-border" />
+                </div>
+
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Download className="h-3 w-3 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      placeholder="Buscar conversa do WhatsApp (nome ou telefone)..."
+                      value={convSearch}
+                      onChange={e => { setConvSearch(e.target.value); searchConversations(e.target.value); }}
+                      className="h-8 text-xs pl-7"
+                    />
+                  </div>
+                </div>
+                {searchingConv && <div className="text-[10px] text-muted-foreground">Buscando conversas...</div>}
+                {convOptions.length > 0 && (
+                  <div className="border rounded-md max-h-40 overflow-auto bg-background">
+                    {convOptions.map(o => (
+                      <button
+                        key={`${o.phone}-${o.instance_name}`}
+                        type="button"
+                        onClick={() => pickConversation(o)}
+                        className="w-full text-left px-2 py-1.5 hover:bg-muted text-xs border-b last:border-0"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-medium truncate">{o.contact_name || 'Sem nome'}</span>
+                          {o.instance_name && (
+                            <span className="text-[9px] text-muted-foreground shrink-0">{o.instance_name}</span>
+                          )}
+                        </div>
+                        <span className="text-muted-foreground text-[10px]">{o.phone}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
                 <p className="text-[10px] text-muted-foreground">
-                  Sem lead selecionado, as variáveis ficam vazias no prompt (você vê o que falta).
+                  Lead = traz variáveis ({'{{lead.nome}}'}…). Conversa = só seeda as mensagens reais.
                 </p>
               </div>
             )}
