@@ -124,6 +124,8 @@ interface ShortcutFormState {
   lead_status_board_ids: string[];
   lead_status_filter: string[];
   audience_mode: 'ctwa_only' | 'outbound_only' | 'both';
+  proactive_first_message_enabled: boolean;
+  proactive_first_message_instruction: string;
 }
 
 const DEFAULT_FORM: ShortcutFormState = {
@@ -141,6 +143,7 @@ const DEFAULT_FORM: ShortcutFormState = {
   send_call_followup_audio: false, zapsign_mode: 'final_document', zapsign_settings: {},
   forward_questions_to_group: false, notify_instance_name: null,
   lead_status_board_ids: [], lead_status_filter: [], audience_mode: 'both',
+  proactive_first_message_enabled: false, proactive_first_message_instruction: '',
 };
 
 
@@ -526,6 +529,8 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       lead_status_board_ids: (s as any).lead_status_board_ids || [],
       lead_status_filter: (s as any).lead_status_filter || [],
       audience_mode: (s as any).audience_mode || 'both',
+      proactive_first_message_enabled: (s as any).proactive_first_message_enabled ?? false,
+      proactive_first_message_instruction: (s as any).proactive_first_message_instruction ?? '',
     });
     // Carrega filtros do Cloud (agent_filter_settings) — fonte de verdade, sobrescreve o que veio do shortcut
     supabase
@@ -617,6 +622,8 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       zapsign_settings: form.zapsign_settings || {},
       forward_questions_to_group: form.forward_questions_to_group ?? false,
       notify_instance_name: form.notify_instance_name || null,
+      proactive_first_message_enabled: form.proactive_first_message_enabled ?? false,
+      proactive_first_message_instruction: form.proactive_first_message_instruction || null,
     };
 
     let error;
@@ -1826,6 +1833,34 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
             {/* FOLLOWUP SECTION */}
             {formSection === 'followup' && (
               <div className="space-y-3">
+                <div className="border rounded-lg p-3 space-y-2 bg-primary/5 border-primary/20">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex-1">
+                      <Label className="text-xs font-semibold">⚡ Mandar 1ª mensagem proativa</Label>
+                      <p className="text-[9px] text-muted-foreground mt-0.5">
+                        Quando o agente for ativado pela etiqueta na conversa, dispara uma abordagem inicial gerada pela IA — sem esperar o cliente falar primeiro. Se ele não responder, segue as etapas de follow-up abaixo normalmente.
+                      </p>
+                    </div>
+                    <Switch
+                      checked={form.proactive_first_message_enabled ?? false}
+                      onCheckedChange={v => setForm(f => ({ ...f, proactive_first_message_enabled: v }))}
+                    />
+                  </div>
+                  {form.proactive_first_message_enabled && (
+                    <div className="space-y-1 pt-1">
+                      <Label className="text-[10px]">Instrução extra pra IA (opcional)</Label>
+                      <Textarea
+                        rows={2}
+                        placeholder="Ex: Cumprimente, se apresente como [Nome] e pergunte se a pessoa viu o anúncio sobre X."
+                        value={form.proactive_first_message_instruction ?? ''}
+                        onChange={e => setForm(f => ({ ...f, proactive_first_message_instruction: e.target.value }))}
+                        className="text-xs"
+                      />
+                      <p className="text-[9px] text-muted-foreground">Se vazio, a IA usa o prompt principal do agente pra montar a abordagem.</p>
+                    </div>
+                  )}
+                </div>
+
                 <div className="border rounded-lg p-3 space-y-2">
                   <Label className="text-xs font-semibold">🕐 Janela de follow-up</Label>
                   <p className="text-[9px] text-muted-foreground">Horário permitido para follow-ups. Respostas ao cliente funcionam em qualquer horário.</p>
