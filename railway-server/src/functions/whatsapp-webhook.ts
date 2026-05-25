@@ -957,6 +957,8 @@ export const handler: RequestHandler = async (req, res) => {
                 .like('phone', `%${last8}`);
             }
             console.log('[label-trigger] agent activated via sync', { chatId, phone: phoneDigits, agent_id: (m as any).agent_id, label: (m as any).label_name });
+            // Dispara 1ª mensagem proativa se o agente tiver configurado
+            triggerProactiveFirstMessage(supabase, phoneDigits, webhookInstanceName, (m as any).agent_id).catch(err => console.warn('[proactive] sync trigger error:', err?.message));
           } catch (e: any) {
             console.warn('[label-trigger] sync activation failed:', e?.message);
           }
