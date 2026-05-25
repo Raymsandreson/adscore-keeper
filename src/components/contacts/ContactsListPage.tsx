@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useDeferredValue } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DashboardChatPreview } from '@/components/whatsapp/DashboardChatPreview';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
