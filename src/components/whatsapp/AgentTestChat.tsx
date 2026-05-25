@@ -635,6 +635,25 @@ export function AgentTestChat({ systemPrompt, model = 'google/gemini-2.5-flash',
                 </p>
               </div>
             )}
+
+            {proactiveEnabled && (
+              <div className="flex items-center justify-between gap-2 pt-1 border-t border-dashed">
+                <p className="text-[10px] text-muted-foreground flex-1">
+                  ⚡ Proativa ligada — simule o disparo da 1ª mensagem (sem esperar o cliente).
+                </p>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  className="h-7 text-[11px] gap-1 px-2 shrink-0"
+                  onClick={fireProactive}
+                  disabled={isLoading}
+                  title="Gera a 1ª mensagem como se o agente fosse acionado pela etiqueta"
+                >
+                  <Zap className="h-3 w-3" /> Disparar 1ª proativa
+                </Button>
+              </div>
+            )}
           </div>
 
           {/* Chat — visual WhatsApp */}
