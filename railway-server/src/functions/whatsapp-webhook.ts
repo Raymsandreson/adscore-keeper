@@ -903,6 +903,25 @@ export const handler: RequestHandler = async (req, res) => {
           return res.json({ success: true, skipped: true, reason: 'label_event_missing_data' });
         }
 
+        // Canonicaliza o instance_name (UazAPI manda em CAIXA-ALTA em label events,
+        // mas as mensagens regulares chegam em camelCase). Sem isso, conversation_agents
+        // grava 'NOME MAIÚSCULO' e o ai-agent-reply faz .eq() case-sensitive → bot não responde.
+        try {
+          const { data: canonInst } = await supabase
+            .from('whatsapp_instances')
+            .select('instance_name')
+            .ilike('instance_name', webhookInstanceName)
+            .eq('is_active', true)
+            .limit(1)
+            .maybeSingle();
+          if (canonInst?.instance_name && canonInst.instance_name !== webhookInstanceName) {
+            console.log('[label-trigger] canonicalizing instance_name', { from: webhookInstanceName, to: canonInst.instance_name });
+            webhookInstanceName = canonInst.instance_name;
+          }
+        } catch (e: any) {
+          console.warn('[label-trigger] canonicalize failed (non-fatal):', e?.message);
+        }
+
         const phoneDigits = chatId.replace(/@[^@]+$/, '').replace(/\D/g, '');
 
         // Busca gatilhos ativos pra essa instância
