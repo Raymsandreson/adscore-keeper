@@ -379,7 +379,30 @@ export function AgentTestChat({ systemPrompt, model = 'google/gemini-2.5-flash',
       toast.error('Configure o prompt do agente antes de testar');
       return;
     }
+    const contextBlock = buildContextBlock(selectedLead, selectedContact, messages);
     const extraInstr = (proactiveInstruction || '').trim();
+    const proactiveSystem =
+      draftPrompt +
+      contextBlock +
+      '\n\n[INSTRUÇÃO DE ABERTURA — DISPARO PROATIVO]\n' +
+      'Você foi acionado pela etiqueta antes do cliente falar. Inicie a conversa AGORA, ' +
+      'de forma natural, humanizada e curta, seguindo seu prompt principal, o CONTEXTO acima e a instrução abaixo.\n' +
+      (extraInstr ? extraInstr : '(Sem instrução extra — use o prompt principal + contexto pra montar a abordagem.)');
+
+    setMessages(prev => [...prev, { role: 'assistant', content: '' }]);
+    setIsLoading(true);
+
+    // Inclui o histórico real seedado ANTES do gatilho proativo, pra IA ter o fio da conversa
+    const seededWire = messages.map(m => ({
+      role: m.role,
+      content: m.role === 'user'
+        ? (m.content || '')
+        : (m.content || ''),
+    }));
+    const wireMessages = [
+      ...seededWire,
+      { role: 'user' as const, content: '(__INICIAR_CONVERSA_PROATIVA__)' },
+    ];
     const proactiveSystem =
       draftPrompt +
       '\n\n[INSTRUÇÃO DE ABERTURA — DISPARO PROATIVO]\n' +
