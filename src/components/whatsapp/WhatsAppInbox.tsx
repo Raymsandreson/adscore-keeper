@@ -1643,8 +1643,8 @@ export function WhatsAppInbox() {
                   onSendMessage={(() => {
                     const share = sharedConvs.find(s => s.phone === selectedConversation.phone && s.instance_name === selectedConversation.instance_name);
                     if (share) {
-                      return guardSendMessage(((phone: string, message: string, contactId?: string, leadId?: string, instanceName?: string | null, _identifySender?: boolean, chatId?: string, treatmentOverride?: string | null, nameFormatOverride?: string, nicknameOverride?: string | null) =>
-                        sendMessage(phone, message, contactId, leadId, instanceName, share.identify_sender, chatId, treatmentOverride, nameFormatOverride, nicknameOverride)) as any);
+                      return guardSendMessage(((phone: string, message: string, contactId?: string, leadId?: string, instanceName?: string | null, _identifySender?: boolean, chatId?: string, treatmentOverride?: string | null, nameFormatOverride?: string, nicknameOverride?: string | null, mentions?: string[]) =>
+                        sendMessage(phone, message, contactId, leadId, instanceName, share.identify_sender, chatId, treatmentOverride, nameFormatOverride, nicknameOverride, mentions)) as any);
                     }
                     return guardSendMessage(sendMessage);
                   })()}
@@ -1718,8 +1718,8 @@ export function WhatsAppInbox() {
                   onSendMessage={(() => {
                     const share = sharedConvs.find(s => s.phone === selectedConversation.phone && s.instance_name === selectedConversation.instance_name);
                     if (share) {
-                      return guardSendMessage(((phone: string, message: string, contactId?: string, leadId?: string, instanceName?: string | null, _identifySender?: boolean, chatId?: string, treatmentOverride?: string | null, nameFormatOverride?: string, nicknameOverride?: string | null) =>
-                        sendMessage(phone, message, contactId, leadId, instanceName, share.identify_sender, chatId, treatmentOverride, nameFormatOverride, nicknameOverride)) as any);
+                      return guardSendMessage(((phone: string, message: string, contactId?: string, leadId?: string, instanceName?: string | null, _identifySender?: boolean, chatId?: string, treatmentOverride?: string | null, nameFormatOverride?: string, nicknameOverride?: string | null, mentions?: string[]) =>
+                        sendMessage(phone, message, contactId, leadId, instanceName, share.identify_sender, chatId, treatmentOverride, nameFormatOverride, nicknameOverride, mentions)) as any);
                     }
                     return guardSendMessage(sendMessage);
                   })()}

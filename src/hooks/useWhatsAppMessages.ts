@@ -584,7 +584,8 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     chatId?: string,
     treatmentOverride?: string | null,
     nameFormatOverride?: string,
-    nicknameOverride?: string | null
+    nicknameOverride?: string | null,
+    mentions?: string[]
   ) => {
     const debugId = Math.random().toString(36).slice(2, 8);
     console.log(`[sendMessage ${debugId}] START`, {
@@ -657,6 +658,8 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         contact_id: contactId,
         lead_id: leadId,
         instance_id: targetInstanceId,
+        // Group @mentions: array of phone numbers (digits) to tag in a group message.
+        mentions: mentions && mentions.length ? mentions : undefined,
       };
 
       // INSTANT UI: render optimistic bubble BEFORE awaiting the edge function.

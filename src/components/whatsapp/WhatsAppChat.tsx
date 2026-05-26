@@ -73,7 +73,8 @@ interface Props {
     chatId?: string,
     treatmentOverride?: string | null,
     nameFormatOverride?: string,
-    nicknameOverride?: string | null
+    nicknameOverride?: string | null,
+    mentions?: string[]
   ) => Promise<boolean>;
   onSendMedia: (
     phone: string, mediaUrl: string, mediaType: string, caption?: string, fileName?: string,
@@ -623,6 +624,11 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const [mentionUserName, setMentionUserName] = useState<string | null>(null);
   const [teamMembers, setTeamMembers] = useState<Array<{ user_id: string; full_name: string | null }>>([]);
   const [showMentionPicker, setShowMentionPicker] = useState(false);
+  // Group @mention (WhatsApp native): picker over participants while composing
+  const [groupMentionQuery, setGroupMentionQuery] = useState<string | null>(null); // null = picker closed
+  const [groupMentionAnchor, setGroupMentionAnchor] = useState(0); // index of the '@' being edited
+  const [mentionedParticipants, setMentionedParticipants] = useState<Array<{ phone: string; name: string }>>([]);
+  const [rosterParticipants, setRosterParticipants] = useState<Array<{ phone: string; name: string }>>([]);
   const [agentEnabled, setAgentEnabled] = useState(false);
   const [activeAgentName, setActiveAgentName] = useState<string | null>(null);
   const [activeAgentId, setActiveAgentId] = useState<string | null>(null);
@@ -638,6 +644,8 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const conversationKeyRef = useRef<string>('');
   const mediaInputRef = useRef<HTMLInputElement>(null);
+  const messageInputRef = useRef<HTMLTextAreaElement>(null);
+  const rosterFetchedForRef = useRef<string | null>(null); // conversation.phone whose roster we already fetched
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -1098,6 +1106,117 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     return Array.from(participantMap.entries()).map(([phone, name]) => ({ phone, name })).sort((a, b) => a.name.localeCompare(b.name));
   })() : [];
 
+  // --- Group @mention helpers (WhatsApp native mentions) ---
+  const normalizeForSearch = (s: string) => s.normalize('NFD').replace(new RegExp('[\\u0300-\\u036f]', 'g'), '').toLowerCase();
+
+  // Candidates for the @ picker: full roster (fetched on demand) merged with history-derived participants.
+  const mentionCandidates = (() => {
+    const map = new Map<string, string>();
+    for (const p of groupParticipants) if (p.name !== 'Você') map.set(p.phone, p.name);
+    for (const p of rosterParticipants) if (p.phone && !map.has(p.phone)) map.set(p.phone, p.name || p.phone);
+    return Array.from(map.entries()).map(([phone, name]) => ({ phone, name })).sort((a, b) => a.name.localeCompare(b.name));
+  })();
+
+  const mentionMatches = groupMentionQuery === null
+    ? []
+    : mentionCandidates.filter(c => normalizeForSearch(c.name).includes(normalizeForSearch(groupMentionQuery))).slice(0, 8);
+
+  // Lazily fetch the complete participant roster the first time the user opens the @ picker in a group.
+  const ensureRoster = async () => {
+    if (!isGroup || !conversation.instance_name) return;
+    if (rosterFetchedForRef.current === conversation.phone) return;
+    rosterFetchedForRef.current = conversation.phone;
+    const groupJid =
+      conversation.messages.find(m => (m.metadata?.chat?.wa_chatid || '').includes('@g.us'))?.metadata?.chat?.wa_chatid ||
+      conversation.messages.find(m => (m.metadata?.message?.chatid || '').includes('@g.us'))?.metadata?.message?.chatid;
+    if (!groupJid) return;
+    try {
+      const { data } = await supabase.functions.invoke('get-group-participants', {
+        body: { group_jid: groupJid, instance_name: conversation.instance_name, refresh: false },
+      });
+      const resp = data as { success?: boolean; participants?: Array<Record<string, unknown>> } | null;
+      if (resp?.success && Array.isArray(resp.participants)) {
+        const mapped = resp.participants
+          .map(p => ({
+            phone: String(p.phone || '').replace(/\D/g, ''),
+            name: String(p.name || p.display_name || p.notify || p.pushName || ''),
+          }))
+          .filter(p => p.phone.length >= 8);
+        setRosterParticipants(mapped);
+      }
+    } catch { /* keep history-derived candidates */ }
+  };
+
+  // Detect an active "@token" immediately left of the caret (no whitespace inside the token).
+  const detectGroupMention = (value: string, caret: number) => {
+    if (!isGroup || inputMode !== 'message') { setGroupMentionQuery(null); return; }
+    const upto = value.slice(0, caret);
+    const at = upto.lastIndexOf('@');
+    if (at === -1) { setGroupMentionQuery(null); return; }
+    const before = at === 0 ? ' ' : upto[at - 1];
+    if (!/\s/.test(before)) { setGroupMentionQuery(null); return; }
+    const token = upto.slice(at + 1);
+    if (/\s/.test(token)) { setGroupMentionQuery(null); return; }
+    setGroupMentionAnchor(at);
+    setGroupMentionQuery(token);
+    void ensureRoster();
+  };
+
+  const handleMessageChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const value = e.target.value;
+    setNewMessage(value);
+    detectGroupMention(value, e.target.selectionStart ?? value.length);
+  };
+
+  // Replace the "@token" being edited with "@Name " and remember the participant for send-time tagging.
+  const insertGroupMention = (cand: { phone: string; name: string }) => {
+    const value = newMessage;
+    const ref = messageInputRef.current;
+    const caret = ref?.selectionStart ?? value.length;
+    const before = value.slice(0, groupMentionAnchor);
+    const after = value.slice(caret);
+    const inserted = `@${cand.name} `;
+    const newValue = before + inserted + after;
+    setNewMessage(newValue);
+    setMentionedParticipants(prev => prev.some(p => p.phone === cand.phone) ? prev : [...prev, cand]);
+    setGroupMentionQuery(null);
+    requestAnimationFrame(() => {
+      const pos = (before + inserted).length;
+      ref?.focus();
+      try { ref?.setSelectionRange(pos, pos); } catch { /* ignore */ }
+    });
+  };
+
+  // At send time: rewrite "@Name" tokens to "@<number>" (WhatsApp protocol) and collect mentioned numbers.
+  const buildMentionPayload = (text: string): { text: string; mentions: string[] } => {
+    if (!isGroup || mentionedParticipants.length === 0) return { text, mentions: [] };
+    let out = text;
+    const mentions: string[] = [];
+    for (const m of mentionedParticipants) {
+      const token = `@${m.name}`;
+      if (out.includes(token)) {
+        out = out.split(token).join(`@${m.phone}`);
+        if (!mentions.includes(m.phone)) mentions.push(m.phone);
+      }
+    }
+    return { text: out, mentions };
+  };
+
+  // For in-app display: rewrite "@<number>" tokens back to "@Name" in group messages
+  // (the wire format carries the number; WhatsApp itself shows the name to recipients).
+  const mentionPhoneToName = (() => {
+    const m = new Map<string, string>();
+    for (const c of mentionCandidates) if (c.name && c.name !== c.phone) m.set(c.phone, c.name);
+    return m;
+  })();
+  const displayMessageText = (text: string | null | undefined): string => {
+    if (!text || !isGroup || mentionPhoneToName.size === 0) return text || '';
+    return text.replace(/@(\d{8,15})/g, (full, num) => {
+      const name = mentionPhoneToName.get(num);
+      return name ? `@${name}` : full;
+    });
+  };
+
   // Color assignment for group senders
   const senderColors = ['text-blue-600', 'text-emerald-600', 'text-purple-600', 'text-orange-600', 'text-pink-600', 'text-teal-600', 'text-amber-600', 'text-indigo-600'];
   const getSenderColor = (phone: string) => {
@@ -1112,6 +1231,46 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
       setTeamMembers((data || []).filter((p: any) => p.full_name));
     });
   }, []);
+
+  // Reset group @mention state when switching conversations
+  useEffect(() => {
+    setMentionedParticipants([]);
+    setRosterParticipants([]);
+    setGroupMentionQuery(null);
+    rosterFetchedForRef.current = null;
+  }, [conversation.phone, conversation.instance_name]);
+
+  // Load cached participant names (cheap DB read, no UazAPI call) so group @mentions render as names.
+  useEffect(() => {
+    if (!isGroup) return;
+    const groupJid =
+      conversation.messages.find(m => (m.metadata?.chat?.wa_chatid || '').includes('@g.us'))?.metadata?.chat?.wa_chatid ||
+      conversation.messages.find(m => (m.metadata?.message?.chatid || '').includes('@g.us'))?.metadata?.message?.chatid;
+    if (!groupJid) return;
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from('whatsapp_groups_cache')
+        .select('participants')
+        .eq('group_jid', groupJid)
+        .order('fetched_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const raw = (data as { participants?: Array<Record<string, unknown>> } | null)?.participants;
+      if (cancelled || !Array.isArray(raw) || raw.length === 0) return;
+      const mapped = raw
+        .map(p => {
+          const rawId = String(p.JID || p.jid || p.id || p.participant || '');
+          const phone = String(p.PhoneNumber || p.phoneNumber || p.phone || rawId)
+            .replace('@s.whatsapp.net', '').replace('@lid', '').replace(/\D/g, '');
+          const name = String(p.DisplayName || p.displayName || p.Name || p.name || p.PushName || p.pushName || '');
+          return { phone, name };
+        })
+        .filter(p => p.phone.length >= 8 && p.name);
+      if (mapped.length) setRosterParticipants(prev => (prev.length ? prev : mapped));
+    })();
+    return () => { cancelled = true; };
+  }, [isGroup, conversation.phone]);
 
 
   useEffect(() => {
@@ -1507,11 +1666,14 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
       conversation.messages.find((msg) => typeof msg.metadata?.message?.chatid === 'string')?.metadata?.message?.chatid;
     const conversationChatId = canonicalizeChatTarget(rawChatId);
 
+    // Rewrite "@Name" tokens to "@<number>" and collect mentioned numbers (group only).
+    const { text: outgoingMessage, mentions } = buildMentionPayload(newMessage.trim());
+
     setSending(true);
     try {
       const success = await onSendMessage(
         conversation.phone,
-        newMessage.trim(),
+        outgoingMessage,
         conversation.contact_id || undefined,
         conversation.lead_id || undefined,
         conversation.instance_name,
@@ -1519,9 +1681,10 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         conversationChatId,
         nameFormat === 'nickname' ? null : (treatmentTitle || null),
         nameFormat,
-        nameFormat === 'nickname' ? (selectedNickname || null) : null
+        nameFormat === 'nickname' ? (selectedNickname || null) : null,
+        mentions.length ? mentions : undefined
       );
-      if (success) setNewMessage('');
+      if (success) { setNewMessage(''); setMentionedParticipants([]); setGroupMentionQuery(null); }
     } catch (err) {
       console.error('handleSend error:', err);
     } finally {
@@ -1530,6 +1693,19 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    // While the @ picker is open, Enter/Tab pick the first match and Escape dismisses it.
+    if (groupMentionQuery !== null && mentionMatches.length > 0) {
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        insertGroupMention(mentionMatches[0]);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setGroupMentionQuery(null);
+        return;
+      }
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       if (pastedImage) {
@@ -3128,7 +3304,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                     {msg.message_type === 'audio' && (
                       <span className="text-[10px] font-medium text-muted-foreground block mb-0.5">🎤 Transcrição:</span>
                     )}
-                    {msg.message_text}
+                    {displayMessageText(msg.message_text)}
                   </p>
                 )}
                 {isMissingMedia(msg) && (
@@ -3222,6 +3398,26 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                   {(member.full_name || '?')[0].toUpperCase()}
                 </div>
                 <span className="truncate">{member.full_name}</span>
+              </button>
+            ))}
+          </div>
+        )}
+        {/* Group @mention picker (WhatsApp native) */}
+        {isGroup && inputMode === 'message' && groupMentionQuery !== null && mentionMatches.length > 0 && (
+          <div className="border rounded-lg bg-card p-2 space-y-1 max-h-[200px] overflow-y-auto">
+            <p className="text-xs font-medium text-muted-foreground px-1 mb-1">Marcar participante:</p>
+            {mentionMatches.map(cand => (
+              <button
+                key={cand.phone}
+                type="button"
+                className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm text-left transition-colors hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                onMouseDown={e => { e.preventDefault(); insertGroupMention(cand); }}
+              >
+                <div className="h-6 w-6 rounded-full bg-emerald-100 dark:bg-emerald-900/50 flex items-center justify-center text-xs font-medium text-emerald-700 dark:text-emerald-300 shrink-0">
+                  {(cand.name || '?')[0].toUpperCase()}
+                </div>
+                <span className="truncate flex-1">{cand.name}</span>
+                <span className="text-xs text-muted-foreground shrink-0">{cand.phone}</span>
               </button>
             ))}
           </div>
@@ -3417,13 +3613,15 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
               <AITextActions value={newMessage} onChange={setNewMessage} />
             )}
             <Textarea
+              ref={messageInputRef}
               placeholder={
                 inputMode === 'note' ? "Nota interna (não será enviada ao contato)..."
                   : inputMode === 'chat' ? (mentionUserName ? `Mensagem para @${mentionUserName}...` : "Selecione um membro acima...")
+                  : isGroup ? "Digite uma mensagem... (@ para marcar)"
                   : "Digite uma mensagem..."
               }
               value={newMessage}
-              onChange={e => setNewMessage(e.target.value)}
+              onChange={handleMessageChange}
               onKeyDown={handleKeyDown}
               onPaste={inputMode === 'message' ? handlePaste : undefined}
               className={cn(
