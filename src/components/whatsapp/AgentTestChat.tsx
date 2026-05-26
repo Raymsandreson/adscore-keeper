@@ -121,14 +121,15 @@ function buildContextBlock(lead: any, contact: any, seeded: Msg[]): string {
 
   const notes = (lead?.notes || '').toString().trim();
 
-  // Recap: últimas 8 mensagens textuais, com rótulo
+  // Recap: últimas 20 mensagens textuais, com rótulo (janela maior pra
+  // capturar TODOS os assuntos pendentes do dia, não só o último)
   const recap = seeded
     .filter(m => m.content && m.content.trim())
-    .slice(-8)
+    .slice(-20)
     .map(m => {
       const who = m.role === 'user' ? 'CLIENTE' : 'AGENTE';
       const txt = m.content.replace(/\s+/g, ' ').trim();
-      return `- ${who}: ${txt.length > 220 ? txt.slice(0, 220) + '…' : txt}`;
+      return `- ${who}: ${txt.length > 280 ? txt.slice(0, 280) + '…' : txt}`;
     });
 
   if (idBits.length === 0 && !notes && recap.length === 0) return '';
@@ -140,7 +141,7 @@ function buildContextBlock(lead: any, contact: any, seeded: Msg[]): string {
     for (const b of idBits) lines.push(`   - ${b}`);
   }
   if (notes) {
-    lines.push('• Observações gerais do lead (histórico consolidado do relacionamento):');
+    lines.push('• Observações gerais do lead (histórico consolidado — TODOS os assuntos em aberto estão aqui):');
     lines.push(notes.split('\n').map(l => '   ' + l).join('\n'));
   }
   if (recap.length) {
@@ -149,10 +150,13 @@ function buildContextBlock(lead: any, contact: any, seeded: Msg[]): string {
   }
   lines.push('');
   lines.push('REGRAS OBRIGATÓRIAS DE CONTINUIDADE:');
-  lines.push(`- NÃO trate como primeira interação. Você JÁ conversa com essa pessoa.`);
+  lines.push('- NÃO trate como primeira interação. Você JÁ conversa com essa pessoa.');
   if (firstName) lines.push(`- Cumprimente/refira-se pelo primeiro nome: ${firstName}.`);
-  lines.push('- Antes de qualquer pergunta nova, situe a conversa em 1 frase curta retomando o assunto mais recente do recap.');
-  lines.push('- NUNCA mande "Olá! Como posso te ajudar hoje?" genérico — isso quebra a continuidade.');
+  lines.push('- ANTES de redigir, faça mentalmente uma LISTA de TODOS os assuntos pendentes citados nas Observações E no Recap (ex: documento X pendente, dúvida Y não respondida, prazo Z, pagamento, agendamento, anexo prometido, notas fiscais, declaração etc).');
+  lines.push('- Na mensagem, retome explicitamente CADA UM desses pendentes — não escolha só o "mais recente" e esqueça os outros. Se tem 3 pendências em aberto, cite as 3.');
+  lines.push('- Estrutura sugerida: (1) cumprimento curto pelo nome, (2) 1 frase situando onde paramos, (3) perguntar sobre cada pendente de forma natural (pode agrupar em bullets ou frases curtas).');
+  lines.push('- NUNCA mande "Olá! Como posso te ajudar hoje?" genérico — quebra a continuidade.');
+  lines.push('- NUNCA invente assunto que não está no contexto. Só fale do que aparece nas Observações ou no Recap.');
   lines.push('=== FIM DO CONTEXTO ===');
   lines.push('');
   return lines.join('\n');
