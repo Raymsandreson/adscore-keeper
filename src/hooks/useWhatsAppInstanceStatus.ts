@@ -122,9 +122,30 @@ export function useWhatsAppInstanceStatus(enabled: boolean = true) {
 
       const { data, error } = await cloudFunctions.invoke('check-whatsapp-status');
       if (error) throw error;
+
+      // Auto-retry: se alguma instância voltou api_error, tenta de novo após 5s
+      // antes de marcar como offline (evita falso positivo de timeout/502 transitório)
+      let finalData: any[] = data || [];
+      const hasApiError = finalData.some((s: any) => s.status_raw === 'api_error');
+      if (hasApiError) {
+        await new Promise(r => setTimeout(r, 5000));
+        try {
+          const retry = await cloudFunctions.invoke('check-whatsapp-status');
+          if (!retry.error && Array.isArray(retry.data)) {
+            // Mescla: prefere resultado novo quando o antigo era api_error
+            const retryById = new Map(retry.data.map((s: any) => [s.id, s]));
+            finalData = finalData.map((s: any) =>
+              s.status_raw === 'api_error' && retryById.has(s.id) ? retryById.get(s.id) : s
+            );
+          }
+        } catch (e) {
+          console.warn('check-whatsapp-status retry failed:', e);
+        }
+      }
+
       const now = new Date();
       const reconnected: InstanceStatus[] = [];
-      const enriched: InstanceStatus[] = (data || []).map((s: any) => {
+      const enriched: InstanceStatus[] = finalData.map((s: any) => {
         if (!s.connected) {
           if (!disconnectedTimestamps.current[s.id]) {
             disconnectedTimestamps.current[s.id] = now;
@@ -163,6 +184,7 @@ export function useWhatsAppInstanceStatus(enabled: boolean = true) {
       setLoading(false);
     }
   }, [enabled, notifyOfflineViaWhatsApp, notifyReconnectedViaWhatsApp]);
+
 
   useEffect(() => {
     if (enabled) {
