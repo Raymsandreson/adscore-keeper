@@ -403,19 +403,6 @@ export function AgentTestChat({ systemPrompt, model = 'google/gemini-2.5-flash',
       ...seededWire,
       { role: 'user' as const, content: '(__INICIAR_CONVERSA_PROATIVA__)' },
     ];
-    const proactiveSystem =
-      draftPrompt +
-      '\n\n[INSTRUÇÃO DE ABERTURA — DISPARO PROATIVO]\n' +
-      'Você foi acionado pela etiqueta antes do cliente falar. Inicie a conversa AGORA, ' +
-      'de forma natural, humanizada e curta, seguindo seu prompt principal e a instrução abaixo.\n' +
-      (extraInstr ? extraInstr : '(Sem instrução extra — use o prompt principal pra montar a abordagem.)');
-
-    setMessages(prev => [...prev, { role: 'assistant', content: '' }]);
-    setIsLoading(true);
-
-    const wireMessages = [
-      { role: 'user' as const, content: '(__INICIAR_CONVERSA_PROATIVA__)' },
-    ];
 
     let assistantText = '';
     try {
