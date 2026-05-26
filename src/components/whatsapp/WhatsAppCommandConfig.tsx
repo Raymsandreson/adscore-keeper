@@ -300,7 +300,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
   const [templateFields, setTemplateFields] = useState<{ variable: string; label: string; required: boolean }[]>([]);
   const [loadingFields, setLoadingFields] = useState(false);
   const [loadingTemplates, setLoadingTemplates] = useState(false);
-  const [formSection, setFormSection] = useState<'general' | 'ai' | 'document' | 'followup' | 'automations' | 'conversations'>('general');
+  const [formSection, setFormSection] = useState<'general' | 'ai' | 'test' | 'document' | 'followup' | 'automations' | 'conversations'>('general');
   const [availableVoices, setAvailableVoices] = useState<{ id: string; name: string }[]>([]);
   const [instances, setInstances] = useState<any[]>([]);
   const [boards, setBoards] = useState<{ id: string; name: string }[]>([]);
@@ -819,7 +819,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
             <div className="flex items-center justify-between">
               <p className="text-xs font-medium text-primary">{editingId ? '✏️ Editando agente' : '➕ Novo agente'}</p>
               <div className="flex gap-1">
-                {(['general', 'ai', 'document', 'followup', 'automations', 'conversations'] as const).map(sec => (
+                {(['general', 'ai', 'test', 'document', 'followup', 'automations', 'conversations'] as const).map(sec => (
                   <Button
                     key={sec}
                     size="sm"
@@ -829,6 +829,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                   >
                     {sec === 'general' && '⚙️ Geral'}
                     {sec === 'ai' && '🧠 IA'}
+                    {sec === 'test' && '▶️ Testar'}
                     {sec === 'document' && '📄 Documento'}
                     {sec === 'followup' && '🔔 Follow-up'}
                     {sec === 'automations' && '⚡ Automações'}
@@ -1147,14 +1148,6 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                     <Eye className="h-3.5 w-3.5" />
                     🔍 Diagnóstico do Agente
                   </Button>
-                  <AgentTestChat
-                    systemPrompt={form.prompt_instructions || ''}
-                    model={form.model}
-                    agentName={form.shortcut_name}
-                    onPromptChange={(prompt) => setForm(f => ({ ...f, prompt_instructions: prompt }))}
-                    proactiveEnabled={form.proactive_first_message_enabled ?? false}
-                    proactiveInstruction={form.proactive_first_message_instruction ?? ''}
-                  />
                 </div>
                 
                 <div className="mt-3">
@@ -1366,6 +1359,20 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                     className="min-h-[80px] text-xs font-mono"
                   />
                 </div>
+              </div>
+            )}
+
+            {/* TEST SECTION */}
+            {formSection === 'test' && (
+              <div className="space-y-3">
+                <AgentTestChat
+                  systemPrompt={form.prompt_instructions || ''}
+                  model={form.model}
+                  agentName={form.shortcut_name}
+                  onPromptChange={(prompt) => setForm(f => ({ ...f, prompt_instructions: prompt }))}
+                  proactiveEnabled={form.proactive_first_message_enabled ?? false}
+                  proactiveInstruction={form.proactive_first_message_instruction ?? ''}
+                />
               </div>
             )}
 
