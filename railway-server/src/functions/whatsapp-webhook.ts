@@ -1020,6 +1020,53 @@ export const handler: RequestHandler = async (req, res) => {
           }
         }
 
+        // === NOVO: DESATIVAÇÃO ao remover etiqueta de agente.
+        // Se a conversa tem agente ativo cuja etiqueta NÃO está mais presente
+        // no payload (operador removeu no WA), desativa imediatamente.
+        try {
+          const last8 = phoneDigits.slice(-8);
+          // Pega agente atualmente ativo nesta conversa
+          const { data: convAgent } = await supabase
+            .from('whatsapp_conversation_agents')
+            .select('agent_id, is_active')
+            .ilike('instance_name', webhookInstanceName)
+            .like('phone', `%${last8}`)
+            .eq('is_active', true)
+            .maybeSingle();
+
+          if (convAgent && (convAgent as any).agent_id) {
+            const activeAgentId = (convAgent as any).agent_id;
+            // Esse agente tem etiqueta mapeada nesta instância?
+            const mappingForActive = (agentLabelMappings || []).find(
+              (m: any) => m.agent_id === activeAgentId,
+            );
+            if (mappingForActive) {
+              const lid = String((mappingForActive as any).label_id).split(':').pop()
+                || String((mappingForActive as any).label_id);
+              const stillPresent = normalizedWaLabels.includes(lid);
+              if (!stillPresent) {
+                await supabase
+                  .from('whatsapp_conversation_agents')
+                  .update({
+                    is_active: false,
+                    updated_at: new Date().toISOString(),
+                    activated_by: 'label_sync_removed',
+                  })
+                  .ilike('instance_name', webhookInstanceName)
+                  .like('phone', `%${last8}`);
+                console.log('[label-trigger] agent DEACTIVATED via label removal', {
+                  chatId, phone: phoneDigits, agent_id: activeAgentId,
+                  label: (mappingForActive as any).label_name,
+                });
+              }
+            }
+          }
+        } catch (e: any) {
+          console.warn('[label-trigger] deactivation check failed:', e?.message);
+        }
+
+
+
         // === NOVO: etiquetas de RESULTADO do lead (WA → CRM)
         // Quando o operador cola "✅ Fechado", "❌ Recusado" etc, atualiza lead_status.
         // Só atua se houver vínculo EXPLÍCITO conversa→lead (whatsapp_conversation_agents ou contact_leads).
