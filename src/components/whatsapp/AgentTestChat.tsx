@@ -102,6 +102,7 @@ export function AgentTestChat({ systemPrompt, model = 'google/gemini-2.5-flash',
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [contextOpen, setContextOpen] = useState(false);
 
   // Prompt editor (sidesheet dentro do dialog)
   const [promptEditorOpen, setPromptEditorOpen] = useState(false);
