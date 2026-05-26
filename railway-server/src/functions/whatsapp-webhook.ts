@@ -853,7 +853,7 @@ export const handler: RequestHandler = async (req, res) => {
     }
 
     // ========== EARLY FILTERS ==========
-    const webhookInstanceName = body.instanceName || body.InstanceName || body.chat?.instanceName || body.data?.instanceName || body.instance_name || body.instance || null;
+    let webhookInstanceName = body.instanceName || body.InstanceName || body.chat?.instanceName || body.data?.instanceName || body.instance_name || body.instance || null;
     const eventType = normalizeUazEventType(body);
     const bodyType = String(body.type || '').toLowerCase();
     const bodyEventStr = (typeof body.event === 'string') ? body.event.toLowerCase() : '';
