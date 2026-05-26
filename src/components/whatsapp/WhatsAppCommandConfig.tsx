@@ -819,7 +819,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
             <div className="flex items-center justify-between">
               <p className="text-xs font-medium text-primary">{editingId ? '✏️ Editando agente' : '➕ Novo agente'}</p>
               <div className="flex gap-1">
-                {(['general', 'ai', 'document', 'followup', 'automations', 'conversations'] as const).map(sec => (
+                {(['general', 'ai', 'test', 'document', 'followup', 'automations', 'conversations'] as const).map(sec => (
                   <Button
                     key={sec}
                     size="sm"
@@ -829,6 +829,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                   >
                     {sec === 'general' && '⚙️ Geral'}
                     {sec === 'ai' && '🧠 IA'}
+                    {sec === 'test' && '▶️ Testar'}
                     {sec === 'document' && '📄 Documento'}
                     {sec === 'followup' && '🔔 Follow-up'}
                     {sec === 'automations' && '⚡ Automações'}
