@@ -1862,20 +1862,8 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                       onCheckedChange={v => setForm(f => ({ ...f, proactive_first_message_enabled: v }))}
                     />
                   </div>
-                  {form.proactive_first_message_enabled && (
-                    <div className="space-y-1 pt-1">
-                      <Label className="text-[10px]">Instrução extra pra IA (opcional)</Label>
-                      <Textarea
-                        rows={2}
-                        placeholder="Ex: Cumprimente, se apresente como [Nome] e pergunte se a pessoa viu o anúncio sobre X."
-                        value={form.proactive_first_message_instruction ?? ''}
-                        onChange={e => setForm(f => ({ ...f, proactive_first_message_instruction: e.target.value }))}
-                        className="text-xs"
-                      />
-                      <p className="text-[9px] text-muted-foreground">Se vazio, a IA usa o prompt principal do agente pra montar a abordagem.</p>
-                    </div>
-                  )}
                 </div>
+
 
                 <div className="border rounded-lg p-3 space-y-2">
                   <Label className="text-xs font-semibold">🕐 Janela de follow-up</Label>
