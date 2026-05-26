@@ -853,7 +853,7 @@ export const handler: RequestHandler = async (req, res) => {
     }
 
     // ========== EARLY FILTERS ==========
-    const webhookInstanceName = body.instanceName || body.InstanceName || body.chat?.instanceName || body.data?.instanceName || body.instance_name || body.instance || null;
+    let webhookInstanceName = body.instanceName || body.InstanceName || body.chat?.instanceName || body.data?.instanceName || body.instance_name || body.instance || null;
     const eventType = normalizeUazEventType(body);
     const bodyType = String(body.type || '').toLowerCase();
     const bodyEventStr = (typeof body.event === 'string') ? body.event.toLowerCase() : '';
@@ -901,6 +901,25 @@ export const handler: RequestHandler = async (req, res) => {
         if (!chatId || !webhookInstanceName || waLabels.length === 0) {
           console.warn('[label-trigger] missing data', { hasChatId: Boolean(chatId), webhookInstanceName, labelCount: waLabels.length, keys: Object.keys(body || {}) });
           return res.json({ success: true, skipped: true, reason: 'label_event_missing_data' });
+        }
+
+        // Canonicaliza o instance_name (UazAPI manda em CAIXA-ALTA em label events,
+        // mas as mensagens regulares chegam em camelCase). Sem isso, conversation_agents
+        // grava 'NOME MAIÚSCULO' e o ai-agent-reply faz .eq() case-sensitive → bot não responde.
+        try {
+          const { data: canonInst } = await supabase
+            .from('whatsapp_instances')
+            .select('instance_name')
+            .ilike('instance_name', webhookInstanceName)
+            .eq('is_active', true)
+            .limit(1)
+            .maybeSingle();
+          if (canonInst?.instance_name && canonInst.instance_name !== webhookInstanceName) {
+            console.log('[label-trigger] canonicalizing instance_name', { from: webhookInstanceName, to: canonInst.instance_name });
+            webhookInstanceName = canonInst.instance_name;
+          }
+        } catch (e: any) {
+          console.warn('[label-trigger] canonicalize failed (non-fatal):', e?.message);
         }
 
         const phoneDigits = chatId.replace(/@[^@]+$/, '').replace(/\D/g, '');
