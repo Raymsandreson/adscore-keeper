@@ -815,7 +815,96 @@ export function AgentTestChat({ systemPrompt, model = 'google/gemini-2.5-flash',
             )}
           </div>
 
-          {/* Chat — visual WhatsApp */}
+          {/* Painel de contexto — mostra o que está sendo enviado pra IA */}
+          {(() => {
+            const varEntries = Object.entries(variables).filter(([, v]) => v && String(v).trim());
+            const resolvedPrompt = draftPrompt.replace(/\{([a-zA-Z0-9_.]+)\}/g, (full, path) => {
+              const v = variables?.[path];
+              return v != null && v !== '' ? String(v) : full;
+            });
+            const unresolvedMatches = Array.from(new Set((resolvedPrompt.match(/\{[a-zA-Z0-9_.]+\}/g) || [])));
+            const seededCount = messages.length;
+            return (
+              <div className="border-b bg-amber-50/50 dark:bg-amber-950/20">
+                <button
+                  type="button"
+                  onClick={() => setContextOpen(o => !o)}
+                  className="w-full flex items-center gap-2 px-4 py-1.5 text-[11px] hover:bg-amber-100/50 dark:hover:bg-amber-900/20 transition-colors"
+                >
+                  {contextOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                  <Eye className="h-3 w-3 text-amber-700 dark:text-amber-400" />
+                  <span className="font-medium text-amber-900 dark:text-amber-200">Contexto enviado pra IA</span>
+                  <div className="ml-auto flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                    <Badge variant="outline" className="text-[9px] h-4 px-1">{varEntries.length} variáveis</Badge>
+                    <Badge variant="outline" className="text-[9px] h-4 px-1">{seededCount} msgs</Badge>
+                    {unresolvedMatches.length > 0 && (
+                      <Badge variant="destructive" className="text-[9px] h-4 px-1">{unresolvedMatches.length} sem valor</Badge>
+                    )}
+                  </div>
+                </button>
+                {contextOpen && (
+                  <div className="px-4 pb-3 pt-1 space-y-2 text-[11px]">
+                    <div>
+                      <div className="font-medium text-muted-foreground mb-1">Variáveis preenchidas</div>
+                      {varEntries.length === 0 ? (
+                        <div className="text-muted-foreground italic">Nenhuma — selecione um lead pra trazer dados.</div>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 font-mono text-[10px]">
+                          {varEntries.map(([k, v]) => (
+                            <div key={k} className="truncate" title={`${k} = ${v}`}>
+                              <span className="text-primary">{`{${k}}`}</span>
+                              <span className="text-muted-foreground"> = </span>
+                              <span>{v}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    {unresolvedMatches.length > 0 && (
+                      <div>
+                        <div className="font-medium text-destructive mb-1">Placeholders sem valor (vão chegar literais)</div>
+                        <div className="flex flex-wrap gap-1">
+                          {unresolvedMatches.map(p => (
+                            <code key={p} className="text-[10px] bg-destructive/10 text-destructive px-1 rounded">{p}</code>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    <div>
+                      <div className="font-medium text-muted-foreground mb-1">
+                        Prompt do sistema (após substituição) · {resolvedPrompt.length} chars
+                      </div>
+                      <pre className="text-[10px] bg-background border rounded p-2 max-h-40 overflow-auto whitespace-pre-wrap font-mono">
+                        {resolvedPrompt || '(vazio)'}
+                      </pre>
+                    </div>
+                    <div>
+                      <div className="font-medium text-muted-foreground mb-1">
+                        Histórico que vai com a próxima msg ({seededCount} mensagens)
+                      </div>
+                      {seededCount === 0 ? (
+                        <div className="text-muted-foreground italic">Nenhuma — a IA só vê o prompt + a próxima mensagem que você mandar.</div>
+                      ) : (
+                        <div className="bg-background border rounded p-2 max-h-32 overflow-auto space-y-0.5 font-mono text-[10px]">
+                          {messages.slice(-10).map((m, i) => (
+                            <div key={i} className="truncate">
+                              <span className={m.role === 'assistant' ? 'text-green-600' : 'text-blue-600'}>
+                                {m.role === 'assistant' ? '🤖 agente' : '👤 cliente'}:
+                              </span>{' '}
+                              <span>{m.content || (m.attachments?.length ? `(${m.attachments.length} anexo)` : '(vazio)')}</span>
+                            </div>
+                          ))}
+                          {seededCount > 10 && (
+                            <div className="text-muted-foreground italic">... mostrando últimas 10 de {seededCount}</div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
           <ScrollArea
             className="flex-1 px-3 py-3"
             style={{
