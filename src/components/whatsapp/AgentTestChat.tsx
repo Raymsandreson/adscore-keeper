@@ -97,6 +97,67 @@ function buildVariablesFromLead(lead: any, contact: any): Record<string, string>
   return v;
 }
 
+/**
+ * Monta um bloco de CONTEXTO pra ser anexado ao system_prompt.
+ * É o "briefing" que o agente DEVE ler antes de responder — mistura:
+ *  - Identidade da pessoa (nome, cidade, profissão, classificação)
+ *  - Observações gerais do lead (resumo consolidado do relacionamento)
+ *  - Recap das últimas mensagens reais (pra dar continuidade ao dia)
+ */
+function buildContextBlock(lead: any, contact: any, seeded: Msg[]): string {
+  const lines: string[] = [];
+  const name = contact?.full_name || contact?.name || lead?.lead_name || lead?.name;
+  const firstName = name ? String(name).trim().split(/\s+/)[0] : null;
+
+  const idBits: string[] = [];
+  if (name) idBits.push(`Nome: ${name}`);
+  if (contact?.classification) idBits.push(`Classificação: ${contact.classification}`);
+  if (contact?.profession) idBits.push(`Profissão: ${contact.profession}`);
+  const cityState = [contact?.city, contact?.state].filter(Boolean).join('/');
+  if (cityState) idBits.push(`Local: ${cityState}`);
+  if (lead?.stage_name || lead?.funnel_name) {
+    idBits.push(`Funil: ${[lead.funnel_name, lead.stage_name].filter(Boolean).join(' · ')}`);
+  }
+
+  const notes = (lead?.notes || '').toString().trim();
+
+  // Recap: últimas 8 mensagens textuais, com rótulo
+  const recap = seeded
+    .filter(m => m.content && m.content.trim())
+    .slice(-8)
+    .map(m => {
+      const who = m.role === 'user' ? 'CLIENTE' : 'AGENTE';
+      const txt = m.content.replace(/\s+/g, ' ').trim();
+      return `- ${who}: ${txt.length > 220 ? txt.slice(0, 220) + '…' : txt}`;
+    });
+
+  if (idBits.length === 0 && !notes && recap.length === 0) return '';
+
+  lines.push('');
+  lines.push('=== CONTEXTO DESTA CONVERSA (LEIA ANTES DE RESPONDER) ===');
+  if (idBits.length) {
+    lines.push('• Identidade da pessoa com quem você está falando:');
+    for (const b of idBits) lines.push(`   - ${b}`);
+  }
+  if (notes) {
+    lines.push('• Observações gerais do lead (histórico consolidado do relacionamento):');
+    lines.push(notes.split('\n').map(l => '   ' + l).join('\n'));
+  }
+  if (recap.length) {
+    lines.push('• Recap das últimas mensagens trocadas (pra dar continuidade ao dia):');
+    lines.push(...recap.map(l => '   ' + l));
+  }
+  lines.push('');
+  lines.push('REGRAS OBRIGATÓRIAS DE CONTINUIDADE:');
+  lines.push(`- NÃO trate como primeira interação. Você JÁ conversa com essa pessoa.`);
+  if (firstName) lines.push(`- Cumprimente/refira-se pelo primeiro nome: ${firstName}.`);
+  lines.push('- Antes de qualquer pergunta nova, situe a conversa em 1 frase curta retomando o assunto mais recente do recap.');
+  lines.push('- NUNCA mande "Olá! Como posso te ajudar hoje?" genérico — isso quebra a continuidade.');
+  lines.push('=== FIM DO CONTEXTO ===');
+  lines.push('');
+  return lines.join('\n');
+}
+
 export function AgentTestChat({ systemPrompt, model = 'google/gemini-2.5-flash', agentName, onPromptChange, proactiveEnabled, proactiveInstruction }: Props) {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Msg[]>([]);
@@ -318,18 +379,28 @@ export function AgentTestChat({ systemPrompt, model = 'google/gemini-2.5-flash',
       toast.error('Configure o prompt do agente antes de testar');
       return;
     }
+    const contextBlock = buildContextBlock(selectedLead, selectedContact, messages);
     const extraInstr = (proactiveInstruction || '').trim();
     const proactiveSystem =
       draftPrompt +
+      contextBlock +
       '\n\n[INSTRUÇÃO DE ABERTURA — DISPARO PROATIVO]\n' +
       'Você foi acionado pela etiqueta antes do cliente falar. Inicie a conversa AGORA, ' +
-      'de forma natural, humanizada e curta, seguindo seu prompt principal e a instrução abaixo.\n' +
-      (extraInstr ? extraInstr : '(Sem instrução extra — use o prompt principal pra montar a abordagem.)');
+      'de forma natural, humanizada e curta, seguindo seu prompt principal, o CONTEXTO acima e a instrução abaixo.\n' +
+      (extraInstr ? extraInstr : '(Sem instrução extra — use o prompt principal + contexto pra montar a abordagem.)');
 
     setMessages(prev => [...prev, { role: 'assistant', content: '' }]);
     setIsLoading(true);
 
+    // Inclui o histórico real seedado ANTES do gatilho proativo, pra IA ter o fio da conversa
+    const seededWire = messages.map(m => ({
+      role: m.role,
+      content: m.role === 'user'
+        ? (m.content || '')
+        : (m.content || ''),
+    }));
     const wireMessages = [
+      ...seededWire,
       { role: 'user' as const, content: '(__INICIAR_CONVERSA_PROATIVA__)' },
     ];
 
@@ -551,7 +622,7 @@ export function AgentTestChat({ systemPrompt, model = 'google/gemini-2.5-flash',
           Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
         },
         body: JSON.stringify({
-          system_prompt: draftPrompt,
+          system_prompt: draftPrompt + buildContextBlock(selectedLead, selectedContact, messages),
           messages: wireMessages,
           model,
           variables,
