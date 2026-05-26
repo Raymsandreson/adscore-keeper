@@ -622,7 +622,7 @@ export function AgentTestChat({ systemPrompt, model = 'google/gemini-2.5-flash',
           Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
         },
         body: JSON.stringify({
-          system_prompt: draftPrompt,
+          system_prompt: draftPrompt + buildContextBlock(selectedLead, selectedContact, messages),
           messages: wireMessages,
           model,
           variables,
