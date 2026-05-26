@@ -70,13 +70,48 @@ async function triggerProactiveFirstMessage(
     const basePrompt = (agent as any).base_prompt || '';
     const extra = (agent as any).prompt_instructions || '';
     const proactiveExtra = (agent as any).proactive_first_message_instruction || '';
+
+    // Puxa últimas 30 mensagens da conversa pra dar contexto à IA.
+    // Sem isso, o agente fala como telemarketing ("oi tudo bem, passando pra saber...").
+    let historyBlock = '';
+    let lastContactName: string | null = null;
+    try {
+      const { data: history } = await supabase
+        .from('whatsapp_messages')
+        .select('created_at, direction, message_text, contact_name, message_type')
+        .eq('phone', phone)
+        .ilike('instance_name', instanceName)
+        .order('created_at', { ascending: false })
+        .limit(30);
+      if (Array.isArray(history) && history.length) {
+        const ordered = [...history].reverse();
+        lastContactName = (ordered.find((m: any) => m.contact_name)?.contact_name) || null;
+        const lines = ordered
+          .map((m: any) => {
+            const who = m.direction === 'inbound' ? 'CLIENTE' : 'ATENDENTE';
+            const txt = (m.message_text && String(m.message_text).trim())
+              || (m.message_type && m.message_type !== 'text' ? `[${m.message_type}]` : '');
+            if (!txt) return '';
+            return `${who}: ${txt.replace(/\s+/g, ' ').slice(0, 400)}`;
+          })
+          .filter(Boolean)
+          .join('\n');
+        if (lines) historyBlock = `--- HISTÓRICO RECENTE DA CONVERSA (mais antiga → mais recente) ---\n${lines}`;
+      }
+    } catch (e: any) {
+      console.warn('[proactive] falha lendo histórico (segue sem):', e?.message);
+    }
+
+    const hasHistory = !!historyBlock;
     const system = [
       basePrompt,
       extra,
+      historyBlock,
       '--- DISPARO PROATIVO ---',
-      'Esta é a PRIMEIRA mensagem que o cliente vai receber. Ele ainda não escreveu nada.',
-      'Inicie a conversa de forma natural, curta e humana, no tom do agente acima.',
-      'Não diga "estou de volta", "vi sua mensagem" nem coisas do tipo — é o primeiro contato.',
+      hasHistory
+        ? 'Você está RETOMANDO uma conversa que já existe acima. Leia o histórico e escreva UMA mensagem curta, humana, no tom do agente, que continue de onde parou — referenciando o último assunto/contexto real. NUNCA escreva saudações genéricas tipo "Olá, tudo bem? Passando pra saber..." — isso soa telemarketing e está PROIBIDO. Se houver pendência clara, pergunte sobre ela. Se a última mensagem foi sua, dê seguimento natural.'
+        : 'Esta é a PRIMEIRA mensagem que o cliente vai receber. Ele ainda não escreveu nada. Inicie a conversa de forma natural, curta e humana, no tom do agente.',
+      lastContactName ? `Nome do contato: ${lastContactName}` : '',
       proactiveExtra ? `Instrução extra do operador: ${proactiveExtra}` : '',
     ].filter(Boolean).join('\n\n');
 
@@ -86,7 +121,9 @@ async function triggerProactiveFirstMessage(
         model: 'google/gemini-2.5-flash',
         messages: [
           { role: 'system', content: system },
-          { role: 'user', content: 'Gere agora a primeira mensagem para iniciar a conversa.' },
+          { role: 'user', content: hasHistory
+              ? 'Gere agora a próxima mensagem para retomar a conversa, levando em conta o histórico acima.'
+              : 'Gere agora a primeira mensagem para iniciar a conversa.' },
         ],
         temperature: 0.7,
         max_tokens: 400,
