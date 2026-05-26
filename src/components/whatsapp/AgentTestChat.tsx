@@ -872,34 +872,61 @@ export function AgentTestChat({ systemPrompt, model = 'google/gemini-2.5-flash',
                     )}
                     <div>
                       <div className="font-medium text-muted-foreground mb-1">
-                        Prompt do sistema (após substituição) · {resolvedPrompt.length} chars
+                        Resumo do prompt enviado · {resolvedPrompt.length} chars
                       </div>
-                      <pre className="text-[10px] bg-background border rounded p-2 max-h-40 overflow-auto whitespace-pre-wrap font-mono">
-                        {resolvedPrompt || '(vazio)'}
-                      </pre>
+                      <div className="text-[10px] bg-background border rounded p-2 text-muted-foreground">
+                        {(() => {
+                          // Resumo: pega 1ª frase não-vazia + conta seções (linhas que começam com #, ##, ** ou MAIÚSCULAS:)
+                          const lines = resolvedPrompt.split('\n').map(l => l.trim()).filter(Boolean);
+                          const firstLine = lines[0] || '(prompt vazio)';
+                          const sections = lines.filter(l => /^(#{1,3}\s|[A-ZÀ-Ú][A-ZÀ-Ú\s]{3,}:)/.test(l)).slice(0, 6);
+                          return (
+                            <>
+                              <div className="mb-1"><span className="font-medium text-foreground">Abertura:</span> {firstLine.slice(0, 160)}{firstLine.length > 160 ? '…' : ''}</div>
+                              {sections.length > 0 && (
+                                <div>
+                                  <span className="font-medium text-foreground">Seções detectadas:</span>{' '}
+                                  {sections.map(s => s.replace(/^#+\s*/, '').replace(/:.*$/, '')).join(' · ')}
+                                </div>
+                              )}
+                            </>
+                          );
+                        })()}
+                      </div>
                     </div>
                     <div>
                       <div className="font-medium text-muted-foreground mb-1">
-                        Histórico que vai com a próxima msg ({seededCount} mensagens)
+                        Resumo do histórico ({seededCount} msgs)
                       </div>
                       {seededCount === 0 ? (
-                        <div className="text-muted-foreground italic">Nenhuma — a IA só vê o prompt + a próxima mensagem que você mandar.</div>
+                        <div className="text-muted-foreground italic text-[10px]">Nenhuma — a IA só vê o prompt + a próxima mensagem que você mandar.</div>
                       ) : (
-                        <div className="bg-background border rounded p-2 max-h-32 overflow-auto space-y-0.5 font-mono text-[10px]">
-                          {messages.slice(-10).map((m, i) => (
-                            <div key={i} className="truncate">
-                              <span className={m.role === 'assistant' ? 'text-green-600' : 'text-blue-600'}>
-                                {m.role === 'assistant' ? '🤖 agente' : '👤 cliente'}:
-                              </span>{' '}
-                              <span>{m.content || (m.attachments?.length ? `(${m.attachments.length} anexo)` : '(vazio)')}</span>
-                            </div>
-                          ))}
-                          {seededCount > 10 && (
-                            <div className="text-muted-foreground italic">... mostrando últimas 10 de {seededCount}</div>
-                          )}
+                        <div className="bg-background border rounded p-2 text-[10px] space-y-1">
+                          {(() => {
+                            const inbound = messages.filter(m => m.role === 'user').length;
+                            const outbound = messages.filter(m => m.role === 'assistant').length;
+                            const last = messages[messages.length - 1];
+                            const lastText = last?.content || (last?.attachments?.length ? `(${last.attachments.length} anexo)` : '(vazio)');
+                            const firstUser = messages.find(m => m.role === 'user');
+                            const firstText = firstUser?.content || '';
+                            return (
+                              <>
+                                <div><span className="font-medium text-foreground">Volume:</span> {inbound} do cliente · {outbound} do agente</div>
+                                {firstText && (
+                                  <div className="truncate" title={firstText}>
+                                    <span className="font-medium text-foreground">1ª do cliente:</span> {firstText.slice(0, 120)}{firstText.length > 120 ? '…' : ''}
+                                  </div>
+                                )}
+                                <div className="truncate" title={lastText}>
+                                  <span className="font-medium text-foreground">Última ({last?.role === 'assistant' ? 'agente' : 'cliente'}):</span> {lastText.slice(0, 120)}{lastText.length > 120 ? '…' : ''}
+                                </div>
+                              </>
+                            );
+                          })()}
                         </div>
                       )}
                     </div>
+
                   </div>
                 )}
               </div>
