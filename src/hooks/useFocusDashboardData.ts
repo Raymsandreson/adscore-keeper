@@ -168,13 +168,17 @@ export function useFocusDashboardData(): FocusData {
       const received = leads.length;
       const closedCount = closedRes.count ?? (closedRes.data || []).length;
       const unviableLeads = leads.filter(l => l.lead_status === 'unviable' || l.lead_status === 'refused');
-      const conversion = received > 0 ? Math.round((closedCount / received) * 100) : 0;
+      // Viáveis = total recebido no período - inviáveis (esse é o denominador da conversão)
+      const viableCount = Math.max(0, received - unviableLeads.length);
+      const conversion = viableCount > 0 ? Math.round((closedCount / viableCount) * 100) : 0;
 
-      // Yesterday conv for delta
+      // Yesterday conv for delta (usando viáveis)
       const yReceived = yestLeads.length;
+      const yUnviable = yestLeads.filter((l: any) => l.lead_status === 'unviable' || l.lead_status === 'refused').length;
+      const yViable = Math.max(0, yReceived - yUnviable);
       const yClosed = yestClosedRes.count ?? (yestClosedRes.data || []).length;
-      const yConv = yReceived > 0 ? (yClosed / yReceived) * 100 : 0;
-      const convDelta = received > 0 ? Math.round(conversion - yConv) : 0;
+      const yConv = yViable > 0 ? (yClosed / yViable) * 100 : 0;
+      const convDelta = viableCount > 0 ? Math.round(conversion - yConv) : 0;
 
       // Top reason for unviable
       const reasonCount = new Map<string, number>();
@@ -184,10 +188,9 @@ export function useFocusDashboardData(): FocusData {
       });
       const topReason = Array.from(reasonCount.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
 
-      // Goal: heurística simples por enquanto — meta padrão 5/dia por pessoa no scope.
-      // Quando period != today, escala pelo nº de dias.
-      const dayCount = Math.max(1, Math.ceil((range.to.getTime() - range.from.getTime()) / (24 * 60 * 60 * 1000)));
-      const goal = 5 * scopeUserIds.length * dayCount;
+      // "goal" aqui passa a representar VIÁVEIS (denominador real da conversão).
+      // O card mostra fechados/viáveis = ex: 56/120 (47%)
+      const goal = viableCount;
       const goalProgress = goal > 0 ? Math.min(1, closedCount / goal) : 0;
 
       // Leads created in last 2h (delta hint)
