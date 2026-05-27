@@ -9,6 +9,13 @@
 import type { RequestHandler } from 'express';
 import { supabase as ext } from '../lib/supabase';
 
+function toDateOnly(value: unknown): string | null {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString().slice(0, 10);
+}
+
 const STEP_ORDER = [
   'confirm_funnel',
   'setup_lead_close',
@@ -301,12 +308,14 @@ export const handler: RequestHandler = async (req, res) => {
               .then(() => {}, () => {}); // ignore duplicate
           }
 
-          // 4) Marca lead como closed
+          // 4) Marca lead como closed usando a data real da assinatura ZapSign.
+          // Se faltar signed_at no payload antigo, cai para hoje só como fallback.
+          const closingDate = toDateOnly(p.signed_at) || new Date().toISOString().slice(0, 10);
           await ext
             .from('leads')
             .update({
               lead_status: 'closed',
-              became_client_date: new Date().toISOString().slice(0, 10),
+              became_client_date: closingDate,
               updated_at: new Date().toISOString(),
             })
             .eq('id', ckpt.lead_id);
@@ -317,6 +326,7 @@ export const handler: RequestHandler = async (req, res) => {
             contact_id: contactId,
             contact_reused: contactReused,
             signer_name: signerName,
+            became_client_date: closingDate,
             lead_status: 'closed',
           };
           success = true;
