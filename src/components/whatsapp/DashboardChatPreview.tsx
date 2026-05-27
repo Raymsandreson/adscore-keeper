@@ -1745,47 +1745,75 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
           </div>
 
           {/* Input row */}
-          <div className="flex items-end gap-1">
-            <DropdownMenu open={showAttachMenu} onOpenChange={setShowAttachMenu}>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0 text-muted-foreground">
-                  {uploadingMedia ? <Loader2 className="h-4 w-4 animate-spin" /> : <Paperclip className="h-4 w-4" />}
+          {isRecording ? (
+            <div className="flex items-center gap-2 rounded-md border bg-muted/30 px-3 py-2">
+              <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive" onClick={cancelRecording} title="Cancelar">
+                <X className="h-4 w-4" />
+              </Button>
+              <span className="h-2.5 w-2.5 rounded-full bg-red-500 animate-pulse" />
+              <span className="text-sm flex-1 text-muted-foreground">
+                Gravando... {Math.floor(recordingTime / 60).toString().padStart(2, '0')}:{(recordingTime % 60).toString().padStart(2, '0')}
+              </span>
+              <Button size="icon" className="h-9 w-9 bg-green-600 hover:bg-green-700" onClick={stopRecording} title="Enviar áudio">
+                <Send className="h-4 w-4" />
+              </Button>
+            </div>
+          ) : (
+            <div className="flex items-end gap-1">
+              <DropdownMenu open={showAttachMenu} onOpenChange={setShowAttachMenu}>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0 text-muted-foreground">
+                    {uploadingMedia ? <Loader2 className="h-4 w-4 animate-spin" /> : <Paperclip className="h-4 w-4" />}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-48">
+                  <DropdownMenuItem onClick={() => { mediaInputRef.current?.click(); setShowAttachMenu(false); }} className="gap-2">
+                    <Image className="h-4 w-4" /> Foto / Vídeo
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => {
+                    const input = document.createElement('input');
+                    input.type = 'file';
+                    input.accept = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip';
+                    input.onchange = (e: any) => handleMediaUpload(e);
+                    input.click();
+                    setShowAttachMenu(false);
+                  }} className="gap-2">
+                    <FileUp className="h-4 w-4" /> Documento
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <input ref={mediaInputRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleMediaUpload} />
+              <Textarea
+                value={newMessage}
+                onChange={(e) => setNewMessage(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Digite uma mensagem..."
+                className="min-h-[40px] max-h-[100px] resize-none text-sm flex-1"
+                rows={1}
+              />
+              {newMessage.trim() ? (
+                <Button
+                  size="icon"
+                  className="shrink-0 h-10 w-10 bg-green-600 hover:bg-green-700"
+                  onClick={handleSend}
+                  disabled={sending}
+                >
+                  {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                 </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-48">
-                <DropdownMenuItem onClick={() => { mediaInputRef.current?.click(); setShowAttachMenu(false); }} className="gap-2">
-                  <Image className="h-4 w-4" /> Foto / Vídeo
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => {
-                  const input = document.createElement('input');
-                  input.type = 'file';
-                  input.accept = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip';
-                  input.onchange = (e: any) => handleMediaUpload(e);
-                  input.click();
-                  setShowAttachMenu(false);
-                }} className="gap-2">
-                  <FileUp className="h-4 w-4" /> Documento
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <input ref={mediaInputRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleMediaUpload} />
-            <Textarea
-              value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Digite uma mensagem..."
-              className="min-h-[40px] max-h-[100px] resize-none text-sm flex-1"
-              rows={1}
-            />
-            <Button
-              size="icon"
-              className="shrink-0 h-10 w-10 bg-green-600 hover:bg-green-700"
-              onClick={handleSend}
-              disabled={!newMessage.trim() || sending}
-            >
-              {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-            </Button>
-          </div>
+              ) : (
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="shrink-0 h-10 w-10 text-muted-foreground hover:text-foreground"
+                  onClick={startRecording}
+                  disabled={uploadingMedia || !phone}
+                  title="Gravar áudio"
+                >
+                  <Mic className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+          )}
         </div>
       </DrawerContent>
     </Drawer>
