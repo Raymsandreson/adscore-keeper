@@ -13,6 +13,7 @@ import * as nodeCrypto from 'crypto';
 import { geminiChat } from '../lib/gemini';
 import { getLocationFromDDD } from '../lib/ddd-mapping';
 import { transcribeAudio } from '../lib/stt';
+import { verifyAgentLabelBeforeSend } from '../lib/verify-agent-label';
 
 // ============================================================
 // Proactive first message — disparado quando o agente é ativado
