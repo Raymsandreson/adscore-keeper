@@ -2348,15 +2348,22 @@ export const handler: RequestHandler = async (req, res) => {
     // ========== AI AGENT AUTO-REPLY ==========
     if (!isGroup && direction === 'inbound' && instanceName && phone) {
       try {
-        fetch(`${CLOUD_FUNCTIONS_URL}/functions/v1/whatsapp-ai-agent-reply`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${CLOUD_ANON_KEY}` },
-          body: JSON.stringify({
-            phone, instance_name: instanceName, message_text: messageText,
-            message_type: messageType, lead_id: leadId || null,
-            campaign_id: detectedCampaignId || null, is_group: isGroup, contact_name: contactName || null,
-          }),
-        }).catch(err => console.error('AI agent reply trigger error:', err));
+        (async () => {
+          const verdict = await verifyAgentLabelBeforeSend(phone, instanceName);
+          if (!verdict.allowed) {
+            console.log(`[ai-agent-reply] skipped (${verdict.reason}) phone=${phone} instance=${instanceName}`);
+            return;
+          }
+          fetch(`${CLOUD_FUNCTIONS_URL}/functions/v1/whatsapp-ai-agent-reply`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${CLOUD_ANON_KEY}` },
+            body: JSON.stringify({
+              phone, instance_name: instanceName, message_text: messageText,
+              message_type: messageType, lead_id: leadId || null,
+              campaign_id: detectedCampaignId || null, is_group: isGroup, contact_name: contactName || null,
+            }),
+          }).catch(err => console.error('AI agent reply trigger error:', err));
+        })();
       } catch (e) { console.error('AI agent trigger setup error:', e); }
     }
 
