@@ -601,6 +601,99 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
     }
   };
 
+  // Audio recording — envia como áudio do WhatsApp via send-whatsapp
+  const startRecording = async () => {
+    if (!phone) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/webm')
+          ? 'audio/webm'
+          : 'audio/mp4';
+      const mediaRecorder = new MediaRecorder(stream, { mimeType });
+      audioChunksRef.current = [];
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      };
+      mediaRecorder.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop());
+        if (recordingIntervalRef.current) clearInterval(recordingIntervalRef.current);
+        setRecordingTime(0);
+        const recordedMime = mediaRecorder.mimeType || 'audio/webm';
+        const blob = new Blob(audioChunksRef.current, { type: recordedMime });
+        if (blob.size < 100) return;
+        setUploadingMedia(true);
+        try {
+          const ext = recordedMime.includes('mp4') ? 'mp4' : 'webm';
+          const path = `whatsapp-media/${Date.now()}_audio.${ext}`;
+          const { error: uploadError } = await supabase.storage.from('whatsapp-media').upload(path, blob);
+          if (uploadError) throw uploadError;
+          const { data: urlData } = supabase.storage.from('whatsapp-media').getPublicUrl(path);
+          const mediaUrl = urlData.publicUrl;
+          const instanceId = await resolveInstanceId();
+          const msgInstanceName = instanceName || messages.find(m => m.instance_name)?.instance_name;
+          const { data, error } = await cloudFunctions.invoke('send-whatsapp', {
+            body: {
+              action: 'send_media',
+              phone,
+              media_url: mediaUrl,
+              media_type: recordedMime,
+              file_name: `audio.${ext}`,
+              instance_id: instanceId,
+            },
+          });
+          if (error) throw error;
+          if (!data?.success) throw new Error(data?.error || 'Erro ao enviar áudio');
+          setMessages(prev => [...prev, {
+            id: data.message_id || crypto.randomUUID(),
+            message_text: null,
+            direction: 'outbound',
+            created_at: new Date().toISOString(),
+            message_type: 'audio',
+            media_url: mediaUrl,
+            media_type: recordedMime,
+            instance_name: msgInstanceName || null,
+          }]);
+          toast.success('Áudio enviado!');
+          setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+        } catch (err: any) {
+          console.error('Erro ao enviar áudio:', err);
+          toast.error('Erro ao enviar áudio: ' + (err?.message || ''));
+        } finally {
+          setUploadingMedia(false);
+        }
+      };
+      mediaRecorder.start();
+      mediaRecorderRef.current = mediaRecorder;
+      setIsRecording(true);
+      recordingIntervalRef.current = setInterval(() => setRecordingTime(t => t + 1), 1000);
+    } catch {
+      toast.error('Não foi possível acessar o microfone');
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+    setIsRecording(false);
+  };
+
+  const cancelRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.ondataavailable = null;
+      mediaRecorderRef.current.onstop = () => {
+        mediaRecorderRef.current?.stream?.getTracks().forEach(t => t.stop());
+      };
+      mediaRecorderRef.current.stop();
+    }
+    if (recordingIntervalRef.current) clearInterval(recordingIntervalRef.current);
+    setIsRecording(false);
+    setRecordingTime(0);
+  };
+
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
