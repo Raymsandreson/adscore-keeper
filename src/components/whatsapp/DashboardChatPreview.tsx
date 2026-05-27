@@ -15,7 +15,7 @@ import { db } from '@/integrations/supabase';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { format, parseISO, isToday, isYesterday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Loader2, User, Send, MoreVertical, Link2, UserPlus, Plus, Scale, Sparkles, X, Users, Bot, BotOff, Paperclip, Image, FileUp, Lock, LockOpen, FileSignature, FileText, Volume2, VolumeX, BellOff, Trash2, FastForward } from 'lucide-react';
+import { Loader2, User, Send, MoreVertical, Link2, UserPlus, Plus, Scale, Sparkles, X, Users, Bot, BotOff, Paperclip, Image, FileUp, Lock, LockOpen, FileSignature, FileText, Volume2, VolumeX, BellOff, Trash2, FastForward, Mic } from 'lucide-react';
 import { Phone as PhoneIcon, PhoneIncoming, PhoneOutgoing, PhoneMissed } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -117,6 +117,11 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const mediaInputRef = useRef<HTMLInputElement>(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const recordingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Load identity preferences when phone changes
   useEffect(() => {
@@ -595,6 +600,99 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
       if (e.target) e.target.value = '';
     }
   };
+
+  // Audio recording — envia como áudio do WhatsApp via send-whatsapp
+  const startRecording = async () => {
+    if (!phone) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/webm')
+          ? 'audio/webm'
+          : 'audio/mp4';
+      const mediaRecorder = new MediaRecorder(stream, { mimeType });
+      audioChunksRef.current = [];
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      };
+      mediaRecorder.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop());
+        if (recordingIntervalRef.current) clearInterval(recordingIntervalRef.current);
+        setRecordingTime(0);
+        const recordedMime = mediaRecorder.mimeType || 'audio/webm';
+        const blob = new Blob(audioChunksRef.current, { type: recordedMime });
+        if (blob.size < 100) return;
+        setUploadingMedia(true);
+        try {
+          const ext = recordedMime.includes('mp4') ? 'mp4' : 'webm';
+          const path = `whatsapp-media/${Date.now()}_audio.${ext}`;
+          const { error: uploadError } = await supabase.storage.from('whatsapp-media').upload(path, blob);
+          if (uploadError) throw uploadError;
+          const { data: urlData } = supabase.storage.from('whatsapp-media').getPublicUrl(path);
+          const mediaUrl = urlData.publicUrl;
+          const instanceId = await resolveInstanceId();
+          const msgInstanceName = instanceName || messages.find(m => m.instance_name)?.instance_name;
+          const { data, error } = await cloudFunctions.invoke('send-whatsapp', {
+            body: {
+              action: 'send_media',
+              phone,
+              media_url: mediaUrl,
+              media_type: recordedMime,
+              file_name: `audio.${ext}`,
+              instance_id: instanceId,
+            },
+          });
+          if (error) throw error;
+          if (!data?.success) throw new Error(data?.error || 'Erro ao enviar áudio');
+          setMessages(prev => [...prev, {
+            id: data.message_id || crypto.randomUUID(),
+            message_text: null,
+            direction: 'outbound',
+            created_at: new Date().toISOString(),
+            message_type: 'audio',
+            media_url: mediaUrl,
+            media_type: recordedMime,
+            instance_name: msgInstanceName || null,
+          }]);
+          toast.success('Áudio enviado!');
+          setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+        } catch (err: any) {
+          console.error('Erro ao enviar áudio:', err);
+          toast.error('Erro ao enviar áudio: ' + (err?.message || ''));
+        } finally {
+          setUploadingMedia(false);
+        }
+      };
+      mediaRecorder.start();
+      mediaRecorderRef.current = mediaRecorder;
+      setIsRecording(true);
+      recordingIntervalRef.current = setInterval(() => setRecordingTime(t => t + 1), 1000);
+    } catch {
+      toast.error('Não foi possível acessar o microfone');
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+    setIsRecording(false);
+  };
+
+  const cancelRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.ondataavailable = null;
+      mediaRecorderRef.current.onstop = () => {
+        mediaRecorderRef.current?.stream?.getTracks().forEach(t => t.stop());
+      };
+      mediaRecorderRef.current.stop();
+    }
+    if (recordingIntervalRef.current) clearInterval(recordingIntervalRef.current);
+    setIsRecording(false);
+    setRecordingTime(0);
+  };
+
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -1647,47 +1745,75 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
           </div>
 
           {/* Input row */}
-          <div className="flex items-end gap-1">
-            <DropdownMenu open={showAttachMenu} onOpenChange={setShowAttachMenu}>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0 text-muted-foreground">
-                  {uploadingMedia ? <Loader2 className="h-4 w-4 animate-spin" /> : <Paperclip className="h-4 w-4" />}
+          {isRecording ? (
+            <div className="flex items-center gap-2 rounded-md border bg-muted/30 px-3 py-2">
+              <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive" onClick={cancelRecording} title="Cancelar">
+                <X className="h-4 w-4" />
+              </Button>
+              <span className="h-2.5 w-2.5 rounded-full bg-red-500 animate-pulse" />
+              <span className="text-sm flex-1 text-muted-foreground">
+                Gravando... {Math.floor(recordingTime / 60).toString().padStart(2, '0')}:{(recordingTime % 60).toString().padStart(2, '0')}
+              </span>
+              <Button size="icon" className="h-9 w-9 bg-green-600 hover:bg-green-700" onClick={stopRecording} title="Enviar áudio">
+                <Send className="h-4 w-4" />
+              </Button>
+            </div>
+          ) : (
+            <div className="flex items-end gap-1">
+              <DropdownMenu open={showAttachMenu} onOpenChange={setShowAttachMenu}>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0 text-muted-foreground">
+                    {uploadingMedia ? <Loader2 className="h-4 w-4 animate-spin" /> : <Paperclip className="h-4 w-4" />}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-48">
+                  <DropdownMenuItem onClick={() => { mediaInputRef.current?.click(); setShowAttachMenu(false); }} className="gap-2">
+                    <Image className="h-4 w-4" /> Foto / Vídeo
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => {
+                    const input = document.createElement('input');
+                    input.type = 'file';
+                    input.accept = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip';
+                    input.onchange = (e: any) => handleMediaUpload(e);
+                    input.click();
+                    setShowAttachMenu(false);
+                  }} className="gap-2">
+                    <FileUp className="h-4 w-4" /> Documento
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <input ref={mediaInputRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleMediaUpload} />
+              <Textarea
+                value={newMessage}
+                onChange={(e) => setNewMessage(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Digite uma mensagem..."
+                className="min-h-[40px] max-h-[100px] resize-none text-sm flex-1"
+                rows={1}
+              />
+              {newMessage.trim() ? (
+                <Button
+                  size="icon"
+                  className="shrink-0 h-10 w-10 bg-green-600 hover:bg-green-700"
+                  onClick={handleSend}
+                  disabled={sending}
+                >
+                  {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                 </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-48">
-                <DropdownMenuItem onClick={() => { mediaInputRef.current?.click(); setShowAttachMenu(false); }} className="gap-2">
-                  <Image className="h-4 w-4" /> Foto / Vídeo
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => {
-                  const input = document.createElement('input');
-                  input.type = 'file';
-                  input.accept = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip';
-                  input.onchange = (e: any) => handleMediaUpload(e);
-                  input.click();
-                  setShowAttachMenu(false);
-                }} className="gap-2">
-                  <FileUp className="h-4 w-4" /> Documento
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <input ref={mediaInputRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleMediaUpload} />
-            <Textarea
-              value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Digite uma mensagem..."
-              className="min-h-[40px] max-h-[100px] resize-none text-sm flex-1"
-              rows={1}
-            />
-            <Button
-              size="icon"
-              className="shrink-0 h-10 w-10 bg-green-600 hover:bg-green-700"
-              onClick={handleSend}
-              disabled={!newMessage.trim() || sending}
-            >
-              {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-            </Button>
-          </div>
+              ) : (
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="shrink-0 h-10 w-10 text-muted-foreground hover:text-foreground"
+                  onClick={startRecording}
+                  disabled={uploadingMedia || !phone}
+                  title="Gravar áudio"
+                >
+                  <Mic className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+          )}
         </div>
       </DrawerContent>
     </Drawer>
