@@ -230,10 +230,47 @@ export function useMonitorData() {
         if (c.stage_name) {
           stat.conversations_by_stage[c.stage_name] = (stat.conversations_by_stage[c.stage_name] || 0) + 1;
         }
-        if (c.lead_status === 'closed') stat.leads_closed++;
+        // leads_closed agora é calculado abaixo, a partir da etiqueta de resultado
+        // (became_client_date dentro do período selecionado).
         if (c.lead_status === 'refused') stat.leads_refused++;
         if (c.time_without_response && c.time_without_response > 60) stat.without_response_count++;
       });
+
+      // === LEADS FECHADOS POR ETIQUETA (became_client_date no período) ===
+      // Fonte de verdade: webhook chat_labels seta lead_status='closed' + became_client_date=hoje
+      // quando o operador aplica "✅ Fechado". Aqui contamos por agente, casando o
+      // telefone (últimos 8 dígitos) com whatsapp_conversation_agents.
+      try {
+        const phoneToAgent = new Map<string, string>();
+        for (const ca of convAgentsData as any[]) {
+          if (!ca.phone || !ca.agent_id) continue;
+          const last8 = String(ca.phone).replace(/\D/g, '').slice(-8);
+          if (!last8) continue;
+          if (!phoneToAgent.has(last8)) phoneToAgent.set(last8, ca.agent_id);
+        }
+
+        const fromDate = dateRange.from.toISOString().slice(0, 10);
+        const toDate = endOfDay(dateRange.to).toISOString().slice(0, 10);
+        const { data: closedLeads } = await externalSupabase
+          .from('leads')
+          .select('id, lead_phone, became_client_date')
+          .eq('lead_status', 'closed')
+          .gte('became_client_date', fromDate)
+          .lte('became_client_date', toDate)
+          .is('deleted_at', null)
+          .limit(2000);
+
+        for (const lead of (closedLeads || []) as any[]) {
+          const last8 = String(lead.lead_phone || '').replace(/\D/g, '').slice(-8);
+          if (!last8) continue;
+          const agentId = phoneToAgent.get(last8);
+          if (!agentId) continue;
+          const stat = statsMap.get(agentId);
+          if (stat) stat.leads_closed++;
+        }
+      } catch (e: any) {
+        console.warn('[Monitor IA] leads_closed by label failed:', e?.message);
+      }
 
       statsMap.forEach(stat => {
         if (stat.total_messages_received > 0) {
