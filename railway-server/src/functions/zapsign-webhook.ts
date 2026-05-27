@@ -33,6 +33,7 @@ export const handler = async (req: Request, res: Response) => {
     raw.token || raw.doc_token || raw.open_id_token || raw?.doc?.token || null;
   const signers: any[] = Array.isArray(raw.signers) ? raw.signers : (raw?.doc?.signers || []);
   const signer = raw.signer || pickFirstSigner(signers);
+  const signedAtIso = signer?.signed_at || raw?.signed_at || null;
   const signerPhone = normPhone((signer?.phone_country || '') + (signer?.phone_number || ''));
 
   // 1) lookup document_id (best effort) + INSERT cru
@@ -85,7 +86,7 @@ export const handler = async (req: Request, res: Response) => {
     switch (eventType) {
       case 'doc_signed':
         update.status = 'signed';
-        update.signed_at = raw?.signed_at || new Date().toISOString();
+        update.signed_at = signedAtIso || new Date().toISOString();
         break;
       case 'doc_refused':
         update.status = 'refused';
