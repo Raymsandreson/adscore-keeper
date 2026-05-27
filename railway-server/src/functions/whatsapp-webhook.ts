@@ -13,6 +13,7 @@ import * as nodeCrypto from 'crypto';
 import { geminiChat } from '../lib/gemini';
 import { getLocationFromDDD } from '../lib/ddd-mapping';
 import { transcribeAudio } from '../lib/stt';
+import { verifyAgentLabelBeforeSend } from '../lib/verify-agent-label';
 
 // ============================================================
 // Proactive first message — disparado quando o agente é ativado
@@ -1881,11 +1882,18 @@ export const handler: RequestHandler = async (req, res) => {
               .order('created_at', { ascending: false }).limit(1).maybeSingle();
 
             if (lastInbound) {
-              fetch(`${CLOUD_FUNCTIONS_URL}/functions/v1/whatsapp-ai-agent-reply`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${CLOUD_ANON_KEY}` },
-                body: JSON.stringify({ phone, instance_name: instanceName, message_text: lastInbound.message_text || '', message_type: lastInbound.message_type || 'text' }),
-              }).catch(err => console.error('#shortcut agent reply trigger error:', err));
+              (async () => {
+                const verdict = await verifyAgentLabelBeforeSend(phone, instanceName);
+                if (!verdict.allowed) {
+                  console.log(`[#shortcut auto-reply] skipped (${verdict.reason}) phone=${phone}`);
+                  return;
+                }
+                fetch(`${CLOUD_FUNCTIONS_URL}/functions/v1/whatsapp-ai-agent-reply`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${CLOUD_ANON_KEY}` },
+                  body: JSON.stringify({ phone, instance_name: instanceName, message_text: lastInbound.message_text || '', message_type: lastInbound.message_type || 'text' }),
+                }).catch(err => console.error('#shortcut agent reply trigger error:', err));
+              })();
             }
 
             const respData = { success: true, message_id: message?.id, shortcut_activated: true, agent_id: shortcut.id, instance_name: instanceName };
@@ -2340,15 +2348,22 @@ export const handler: RequestHandler = async (req, res) => {
     // ========== AI AGENT AUTO-REPLY ==========
     if (!isGroup && direction === 'inbound' && instanceName && phone) {
       try {
-        fetch(`${CLOUD_FUNCTIONS_URL}/functions/v1/whatsapp-ai-agent-reply`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${CLOUD_ANON_KEY}` },
-          body: JSON.stringify({
-            phone, instance_name: instanceName, message_text: messageText,
-            message_type: messageType, lead_id: leadId || null,
-            campaign_id: detectedCampaignId || null, is_group: isGroup, contact_name: contactName || null,
-          }),
-        }).catch(err => console.error('AI agent reply trigger error:', err));
+        (async () => {
+          const verdict = await verifyAgentLabelBeforeSend(phone, instanceName);
+          if (!verdict.allowed) {
+            console.log(`[ai-agent-reply] skipped (${verdict.reason}) phone=${phone} instance=${instanceName}`);
+            return;
+          }
+          fetch(`${CLOUD_FUNCTIONS_URL}/functions/v1/whatsapp-ai-agent-reply`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${CLOUD_ANON_KEY}` },
+            body: JSON.stringify({
+              phone, instance_name: instanceName, message_text: messageText,
+              message_type: messageType, lead_id: leadId || null,
+              campaign_id: detectedCampaignId || null, is_group: isGroup, contact_name: contactName || null,
+            }),
+          }).catch(err => console.error('AI agent reply trigger error:', err));
+        })();
       } catch (e) { console.error('AI agent trigger setup error:', e); }
     }
 
