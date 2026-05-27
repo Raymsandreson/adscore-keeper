@@ -1152,11 +1152,51 @@ export const handler: RequestHandler = async (req, res) => {
               const lastMatch: any = matchedResultLabels[matchedResultLabels.length - 1];
               const patch = RESULT_KEY_TO_PATCH[lastMatch.result_key];
               if (patch) {
+                // Preserva data original quando o lead já estava no mesmo outcome
+                // (evita sobrescrever became_client_date=hoje em fechados antigos
+                // quando o webhook re-sincroniza etiquetas).
+                let finalPatch: Record<string, any> = { ...patch };
+                try {
+                  const { data: existing } = await supabase
+                    .from('leads')
+                    .select('lead_status, became_client_date, in_progress_date, classification_date, inviavel_date, cancelled_date')
+                    .eq('id', leadId)
+                    .maybeSingle();
+                  if (existing) {
+                    const dateField = lastMatch.result_key === 'closed' ? 'became_client_date'
+                      : lastMatch.result_key === 'in_progress' ? 'in_progress_date'
+                      : lastMatch.result_key === 'refused' ? 'classification_date'
+                      : lastMatch.result_key === 'inviavel' ? 'inviavel_date'
+                      : lastMatch.result_key === 'cancelled' ? 'cancelled_date'
+                      : null;
+                    // Se já tinha data preenchida, mantém — não sobrescreve com hoje.
+                    if (dateField && (existing as any)[dateField]) {
+                      finalPatch[dateField] = (existing as any)[dateField];
+                    }
+                    // Pra 'closed': tenta puxar signed_at do ZapSign mais recente como fonte de verdade
+                    if (lastMatch.result_key === 'closed' && !(existing as any).became_client_date) {
+                      try {
+                        const { data: zap } = await supabase
+                          .from('zapsign_documents')
+                          .select('signed_at')
+                          .eq('lead_id', leadId)
+                          .not('signed_at', 'is', null)
+                          .order('signed_at', { ascending: false })
+                          .limit(1)
+                          .maybeSingle();
+                        const signedAt = (zap as any)?.signed_at;
+                        if (signedAt) finalPatch.became_client_date = String(signedAt).slice(0, 10);
+                      } catch {}
+                    }
+                  }
+                } catch (e: any) {
+                  console.warn('[label-trigger][result] preserve-date check failed:', e?.message);
+                }
                 await supabase
                   .from('leads')
-                  .update({ ...patch, updated_at: new Date().toISOString() } as any)
+                  .update({ ...finalPatch, updated_at: new Date().toISOString() } as any)
                   .eq('id', leadId);
-                console.log('[label-trigger][result] lead outcome updated', { leadId, outcome: lastMatch.result_key, via: lastMatch.label_name });
+                console.log('[label-trigger][result] lead outcome updated', { leadId, outcome: lastMatch.result_key, via: lastMatch.label_name, dateUsed: finalPatch.became_client_date || finalPatch.in_progress_date || finalPatch.classification_date || finalPatch.inviavel_date || finalPatch.cancelled_date });
                 try {
                   await supabase.from('lead_activities').insert({
                     lead_id: leadId,
@@ -1171,6 +1211,7 @@ export const handler: RequestHandler = async (req, res) => {
                 }
               }
             }
+
           }
         } catch (e: any) {
           console.warn('[label-trigger][result] block failed:', e?.message);
