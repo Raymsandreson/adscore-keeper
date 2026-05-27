@@ -123,11 +123,27 @@ export function useFocusDashboardData(): FocusData {
         .gte('created_at', fromISO).lte('created_at', toISO)
         .in('created_by', scopeUserIds);
 
+      // Fechados não devem depender da data de criação do lead.
+      // A etiqueta "✅ Fechado" no WhatsApp é espelhada pelo webhook como
+      // lead_status='closed' + became_client_date=<dia da etiqueta>.
+      const closedQuery = db.from('leads')
+        .select('id', { count: 'exact', head: false })
+        .eq('lead_status', 'closed')
+        .gte('became_client_date', range.from.toISOString().slice(0, 10))
+        .lte('became_client_date', range.to.toISOString().slice(0, 10))
+        .is('deleted_at', null);
+
       const yest = { from: startOfDay(subDays(new Date(), 1)), to: endOfDay(subDays(new Date(), 1)) };
       const yestLeadsQ = db.from('leads')
         .select('id, lead_status', { count: 'exact', head: false })
         .gte('created_at', yest.from.toISOString()).lte('created_at', yest.to.toISOString())
         .in('created_by', scopeUserIds);
+
+      const yestClosedQ = db.from('leads')
+        .select('id', { count: 'exact', head: false })
+        .eq('lead_status', 'closed')
+        .eq('became_client_date', yest.from.toISOString().slice(0, 10))
+        .is('deleted_at', null);
 
       // ZapSign pendentes (não no período - é estado atual)
       const zapsignQ = db.from('zapsign_documents')
@@ -144,19 +160,19 @@ export function useFocusDashboardData(): FocusData {
         .order('updated_at', { ascending: false })
         .limit(200);
 
-      const [leadsRes, yestRes, zapRes, activeRes] = await Promise.all([leadsQuery, yestLeadsQ, zapsignQ, activeLeadsQ]);
+      const [leadsRes, closedRes, yestRes, yestClosedRes, zapRes, activeRes] = await Promise.all([leadsQuery, closedQuery, yestLeadsQ, yestClosedQ, zapsignQ, activeLeadsQ]);
 
       const leads = (leadsRes.data || []) as any[];
       const yestLeads = (yestRes.data || []) as any[];
 
       const received = leads.length;
-      const closedCount = leads.filter(l => l.lead_status === 'closed').length;
+      const closedCount = closedRes.count ?? (closedRes.data || []).length;
       const unviableLeads = leads.filter(l => l.lead_status === 'unviable' || l.lead_status === 'refused');
       const conversion = received > 0 ? Math.round((closedCount / received) * 100) : 0;
 
       // Yesterday conv for delta
       const yReceived = yestLeads.length;
-      const yClosed = yestLeads.filter(l => l.lead_status === 'closed').length;
+      const yClosed = yestClosedRes.count ?? (yestClosedRes.data || []).length;
       const yConv = yReceived > 0 ? (yClosed / yReceived) * 100 : 0;
       const convDelta = received > 0 ? Math.round(conversion - yConv) : 0;
 
