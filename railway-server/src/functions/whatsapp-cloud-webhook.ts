@@ -170,7 +170,9 @@ export async function handler(req: Request, res: Response): Promise<void> {
   }
 
   // Eventos (POST)
-  const rawBody = JSON.stringify(req.body || {});
+  const rawBody = (req as any).rawBody
+    ? (req as any).rawBody.toString('utf8')
+    : JSON.stringify(req.body || {});
   const sig = (req.headers['x-hub-signature-256'] || req.headers['X-Hub-Signature-256']) as string | undefined;
   if (!verifySignature(rawBody, sig)) {
     console.warn('[wa-cloud] Assinatura inválida');

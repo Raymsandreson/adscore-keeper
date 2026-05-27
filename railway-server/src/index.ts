@@ -59,7 +59,10 @@ const API_KEY = process.env.RAILWAY_API_KEY || '';
 
 // Middleware base
 app.use(cors());
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({
+  limit: '10mb',
+  verify: (req, _res, buf) => { (req as any).rawBody = buf; },
+}));
 
 // Autenticação via API key — protege apenas /functions/*
 app.use('/functions', (req, res, next) => {
