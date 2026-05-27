@@ -77,6 +77,22 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
     setSearch('');
   }, [selectedInstanceId]);
   const [quickFilter, setQuickFilter] = useState<QuickFilter>('all');
+
+  // Listener para filtros disparados externamente (ex: cards do FocusDashboard)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.filter) {
+        setQuickFilter(detail.filter as QuickFilter);
+        // limpa filtros conflitantes
+        setSearch('');
+        setDirectionFilter('all');
+        setDocFilter('all');
+      }
+    };
+    window.addEventListener('wa:set-quick-filter', handler);
+    return () => window.removeEventListener('wa:set-quick-filter', handler);
+  }, []);
   const [selectedBoardId, setSelectedBoardId] = useState<string>('all');
   const [selectedStageId, setSelectedStageId] = useState<string>('all');
   // Multi-select passos (individual item IDs now)
