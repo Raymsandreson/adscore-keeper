@@ -24,7 +24,7 @@ import {
 
 
 
-interface Attachment {
+export interface Attachment {
   id?: string;
   file_url: string;
   file_name: string;
@@ -42,9 +42,12 @@ interface ActivityNotesFieldProps {
   placeholder?: string;
   label?: string;
   editorHeight?: string;
+  /** Recebe os anexos ainda não persistidos (sem id) para que o pai possa
+   *  gravá-los quando a atividade for criada (atividade nova / fluxo de etapas). */
+  onPendingChange?: (pending: Attachment[]) => void;
 }
 
-export function ActivityNotesField({ value, onChange, activityId, placeholder, label, editorHeight = 'clamp(110px, 20vh, 220px)' }: ActivityNotesFieldProps) {
+export function ActivityNotesField({ value, onChange, activityId, placeholder, label, editorHeight = 'clamp(110px, 20vh, 220px)', onPendingChange }: ActivityNotesFieldProps) {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [uploading, setUploading] = useState(false);
   const [showLinkInput, setShowLinkInput] = useState(false);
@@ -62,9 +65,15 @@ export function ActivityNotesField({ value, onChange, activityId, placeholder, l
     else setAttachments([]);
   }, [activityId]);
 
+  // Surfaça ao pai os anexos ainda sem id (não persistidos) para flush no create.
+  useEffect(() => {
+    onPendingChange?.(attachments.filter(a => !a.id));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [attachments]);
+
   const fetchAttachments = async () => {
     if (!activityId) return;
-    const { data } = await supabase
+    const { data } = await externalSupabase
       .from('activity_attachments')
       .select('*')
       .eq('activity_id', activityId)

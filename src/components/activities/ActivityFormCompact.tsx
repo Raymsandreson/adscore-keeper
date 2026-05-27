@@ -17,7 +17,7 @@ import { Search, X, ChevronDown, Copy, Loader2, UserPlus, Building2, Briefcase, 
 import { ActivityTTSButton } from '@/components/voice/ActivityTTSButton';
 import { ActivityFieldSettingsDialog } from '@/components/activities/ActivityFieldSettingsDialog';
 import { ActivityMessageTemplateSettings } from '@/components/activities/ActivityMessageTemplateSettings';
-import { ActivityNotesField } from '@/components/activities/ActivityNotesField';
+import { ActivityNotesField, type Attachment } from '@/components/activities/ActivityNotesField';
 import { StepTemplatesHub } from '@/components/activities/StepTemplatesHub';
 import { StepChecklistButton } from '@/components/activities/StepChecklistButton';
 import type { ActivityStepContext } from '@/hooks/useActivityStepContext';
@@ -112,6 +112,8 @@ interface ActivityFormCompactProps {
   selectedStepId?: string | null;
   setSelectedStepId?: (id: string | null) => void;
   leads: LeadOption[];
+  // Anexos do campo de notas ainda não persistidos (atividade nova / etapas)
+  onNotesPendingChange?: (pending: Attachment[]) => void;
 }
 
 const PRIORITY_OPTIONS = [
@@ -665,6 +667,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
                       placeholder={field.placeholder || 'Notas adicionais...'}
                       label={field.label}
                       editorHeight={compactEditorHeight}
+                      onPendingChange={props.onNotesPendingChange}
                     />
                   </div>
                 );

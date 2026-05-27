@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { usePageState } from '@/hooks/usePageState';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
-import { remapToCloud, remapToCloudSync, ensureRemapCache } from '@/integrations/supabase/uuid-remap';
+import { remapToCloud, remapToCloudSync, remapToExternal, ensureRemapCache } from '@/integrations/supabase/uuid-remap';
 import { useLeadActivities, LeadActivity } from '@/hooks/useLeadActivities';
 import { useConfirmDelete } from '@/hooks/useConfirmDelete';
 import { useAuthContext } from '@/contexts/AuthContext';
@@ -45,7 +45,7 @@ import { LeadFunnelProgressBar } from '@/components/activities/LeadFunnelProgres
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { TeamChatButton } from '@/components/chat/TeamChatButton';
 import { TeamChatSheet } from '@/components/chat/TeamChatSheet';
-import { ActivityNotesField } from '@/components/activities/ActivityNotesField';
+import { ActivityNotesField, type Attachment } from '@/components/activities/ActivityNotesField';
 import { TimeBlockSettingsDialog, TimeBlockConfig } from '@/components/activities/TimeBlockSettingsDialog';
 import { ActivityCreatedDialog, randomChurchillQuote } from '@/components/activities/ActivityCreatedDialog';
 import { TrafficActivityPanel } from '@/components/traffic/TrafficActivityPanel';
@@ -207,6 +207,8 @@ const ActivitiesPage = () => {
   const [sheetMode, setSheetMode] = usePageState<'create' | 'edit' | null>('activities_sheetMode', null);
   const [selectedActivityId, setSelectedActivityId] = usePageState<string | null>('activities_selectedId', null);
   const [selectedActivity, setSelectedActivity] = useState<LeadActivity | null>(null);
+  // Anexos/links adicionados no campo de notas antes da atividade ter id
+  const [pendingNoteAttachments, setPendingNoteAttachments] = useState<Attachment[]>([]);
   const [createdDialog, setCreatedDialog] = useState<{ open: boolean; title: string; activity: LeadActivity | null }>({ open: false, title: '', activity: null });
   const [leads, setLeads] = useState<LeadOption[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
@@ -551,6 +553,31 @@ const ActivitiesPage = () => {
     }
   };
 
+  // Grava no banco externo os anexos/links que foram adicionados enquanto a
+  // atividade ainda não tinha id (atividade nova ou criação da próxima etapa).
+  const flushPendingAttachments = async (activityId: string) => {
+    if (!activityId || pendingNoteAttachments.length === 0) return;
+    const { data: { user } } = await supabase.auth.getUser();
+    const extUserId = await remapToExternal(user?.id || null);
+    const rows = pendingNoteAttachments.map((a) => ({
+      activity_id: activityId,
+      file_url: a.file_url,
+      file_name: a.file_name,
+      file_type: a.file_type,
+      file_size: a.file_size ?? null,
+      attachment_type: a.attachment_type,
+      link_url: a.link_url ?? null,
+      link_title: a.link_title ?? null,
+      created_by: extUserId,
+    }));
+    const { error } = await externalSupabase.from('activity_attachments').insert(rows);
+    if (error) {
+      toast.error('Atividade salva, mas falhou ao anexar os links');
+      console.error('[flushPendingAttachments]', error);
+    }
+    setPendingNoteAttachments([]);
+  };
+
   const handleCreate = async () => {
     let titleToUse = formTitle.trim();
 
@@ -649,6 +676,9 @@ const ActivitiesPage = () => {
       }
     }
 
+
+    // Persiste links/anexos adicionados antes da atividade existir
+    if (createdActivityId) await flushPendingAttachments(createdActivityId);
 
     // If created for another assignee, add them to the filter so the activities are visible
     if (formAssignedTo && formAssignedTo !== user?.id && !filterAssignee.includes(formAssignedTo)) {
@@ -891,7 +921,10 @@ const ActivitiesPage = () => {
       });
 
       // Create the next activity with the captured form data
-      await createActivity(nextData);
+      const nextCreated = await createActivity(nextData);
+
+      // Persiste links/anexos adicionados na etapa antes da próxima atividade existir
+      if (nextCreated?.id) await flushPendingAttachments(nextCreated.id);
 
       if (notifyOptions) {
         await sendGroupNotification(notifyOptions);
@@ -1658,6 +1691,7 @@ const ActivitiesPage = () => {
       formContactIdForTTS={formContactId || undefined}
       supabase={supabase}
       leads={leads}
+      onNotesPendingChange={setPendingNoteAttachments}
     />
   );
 
