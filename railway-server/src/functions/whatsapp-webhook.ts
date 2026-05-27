@@ -935,7 +935,10 @@ export const handler: RequestHandler = async (req, res) => {
       try {
         const { chatId, labels: waLabels } = extractLabelEventData(body);
 
-        if (!chatId || !webhookInstanceName || waLabels.length === 0) {
+        // waLabels vazio é um estado válido: significa que a conversa ficou sem etiquetas.
+        // Antes isso era tratado como "dados faltando" e a remoção da etiqueta do agente
+        // nunca chegava no bloco de desativação abaixo.
+        if (!chatId || !webhookInstanceName) {
           console.warn('[label-trigger] missing data', { hasChatId: Boolean(chatId), webhookInstanceName, labelCount: waLabels.length, keys: Object.keys(body || {}) });
           return res.json({ success: true, skipped: true, reason: 'label_event_missing_data' });
         }
