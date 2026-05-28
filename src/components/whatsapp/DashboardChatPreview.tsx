@@ -477,7 +477,13 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
       const msgInstanceName = instanceName || messages.find(m => m.instance_name)?.instance_name;
 
       const { data, error } = await cloudFunctions.invoke('send-whatsapp', {
-        body: { phone, message: finalMessage, instance_id: instanceId },
+        body: {
+          phone,
+          message: finalMessage,
+          instance_id: instanceId,
+          // Canal Cloud API (Meta oficial) → edge proxy reroteia pra Railway send-whatsapp-cloud.
+          channel: msgInstanceName === 'cloud_gerencia' ? 'cloud' : undefined,
+        },
       });
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || 'Erro ao enviar');
