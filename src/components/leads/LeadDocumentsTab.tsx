@@ -384,6 +384,30 @@ export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId, cu
         </div>
       </div>
 
+      {signedProcuracao && (
+        <a
+          href={signedProcuracao.webViewLink}
+          target="_blank"
+          rel="noreferrer"
+          className="flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm hover:bg-emerald-500/15 transition-colors"
+          title="Clique para abrir a procuração assinada no Drive"
+        >
+          <ShieldCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <div className="font-medium text-emerald-700 dark:text-emerald-300">
+              Procuração assinada · arquivada automaticamente
+            </div>
+            <div className="text-xs text-muted-foreground truncate">
+              {signedProcuracao.name}
+              {signedProcuracao.modifiedTime && (
+                <> · {new Date(signedProcuracao.modifiedTime).toLocaleDateString('pt-BR')}</>
+              )}
+            </div>
+          </div>
+          <ExternalLink className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+        </a>
+      )}
+
       {selectedIds.length > 0 && (
         <div className="flex items-center justify-between gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 flex-wrap">
           <div className="text-sm">
