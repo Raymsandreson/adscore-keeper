@@ -515,9 +515,17 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
       // aponta pra users do Externo via auth_uuid_mapping). Sem remap = 23503.
       const extCreatedBy = await remapToExternal(user?.id);
 
-      // Auto-create contact if none exists
+      // Detecta JID de grupo (ex: 120363xxxx ou xxxx@g.us). Para grupos NÃO
+      // criamos contact (JID não é telefone de pessoa). O vínculo vai por
+      // `lead_whatsapp_groups` + `leads.whatsapp_group_id` mais abaixo.
+      const isGroupChat = isWhatsAppGroupId(contactPhone);
+      const normalizedGroupJid = isGroupChat
+        ? normalizeWhatsAppConversationPhone(contactPhone)
+        : null;
+
+      // Auto-create contact if none exists — somente para chats individuais
       let finalContactId = contactId;
-      if (!finalContactId && contactPhone) {
+      if (!finalContactId && contactPhone && !isGroupChat) {
         const normalizedPhone = contactPhone.replace(/\D/g, '');
         // Buscar no Externo (onde o contato realmente vive). Cloud não tem mais
         // os contatos sincronizados.
