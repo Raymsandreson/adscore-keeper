@@ -230,7 +230,7 @@ export function WhatsAppActivitySheet({
       fetchTeamMembers();
       fetchContacts();
     }
-  }, [open, defaultLeadId, defaultLeadName, defaultContactId, defaultContactName]);
+  }, [open, defaultLeadId, defaultLeadName, defaultContactId, defaultContactName, defaultDictationText]);
 
   const fetchLeads = async () => {
     const { data } = await externalSupabase.from('leads').select('id, lead_name').order('created_at', { ascending: false }).limit(200);
