@@ -172,6 +172,28 @@ export const handler = async (req: Request, res: Response) => {
 
     Object.keys(update).forEach((k) => update[k] === undefined && delete update[k]);
 
+    // Auto-link por telefone (mesmo em docs criados manualmente fora da API).
+    // Só sobrescreve se o doc ainda não estiver vinculado a um lead/contato.
+    const candidatePhone = update.signer_phone || signerPhone;
+    if (candidatePhone && candidatePhone.length >= 10) {
+      try {
+        const { data: existingDoc } = await supabase
+          .from('zapsign_documents')
+          .select('lead_id, contact_id')
+          .eq('doc_token', docToken)
+          .maybeSingle();
+        const needsContact = !existingDoc?.contact_id;
+        const needsLead = !existingDoc?.lead_id;
+        if (needsContact || needsLead) {
+          const { contact_id, lead_id } = await resolveContactAndLead(candidatePhone);
+          if (needsContact && contact_id) update.contact_id = contact_id;
+          if (needsLead && lead_id) update.lead_id = lead_id;
+        }
+      } catch (e: any) {
+        console.error('[zapsign-webhook] auto-link error:', e?.message || e);
+      }
+    }
+
     if (Object.keys(update).length > 1) {
       const { error: updErr } = await supabase
         .from('zapsign_documents')
