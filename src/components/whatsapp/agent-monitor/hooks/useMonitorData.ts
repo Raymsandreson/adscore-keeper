@@ -241,19 +241,28 @@ export function useMonitorData() {
       // quando o operador aplica "✅ Fechado". Aqui contamos por agente, casando o
       // telefone (últimos 8 dígitos) com whatsapp_conversation_agents.
       try {
+        // Mapas de atribuição: telefone (chat individual) e group_jid (grupo).
+        // Grupo: lead não tem lead_phone, então casamos pelo whatsapp_group_id
+        // contra conversation_agents.phone (que guarda o JID do grupo).
         const phoneToAgent = new Map<string, string>();
+        const groupJidToAgent = new Map<string, string>();
         for (const ca of convAgentsData as any[]) {
           if (!ca.phone || !ca.agent_id) continue;
-          const last8 = String(ca.phone).replace(/\D/g, '').slice(-8);
-          if (!last8) continue;
-          if (!phoneToAgent.has(last8)) phoneToAgent.set(last8, ca.agent_id);
+          const rawPhone = String(ca.phone);
+          if (rawPhone.includes('@g.us')) {
+            if (!groupJidToAgent.has(rawPhone)) groupJidToAgent.set(rawPhone, ca.agent_id);
+          } else {
+            const last8 = rawPhone.replace(/\D/g, '').slice(-8);
+            if (!last8) continue;
+            if (!phoneToAgent.has(last8)) phoneToAgent.set(last8, ca.agent_id);
+          }
         }
 
         const fromDate = dateRange.from.toISOString().slice(0, 10);
         const toDate = endOfDay(dateRange.to).toISOString().slice(0, 10);
         const { data: closedLeads } = await externalSupabase
           .from('leads')
-          .select('id, lead_phone, became_client_date')
+          .select('id, lead_phone, whatsapp_group_id, became_client_date')
           .eq('lead_status', 'closed')
           .gte('became_client_date', fromDate)
           .lte('became_client_date', toDate)
@@ -261,9 +270,16 @@ export function useMonitorData() {
           .limit(2000);
 
         for (const lead of (closedLeads || []) as any[]) {
-          const last8 = String(lead.lead_phone || '').replace(/\D/g, '').slice(-8);
-          if (!last8) continue;
-          const agentId = phoneToAgent.get(last8);
+          let agentId: string | undefined;
+          // Lead de grupo (sem telefone) → resolve pelo JID do grupo.
+          if (lead.whatsapp_group_id) {
+            agentId = groupJidToAgent.get(lead.whatsapp_group_id);
+          }
+          // Lead individual → resolve pelos últimos 8 dígitos do telefone.
+          if (!agentId && lead.lead_phone) {
+            const last8 = String(lead.lead_phone).replace(/\D/g, '').slice(-8);
+            if (last8) agentId = phoneToAgent.get(last8);
+          }
           if (!agentId) continue;
           const stat = statsMap.get(agentId);
           if (stat) stat.leads_closed++;
