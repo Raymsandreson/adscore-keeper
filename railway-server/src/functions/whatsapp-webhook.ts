@@ -1607,7 +1607,10 @@ export const handler: RequestHandler = async (req, res) => {
     }
 
     // ========== AUTO-REGISTER CONTACT ==========
-    if (!contactId && direction === 'inbound' && normalizedPhone.length >= 10 && !isGroup) {
+    // Guarda dupla: !isGroup (vindo do payload) + checagem por formato do
+    // número. JIDs de grupo são >=17 dígitos e tipicamente começam com 120363.
+    const looksLikeGroupJid = normalizedPhone.length >= 17 || normalizedPhone.startsWith('120363');
+    if (!contactId && direction === 'inbound' && normalizedPhone.length >= 10 && !isGroup && !looksLikeGroupJid) {
       try {
         const { data: ownInstances } = await supabase.from('whatsapp_instances').select('owner_phone').eq('is_active', true);
         const instancePhones = (ownInstances || []).map((i: any) => (i.owner_phone || '').replace(/\D/g, '')).filter(Boolean);

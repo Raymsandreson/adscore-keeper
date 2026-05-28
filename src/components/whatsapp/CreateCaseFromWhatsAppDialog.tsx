@@ -21,6 +21,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { findClosedStageId } from '@/utils/kanbanStageTypes';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
+import { isWhatsAppGroupId, normalizeWhatsAppConversationPhone } from '@/lib/whatsappPhone';
 
 interface ExtractedProcess {
   title: string;
@@ -514,9 +515,17 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
       // aponta pra users do Externo via auth_uuid_mapping). Sem remap = 23503.
       const extCreatedBy = await remapToExternal(user?.id);
 
-      // Auto-create contact if none exists
+      // Detecta JID de grupo (ex: 120363xxxx ou xxxx@g.us). Para grupos NÃO
+      // criamos contact (JID não é telefone de pessoa). O vínculo vai por
+      // `lead_whatsapp_groups` + `leads.whatsapp_group_id` mais abaixo.
+      const isGroupChat = isWhatsAppGroupId(contactPhone);
+      const normalizedGroupJid = isGroupChat
+        ? normalizeWhatsAppConversationPhone(contactPhone)
+        : null;
+
+      // Auto-create contact if none exists — somente para chats individuais
       let finalContactId = contactId;
-      if (!finalContactId && contactPhone) {
+      if (!finalContactId && contactPhone && !isGroupChat) {
         const normalizedPhone = contactPhone.replace(/\D/g, '');
         // Buscar no Externo (onde o contato realmente vive). Cloud não tem mais
         // os contatos sincronizados.
@@ -567,12 +576,14 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
         const closingDateStr = format(closingDate, 'yyyy-MM-dd');
         const leadInsert: Record<string, any> = {
           lead_name: title.trim(),
-          lead_phone: contactPhone || null,
+          // JID de grupo NÃO entra em lead_phone (não é telefone).
+          lead_phone: isGroupChat ? null : (contactPhone || null),
           source: 'whatsapp',
           created_by: extCreatedBy,
           became_client_date: closingDateStr,
           board_id: selectedBoardId,
           status: closedStageId || 'closed',
+          ...(isGroupChat && normalizedGroupJid ? { whatsapp_group_id: normalizedGroupJid } : {}),
         };
         const { data: newLead, error: leadErr } = await externalSupabase
           .from('leads')
@@ -583,8 +594,19 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
         finalLeadId = newLead.id;
         toast.success('Lead criado como fechado');
 
-        // Link contact to lead
-        if (finalContactId) {
+        // Registra o grupo na tabela de vínculos (única fonte de verdade
+        // pros agentes e para a UI de "Grupo do lead").
+        if (isGroupChat && normalizedGroupJid && finalLeadId) {
+          await externalSupabase.from('lead_whatsapp_groups').insert({
+            lead_id: finalLeadId,
+            group_jid: normalizedGroupJid,
+            group_name: contactName || title.trim() || null,
+            auto_linked: true,
+          } as any).select().maybeSingle();
+        }
+
+        // Link contact to lead (somente quando há contato real)
+        if (finalContactId && !isGroupChat) {
           await externalSupabase.from('contact_leads').insert({
             contact_id: finalContactId,
             lead_id: finalLeadId,
