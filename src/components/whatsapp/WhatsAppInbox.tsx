@@ -1198,8 +1198,8 @@ export function WhatsAppInbox() {
     }
   };
 
-  const handleCreateActivity = (leadId: string, leadName: string, contactId?: string, contactName?: string) => {
-    setActivityDefaults({ leadId, leadName, contactId, contactName });
+  const handleCreateActivity = (leadId: string, leadName: string, contactId?: string, contactName?: string, prefillText?: string) => {
+    setActivityDefaults({ leadId, leadName, contactId, contactName, dictationText: prefillText });
     setShowActivitySheet(true);
   };
 
