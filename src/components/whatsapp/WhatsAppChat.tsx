@@ -1968,7 +1968,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     }
     
     // Conversa individual ou grupo com participante selecionado: usa fluxo normal
-    onLinkToLead(conversation.phone, selectedLeadId);
+    onLinkToLead(conversation.phone, selectedLeadId, conversation.instance_name);
     // For groups: create/find contact from selected participant and link to lead
     if (isGroup && selectedParticipantPhone) {
       try {
