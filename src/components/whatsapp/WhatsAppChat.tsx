@@ -85,8 +85,8 @@ interface Props {
     contactId?: string, leadId?: string, conversationInstanceName?: string | null, chatId?: string
   ) => Promise<boolean>;
   onDeleteMessage: (messageId: string, instanceName?: string | null, externalMessageId?: string | null) => Promise<boolean>;
-  onLinkToLead: (phone: string, leadId: string) => void;
-  onLinkToContact: (phone: string, contactId: string) => void;
+  onLinkToLead: (phone: string, leadId: string, instanceName?: string | null) => void;
+  onLinkToContact: (phone: string, contactId: string, instanceName?: string | null) => void;
   onCreateLead: () => void;
   onCreateContact: () => void;
   onCreateCase?: () => void;
