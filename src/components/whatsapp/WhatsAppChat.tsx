@@ -319,7 +319,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         .single();
       if (error) throw error;
       setShowDriveTargetDialog(false);
-      try { onLinkToLead(conversation.phone, (newLead as any).id); } catch (e) { console.warn('link conversa falhou:', e); }
+      try { onLinkToLead(conversation.phone, (newLead as any).id, conversation.instance_name); } catch (e) { console.warn('link conversa falhou:', e); }
       toast.success(`Lead "${(newLead as any).lead_name}" criado`);
       if (pendingBatchAfterLead) {
         setPendingBatchAfterLead(false);
