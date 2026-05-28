@@ -8,6 +8,52 @@ function normPhone(s?: string | null): string {
   return (s || '').replace(/\D/g, '');
 }
 
+function phoneVariants(p: string): string[] {
+  const digits = normPhone(p);
+  if (!digits || digits.length < 8) return [];
+  const set = new Set<string>([digits]);
+  const withoutDdi = digits.startsWith('55') ? digits.slice(2) : digits;
+  set.add(withoutDdi);
+  set.add('55' + withoutDdi);
+  if (withoutDdi.length === 11 && withoutDdi[2] === '9') {
+    const without9 = withoutDdi.slice(0, 2) + withoutDdi.slice(3);
+    set.add(without9); set.add('55' + without9);
+  } else if (withoutDdi.length === 10) {
+    const with9 = withoutDdi.slice(0, 2) + '9' + withoutDdi.slice(2);
+    set.add(with9); set.add('55' + with9);
+  }
+  return [...set].filter((v) => v.length >= 8);
+}
+
+async function resolveContactAndLead(phone: string): Promise<{ contact_id: string | null; lead_id: string | null }> {
+  const variants = phoneVariants(phone);
+  if (variants.length === 0) return { contact_id: null, lead_id: null };
+  try {
+    const { data: c } = await supabase
+      .from('contacts')
+      .select('id, lead_id')
+      .in('phone', variants)
+      .is('deleted_at', null)
+      .limit(1)
+      .maybeSingle();
+    const contactId = c?.id || null;
+    let leadId: string | null = c?.lead_id || null;
+    if (contactId && !leadId) {
+      const { data: lk } = await supabase
+        .from('contact_leads')
+        .select('lead_id')
+        .eq('contact_id', contactId)
+        .limit(1)
+        .maybeSingle();
+      leadId = lk?.lead_id || null;
+    }
+    return { contact_id: contactId, lead_id: leadId };
+  } catch (e: any) {
+    console.error('[zapsign-webhook] resolveContactAndLead error:', e?.message || e);
+    return { contact_id: null, lead_id: null };
+  }
+}
+
 function pickFirstSigner(signers: any[]): any {
   if (!Array.isArray(signers) || signers.length === 0) return {};
   return signers.find((s) => s?.status === 'signed') || signers[0];
@@ -125,6 +171,28 @@ export const handler = async (req: Request, res: Response) => {
     }
 
     Object.keys(update).forEach((k) => update[k] === undefined && delete update[k]);
+
+    // Auto-link por telefone (mesmo em docs criados manualmente fora da API).
+    // Só sobrescreve se o doc ainda não estiver vinculado a um lead/contato.
+    const candidatePhone = update.signer_phone || signerPhone;
+    if (candidatePhone && candidatePhone.length >= 10) {
+      try {
+        const { data: existingDoc } = await supabase
+          .from('zapsign_documents')
+          .select('lead_id, contact_id')
+          .eq('doc_token', docToken)
+          .maybeSingle();
+        const needsContact = !existingDoc?.contact_id;
+        const needsLead = !existingDoc?.lead_id;
+        if (needsContact || needsLead) {
+          const { contact_id, lead_id } = await resolveContactAndLead(candidatePhone);
+          if (needsContact && contact_id) update.contact_id = contact_id;
+          if (needsLead && lead_id) update.lead_id = lead_id;
+        }
+      } catch (e: any) {
+        console.error('[zapsign-webhook] auto-link error:', e?.message || e);
+      }
+    }
 
     if (Object.keys(update).length > 1) {
       const { error: updErr } = await supabase
