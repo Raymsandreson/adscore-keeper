@@ -441,7 +441,7 @@ export function WhatsAppInbox() {
 
   // Activity sheet state
   const [showActivitySheet, setShowActivitySheet] = useState(false);
-  const [activityDefaults, setActivityDefaults] = useState<{ leadId?: string; leadName?: string; contactId?: string; contactName?: string }>({});
+  const [activityDefaults, setActivityDefaults] = useState<{ leadId?: string; leadName?: string; contactId?: string; contactName?: string; dictationText?: string }>({});
   const [showBoardPicker, setShowBoardPicker] = useState(false);
   const [selectedBoardId, setSelectedBoardId] = useState<string>('');
   const [aiPreview, setAiPreview] = useState<{
