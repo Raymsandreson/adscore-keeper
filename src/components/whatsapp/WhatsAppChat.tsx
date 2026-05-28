@@ -2150,6 +2150,16 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                 <Link2 className="h-3 w-3" /> Ver Lead
               </button>
             )}
+            {conversation.contact_id && onViewContact && (
+              <button
+                type="button"
+                onClick={() => onViewContact(conversation.contact_id!)}
+                title="Abrir ficha do contato"
+                className="h-6 text-xs bg-emerald-600 text-white px-2 rounded-full hover:bg-emerald-700 transition-colors inline-flex items-center gap-1 cursor-pointer border-0 whitespace-nowrap shrink-0"
+              >
+                <User className="h-3 w-3" /> Ver Contato
+              </button>
+            )}
             <button
               type="button"
               className="callface-dial h-6 text-xs bg-indigo-600 text-white px-2 rounded-full hover:bg-indigo-700 transition-colors inline-flex items-center gap-1 cursor-pointer border-0 whitespace-nowrap shrink-0"
