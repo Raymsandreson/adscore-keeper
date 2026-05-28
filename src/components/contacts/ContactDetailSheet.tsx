@@ -1297,6 +1297,11 @@ export function ContactDetailSheet({
               )}
             </TabsContent>
 
+            {/* Activities Tab */}
+            <TabsContent value="activities" className="mt-0">
+              <ContactActivities contactId={contact.id} />
+            </TabsContent>
+
             {/* Chat IA Tab */}
             <TabsContent value="ai_chat" className="mt-0" style={{ height: '400px' }}>
               <EntityAIChat
