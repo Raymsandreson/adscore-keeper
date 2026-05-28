@@ -36,6 +36,7 @@ interface WhatsAppActivitySheetProps {
   defaultLeadName?: string;
   defaultContactId?: string;
   defaultContactName?: string;
+  defaultDictationText?: string;
   onActivityCreated?: (title: string, type: string, leadName?: string) => void;
 }
 
