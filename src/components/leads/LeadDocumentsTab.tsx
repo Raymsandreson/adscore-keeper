@@ -328,6 +328,8 @@ export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId, cu
   const confidenceVariant = (c?: string) =>
     c === 'alta' ? 'default' : c === 'média' ? 'secondary' : 'outline';
 
+  const signedProcuracao = files.find((f) => /^procura[cç]/i.test(f.name));
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-2 flex-wrap">
