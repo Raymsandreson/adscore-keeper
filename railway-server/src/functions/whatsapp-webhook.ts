@@ -1197,6 +1197,32 @@ export const handler: RequestHandler = async (req, res) => {
                   .update({ ...finalPatch, updated_at: new Date().toISOString() } as any)
                   .eq('id', leadId);
                 console.log('[label-trigger][result] lead outcome updated', { leadId, outcome: lastMatch.result_key, via: lastMatch.label_name, dateUsed: finalPatch.became_client_date || finalPatch.in_progress_date || finalPatch.classification_date || finalPatch.inviavel_date || finalPatch.cancelled_date });
+
+                // Quando FECHA, o operador/instância que atendeu vira o acolhedor do lead.
+                // Fonte: whatsapp_instances.owner_name da instância que recebeu o webhook.
+                if (lastMatch.result_key === 'closed') {
+                  try {
+                    const { data: inst } = await supabase
+                      .from('whatsapp_instances')
+                      .select('owner_name')
+                      .ilike('instance_name', webhookInstanceName)
+                      .limit(1)
+                      .maybeSingle();
+                    const ownerName = ((inst as any)?.owner_name || '').trim();
+                    if (ownerName) {
+                      await supabase
+                        .from('leads')
+                        .update({ acolhedor: ownerName, updated_at: new Date().toISOString() } as any)
+                        .eq('id', leadId);
+                      console.log('[label-trigger][result] acolhedor set from instance', { leadId, acolhedor: ownerName, instance: webhookInstanceName });
+                    } else {
+                      console.log('[label-trigger][result] instance has no owner_name, acolhedor unchanged', { instance: webhookInstanceName });
+                    }
+                  } catch (e: any) {
+                    console.warn('[label-trigger][result] set acolhedor failed:', e?.message);
+                  }
+                }
+
                 try {
                   await supabase.from('lead_activities').insert({
                     lead_id: leadId,
