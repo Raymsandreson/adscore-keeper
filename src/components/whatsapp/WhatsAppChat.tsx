@@ -92,7 +92,7 @@ interface Props {
   onCreateCase?: () => void;
   extractingData?: boolean;
   extractionStep?: string;
-  onCreateActivity?: (leadId: string, leadName: string, contactId?: string, contactName?: string) => void;
+  onCreateActivity?: (leadId: string, leadName: string, contactId?: string, contactName?: string, prefillText?: string) => void;
   onNavigateToLead?: (leadId: string) => void;
   onViewContact?: (contactId: string) => void;
   onPrivacyChanged?: () => void;
