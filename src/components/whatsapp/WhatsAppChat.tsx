@@ -2633,6 +2633,21 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         </div>
       )}
 
+      {textSelectionMode && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 bg-background border shadow-lg rounded-full px-4 py-2 flex items-center gap-3">
+          <span className="text-sm font-medium">{selectedTextMsgIds.size} mensagem(ns)</span>
+          <Button size="sm" variant="outline" onClick={exitTextSelection}>Cancelar</Button>
+          <Button
+            size="sm"
+            disabled={selectedTextMsgIds.size === 0 || !onCreateActivity}
+            onClick={handleCreateActivityFromSelection}
+            className="gap-1"
+          >
+            <CalendarPlus className="h-3.5 w-3.5" /> Criar atividade
+          </Button>
+        </div>
+      )}
+
       {/* Dialog batch: modo + nome + reorder */}
       <Dialog open={showBatchDriveDialog} onOpenChange={setShowBatchDriveDialog}>
         <DialogContent className="max-w-md">
