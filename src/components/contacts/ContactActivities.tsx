@@ -22,6 +22,7 @@ interface ContactActivity {
 }
 
 export function ContactActivities({ contactId }: { contactId: string }) {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState<ContactActivity[]>([]);
 
