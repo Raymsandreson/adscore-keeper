@@ -128,9 +128,14 @@ export async function callGemini(options: GeminiCallOptions): Promise<Response> 
   // o que causa truncamento (ex.: resposta cortada no meio da palavra). Para chamadas
   // de texto puro (sem tools), desabilita o thinking pra todo o orçamento ir pro texto.
   const thinkingBudget = (options as any).thinking_budget;
+  // gemini-2.5-pro só funciona em thinking mode (não aceita budget 0).
+  const isProModel = /pro/i.test(googleModel);
   if (typeof thinkingBudget === "number") {
-    genConfig.thinkingConfig = { thinkingBudget };
-  } else if (!options.tools?.length) {
+    // Pro não aceita 0; se vier 0, usa o default do modelo (omite o campo).
+    if (!(isProModel && thinkingBudget === 0)) {
+      genConfig.thinkingConfig = { thinkingBudget };
+    }
+  } else if (!options.tools?.length && !isProModel) {
     genConfig.thinkingConfig = { thinkingBudget: 0 };
   }
   if (Object.keys(genConfig).length > 0) body.generationConfig = genConfig;
