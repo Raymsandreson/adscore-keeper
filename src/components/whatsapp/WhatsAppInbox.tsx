@@ -1865,6 +1865,7 @@ export function WhatsAppInbox() {
         defaultLeadName={activityDefaults.leadName}
         defaultContactId={activityDefaults.contactId}
         defaultContactName={activityDefaults.contactName}
+        defaultDictationText={activityDefaults.dictationText}
         onActivityCreated={handleActivityCreated}
       />
 
