@@ -386,6 +386,51 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     setBatchAnalysis(null);
   };
 
+  // ===== Seleção múltipla de mensagens de TEXTO para criar atividade =====
+  const [textSelectionMode, setTextSelectionMode] = useState(false);
+  const [textSelectionOrder, setTextSelectionOrder] = useState<string[]>([]);
+  const selectedTextMsgIds = useMemo(() => new Set(textSelectionOrder), [textSelectionOrder]);
+  const getTextSelectionIndex = (msgId: string) => {
+    const i = textSelectionOrder.indexOf(msgId);
+    return i === -1 ? null : i + 1;
+  };
+  const toggleTextSelection = (msgId: string) => {
+    setTextSelectionOrder(prev => prev.includes(msgId) ? prev.filter(x => x !== msgId) : [...prev, msgId]);
+  };
+  const exitTextSelection = () => {
+    setTextSelectionMode(false);
+    setTextSelectionOrder([]);
+  };
+  const buildTextSelectionPrefill = (): string => {
+    const msgMap = new Map((messages || []).map((m: any) => [m.id, m]));
+    return textSelectionOrder
+      .map((id) => msgMap.get(id))
+      .filter((m: any) => m && m.message_text)
+      .map((m: any) => {
+        const who = m.direction === 'outbound' ? 'Eu' : (conversation.contact_name || 'Cliente');
+        let when = '';
+        try { when = format(new Date(m.created_at), "dd/MM HH:mm", { locale: ptBR }); } catch {}
+        return `[${who}${when ? ' · ' + when : ''}] ${m.message_text}`;
+      })
+      .join('\n');
+  };
+  const handleCreateActivityFromSelection = () => {
+    if (!onCreateActivity || textSelectionOrder.length === 0) return;
+    const prefill = buildTextSelectionPrefill();
+    if (!prefill) {
+      toast.error('Nenhuma mensagem com texto selecionada.');
+      return;
+    }
+    onCreateActivity(
+      conversation.lead_id || '',
+      conversation.contact_name || conversation.phone,
+      conversation.contact_id || undefined,
+      conversation.contact_name || undefined,
+      prefill,
+    );
+    exitTextSelection();
+  };
+
   // Pede pra IA analisar TODAS as mídias selecionadas (imagens) e devolver
   // título + titular + descrição. Filename = só o título (titular já está dentro do doc).
   const analyzeBatchWithAi = async (selected: Array<any>) => {
@@ -2588,6 +2633,21 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         </div>
       )}
 
+      {textSelectionMode && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 bg-background border shadow-lg rounded-full px-4 py-2 flex items-center gap-3">
+          <span className="text-sm font-medium">{selectedTextMsgIds.size} mensagem(ns)</span>
+          <Button size="sm" variant="outline" onClick={exitTextSelection}>Cancelar</Button>
+          <Button
+            size="sm"
+            disabled={selectedTextMsgIds.size === 0 || !onCreateActivity}
+            onClick={handleCreateActivityFromSelection}
+            className="gap-1"
+          >
+            <CalendarPlus className="h-3.5 w-3.5" /> Criar atividade
+          </Button>
+        </div>
+      )}
+
       {/* Dialog batch: modo + nome + reorder */}
       <Dialog open={showBatchDriveDialog} onOpenChange={setShowBatchDriveDialog}>
         <DialogContent className="max-w-md">
@@ -3309,7 +3369,29 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                       )}
                       {displayMessageText(msg.message_text)}
                     </p>
-                    <div className="flex items-center gap-1 mt-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                    <div className={cn(
+                      "flex items-center gap-1 mt-1 transition-opacity",
+                      textSelectionMode || selectedTextMsgIds.has(msg.id)
+                        ? "opacity-100"
+                        : "opacity-0 group-hover:opacity-100 focus-within:opacity-100"
+                    )}>
+                      <button
+                        type="button"
+                        title={selectedTextMsgIds.has(msg.id) ? `Posição #${getTextSelectionIndex(msg.id)} — clique p/ desmarcar` : 'Selecionar para criar atividade'}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setTextSelectionMode(true);
+                          toggleTextSelection(msg.id);
+                        }}
+                        className={cn(
+                          "h-5 w-5 rounded border-2 flex items-center justify-center shrink-0 transition-all text-[10px] font-bold",
+                          selectedTextMsgIds.has(msg.id)
+                            ? "bg-blue-500 border-blue-500 text-white"
+                            : "bg-background border-muted-foreground/40 text-transparent hover:text-muted-foreground"
+                        )}
+                      >
+                        {selectedTextMsgIds.has(msg.id) ? getTextSelectionIndex(msg.id) : '✓'}
+                      </button>
                       <button
                         type="button"
                         title="Copiar texto"
@@ -3329,7 +3411,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                       >
                         <Copy className="h-3 w-3" /> Copiar
                       </button>
-                      {onCreateActivity && (
+                      {onCreateActivity && !textSelectionMode && (
                         <button
                           type="button"
                           title="Criar atividade a partir desta mensagem"
