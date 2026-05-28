@@ -222,8 +222,8 @@ export function WhatsAppActivitySheet({
       setFormRepeatWeekDays([]);
       setLeadSearch('');
       setContactSearch('');
-      setAiMode(false);
-      setDictationText('');
+      setAiMode(!!defaultDictationText);
+      setDictationText(defaultDictationText || '');
       setListening(false);
 
       fetchLeads();
