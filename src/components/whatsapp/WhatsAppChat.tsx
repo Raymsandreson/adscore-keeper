@@ -85,8 +85,8 @@ interface Props {
     contactId?: string, leadId?: string, conversationInstanceName?: string | null, chatId?: string
   ) => Promise<boolean>;
   onDeleteMessage: (messageId: string, instanceName?: string | null, externalMessageId?: string | null) => Promise<boolean>;
-  onLinkToLead: (phone: string, leadId: string) => void;
-  onLinkToContact: (phone: string, contactId: string) => void;
+  onLinkToLead: (phone: string, leadId: string, instanceName?: string | null) => void;
+  onLinkToContact: (phone: string, contactId: string, instanceName?: string | null) => void;
   onCreateLead: () => void;
   onCreateContact: () => void;
   onCreateCase?: () => void;
@@ -285,7 +285,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     const lead = leads.find(l => l.id === selectedLeadId);
     const leadName = (lead as any)?.lead_name;
     setShowDriveTargetDialog(false);
-    try { onLinkToLead(conversation.phone, selectedLeadId); } catch (e) { console.warn('link conversa falhou:', e); }
+    try { onLinkToLead(conversation.phone, selectedLeadId, conversation.instance_name); } catch (e) { console.warn('link conversa falhou:', e); }
     if (pendingBatchAfterLead) {
       setPendingBatchAfterLead(false);
       await runBatchDriveUpload(selectedLeadId, leadName);
@@ -319,7 +319,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         .single();
       if (error) throw error;
       setShowDriveTargetDialog(false);
-      try { onLinkToLead(conversation.phone, (newLead as any).id); } catch (e) { console.warn('link conversa falhou:', e); }
+      try { onLinkToLead(conversation.phone, (newLead as any).id, conversation.instance_name); } catch (e) { console.warn('link conversa falhou:', e); }
       toast.success(`Lead "${(newLead as any).lead_name}" criado`);
       if (pendingBatchAfterLead) {
         setPendingBatchAfterLead(false);
@@ -1968,7 +1968,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     }
     
     // Conversa individual ou grupo com participante selecionado: usa fluxo normal
-    onLinkToLead(conversation.phone, selectedLeadId);
+    onLinkToLead(conversation.phone, selectedLeadId, conversation.instance_name);
     // For groups: create/find contact from selected participant and link to lead
     if (isGroup && selectedParticipantPhone) {
       try {
