@@ -386,6 +386,51 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     setBatchAnalysis(null);
   };
 
+  // ===== Seleção múltipla de mensagens de TEXTO para criar atividade =====
+  const [textSelectionMode, setTextSelectionMode] = useState(false);
+  const [textSelectionOrder, setTextSelectionOrder] = useState<string[]>([]);
+  const selectedTextMsgIds = useMemo(() => new Set(textSelectionOrder), [textSelectionOrder]);
+  const getTextSelectionIndex = (msgId: string) => {
+    const i = textSelectionOrder.indexOf(msgId);
+    return i === -1 ? null : i + 1;
+  };
+  const toggleTextSelection = (msgId: string) => {
+    setTextSelectionOrder(prev => prev.includes(msgId) ? prev.filter(x => x !== msgId) : [...prev, msgId]);
+  };
+  const exitTextSelection = () => {
+    setTextSelectionMode(false);
+    setTextSelectionOrder([]);
+  };
+  const buildTextSelectionPrefill = (): string => {
+    const msgMap = new Map((messages || []).map((m: any) => [m.id, m]));
+    return textSelectionOrder
+      .map((id) => msgMap.get(id))
+      .filter((m: any) => m && m.message_text)
+      .map((m: any) => {
+        const who = m.direction === 'outbound' ? 'Eu' : (conversation.contact_name || 'Cliente');
+        let when = '';
+        try { when = format(new Date(m.created_at), "dd/MM HH:mm", { locale: ptBR }); } catch {}
+        return `[${who}${when ? ' · ' + when : ''}] ${m.message_text}`;
+      })
+      .join('\n');
+  };
+  const handleCreateActivityFromSelection = () => {
+    if (!onCreateActivity || textSelectionOrder.length === 0) return;
+    const prefill = buildTextSelectionPrefill();
+    if (!prefill) {
+      toast.error('Nenhuma mensagem com texto selecionada.');
+      return;
+    }
+    onCreateActivity(
+      conversation.lead_id || '',
+      conversation.contact_name || conversation.phone,
+      conversation.contact_id || undefined,
+      conversation.contact_name || undefined,
+      prefill,
+    );
+    exitTextSelection();
+  };
+
   // Pede pra IA analisar TODAS as mídias selecionadas (imagens) e devolver
   // título + titular + descrição. Filename = só o título (titular já está dentro do doc).
   const analyzeBatchWithAi = async (selected: Array<any>) => {
