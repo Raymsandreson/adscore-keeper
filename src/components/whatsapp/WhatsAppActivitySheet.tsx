@@ -36,6 +36,7 @@ interface WhatsAppActivitySheetProps {
   defaultLeadName?: string;
   defaultContactId?: string;
   defaultContactName?: string;
+  defaultDictationText?: string;
   onActivityCreated?: (title: string, type: string, leadName?: string) => void;
 }
 
@@ -56,6 +57,7 @@ export function WhatsAppActivitySheet({
   defaultLeadName,
   defaultContactId,
   defaultContactName,
+  defaultDictationText,
   onActivityCreated,
 }: WhatsAppActivitySheetProps) {
   const { createActivity } = useLeadActivities();
@@ -220,15 +222,15 @@ export function WhatsAppActivitySheet({
       setFormRepeatWeekDays([]);
       setLeadSearch('');
       setContactSearch('');
-      setAiMode(false);
-      setDictationText('');
+      setAiMode(!!defaultDictationText);
+      setDictationText(defaultDictationText || '');
       setListening(false);
 
       fetchLeads();
       fetchTeamMembers();
       fetchContacts();
     }
-  }, [open, defaultLeadId, defaultLeadName, defaultContactId, defaultContactName]);
+  }, [open, defaultLeadId, defaultLeadName, defaultContactId, defaultContactName, defaultDictationText]);
 
   const fetchLeads = async () => {
     const { data } = await externalSupabase.from('leads').select('id, lead_name').order('created_at', { ascending: false }).limit(200);

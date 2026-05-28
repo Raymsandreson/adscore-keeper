@@ -441,7 +441,7 @@ export function WhatsAppInbox() {
 
   // Activity sheet state
   const [showActivitySheet, setShowActivitySheet] = useState(false);
-  const [activityDefaults, setActivityDefaults] = useState<{ leadId?: string; leadName?: string; contactId?: string; contactName?: string }>({});
+  const [activityDefaults, setActivityDefaults] = useState<{ leadId?: string; leadName?: string; contactId?: string; contactName?: string; dictationText?: string }>({});
   const [showBoardPicker, setShowBoardPicker] = useState(false);
   const [selectedBoardId, setSelectedBoardId] = useState<string>('');
   const [aiPreview, setAiPreview] = useState<{
@@ -1198,8 +1198,8 @@ export function WhatsAppInbox() {
     }
   };
 
-  const handleCreateActivity = (leadId: string, leadName: string, contactId?: string, contactName?: string) => {
-    setActivityDefaults({ leadId, leadName, contactId, contactName });
+  const handleCreateActivity = (leadId: string, leadName: string, contactId?: string, contactName?: string, prefillText?: string) => {
+    setActivityDefaults({ leadId, leadName, contactId, contactName, dictationText: prefillText });
     setShowActivitySheet(true);
   };
 
@@ -1865,6 +1865,7 @@ export function WhatsAppInbox() {
         defaultLeadName={activityDefaults.leadName}
         defaultContactId={activityDefaults.contactId}
         defaultContactName={activityDefaults.contactName}
+        defaultDictationText={activityDefaults.dictationText}
         onActivityCreated={handleActivityCreated}
       />
 
