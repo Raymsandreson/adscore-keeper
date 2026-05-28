@@ -285,7 +285,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     const lead = leads.find(l => l.id === selectedLeadId);
     const leadName = (lead as any)?.lead_name;
     setShowDriveTargetDialog(false);
-    try { onLinkToLead(conversation.phone, selectedLeadId); } catch (e) { console.warn('link conversa falhou:', e); }
+    try { onLinkToLead(conversation.phone, selectedLeadId, conversation.instance_name); } catch (e) { console.warn('link conversa falhou:', e); }
     if (pendingBatchAfterLead) {
       setPendingBatchAfterLead(false);
       await runBatchDriveUpload(selectedLeadId, leadName);
