@@ -576,12 +576,14 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
         const closingDateStr = format(closingDate, 'yyyy-MM-dd');
         const leadInsert: Record<string, any> = {
           lead_name: title.trim(),
-          lead_phone: contactPhone || null,
+          // JID de grupo NÃO entra em lead_phone (não é telefone).
+          lead_phone: isGroupChat ? null : (contactPhone || null),
           source: 'whatsapp',
           created_by: extCreatedBy,
           became_client_date: closingDateStr,
           board_id: selectedBoardId,
           status: closedStageId || 'closed',
+          ...(isGroupChat && normalizedGroupJid ? { whatsapp_group_id: normalizedGroupJid } : {}),
         };
         const { data: newLead, error: leadErr } = await externalSupabase
           .from('leads')
@@ -592,8 +594,19 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
         finalLeadId = newLead.id;
         toast.success('Lead criado como fechado');
 
-        // Link contact to lead
-        if (finalContactId) {
+        // Registra o grupo na tabela de vínculos (única fonte de verdade
+        // pros agentes e para a UI de "Grupo do lead").
+        if (isGroupChat && normalizedGroupJid && finalLeadId) {
+          await externalSupabase.from('lead_whatsapp_groups').insert({
+            lead_id: finalLeadId,
+            group_jid: normalizedGroupJid,
+            group_name: contactName || title.trim() || null,
+            auto_linked: true,
+          } as any).select().maybeSingle();
+        }
+
+        // Link contact to lead (somente quando há contato real)
+        if (finalContactId && !isGroupChat) {
           await externalSupabase.from('contact_leads').insert({
             contact_id: finalContactId,
             lead_id: finalLeadId,
