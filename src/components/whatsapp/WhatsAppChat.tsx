@@ -2995,41 +2995,43 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                     if (!sender.phone) return;
                     const normalizedPhone = sender.phone.replace(/\D/g, '');
                     const last8 = normalizedPhone.slice(-8);
-                    
-                    // Try to find existing contact
-                    const { data: contact } = await supabase
+
+                    // Contatos vivem no banco Externo — usar `db`, não o Cloud `supabase`.
+                    // É como procurar um cliente na agenda certa: estava abrindo a gaveta errada.
+                    const { data: contact } = await db
                       .from('contacts')
                       .select('id')
-                      .or(`phone.like.%${last8}`)
+                      .or(`phone.eq.${normalizedPhone},phone.ilike.%${last8}`)
                       .limit(1)
                       .maybeSingle();
-                    
+
                     if (contact) {
                       onViewContact?.(contact.id);
-                    } else {
-                      // Auto-create contact from group participant data
-                      const contactName = sender.name && sender.name !== normalizedPhone
-                        ? sender.name
-                        : `Contato ${normalizedPhone}`;
-                      
-                      const { data: newContact, error } = await supabase
-                        .from('contacts')
-                        .insert({
-                          full_name: contactName,
-                          phone: normalizedPhone,
-                          created_by: profile?.user_id || null,
-                        })
-                        .select('id')
-                        .single();
-                      
-                      if (error) {
-                        toast.error('Erro ao criar contato.');
-                        return;
-                      }
-                      
-                      toast.success(`Contato "${contactName}" criado!`);
-                      onViewContact?.(newContact.id);
+                      return;
                     }
+
+                    // Auto-cria contato já enriquecido com o nome do participante do grupo
+                    const contactName = sender.name && sender.name !== normalizedPhone
+                      ? sender.name
+                      : `Contato ${normalizedPhone}`;
+
+                    const { data: newContact, error } = await db
+                      .from('contacts')
+                      .insert({
+                        full_name: contactName,
+                        phone: normalizedPhone,
+                      })
+                      .select('id')
+                      .single();
+
+                    if (error) {
+                      console.error('[group-sender] create contact failed:', error);
+                      toast.error('Erro ao criar contato: ' + (error.message || ''));
+                      return;
+                    }
+
+                    toast.success(`Contato "${contactName}" criado!`);
+                    onViewContact?.(newContact.id);
                   };
                   return (
                     <p
