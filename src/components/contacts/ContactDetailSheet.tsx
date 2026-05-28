@@ -618,9 +618,13 @@ export function ContactDetailSheet({
               groups: <UsersRound className="h-3 w-3 mr-1" />,
               relationships: <Users className="h-3 w-3 mr-1" />,
               leads: <Link2 className="h-3 w-3 mr-1" />,
+              activities: <ListTodo className="h-3 w-3 mr-1" />,
               ai_chat: <Sparkles className="h-3 w-3 mr-1" />,
             };
-            const visible = contactVisibleTabs.length ? contactVisibleTabs : [
+            const visible = contactVisibleTabs.length ? [
+              ...contactVisibleTabs,
+              ...(contactVisibleTabs.some((t: any) => t.key === 'activities') ? [] : [{ key: 'activities', label: 'Atividades' }]),
+            ] : [
               { key: 'info', label: 'Info' },
               { key: 'calls', label: 'Chamadas' },
               { key: 'history', label: 'Histórico' },
@@ -628,6 +632,7 @@ export function ContactDetailSheet({
               { key: 'groups', label: 'Grupos' },
               { key: 'relationships', label: 'Vínculos' },
               { key: 'leads', label: 'Leads' },
+              { key: 'activities', label: 'Atividades' },
               { key: 'ai_chat', label: 'IA' },
             ] as any;
             return (
