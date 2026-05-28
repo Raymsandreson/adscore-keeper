@@ -3302,12 +3302,57 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                   </div>
                 )}
                 {msg.message_text && (
-                  <p className="whitespace-pre-wrap">
-                    {msg.message_type === 'audio' && (
-                      <span className="text-[10px] font-medium text-muted-foreground block mb-0.5">🎤 Transcrição:</span>
-                    )}
-                    {displayMessageText(msg.message_text)}
-                  </p>
+                  <>
+                    <p className="whitespace-pre-wrap">
+                      {msg.message_type === 'audio' && (
+                        <span className="text-[10px] font-medium text-muted-foreground block mb-0.5">🎤 Transcrição:</span>
+                      )}
+                      {displayMessageText(msg.message_text)}
+                    </p>
+                    <div className="flex items-center gap-1 mt-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                      <button
+                        type="button"
+                        title="Copiar texto"
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          try {
+                            await navigator.clipboard.writeText(msg.message_text || '');
+                            toast.success('Texto copiado');
+                          } catch {
+                            toast.error('Não foi possível copiar');
+                          }
+                        }}
+                        className={cn(
+                          "inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded hover:bg-black/10 dark:hover:bg-white/10 transition-colors",
+                          msg.direction === 'outbound' ? "text-green-100" : "text-muted-foreground"
+                        )}
+                      >
+                        <Copy className="h-3 w-3" /> Copiar
+                      </button>
+                      {onCreateActivity && (
+                        <button
+                          type="button"
+                          title="Criar atividade a partir desta mensagem"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onCreateActivity(
+                              conversation.lead_id || '',
+                              conversation.contact_name || conversation.phone,
+                              conversation.contact_id || undefined,
+                              conversation.contact_name || undefined,
+                              msg.message_text || '',
+                            );
+                          }}
+                          className={cn(
+                            "inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded hover:bg-black/10 dark:hover:bg-white/10 transition-colors",
+                            msg.direction === 'outbound' ? "text-green-100" : "text-muted-foreground"
+                          )}
+                        >
+                          <CalendarPlus className="h-3 w-3" /> Criar atividade
+                        </button>
+                      )}
+                    </div>
+                  </>
                 )}
                 {isMissingMedia(msg) && (
                   <div className="mb-1 flex items-center gap-2 px-3 py-2 rounded-lg border border-dashed bg-muted/40">
