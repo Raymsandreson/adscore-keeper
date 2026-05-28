@@ -20,7 +20,7 @@ Deno.serve(async (req) => {
     const { lead_id: lead_id_in, lead_name, force_instance_name } = body as { lead_id?: string; lead_name?: string; force_instance_name?: string };
     if (!lead_id_in && !lead_name) {
       return new Response(JSON.stringify({ ok: false, error: "lead_id or lead_name required" }), {
-        status: 400,
+        status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -44,7 +44,7 @@ Deno.serve(async (req) => {
       lead_id = found?.id || null;
       if (!lead_id) {
         return new Response(JSON.stringify({ ok: false, error: `lead not found by name: ${lead_name}` }), {
-          status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
     }
@@ -67,7 +67,7 @@ Deno.serve(async (req) => {
           ok: false,
           error: "Nenhuma procuração assinada encontrada para este lead.",
         }),
-        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
