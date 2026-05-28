@@ -21,6 +21,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { findClosedStageId } from '@/utils/kanbanStageTypes';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
+import { isWhatsAppGroupId, normalizeWhatsAppConversationPhone } from '@/lib/whatsappPhone';
 
 interface ExtractedProcess {
   title: string;
