@@ -3354,7 +3354,29 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                       )}
                       {displayMessageText(msg.message_text)}
                     </p>
-                    <div className="flex items-center gap-1 mt-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                    <div className={cn(
+                      "flex items-center gap-1 mt-1 transition-opacity",
+                      textSelectionMode || selectedTextMsgIds.has(msg.id)
+                        ? "opacity-100"
+                        : "opacity-0 group-hover:opacity-100 focus-within:opacity-100"
+                    )}>
+                      <button
+                        type="button"
+                        title={selectedTextMsgIds.has(msg.id) ? `Posição #${getTextSelectionIndex(msg.id)} — clique p/ desmarcar` : 'Selecionar para criar atividade'}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setTextSelectionMode(true);
+                          toggleTextSelection(msg.id);
+                        }}
+                        className={cn(
+                          "h-5 w-5 rounded border-2 flex items-center justify-center shrink-0 transition-all text-[10px] font-bold",
+                          selectedTextMsgIds.has(msg.id)
+                            ? "bg-blue-500 border-blue-500 text-white"
+                            : "bg-background border-muted-foreground/40 text-transparent hover:text-muted-foreground"
+                        )}
+                      >
+                        {selectedTextMsgIds.has(msg.id) ? getTextSelectionIndex(msg.id) : '✓'}
+                      </button>
                       <button
                         type="button"
                         title="Copiar texto"
@@ -3374,7 +3396,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                       >
                         <Copy className="h-3 w-3" /> Copiar
                       </button>
-                      {onCreateActivity && (
+                      {onCreateActivity && !textSelectionMode && (
                         <button
                           type="button"
                           title="Criar atividade a partir desta mensagem"
