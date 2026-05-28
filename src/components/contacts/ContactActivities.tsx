@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
@@ -21,6 +22,7 @@ interface ContactActivity {
 }
 
 export function ContactActivities({ contactId }: { contactId: string }) {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState<ContactActivity[]>([]);
 
@@ -70,7 +72,7 @@ export function ContactActivities({ contactId }: { contactId: string }) {
     const dl = a.deadline ? new Date(a.deadline) : null;
     const overdue = dl && a.status === 'pendente' && dl < today;
     return (
-      <li key={a.id} className="p-3 text-sm hover:bg-muted/40">
+      <li key={a.id} onClick={() => navigate(`/activities?openActivity=${a.id}`)} className="p-3 text-sm hover:bg-muted/40 cursor-pointer">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
