@@ -57,6 +57,7 @@ export function WhatsAppActivitySheet({
   defaultLeadName,
   defaultContactId,
   defaultContactName,
+  defaultDictationText,
   onActivityCreated,
 }: WhatsAppActivitySheetProps) {
   const { createActivity } = useLeadActivities();
