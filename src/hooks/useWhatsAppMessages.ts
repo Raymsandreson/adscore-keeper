@@ -660,12 +660,16 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         message: finalMessage,
         contact_id: contactId,
         lead_id: leadId,
-        instance_id: targetInstanceId,
+        // Identidade da instância: instance_name é a fonte de verdade (vinda da conversa).
+        // instance_id só vai quando caímos no fallback do dropdown.
+        instance_name: targetInstanceName || undefined,
+        instance_id: fallbackInstanceId,
         // Group @mentions: array of phone numbers (digits) to tag in a group message.
         mentions: mentions && mentions.length ? mentions : undefined,
         // Canal Cloud API (Meta oficial) → edge proxy reroteia pra Railway send-whatsapp-cloud.
         channel: conversationInstanceName === 'cloud_gerencia' ? 'cloud' : undefined,
       };
+
 
       // INSTANT UI: render optimistic bubble BEFORE awaiting the edge function.
       // Reconciliation/removal happens once the server responds.
