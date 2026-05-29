@@ -24,6 +24,8 @@ interface FocusDashboardProps {
   onOpenMissingDocs?: () => void;
   onOpenZapsignPending?: () => void;
   onOpenUnanswered?: () => void;
+  /** Callback usado pelo sheet de Fechados pra abrir a conversa de um lead. */
+  onOpenChat?: (phone: string) => void;
   compact?: boolean;
   /** Lista de instâncias disponíveis para o seletor próprio dos KPIs. */
   instances?: { id: string; instance_name: string }[];
