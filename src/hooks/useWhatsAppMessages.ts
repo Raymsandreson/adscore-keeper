@@ -593,16 +593,17 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       conversationInstanceName, identifySender, chatId,
       selectedInstanceId,
     });
+    // Declarados fora do try pra ficarem acessíveis no catch (toast de reconectar).
+    const targetInstanceName: string | null = conversationInstanceName || null;
+    const fallbackInstanceId = !targetInstanceName && selectedInstanceId && selectedInstanceId !== 'all'
+      ? selectedInstanceId
+      : undefined;
     try {
       let finalMessage = message;
       // ESTRUTURAL: a conversa já carrega o instance_name correto — mandamos ele
       // direto pro servidor (que tem service_role e resolve sem RLS). Sem lookup
       // no client = sem ponto de falha por rede/permissão. O dropdown só conta
       // como fallback quando a conversa não declara instância (caso raro).
-      const targetInstanceName: string | null = conversationInstanceName || null;
-      const fallbackInstanceId = !targetInstanceName && selectedInstanceId && selectedInstanceId !== 'all'
-        ? selectedInstanceId
-        : undefined;
 
       if (!targetInstanceName && !fallbackInstanceId) {
         console.error(`[sendMessage ${debugId}] ABORT: sem instance_name na conversa e dropdown em "Todas"`);
@@ -737,7 +738,15 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       return true;
     } catch (error: any) {
       console.error(`[sendMessage ${debugId}] EXCEPTION`, error);
-      toast.error('Erro ao enviar mensagem: ' + (error.message || 'Erro desconhecido'));
+      const msg = String(error?.message || '');
+      // UazAPI devolve "WhatsApp disconnected" / "session is not reconnectable"
+      // quando a sessão caiu de vez. Em vez de poluir com erro técnico cru,
+      // mostramos o mesmo toast amigável com atalho de Reconectar.
+      if (/disconnect|not reconnectable|not connected/i.test(msg)) {
+        showDisconnectedToast(fallbackInstanceId, targetInstanceName);
+      } else {
+        toast.error('Erro ao enviar mensagem: ' + (msg || 'Erro desconhecido'));
+      }
       return false;
     }
   };
