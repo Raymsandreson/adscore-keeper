@@ -262,11 +262,13 @@ export function useFocusDashboardData(instanceName?: string | null): FocusData {
       // === Sem resposta — usa whatsapp_messages last inbound vs last outbound ===
       // Busca apenas mensagens das últimas 48h pra calcular janelas.
       const since = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
-      const { data: msgs } = await db.from('whatsapp_messages')
+      let msgsQ: any = db.from('whatsapp_messages')
         .select('phone, instance_name, direction, created_at')
         .gte('created_at', since)
         .order('created_at', { ascending: false })
         .limit(5000);
+      if (useInstanceFilter) msgsQ = msgsQ.ilike('instance_name', instanceName as string);
+      const { data: msgs } = await msgsQ;
 
       // Group by phone+instance, find last inbound/outbound + collect pairs for avg response
       const last = new Map<string, { inbound?: string; outbound?: string }>();
