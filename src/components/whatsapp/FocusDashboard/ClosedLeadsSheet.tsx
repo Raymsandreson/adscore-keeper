@@ -40,6 +40,11 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
     return clampPanelWidth(PANEL_DEFAULT_WIDTH);
   });
   const dragRef = useRef<{ startX: number; startW: number } | null>(null);
+  const panelWidthRef = useRef(panelWidth);
+
+  useEffect(() => {
+    panelWidthRef.current = panelWidth;
+  }, [panelWidth]);
 
   useEffect(() => {
     const onResize = () => setPanelWidth((width) => clampPanelWidth(width));
@@ -90,7 +95,7 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
               try { (e.target as HTMLElement).releasePointerCapture(e.pointerId); } catch {}
               document.body.style.cursor = '';
               document.body.style.userSelect = '';
-              try { localStorage.setItem('closed_leads_sheet_width', String(Math.round(panelWidth))); } catch {}
+              try { localStorage.setItem('closed_leads_sheet_width', String(Math.round(panelWidthRef.current))); } catch {}
             }}
             onDoubleClick={() => {
               const next = clampPanelWidth(PANEL_DEFAULT_WIDTH);
