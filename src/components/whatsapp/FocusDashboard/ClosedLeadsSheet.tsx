@@ -44,7 +44,7 @@ function SwipeableLeadRow({
   chatTarget, chatTitle, activityBtnClass, onOpenLead, onOpenChat,
 }: SwipeableLeadRowProps) {
   const [offset, setOffset] = useState(0);
-  const dragRef = useRef<{ startX: number; startOffset: number; moved: boolean } | null>(null);
+  const dragRef = useRef<{ startX: number; startY: number; startOffset: number; moved: boolean; axis: 'x' | 'y' | null } | null>(null);
   const [actsOpen, setActsOpen] = useState(false);
 
   const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
