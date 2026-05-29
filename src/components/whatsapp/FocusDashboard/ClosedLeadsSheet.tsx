@@ -190,6 +190,26 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
           mode="sheet"
         />
       )}
+
+      <DashboardChatPreview
+        open={!!chatPreview}
+        onOpenChange={(o) => !o && setChatPreview(null)}
+        phone={chatPreview?.phone ?? null}
+        contactName={chatPreview?.name ?? null}
+        instanceName={null}
+        hasLead={true}
+        hasContact={false}
+        wasResponded={true}
+        responseTimeMinutes={null}
+        onOpenChat={(phone) => {
+          setChatPreview(null);
+          onOpenChat(phone);
+          onOpenChange(false);
+        }}
+      />
+    </>
+  );
+}
     </>
   );
 }
