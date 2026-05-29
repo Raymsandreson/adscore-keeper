@@ -36,9 +36,18 @@ export interface FocusActions {
   avgResponseMinutes: number; // tempo médio (min) entre inbound do cliente e resposta nossa
 }
 
+export interface ClosedLeadItem {
+  id: string;
+  lead_name: string | null;
+  lead_phone: string | null;
+  became_client_date: string | null;
+  acolhedor: string | null;
+}
+
 export interface FocusData {
   kpis: FocusKpis;
   actions: FocusActions;
+  closedLeads: ClosedLeadItem[];
   loading: boolean;
   refetch: () => void;
   scope: FocusScope;
