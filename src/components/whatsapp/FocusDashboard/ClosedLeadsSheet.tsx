@@ -178,7 +178,7 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
                         {lead.became_client_date && (
                           <span>· {format(new Date(lead.became_client_date + 'T00:00:00'), 'dd/MM', { locale: ptBR })}</span>
                         )}
-                        <div className="ml-auto flex items-center gap-1 opacity-0 pointer-events-none translate-x-2 group-hover:opacity-100 group-hover:pointer-events-auto group-hover:translate-x-0 transition-all duration-200">
+                        <div className="ml-auto flex items-center gap-1">
                           <Button
                             size="sm"
                             variant="outline"
