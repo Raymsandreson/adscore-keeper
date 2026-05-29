@@ -153,111 +153,21 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
                       : 'text-sky-600 border-sky-500/40';
 
                   return (
-                  <div
-                    key={lead.id}
-                    className={`group relative p-2 rounded-lg border transition-colors overflow-hidden ${
-                      hasOverdueActivity
-                        ? 'border-destructive/40 bg-destructive/10 hover:bg-destructive/15'
-                        : 'bg-card hover:bg-accent/50'
-                    }`}
-                    title={hasOverdueActivity ? 'Lead com atividade atrasada' : undefined}
-                  >
-                    <div className="min-w-0 overflow-hidden">
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        <User className="h-3 w-3 text-muted-foreground shrink-0" />
-                        <span
-                          className={`font-medium text-sm truncate min-w-0 flex-1 ${hasOverdueActivity ? 'text-destructive' : ''}`}
-                          title={lead.lead_name || 'Sem nome'}
-                        >
-                          {lead.lead_name || 'Sem nome'}
-                        </span>
-                      </div>
-                      <div className="text-[11px] text-muted-foreground flex items-center gap-2 mt-0.5 flex-wrap pr-1">
-                        {lead.lead_phone && <span>📞 {lead.lead_phone}</span>}
-                        {lead.acolhedor && <span>· {lead.acolhedor}</span>}
-                        {lead.became_client_date && (
-                          <span>· {format(new Date(lead.became_client_date + 'T00:00:00'), 'dd/MM', { locale: ptBR })}</span>
-                        )}
-                        <div className="ml-auto flex items-center gap-1">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-6 w-6 p-0 shadow-sm bg-background"
-                            title="Abrir lead"
-                            onClick={() => handleOpenLead(lead.id)}
-                          >
-                            <ExternalLink className="h-3 w-3" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-6 w-6 p-0 shadow-sm bg-background disabled:opacity-40"
-                            title={chatTitle}
-                            disabled={!chatTarget}
-                            onClick={() => chatTarget && setChatPreview({ phone: chatTarget, name: lead.lead_name })}
-                          >
-                            <MessageCircle className="h-3 w-3" />
-                          </Button>
-                          <Popover>
-                            <PopoverTrigger asChild>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className={`h-6 w-6 p-0 shadow-sm bg-background ${activityBtnClass}`}
-                                title={`${pending.length} pendente(s) · ${done.length} concluída(s)`}
-                              >
-                                <ListChecks className="h-3 w-3" />
-                              </Button>
-                            </PopoverTrigger>
-                            <PopoverContent align="end" className="w-72 p-2">
-                              <div className="text-xs font-medium mb-1">Atividades</div>
-
-                          {acts.length === 0 ? (
-                            <div className="text-xs text-muted-foreground py-2 text-center">Nenhuma atividade.</div>
-                          ) : (
-                            <ScrollArea className="max-h-72">
-                              <div className="space-y-1 pr-2">
-                                {pending.map((a) => {
-                                  const isOverdue = !!a.deadline && a.deadline < todayStr;
-                                  return (
-                                    <div
-                                      key={a.id}
-                                      className={`text-[11px] px-2 py-1 rounded border ${
-                                        isOverdue
-                                          ? 'border-destructive/40 bg-destructive/10 text-destructive'
-                                          : 'border-sky-500/40 bg-sky-500/10 text-sky-700 dark:text-sky-300'
-                                      }`}
-                                    >
-                                      <div className="font-medium truncate" title={a.title || ''}>{a.title || 'Sem título'}</div>
-                                      {a.deadline && (
-                                        <div className="opacity-70">
-                                          {format(new Date(a.deadline + 'T00:00:00'), 'dd/MM', { locale: ptBR })}
-                                          {isOverdue ? ' · atrasada' : ''}
-                                        </div>
-                                      )}
-                                    </div>
-                                  );
-                                })}
-                                {done.map((a) => (
-                                  <div
-                                    key={a.id}
-                                    className="text-[11px] px-2 py-1 rounded border border-muted bg-muted/40 text-muted-foreground flex items-center gap-1.5"
-                                  >
-                                    <CheckCircle2 className="h-3 w-3 shrink-0" />
-                                    <span className="truncate line-through" title={a.title || ''}>{a.title || 'Sem título'}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            </ScrollArea>
-                          )}
-                        </PopoverContent>
-                      </Popover>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                );
+                    <SwipeableLeadRow
+                      key={lead.id}
+                      lead={lead}
+                      acts={acts}
+                      pending={pending}
+                      done={done}
+                      todayStr={todayStr}
+                      hasOverdueActivity={hasOverdueActivity}
+                      chatTarget={chatTarget}
+                      chatTitle={chatTitle}
+                      activityBtnClass={activityBtnClass}
+                      onOpenLead={() => handleOpenLead(lead.id)}
+                      onOpenChat={() => chatTarget && setChatPreview({ phone: chatTarget, name: lead.lead_name })}
+                    />
+                  );
                 })
               )}
             </div>
