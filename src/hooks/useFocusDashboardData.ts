@@ -2,7 +2,11 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { db, authClient } from '@/integrations/supabase';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { usePageState } from '@/hooks/usePageState';
-import { startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear, subDays } from 'date-fns';
+import { startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear, subDays, format } from 'date-fns';
+
+// Formata Date como YYYY-MM-DD no fuso local (evita o bug do toISOString
+// que converte pra UTC e "vaza" o dia pro próximo quando o usuário está em -03).
+const localDate = (d: Date) => format(d, 'yyyy-MM-dd');
 
 export type FocusPeriod = 'yesterday' | 'today' | 'week' | 'month' | 'year' | 'custom';
 export type FocusScope = 'personal' | 'team';
@@ -149,8 +153,8 @@ export function useFocusDashboardData(instanceName?: string | null): FocusData {
       let closedQuery: any = db.from('leads')
         .select('id, lead_phone', { count: 'exact', head: false })
         .eq('lead_status', 'closed')
-        .gte('became_client_date', range.from.toISOString().slice(0, 10))
-        .lte('became_client_date', range.to.toISOString().slice(0, 10))
+        .gte('became_client_date', localDate(range.from))
+        .lte('became_client_date', localDate(range.to))
         .is('deleted_at', null);
       if (useInstanceFilter) closedQuery = closedQuery.in('lead_phone', phonesForInstance!);
 
@@ -165,7 +169,7 @@ export function useFocusDashboardData(instanceName?: string | null): FocusData {
       let yestClosedQ: any = db.from('leads')
         .select('id', { count: 'exact', head: false })
         .eq('lead_status', 'closed')
-        .eq('became_client_date', yest.from.toISOString().slice(0, 10))
+        .eq('became_client_date', localDate(yest.from))
         .is('deleted_at', null);
       if (useInstanceFilter) yestClosedQ = yestClosedQ.in('lead_phone', phonesForInstance!);
 
