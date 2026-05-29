@@ -169,6 +169,23 @@ export function useFocusDashboardData(instanceName?: string | null): FocusData {
         .is('deleted_at', null);
       if (useInstanceFilter) yestClosedQ = yestClosedQ.in('lead_phone', phonesForInstance!);
 
+      // ZapSign pendentes (estado atual)
+      const zapsignQ = db.from('zapsign_documents')
+        .select('id, signer_name, status, signer_status, lead_id, created_at')
+        .in('status', ['sent', 'pending'])
+        .lt('created_at', new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString())
+        .limit(500);
+
+      // Leads ativos (heurística faltam docs)
+      let activeLeadsQ: any = db.from('leads')
+        .select('id, lead_name, lead_phone, updated_at, lead_status')
+        .not('lead_status', 'in', '("closed","unviable","refused")')
+        .order('updated_at', { ascending: false })
+        .limit(200);
+      activeLeadsQ = useInstanceFilter
+        ? activeLeadsQ.in('lead_phone', phonesForInstance!)
+        : activeLeadsQ.in('created_by', scopeUserIds);
+
       const [leadsRes, closedRes, yestRes, yestClosedRes, zapRes, activeRes] = await Promise.all([leadsQuery, closedQuery, yestLeadsQ, yestClosedQ, zapsignQ, activeLeadsQ]);
 
       const leads = (leadsRes.data || []) as any[];
