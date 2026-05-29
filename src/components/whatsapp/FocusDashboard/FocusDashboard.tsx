@@ -176,6 +176,7 @@ export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpen
           </Button>
         </div>
       </Card>
+      </>
     );
   }
 
