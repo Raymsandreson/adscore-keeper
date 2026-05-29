@@ -7,7 +7,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { CalendarIcon, RefreshCw, Trophy, Users, User as UserIcon, FileText, PenTool, MessageCircleOff, Flame, ChevronUp, ChevronDown, Percent, XCircle, TrendingUp, Clock, Filter } from 'lucide-react';
+import { CalendarIcon, RefreshCw, Trophy, Users, User as UserIcon, FileText, PenTool, MessageCircleOff, Flame, ChevronUp, ChevronDown, Percent, XCircle, TrendingUp, Clock, Filter, AlertTriangle, MessageCircle, ExternalLink } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useFocusDashboardData, FocusPeriod } from '@/hooks/useFocusDashboardData';
@@ -167,6 +167,103 @@ export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpen
               </button>
             );
           })}
+
+          {/* Card: Atividades atrasadas (popover com agrupamento por responsável) */}
+          {(() => {
+            const overdue = data.overdueActivities || [];
+            const byOwner = new Map<string, typeof overdue>();
+            overdue.forEach((a) => {
+              const k = a.acolhedor || 'Sem responsável';
+              const arr = byOwner.get(k) || [];
+              arr.push(a);
+              byOwner.set(k, arr);
+            });
+            const owners = Array.from(byOwner.entries()).sort((a, b) => b[1].length - a[1].length);
+            const total = overdue.length;
+            const tone = total > 0
+              ? 'bg-red-50 dark:bg-red-950/30 border-red-200/60 dark:border-red-900/40 text-red-700 dark:text-red-300'
+              : 'bg-muted/40 border-border text-muted-foreground';
+            return (
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    className={cn(
+                      'flex flex-col items-start justify-center gap-0.5 px-2.5 py-1.5 rounded-md border min-w-[78px] transition-colors',
+                      tone,
+                      'hover:brightness-95 cursor-pointer'
+                    )}
+                  >
+                    <span className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide opacity-80">
+                      <AlertTriangle className="h-3 w-3" />
+                      Atrasadas
+                    </span>
+                    <span className="text-base font-bold tabular-nums leading-none">{total}</span>
+                    <span className="text-[10px] opacity-70 leading-none">
+                      {total === 0 ? 'tudo em dia' : `${owners.length} responsável(is)`}
+                    </span>
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-80 p-2 max-h-[70vh] overflow-y-auto">
+                  <div className="text-xs font-semibold mb-2 flex items-center gap-1.5">
+                    <AlertTriangle className="h-3.5 w-3.5 text-red-600" />
+                    Atividades atrasadas · {total}
+                  </div>
+                  {total === 0 ? (
+                    <div className="text-xs text-muted-foreground py-3 text-center">Nenhuma atividade atrasada.</div>
+                  ) : (
+                    <div className="space-y-3">
+                      {owners.map(([owner, items]) => (
+                        <div key={owner}>
+                          <div className="text-[11px] font-semibold text-foreground mb-1 flex items-center justify-between">
+                            <span className="truncate" title={owner}>{owner}</span>
+                            <span className="text-red-600 tabular-nums shrink-0 ml-2">{items.length}</span>
+                          </div>
+                          <div className="space-y-1">
+                            {items.slice(0, 8).map((a) => {
+                              const chatTarget = a.whatsapp_group_jid || a.lead_phone;
+                              return (
+                                <div
+                                  key={a.id}
+                                  className="text-[11px] px-2 py-1.5 rounded border border-red-500/30 bg-red-500/5 flex items-center gap-1.5"
+                                >
+                                  <div className="min-w-0 flex-1">
+                                    <div className="font-medium truncate" title={a.lead_name || ''}>
+                                      {a.lead_name || 'Sem nome'}
+                                    </div>
+                                    <div className="text-[10px] text-muted-foreground truncate" title={a.title || ''}>
+                                      {a.title || 'Sem título'}
+                                      {a.deadline && ` · ${format(new Date(a.deadline + 'T00:00:00'), 'dd/MM', { locale: ptBR })}`}
+                                    </div>
+                                  </div>
+                                  {chatTarget && onOpenChat && (
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-6 w-6 p-0 shrink-0"
+                                      title="Abrir conversa"
+                                      onClick={() => onOpenChat(chatTarget)}
+                                    >
+                                      <MessageCircle className="h-3 w-3" />
+                                    </Button>
+                                  )}
+                                </div>
+                              );
+                            })}
+                            {items.length > 8 && (
+                              <div className="text-[10px] text-muted-foreground text-center pt-0.5">
+                                + {items.length - 8} mais…
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </PopoverContent>
+              </Popover>
+            );
+          })()}
 
           <CompactRankingCard />
 

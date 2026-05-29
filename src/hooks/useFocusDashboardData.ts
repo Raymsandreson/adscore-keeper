@@ -54,6 +54,17 @@ export interface ClosedLeadItem {
   activities?: ClosedLeadActivity[];
 }
 
+export interface OverdueActivityItem {
+  id: string;
+  lead_id: string;
+  lead_name: string | null;
+  lead_phone: string | null;
+  title: string | null;
+  deadline: string | null;
+  acolhedor: string | null;
+  whatsapp_group_jid?: string | null;
+}
+
 type ClosedLeadRow = Omit<ClosedLeadItem, 'has_overdue_activity' | 'whatsapp_group_jid' | 'activities'>;
 type ActivityRow = { id: string; lead_id: string | null; title: string | null; status: string | null; deadline: string | null };
 type GroupRow = { lead_id: string | null; group_jid: string | null };
@@ -62,6 +73,7 @@ export interface FocusData {
   kpis: FocusKpis;
   actions: FocusActions;
   closedLeads: ClosedLeadItem[];
+  overdueActivities: OverdueActivityItem[];
   loading: boolean;
   refetch: () => void;
   scope: FocusScope;
@@ -115,6 +127,7 @@ export function useFocusDashboardData(instanceName?: string | null): FocusData {
   const [kpis, setKpis] = useState<FocusKpis>(EMPTY_KPIS);
   const [actions, setActions] = useState<FocusActions>(EMPTY_ACTIONS);
   const [closedLeads, setClosedLeads] = useState<ClosedLeadItem[]>([]);
+  const [overdueActivities, setOverdueActivities] = useState<OverdueActivityItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [scopeUserIds, setScopeUserIds] = useState<string[]>([]);
 
@@ -265,6 +278,46 @@ export function useFocusDashboardData(instanceName?: string | null): FocusData {
         whatsapp_group_jid: groupByLead.get(l.id) ?? null,
         activities: activitiesByLead.get(l.id) ?? [],
       })));
+
+      // === Atividades atrasadas (todas, do escopo) ===
+      try {
+        const todayStr = format(new Date(), 'yyyy-MM-dd');
+        let overdueQ: any = db.from('lead_activities')
+          .select('id, lead_id, title, deadline, assigned_to')
+          .eq('status', 'pendente')
+          .lt('deadline', todayStr)
+          .not('deadline', 'is', null)
+          .order('deadline', { ascending: true })
+          .limit(2000);
+        overdueQ = overdueQ.in('assigned_to', scopeUserIds);
+        const { data: overdueRows } = await overdueQ;
+        const overdue = (overdueRows || []) as Array<{ id: string; lead_id: string; title: string | null; deadline: string | null; assigned_to: string | null }>;
+        const leadIds = Array.from(new Set(overdue.map(o => o.lead_id).filter(Boolean)));
+        let leadMap = new Map<string, { name: string | null; phone: string | null; acolhedor: string | null }>();
+        let groupMap = new Map<string, string>();
+        if (leadIds.length > 0) {
+          const [leadsRes2, groupsRes2] = await Promise.all([
+            db.from('leads').select('id, lead_name, lead_phone, acolhedor').in('id', leadIds).limit(2000),
+            db.from('lead_whatsapp_groups').select('lead_id, group_jid').in('lead_id', leadIds).limit(5000),
+          ]);
+          ((leadsRes2.data || []) as any[]).forEach((l) => leadMap.set(l.id, { name: l.lead_name ?? null, phone: l.lead_phone ?? null, acolhedor: l.acolhedor ?? null }));
+          ((groupsRes2.data || []) as GroupRow[]).forEach((g) => { if (g.lead_id && g.group_jid && !groupMap.has(g.lead_id)) groupMap.set(g.lead_id, g.group_jid); });
+        }
+        setOverdueActivities(overdue.map(o => ({
+          id: o.id,
+          lead_id: o.lead_id,
+          title: o.title,
+          deadline: o.deadline,
+          lead_name: leadMap.get(o.lead_id)?.name ?? null,
+          lead_phone: leadMap.get(o.lead_id)?.phone ?? null,
+          acolhedor: leadMap.get(o.lead_id)?.acolhedor ?? null,
+          whatsapp_group_jid: groupMap.get(o.lead_id) ?? null,
+        })));
+      } catch (e) {
+        console.warn('[useFocusDashboardData] overdue activities query failed:', e);
+        setOverdueActivities([]);
+      }
+
       const unviableLeads = leads.filter(l => l.lead_status === 'unviable' || l.lead_status === 'refused');
       // Viáveis = total recebido no período - inviáveis (esse é o denominador da conversão)
       const viableCount = Math.max(0, received - unviableLeads.length);
@@ -428,7 +481,7 @@ export function useFocusDashboardData(instanceName?: string | null): FocusData {
   }, [fetchAll]);
 
   return {
-    kpis, actions, closedLeads, loading, refetch: fetchAll,
+    kpis, actions, closedLeads, overdueActivities, loading, refetch: fetchAll,
     scope, setScope, period, setPeriod,
     range, setRange, scopeUserIds,
   };
