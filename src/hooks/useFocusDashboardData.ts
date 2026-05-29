@@ -2,7 +2,11 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { db, authClient } from '@/integrations/supabase';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { usePageState } from '@/hooks/usePageState';
-import { startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear, subDays } from 'date-fns';
+import { startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear, subDays, format } from 'date-fns';
+
+// Formata Date como YYYY-MM-DD no fuso local (evita o bug do toISOString
+// que converte pra UTC e "vaza" o dia pro próximo quando o usuário está em -03).
+const localDate = (d: Date) => format(d, 'yyyy-MM-dd');
 
 export type FocusPeriod = 'yesterday' | 'today' | 'week' | 'month' | 'year' | 'custom';
 export type FocusScope = 'personal' | 'team';
