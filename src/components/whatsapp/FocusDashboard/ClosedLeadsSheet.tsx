@@ -132,7 +132,10 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
                     <div className="min-w-0 overflow-hidden">
                       <div className="flex items-center gap-1.5 min-w-0">
                         <User className="h-3 w-3 text-muted-foreground shrink-0" />
-                        <span className="font-medium text-sm truncate min-w-0 flex-1">
+                        <span
+                          className="font-medium text-sm truncate min-w-0 flex-1"
+                          title={lead.lead_name || 'Sem nome'}
+                        >
                           {lead.lead_name || 'Sem nome'}
                         </span>
                       </div>
@@ -154,17 +157,16 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
                       >
                         <ExternalLink className="h-3.5 w-3.5" />
                       </Button>
-                      {lead.lead_phone && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-8 w-8 p-0 shadow-sm"
-                          title="Abrir conversa"
-                          onClick={() => setChatPreview({ phone: lead.lead_phone!, name: lead.lead_name })}
-                        >
-                          <MessageCircle className="h-3.5 w-3.5" />
-                        </Button>
-                      )}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 w-8 p-0 shadow-sm disabled:opacity-40"
+                        title={lead.lead_phone ? 'Abrir conversa' : 'Sem telefone'}
+                        disabled={!lead.lead_phone}
+                        onClick={() => lead.lead_phone && setChatPreview({ phone: lead.lead_phone, name: lead.lead_name })}
+                      >
+                        <MessageCircle className="h-3.5 w-3.5" />
+                      </Button>
                     </div>
                   </div>
                 ))
