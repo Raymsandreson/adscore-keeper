@@ -23,7 +23,7 @@ const getPanelMaxWidth = () => {
 
 const clampPanelWidth = (width: number) => Math.min(getPanelMaxWidth(), Math.max(PANEL_MIN_WIDTH, width));
 
-const ACTIONS_WIDTH = 168; // 3 botões × 56px
+const ACTIONS_WIDTH = 184; // largura da trilha com 3 losangos
 
 interface SwipeableLeadRowProps {
   lead: ClosedLeadItem;
@@ -44,8 +44,14 @@ function SwipeableLeadRow({
   chatTarget, chatTitle, activityBtnClass, onOpenLead, onOpenChat,
 }: SwipeableLeadRowProps) {
   const [offset, setOffset] = useState(0);
+  const offsetRef = useRef(0);
   const dragRef = useRef<{ startX: number; startY: number; startOffset: number; moved: boolean; axis: 'x' | 'y' | null } | null>(null);
   const [actsOpen, setActsOpen] = useState(false);
+
+  const setRevealOffset = (next: number) => {
+    offsetRef.current = next;
+    setOffset(next);
+  };
 
   const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
@@ -66,7 +72,7 @@ function SwipeableLeadRow({
     if (drag.axis === 'x') {
       e.preventDefault();
       const next = Math.max(0, Math.min(ACTIONS_WIDTH, drag.startOffset - dx));
-      setOffset(next);
+      setRevealOffset(next);
     }
   };
   const onPointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
@@ -74,12 +80,12 @@ function SwipeableLeadRow({
     dragRef.current = null;
     if (drag?.moved) {
       try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId); } catch { /* ignore */ }
-      setOffset(offset > ACTIONS_WIDTH / 2 ? ACTIONS_WIDTH : 0);
+      setRevealOffset(offsetRef.current > ACTIONS_WIDTH / 2 ? ACTIONS_WIDTH : 0);
     }
   };
 
   const closeAndRun = (fn: () => void) => {
-    setOffset(0);
+    setRevealOffset(0);
     fn();
   };
 
