@@ -108,6 +108,25 @@ export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpen
             ))}
           </ToggleGroup>
 
+          {instances.length > 0 && (
+            <Select value={kpiInstanceName} onValueChange={setKpiInstanceName}>
+              <SelectTrigger className="h-10 text-[11px] w-[140px] shrink-0 self-center gap-1">
+                <Filter className="h-3 w-3 opacity-60" />
+                <SelectValue placeholder="Instância" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all" className="text-xs">Todas instâncias</SelectItem>
+                {instances.map(inst => (
+                  <SelectItem key={inst.id} value={inst.instance_name} className="text-xs">
+                    {inst.instance_name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+
+
+
           {kpiCards.map((k) => {
             const Icon = k.icon;
             return (
