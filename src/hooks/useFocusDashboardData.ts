@@ -153,8 +153,8 @@ export function useFocusDashboardData(instanceName?: string | null): FocusData {
       let closedQuery: any = db.from('leads')
         .select('id, lead_phone', { count: 'exact', head: false })
         .eq('lead_status', 'closed')
-        .gte('became_client_date', range.from.toISOString().slice(0, 10))
-        .lte('became_client_date', range.to.toISOString().slice(0, 10))
+        .gte('became_client_date', localDate(range.from))
+        .lte('became_client_date', localDate(range.to))
         .is('deleted_at', null);
       if (useInstanceFilter) closedQuery = closedQuery.in('lead_phone', phonesForInstance!);
 
