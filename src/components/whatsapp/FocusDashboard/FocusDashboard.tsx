@@ -17,6 +17,7 @@ import { usePageState } from '@/hooks/usePageState';
 import { KpiCard } from './KpiCard';
 import { FocusActionCard } from './FocusActionCard';
 import { CompactRankingCard } from './CompactRankingCard';
+import { ClosedLeadsSheet } from './ClosedLeadsSheet';
 import { cn } from '@/lib/utils';
 
 interface FocusDashboardProps {
