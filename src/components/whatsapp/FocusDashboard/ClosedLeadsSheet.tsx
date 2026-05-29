@@ -2,14 +2,15 @@ import { useEffect, useRef, useState } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Trophy, MessageCircle, User, ExternalLink } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Trophy, MessageCircle, User, ExternalLink, ListChecks, CheckCircle2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { db } from '@/integrations/supabase';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { DashboardChatPreview } from '@/components/whatsapp/DashboardChatPreview';
 import type { Lead } from '@/hooks/useLeads';
-import type { ClosedLeadItem } from '@/hooks/useFocusDashboardData';
+import type { ClosedLeadItem, ClosedLeadActivity } from '@/hooks/useFocusDashboardData';
 
 const PANEL_MIN_WIDTH = 360;
 const PANEL_DEFAULT_WIDTH = 560;
@@ -134,6 +135,22 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
               ) : (
                 sorted.map((lead) => {
                   const hasOverdueActivity = !!lead.has_overdue_activity;
+                  const chatTarget = lead.whatsapp_group_jid || lead.lead_phone;
+                  const chatTitle = lead.whatsapp_group_jid
+                    ? 'Abrir conversa do grupo'
+                    : lead.lead_phone
+                      ? 'Abrir conversa do contato'
+                      : 'Sem grupo nem telefone';
+                  const acts = lead.activities ?? [];
+                  const todayStr = format(new Date(), 'yyyy-MM-dd');
+                  const pending = acts.filter((a) => a.status === 'pendente');
+                  const done = acts.filter((a) => a.status !== 'pendente');
+                  const overdueCount = pending.filter((a) => a.deadline && a.deadline < todayStr).length;
+                  const activityBtnClass = pending.length === 0
+                    ? 'text-muted-foreground'
+                    : overdueCount > 0
+                      ? 'text-destructive border-destructive/40'
+                      : 'text-sky-600 border-sky-500/40';
 
                   return (
                   <div
@@ -145,7 +162,7 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
                     }`}
                     title={hasOverdueActivity ? 'Lead com atividade atrasada' : undefined}
                   >
-                    <div className="min-w-0 overflow-hidden group-hover:pr-20 transition-[padding]">
+                    <div className="min-w-0 overflow-hidden group-hover:pr-28 transition-[padding]">
                       <div className="flex items-center gap-1.5 min-w-0">
                         <User className="h-3 w-3 text-muted-foreground shrink-0" />
                         <span
@@ -177,12 +194,65 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
                         size="sm"
                         variant="outline"
                         className="h-8 w-8 p-0 shadow-sm disabled:opacity-40"
-                        title={lead.lead_phone ? 'Abrir conversa' : 'Sem telefone'}
-                        disabled={!lead.lead_phone}
-                        onClick={() => lead.lead_phone && setChatPreview({ phone: lead.lead_phone, name: lead.lead_name })}
+                        title={chatTitle}
+                        disabled={!chatTarget}
+                        onClick={() => chatTarget && setChatPreview({ phone: chatTarget, name: lead.lead_name })}
                       >
                         <MessageCircle className="h-3.5 w-3.5" />
                       </Button>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className={`h-8 w-8 p-0 shadow-sm ${activityBtnClass}`}
+                            title={`${pending.length} pendente(s) · ${done.length} concluída(s)`}
+                          >
+                            <ListChecks className="h-3.5 w-3.5" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent align="end" className="w-72 p-2">
+                          <div className="text-xs font-medium mb-1">Atividades</div>
+                          {acts.length === 0 ? (
+                            <div className="text-xs text-muted-foreground py-2 text-center">Nenhuma atividade.</div>
+                          ) : (
+                            <ScrollArea className="max-h-72">
+                              <div className="space-y-1 pr-2">
+                                {pending.map((a) => {
+                                  const isOverdue = !!a.deadline && a.deadline < todayStr;
+                                  return (
+                                    <div
+                                      key={a.id}
+                                      className={`text-[11px] px-2 py-1 rounded border ${
+                                        isOverdue
+                                          ? 'border-destructive/40 bg-destructive/10 text-destructive'
+                                          : 'border-sky-500/40 bg-sky-500/10 text-sky-700 dark:text-sky-300'
+                                      }`}
+                                    >
+                                      <div className="font-medium truncate" title={a.title || ''}>{a.title || 'Sem título'}</div>
+                                      {a.deadline && (
+                                        <div className="opacity-70">
+                                          {format(new Date(a.deadline + 'T00:00:00'), 'dd/MM', { locale: ptBR })}
+                                          {isOverdue ? ' · atrasada' : ''}
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                                {done.map((a) => (
+                                  <div
+                                    key={a.id}
+                                    className="text-[11px] px-2 py-1 rounded border border-muted bg-muted/40 text-muted-foreground flex items-center gap-1.5"
+                                  >
+                                    <CheckCircle2 className="h-3 w-3 shrink-0" />
+                                    <span className="truncate line-through" title={a.title || ''}>{a.title || 'Sem título'}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </ScrollArea>
+                          )}
+                        </PopoverContent>
+                      </Popover>
                     </div>
                   </div>
                 );
