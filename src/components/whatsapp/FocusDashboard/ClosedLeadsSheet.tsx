@@ -5,7 +5,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Trophy, MessageCircle, User, ExternalLink } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { externalSupabase } from '@/integrations/supabase/external-client';
+import { db } from '@/integrations/supabase';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { DashboardChatPreview } from '@/components/whatsapp/DashboardChatPreview';
 import type { Lead } from '@/hooks/useLeads';
@@ -38,7 +38,9 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
     try {
       const stored = localStorage.getItem('closed_leads_sheet_width');
       if (stored) return clampPanelWidth(parseInt(stored, 10));
-    } catch {}
+    } catch {
+      // localStorage pode estar indisponível em alguns navegadores privados.
+    }
     return clampPanelWidth(PANEL_DEFAULT_WIDTH);
   });
   const dragRef = useRef<{ startX: number; startW: number } | null>(null);
@@ -61,7 +63,7 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
   });
 
   const handleOpenLead = async (leadId: string) => {
-    const { data } = await externalSupabase.from('leads').select('*').eq('id', leadId).maybeSingle();
+    const { data } = await db.from('leads').select('*').eq('id', leadId).maybeSingle();
     if (data) {
       setEditingLead(data as Lead);
       setShowLeadEdit(true);
@@ -94,15 +96,21 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
             }}
             onPointerUp={(e) => {
               dragRef.current = null;
-              try { (e.target as HTMLElement).releasePointerCapture(e.pointerId); } catch {}
+              try { (e.target as HTMLElement).releasePointerCapture(e.pointerId); } catch {
+                // O navegador pode liberar o ponteiro antes do evento final.
+              }
               document.body.style.cursor = '';
               document.body.style.userSelect = '';
-              try { localStorage.setItem('closed_leads_sheet_width', String(Math.round(panelWidthRef.current))); } catch {}
+              try { localStorage.setItem('closed_leads_sheet_width', String(Math.round(panelWidthRef.current))); } catch {
+                // Persistência é opcional; a largura atual continua funcionando.
+              }
             }}
             onDoubleClick={() => {
               const next = clampPanelWidth(PANEL_DEFAULT_WIDTH);
               setPanelWidth(next);
-              try { localStorage.setItem('closed_leads_sheet_width', String(next)); } catch {}
+              try { localStorage.setItem('closed_leads_sheet_width', String(next)); } catch {
+                // Persistência é opcional; a largura atual continua funcionando.
+              }
             }}
             className="absolute left-0 top-0 bottom-0 z-30 w-2 cursor-col-resize hover:bg-primary/40 active:bg-primary/60 transition-colors"
           />
@@ -194,7 +202,7 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
           }}
           lead={editingLead}
           onSave={async (leadId, updates) => {
-            await externalSupabase.from('leads').update(updates).eq('id', leadId);
+            await db.from('leads').update(updates).eq('id', leadId);
             setShowLeadEdit(false);
             setEditingLead(null);
           }}
