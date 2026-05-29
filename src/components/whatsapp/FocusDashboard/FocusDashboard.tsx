@@ -39,7 +39,7 @@ const PERIOD_OPTIONS: { key: FocusPeriod; label: string }[] = [
   { key: 'year', label: 'Ano' },
 ];
 
-export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpenUnanswered, compact = false, instances = [] }: FocusDashboardProps) {
+export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpenUnanswered, onOpenChat, compact = false, instances = [] }: FocusDashboardProps) {
   const { user } = useAuthContext();
   const { teams } = useUserTeams();
   // Filtro de instância EXCLUSIVO dos KPIs (não afeta a lista de conversas).
@@ -48,6 +48,7 @@ export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpen
   const data = useFocusDashboardData(kpiInstanceName === 'all' ? null : kpiInstanceName);
   const [collapsed, setCollapsed] = useState(false);
   const [datePickerOpen, setDatePickerOpen] = useState(false);
+  const [closedSheetOpen, setClosedSheetOpen] = useState(false);
 
   const initials = useMemo(() => {
     const name = (user?.user_metadata as any)?.full_name || user?.email || '?';
