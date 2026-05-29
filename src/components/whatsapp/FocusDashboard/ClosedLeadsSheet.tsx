@@ -180,7 +180,7 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
                         )}
                       </div>
                     </div>
-                    <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 shrink-0 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto transition-opacity bg-card/95 pl-1">
+                    <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-1 shrink-0">
                       <Button
                         size="sm"
                         variant="outline"
