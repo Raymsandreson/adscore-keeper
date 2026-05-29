@@ -75,7 +75,7 @@ export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpen
         sub: `${data.kpis.goal} viáveis de ${data.kpis.leadsReceived}`,
         icon: Trophy,
         tone: 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200/60 dark:border-emerald-900/40 text-emerald-700 dark:text-emerald-300',
-        onClick: () => dispatchFilter('lead_closed'),
+        onClick: () => setClosedSheetOpen(true),
       },
       {
         label: 'Inviáveis',
