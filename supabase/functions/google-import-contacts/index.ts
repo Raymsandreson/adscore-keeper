@@ -129,8 +129,10 @@ serve(async (req) => {
 
   let imported = 0;
   let skipped = 0;
-  let updated = 0;
+  const updated = 0;
 
+  // Build batch of new contacts (dedupe in-memory first to avoid per-row I/O)
+  const toInsert: any[] = [];
   for (const contact of allContacts) {
     const name = contact.names?.[0]?.displayName || contact.names?.[0]?.givenName;
     if (!name) { skipped++; continue; }
@@ -139,7 +141,6 @@ serve(async (req) => {
     const email = contact.emailAddresses?.[0]?.value;
     const bio = contact.biographies?.[0]?.value;
 
-    // Extract instagram from bio if present
     let instagram_username: string | null = null;
     if (bio) {
       const igMatch = bio.match(/Instagram:\s*@?(\S+)/i);
@@ -149,33 +150,33 @@ serve(async (req) => {
     const normalizedPhone = phone ? normalizePhone(phone) : null;
     const normalizedEmail = email ? email.toLowerCase() : null;
 
-    // Check duplicates
-    if (normalizedPhone && existingPhones.has(normalizedPhone)) {
-      skipped++;
-      continue;
-    }
-    if (normalizedEmail && existingEmails.has(normalizedEmail)) {
-      skipped++;
-      continue;
-    }
+    if (normalizedPhone && existingPhones.has(normalizedPhone)) { skipped++; continue; }
+    if (normalizedEmail && existingEmails.has(normalizedEmail)) { skipped++; continue; }
 
-    // Insert new contact
-    const { error: insertError } = await externalService.from('contacts').insert({
+    toInsert.push({
       full_name: name,
       phone: phone || null,
       email: email || null,
-      instagram_username: instagram_username,
+      instagram_username,
       notes: bio || null,
       created_by: externalUserId,
     });
+    if (normalizedPhone) existingPhones.add(normalizedPhone);
+    if (normalizedEmail) existingEmails.add(normalizedEmail);
+  }
 
-    if (!insertError) {
-      imported++;
-      if (normalizedPhone) existingPhones.add(normalizedPhone);
-      if (normalizedEmail) existingEmails.add(normalizedEmail);
+  // Bulk insert in chunks of 500 (single round-trip each)
+  const CHUNK = 500;
+  for (let i = 0; i < toInsert.length; i += CHUNK) {
+    const chunk = toInsert.slice(i, i + CHUNK);
+    const { error: insertError, count } = await externalService
+      .from('contacts')
+      .insert(chunk, { count: 'exact' });
+    if (insertError) {
+      console.error('Bulk insert error:', insertError);
+      skipped += chunk.length;
     } else {
-      console.error('Insert error:', insertError);
-      skipped++;
+      imported += count ?? chunk.length;
     }
   }
 
