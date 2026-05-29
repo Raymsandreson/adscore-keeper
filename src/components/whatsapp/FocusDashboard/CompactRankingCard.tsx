@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Trophy } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useMyTeamRanking } from '@/hooks/useMyTeamRanking';
@@ -10,12 +10,14 @@ import { cn } from '@/lib/utils';
  */
 export function CompactRankingCard() {
   const { ranking, myPosition, myTeams, loading, fetchRanking } = useMyTeamRanking();
+  const [hasFetched, setHasFetched] = useState(false);
 
   useEffect(() => {
-    fetchRanking();
+    fetchRanking().finally(() => setHasFetched(true));
   }, [fetchRanking]);
 
-  if (!loading && myTeams.length === 0) return null;
+  // Só esconde DEPOIS de ter buscado e confirmado que não há times — evita pisca-some
+  if (hasFetched && !loading && myTeams.length === 0) return null;
 
   const me = ranking.find(r => r.isCurrentUser);
   const total = ranking.length;
