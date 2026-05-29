@@ -1491,6 +1491,7 @@ export function WhatsAppInbox() {
           onOpenUnanswered={() => {
             window.dispatchEvent(new CustomEvent('wa:set-quick-filter', { detail: { filter: 'unanswered' } }));
           }}
+          onOpenChat={handleOpenChatByPhone}
         />
       </div>
 
