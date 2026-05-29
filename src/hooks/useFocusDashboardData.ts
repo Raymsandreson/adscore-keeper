@@ -345,7 +345,7 @@ export function useFocusDashboardData(instanceName?: string | null): FocusData {
     } finally {
       setLoading(false);
     }
-  }, [user, scopeUserIds, range]);
+  }, [user, scopeUserIds, range, instanceName]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
