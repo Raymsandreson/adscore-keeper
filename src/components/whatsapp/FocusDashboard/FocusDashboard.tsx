@@ -16,6 +16,7 @@ import { useUserTeams } from '@/hooks/useUserTeams';
 import { usePageState } from '@/hooks/usePageState';
 import { KpiCard } from './KpiCard';
 import { FocusActionCard } from './FocusActionCard';
+import { CompactRankingCard } from './CompactRankingCard';
 import { cn } from '@/lib/utils';
 
 interface FocusDashboardProps {
