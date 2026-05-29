@@ -237,7 +237,15 @@ export function useFocusDashboardData(instanceName?: string | null): FocusData {
       });
 
       // === ACTIONS ===
-      const zapDocs = (zapRes.data || []) as any[];
+      // Conjunto de lead_ids no escopo (período + ativos) — usado pra restringir ZapSign quando filtrando por instância
+      const scopedLeadIds = new Set<string>([
+        ...leads.map(l => l.id),
+        ...((activeRes.data || []) as any[]).map((l: any) => l.id),
+      ]);
+      let zapDocs = (zapRes.data || []) as any[];
+      if (useInstanceFilter) {
+        zapDocs = zapDocs.filter(z => z.lead_id && scopedLeadIds.has(z.lead_id));
+      }
       const zapsignPending = zapDocs.length;
       const zapHint = zapsignPending > 0
         ? `${zapsignPending} enviados há +48h sem assinar`
