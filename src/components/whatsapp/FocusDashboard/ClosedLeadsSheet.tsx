@@ -63,10 +63,12 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
                     key={lead.id}
                     className="flex items-center gap-2 p-2 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
                   >
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium text-sm truncate flex items-center gap-1.5">
+                    <div className="flex-1 min-w-0 overflow-hidden">
+                      <div className="flex items-center gap-1.5 min-w-0">
                         <User className="h-3 w-3 text-muted-foreground shrink-0" />
-                        {lead.lead_name || 'Sem nome'}
+                        <span className="font-medium text-sm truncate min-w-0 flex-1">
+                          {lead.lead_name || 'Sem nome'}
+                        </span>
                       </div>
                       <div className="text-[11px] text-muted-foreground flex items-center gap-2 mt-0.5 flex-wrap">
                         {lead.lead_phone && <span>📞 {lead.lead_phone}</span>}
