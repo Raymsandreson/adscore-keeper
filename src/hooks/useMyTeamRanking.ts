@@ -38,26 +38,13 @@ export function useMyTeamRanking() {
     setLoading(true);
 
     try {
-      // 1. Get user's teams
-      const { data: myTeamEntries } = await supabase
-        .from('team_members')
-        .select('team_id')
-        .eq('user_id', user.id);
-
-      if (!myTeamEntries?.length) {
-        setLoading(false);
-        return;
-      }
-
-      const teamIds = myTeamEntries.map(t => t.team_id);
-
-      // 2. Get team details
-      const { data: teamsData } = await supabase
+      // 1. Buscar TODOS os times (ranking aparece pra todos os usuários)
+      const { data: allTeamsData } = await supabase
         .from('teams')
         .select('id, name, color, board_id')
-        .in('id', teamIds);
+        .order('name', { ascending: true });
 
-      const teams: MyTeamInfo[] = (teamsData || []).map(t => ({
+      const teams: MyTeamInfo[] = (allTeamsData || []).map(t => ({
         teamId: t.id,
         teamName: t.name,
         teamColor: t.color || '#3b82f6',
@@ -65,18 +52,24 @@ export function useMyTeamRanking() {
       }));
       setMyTeams(teams);
 
-      const activeTeamId = teamId || selectedTeamId || teams[0]?.teamId;
-      if (!activeTeamId) { setLoading(false); return; }
+      // 'all' = agregado de todos os times. Default = 'all'.
+      const activeTeamId = teamId || selectedTeamId || 'all';
       if (!selectedTeamId) setSelectedTeamId(activeTeamId);
 
-      // 3. Get members of selected team
-      const { data: teamMembersData } = await supabase
-        .from('team_members')
-        .select('user_id')
-        .eq('team_id', activeTeamId);
+      // 2. Membros: 'all' busca todos, senão filtra pelo time
+      let membersQuery = supabase.from('team_members').select('user_id');
+      if (activeTeamId !== 'all') {
+        membersQuery = membersQuery.eq('team_id', activeTeamId);
+      }
+      const { data: teamMembersData } = await membersQuery;
 
-      const memberIds = teamMembersData?.map(m => m.user_id) || [];
-      if (!memberIds.length) { setLoading(false); return; }
+      const memberIds = Array.from(new Set((teamMembersData || []).map(m => m.user_id)));
+      if (!memberIds.length) {
+        setRanking([]);
+        setMyPosition(null);
+        setLoading(false);
+        return;
+      }
 
       // 4. Get profiles
       const { data: profiles } = await supabase
