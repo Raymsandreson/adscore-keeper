@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -9,6 +9,17 @@ import { externalSupabase } from '@/integrations/supabase/external-client';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import type { Lead } from '@/hooks/useLeads';
 import type { ClosedLeadItem } from '@/hooks/useFocusDashboardData';
+
+const PANEL_MIN_WIDTH = 360;
+const PANEL_DEFAULT_WIDTH = 560;
+const PANEL_MAX_WIDTH = 920;
+
+const getPanelMaxWidth = () => {
+  if (typeof window === 'undefined') return PANEL_MAX_WIDTH;
+  return Math.max(PANEL_MIN_WIDTH, Math.min(PANEL_MAX_WIDTH, window.innerWidth - 24));
+};
+
+const clampPanelWidth = (width: number) => Math.min(getPanelMaxWidth(), Math.max(PANEL_MIN_WIDTH, width));
 
 interface ClosedLeadsSheetProps {
   open: boolean;
@@ -21,6 +32,20 @@ interface ClosedLeadsSheetProps {
 export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel, onOpenChat }: ClosedLeadsSheetProps) {
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [showLeadEdit, setShowLeadEdit] = useState(false);
+  const [panelWidth, setPanelWidth] = useState(() => {
+    try {
+      const stored = localStorage.getItem('closed_leads_sheet_width');
+      if (stored) return clampPanelWidth(parseInt(stored, 10));
+    } catch {}
+    return clampPanelWidth(PANEL_DEFAULT_WIDTH);
+  });
+  const dragRef = useRef<{ startX: number; startW: number } | null>(null);
+
+  useEffect(() => {
+    const onResize = () => setPanelWidth((width) => clampPanelWidth(width));
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   const sorted = [...closedLeads].sort((a, b) => {
     const da = a.became_client_date || '';
@@ -39,7 +64,41 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
   return (
     <>
       <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent side="right" className="w-full sm:max-w-md p-0 flex flex-col">
+        <SheetContent
+          side="right"
+          className="!max-w-none p-0 flex flex-col overflow-hidden"
+          style={{ width: panelWidth }}
+        >
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Redimensionar aba de fechados"
+            title="Arraste para aumentar ou diminuir • duplo clique reseta"
+            onPointerDown={(e) => {
+              dragRef.current = { startX: e.clientX, startW: panelWidth };
+              (e.target as HTMLElement).setPointerCapture(e.pointerId);
+              document.body.style.cursor = 'col-resize';
+              document.body.style.userSelect = 'none';
+            }}
+            onPointerMove={(e) => {
+              const drag = dragRef.current;
+              if (!drag) return;
+              setPanelWidth(clampPanelWidth(drag.startW + (drag.startX - e.clientX)));
+            }}
+            onPointerUp={(e) => {
+              dragRef.current = null;
+              try { (e.target as HTMLElement).releasePointerCapture(e.pointerId); } catch {}
+              document.body.style.cursor = '';
+              document.body.style.userSelect = '';
+              try { localStorage.setItem('closed_leads_sheet_width', String(Math.round(panelWidth))); } catch {}
+            }}
+            onDoubleClick={() => {
+              const next = clampPanelWidth(PANEL_DEFAULT_WIDTH);
+              setPanelWidth(next);
+              try { localStorage.setItem('closed_leads_sheet_width', String(next)); } catch {}
+            }}
+            className="absolute left-0 top-0 bottom-0 z-30 w-2 cursor-col-resize hover:bg-primary/40 active:bg-primary/60 transition-colors"
+          />
           <SheetHeader className="px-4 py-3 border-b shrink-0">
             <SheetTitle className="flex items-center gap-2 text-base">
               <Trophy className="h-4 w-4 text-emerald-600" />
