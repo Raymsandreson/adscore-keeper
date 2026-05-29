@@ -169,7 +169,7 @@ export function useFocusDashboardData(instanceName?: string | null): FocusData {
       let yestClosedQ: any = db.from('leads')
         .select('id', { count: 'exact', head: false })
         .eq('lead_status', 'closed')
-        .eq('became_client_date', yest.from.toISOString().slice(0, 10))
+        .eq('became_client_date', localDate(yest.from))
         .is('deleted_at', null);
       if (useInstanceFilter) yestClosedQ = yestClosedQ.in('lead_phone', phonesForInstance!);
 
