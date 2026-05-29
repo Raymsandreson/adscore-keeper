@@ -17,12 +17,15 @@ import { usePageState } from '@/hooks/usePageState';
 import { KpiCard } from './KpiCard';
 import { FocusActionCard } from './FocusActionCard';
 import { CompactRankingCard } from './CompactRankingCard';
+import { ClosedLeadsSheet } from './ClosedLeadsSheet';
 import { cn } from '@/lib/utils';
 
 interface FocusDashboardProps {
   onOpenMissingDocs?: () => void;
   onOpenZapsignPending?: () => void;
   onOpenUnanswered?: () => void;
+  /** Callback usado pelo sheet de Fechados pra abrir a conversa de um lead. */
+  onOpenChat?: (phone: string) => void;
   compact?: boolean;
   /** Lista de instâncias disponíveis para o seletor próprio dos KPIs. */
   instances?: { id: string; instance_name: string }[];
@@ -36,7 +39,7 @@ const PERIOD_OPTIONS: { key: FocusPeriod; label: string }[] = [
   { key: 'year', label: 'Ano' },
 ];
 
-export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpenUnanswered, compact = false, instances = [] }: FocusDashboardProps) {
+export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpenUnanswered, onOpenChat, compact = false, instances = [] }: FocusDashboardProps) {
   const { user } = useAuthContext();
   const { teams } = useUserTeams();
   // Filtro de instância EXCLUSIVO dos KPIs (não afeta a lista de conversas).
@@ -45,6 +48,7 @@ export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpen
   const data = useFocusDashboardData(kpiInstanceName === 'all' ? null : kpiInstanceName);
   const [collapsed, setCollapsed] = useState(false);
   const [datePickerOpen, setDatePickerOpen] = useState(false);
+  const [closedSheetOpen, setClosedSheetOpen] = useState(false);
 
   const initials = useMemo(() => {
     const name = (user?.user_metadata as any)?.full_name || user?.email || '?';
@@ -71,7 +75,7 @@ export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpen
         sub: `${data.kpis.goal} viáveis de ${data.kpis.leadsReceived}`,
         icon: Trophy,
         tone: 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200/60 dark:border-emerald-900/40 text-emerald-700 dark:text-emerald-300',
-        onClick: () => dispatchFilter('lead_closed'),
+        onClick: () => setClosedSheetOpen(true),
       },
       {
         label: 'Inviáveis',
@@ -95,7 +99,17 @@ export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpen
       },
     ];
 
+    const periodLabel = PERIOD_OPTIONS.find(p => p.key === data.period)?.label || 'Período';
+
     return (
+      <>
+      <ClosedLeadsSheet
+        open={closedSheetOpen}
+        onOpenChange={setClosedSheetOpen}
+        closedLeads={data.closedLeads}
+        periodLabel={periodLabel}
+        onOpenChat={(phone) => onOpenChat?.(phone)}
+      />
       <Card className="rounded-none border-x-0 border-t-0 bg-card shrink-0">
         <div className="px-2 py-2 flex items-stretch gap-2 flex-wrap">
           <ToggleGroup
@@ -162,6 +176,7 @@ export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpen
           </Button>
         </div>
       </Card>
+      </>
     );
   }
 

@@ -36,9 +36,18 @@ export interface FocusActions {
   avgResponseMinutes: number; // tempo médio (min) entre inbound do cliente e resposta nossa
 }
 
+export interface ClosedLeadItem {
+  id: string;
+  lead_name: string | null;
+  lead_phone: string | null;
+  became_client_date: string | null;
+  acolhedor: string | null;
+}
+
 export interface FocusData {
   kpis: FocusKpis;
   actions: FocusActions;
+  closedLeads: ClosedLeadItem[];
   loading: boolean;
   refetch: () => void;
   scope: FocusScope;
@@ -91,6 +100,7 @@ export function useFocusDashboardData(instanceName?: string | null): FocusData {
   }, [customRangeRaw]);
   const [kpis, setKpis] = useState<FocusKpis>(EMPTY_KPIS);
   const [actions, setActions] = useState<FocusActions>(EMPTY_ACTIONS);
+  const [closedLeads, setClosedLeads] = useState<ClosedLeadItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [scopeUserIds, setScopeUserIds] = useState<string[]>([]);
 
@@ -151,7 +161,7 @@ export function useFocusDashboardData(instanceName?: string | null): FocusData {
       // Fechados: não depende de created_at do lead. Quando uma instância é
       // selecionada, restringe a leads cujo telefone pertence àquela instância.
       let closedQuery: any = db.from('leads')
-        .select('id, lead_phone', { count: 'exact', head: false })
+        .select('id, lead_phone, lead_name, became_client_date, acolhedor', { count: 'exact', head: false })
         .eq('lead_status', 'closed')
         .gte('became_client_date', localDate(range.from))
         .lte('became_client_date', localDate(range.to))
@@ -197,6 +207,13 @@ export function useFocusDashboardData(instanceName?: string | null): FocusData {
 
       const received = leads.length;
       const closedCount = closedRes.count ?? (closedRes.data || []).length;
+      setClosedLeads(((closedRes.data || []) as any[]).map((l: any) => ({
+        id: l.id,
+        lead_name: l.lead_name ?? null,
+        lead_phone: l.lead_phone ?? null,
+        became_client_date: l.became_client_date ?? null,
+        acolhedor: l.acolhedor ?? null,
+      })));
       const unviableLeads = leads.filter(l => l.lead_status === 'unviable' || l.lead_status === 'refused');
       // Viáveis = total recebido no período - inviáveis (esse é o denominador da conversão)
       const viableCount = Math.max(0, received - unviableLeads.length);
@@ -360,7 +377,7 @@ export function useFocusDashboardData(instanceName?: string | null): FocusData {
   }, [fetchAll]);
 
   return {
-    kpis, actions, loading, refetch: fetchAll,
+    kpis, actions, closedLeads, loading, refetch: fetchAll,
     scope, setScope, period, setPeriod,
     range, setRange, scopeUserIds,
   };
