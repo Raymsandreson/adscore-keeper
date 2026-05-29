@@ -42,7 +42,11 @@ export interface ClosedLeadItem {
   lead_phone: string | null;
   became_client_date: string | null;
   acolhedor: string | null;
+  has_overdue_activity?: boolean;
 }
+
+type ClosedLeadRow = Omit<ClosedLeadItem, 'has_overdue_activity'>;
+type OverdueActivityRow = { lead_id: string | null };
 
 export interface FocusData {
   kpis: FocusKpis;
@@ -207,12 +211,26 @@ export function useFocusDashboardData(instanceName?: string | null): FocusData {
 
       const received = leads.length;
       const closedCount = closedRes.count ?? (closedRes.data || []).length;
-      setClosedLeads(((closedRes.data || []) as any[]).map((l: any) => ({
+      const closedRows = (closedRes.data || []) as ClosedLeadRow[];
+      const closedIds = closedRows.map((l) => l.id).filter(Boolean);
+      let overdueLeadIds = new Set<string>();
+      if (closedIds.length > 0) {
+        const { data: overdueActivities } = await db.from('lead_activities')
+          .select('lead_id')
+          .in('lead_id', closedIds)
+          .eq('status', 'pendente')
+          .lt('deadline', format(new Date(), 'yyyy-MM-dd'))
+          .not('deadline', 'is', null)
+          .limit(5000);
+        overdueLeadIds = new Set(((overdueActivities || []) as OverdueActivityRow[]).map((a) => a.lead_id).filter(Boolean));
+      }
+      setClosedLeads(closedRows.map((l) => ({
         id: l.id,
         lead_name: l.lead_name ?? null,
         lead_phone: l.lead_phone ?? null,
         became_client_date: l.became_client_date ?? null,
         acolhedor: l.acolhedor ?? null,
+        has_overdue_activity: overdueLeadIds.has(l.id),
       })));
       const unviableLeads = leads.filter(l => l.lead_status === 'unviable' || l.lead_status === 'refused');
       // Viáveis = total recebido no período - inviáveis (esse é o denominador da conversão)
