@@ -127,6 +127,7 @@ export function useFocusDashboardData(instanceName?: string | null): FocusData {
   const [kpis, setKpis] = useState<FocusKpis>(EMPTY_KPIS);
   const [actions, setActions] = useState<FocusActions>(EMPTY_ACTIONS);
   const [closedLeads, setClosedLeads] = useState<ClosedLeadItem[]>([]);
+  const [overdueActivities, setOverdueActivities] = useState<OverdueActivityItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [scopeUserIds, setScopeUserIds] = useState<string[]>([]);
 
