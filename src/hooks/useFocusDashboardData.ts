@@ -76,7 +76,7 @@ const EMPTY_ACTIONS: FocusActions = {
   avgResponseMinutes: 0,
 };
 
-export function useFocusDashboardData(): FocusData {
+export function useFocusDashboardData(instanceName?: string | null): FocusData {
   const { user } = useAuthContext();
   const [period, setPeriod] = usePageState<FocusPeriod>('focus_dashboard_period', 'today');
   const [scope, setScope] = usePageState<FocusScope>('focus_dashboard_scope', 'personal');
@@ -117,48 +117,74 @@ export function useFocusDashboardData(): FocusData {
       const fromISO = range.from.toISOString();
       const toISO = range.to.toISOString();
 
-      // === KPIs ===
-      const leadsQuery = db.from('leads')
-        .select('id, lead_status, lead_status_reason, created_at, lead_name, created_by, details', { count: 'exact' })
-        .gte('created_at', fromISO).lte('created_at', toISO)
-        .in('created_by', scopeUserIds);
+      // Quando uma instância específica está selecionada, descobrimos a lista de
+      // telefones daquela instância via whatsapp_conversation_agents e filtramos
+      // leads por lead_phone — desacopla o filtro do created_by do lead.
+      const useInstanceFilter = !!instanceName && instanceName !== 'all';
+      let phonesForInstance: string[] | null = null;
+      if (useInstanceFilter) {
+        const { data: convs } = await db.from('whatsapp_conversation_agents')
+          .select('phone')
+          .ilike('instance_name', instanceName as string)
+          .limit(5000);
+        const set = new Set<string>();
+        (convs || []).forEach((c: any) => {
+          if (c.phone) set.add(String(c.phone));
+          if (c.phone) set.add(String(c.phone).replace(/\D/g, ''));
+        });
+        phonesForInstance = Array.from(set);
+        if (phonesForInstance.length === 0) phonesForInstance = ['__none__'];
+      }
 
-      // Fechados não devem depender da data de criação do lead.
-      // A etiqueta "✅ Fechado" no WhatsApp é espelhada pelo webhook como
-      // lead_status='closed' + became_client_date=<dia da etiqueta>.
-      const closedQuery = db.from('leads')
-        .select('id', { count: 'exact', head: false })
+      // === KPIs ===
+      let leadsQuery: any = db.from('leads')
+        .select('id, lead_status, lead_status_reason, created_at, lead_name, created_by, details, lead_phone', { count: 'exact' })
+        .gte('created_at', fromISO).lte('created_at', toISO);
+      leadsQuery = useInstanceFilter
+        ? leadsQuery.in('lead_phone', phonesForInstance!)
+        : leadsQuery.in('created_by', scopeUserIds);
+
+      // Fechados: não depende de created_at do lead. Quando uma instância é
+      // selecionada, restringe a leads cujo telefone pertence àquela instância.
+      let closedQuery: any = db.from('leads')
+        .select('id, lead_phone', { count: 'exact', head: false })
         .eq('lead_status', 'closed')
         .gte('became_client_date', range.from.toISOString().slice(0, 10))
         .lte('became_client_date', range.to.toISOString().slice(0, 10))
         .is('deleted_at', null);
+      if (useInstanceFilter) closedQuery = closedQuery.in('lead_phone', phonesForInstance!);
 
       const yest = { from: startOfDay(subDays(new Date(), 1)), to: endOfDay(subDays(new Date(), 1)) };
-      const yestLeadsQ = db.from('leads')
+      let yestLeadsQ: any = db.from('leads')
         .select('id, lead_status', { count: 'exact', head: false })
-        .gte('created_at', yest.from.toISOString()).lte('created_at', yest.to.toISOString())
-        .in('created_by', scopeUserIds);
+        .gte('created_at', yest.from.toISOString()).lte('created_at', yest.to.toISOString());
+      yestLeadsQ = useInstanceFilter
+        ? yestLeadsQ.in('lead_phone', phonesForInstance!)
+        : yestLeadsQ.in('created_by', scopeUserIds);
 
-      const yestClosedQ = db.from('leads')
+      let yestClosedQ: any = db.from('leads')
         .select('id', { count: 'exact', head: false })
         .eq('lead_status', 'closed')
         .eq('became_client_date', yest.from.toISOString().slice(0, 10))
         .is('deleted_at', null);
+      if (useInstanceFilter) yestClosedQ = yestClosedQ.in('lead_phone', phonesForInstance!);
 
-      // ZapSign pendentes (não no período - é estado atual)
+      // ZapSign pendentes (estado atual)
       const zapsignQ = db.from('zapsign_documents')
         .select('id, signer_name, status, signer_status, lead_id, created_at')
         .in('status', ['sent', 'pending'])
         .lt('created_at', new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString())
         .limit(500);
 
-      // Leads "faltam docs" — heurística: leads no scope, status ativo, sem zapsign assinado
-      const activeLeadsQ = db.from('leads')
+      // Leads ativos (heurística faltam docs)
+      let activeLeadsQ: any = db.from('leads')
         .select('id, lead_name, lead_phone, updated_at, lead_status')
-        .in('created_by', scopeUserIds)
         .not('lead_status', 'in', '("closed","unviable","refused")')
         .order('updated_at', { ascending: false })
         .limit(200);
+      activeLeadsQ = useInstanceFilter
+        ? activeLeadsQ.in('lead_phone', phonesForInstance!)
+        : activeLeadsQ.in('created_by', scopeUserIds);
 
       const [leadsRes, closedRes, yestRes, yestClosedRes, zapRes, activeRes] = await Promise.all([leadsQuery, closedQuery, yestLeadsQ, yestClosedQ, zapsignQ, activeLeadsQ]);
 
@@ -211,7 +237,15 @@ export function useFocusDashboardData(): FocusData {
       });
 
       // === ACTIONS ===
-      const zapDocs = (zapRes.data || []) as any[];
+      // Conjunto de lead_ids no escopo (período + ativos) — usado pra restringir ZapSign quando filtrando por instância
+      const scopedLeadIds = new Set<string>([
+        ...leads.map(l => l.id),
+        ...((activeRes.data || []) as any[]).map((l: any) => l.id),
+      ]);
+      let zapDocs = (zapRes.data || []) as any[];
+      if (useInstanceFilter) {
+        zapDocs = zapDocs.filter(z => z.lead_id && scopedLeadIds.has(z.lead_id));
+      }
       const zapsignPending = zapDocs.length;
       const zapHint = zapsignPending > 0
         ? `${zapsignPending} enviados há +48h sem assinar`
@@ -228,11 +262,13 @@ export function useFocusDashboardData(): FocusData {
       // === Sem resposta — usa whatsapp_messages last inbound vs last outbound ===
       // Busca apenas mensagens das últimas 48h pra calcular janelas.
       const since = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
-      const { data: msgs } = await db.from('whatsapp_messages')
+      let msgsQ: any = db.from('whatsapp_messages')
         .select('phone, instance_name, direction, created_at')
         .gte('created_at', since)
         .order('created_at', { ascending: false })
         .limit(5000);
+      if (useInstanceFilter) msgsQ = msgsQ.ilike('instance_name', instanceName as string);
+      const { data: msgs } = await msgsQ;
 
       // Group by phone+instance, find last inbound/outbound + collect pairs for avg response
       const last = new Map<string, { inbound?: string; outbound?: string }>();
@@ -309,7 +345,7 @@ export function useFocusDashboardData(): FocusData {
     } finally {
       setLoading(false);
     }
-  }, [user, scopeUserIds, range]);
+  }, [user, scopeUserIds, range, instanceName]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 

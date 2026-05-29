@@ -21,6 +21,7 @@ interface FocusDashboardProps {
   onOpenZapsignPending?: () => void;
   onOpenUnanswered?: () => void;
   compact?: boolean;
+  instanceName?: string | null;
 }
 
 const PERIOD_OPTIONS: { key: FocusPeriod; label: string }[] = [
@@ -31,10 +32,10 @@ const PERIOD_OPTIONS: { key: FocusPeriod; label: string }[] = [
   { key: 'year', label: 'Ano' },
 ];
 
-export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpenUnanswered, compact = false }: FocusDashboardProps) {
+export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpenUnanswered, compact = false, instanceName }: FocusDashboardProps) {
   const { user } = useAuthContext();
   const { teams } = useUserTeams();
-  const data = useFocusDashboardData();
+  const data = useFocusDashboardData(instanceName);
   const [collapsed, setCollapsed] = useState(false);
   const [datePickerOpen, setDatePickerOpen] = useState(false);
 
