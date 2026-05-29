@@ -726,8 +726,9 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         rollback();
         console.error(`[sendMessage ${debugId}] returning false — server reported failure`, data);
         if (data?.error_code === 'INSTANCE_DISCONNECTED') {
-          showDisconnectedToast(targetInstanceId, data.instance_name);
+          showDisconnectedToast(fallbackInstanceId || data.instance_id || '', data.instance_name || targetInstanceName);
           return false;
+
         }
         throw new Error(data?.error || 'Resposta inesperada do servidor');
       }
