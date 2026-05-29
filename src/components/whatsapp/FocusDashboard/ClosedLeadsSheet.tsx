@@ -33,6 +33,7 @@ interface ClosedLeadsSheetProps {
 export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel, onOpenChat }: ClosedLeadsSheetProps) {
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [showLeadEdit, setShowLeadEdit] = useState(false);
+  const [chatPreview, setChatPreview] = useState<{ phone: string; name: string | null } | null>(null);
   const [panelWidth, setPanelWidth] = useState(() => {
     try {
       const stored = localStorage.getItem('closed_leads_sheet_width');
