@@ -36,6 +36,13 @@ export interface FocusActions {
   avgResponseMinutes: number; // tempo médio (min) entre inbound do cliente e resposta nossa
 }
 
+export interface ClosedLeadActivity {
+  id: string;
+  title: string | null;
+  status: string | null;
+  deadline: string | null;
+}
+
 export interface ClosedLeadItem {
   id: string;
   lead_name: string | null;
@@ -43,10 +50,13 @@ export interface ClosedLeadItem {
   became_client_date: string | null;
   acolhedor: string | null;
   has_overdue_activity?: boolean;
+  whatsapp_group_jid?: string | null;
+  activities?: ClosedLeadActivity[];
 }
 
-type ClosedLeadRow = Omit<ClosedLeadItem, 'has_overdue_activity'>;
-type OverdueActivityRow = { lead_id: string | null };
+type ClosedLeadRow = Omit<ClosedLeadItem, 'has_overdue_activity' | 'whatsapp_group_jid' | 'activities'>;
+type ActivityRow = { id: string; lead_id: string | null; title: string | null; status: string | null; deadline: string | null };
+type GroupRow = { lead_id: string | null; group_jid: string | null };
 
 export interface FocusData {
   kpis: FocusKpis;
