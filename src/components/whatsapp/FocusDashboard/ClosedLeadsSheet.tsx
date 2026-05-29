@@ -210,6 +210,4 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
     </>
   );
 }
-    </>
-  );
-}
+
