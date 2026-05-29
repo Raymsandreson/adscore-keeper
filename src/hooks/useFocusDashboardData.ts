@@ -441,7 +441,7 @@ export function useFocusDashboardData(instanceName?: string | null): FocusData {
   }, [fetchAll]);
 
   return {
-    kpis, actions, closedLeads, loading, refetch: fetchAll,
+    kpis, actions, closedLeads, overdueActivities, loading, refetch: fetchAll,
     scope, setScope, period, setPeriod,
     range, setRange, scopeUserIds,
   };
