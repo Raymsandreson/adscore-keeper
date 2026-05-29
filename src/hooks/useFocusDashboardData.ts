@@ -45,6 +45,9 @@ export interface ClosedLeadItem {
   has_overdue_activity?: boolean;
 }
 
+type ClosedLeadRow = Omit<ClosedLeadItem, 'has_overdue_activity'>;
+type OverdueActivityRow = { lead_id: string | null };
+
 export interface FocusData {
   kpis: FocusKpis;
   actions: FocusActions;
@@ -208,8 +211,8 @@ export function useFocusDashboardData(instanceName?: string | null): FocusData {
 
       const received = leads.length;
       const closedCount = closedRes.count ?? (closedRes.data || []).length;
-      const closedRows = (closedRes.data || []) as any[];
-      const closedIds = closedRows.map((l: any) => l.id).filter(Boolean);
+      const closedRows = (closedRes.data || []) as ClosedLeadRow[];
+      const closedIds = closedRows.map((l) => l.id).filter(Boolean);
       let overdueLeadIds = new Set<string>();
       if (closedIds.length > 0) {
         const { data: overdueActivities } = await db.from('lead_activities')
@@ -219,9 +222,9 @@ export function useFocusDashboardData(instanceName?: string | null): FocusData {
           .lt('deadline', format(new Date(), 'yyyy-MM-dd'))
           .not('deadline', 'is', null)
           .limit(5000);
-        overdueLeadIds = new Set(((overdueActivities || []) as any[]).map((a: any) => a.lead_id).filter(Boolean));
+        overdueLeadIds = new Set(((overdueActivities || []) as OverdueActivityRow[]).map((a) => a.lead_id).filter(Boolean));
       }
-      setClosedLeads(closedRows.map((l: any) => ({
+      setClosedLeads(closedRows.map((l) => ({
         id: l.id,
         lead_name: l.lead_name ?? null,
         lead_phone: l.lead_phone ?? null,
