@@ -207,6 +207,13 @@ export function useFocusDashboardData(instanceName?: string | null): FocusData {
 
       const received = leads.length;
       const closedCount = closedRes.count ?? (closedRes.data || []).length;
+      setClosedLeads(((closedRes.data || []) as any[]).map((l: any) => ({
+        id: l.id,
+        lead_name: l.lead_name ?? null,
+        lead_phone: l.lead_phone ?? null,
+        became_client_date: l.became_client_date ?? null,
+        acolhedor: l.acolhedor ?? null,
+      })));
       const unviableLeads = leads.filter(l => l.lead_status === 'unviable' || l.lead_status === 'refused');
       // Viáveis = total recebido no período - inviáveis (esse é o denominador da conversão)
       const viableCount = Math.max(0, received - unviableLeads.length);
