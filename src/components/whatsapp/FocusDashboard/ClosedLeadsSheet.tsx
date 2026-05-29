@@ -155,14 +155,14 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
                   return (
                   <div
                     key={lead.id}
-                    className={`group relative p-2 pr-3 rounded-lg border transition-colors overflow-hidden ${
+                    className={`group relative p-2 pr-[116px] rounded-lg border transition-colors overflow-hidden ${
                       hasOverdueActivity
                         ? 'border-destructive/40 bg-destructive/10 hover:bg-destructive/15'
                         : 'bg-card hover:bg-accent/50'
                     }`}
                     title={hasOverdueActivity ? 'Lead com atividade atrasada' : undefined}
                   >
-                    <div className="min-w-0 overflow-hidden group-hover:pr-28 transition-[padding]">
+                    <div className="min-w-0 overflow-hidden">
                       <div className="flex items-center gap-1.5 min-w-0">
                         <User className="h-3 w-3 text-muted-foreground shrink-0" />
                         <span
