@@ -252,8 +252,11 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
                           )}
                         </PopoverContent>
                       </Popover>
+                        </div>
+                      </div>
                     </div>
                   </div>
+
                 );
                 })
               )}
