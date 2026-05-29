@@ -23,7 +23,8 @@ interface FocusDashboardProps {
   onOpenZapsignPending?: () => void;
   onOpenUnanswered?: () => void;
   compact?: boolean;
-  instanceName?: string | null;
+  /** Lista de instâncias disponíveis para o seletor próprio dos KPIs. */
+  instances?: { id: string; instance_name: string }[];
 }
 
 const PERIOD_OPTIONS: { key: FocusPeriod; label: string }[] = [
@@ -34,10 +35,13 @@ const PERIOD_OPTIONS: { key: FocusPeriod; label: string }[] = [
   { key: 'year', label: 'Ano' },
 ];
 
-export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpenUnanswered, compact = false, instanceName }: FocusDashboardProps) {
+export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpenUnanswered, compact = false, instances = [] }: FocusDashboardProps) {
   const { user } = useAuthContext();
   const { teams } = useUserTeams();
-  const data = useFocusDashboardData(instanceName);
+  // Filtro de instância EXCLUSIVO dos KPIs (não afeta a lista de conversas).
+  // 'all' = sem filtro; senão, o instance_name escolhido.
+  const [kpiInstanceName, setKpiInstanceName] = usePageState<string>('focus_dashboard_kpi_instance', 'all');
+  const data = useFocusDashboardData(kpiInstanceName === 'all' ? null : kpiInstanceName);
   const [collapsed, setCollapsed] = useState(false);
   const [datePickerOpen, setDatePickerOpen] = useState(false);
 
