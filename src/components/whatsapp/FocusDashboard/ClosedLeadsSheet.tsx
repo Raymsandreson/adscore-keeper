@@ -155,7 +155,7 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
                   return (
                   <div
                     key={lead.id}
-                    className={`group relative p-2 pr-[116px] rounded-lg border transition-colors overflow-hidden ${
+                    className={`group relative p-2 rounded-lg border transition-colors overflow-hidden ${
                       hasOverdueActivity
                         ? 'border-destructive/40 bg-destructive/10 hover:bg-destructive/15'
                         : 'bg-card hover:bg-accent/50'
@@ -172,47 +172,46 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
                           {lead.lead_name || 'Sem nome'}
                         </span>
                       </div>
-                      <div className="text-[11px] text-muted-foreground flex items-center gap-2 mt-0.5 flex-wrap">
+                      <div className="text-[11px] text-muted-foreground flex items-center gap-2 mt-0.5 flex-wrap pr-1">
                         {lead.lead_phone && <span>📞 {lead.lead_phone}</span>}
                         {lead.acolhedor && <span>· {lead.acolhedor}</span>}
                         {lead.became_client_date && (
                           <span>· {format(new Date(lead.became_client_date + 'T00:00:00'), 'dd/MM', { locale: ptBR })}</span>
                         )}
-                      </div>
-                    </div>
-                    <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-1 shrink-0">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-8 w-8 p-0 shadow-sm"
-                        title="Abrir lead"
-                        onClick={() => handleOpenLead(lead.id)}
-                      >
-                        <ExternalLink className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-8 w-8 p-0 shadow-sm disabled:opacity-40"
-                        title={chatTitle}
-                        disabled={!chatTarget}
-                        onClick={() => chatTarget && setChatPreview({ phone: chatTarget, name: lead.lead_name })}
-                      >
-                        <MessageCircle className="h-3.5 w-3.5" />
-                      </Button>
-                      <Popover>
-                        <PopoverTrigger asChild>
+                        <div className="ml-auto flex items-center gap-1 opacity-0 pointer-events-none translate-x-2 group-hover:opacity-100 group-hover:pointer-events-auto group-hover:translate-x-0 transition-all duration-200">
                           <Button
                             size="sm"
                             variant="outline"
-                            className={`h-8 w-8 p-0 shadow-sm ${activityBtnClass}`}
-                            title={`${pending.length} pendente(s) · ${done.length} concluída(s)`}
+                            className="h-6 w-6 p-0 shadow-sm bg-background"
+                            title="Abrir lead"
+                            onClick={() => handleOpenLead(lead.id)}
                           >
-                            <ListChecks className="h-3.5 w-3.5" />
+                            <ExternalLink className="h-3 w-3" />
                           </Button>
-                        </PopoverTrigger>
-                        <PopoverContent align="end" className="w-72 p-2">
-                          <div className="text-xs font-medium mb-1">Atividades</div>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-6 w-6 p-0 shadow-sm bg-background disabled:opacity-40"
+                            title={chatTitle}
+                            disabled={!chatTarget}
+                            onClick={() => chatTarget && setChatPreview({ phone: chatTarget, name: lead.lead_name })}
+                          >
+                            <MessageCircle className="h-3 w-3" />
+                          </Button>
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className={`h-6 w-6 p-0 shadow-sm bg-background ${activityBtnClass}`}
+                                title={`${pending.length} pendente(s) · ${done.length} concluída(s)`}
+                              >
+                                <ListChecks className="h-3 w-3" />
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent align="end" className="w-72 p-2">
+                              <div className="text-xs font-medium mb-1">Atividades</div>
+
                           {acts.length === 0 ? (
                             <div className="text-xs text-muted-foreground py-2 text-center">Nenhuma atividade.</div>
                           ) : (
@@ -253,8 +252,11 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
                           )}
                         </PopoverContent>
                       </Popover>
+                        </div>
+                      </div>
                     </div>
                   </div>
+
                 );
                 })
               )}
