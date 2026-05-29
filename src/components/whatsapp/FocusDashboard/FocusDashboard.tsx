@@ -6,12 +6,14 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { CalendarIcon, RefreshCw, Trophy, Users, User as UserIcon, FileText, PenTool, MessageCircleOff, Flame, ChevronUp, ChevronDown, Percent, XCircle, TrendingUp, Clock } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { CalendarIcon, RefreshCw, Trophy, Users, User as UserIcon, FileText, PenTool, MessageCircleOff, Flame, ChevronUp, ChevronDown, Percent, XCircle, TrendingUp, Clock, Filter } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useFocusDashboardData, FocusPeriod } from '@/hooks/useFocusDashboardData';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useUserTeams } from '@/hooks/useUserTeams';
+import { usePageState } from '@/hooks/usePageState';
 import { KpiCard } from './KpiCard';
 import { FocusActionCard } from './FocusActionCard';
 import { cn } from '@/lib/utils';
@@ -21,7 +23,8 @@ interface FocusDashboardProps {
   onOpenZapsignPending?: () => void;
   onOpenUnanswered?: () => void;
   compact?: boolean;
-  instanceName?: string | null;
+  /** Lista de instâncias disponíveis para o seletor próprio dos KPIs. */
+  instances?: { id: string; instance_name: string }[];
 }
 
 const PERIOD_OPTIONS: { key: FocusPeriod; label: string }[] = [
@@ -32,10 +35,13 @@ const PERIOD_OPTIONS: { key: FocusPeriod; label: string }[] = [
   { key: 'year', label: 'Ano' },
 ];
 
-export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpenUnanswered, compact = false, instanceName }: FocusDashboardProps) {
+export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpenUnanswered, compact = false, instances = [] }: FocusDashboardProps) {
   const { user } = useAuthContext();
   const { teams } = useUserTeams();
-  const data = useFocusDashboardData(instanceName);
+  // Filtro de instância EXCLUSIVO dos KPIs (não afeta a lista de conversas).
+  // 'all' = sem filtro; senão, o instance_name escolhido.
+  const [kpiInstanceName, setKpiInstanceName] = usePageState<string>('focus_dashboard_kpi_instance', 'all');
+  const data = useFocusDashboardData(kpiInstanceName === 'all' ? null : kpiInstanceName);
   const [collapsed, setCollapsed] = useState(false);
   const [datePickerOpen, setDatePickerOpen] = useState(false);
 
@@ -101,6 +107,25 @@ export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpen
               <ToggleGroupItem key={p.key} value={p.key} className="text-[11px] h-10 px-2">{p.label}</ToggleGroupItem>
             ))}
           </ToggleGroup>
+
+          {instances.length > 0 && (
+            <Select value={kpiInstanceName} onValueChange={setKpiInstanceName}>
+              <SelectTrigger className="h-10 text-[11px] w-[140px] shrink-0 self-center gap-1">
+                <Filter className="h-3 w-3 opacity-60" />
+                <SelectValue placeholder="Instância" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all" className="text-xs">Todas instâncias</SelectItem>
+                {instances.map(inst => (
+                  <SelectItem key={inst.id} value={inst.instance_name} className="text-xs">
+                    {inst.instance_name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+
+
 
           {kpiCards.map((k) => {
             const Icon = k.icon;
