@@ -2,14 +2,15 @@ import { useEffect, useRef, useState } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Trophy, MessageCircle, User, ExternalLink } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Trophy, MessageCircle, User, ExternalLink, ListChecks, CheckCircle2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { db } from '@/integrations/supabase';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { DashboardChatPreview } from '@/components/whatsapp/DashboardChatPreview';
 import type { Lead } from '@/hooks/useLeads';
-import type { ClosedLeadItem } from '@/hooks/useFocusDashboardData';
+import type { ClosedLeadItem, ClosedLeadActivity } from '@/hooks/useFocusDashboardData';
 
 const PANEL_MIN_WIDTH = 360;
 const PANEL_DEFAULT_WIDTH = 560;
