@@ -16,6 +16,7 @@ import { useUserTeams } from '@/hooks/useUserTeams';
 import { usePageState } from '@/hooks/usePageState';
 import { KpiCard } from './KpiCard';
 import { FocusActionCard } from './FocusActionCard';
+import { CompactRankingCard } from './CompactRankingCard';
 import { cn } from '@/lib/utils';
 
 interface FocusDashboardProps {
@@ -152,6 +153,8 @@ export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpen
               </button>
             );
           })}
+
+          <CompactRankingCard />
 
           <div className="flex-1" />
           <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0 self-center" onClick={data.refetch} disabled={data.loading}>
