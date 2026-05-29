@@ -595,59 +595,34 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     });
     try {
       let finalMessage = message;
-      // IMPORTANTE: se a conversa tem instance_name, NUNCA caímos no selectedInstanceId
-      // do dropdown — isso causa "mensagem sai pela instância errada" quando o usuário
-      // está com filtro "Todas" ou outra instância selecionada. Só usamos selectedInstanceId
-      // como último recurso quando a conversa não declara instance_name (caso raro).
-      let targetInstanceId: string | undefined = undefined;
+      // ESTRUTURAL: a conversa já carrega o instance_name correto — mandamos ele
+      // direto pro servidor (que tem service_role e resolve sem RLS). Sem lookup
+      // no client = sem ponto de falha por rede/permissão. O dropdown só conta
+      // como fallback quando a conversa não declara instância (caso raro).
+      const targetInstanceName: string | null = conversationInstanceName || null;
+      const fallbackInstanceId = !targetInstanceName && selectedInstanceId && selectedInstanceId !== 'all'
+        ? selectedInstanceId
+        : undefined;
 
-      // Lookup da instância da conversa + perfil em paralelo.
-      // Refetch do perfil quando o cache não tem full_name (cache "vazio" travava prefixo).
-      const instancePromise = conversationInstanceName
-        ? db.from('whatsapp_instances').select('id, is_active').eq('instance_name', conversationInstanceName).maybeSingle()
-        : Promise.resolve(null);
-
-      const needsProfileFetch = !!(user && identifySender && !profileCacheRef.current?.full_name);
-      const profilePromise = needsProfileFetch
-        ? authClient.from('profiles').select('full_name, treatment_title').eq('user_id', user!.id).maybeSingle()
-        : Promise.resolve(null);
-
-      const [instanceResult, profileResult] = await Promise.all([instancePromise, profilePromise]);
-
-      console.log(`[sendMessage ${debugId}] instance lookup`, {
-        conversationInstanceName,
-        instanceData: instanceResult?.data,
-        instanceError: instanceResult?.error,
-      });
-
-      if (conversationInstanceName) {
-        // Lookup OBRIGATÓRIO quando a conversa declara instância. Sem fallback pro dropdown.
-        if (!instanceResult?.data?.id) {
-          console.error(`[sendMessage ${debugId}] ABORT: instância "${conversationInstanceName}" não encontrada`);
-          toast.error(`Instância "${conversationInstanceName}" não encontrada. Recarregue a página.`);
-          return false;
-        }
-        if ((instanceResult.data as any).is_active === false) {
-          console.error(`[sendMessage ${debugId}] ABORT: instância "${conversationInstanceName}" inativa`);
-          toast.error(`Instância "${conversationInstanceName}" está inativa.`);
-          return false;
-        }
-        targetInstanceId = instanceResult.data.id;
-      } else {
-        // Sem instance_name na conversa: aí sim fallback pro dropdown.
-        targetInstanceId = selectedInstanceId && selectedInstanceId !== 'all' ? selectedInstanceId : undefined;
-      }
-
-      if (!targetInstanceId) {
-        console.error(`[sendMessage ${debugId}] ABORT: no instance identified`);
-        toast.error('Erro: instância não identificada. Selecione uma instância antes de enviar.');
+      if (!targetInstanceName && !fallbackInstanceId) {
+        console.error(`[sendMessage ${debugId}] ABORT: sem instance_name na conversa e dropdown em "Todas"`);
+        toast.error('Selecione uma instância antes de enviar.');
         return false;
       }
 
-      // Só cacheia perfil se vier com full_name; senão tentamos de novo no próximo envio.
-      if (profileResult?.data?.full_name) {
-        profileCacheRef.current = profileResult.data;
+      // Refetch do perfil só quando o cache não tem full_name.
+      const needsProfileFetch = !!(user && identifySender && !profileCacheRef.current?.full_name);
+      if (needsProfileFetch) {
+        const { data: profileData } = await authClient
+          .from('profiles')
+          .select('full_name, treatment_title')
+          .eq('user_id', user!.id)
+          .maybeSingle();
+        if (profileData?.full_name) {
+          profileCacheRef.current = profileData;
+        }
       }
+
 
       if (user && identifySender) {
         const fmt = nameFormatOverride || 'first_last';
