@@ -160,10 +160,7 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
                           variant="outline"
                           className="h-8 w-8 p-0 shadow-sm"
                           title="Abrir conversa"
-                          onClick={() => {
-                            onOpenChat(lead.lead_phone!);
-                            onOpenChange(false);
-                          }}
+                          onClick={() => setChatPreview({ phone: lead.lead_phone!, name: lead.lead_name })}
                         >
                           <MessageCircle className="h-3.5 w-3.5" />
                         </Button>
