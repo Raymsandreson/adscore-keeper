@@ -23,7 +23,7 @@ const getPanelMaxWidth = () => {
 
 const clampPanelWidth = (width: number) => Math.min(getPanelMaxWidth(), Math.max(PANEL_MIN_WIDTH, width));
 
-const ACTIONS_WIDTH = 168; // 3 botões × 56px
+const ACTIONS_WIDTH = 184; // largura da trilha com 3 losangos
 
 interface SwipeableLeadRowProps {
   lead: ClosedLeadItem;
@@ -44,8 +44,14 @@ function SwipeableLeadRow({
   chatTarget, chatTitle, activityBtnClass, onOpenLead, onOpenChat,
 }: SwipeableLeadRowProps) {
   const [offset, setOffset] = useState(0);
+  const offsetRef = useRef(0);
   const dragRef = useRef<{ startX: number; startY: number; startOffset: number; moved: boolean; axis: 'x' | 'y' | null } | null>(null);
   const [actsOpen, setActsOpen] = useState(false);
+
+  const setRevealOffset = (next: number) => {
+    offsetRef.current = next;
+    setOffset(next);
+  };
 
   const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
@@ -66,7 +72,7 @@ function SwipeableLeadRow({
     if (drag.axis === 'x') {
       e.preventDefault();
       const next = Math.max(0, Math.min(ACTIONS_WIDTH, drag.startOffset - dx));
-      setOffset(next);
+      setRevealOffset(next);
     }
   };
   const onPointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
@@ -74,51 +80,51 @@ function SwipeableLeadRow({
     dragRef.current = null;
     if (drag?.moved) {
       try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId); } catch { /* ignore */ }
-      setOffset(offset > ACTIONS_WIDTH / 2 ? ACTIONS_WIDTH : 0);
+      setRevealOffset(offsetRef.current > ACTIONS_WIDTH / 2 ? ACTIONS_WIDTH : 0);
     }
   };
 
   const closeAndRun = (fn: () => void) => {
-    setOffset(0);
+    setRevealOffset(0);
     fn();
   };
 
   return (
     <div className="relative rounded-lg overflow-hidden">
       {/* Trilha colorida revelada por baixo */}
-      <div className="absolute inset-y-0 right-0 flex items-stretch" style={{ width: ACTIONS_WIDTH }}>
+      <div className="absolute inset-y-0 right-0 flex items-center justify-end gap-2 pr-4" style={{ width: ACTIONS_WIDTH }}>
         <button
           type="button"
           onClick={() => closeAndRun(onOpenLead)}
-          className="w-14 flex flex-col items-center justify-center gap-0.5 bg-indigo-500 text-white text-[10px] font-medium active:bg-indigo-600"
+          className="h-11 w-11 rotate-45 flex items-center justify-center bg-primary text-primary-foreground shadow-md shadow-primary/25 ring-1 ring-primary-foreground/20 transition-transform active:scale-95"
           title="Abrir lead"
+          aria-label="Abrir lead"
         >
-          <ExternalLink className="h-4 w-4" />
-          Abrir
+          <ExternalLink className="h-4 w-4 -rotate-45" />
         </button>
         <button
           type="button"
           disabled={!chatTarget}
           onClick={() => closeAndRun(onOpenChat)}
-          className="w-14 flex flex-col items-center justify-center gap-0.5 bg-emerald-500 text-white text-[10px] font-medium active:bg-emerald-600 disabled:opacity-40"
+          className="h-11 w-11 rotate-45 flex items-center justify-center bg-success text-success-foreground shadow-md shadow-success/25 ring-1 ring-success-foreground/20 transition-transform active:scale-95 disabled:opacity-40"
           title={chatTitle}
+          aria-label={chatTitle}
         >
-          <MessageCircle className="h-4 w-4" />
-          Chat
+          <MessageCircle className="h-4 w-4 -rotate-45" />
         </button>
         <Popover open={actsOpen} onOpenChange={setActsOpen}>
           <PopoverTrigger asChild>
             <button
               type="button"
-              className={`w-14 flex flex-col items-center justify-center gap-0.5 text-white text-[10px] font-medium active:brightness-90 ${
-                pending.length === 0 ? 'bg-slate-400'
-                  : activityBtnClass.includes('destructive') ? 'bg-red-500'
-                  : 'bg-sky-500'
+              className={`h-11 w-11 rotate-45 flex items-center justify-center shadow-md ring-1 transition-transform active:scale-95 ${
+                pending.length === 0 ? 'bg-muted text-muted-foreground ring-border shadow-sm'
+                  : activityBtnClass.includes('destructive') ? 'bg-destructive text-destructive-foreground ring-destructive-foreground/20 shadow-destructive/25'
+                  : 'bg-warning text-warning-foreground ring-warning-foreground/20 shadow-warning/25'
               }`}
               title={`${pending.length} pendente(s) · ${done.length} concluída(s)`}
+              aria-label={`${pending.length} atividade(s) pendente(s)`}
             >
-              <ListChecks className="h-4 w-4" />
-              Atvs
+              <ListChecks className="h-4 w-4 -rotate-45" />
             </button>
           </PopoverTrigger>
           <PopoverContent align="end" className="w-72 p-2">
