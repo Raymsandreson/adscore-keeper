@@ -7,6 +7,7 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
+import { DashboardChatPreview } from '@/components/whatsapp/DashboardChatPreview';
 import type { Lead } from '@/hooks/useLeads';
 import type { ClosedLeadItem } from '@/hooks/useFocusDashboardData';
 
@@ -32,6 +33,7 @@ interface ClosedLeadsSheetProps {
 export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel, onOpenChat }: ClosedLeadsSheetProps) {
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [showLeadEdit, setShowLeadEdit] = useState(false);
+  const [chatPreview, setChatPreview] = useState<{ phone: string; name: string | null } | null>(null);
   const [panelWidth, setPanelWidth] = useState(() => {
     try {
       const stored = localStorage.getItem('closed_leads_sheet_width');
@@ -158,10 +160,7 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
                           variant="outline"
                           className="h-8 w-8 p-0 shadow-sm"
                           title="Abrir conversa"
-                          onClick={() => {
-                            onOpenChat(lead.lead_phone!);
-                            onOpenChange(false);
-                          }}
+                          onClick={() => setChatPreview({ phone: lead.lead_phone!, name: lead.lead_name })}
                         >
                           <MessageCircle className="h-3.5 w-3.5" />
                         </Button>
@@ -191,6 +190,24 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
           mode="sheet"
         />
       )}
+
+      <DashboardChatPreview
+        open={!!chatPreview}
+        onOpenChange={(o) => !o && setChatPreview(null)}
+        phone={chatPreview?.phone ?? null}
+        contactName={chatPreview?.name ?? null}
+        instanceName={null}
+        hasLead={true}
+        hasContact={false}
+        wasResponded={true}
+        responseTimeMinutes={null}
+        onOpenChat={(phone) => {
+          setChatPreview(null);
+          onOpenChat(phone);
+          onOpenChange(false);
+        }}
+      />
     </>
   );
 }
+
