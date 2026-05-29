@@ -41,7 +41,11 @@ function verifySignature(rawBody: string, signatureHeader: string | undefined): 
 }
 
 function normalizePhone(raw: string): string {
-  return (raw || '').replace(/\D/g, '');
+  let d = (raw || '').replace(/\D/g, '');
+  if (d.length === 13 && d.startsWith('55') && d[4] === '9') {
+    d = d.slice(0, 4) + d.slice(5);
+  }
+  return d;
 }
 
 interface NormalizedMessage {
