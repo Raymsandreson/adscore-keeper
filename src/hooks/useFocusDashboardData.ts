@@ -54,6 +54,17 @@ export interface ClosedLeadItem {
   activities?: ClosedLeadActivity[];
 }
 
+export interface OverdueActivityItem {
+  id: string;
+  lead_id: string;
+  lead_name: string | null;
+  lead_phone: string | null;
+  title: string | null;
+  deadline: string | null;
+  acolhedor: string | null;
+  whatsapp_group_jid?: string | null;
+}
+
 type ClosedLeadRow = Omit<ClosedLeadItem, 'has_overdue_activity' | 'whatsapp_group_jid' | 'activities'>;
 type ActivityRow = { id: string; lead_id: string | null; title: string | null; status: string | null; deadline: string | null };
 type GroupRow = { lead_id: string | null; group_jid: string | null };
@@ -62,6 +73,7 @@ export interface FocusData {
   kpis: FocusKpis;
   actions: FocusActions;
   closedLeads: ClosedLeadItem[];
+  overdueActivities: OverdueActivityItem[];
   loading: boolean;
   refetch: () => void;
   scope: FocusScope;
