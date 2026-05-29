@@ -595,15 +595,21 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     });
     try {
       let finalMessage = message;
-      let targetInstanceId = selectedInstanceId && selectedInstanceId !== 'all' ? selectedInstanceId : undefined;
+      // IMPORTANTE: se a conversa tem instance_name, NUNCA caímos no selectedInstanceId
+      // do dropdown — isso causa "mensagem sai pela instância errada" quando o usuário
+      // está com filtro "Todas" ou outra instância selecionada. Só usamos selectedInstanceId
+      // como último recurso quando a conversa não declara instance_name (caso raro).
+      let targetInstanceId: string | undefined = undefined;
 
-      // Run instance lookup and profile fetch in parallel
+      // Lookup da instância da conversa + perfil em paralelo.
+      // Refetch do perfil quando o cache não tem full_name (cache "vazio" travava prefixo).
       const instancePromise = conversationInstanceName
-        ? db.from('whatsapp_instances').select('id').eq('instance_name', conversationInstanceName).eq('is_active', true).maybeSingle()
+        ? db.from('whatsapp_instances').select('id, is_active').eq('instance_name', conversationInstanceName).maybeSingle()
         : Promise.resolve(null);
 
-      const profilePromise = (user && identifySender && !profileCacheRef.current)
-        ? authClient.from('profiles').select('full_name, treatment_title').eq('user_id', user.id).single()
+      const needsProfileFetch = !!(user && identifySender && !profileCacheRef.current?.full_name);
+      const profilePromise = needsProfileFetch
+        ? authClient.from('profiles').select('full_name, treatment_title').eq('user_id', user!.id).maybeSingle()
         : Promise.resolve(null);
 
       const [instanceResult, profileResult] = await Promise.all([instancePromise, profilePromise]);
@@ -612,25 +618,40 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         conversationInstanceName,
         instanceData: instanceResult?.data,
         instanceError: instanceResult?.error,
-        targetInstanceIdBefore: targetInstanceId,
       });
 
-      if (instanceResult?.data?.id) {
+      if (conversationInstanceName) {
+        // Lookup OBRIGATÓRIO quando a conversa declara instância. Sem fallback pro dropdown.
+        if (!instanceResult?.data?.id) {
+          console.error(`[sendMessage ${debugId}] ABORT: instância "${conversationInstanceName}" não encontrada`);
+          toast.error(`Instância "${conversationInstanceName}" não encontrada. Recarregue a página.`);
+          return false;
+        }
+        if ((instanceResult.data as any).is_active === false) {
+          console.error(`[sendMessage ${debugId}] ABORT: instância "${conversationInstanceName}" inativa`);
+          toast.error(`Instância "${conversationInstanceName}" está inativa.`);
+          return false;
+        }
         targetInstanceId = instanceResult.data.id;
+      } else {
+        // Sem instance_name na conversa: aí sim fallback pro dropdown.
+        targetInstanceId = selectedInstanceId && selectedInstanceId !== 'all' ? selectedInstanceId : undefined;
       }
+
       if (!targetInstanceId) {
         console.error(`[sendMessage ${debugId}] ABORT: no instance identified`);
         toast.error('Erro: instância não identificada. Selecione uma instância antes de enviar.');
         return false;
       }
 
-      if (profileResult?.data) {
+      // Só cacheia perfil se vier com full_name; senão tentamos de novo no próximo envio.
+      if (profileResult?.data?.full_name) {
         profileCacheRef.current = profileResult.data;
       }
 
       if (user && identifySender) {
         const fmt = nameFormatOverride || 'first_last';
-        
+
         if (fmt === 'nickname' && nicknameOverride) {
           // Nickname mode: just the nickname, no treatment title
           finalMessage = `*${nicknameOverride}:*\n${message}`;
@@ -648,6 +669,13 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
             : (profileCacheRef.current.treatment_title || '');
           const senderName = title ? `${title} ${displayName}` : displayName;
           finalMessage = `*${senderName}:*\n${message}`;
+        } else {
+          // Sinaliza alto pra debug: identifySender estava ON mas não tem como prefixar.
+          console.warn(`[sendMessage ${debugId}] identifySender=true mas full_name indisponível — enviado SEM prefixo`, {
+            hasUser: !!user,
+            hasProfile: !!profileCacheRef.current,
+            profileFullName: profileCacheRef.current?.full_name,
+          });
         }
       }
 
