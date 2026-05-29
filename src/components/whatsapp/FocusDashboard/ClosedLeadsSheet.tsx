@@ -124,16 +124,24 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
                   Nenhum lead fechado neste período.
                 </div>
               ) : (
-                sorted.map((lead) => (
+                sorted.map((lead) => {
+                  const hasOverdueActivity = !!lead.has_overdue_activity;
+
+                  return (
                   <div
                     key={lead.id}
-                    className="relative p-2 pr-20 rounded-lg border bg-card hover:bg-accent/50 transition-colors overflow-hidden"
+                    className={`group relative p-2 pr-3 rounded-lg border transition-colors overflow-hidden ${
+                      hasOverdueActivity
+                        ? 'border-destructive/40 bg-destructive/10 hover:bg-destructive/15'
+                        : 'bg-card hover:bg-accent/50'
+                    }`}
+                    title={hasOverdueActivity ? 'Lead com atividade atrasada' : undefined}
                   >
-                    <div className="min-w-0 overflow-hidden">
+                    <div className="min-w-0 overflow-hidden group-hover:pr-20 transition-[padding]">
                       <div className="flex items-center gap-1.5 min-w-0">
                         <User className="h-3 w-3 text-muted-foreground shrink-0" />
                         <span
-                          className="font-medium text-sm truncate min-w-0 flex-1"
+                          className={`font-medium text-sm truncate min-w-0 flex-1 ${hasOverdueActivity ? 'text-destructive' : ''}`}
                           title={lead.lead_name || 'Sem nome'}
                         >
                           {lead.lead_name || 'Sem nome'}
@@ -147,7 +155,7 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
                         )}
                       </div>
                     </div>
-                    <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 shrink-0 bg-card/95 pl-1">
+                    <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 shrink-0 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto transition-opacity bg-card/95 pl-1">
                       <Button
                         size="sm"
                         variant="outline"
@@ -169,7 +177,8 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
                       </Button>
                     </div>
                   </div>
-                ))
+                );
+                })
               )}
             </div>
           </ScrollArea>
