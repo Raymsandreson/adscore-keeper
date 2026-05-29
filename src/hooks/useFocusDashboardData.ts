@@ -224,15 +224,36 @@ export function useFocusDashboardData(instanceName?: string | null): FocusData {
       const closedRows = (closedRes.data || []) as ClosedLeadRow[];
       const closedIds = closedRows.map((l) => l.id).filter(Boolean);
       let overdueLeadIds = new Set<string>();
+      const activitiesByLead = new Map<string, ClosedLeadActivity[]>();
+      const groupByLead = new Map<string, string>();
       if (closedIds.length > 0) {
-        const { data: overdueActivities } = await db.from('lead_activities')
-          .select('lead_id')
-          .in('lead_id', closedIds)
-          .eq('status', 'pendente')
-          .lt('deadline', format(new Date(), 'yyyy-MM-dd'))
-          .not('deadline', 'is', null)
-          .limit(5000);
-        overdueLeadIds = new Set(((overdueActivities || []) as OverdueActivityRow[]).map((a) => a.lead_id).filter(Boolean));
+        const todayStr = format(new Date(), 'yyyy-MM-dd');
+        const [actsRes, groupsRes] = await Promise.all([
+          db.from('lead_activities')
+            .select('id, lead_id, title, status, deadline')
+            .in('lead_id', closedIds)
+            .order('deadline', { ascending: true })
+            .limit(10000),
+          db.from('lead_whatsapp_groups')
+            .select('lead_id, group_jid')
+            .in('lead_id', closedIds)
+            .limit(5000),
+        ]);
+        const allActs = (actsRes.data || []) as ActivityRow[];
+        allActs.forEach((a) => {
+          if (!a.lead_id) return;
+          const arr = activitiesByLead.get(a.lead_id) || [];
+          arr.push({ id: a.id, title: a.title, status: a.status, deadline: a.deadline });
+          activitiesByLead.set(a.lead_id, arr);
+          if (a.status === 'pendente' && a.deadline && a.deadline < todayStr) {
+            overdueLeadIds.add(a.lead_id);
+          }
+        });
+        ((groupsRes.data || []) as GroupRow[]).forEach((g) => {
+          if (g.lead_id && g.group_jid && !groupByLead.has(g.lead_id)) {
+            groupByLead.set(g.lead_id, g.group_jid);
+          }
+        });
       }
       setClosedLeads(closedRows.map((l) => ({
         id: l.id,
@@ -241,6 +262,8 @@ export function useFocusDashboardData(instanceName?: string | null): FocusData {
         became_client_date: l.became_client_date ?? null,
         acolhedor: l.acolhedor ?? null,
         has_overdue_activity: overdueLeadIds.has(l.id),
+        whatsapp_group_jid: groupByLead.get(l.id) ?? null,
+        activities: activitiesByLead.get(l.id) ?? [],
       })));
       const unviableLeads = leads.filter(l => l.lead_status === 'unviable' || l.lead_status === 'refused');
       // Viáveis = total recebido no período - inviáveis (esse é o denominador da conversão)
