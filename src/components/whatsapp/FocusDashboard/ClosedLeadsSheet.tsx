@@ -61,9 +61,9 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
                 sorted.map((lead) => (
                   <div
                     key={lead.id}
-                    className="flex items-center gap-2 p-2 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
+                    className="relative p-2 pr-20 rounded-lg border bg-card hover:bg-accent/50 transition-colors overflow-hidden"
                   >
-                    <div className="flex-1 min-w-0 overflow-hidden">
+                    <div className="min-w-0 overflow-hidden">
                       <div className="flex items-center gap-1.5 min-w-0">
                         <User className="h-3 w-3 text-muted-foreground shrink-0" />
                         <span className="font-medium text-sm truncate min-w-0 flex-1">
@@ -78,11 +78,11 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
                         )}
                       </div>
                     </div>
-                    <div className="flex items-center gap-1 shrink-0">
+                    <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 shrink-0 bg-card/95 pl-1">
                       <Button
                         size="sm"
                         variant="outline"
-                        className="h-8 w-8 p-0"
+                        className="h-8 w-8 p-0 shadow-sm"
                         title="Abrir lead"
                         onClick={() => handleOpenLead(lead.id)}
                       >
@@ -92,7 +92,7 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
                         <Button
                           size="sm"
                           variant="outline"
-                          className="h-8 w-8 p-0"
+                          className="h-8 w-8 p-0 shadow-sm"
                           title="Abrir conversa"
                           onClick={() => {
                             onOpenChat(lead.lead_phone!);
