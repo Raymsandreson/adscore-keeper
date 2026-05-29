@@ -737,7 +737,15 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       return true;
     } catch (error: any) {
       console.error(`[sendMessage ${debugId}] EXCEPTION`, error);
-      toast.error('Erro ao enviar mensagem: ' + (error.message || 'Erro desconhecido'));
+      const msg = String(error?.message || '');
+      // UazAPI devolve "WhatsApp disconnected" / "session is not reconnectable"
+      // quando a sessão caiu de vez. Em vez de poluir com erro técnico cru,
+      // mostramos o mesmo toast amigável com atalho de Reconectar.
+      if (/disconnect|not reconnectable|not connected/i.test(msg)) {
+        showDisconnectedToast(fallbackInstanceId, targetInstanceName);
+      } else {
+        toast.error('Erro ao enviar mensagem: ' + (msg || 'Erro desconhecido'));
+      }
       return false;
     }
   };
