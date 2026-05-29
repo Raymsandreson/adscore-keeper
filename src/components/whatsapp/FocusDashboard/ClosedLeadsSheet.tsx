@@ -44,23 +44,28 @@ function SwipeableLeadRow({
   chatTarget, chatTitle, activityBtnClass, onOpenLead, onOpenChat,
 }: SwipeableLeadRowProps) {
   const [offset, setOffset] = useState(0);
-  const dragRef = useRef<{ startX: number; startOffset: number; moved: boolean } | null>(null);
+  const dragRef = useRef<{ startX: number; startY: number; startOffset: number; moved: boolean; axis: 'x' | 'y' | null } | null>(null);
   const [actsOpen, setActsOpen] = useState(false);
 
   const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
-    dragRef.current = { startX: e.clientX, startOffset: offset, moved: false };
+    dragRef.current = { startX: e.clientX, startY: e.clientY, startOffset: offset, moved: false, axis: null };
   };
   const onPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
     const drag = dragRef.current;
     if (!drag) return;
-    const delta = e.clientX - drag.startX;
-    if (!drag.moved && Math.abs(delta) > 6) {
-      drag.moved = true;
+    const dx = e.clientX - drag.startX;
+    const dy = e.clientY - drag.startY;
+    if (!drag.axis) {
+      if (Math.abs(dx) < 4 && Math.abs(dy) < 4) return;
+      drag.axis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
+      if (drag.axis === 'y') { dragRef.current = null; return; }
       try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* ignore */ }
+      drag.moved = true;
     }
-    if (drag.moved) {
-      const next = Math.max(0, Math.min(ACTIONS_WIDTH, drag.startOffset - delta));
+    if (drag.axis === 'x') {
+      e.preventDefault();
+      const next = Math.max(0, Math.min(ACTIONS_WIDTH, drag.startOffset - dx));
       setOffset(next);
     }
   };
