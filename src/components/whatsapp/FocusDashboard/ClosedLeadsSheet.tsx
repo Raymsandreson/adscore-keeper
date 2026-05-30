@@ -341,12 +341,11 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
                 <div className="space-y-1.5">
                   {sorted.map((lead) => {
                     const hasOverdueActivity = !!lead.has_overdue_activity;
-                    const chatTarget = lead.whatsapp_group_jid || lead.lead_phone;
                     const chatTitle = lead.whatsapp_group_jid
-                      ? 'Abrir conversa do grupo'
+                      ? 'Abrir conversa do grupo ou contatos'
                       : lead.lead_phone
                         ? 'Abrir conversa do contato'
-                        : 'Sem grupo nem telefone';
+                        : 'Escolher contato';
                     const acts = lead.activities ?? [];
                     const todayStr = format(new Date(), 'yyyy-MM-dd');
                     const pending = acts.filter((a) => a.status === 'pendente');
@@ -361,10 +360,9 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
                         done={done}
                         todayStr={todayStr}
                         hasOverdueActivity={hasOverdueActivity}
-                        chatTarget={chatTarget}
                         chatTitle={chatTitle}
                         onOpenLead={() => handleOpenLead(lead.id)}
-                        onOpenChat={() => chatTarget && setChatPreview({ phone: chatTarget, name: lead.lead_name })}
+                        onOpenChat={(phone, name) => setChatPreview({ phone, name })}
                         isOpen={openLeadId === lead.id}
                         onToggle={() => setOpenLeadId((cur) => (cur === lead.id ? null : lead.id))}
                       />
