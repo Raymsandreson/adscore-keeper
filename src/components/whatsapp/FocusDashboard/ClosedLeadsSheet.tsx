@@ -298,51 +298,54 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
           </SheetHeader>
 
           <ScrollArea className="flex-1">
-            <div className="p-2 space-y-1">
+            <div className="p-2">
               {sorted.length === 0 ? (
                 <div className="text-center text-sm text-muted-foreground py-8">
                   Nenhum lead fechado neste período.
                 </div>
               ) : (
-                sorted.map((lead) => {
-                  const hasOverdueActivity = !!lead.has_overdue_activity;
-                  const chatTarget = lead.whatsapp_group_jid || lead.lead_phone;
-                  const chatTitle = lead.whatsapp_group_jid
-                    ? 'Abrir conversa do grupo'
-                    : lead.lead_phone
-                      ? 'Abrir conversa do contato'
-                      : 'Sem grupo nem telefone';
-                  const acts = lead.activities ?? [];
-                  const todayStr = format(new Date(), 'yyyy-MM-dd');
-                  const pending = acts.filter((a) => a.status === 'pendente');
-                  const done = acts.filter((a) => a.status !== 'pendente');
-                  const overdueCount = pending.filter((a) => a.deadline && a.deadline < todayStr).length;
-                  const activityBtnClass = pending.length === 0
-                    ? 'text-muted-foreground'
-                    : overdueCount > 0
-                      ? 'text-destructive border-destructive/40'
-                      : 'text-sky-600 border-sky-500/40';
+                <SwipeableList type={SwipeListType.IOS} fullSwipe={false}>
+                  {sorted.map((lead) => {
+                    const hasOverdueActivity = !!lead.has_overdue_activity;
+                    const chatTarget = lead.whatsapp_group_jid || lead.lead_phone;
+                    const chatTitle = lead.whatsapp_group_jid
+                      ? 'Abrir conversa do grupo'
+                      : lead.lead_phone
+                        ? 'Abrir conversa do contato'
+                        : 'Sem grupo nem telefone';
+                    const acts = lead.activities ?? [];
+                    const todayStr = format(new Date(), 'yyyy-MM-dd');
+                    const pending = acts.filter((a) => a.status === 'pendente');
+                    const done = acts.filter((a) => a.status !== 'pendente');
+                    const overdueCount = pending.filter((a) => a.deadline && a.deadline < todayStr).length;
+                    const activityBtnClass = pending.length === 0
+                      ? 'text-muted-foreground'
+                      : overdueCount > 0
+                        ? 'text-destructive border-destructive/40'
+                        : 'text-sky-600 border-sky-500/40';
 
-                  return (
-                    <SwipeableLeadRow
-                      key={lead.id}
-                      lead={lead}
-                      acts={acts}
-                      pending={pending}
-                      done={done}
-                      todayStr={todayStr}
-                      hasOverdueActivity={hasOverdueActivity}
-                      chatTarget={chatTarget}
-                      chatTitle={chatTitle}
-                      activityBtnClass={activityBtnClass}
-                      onOpenLead={() => handleOpenLead(lead.id)}
-                      onOpenChat={() => chatTarget && setChatPreview({ phone: chatTarget, name: lead.lead_name })}
-                    />
-                  );
-                })
+                    return (
+                      <SwipeableLeadRow
+                        key={lead.id}
+                        lead={lead}
+                        acts={acts}
+                        pending={pending}
+                        done={done}
+                        todayStr={todayStr}
+                        hasOverdueActivity={hasOverdueActivity}
+                        chatTarget={chatTarget}
+                        chatTitle={chatTitle}
+                        activityBtnClass={activityBtnClass}
+                        onOpenLead={() => handleOpenLead(lead.id)}
+                        onOpenChat={() => chatTarget && setChatPreview({ phone: chatTarget, name: lead.lead_name })}
+                      />
+                    );
+                  })}
+                </SwipeableList>
               )}
             </div>
           </ScrollArea>
+
         </SheetContent>
       </Sheet>
 
