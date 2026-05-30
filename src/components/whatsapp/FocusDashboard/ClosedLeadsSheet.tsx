@@ -23,10 +23,9 @@ interface LeadRowProps {
   done: ClosedLeadActivity[];
   todayStr: string;
   hasOverdueActivity: boolean;
-  chatTarget: string | null | undefined;
   chatTitle: string;
   onOpenLead: () => void;
-  onOpenChat: () => void;
+  onOpenChat: (phone: string, name: string | null) => void;
   isOpen: boolean;
   onToggle: () => void;
 }
