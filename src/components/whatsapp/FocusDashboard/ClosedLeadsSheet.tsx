@@ -101,11 +101,16 @@ function SwipeableLeadRow({
   return (
     <div className="relative rounded-lg overflow-hidden">
       {/* Trilha colorida revelada por baixo */}
-      <div className="absolute inset-y-0 right-0 flex items-center justify-end pr-3" style={{ width: ACTIONS_WIDTH }}>
+      <div
+        ref={actionsRef}
+        className="absolute inset-y-0 right-0 z-10 flex items-center justify-end overflow-hidden pr-2 opacity-0"
+        style={{ width: 0, pointerEvents: 'none' }}
+      >
+        <div className="flex items-center justify-end pr-2">
         <button
           type="button"
           onClick={() => closeAndRun(onOpenLead)}
-          className="h-10 w-10 rotate-45 flex items-center justify-center bg-primary/60 text-primary-foreground ring-1 ring-primary-foreground/20 backdrop-blur-sm transition-transform active:scale-95"
+          className="h-10 w-10 rotate-45 flex items-center justify-center bg-primary/55 text-primary-foreground ring-1 ring-primary-foreground/20 backdrop-blur-sm shadow-sm transition-transform active:scale-95"
           title="Abrir lead"
           aria-label="Abrir lead"
         >
@@ -115,7 +120,7 @@ function SwipeableLeadRow({
           type="button"
           disabled={!chatTarget}
           onClick={() => closeAndRun(onOpenChat)}
-          className="-ml-3 h-10 w-10 rotate-45 flex items-center justify-center bg-success/60 text-success-foreground ring-1 ring-success-foreground/20 backdrop-blur-sm transition-transform active:scale-95 disabled:opacity-40"
+          className="-ml-3 h-10 w-10 rotate-45 flex items-center justify-center bg-success/55 text-success-foreground ring-1 ring-success-foreground/20 backdrop-blur-sm shadow-sm transition-transform active:scale-95 disabled:opacity-40"
           title={chatTitle}
           aria-label={chatTitle}
         >
@@ -126,9 +131,9 @@ function SwipeableLeadRow({
             <button
               type="button"
               className={`-ml-3 h-10 w-10 rotate-45 flex items-center justify-center ring-1 backdrop-blur-sm transition-transform active:scale-95 ${
-                pending.length === 0 ? 'bg-muted/60 text-muted-foreground ring-border'
-                  : activityBtnClass.includes('destructive') ? 'bg-destructive/60 text-destructive-foreground ring-destructive-foreground/20'
-                  : 'bg-warning/60 text-warning-foreground ring-warning-foreground/20'
+                pending.length === 0 ? 'bg-muted/55 text-muted-foreground ring-border'
+                  : activityBtnClass.includes('destructive') ? 'bg-destructive/55 text-destructive-foreground ring-destructive-foreground/20'
+                  : 'bg-warning/55 text-warning-foreground ring-warning-foreground/20'
               }`}
               title={`${pending.length} pendente(s) · ${done.length} concluída(s)`}
               aria-label={`${pending.length} atividade(s) pendente(s)`}
@@ -178,6 +183,7 @@ function SwipeableLeadRow({
             )}
           </PopoverContent>
         </Popover>
+        </div>
       </div>
 
       {/* Linha do lead que desliza */}
@@ -186,8 +192,7 @@ function SwipeableLeadRow({
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
-        style={{ transform: `translateX(-${offset}px)`, transition: dragRef.current ? 'none' : 'transform 200ms ease' }}
-        className={`relative p-2 border touch-pan-y select-none cursor-grab active:cursor-grabbing ${
+        className={`relative z-0 p-2 border touch-pan-y select-none cursor-grab active:cursor-grabbing ${
           hasOverdueActivity
             ? 'border-destructive/40 bg-destructive/10'
             : 'bg-card'
