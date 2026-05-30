@@ -1,6 +1,13 @@
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import {
+  SwipeableList,
+  SwipeableListItem,
+  TrailingActions,
+  SwipeAction,
+  Type as SwipeListType,
+} from 'react-swipeable-list';
+import 'react-swipeable-list/dist/styles.css';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
-import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Trophy, MessageCircle, User, ExternalLink, ListChecks, CheckCircle2 } from 'lucide-react';
@@ -23,8 +30,6 @@ const getPanelMaxWidth = () => {
 
 const clampPanelWidth = (width: number) => Math.min(getPanelMaxWidth(), Math.max(PANEL_MIN_WIDTH, width));
 
-const ACTIONS_WIDTH = 142; // trilha visível com 3 losangos encaixados
-
 interface SwipeableLeadRowProps {
   lead: ClosedLeadItem;
   acts: ClosedLeadActivity[];
@@ -39,107 +44,78 @@ interface SwipeableLeadRowProps {
   onOpenChat: () => void;
 }
 
+function DiamondAction({
+  onClick,
+  className,
+  title,
+  children,
+  disabled,
+}: {
+  onClick: () => void;
+  className: string;
+  title: string;
+  children: React.ReactNode;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="h-full flex items-center justify-center px-1">
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={onClick}
+        title={title}
+        aria-label={title}
+        className={`h-10 w-10 rotate-45 flex items-center justify-center ring-1 backdrop-blur-sm shadow-sm transition-transform active:scale-95 disabled:opacity-40 ${className}`}
+      >
+        <span className="-rotate-45 flex items-center justify-center">{children}</span>
+      </button>
+    </div>
+  );
+}
+
 function SwipeableLeadRow({
   lead, acts, pending, done, todayStr, hasOverdueActivity,
   chatTarget, chatTitle, activityBtnClass, onOpenLead, onOpenChat,
 }: SwipeableLeadRowProps) {
-  const offsetRef = useRef(0);
-  const actionsRef = useRef<HTMLDivElement>(null);
-  const dragRef = useRef<{ startX: number; startY: number; startOffset: number; moved: boolean; axis: 'x' | 'y' | null } | null>(null);
   const [actsOpen, setActsOpen] = useState(false);
 
-  const setRevealOffset = (next: number, animated = false) => {
-    const clamped = Math.max(0, Math.min(ACTIONS_WIDTH, next));
-    const progress = clamped / ACTIONS_WIDTH;
-    offsetRef.current = clamped;
-
-    const rail = actionsRef.current;
-    if (!rail) return;
-
-    rail.style.transition = animated ? 'width 160ms ease, opacity 160ms ease' : 'none';
-    rail.style.width = `${clamped}px`;
-    rail.style.opacity = progress > 0 ? String(Math.max(0.22, progress)) : '0';
-    rail.style.pointerEvents = clamped > ACTIONS_WIDTH * 0.72 ? 'auto' : 'none';
-  };
-
-  const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
-    if (e.pointerType === 'mouse' && e.button !== 0) return;
-    dragRef.current = { startX: e.clientX, startY: e.clientY, startOffset: offsetRef.current, moved: false, axis: null };
-  };
-  const onPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
-    const drag = dragRef.current;
-    if (!drag) return;
-    const dx = e.clientX - drag.startX;
-    const dy = e.clientY - drag.startY;
-    if (!drag.axis) {
-      if (Math.abs(dx) < 4 && Math.abs(dy) < 4) return;
-      drag.axis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
-      if (drag.axis === 'y') { dragRef.current = null; return; }
-      try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* ignore */ }
-      drag.moved = true;
-    }
-    if (drag.axis === 'x') {
-      e.preventDefault();
-      const next = Math.max(0, Math.min(ACTIONS_WIDTH, drag.startOffset - dx));
-      setRevealOffset(next);
-    }
-  };
-  const onPointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
-    const drag = dragRef.current;
-    dragRef.current = null;
-    if (drag?.moved) {
-      try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId); } catch { /* ignore */ }
-      setRevealOffset(offsetRef.current > ACTIONS_WIDTH / 3 ? ACTIONS_WIDTH : 0, true);
-    }
-  };
-
-  const closeAndRun = (fn: () => void) => {
-    setRevealOffset(0);
-    fn();
-  };
-
-  return (
-    <div className="relative rounded-lg overflow-hidden">
-      {/* Trilha colorida revelada por baixo */}
-      <div
-        ref={actionsRef}
-        className="absolute inset-y-0 right-0 z-10 flex items-center justify-end overflow-hidden pr-2 opacity-0"
-        style={{ width: 0, pointerEvents: 'none' }}
-      >
-        <div className="flex items-center justify-end pr-2">
-        <button
-          type="button"
-          onClick={() => closeAndRun(onOpenLead)}
-          className="h-10 w-10 rotate-45 flex items-center justify-center bg-primary/55 text-primary-foreground ring-1 ring-primary-foreground/20 backdrop-blur-sm shadow-sm transition-transform active:scale-95"
+  const trailingActions = () => (
+    <TrailingActions>
+      <SwipeAction onClick={onOpenLead}>
+        <DiamondAction
+          onClick={onOpenLead}
           title="Abrir lead"
-          aria-label="Abrir lead"
+          className="bg-primary/60 text-primary-foreground ring-primary-foreground/20"
         >
-          <ExternalLink className="h-4 w-4 -rotate-45" />
-        </button>
-        <button
-          type="button"
+          <ExternalLink className="h-4 w-4" />
+        </DiamondAction>
+      </SwipeAction>
+      <SwipeAction onClick={() => chatTarget && onOpenChat()}>
+        <DiamondAction
+          onClick={() => chatTarget && onOpenChat()}
           disabled={!chatTarget}
-          onClick={() => closeAndRun(onOpenChat)}
-          className="-ml-3 h-10 w-10 rotate-45 flex items-center justify-center bg-success/55 text-success-foreground ring-1 ring-success-foreground/20 backdrop-blur-sm shadow-sm transition-transform active:scale-95 disabled:opacity-40"
           title={chatTitle}
-          aria-label={chatTitle}
+          className="-ml-3 bg-success/60 text-success-foreground ring-success-foreground/20"
         >
-          <MessageCircle className="h-4 w-4 -rotate-45" />
-        </button>
+          <MessageCircle className="h-4 w-4" />
+        </DiamondAction>
+      </SwipeAction>
+      <SwipeAction onClick={() => setActsOpen(true)}>
         <Popover open={actsOpen} onOpenChange={setActsOpen}>
           <PopoverTrigger asChild>
-            <button
-              type="button"
-              className={`-ml-3 h-10 w-10 rotate-45 flex items-center justify-center ring-1 backdrop-blur-sm transition-transform active:scale-95 ${
-                pending.length === 0 ? 'bg-muted/55 text-muted-foreground ring-border'
-                  : activityBtnClass.includes('destructive') ? 'bg-destructive/55 text-destructive-foreground ring-destructive-foreground/20'
-                  : 'bg-warning/55 text-warning-foreground ring-warning-foreground/20'
-              }`}
-              title={`${pending.length} pendente(s) · ${done.length} concluída(s)`}
-              aria-label={`${pending.length} atividade(s) pendente(s)`}
-            >
-              <ListChecks className="h-4 w-4 -rotate-45" />
-            </button>
+            <div>
+              <DiamondAction
+                onClick={() => setActsOpen(true)}
+                title={`${pending.length} pendente(s) · ${done.length} concluída(s)`}
+                className={`-ml-3 ${
+                  pending.length === 0 ? 'bg-muted/60 text-muted-foreground ring-border'
+                    : activityBtnClass.includes('destructive') ? 'bg-destructive/60 text-destructive-foreground ring-destructive-foreground/20'
+                    : 'bg-warning/60 text-warning-foreground ring-warning-foreground/20'
+                }`}
+              >
+                <ListChecks className="h-4 w-4" />
+              </DiamondAction>
+            </div>
           </PopoverTrigger>
           <PopoverContent align="end" className="w-72 p-2">
             <div className="text-xs font-medium mb-1">Atividades</div>
@@ -183,19 +159,15 @@ function SwipeableLeadRow({
             )}
           </PopoverContent>
         </Popover>
-        </div>
-      </div>
+      </SwipeAction>
+    </TrailingActions>
+  );
 
-      {/* Linha do lead que desliza */}
+  return (
+    <SwipeableListItem trailingActions={trailingActions()} maxSwipe={0.5}>
       <div
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
-        className={`relative z-0 p-2 border touch-pan-y select-none cursor-grab active:cursor-grabbing ${
-          hasOverdueActivity
-            ? 'border-destructive/40 bg-destructive/10'
-            : 'bg-card'
+        className={`w-full p-2 border rounded-lg ${
+          hasOverdueActivity ? 'border-destructive/40 bg-destructive/10' : 'bg-card'
         }`}
         title={hasOverdueActivity ? 'Lead com atividade atrasada · arraste pra esquerda' : 'Arraste pra esquerda pra revelar atalhos'}
       >
@@ -218,7 +190,7 @@ function SwipeableLeadRow({
           </div>
         </div>
       </div>
-    </div>
+    </SwipeableListItem>
   );
 }
 
