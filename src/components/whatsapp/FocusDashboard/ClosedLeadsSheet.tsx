@@ -217,7 +217,7 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
       <Sheet open={open} onOpenChange={onOpenChange}>
         <SheetContent
           side="right"
-          className="!max-w-none w-full sm:w-[560px] p-0 flex flex-col overflow-hidden"
+          className="!max-w-none w-full sm:w-[min(560px,100vw-24px)] p-0 flex flex-col overflow-hidden"
         >
 
           <SheetHeader className="px-4 py-3 border-b shrink-0">
