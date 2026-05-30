@@ -14,9 +14,6 @@ import type { ClosedLeadItem, ClosedLeadActivity } from '@/hooks/useFocusDashboa
 const PANEL_MIN_WIDTH = 360;
 const PANEL_DEFAULT_WIDTH = 560;
 const PANEL_MAX_WIDTH = 920;
-const ROW_ACTIONS_WIDTH = 164;
-const ROW_OPEN_THRESHOLD = 62;
-const ROW_VERTICAL_CANCEL_THRESHOLD = 10;
 
 const getPanelMaxWidth = () => {
   if (typeof window === 'undefined') return PANEL_MAX_WIDTH;
@@ -25,7 +22,7 @@ const getPanelMaxWidth = () => {
 
 const clampPanelWidth = (width: number) => Math.min(getPanelMaxWidth(), Math.max(PANEL_MIN_WIDTH, width));
 
-interface SwipeableLeadRowProps {
+interface LeadRowProps {
   lead: ClosedLeadItem;
   acts: ClosedLeadActivity[];
   pending: ClosedLeadActivity[];
@@ -34,22 +31,21 @@ interface SwipeableLeadRowProps {
   hasOverdueActivity: boolean;
   chatTarget: string | null | undefined;
   chatTitle: string;
-  activityBtnClass: string;
   onOpenLead: () => void;
   onOpenChat: () => void;
 }
 
-function ShortcutDiamond({
+function InlineAction({
   onClick,
   className,
-  title,
-  children,
+  label,
+  icon,
   disabled,
 }: {
   onClick: () => void;
   className: string;
-  title: string;
-  children: ReactNode;
+  label: string;
+  icon: ReactNode;
   disabled?: boolean;
 }) {
   return (
@@ -60,186 +56,39 @@ function ShortcutDiamond({
         event.stopPropagation();
         if (!disabled) onClick();
       }}
-      title={title}
-      aria-label={title}
-      className={`relative -ml-3 first:ml-0 h-12 w-12 shrink-0 flex items-center justify-center border border-background/35 backdrop-blur-md shadow-[0_0_18px_hsl(var(--foreground)/0.16)] transition-transform active:scale-95 disabled:opacity-35 ${className}`}
-      style={{ clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)' }}
+      className={`flex-1 h-9 flex items-center justify-center gap-1.5 rounded-md text-[11px] font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${className}`}
     >
-      {children}
+      {icon}
+      <span>{label}</span>
     </button>
   );
 }
 
-function SwipeableLeadRow({
+function LeadRow({
   lead, acts, pending, done, todayStr, hasOverdueActivity,
-  chatTarget, chatTitle, activityBtnClass, onOpenLead, onOpenChat,
-}: SwipeableLeadRowProps) {
+  chatTarget, chatTitle, onOpenLead, onOpenChat,
+}: LeadRowProps) {
+  const [open, setOpen] = useState(false);
   const [actsOpen, setActsOpen] = useState(false);
-  const contentRef = useRef<HTMLDivElement | null>(null);
-  const actionsRef = useRef<HTMLDivElement | null>(null);
-  const offsetRef = useRef(0);
-  const dragRef = useRef<{
-    pointerId: number;
-    startX: number;
-    startY: number;
-    startOffset: number;
-    dragging: boolean;
-    cancelled: boolean;
-  } | null>(null);
 
-  const applyOffset = (value: number, animated: boolean) => {
-    const next = Math.max(0, Math.min(ROW_ACTIONS_WIDTH, value));
-    offsetRef.current = next;
-    const progress = next / ROW_ACTIONS_WIDTH;
-
-    if (actionsRef.current) {
-      actionsRef.current.style.transition = animated
-        ? 'transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 180ms ease-out'
-        : 'none';
-      actionsRef.current.style.opacity = String(Math.min(1, progress * 1.4));
-      // Botões entram da direita: começam fora (+ROW_ACTIONS_WIDTH) e vão pra 0
-      actionsRef.current.style.transform = `translate3d(${ROW_ACTIONS_WIDTH - next}px, 0, 0)`;
-      actionsRef.current.style.pointerEvents = next > ROW_OPEN_THRESHOLD ? 'auto' : 'none';
-    }
-  };
-
-  const settleOffset = (forceClose = false) => {
-    const shouldOpen = !forceClose && offsetRef.current >= ROW_OPEN_THRESHOLD;
-    applyOffset(shouldOpen ? ROW_ACTIONS_WIDTH : 0, true);
-  };
-
-  const activityDiamondClass = pending.length === 0
-    ? 'bg-muted/70 text-muted-foreground'
-    : activityBtnClass.includes('destructive')
-      ? 'bg-destructive/70 text-destructive-foreground'
-      : 'bg-warning/70 text-warning-foreground';
+  const overdueCount = pending.filter((a) => a.deadline && a.deadline < todayStr).length;
+  const activityClass = pending.length === 0
+    ? 'bg-muted/60 hover:bg-muted text-muted-foreground'
+    : overdueCount > 0
+      ? 'bg-destructive/15 hover:bg-destructive/25 text-destructive'
+      : 'bg-sky-500/15 hover:bg-sky-500/25 text-sky-600 dark:text-sky-400';
 
   return (
-    <div className="relative overflow-hidden rounded-lg" style={{ touchAction: 'pan-y' }}>
-      <div
-        ref={actionsRef}
-        className="absolute inset-y-0 right-1 z-20 flex items-center justify-end pr-2 opacity-0"
-        style={{ width: ROW_ACTIONS_WIDTH, pointerEvents: 'none', transform: `translate3d(${ROW_ACTIONS_WIDTH}px, 0, 0)` }}
-      >
-        <ShortcutDiamond
-          onClick={onOpenLead}
-          title="Abrir lead"
-          className="bg-primary/70 text-primary-foreground"
-        >
-          <ExternalLink className="h-4 w-4" />
-        </ShortcutDiamond>
-        <ShortcutDiamond
-          onClick={() => chatTarget && onOpenChat()}
-          disabled={!chatTarget}
-          title={chatTitle}
-          className="bg-success/70 text-success-foreground"
-        >
-          <MessageCircle className="h-4 w-4" />
-        </ShortcutDiamond>
-        <Popover open={actsOpen} onOpenChange={setActsOpen}>
-          <PopoverTrigger asChild>
-            <ShortcutDiamond
-              onClick={() => setActsOpen(true)}
-              title={`${pending.length} pendente(s) · ${done.length} concluída(s)`}
-              className={activityDiamondClass}
-            >
-              <ListChecks className="h-4 w-4" />
-            </ShortcutDiamond>
-          </PopoverTrigger>
-          <PopoverContent align="end" className="w-72 p-2">
-            <div className="text-xs font-medium mb-1">Atividades</div>
-            {acts.length === 0 ? (
-              <div className="text-xs text-muted-foreground py-2 text-center">Nenhuma atividade.</div>
-            ) : (
-              <ScrollArea className="max-h-72">
-                <div className="space-y-1 pr-2">
-                  {pending.map((a) => {
-                    const isOverdue = !!a.deadline && a.deadline < todayStr;
-                    return (
-                      <div
-                        key={a.id}
-                        className={`text-[11px] px-2 py-1 rounded border ${
-                          isOverdue
-                            ? 'border-destructive/40 bg-destructive/10 text-destructive'
-                            : 'border-primary/40 bg-primary/10 text-primary'
-                        }`}
-                      >
-                        <div className="font-medium truncate" title={a.title || ''}>{a.title || 'Sem título'}</div>
-                        {a.deadline && (
-                          <div className="opacity-70">
-                            {format(new Date(a.deadline + 'T00:00:00'), 'dd/MM', { locale: ptBR })}
-                            {isOverdue ? ' · atrasada' : ''}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                  {done.map((a) => (
-                    <div
-                      key={a.id}
-                      className="text-[11px] px-2 py-1 rounded border border-muted bg-muted/40 text-muted-foreground flex items-center gap-1.5"
-                    >
-                      <CheckCircle2 className="h-3 w-3 shrink-0" />
-                      <span className="truncate line-through" title={a.title || ''}>{a.title || 'Sem título'}</span>
-                    </div>
-                  ))}
-                </div>
-              </ScrollArea>
-            )}
-          </PopoverContent>
-        </Popover>
-      </div>
-      <div
-        ref={contentRef}
-        onPointerDown={(event) => {
-          if (event.button !== 0) return;
-          dragRef.current = {
-            pointerId: event.pointerId,
-            startX: event.clientX,
-            startY: event.clientY,
-            startOffset: offsetRef.current,
-            dragging: false,
-            cancelled: false,
-          };
-          event.currentTarget.setPointerCapture(event.pointerId);
-        }}
-        onPointerMove={(event) => {
-          const drag = dragRef.current;
-          if (!drag || drag.pointerId !== event.pointerId || drag.cancelled) return;
-
-          const dx = drag.startX - event.clientX;
-          const dy = event.clientY - drag.startY;
-          if (!drag.dragging && Math.abs(dy) > ROW_VERTICAL_CANCEL_THRESHOLD && Math.abs(dy) > Math.abs(dx)) {
-            drag.cancelled = true;
-            return;
-          }
-
-          if (Math.abs(dx) < 4 && !drag.dragging) return;
-          drag.dragging = true;
-          event.preventDefault();
-          applyOffset(drag.startOffset + dx, false);
-        }}
-        onPointerUp={(event) => {
-          const drag = dragRef.current;
-          if (!drag || drag.pointerId !== event.pointerId) return;
-          dragRef.current = null;
-          try { event.currentTarget.releasePointerCapture(event.pointerId); } catch {
-            // O navegador pode liberar o ponteiro antes do evento final.
-          }
-          if (!drag.dragging && offsetRef.current > 0) {
-            settleOffset(true);
-            return;
-          }
-          settleOffset(drag.cancelled);
-        }}
-        onPointerCancel={() => {
-          dragRef.current = null;
-          settleOffset(true);
-        }}
-        className={`w-full p-2 border rounded-lg ${
-          hasOverdueActivity ? 'border-destructive/40 bg-destructive/10' : 'bg-card'
-        }`}
-        title={hasOverdueActivity ? 'Lead com atividade atrasada · arraste pra esquerda' : 'Arraste pra esquerda pra revelar atalhos'}
+    <div
+      className={`rounded-lg border overflow-hidden transition-colors ${
+        hasOverdueActivity ? 'border-destructive/40 bg-destructive/10' : 'bg-card border-border'
+      } ${open ? 'ring-1 ring-primary/30' : ''}`}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full p-2 text-left"
+        aria-expanded={open}
       >
         <div className="min-w-0 overflow-hidden">
           <div className="flex items-center gap-1.5 min-w-0">
@@ -257,6 +106,83 @@ function SwipeableLeadRow({
             {lead.became_client_date && (
               <span>· {format(new Date(lead.became_client_date + 'T00:00:00'), 'dd/MM', { locale: ptBR })}</span>
             )}
+          </div>
+        </div>
+      </button>
+
+      <div
+        className="grid transition-[grid-template-rows] duration-200 ease-out"
+        style={{ gridTemplateRows: open ? '1fr' : '0fr' }}
+      >
+        <div className="overflow-hidden">
+          <div className="flex items-center gap-1.5 px-2 pb-2 pt-0.5 border-t border-border/40">
+            <InlineAction
+              onClick={onOpenLead}
+              label="Abrir"
+              icon={<ExternalLink className="h-3.5 w-3.5" />}
+              className="bg-primary/10 hover:bg-primary/20 text-primary"
+            />
+            <InlineAction
+              onClick={() => chatTarget && onOpenChat()}
+              disabled={!chatTarget}
+              label="Chat"
+              icon={<MessageCircle className="h-3.5 w-3.5" />}
+              className="bg-success/15 hover:bg-success/25 text-success"
+            />
+            <Popover open={actsOpen} onOpenChange={setActsOpen}>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setActsOpen(true); }}
+                  title={chatTitle}
+                  className={`flex-1 h-9 flex items-center justify-center gap-1.5 rounded-md text-[11px] font-medium transition-colors ${activityClass}`}
+                >
+                  <ListChecks className="h-3.5 w-3.5" />
+                  <span>Atvs{pending.length > 0 ? ` · ${pending.length}` : ''}</span>
+                </button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-72 p-2">
+                <div className="text-xs font-medium mb-1">Atividades</div>
+                {acts.length === 0 ? (
+                  <div className="text-xs text-muted-foreground py-2 text-center">Nenhuma atividade.</div>
+                ) : (
+                  <ScrollArea className="max-h-72">
+                    <div className="space-y-1 pr-2">
+                      {pending.map((a) => {
+                        const isOverdue = !!a.deadline && a.deadline < todayStr;
+                        return (
+                          <div
+                            key={a.id}
+                            className={`text-[11px] px-2 py-1 rounded border ${
+                              isOverdue
+                                ? 'border-destructive/40 bg-destructive/10 text-destructive'
+                                : 'border-primary/40 bg-primary/10 text-primary'
+                            }`}
+                          >
+                            <div className="font-medium truncate" title={a.title || ''}>{a.title || 'Sem título'}</div>
+                            {a.deadline && (
+                              <div className="opacity-70">
+                                {format(new Date(a.deadline + 'T00:00:00'), 'dd/MM', { locale: ptBR })}
+                                {isOverdue ? ' · atrasada' : ''}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                      {done.map((a) => (
+                        <div
+                          key={a.id}
+                          className="text-[11px] px-2 py-1 rounded border border-muted bg-muted/40 text-muted-foreground flex items-center gap-1.5"
+                        >
+                          <CheckCircle2 className="h-3 w-3 shrink-0" />
+                          <span className="truncate line-through" title={a.title || ''}>{a.title || 'Sem título'}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                )}
+              </PopoverContent>
+            </Popover>
           </div>
         </div>
       </div>
@@ -387,15 +313,9 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
                     const todayStr = format(new Date(), 'yyyy-MM-dd');
                     const pending = acts.filter((a) => a.status === 'pendente');
                     const done = acts.filter((a) => a.status !== 'pendente');
-                    const overdueCount = pending.filter((a) => a.deadline && a.deadline < todayStr).length;
-                    const activityBtnClass = pending.length === 0
-                      ? 'text-muted-foreground'
-                      : overdueCount > 0
-                        ? 'text-destructive border-destructive/40'
-                        : 'text-sky-600 border-sky-500/40';
 
                     return (
-                      <SwipeableLeadRow
+                      <LeadRow
                         key={lead.id}
                         lead={lead}
                         acts={acts}
@@ -405,7 +325,6 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
                         hasOverdueActivity={hasOverdueActivity}
                         chatTarget={chatTarget}
                         chatTitle={chatTitle}
-                        activityBtnClass={activityBtnClass}
                         onOpenLead={() => handleOpenLead(lead.id)}
                         onOpenChat={() => chatTarget && setChatPreview({ phone: chatTarget, name: lead.lead_name })}
                       />
