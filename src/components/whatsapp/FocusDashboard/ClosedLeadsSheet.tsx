@@ -111,7 +111,7 @@ function LeadRow({
         style={{ gridTemplateRows: open ? '1fr' : '0fr' }}
       >
         <div className="overflow-hidden">
-          <div className="grid grid-cols-3 gap-1 px-2 pb-2 pt-1 border-t border-border/40 w-1/2 max-w-[260px] ml-auto overflow-hidden">
+          <div className="grid grid-cols-3 gap-1 px-2 pb-2 pt-1 border-t border-border/40 w-1/2 max-w-[260px] mr-auto overflow-hidden">
             <InlineAction
               onClick={onOpenLead}
               label="Abrir"
