@@ -313,15 +313,9 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
                     const todayStr = format(new Date(), 'yyyy-MM-dd');
                     const pending = acts.filter((a) => a.status === 'pendente');
                     const done = acts.filter((a) => a.status !== 'pendente');
-                    const overdueCount = pending.filter((a) => a.deadline && a.deadline < todayStr).length;
-                    const activityBtnClass = pending.length === 0
-                      ? 'text-muted-foreground'
-                      : overdueCount > 0
-                        ? 'text-destructive border-destructive/40'
-                        : 'text-sky-600 border-sky-500/40';
 
                     return (
-                      <SwipeableLeadRow
+                      <LeadRow
                         key={lead.id}
                         lead={lead}
                         acts={acts}
@@ -331,7 +325,6 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
                         hasOverdueActivity={hasOverdueActivity}
                         chatTarget={chatTarget}
                         chatTitle={chatTitle}
-                        activityBtnClass={activityBtnClass}
                         onOpenLead={() => handleOpenLead(lead.id)}
                         onOpenChat={() => chatTarget && setChatPreview({ phone: chatTarget, name: lead.lead_name })}
                       />
