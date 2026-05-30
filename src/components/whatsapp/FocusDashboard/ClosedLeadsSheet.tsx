@@ -330,6 +330,8 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
                         chatTitle={chatTitle}
                         onOpenLead={() => handleOpenLead(lead.id)}
                         onOpenChat={() => chatTarget && setChatPreview({ phone: chatTarget, name: lead.lead_name })}
+                        isOpen={openLeadId === lead.id}
+                        onToggle={() => setOpenLeadId((cur) => (cur === lead.id ? null : lead.id))}
                       />
                     );
                   })}
