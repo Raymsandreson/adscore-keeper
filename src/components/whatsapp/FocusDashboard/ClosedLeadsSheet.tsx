@@ -23,7 +23,7 @@ const getPanelMaxWidth = () => {
 
 const clampPanelWidth = (width: number) => Math.min(getPanelMaxWidth(), Math.max(PANEL_MIN_WIDTH, width));
 
-const ACTIONS_WIDTH = 184; // largura da trilha com 3 losangos
+const ACTIONS_WIDTH = 150; // trilha com 3 losangos encaixados
 
 interface SwipeableLeadRowProps {
   lead: ClosedLeadItem;
