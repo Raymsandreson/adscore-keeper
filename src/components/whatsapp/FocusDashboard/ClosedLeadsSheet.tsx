@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -11,16 +11,6 @@ import { DashboardChatPreview } from '@/components/whatsapp/DashboardChatPreview
 import type { Lead } from '@/hooks/useLeads';
 import type { ClosedLeadItem, ClosedLeadActivity } from '@/hooks/useFocusDashboardData';
 
-const PANEL_MIN_WIDTH = 360;
-const PANEL_DEFAULT_WIDTH = 560;
-const PANEL_MAX_WIDTH = 920;
-
-const getPanelMaxWidth = () => {
-  if (typeof window === 'undefined') return PANEL_MAX_WIDTH;
-  return Math.max(PANEL_MIN_WIDTH, Math.min(PANEL_MAX_WIDTH, window.innerWidth - 24));
-};
-
-const clampPanelWidth = (width: number) => Math.min(getPanelMaxWidth(), Math.max(PANEL_MIN_WIDTH, width));
 
 interface LeadRowProps {
   lead: ClosedLeadItem;
