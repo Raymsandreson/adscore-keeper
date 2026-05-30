@@ -115,19 +115,19 @@ function LeadRow({
         style={{ gridTemplateRows: open ? '1fr' : '0fr' }}
       >
         <div className="overflow-hidden">
-          <div className="flex items-center gap-1.5 px-2 pb-2 pt-0.5 border-t border-border/40">
+          <div className="flex items-center gap-1 px-2 pb-2 pt-1 border-t border-border/40 w-full">
             <InlineAction
               onClick={onOpenLead}
               label="Abrir"
-              icon={<ExternalLink className="h-3.5 w-3.5" />}
-              className="bg-primary/10 hover:bg-primary/20 text-primary"
+              icon={<ExternalLink className="h-3 w-3 shrink-0" />}
+              className="bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 dark:text-blue-400"
             />
             <InlineAction
               onClick={() => chatTarget && onOpenChat()}
               disabled={!chatTarget}
               label="Chat"
-              icon={<MessageCircle className="h-3.5 w-3.5" />}
-              className="bg-success/15 hover:bg-success/25 text-success"
+              icon={<MessageCircle className="h-3 w-3 shrink-0" />}
+              className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400"
             />
             <Popover open={actsOpen} onOpenChange={setActsOpen}>
               <PopoverTrigger asChild>
@@ -135,10 +135,10 @@ function LeadRow({
                   type="button"
                   onClick={(e) => { e.stopPropagation(); setActsOpen(true); }}
                   title={chatTitle}
-                  className={`flex-1 h-9 flex items-center justify-center gap-1.5 rounded-md text-[11px] font-medium transition-colors ${activityClass}`}
+                  className={`flex-1 min-w-0 h-7 flex items-center justify-center gap-1 rounded-md text-[10px] font-medium transition-colors ${activityClass}`}
                 >
-                  <ListChecks className="h-3.5 w-3.5" />
-                  <span>Atvs{pending.length > 0 ? ` · ${pending.length}` : ''}</span>
+                  <ListChecks className="h-3 w-3 shrink-0" />
+                  <span className="truncate">Atvs{pending.length > 0 ? `·${pending.length}` : ''}</span>
                 </button>
               </PopoverTrigger>
               <PopoverContent align="end" className="w-72 p-2">
