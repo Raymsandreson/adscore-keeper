@@ -205,27 +205,8 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
   const [showLeadEdit, setShowLeadEdit] = useState(false);
   const [chatPreview, setChatPreview] = useState<{ phone: string; name: string | null } | null>(null);
   const [openLeadId, setOpenLeadId] = useState<string | null>(null);
-  const [panelWidth, setPanelWidth] = useState(() => {
-    try {
-      const stored = localStorage.getItem('closed_leads_sheet_width');
-      if (stored) return clampPanelWidth(parseInt(stored, 10));
-    } catch {
-      // localStorage pode estar indisponível em alguns navegadores privados.
-    }
-    return clampPanelWidth(PANEL_DEFAULT_WIDTH);
-  });
-  const dragRef = useRef<{ startX: number; startW: number } | null>(null);
-  const panelWidthRef = useRef(panelWidth);
 
-  useEffect(() => {
-    panelWidthRef.current = panelWidth;
-  }, [panelWidth]);
 
-  useEffect(() => {
-    const onResize = () => setPanelWidth((width) => clampPanelWidth(width));
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, []);
 
   const sorted = [...closedLeads].sort((a, b) => {
     const da = a.became_client_date || '';
