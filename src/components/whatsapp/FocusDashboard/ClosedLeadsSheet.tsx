@@ -33,6 +33,8 @@ interface LeadRowProps {
   chatTitle: string;
   onOpenLead: () => void;
   onOpenChat: () => void;
+  isOpen: boolean;
+  onToggle: () => void;
 }
 
 function InlineAction({
@@ -66,10 +68,10 @@ function InlineAction({
 
 function LeadRow({
   lead, acts, pending, done, todayStr, hasOverdueActivity,
-  chatTarget, chatTitle, onOpenLead, onOpenChat,
+  chatTarget, chatTitle, onOpenLead, onOpenChat, isOpen, onToggle,
 }: LeadRowProps) {
-  const [open, setOpen] = useState(false);
   const [actsOpen, setActsOpen] = useState(false);
+  const open = isOpen;
 
   const overdueCount = pending.filter((a) => a.deadline && a.deadline < todayStr).length;
   const activityClass = pending.length === 0
@@ -86,7 +88,7 @@ function LeadRow({
     >
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={onToggle}
         className="w-full p-2 text-left"
         aria-expanded={open}
       >
@@ -202,6 +204,7 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [showLeadEdit, setShowLeadEdit] = useState(false);
   const [chatPreview, setChatPreview] = useState<{ phone: string; name: string | null } | null>(null);
+  const [openLeadId, setOpenLeadId] = useState<string | null>(null);
   const [panelWidth, setPanelWidth] = useState(() => {
     try {
       const stored = localStorage.getItem('closed_leads_sheet_width');
@@ -327,6 +330,8 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
                         chatTitle={chatTitle}
                         onOpenLead={() => handleOpenLead(lead.id)}
                         onOpenChat={() => chatTarget && setChatPreview({ phone: chatTarget, name: lead.lead_name })}
+                        isOpen={openLeadId === lead.id}
+                        onToggle={() => setOpenLeadId((cur) => (cur === lead.id ? null : lead.id))}
                       />
                     );
                   })}
