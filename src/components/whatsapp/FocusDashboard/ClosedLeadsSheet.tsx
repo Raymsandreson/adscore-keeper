@@ -118,8 +118,8 @@ function SwipeableLeadRow({
     <div className="relative overflow-hidden rounded-lg" style={{ touchAction: 'pan-y' }}>
       <div
         ref={actionsRef}
-        className="absolute inset-y-0 right-1 z-0 flex items-center justify-end pr-2 opacity-0"
-        style={{ width: ROW_ACTIONS_WIDTH, pointerEvents: 'none' }}
+        className="absolute inset-y-0 right-1 z-20 flex items-center justify-end pr-2 opacity-0"
+        style={{ width: ROW_ACTIONS_WIDTH, pointerEvents: 'none', transform: `translate3d(${ROW_ACTIONS_WIDTH}px, 0, 0)` }}
       >
         <ShortcutDiamond
           onClick={onOpenLead}
