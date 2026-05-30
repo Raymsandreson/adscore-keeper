@@ -61,10 +61,53 @@ function InlineAction({
 
 function LeadRow({
   lead, acts, pending, done, todayStr, hasOverdueActivity,
-  chatTarget, chatTitle, onOpenLead, onOpenChat, isOpen, onToggle,
+  chatTitle, onOpenLead, onOpenChat, isOpen, onToggle,
 }: LeadRowProps) {
   const [actsOpen, setActsOpen] = useState(false);
+  const [chatMenuOpen, setChatMenuOpen] = useState(false);
+  const [contacts, setContacts] = useState<MiniContact[] | null>(null);
+  const [loadingContacts, setLoadingContacts] = useState(false);
   const open = isOpen;
+
+  const groupJid = lead.whatsapp_group_jid || null;
+  const leadPhone = lead.lead_phone || null;
+
+  useEffect(() => {
+    if (!chatMenuOpen || contacts !== null) return;
+    let cancelled = false;
+    setLoadingContacts(true);
+    (async () => {
+      try {
+        const { data: linkData } = await supabase
+          .from('contact_leads' as any)
+          .select('contact_id')
+          .eq('lead_id', lead.id);
+        const linkIds = ((linkData || []) as any[]).map((l) => l.contact_id);
+        const { data: legacyData } = await externalSupabase
+          .from('contacts')
+          .select('id')
+          .eq('lead_id', lead.id);
+        const legacyIds = (legacyData || []).map((c: any) => c.id);
+        const allIds = Array.from(new Set([...linkIds, ...legacyIds]));
+        if (allIds.length === 0) {
+          if (!cancelled) setContacts([]);
+          return;
+        }
+        const { data } = await externalSupabase
+          .from('contacts')
+          .select('id, full_name, phone')
+          .in('id', allIds);
+        if (!cancelled) setContacts((data || []) as MiniContact[]);
+      } catch (e) {
+        if (!cancelled) setContacts([]);
+      } finally {
+        if (!cancelled) setLoadingContacts(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [chatMenuOpen, contacts, lead.id]);
+
+  const hasAnyChat = !!groupJid || !!leadPhone || (contacts?.some((c) => c.phone) ?? true);
 
   const overdueCount = pending.filter((a) => a.deadline && a.deadline < todayStr).length;
   const activityClass = pending.length === 0
@@ -72,6 +115,7 @@ function LeadRow({
     : overdueCount > 0
       ? 'bg-destructive/15 hover:bg-destructive/25 text-destructive'
       : 'bg-sky-500/15 hover:bg-sky-500/25 text-sky-600 dark:text-sky-400';
+
 
   return (
     <div
