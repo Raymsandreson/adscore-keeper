@@ -79,10 +79,10 @@ function LeadRow({
       <button
         type="button"
         onClick={onToggle}
-        className="w-full p-2 text-left"
+        className="w-full min-w-0 max-w-full p-2 text-left overflow-hidden"
         aria-expanded={open}
       >
-        <div className="min-w-0 overflow-hidden">
+        <div className="min-w-0 max-w-full overflow-hidden">
           <div className="flex items-center gap-1.5 min-w-0">
             <User className="h-3 w-3 text-muted-foreground shrink-0" />
             <span
@@ -92,9 +92,9 @@ function LeadRow({
               {lead.lead_name || 'Sem nome'}
             </span>
           </div>
-          <div className="text-[11px] text-muted-foreground flex items-center gap-2 mt-0.5 flex-wrap pr-1">
-            {lead.lead_phone && <span>📞 {lead.lead_phone}</span>}
-            {lead.acolhedor && <span>· {lead.acolhedor}</span>}
+          <div className="text-[11px] text-muted-foreground flex items-center gap-2 mt-0.5 flex-wrap pr-1 min-w-0 max-w-full overflow-hidden">
+            {lead.lead_phone && <span className="truncate max-w-full">📞 {lead.lead_phone}</span>}
+            {lead.acolhedor && <span className="truncate max-w-full">· {lead.acolhedor}</span>}
             {lead.became_client_date && (
               <span>· {format(new Date(lead.became_client_date + 'T00:00:00'), 'dd/MM', { locale: ptBR })}</span>
             )}
@@ -217,7 +217,7 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
       <Sheet open={open} onOpenChange={onOpenChange}>
         <SheetContent
           side="right"
-          className="!max-w-none w-[calc(100vw_-_24px)] sm:w-[min(560px,calc(100vw_-_24px))] p-0 flex flex-col overflow-hidden"
+          className="!max-w-none !w-full sm:!w-[560px] sm:!max-w-[calc(100vw_-_24px)] p-0 flex flex-col overflow-hidden"
         >
 
           <SheetHeader className="px-4 py-3 border-b shrink-0">
