@@ -1,15 +1,19 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Trophy, MessageCircle, User, ExternalLink, ListChecks, CheckCircle2 } from 'lucide-react';
+import { Trophy, MessageCircle, User, FileText, ListChecks, CheckCircle2, UsersRound, Phone } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { db } from '@/integrations/supabase';
+import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { DashboardChatPreview } from '@/components/whatsapp/DashboardChatPreview';
 import type { Lead } from '@/hooks/useLeads';
 import type { ClosedLeadItem, ClosedLeadActivity } from '@/hooks/useFocusDashboardData';
+
+interface MiniContact { id: string; full_name: string; phone: string | null; }
 
 
 interface LeadRowProps {
@@ -19,10 +23,9 @@ interface LeadRowProps {
   done: ClosedLeadActivity[];
   todayStr: string;
   hasOverdueActivity: boolean;
-  chatTarget: string | null | undefined;
   chatTitle: string;
   onOpenLead: () => void;
-  onOpenChat: () => void;
+  onOpenChat: (phone: string, name: string | null) => void;
   isOpen: boolean;
   onToggle: () => void;
 }
@@ -58,10 +61,53 @@ function InlineAction({
 
 function LeadRow({
   lead, acts, pending, done, todayStr, hasOverdueActivity,
-  chatTarget, chatTitle, onOpenLead, onOpenChat, isOpen, onToggle,
+  chatTitle, onOpenLead, onOpenChat, isOpen, onToggle,
 }: LeadRowProps) {
   const [actsOpen, setActsOpen] = useState(false);
+  const [chatMenuOpen, setChatMenuOpen] = useState(false);
+  const [contacts, setContacts] = useState<MiniContact[] | null>(null);
+  const [loadingContacts, setLoadingContacts] = useState(false);
   const open = isOpen;
+
+  const groupJid = lead.whatsapp_group_jid || null;
+  const leadPhone = lead.lead_phone || null;
+
+  useEffect(() => {
+    if (!chatMenuOpen || contacts !== null) return;
+    let cancelled = false;
+    setLoadingContacts(true);
+    (async () => {
+      try {
+        const { data: linkData } = await supabase
+          .from('contact_leads' as any)
+          .select('contact_id')
+          .eq('lead_id', lead.id);
+        const linkIds = ((linkData || []) as any[]).map((l) => l.contact_id);
+        const { data: legacyData } = await externalSupabase
+          .from('contacts')
+          .select('id')
+          .eq('lead_id', lead.id);
+        const legacyIds = (legacyData || []).map((c: any) => c.id);
+        const allIds = Array.from(new Set([...linkIds, ...legacyIds]));
+        if (allIds.length === 0) {
+          if (!cancelled) setContacts([]);
+          return;
+        }
+        const { data } = await externalSupabase
+          .from('contacts')
+          .select('id, full_name, phone')
+          .in('id', allIds);
+        if (!cancelled) setContacts((data || []) as MiniContact[]);
+      } catch (e) {
+        if (!cancelled) setContacts([]);
+      } finally {
+        if (!cancelled) setLoadingContacts(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [chatMenuOpen, contacts, lead.id]);
+
+  const hasAnyChat = !!groupJid || !!leadPhone || (contacts?.some((c) => c.phone) ?? true);
 
   const overdueCount = pending.filter((a) => a.deadline && a.deadline < todayStr).length;
   const activityClass = pending.length === 0
@@ -69,6 +115,7 @@ function LeadRow({
     : overdueCount > 0
       ? 'bg-destructive/15 hover:bg-destructive/25 text-destructive'
       : 'bg-sky-500/15 hover:bg-sky-500/25 text-sky-600 dark:text-sky-400';
+
 
   return (
     <div
@@ -114,17 +161,66 @@ function LeadRow({
           <div className="grid grid-cols-3 gap-1 px-2 pb-2 pt-1 border-t border-border/40 w-1/2 max-w-[260px] mr-auto overflow-hidden">
             <InlineAction
               onClick={onOpenLead}
-              label="Abrir"
-              icon={<ExternalLink className="h-3 w-3 shrink-0" />}
+              label="Lead"
+              icon={<FileText className="h-3 w-3 shrink-0" />}
               className="bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 dark:text-blue-400"
             />
-            <InlineAction
-              onClick={() => chatTarget && onOpenChat()}
-              disabled={!chatTarget}
-              label="Chat"
-              icon={<MessageCircle className="h-3 w-3 shrink-0" />}
-              className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400"
-            />
+            <Popover open={chatMenuOpen} onOpenChange={setChatMenuOpen}>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setChatMenuOpen(true); }}
+                  disabled={!hasAnyChat}
+                  title={chatTitle}
+                  className="w-full min-w-0 h-7 flex items-center justify-center gap-1 rounded-md text-[10px] font-medium transition-colors bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <MessageCircle className="h-3 w-3 shrink-0" />
+                  <span className="truncate">Chat</span>
+                </button>
+              </PopoverTrigger>
+              <PopoverContent align="start" className="w-64 p-2" onClick={(e) => e.stopPropagation()}>
+                <div className="text-xs font-medium mb-1">Abrir conversa</div>
+                <div className="space-y-1">
+                  {groupJid && (
+                    <button
+                      type="button"
+                      onClick={() => { setChatMenuOpen(false); onOpenChat(groupJid, lead.lead_name); }}
+                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs hover:bg-muted text-left"
+                    >
+                      <UsersRound className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                      <span className="truncate">Grupo do lead</span>
+                    </button>
+                  )}
+                  {leadPhone && (
+                    <button
+                      type="button"
+                      onClick={() => { setChatMenuOpen(false); onOpenChat(leadPhone, lead.lead_name); }}
+                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs hover:bg-muted text-left"
+                    >
+                      <Phone className="h-3.5 w-3.5 text-sky-600 shrink-0" />
+                      <span className="truncate">{lead.lead_name || 'Lead'} · {leadPhone}</span>
+                    </button>
+                  )}
+                  {loadingContacts && (
+                    <div className="text-[11px] text-muted-foreground px-2 py-1">Carregando contatos…</div>
+                  )}
+                  {contacts?.filter((c) => c.phone && c.phone !== leadPhone).map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => { setChatMenuOpen(false); onOpenChat(c.phone!, c.full_name); }}
+                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs hover:bg-muted text-left"
+                    >
+                      <User className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                      <span className="truncate">{c.full_name} · {c.phone}</span>
+                    </button>
+                  ))}
+                  {!loadingContacts && !groupJid && !leadPhone && (contacts?.length ?? 0) === 0 && (
+                    <div className="text-[11px] text-muted-foreground px-2 py-2 text-center">Nenhum chat disponível.</div>
+                  )}
+                </div>
+              </PopoverContent>
+            </Popover>
             <Popover open={actsOpen} onOpenChange={setActsOpen}>
               <PopoverTrigger asChild>
                 <button
@@ -245,12 +341,11 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
                 <div className="space-y-1.5">
                   {sorted.map((lead) => {
                     const hasOverdueActivity = !!lead.has_overdue_activity;
-                    const chatTarget = lead.whatsapp_group_jid || lead.lead_phone;
                     const chatTitle = lead.whatsapp_group_jid
-                      ? 'Abrir conversa do grupo'
+                      ? 'Abrir conversa do grupo ou contatos'
                       : lead.lead_phone
                         ? 'Abrir conversa do contato'
-                        : 'Sem grupo nem telefone';
+                        : 'Escolher contato';
                     const acts = lead.activities ?? [];
                     const todayStr = format(new Date(), 'yyyy-MM-dd');
                     const pending = acts.filter((a) => a.status === 'pendente');
@@ -265,10 +360,9 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
                         done={done}
                         todayStr={todayStr}
                         hasOverdueActivity={hasOverdueActivity}
-                        chatTarget={chatTarget}
                         chatTitle={chatTitle}
                         onOpenLead={() => handleOpenLead(lead.id)}
-                        onOpenChat={() => chatTarget && setChatPreview({ phone: chatTarget, name: lead.lead_name })}
+                        onOpenChat={(phone, name) => setChatPreview({ phone, name })}
                         isOpen={openLeadId === lead.id}
                         onToggle={() => setOpenLeadId((cur) => (cur === lead.id ? null : lead.id))}
                       />
