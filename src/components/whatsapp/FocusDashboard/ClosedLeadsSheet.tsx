@@ -23,7 +23,7 @@ const getPanelMaxWidth = () => {
 
 const clampPanelWidth = (width: number) => Math.min(getPanelMaxWidth(), Math.max(PANEL_MIN_WIDTH, width));
 
-const ACTIONS_WIDTH = 150; // trilha com 3 losangos encaixados
+const ACTIONS_WIDTH = 142; // trilha visível com 3 losangos encaixados
 
 interface SwipeableLeadRowProps {
   lead: ClosedLeadItem;
@@ -43,19 +43,28 @@ function SwipeableLeadRow({
   lead, acts, pending, done, todayStr, hasOverdueActivity,
   chatTarget, chatTitle, activityBtnClass, onOpenLead, onOpenChat,
 }: SwipeableLeadRowProps) {
-  const [offset, setOffset] = useState(0);
   const offsetRef = useRef(0);
+  const actionsRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ startX: number; startY: number; startOffset: number; moved: boolean; axis: 'x' | 'y' | null } | null>(null);
   const [actsOpen, setActsOpen] = useState(false);
 
-  const setRevealOffset = (next: number) => {
-    offsetRef.current = next;
-    setOffset(next);
+  const setRevealOffset = (next: number, animated = false) => {
+    const clamped = Math.max(0, Math.min(ACTIONS_WIDTH, next));
+    const progress = clamped / ACTIONS_WIDTH;
+    offsetRef.current = clamped;
+
+    const rail = actionsRef.current;
+    if (!rail) return;
+
+    rail.style.transition = animated ? 'width 160ms ease, opacity 160ms ease' : 'none';
+    rail.style.width = `${clamped}px`;
+    rail.style.opacity = progress > 0 ? String(Math.max(0.22, progress)) : '0';
+    rail.style.pointerEvents = clamped > ACTIONS_WIDTH * 0.72 ? 'auto' : 'none';
   };
 
   const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
-    dragRef.current = { startX: e.clientX, startY: e.clientY, startOffset: offset, moved: false, axis: null };
+    dragRef.current = { startX: e.clientX, startY: e.clientY, startOffset: offsetRef.current, moved: false, axis: null };
   };
   const onPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
     const drag = dragRef.current;
@@ -80,7 +89,7 @@ function SwipeableLeadRow({
     dragRef.current = null;
     if (drag?.moved) {
       try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId); } catch { /* ignore */ }
-      setRevealOffset(offsetRef.current > ACTIONS_WIDTH / 2 ? ACTIONS_WIDTH : 0);
+      setRevealOffset(offsetRef.current > ACTIONS_WIDTH / 3 ? ACTIONS_WIDTH : 0, true);
     }
   };
 
