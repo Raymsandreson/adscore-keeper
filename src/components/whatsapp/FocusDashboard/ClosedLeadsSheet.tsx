@@ -68,10 +68,10 @@ function InlineAction({
 
 function LeadRow({
   lead, acts, pending, done, todayStr, hasOverdueActivity,
-  chatTarget, chatTitle, onOpenLead, onOpenChat,
+  chatTarget, chatTitle, onOpenLead, onOpenChat, isOpen, onToggle,
 }: LeadRowProps) {
-  const [open, setOpen] = useState(false);
   const [actsOpen, setActsOpen] = useState(false);
+  const open = isOpen;
 
   const overdueCount = pending.filter((a) => a.deadline && a.deadline < todayStr).length;
   const activityClass = pending.length === 0
