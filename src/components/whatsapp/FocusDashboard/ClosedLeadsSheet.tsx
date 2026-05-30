@@ -88,7 +88,7 @@ function LeadRow({
     >
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={onToggle}
         className="w-full p-2 text-left"
         aria-expanded={open}
       >
