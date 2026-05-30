@@ -246,45 +246,9 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
       <Sheet open={open} onOpenChange={onOpenChange}>
         <SheetContent
           side="right"
-          className="!max-w-none p-0 flex flex-col overflow-hidden"
-          style={{ width: panelWidth }}
+          className="!max-w-none w-full sm:w-[560px] p-0 flex flex-col overflow-hidden"
         >
-          <div
-            role="separator"
-            aria-orientation="vertical"
-            aria-label="Redimensionar aba de fechados"
-            title="Arraste para aumentar ou diminuir • duplo clique reseta"
-            onPointerDown={(e) => {
-              dragRef.current = { startX: e.clientX, startW: panelWidth };
-              (e.target as HTMLElement).setPointerCapture(e.pointerId);
-              document.body.style.cursor = 'col-resize';
-              document.body.style.userSelect = 'none';
-            }}
-            onPointerMove={(e) => {
-              const drag = dragRef.current;
-              if (!drag) return;
-              setPanelWidth(clampPanelWidth(drag.startW + (drag.startX - e.clientX)));
-            }}
-            onPointerUp={(e) => {
-              dragRef.current = null;
-              try { (e.target as HTMLElement).releasePointerCapture(e.pointerId); } catch {
-                // O navegador pode liberar o ponteiro antes do evento final.
-              }
-              document.body.style.cursor = '';
-              document.body.style.userSelect = '';
-              try { localStorage.setItem('closed_leads_sheet_width', String(Math.round(panelWidthRef.current))); } catch {
-                // Persistência é opcional; a largura atual continua funcionando.
-              }
-            }}
-            onDoubleClick={() => {
-              const next = clampPanelWidth(PANEL_DEFAULT_WIDTH);
-              setPanelWidth(next);
-              try { localStorage.setItem('closed_leads_sheet_width', String(next)); } catch {
-                // Persistência é opcional; a largura atual continua funcionando.
-              }
-            }}
-            className="absolute left-0 top-0 bottom-0 z-30 w-2 cursor-col-resize hover:bg-primary/40 active:bg-primary/60 transition-colors"
-          />
+
           <SheetHeader className="px-4 py-3 border-b shrink-0">
             <SheetTitle className="flex items-center gap-2 text-base">
               <Trophy className="h-4 w-4 text-emerald-600" />
