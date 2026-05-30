@@ -375,7 +375,7 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
                   Nenhum lead fechado neste período.
                 </div>
               ) : (
-                <SwipeableList type={SwipeListType.IOS} fullSwipe={false}>
+                <div className="space-y-1.5">
                   {sorted.map((lead) => {
                     const hasOverdueActivity = !!lead.has_overdue_activity;
                     const chatTarget = lead.whatsapp_group_jid || lead.lead_phone;
@@ -412,7 +412,7 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
                       />
                     );
                   })}
-                </SwipeableList>
+                </div>
               )}
             </div>
           </ScrollArea>
