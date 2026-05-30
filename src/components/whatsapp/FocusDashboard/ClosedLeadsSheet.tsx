@@ -161,17 +161,66 @@ function LeadRow({
           <div className="grid grid-cols-3 gap-1 px-2 pb-2 pt-1 border-t border-border/40 w-1/2 max-w-[260px] mr-auto overflow-hidden">
             <InlineAction
               onClick={onOpenLead}
-              label="Abrir"
-              icon={<ExternalLink className="h-3 w-3 shrink-0" />}
+              label="Lead"
+              icon={<FileText className="h-3 w-3 shrink-0" />}
               className="bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 dark:text-blue-400"
             />
-            <InlineAction
-              onClick={() => chatTarget && onOpenChat()}
-              disabled={!chatTarget}
-              label="Chat"
-              icon={<MessageCircle className="h-3 w-3 shrink-0" />}
-              className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400"
-            />
+            <Popover open={chatMenuOpen} onOpenChange={setChatMenuOpen}>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setChatMenuOpen(true); }}
+                  disabled={!hasAnyChat}
+                  title={chatTitle}
+                  className="w-full min-w-0 h-7 flex items-center justify-center gap-1 rounded-md text-[10px] font-medium transition-colors bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <MessageCircle className="h-3 w-3 shrink-0" />
+                  <span className="truncate">Chat</span>
+                </button>
+              </PopoverTrigger>
+              <PopoverContent align="start" className="w-64 p-2" onClick={(e) => e.stopPropagation()}>
+                <div className="text-xs font-medium mb-1">Abrir conversa</div>
+                <div className="space-y-1">
+                  {groupJid && (
+                    <button
+                      type="button"
+                      onClick={() => { setChatMenuOpen(false); onOpenChat(groupJid, lead.lead_name); }}
+                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs hover:bg-muted text-left"
+                    >
+                      <UsersRound className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                      <span className="truncate">Grupo do lead</span>
+                    </button>
+                  )}
+                  {leadPhone && (
+                    <button
+                      type="button"
+                      onClick={() => { setChatMenuOpen(false); onOpenChat(leadPhone, lead.lead_name); }}
+                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs hover:bg-muted text-left"
+                    >
+                      <Phone className="h-3.5 w-3.5 text-sky-600 shrink-0" />
+                      <span className="truncate">{lead.lead_name || 'Lead'} · {leadPhone}</span>
+                    </button>
+                  )}
+                  {loadingContacts && (
+                    <div className="text-[11px] text-muted-foreground px-2 py-1">Carregando contatos…</div>
+                  )}
+                  {contacts?.filter((c) => c.phone && c.phone !== leadPhone).map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => { setChatMenuOpen(false); onOpenChat(c.phone!, c.full_name); }}
+                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs hover:bg-muted text-left"
+                    >
+                      <User className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                      <span className="truncate">{c.full_name} · {c.phone}</span>
+                    </button>
+                  ))}
+                  {!loadingContacts && !groupJid && !leadPhone && (contacts?.length ?? 0) === 0 && (
+                    <div className="text-[11px] text-muted-foreground px-2 py-2 text-center">Nenhum chat disponível.</div>
+                  )}
+                </div>
+              </PopoverContent>
+            </Popover>
             <Popover open={actsOpen} onOpenChange={setActsOpen}>
               <PopoverTrigger asChild>
                 <button
