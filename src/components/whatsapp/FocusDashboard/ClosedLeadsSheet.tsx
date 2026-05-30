@@ -73,7 +73,11 @@ function LeadRow({
   return (
     <div
       className={`min-w-0 max-w-full rounded-lg border overflow-hidden transition-colors ${
-        hasOverdueActivity ? 'border-destructive/40 bg-destructive/10' : 'bg-card border-border'
+        hasOverdueActivity
+          ? 'border-destructive/40 bg-destructive/10'
+          : pending.length === 0
+            ? 'border-yellow-400/60 bg-yellow-300/20 dark:bg-yellow-500/10'
+            : 'bg-card border-border'
       } ${open ? 'ring-1 ring-primary/30' : ''}`}
     >
       <button
