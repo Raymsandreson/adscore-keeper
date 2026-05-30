@@ -92,14 +92,13 @@ function SwipeableLeadRow({
     offsetRef.current = next;
     const progress = next / ROW_ACTIONS_WIDTH;
 
-    if (contentRef.current) {
-      contentRef.current.style.transition = animated ? 'transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1)' : 'none';
-      contentRef.current.style.transform = `translate3d(-${next}px, 0, 0)`;
-    }
-
     if (actionsRef.current) {
-      actionsRef.current.style.opacity = String(Math.min(1, progress * 1.25));
-      actionsRef.current.style.transform = `translate3d(${Math.round((1 - progress) * 18)}px, 0, 0)`;
+      actionsRef.current.style.transition = animated
+        ? 'transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 180ms ease-out'
+        : 'none';
+      actionsRef.current.style.opacity = String(Math.min(1, progress * 1.4));
+      // Botões entram da direita: começam fora (+ROW_ACTIONS_WIDTH) e vão pra 0
+      actionsRef.current.style.transform = `translate3d(${ROW_ACTIONS_WIDTH - next}px, 0, 0)`;
       actionsRef.current.style.pointerEvents = next > ROW_OPEN_THRESHOLD ? 'auto' : 'none';
     }
   };
@@ -119,8 +118,8 @@ function SwipeableLeadRow({
     <div className="relative overflow-hidden rounded-lg" style={{ touchAction: 'pan-y' }}>
       <div
         ref={actionsRef}
-        className="absolute inset-y-0 right-1 z-0 flex items-center justify-end pr-2 opacity-0"
-        style={{ width: ROW_ACTIONS_WIDTH, pointerEvents: 'none' }}
+        className="absolute inset-y-0 right-1 z-20 flex items-center justify-end pr-2 opacity-0"
+        style={{ width: ROW_ACTIONS_WIDTH, pointerEvents: 'none', transform: `translate3d(${ROW_ACTIONS_WIDTH}px, 0, 0)` }}
       >
         <ShortcutDiamond
           onClick={onOpenLead}
