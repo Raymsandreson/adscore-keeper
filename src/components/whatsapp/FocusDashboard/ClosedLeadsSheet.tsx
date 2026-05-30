@@ -162,7 +162,7 @@ function SwipeableLeadRow({
                         className={`text-[11px] px-2 py-1 rounded border ${
                           isOverdue
                             ? 'border-destructive/40 bg-destructive/10 text-destructive'
-                            : 'border-info/40 bg-info/10 text-info'
+                            : 'border-primary/40 bg-primary/10 text-primary'
                         }`}
                       >
                         <div className="font-medium truncate" title={a.title || ''}>{a.title || 'Sem título'}</div>
