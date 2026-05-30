@@ -73,7 +73,11 @@ function LeadRow({
   return (
     <div
       className={`min-w-0 max-w-full rounded-lg border overflow-hidden transition-colors ${
-        hasOverdueActivity ? 'border-destructive/40 bg-destructive/10' : 'bg-card border-border'
+        hasOverdueActivity
+          ? 'border-destructive/40 bg-destructive/10'
+          : pending.length === 0
+            ? 'border-yellow-400/60 bg-yellow-300/20 dark:bg-yellow-500/10'
+            : 'bg-card border-border'
       } ${open ? 'ring-1 ring-primary/30' : ''}`}
     >
       <button
@@ -107,7 +111,7 @@ function LeadRow({
         style={{ gridTemplateRows: open ? '1fr' : '0fr' }}
       >
         <div className="overflow-hidden">
-          <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)] gap-1 px-2 pb-2 pt-1 border-t border-border/40 w-full max-w-full overflow-hidden">
+          <div className="grid grid-cols-3 gap-1 px-2 pb-2 pt-1 border-t border-border/40 w-1/2 max-w-[260px] ml-auto overflow-hidden">
             <InlineAction
               onClick={onOpenLead}
               label="Abrir"
