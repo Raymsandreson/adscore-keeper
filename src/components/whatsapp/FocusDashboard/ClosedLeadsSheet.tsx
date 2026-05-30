@@ -48,10 +48,10 @@ function InlineAction({
         event.stopPropagation();
         if (!disabled) onClick();
       }}
-      className={`flex-1 min-w-0 h-7 flex items-center justify-center gap-1 rounded-md text-[10px] font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${className}`}
+      className={`w-full min-w-0 h-7 flex items-center justify-center gap-1 rounded-md text-[10px] font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${className}`}
     >
       {icon}
-      <span>{label}</span>
+      <span className="truncate min-w-0">{label}</span>
     </button>
   );
 }
@@ -72,17 +72,17 @@ function LeadRow({
 
   return (
     <div
-      className={`rounded-lg border overflow-hidden transition-colors ${
+      className={`min-w-0 max-w-full rounded-lg border overflow-hidden transition-colors ${
         hasOverdueActivity ? 'border-destructive/40 bg-destructive/10' : 'bg-card border-border'
       } ${open ? 'ring-1 ring-primary/30' : ''}`}
     >
       <button
         type="button"
         onClick={onToggle}
-        className="w-full p-2 text-left"
+        className="w-full min-w-0 max-w-full p-2 text-left overflow-hidden"
         aria-expanded={open}
       >
-        <div className="min-w-0 overflow-hidden">
+        <div className="min-w-0 max-w-full overflow-hidden">
           <div className="flex items-center gap-1.5 min-w-0">
             <User className="h-3 w-3 text-muted-foreground shrink-0" />
             <span
@@ -92,9 +92,9 @@ function LeadRow({
               {lead.lead_name || 'Sem nome'}
             </span>
           </div>
-          <div className="text-[11px] text-muted-foreground flex items-center gap-2 mt-0.5 flex-wrap pr-1">
-            {lead.lead_phone && <span>📞 {lead.lead_phone}</span>}
-            {lead.acolhedor && <span>· {lead.acolhedor}</span>}
+          <div className="text-[11px] text-muted-foreground flex items-center gap-2 mt-0.5 flex-wrap pr-1 min-w-0 max-w-full overflow-hidden">
+            {lead.lead_phone && <span className="truncate max-w-full">📞 {lead.lead_phone}</span>}
+            {lead.acolhedor && <span className="truncate max-w-full">· {lead.acolhedor}</span>}
             {lead.became_client_date && (
               <span>· {format(new Date(lead.became_client_date + 'T00:00:00'), 'dd/MM', { locale: ptBR })}</span>
             )}
@@ -107,7 +107,7 @@ function LeadRow({
         style={{ gridTemplateRows: open ? '1fr' : '0fr' }}
       >
         <div className="overflow-hidden">
-          <div className="flex items-center gap-1 px-2 pb-2 pt-1 border-t border-border/40 w-full">
+          <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)] gap-1 px-2 pb-2 pt-1 border-t border-border/40 w-full max-w-full overflow-hidden">
             <InlineAction
               onClick={onOpenLead}
               label="Abrir"
@@ -127,7 +127,7 @@ function LeadRow({
                   type="button"
                   onClick={(e) => { e.stopPropagation(); setActsOpen(true); }}
                   title={chatTitle}
-                  className={`flex-1 min-w-0 h-7 flex items-center justify-center gap-1 rounded-md text-[10px] font-medium transition-colors ${activityClass}`}
+                  className={`w-full min-w-0 h-7 flex items-center justify-center gap-1 rounded-md text-[10px] font-medium transition-colors ${activityClass}`}
                 >
                   <ListChecks className="h-3 w-3 shrink-0" />
                   <span className="truncate">Atvs{pending.length > 0 ? `·${pending.length}` : ''}</span>
@@ -217,7 +217,7 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
       <Sheet open={open} onOpenChange={onOpenChange}>
         <SheetContent
           side="right"
-          className="!max-w-none w-full sm:w-[min(560px,100vw-24px)] p-0 flex flex-col overflow-hidden"
+          className="!max-w-none !w-full sm:!w-[560px] sm:!max-w-[calc(100vw_-_24px)] p-0 flex flex-col overflow-hidden"
         >
 
           <SheetHeader className="px-4 py-3 border-b shrink-0">
@@ -231,8 +231,8 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
             </SheetDescription>
           </SheetHeader>
 
-          <ScrollArea className="flex-1">
-            <div className="p-2">
+          <ScrollArea className="flex-1 min-w-0 overflow-x-hidden">
+            <div className="p-2 min-w-0 max-w-full overflow-x-hidden">
               {sorted.length === 0 ? (
                 <div className="text-center text-sm text-muted-foreground py-8">
                   Nenhum lead fechado neste período.
