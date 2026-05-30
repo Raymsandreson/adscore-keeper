@@ -92,11 +92,11 @@ function SwipeableLeadRow({
   return (
     <div className="relative rounded-lg overflow-hidden">
       {/* Trilha colorida revelada por baixo */}
-      <div className="absolute inset-y-0 right-0 flex items-center justify-end gap-2 pr-4" style={{ width: ACTIONS_WIDTH }}>
+      <div className="absolute inset-y-0 right-0 flex items-center justify-end pr-3" style={{ width: ACTIONS_WIDTH }}>
         <button
           type="button"
           onClick={() => closeAndRun(onOpenLead)}
-          className="h-11 w-11 rotate-45 flex items-center justify-center bg-primary text-primary-foreground shadow-md shadow-primary/25 ring-1 ring-primary-foreground/20 transition-transform active:scale-95"
+          className="h-10 w-10 rotate-45 flex items-center justify-center bg-primary/60 text-primary-foreground ring-1 ring-primary-foreground/20 backdrop-blur-sm transition-transform active:scale-95"
           title="Abrir lead"
           aria-label="Abrir lead"
         >
@@ -106,7 +106,7 @@ function SwipeableLeadRow({
           type="button"
           disabled={!chatTarget}
           onClick={() => closeAndRun(onOpenChat)}
-          className="h-11 w-11 rotate-45 flex items-center justify-center bg-success text-success-foreground shadow-md shadow-success/25 ring-1 ring-success-foreground/20 transition-transform active:scale-95 disabled:opacity-40"
+          className="-ml-3 h-10 w-10 rotate-45 flex items-center justify-center bg-success/60 text-success-foreground ring-1 ring-success-foreground/20 backdrop-blur-sm transition-transform active:scale-95 disabled:opacity-40"
           title={chatTitle}
           aria-label={chatTitle}
         >
@@ -116,10 +116,10 @@ function SwipeableLeadRow({
           <PopoverTrigger asChild>
             <button
               type="button"
-              className={`h-11 w-11 rotate-45 flex items-center justify-center shadow-md ring-1 transition-transform active:scale-95 ${
-                pending.length === 0 ? 'bg-muted text-muted-foreground ring-border shadow-sm'
-                  : activityBtnClass.includes('destructive') ? 'bg-destructive text-destructive-foreground ring-destructive-foreground/20 shadow-destructive/25'
-                  : 'bg-warning text-warning-foreground ring-warning-foreground/20 shadow-warning/25'
+              className={`-ml-3 h-10 w-10 rotate-45 flex items-center justify-center ring-1 backdrop-blur-sm transition-transform active:scale-95 ${
+                pending.length === 0 ? 'bg-muted/60 text-muted-foreground ring-border'
+                  : activityBtnClass.includes('destructive') ? 'bg-destructive/60 text-destructive-foreground ring-destructive-foreground/20'
+                  : 'bg-warning/60 text-warning-foreground ring-warning-foreground/20'
               }`}
               title={`${pending.length} pendente(s) · ${done.length} concluída(s)`}
               aria-label={`${pending.length} atividade(s) pendente(s)`}
