@@ -1,15 +1,19 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Trophy, MessageCircle, User, ExternalLink, ListChecks, CheckCircle2 } from 'lucide-react';
+import { Trophy, MessageCircle, User, FileText, ListChecks, CheckCircle2, UsersRound, Phone } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { db } from '@/integrations/supabase';
+import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { DashboardChatPreview } from '@/components/whatsapp/DashboardChatPreview';
 import type { Lead } from '@/hooks/useLeads';
 import type { ClosedLeadItem, ClosedLeadActivity } from '@/hooks/useFocusDashboardData';
+
+interface MiniContact { id: string; full_name: string; phone: string | null; }
 
 
 interface LeadRowProps {
