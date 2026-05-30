@@ -56,7 +56,7 @@ function InlineAction({
         event.stopPropagation();
         if (!disabled) onClick();
       }}
-      className={`flex-1 h-9 flex items-center justify-center gap-1.5 rounded-md text-[11px] font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${className}`}
+      className={`flex-1 min-w-0 h-7 flex items-center justify-center gap-1 rounded-md text-[10px] font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${className}`}
     >
       {icon}
       <span>{label}</span>
