@@ -1,12 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
-import {
-  SwipeableList,
-  SwipeableListItem,
-  TrailingActions,
-  SwipeAction,
-  Type as SwipeListType,
-} from 'react-swipeable-list';
-import 'react-swipeable-list/dist/styles.css';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -22,6 +14,9 @@ import type { ClosedLeadItem, ClosedLeadActivity } from '@/hooks/useFocusDashboa
 const PANEL_MIN_WIDTH = 360;
 const PANEL_DEFAULT_WIDTH = 560;
 const PANEL_MAX_WIDTH = 920;
+const ROW_ACTIONS_WIDTH = 164;
+const ROW_OPEN_THRESHOLD = 62;
+const ROW_VERTICAL_CANCEL_THRESHOLD = 10;
 
 const getPanelMaxWidth = () => {
   if (typeof window === 'undefined') return PANEL_MAX_WIDTH;
@@ -44,7 +39,7 @@ interface SwipeableLeadRowProps {
   onOpenChat: () => void;
 }
 
-function DiamondAction({
+function ShortcutDiamond({
   onClick,
   className,
   title,
@@ -54,22 +49,24 @@ function DiamondAction({
   onClick: () => void;
   className: string;
   title: string;
-  children: React.ReactNode;
+  children: ReactNode;
   disabled?: boolean;
 }) {
   return (
-    <div className="h-full flex items-center justify-center px-1">
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={onClick}
-        title={title}
-        aria-label={title}
-        className={`h-10 w-10 rotate-45 flex items-center justify-center ring-1 backdrop-blur-sm shadow-sm transition-transform active:scale-95 disabled:opacity-40 ${className}`}
-      >
-        <span className="-rotate-45 flex items-center justify-center">{children}</span>
-      </button>
-    </div>
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={(event) => {
+        event.stopPropagation();
+        if (!disabled) onClick();
+      }}
+      title={title}
+      aria-label={title}
+      className={`relative -ml-3 first:ml-0 h-12 w-12 shrink-0 flex items-center justify-center border border-background/35 backdrop-blur-md shadow-[0_0_18px_hsl(var(--foreground)/0.16)] transition-transform active:scale-95 disabled:opacity-35 ${className}`}
+      style={{ clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)' }}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -78,44 +75,77 @@ function SwipeableLeadRow({
   chatTarget, chatTitle, activityBtnClass, onOpenLead, onOpenChat,
 }: SwipeableLeadRowProps) {
   const [actsOpen, setActsOpen] = useState(false);
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const actionsRef = useRef<HTMLDivElement | null>(null);
+  const offsetRef = useRef(0);
+  const dragRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    startOffset: number;
+    dragging: boolean;
+    cancelled: boolean;
+  } | null>(null);
 
-  const trailingActions = () => (
-    <TrailingActions>
-      <SwipeAction onClick={onOpenLead}>
-        <DiamondAction
+  const applyOffset = (value: number, animated: boolean) => {
+    const next = Math.max(0, Math.min(ROW_ACTIONS_WIDTH, value));
+    offsetRef.current = next;
+    const progress = next / ROW_ACTIONS_WIDTH;
+
+    if (contentRef.current) {
+      contentRef.current.style.transition = animated ? 'transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1)' : 'none';
+      contentRef.current.style.transform = `translate3d(-${next}px, 0, 0)`;
+    }
+
+    if (actionsRef.current) {
+      actionsRef.current.style.opacity = String(Math.min(1, progress * 1.25));
+      actionsRef.current.style.transform = `translate3d(${Math.round((1 - progress) * 18)}px, 0, 0)`;
+      actionsRef.current.style.pointerEvents = next > ROW_OPEN_THRESHOLD ? 'auto' : 'none';
+    }
+  };
+
+  const settleOffset = (forceClose = false) => {
+    const shouldOpen = !forceClose && offsetRef.current >= ROW_OPEN_THRESHOLD;
+    applyOffset(shouldOpen ? ROW_ACTIONS_WIDTH : 0, true);
+  };
+
+  const activityDiamondClass = pending.length === 0
+    ? 'bg-muted/70 text-muted-foreground'
+    : activityBtnClass.includes('destructive')
+      ? 'bg-destructive/70 text-destructive-foreground'
+      : 'bg-warning/70 text-warning-foreground';
+
+  return (
+    <div className="relative overflow-hidden rounded-lg" style={{ touchAction: 'pan-y' }}>
+      <div
+        ref={actionsRef}
+        className="absolute inset-y-0 right-1 z-0 flex items-center justify-end pr-2 opacity-0"
+        style={{ width: ROW_ACTIONS_WIDTH, pointerEvents: 'none' }}
+      >
+        <ShortcutDiamond
           onClick={onOpenLead}
           title="Abrir lead"
-          className="bg-primary/60 text-primary-foreground ring-primary-foreground/20"
+          className="bg-primary/70 text-primary-foreground"
         >
           <ExternalLink className="h-4 w-4" />
-        </DiamondAction>
-      </SwipeAction>
-      <SwipeAction onClick={() => chatTarget && onOpenChat()}>
-        <DiamondAction
+        </ShortcutDiamond>
+        <ShortcutDiamond
           onClick={() => chatTarget && onOpenChat()}
           disabled={!chatTarget}
           title={chatTitle}
-          className="-ml-3 bg-success/60 text-success-foreground ring-success-foreground/20"
+          className="bg-success/70 text-success-foreground"
         >
           <MessageCircle className="h-4 w-4" />
-        </DiamondAction>
-      </SwipeAction>
-      <SwipeAction onClick={() => setActsOpen(true)}>
+        </ShortcutDiamond>
         <Popover open={actsOpen} onOpenChange={setActsOpen}>
           <PopoverTrigger asChild>
-            <div>
-              <DiamondAction
-                onClick={() => setActsOpen(true)}
-                title={`${pending.length} pendente(s) · ${done.length} concluída(s)`}
-                className={`-ml-3 ${
-                  pending.length === 0 ? 'bg-muted/60 text-muted-foreground ring-border'
-                    : activityBtnClass.includes('destructive') ? 'bg-destructive/60 text-destructive-foreground ring-destructive-foreground/20'
-                    : 'bg-warning/60 text-warning-foreground ring-warning-foreground/20'
-                }`}
-              >
-                <ListChecks className="h-4 w-4" />
-              </DiamondAction>
-            </div>
+            <ShortcutDiamond
+              onClick={() => setActsOpen(true)}
+              title={`${pending.length} pendente(s) · ${done.length} concluída(s)`}
+              className={activityDiamondClass}
+            >
+              <ListChecks className="h-4 w-4" />
+            </ShortcutDiamond>
           </PopoverTrigger>
           <PopoverContent align="end" className="w-72 p-2">
             <div className="text-xs font-medium mb-1">Atividades</div>
@@ -132,7 +162,7 @@ function SwipeableLeadRow({
                         className={`text-[11px] px-2 py-1 rounded border ${
                           isOverdue
                             ? 'border-destructive/40 bg-destructive/10 text-destructive'
-                            : 'border-sky-500/40 bg-sky-500/10 text-sky-700 dark:text-sky-300'
+                            : 'border-primary/40 bg-primary/10 text-primary'
                         }`}
                       >
                         <div className="font-medium truncate" title={a.title || ''}>{a.title || 'Sem título'}</div>
@@ -159,13 +189,54 @@ function SwipeableLeadRow({
             )}
           </PopoverContent>
         </Popover>
-      </SwipeAction>
-    </TrailingActions>
-  );
-
-  return (
-    <SwipeableListItem trailingActions={trailingActions()} maxSwipe={0.5}>
+      </div>
       <div
+        ref={contentRef}
+        onPointerDown={(event) => {
+          if (event.button !== 0) return;
+          dragRef.current = {
+            pointerId: event.pointerId,
+            startX: event.clientX,
+            startY: event.clientY,
+            startOffset: offsetRef.current,
+            dragging: false,
+            cancelled: false,
+          };
+          event.currentTarget.setPointerCapture(event.pointerId);
+        }}
+        onPointerMove={(event) => {
+          const drag = dragRef.current;
+          if (!drag || drag.pointerId !== event.pointerId || drag.cancelled) return;
+
+          const dx = drag.startX - event.clientX;
+          const dy = event.clientY - drag.startY;
+          if (!drag.dragging && Math.abs(dy) > ROW_VERTICAL_CANCEL_THRESHOLD && Math.abs(dy) > Math.abs(dx)) {
+            drag.cancelled = true;
+            return;
+          }
+
+          if (Math.abs(dx) < 4 && !drag.dragging) return;
+          drag.dragging = true;
+          event.preventDefault();
+          applyOffset(drag.startOffset + dx, false);
+        }}
+        onPointerUp={(event) => {
+          const drag = dragRef.current;
+          if (!drag || drag.pointerId !== event.pointerId) return;
+          dragRef.current = null;
+          try { event.currentTarget.releasePointerCapture(event.pointerId); } catch {
+            // O navegador pode liberar o ponteiro antes do evento final.
+          }
+          if (!drag.dragging && offsetRef.current > 0) {
+            settleOffset(true);
+            return;
+          }
+          settleOffset(drag.cancelled);
+        }}
+        onPointerCancel={() => {
+          dragRef.current = null;
+          settleOffset(true);
+        }}
         className={`w-full p-2 border rounded-lg ${
           hasOverdueActivity ? 'border-destructive/40 bg-destructive/10' : 'bg-card'
         }`}
@@ -190,7 +261,7 @@ function SwipeableLeadRow({
           </div>
         </div>
       </div>
-    </SwipeableListItem>
+    </div>
   );
 }
 
@@ -304,7 +375,7 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
                   Nenhum lead fechado neste período.
                 </div>
               ) : (
-                <SwipeableList type={SwipeListType.IOS} fullSwipe={false}>
+                <div className="space-y-1.5">
                   {sorted.map((lead) => {
                     const hasOverdueActivity = !!lead.has_overdue_activity;
                     const chatTarget = lead.whatsapp_group_jid || lead.lead_phone;
@@ -341,7 +412,7 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
                       />
                     );
                   })}
-                </SwipeableList>
+                </div>
               )}
             </div>
           </ScrollArea>
