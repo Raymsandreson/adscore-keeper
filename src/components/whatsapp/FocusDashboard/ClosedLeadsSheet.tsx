@@ -33,6 +33,8 @@ interface LeadRowProps {
   chatTitle: string;
   onOpenLead: () => void;
   onOpenChat: () => void;
+  isOpen: boolean;
+  onToggle: () => void;
 }
 
 function InlineAction({
