@@ -182,7 +182,6 @@ export const handler: RequestHandler = async (req, res) => {
     if (prefixToken) parts.push(prefixToken);
 
     const leadFields: string[] = settings.lead_fields || ['lead_name'];
-    const seqStr = String(nextSeq);
 
 
     // Pré-carrega valores de campos personalizados se houver tokens cf:<id>
