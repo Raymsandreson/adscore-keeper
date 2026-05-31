@@ -163,6 +163,25 @@ export function ContactsListPage() {
     fetchGroups();
   }, []);
 
+  // Auto-sync silencioso ao abrir a aba "Grupos" (1x por sessão do navegador).
+  // Garante que grupos criados após a última sync diária apareçam na lista
+  // sem o usuário precisar lembrar de clicar no refresh manual.
+  useEffect(() => {
+    if (activeTab !== 'groups') return;
+    const FLAG = 'wa_groups_auto_sync_done';
+    if (sessionStorage.getItem(FLAG)) return;
+    sessionStorage.setItem(FLAG, '1');
+    (async () => {
+      try {
+        const { error } = await supabase.functions.invoke('sync-all-whatsapp-groups', { body: {} });
+        if (error) { console.warn('auto sync-all-whatsapp-groups error:', error); return; }
+        fetchGroups();
+      } catch (e) {
+        console.warn('auto sync-all-whatsapp-groups failed:', e);
+      }
+    })();
+  }, [activeTab]);
+
   const fetchGroups = async () => {
     setGroupsLoading(true);
     try {
