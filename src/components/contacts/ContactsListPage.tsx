@@ -517,10 +517,11 @@ export function ContactsListPage() {
 
     const scheduleGroupsRefresh = () => {
       if (cancelled) return;
+      if (syncingRef.current) return; // silencia durante sync em massa
       if (refreshTimer) clearTimeout(refreshTimer);
       refreshTimer = setTimeout(() => {
         fetchGroups();
-      }, 800);
+      }, 2500);
     };
 
     ensureExternalSession()
