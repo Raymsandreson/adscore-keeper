@@ -48,11 +48,13 @@ export interface ClosedLeadItem {
   lead_name: string | null;
   lead_phone: string | null;
   became_client_date: string | null;
+  closed_at: string | null;
   acolhedor: string | null;
   has_overdue_activity?: boolean;
   whatsapp_group_jid?: string | null;
   activities?: ClosedLeadActivity[];
 }
+
 
 export interface OverdueActivityItem {
   id: string;
