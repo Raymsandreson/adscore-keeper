@@ -739,27 +739,14 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
 
             <div className="space-y-1">
               <Label className="text-[11px] text-muted-foreground">Prefixo do caso fechado</Label>
-              <div className="flex items-center gap-2 p-2 rounded-md border bg-background">
-                {productPrefix ? (
-                  <>
-                    <Badge variant="secondary" className="font-mono text-[11px]">{productPrefix}-N</Badge>
-                    <span className="text-[10px] text-muted-foreground">
-                      vem do produto <strong>{linkedProduct?.name}</strong>
-                    </span>
-                  </>
-                ) : linkedProduct ? (
-                  <span className="text-[10px] text-amber-600">
-                    O produto <strong>{linkedProduct.name}</strong> não tem prefixo definido. Configure em <em>Custos &amp; Organização → Produtos</em>.
-                  </span>
-                ) : (
-                  <span className="text-[10px] text-amber-600">
-                    Este funil não tem produto vinculado. Vincule um produto para gerar o nº do caso automaticamente.
-                  </span>
-                )}
-              </div>
+              <Input
+                value={settings.closed_group_name_prefix}
+                onChange={(e) => setSettings(prev => ({ ...prev, closed_group_name_prefix: e.target.value }))}
+                placeholder="Ex: PREV"
+                className="font-mono text-sm"
+              />
               <p className="text-[10px] text-muted-foreground">
-                O prefixo e o <strong>Nº do Caso</strong> são adicionados <strong>automaticamente</strong> quando o lead é fechado,
-                usando o contador do produto. Antes disso, o grupo usa só o template abaixo.
+                Quando o lead fecha, o sistema usa este prefixo manual + o número do caso. Ex: <strong>{manualClosedPrefix || 'PREV'} 1311</strong>.
               </p>
             </div>
 
@@ -841,7 +828,7 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
                 <span className="text-[11px] font-medium truncate">{getPreviewName(true) || <em className="text-muted-foreground">(vazio)</em>}</span>
               </div>
               <p className="text-[10px] text-muted-foreground/70">
-                Quando o lead fecha, o sistema acrescenta <code className="px-1 rounded bg-muted">{productPrefix ? `${productPrefix}-<nº>` : 'CASO-<nº>'}</code> na frente automaticamente (vem do produto).
+                Quando o lead fecha, o sistema acrescenta <code className="px-1 rounded bg-muted">{manualClosedPrefix || 'PREV'} &lt;nº&gt;</code> na frente automaticamente.
               </p>
 
             </div>
