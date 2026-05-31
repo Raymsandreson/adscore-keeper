@@ -272,8 +272,6 @@ export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpen
 
           <CompactRankingCard />
 
-          <ClosedPodiumCard closedLeads={data.closedLeads} onClick={() => setClosedSheetOpen(true)} />
-
           <div className="flex-1" />
           <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0 self-center" onClick={data.refetch} disabled={data.loading}>
             <RefreshCw className={cn('h-4 w-4', data.loading && 'animate-spin')} />
