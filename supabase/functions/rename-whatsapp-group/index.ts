@@ -22,6 +22,16 @@ const firstNumber = (raw: string | null | undefined): string => {
   return match?.[0] || ''
 }
 
+const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+const stripGeneratedCasePrefix = (name: string | null | undefined, manualPrefix: string): string => {
+  let cleaned = String(name || '').trim()
+  if (manualPrefix) {
+    cleaned = cleaned.replace(new RegExp(`^${escapeRegExp(manualPrefix)}\\s*[-|:]?\\s*\\d+\\s*`, 'i'), '').trim()
+  }
+  return cleaned.replace(/^CASO\s*[-|:]?\s*\d+\s*/i, '').trim()
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
@@ -230,7 +240,7 @@ Deno.serve(async (req) => {
         else if (city) parts.push(city)
         else if (state) parts.push(state)
       }
-      else if (lead[field]) parts.push(String(lead[field]))
+      else if (lead[field]) parts.push(field === 'lead_name' ? stripGeneratedCasePrefix(lead[field], manualClosedPrefix) : String(lead[field]))
     }
     let newName = parts.join(' ')
     if (newName.length > 100) newName = newName.slice(0, 100).trim()
