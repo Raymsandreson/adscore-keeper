@@ -17,6 +17,11 @@ const normalizePhone = (raw: string | null | undefined): string => {
   return String(raw).replace(/\D/g, '');
 };
 
+const firstNumber = (raw: string | null | undefined): string => {
+  const match = String(raw || '').match(/\d+/)
+  return match?.[0] || ''
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
@@ -66,38 +71,6 @@ Deno.serve(async (req) => {
         status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
-
-    // Token de prefixo do nome do grupo. Duas fases:
-    //  - FECHADO: legal_cases.case_number (ex: "PREV-5") — gerado pela RPC
-    //    generate_case_number(p_product_id) quando o lead vira cliente.
-    //  - ABERTO:  "LEAD-{lead.lead_number}({produto.case_prefix})" — atribuído
-    //    no INSERT do lead pela RPC generate_lead_number(p_product_id).
-    let prefixToken = ''
-    {
-      const { data: legalCase } = await supabase
-        .from('legal_cases')
-        .select('case_number')
-        .eq('lead_id', lead.id)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-      const caseNumber = legalCase?.case_number?.trim() || ''
-      if (caseNumber) {
-        prefixToken = caseNumber
-      } else if (lead.lead_number && lead.product_service_id) {
-        const { data: prod } = await supabase
-          .from('products_services')
-          .select('case_prefix')
-          .eq('id', lead.product_service_id)
-          .maybeSingle()
-        const pfx = (prod?.case_prefix || '').trim().toUpperCase()
-        prefixToken = pfx
-          ? `LEAD-${lead.lead_number}(${pfx})`
-          : `LEAD-${lead.lead_number}`
-      }
-      console.log(`[rename] prefixToken="${prefixToken}" for lead ${lead.id}`)
-    }
-
 
     // Find a connected instance to operate on the group.
     // We collect all candidates marked as connected and probe each one with a real
