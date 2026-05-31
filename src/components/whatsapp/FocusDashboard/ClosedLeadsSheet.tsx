@@ -408,21 +408,79 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
               });
               const arr = Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
               if (arr.length === 0) return null;
+              const total = arr.reduce((s, [, n]) => s + n, 0);
+              const palette = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
+              // Build conic-gradient slices
+              let acc = 0;
+              const stops = arr.map(([name, n], i) => {
+                const start = (acc / total) * 100;
+                acc += n;
+                const end = (acc / total) * 100;
+                return `${palette[i % palette.length]} ${start}% ${end}%`;
+              }).join(', ');
+              const top3 = arr.slice(0, 3);
+              // Podium order: 2nd, 1st, 3rd
+              const podiumOrder = [top3[1], top3[0], top3[2]].filter(Boolean) as [string, number][];
+              const heights = new Map<string, string>();
+              if (top3[0]) heights.set(top3[0][0], 'h-16');
+              if (top3[1]) heights.set(top3[1][0], 'h-12');
+              if (top3[2]) heights.set(top3[2][0], 'h-9');
+              const medals = new Map<string, string>();
+              if (top3[0]) medals.set(top3[0][0], '🥇');
+              if (top3[1]) medals.set(top3[1][0], '🥈');
+              if (top3[2]) medals.set(top3[2][0], '🥉');
+              const rest = arr.slice(3);
               return (
-                <div className="flex flex-wrap gap-1 pt-1">
-                  {arr.map(([name, n]) => (
-                    <span
-                      key={name}
-                      className="inline-flex items-center gap-1 rounded-full border bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300 px-2 py-0.5 text-[11px]"
-                      title={`${name}: ${n} fechado${n > 1 ? 's' : ''}`}
-                    >
-                      <span className="truncate max-w-[140px]">{name}</span>
-                      <span className="font-bold">{n}</span>
-                    </span>
-                  ))}
+                <div className="pt-2 flex gap-3 items-center">
+                  {/* Pizza */}
+                  <div className="relative flex-shrink-0">
+                    <div
+                      className="w-20 h-20 rounded-full border border-border"
+                      style={{ background: `conic-gradient(${stops})` }}
+                      title={`Total: ${total} fechado${total > 1 ? 's' : ''}`}
+                    />
+                    <div className="absolute inset-0 m-auto w-10 h-10 rounded-full bg-background flex items-center justify-center text-sm font-bold">
+                      {total}
+                    </div>
+                  </div>
+                  {/* Pódio */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-end justify-center gap-1.5 h-20">
+                      {podiumOrder.map(([name, n], idx) => {
+                        const colorIdx = arr.findIndex(([nm]) => nm === name);
+                        return (
+                          <div key={name} className="flex flex-col items-center flex-1 min-w-0 max-w-[80px]">
+                            <div className="text-base leading-none mb-0.5">{medals.get(name)}</div>
+                            <div className="text-[10px] truncate w-full text-center font-medium" title={name}>{name}</div>
+                            <div
+                              className={`${heights.get(name)} w-full rounded-t-md flex items-center justify-center text-white text-xs font-bold mt-0.5`}
+                              style={{ background: palette[colorIdx % palette.length] }}
+                            >
+                              {n}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {rest.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-1.5 justify-center">
+                        {rest.map(([name, n]) => {
+                          const colorIdx = arr.findIndex(([nm]) => nm === name);
+                          return (
+                            <span key={name} className="inline-flex items-center gap-1 text-[10px] text-muted-foreground" title={`${name}: ${n}`}>
+                              <span className="w-2 h-2 rounded-sm" style={{ background: palette[colorIdx % palette.length] }} />
+                              <span className="truncate max-w-[80px]">{name}</span>
+                              <span className="font-semibold">{n}</span>
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </div>
               );
             })()}
+
           </SheetHeader>
 
 
