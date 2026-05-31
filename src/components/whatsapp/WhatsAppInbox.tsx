@@ -1343,6 +1343,29 @@ export function WhatsAppInbox() {
           </Select>
         )}
 
+        {/* Atalho: reconectar (QR / código) a instância selecionada */}
+        {selectedInstanceId && selectedInstanceId !== 'all' && (() => {
+          const inst = instances.find(i => i.id === selectedInstanceId);
+          if (!inst) return null;
+          const status = statuses.find(s => (
+            s.id === inst.id || normalizeInstanceName(s.instance_name) === normalizeInstanceName(inst.instance_name)
+          ));
+          const isOffline = status ? !status.connected : false;
+          return (
+            <Button
+              variant={isOffline ? 'destructive' : 'outline'}
+              size="sm"
+              className="h-8 gap-1.5"
+              onClick={() => setReconnectInstance({ id: inst.id, name: inst.instance_name })}
+              title={isOffline ? `Reconectar ${inst.instance_name} (QR ou código)` : `Gerar QR / código de pareamento para ${inst.instance_name}`}
+            >
+              <QrCode className="h-3.5 w-3.5" />
+              <span className="hidden md:inline">{isOffline ? 'Reconectar' : 'QR / Código'}</span>
+            </Button>
+          );
+        })()}
+
+
         <div className="w-full md:w-auto md:ml-auto flex flex-wrap md:flex-nowrap gap-0.5 md:gap-1 items-center justify-end">
           {relevantDisconnectedInstances.length > 0 && (
             <Button
