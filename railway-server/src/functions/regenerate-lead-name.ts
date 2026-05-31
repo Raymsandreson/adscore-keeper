@@ -160,6 +160,9 @@ export const handler: RequestHandler = async (req, res) => {
       caseNumberFromDb = (legalCase?.case_number || '').trim();
       if (useClosed && caseNumberFromDb) {
         prefixToken = caseNumberFromDb;
+      } else if (useClosed && (settings.closed_group_name_prefix || '').trim()) {
+        // Fallback: sem legal_case, monta "PREV 1311" a partir da config + posição
+        prefixToken = `${String(settings.closed_group_name_prefix).trim()} ${nextSeq}`;
       } else if (lead.lead_number && lead.product_service_id) {
         const { data: prod } = await ext
           .from('products_services')
@@ -171,6 +174,7 @@ export const handler: RequestHandler = async (req, res) => {
           ? `LEAD-${lead.lead_number}(${pfx})`
           : `LEAD-${lead.lead_number}`;
       }
+
     }
 
     const { data: boardData } = await ext
