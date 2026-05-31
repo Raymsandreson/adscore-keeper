@@ -116,6 +116,7 @@ const MESSAGE_VARIABLES = [
   { var: '{case_number}', label: 'Nº do Caso' },
   { var: '{group_name}', label: 'Nome do Grupo' },
   { var: '{board_name}', label: 'Nome do Funil' },
+  { var: '{notes}', label: 'Observação do Lead (resumo)' },
 ];
 
 const VOICE_OPTIONS = [
