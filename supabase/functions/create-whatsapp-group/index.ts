@@ -1878,7 +1878,9 @@ Gere uma mensagem profissional e organizada com emojis, usando formatação do W
         '{source}': leadData?.source || '',
         '{main_company}': leadData?.main_company || '',
         '{neighborhood}': leadData?.neighborhood || '',
+        '{notes}': leadData?.notes || '',
       }
+
 
       for (const [key, value] of Object.entries(replacements)) {
         messageText = messageText.replaceAll(key, value)
