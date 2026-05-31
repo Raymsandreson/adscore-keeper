@@ -48,11 +48,13 @@ export interface ClosedLeadItem {
   lead_name: string | null;
   lead_phone: string | null;
   became_client_date: string | null;
+  closed_at: string | null;
   acolhedor: string | null;
   has_overdue_activity?: boolean;
   whatsapp_group_jid?: string | null;
   activities?: ClosedLeadActivity[];
 }
+
 
 export interface OverdueActivityItem {
   id: string;
@@ -65,7 +67,7 @@ export interface OverdueActivityItem {
   whatsapp_group_jid?: string | null;
 }
 
-type ClosedLeadRow = Omit<ClosedLeadItem, 'has_overdue_activity' | 'whatsapp_group_jid' | 'activities'>;
+type ClosedLeadRow = Omit<ClosedLeadItem, 'has_overdue_activity' | 'whatsapp_group_jid' | 'activities' | 'closed_at'> & { updated_at?: string | null };
 type ActivityRow = { id: string; lead_id: string | null; title: string | null; status: string | null; deadline: string | null };
 type GroupRow = { lead_id: string | null; group_jid: string | null };
 
@@ -188,7 +190,7 @@ export function useFocusDashboardData(instanceName?: string | null): FocusData {
       // Fechados: não depende de created_at do lead. Quando uma instância é
       // selecionada, restringe a leads cujo telefone pertence àquela instância.
       let closedQuery: any = db.from('leads')
-        .select('id, lead_phone, lead_name, became_client_date, acolhedor', { count: 'exact', head: false })
+        .select('id, lead_phone, lead_name, became_client_date, updated_at, acolhedor', { count: 'exact', head: false })
         .eq('lead_status', 'closed')
         .gte('became_client_date', localDate(range.from))
         .lte('became_client_date', localDate(range.to))
@@ -273,6 +275,7 @@ export function useFocusDashboardData(instanceName?: string | null): FocusData {
         lead_name: l.lead_name ?? null,
         lead_phone: l.lead_phone ?? null,
         became_client_date: l.became_client_date ?? null,
+        closed_at: (l as any).updated_at ?? null,
         acolhedor: l.acolhedor ?? null,
         has_overdue_activity: overdueLeadIds.has(l.id),
         whatsapp_group_jid: groupByLead.get(l.id) ?? null,

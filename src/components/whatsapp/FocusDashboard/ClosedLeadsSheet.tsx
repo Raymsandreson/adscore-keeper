@@ -146,10 +146,13 @@ function LeadRow({
           <div className="text-[11px] text-muted-foreground flex items-center gap-2 mt-0.5 flex-wrap pr-1 min-w-0 max-w-full overflow-hidden">
             {lead.lead_phone && <span className="truncate max-w-full">📞 {lead.lead_phone}</span>}
             {lead.acolhedor && <span className="truncate max-w-full">· {lead.acolhedor}</span>}
-            {lead.became_client_date && (
+            {lead.closed_at ? (
+              <span>· {new Date(lead.closed_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+            ) : lead.became_client_date && (
               <span>· {format(new Date(lead.became_client_date + 'T00:00:00'), 'dd/MM', { locale: ptBR })}</span>
             )}
           </div>
+
         </div>
       </button>
 
@@ -320,7 +323,7 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
           className="!max-w-none !w-full sm:!w-[560px] sm:!max-w-[calc(100vw_-_24px)] p-0 flex flex-col overflow-hidden"
         >
 
-          <SheetHeader className="px-4 py-3 border-b shrink-0">
+          <SheetHeader className="px-4 py-3 border-b shrink-0 space-y-2">
             <SheetTitle className="flex items-center gap-2 text-base">
               <Trophy className="h-4 w-4 text-emerald-600" />
               Fechados · {periodLabel}
@@ -329,7 +332,36 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
             <SheetDescription className="text-xs">
               Leads que viraram cliente no período. Use os atalhos pra abrir o lead ou a conversa.
             </SheetDescription>
+            {(() => {
+              const buckets = { madrugada: 0, manha: 0, tarde: 0, noite: 0 };
+              sorted.forEach((l) => {
+                if (!l.closed_at) return;
+                const hourStr = new Date(l.closed_at).toLocaleString('en-US', { timeZone: 'America/Sao_Paulo', hour: '2-digit', hour12: false });
+                const h = parseInt(hourStr, 10);
+                if (h < 7) buckets.madrugada++;
+                else if (h < 12) buckets.manha++;
+                else if (h < 18) buckets.tarde++;
+                else buckets.noite++;
+              });
+              const cells: { label: string; emoji: string; count: number; cls: string }[] = [
+                { label: 'Manhã', emoji: '🌅', count: buckets.manha, cls: 'bg-amber-400/20 border-amber-500/40 text-amber-700 dark:text-amber-300' },
+                { label: 'Tarde', emoji: '☀️', count: buckets.tarde, cls: 'bg-orange-500/20 border-orange-500/40 text-orange-700 dark:text-orange-300' },
+                { label: 'Noite', emoji: '🌙', count: buckets.noite, cls: 'bg-indigo-500/20 border-indigo-500/40 text-indigo-700 dark:text-indigo-300' },
+                { label: 'Madrug.', emoji: '🌌', count: buckets.madrugada, cls: 'bg-slate-500/20 border-slate-500/40 text-slate-700 dark:text-slate-300' },
+              ];
+              return (
+                <div className="grid grid-cols-4 gap-1.5 pt-1">
+                  {cells.map((c) => (
+                    <div key={c.label} className={`rounded-md border px-1.5 py-1 text-center ${c.cls}`}>
+                      <div className="text-[10px] font-medium leading-tight">{c.emoji} {c.label}</div>
+                      <div className="text-base font-bold leading-tight">{c.count}</div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
           </SheetHeader>
+
 
           <ScrollArea className="flex-1 min-w-0 overflow-x-hidden">
             <div className="p-2 min-w-0 max-w-full overflow-x-hidden">
