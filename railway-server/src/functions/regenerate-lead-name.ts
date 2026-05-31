@@ -130,10 +130,21 @@ export const handler: RequestHandler = async (req, res) => {
     const activePrefix = settings.group_name_prefix || '';
     const activeSeqStart = useClosed ? 1 : (settings.sequence_start || 1);
 
+    const { data: latestLegalCase } = await ext
+      .from('legal_cases')
+      .select('case_number')
+      .eq('lead_id', lead_id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
     // Sequência: se o lead já tem case_number salvo, RESPEITA esse valor (fonte de verdade
     // editada pelo usuário no front). Só calcula via posição quando não há case_number.
-    const existingCaseNum = lead.case_number != null && String(lead.case_number).trim() !== ''
-      ? parseInt(String(lead.case_number).replace(/\D/g, ''), 10)
+    const storedCaseNumber = lead.case_number != null && String(lead.case_number).trim() !== ''
+      ? lead.case_number
+      : latestLegalCase?.case_number;
+    const existingCaseNum = storedCaseNumber != null && String(storedCaseNumber).trim() !== ''
+      ? parseInt(String(storedCaseNumber).replace(/\D/g, ''), 10)
       : NaN;
     let position = 0;
     let total = 0;
