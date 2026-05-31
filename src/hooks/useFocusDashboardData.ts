@@ -241,9 +241,10 @@ export function useFocusDashboardData(instanceName?: string | null): FocusData {
       let overdueLeadIds = new Set<string>();
       const activitiesByLead = new Map<string, ClosedLeadActivity[]>();
       const groupByLead = new Map<string, string>();
+      const signedAtByLead = new Map<string, string>();
       if (closedIds.length > 0) {
         const todayStr = format(new Date(), 'yyyy-MM-dd');
-        const [actsRes, groupsRes] = await Promise.all([
+        const [actsRes, groupsRes, signedRes] = await Promise.all([
           db.from('lead_activities')
             .select('id, lead_id, title, status, deadline')
             .in('lead_id', closedIds)
@@ -252,6 +253,12 @@ export function useFocusDashboardData(instanceName?: string | null): FocusData {
           db.from('lead_whatsapp_groups')
             .select('lead_id, group_jid')
             .in('lead_id', closedIds)
+            .limit(5000),
+          db.from('zapsign_documents')
+            .select('lead_id, signed_at')
+            .in('lead_id', closedIds)
+            .eq('status', 'signed')
+            .not('signed_at', 'is', null)
             .limit(5000),
         ]);
         const allActs = (actsRes.data || []) as ActivityRow[];
@@ -269,18 +276,26 @@ export function useFocusDashboardData(instanceName?: string | null): FocusData {
             groupByLead.set(g.lead_id, g.group_jid);
           }
         });
+        ((signedRes.data || []) as Array<{ lead_id: string | null; signed_at: string | null }>).forEach((d) => {
+          if (!d.lead_id || !d.signed_at) return;
+          const cur = signedAtByLead.get(d.lead_id);
+          if (!cur || new Date(d.signed_at) > new Date(cur)) {
+            signedAtByLead.set(d.lead_id, d.signed_at);
+          }
+        });
       }
       setClosedLeads(closedRows.map((l) => ({
         id: l.id,
         lead_name: l.lead_name ?? null,
         lead_phone: l.lead_phone ?? null,
         became_client_date: l.became_client_date ?? null,
-        closed_at: (l as any).updated_at ?? null,
+        closed_at: signedAtByLead.get(l.id) ?? null,
         acolhedor: l.acolhedor ?? null,
         has_overdue_activity: overdueLeadIds.has(l.id),
         whatsapp_group_jid: groupByLead.get(l.id) ?? null,
         activities: activitiesByLead.get(l.id) ?? [],
       })));
+
 
       // === Atividades atrasadas (todas, do escopo) ===
       try {
