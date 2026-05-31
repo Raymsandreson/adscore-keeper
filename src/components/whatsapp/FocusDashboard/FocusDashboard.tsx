@@ -71,9 +71,9 @@ export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpen
     };
     const kpiCards = [
       {
-        label: 'Viáveis',
-        value: data.kpis.goal,
-        sub: `${data.kpis.closed} fechados · ${data.kpis.conversion}% conv.`,
+        label: 'Fechados',
+        value: `${data.kpis.closed}/${data.kpis.goal} (${data.kpis.conversion}%)`,
+        sub: `${data.kpis.goal} viáveis de ${data.kpis.leadsReceived}`,
         icon: Trophy,
         tone: 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200/60 dark:border-emerald-900/40 text-emerald-700 dark:text-emerald-300',
         onClick: () => setClosedSheetOpen(true),
