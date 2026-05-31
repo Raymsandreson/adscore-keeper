@@ -305,7 +305,7 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
     let cancelled = false;
     (async () => {
       try {
-        const { data } = await db
+        const { data } = await (db as any)
           .from('whatsapp_conversations')
           .select('instance_name, last_message_at')
           .eq('phone', phone)
