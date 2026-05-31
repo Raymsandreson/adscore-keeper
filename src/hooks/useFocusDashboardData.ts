@@ -275,6 +275,7 @@ export function useFocusDashboardData(instanceName?: string | null): FocusData {
         lead_name: l.lead_name ?? null,
         lead_phone: l.lead_phone ?? null,
         became_client_date: l.became_client_date ?? null,
+        closed_at: (l as any).updated_at ?? null,
         acolhedor: l.acolhedor ?? null,
         has_overdue_activity: overdueLeadIds.has(l.id),
         whatsapp_group_jid: groupByLead.get(l.id) ?? null,
