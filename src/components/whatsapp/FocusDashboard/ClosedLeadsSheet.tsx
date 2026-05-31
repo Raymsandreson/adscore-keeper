@@ -400,7 +400,31 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
                 </div>
               );
             })()}
+            {(() => {
+              const counts = new Map<string, number>();
+              sorted.forEach((l) => {
+                const k = (l.acolhedor || '').trim() || 'Sem acolhedor';
+                counts.set(k, (counts.get(k) || 0) + 1);
+              });
+              const arr = Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
+              if (arr.length === 0) return null;
+              return (
+                <div className="flex flex-wrap gap-1 pt-1">
+                  {arr.map(([name, n]) => (
+                    <span
+                      key={name}
+                      className="inline-flex items-center gap-1 rounded-full border bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300 px-2 py-0.5 text-[11px]"
+                      title={`${name}: ${n} fechado${n > 1 ? 's' : ''}`}
+                    >
+                      <span className="truncate max-w-[140px]">{name}</span>
+                      <span className="font-bold">{n}</span>
+                    </span>
+                  ))}
+                </div>
+              );
+            })()}
           </SheetHeader>
+
 
 
           <ScrollArea className="flex-1 min-w-0 overflow-x-hidden">
