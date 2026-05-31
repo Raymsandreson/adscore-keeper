@@ -162,8 +162,8 @@ Deno.serve(async (req) => {
 
     const executorPhone = normalizePhone(instance.owner_phone || instance.phone || '')
 
-    // Build new name — fonte única do nº do caso = legal_cases.case_number (do produto).
-    // group_name_prefix legado ignorado: o prefixo já vem embutido em caseNumber (ex: "PREV-1").
+    // Build new name — no fechamento, o prefixo manual do funil manda.
+    // Se legal_cases.case_number vier como "CASO-1311", usamos só o número: "PREV 1311".
     const leadFields = settings.lead_fields || ['lead_name']
     const { data: board } = await supabase
       .from('kanban_boards')
@@ -171,6 +171,25 @@ Deno.serve(async (req) => {
       .eq('id', lead.board_id)
       .maybeSingle()
     const parts: string[] = []
+    const manualClosedPrefix = String(settings.closed_group_name_prefix || '').trim()
+    const { data: legalCase } = await supabase
+      .from('legal_cases')
+      .select('case_number')
+      .eq('lead_id', lead.id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    const caseSeq = firstNumber(lead.case_number) || firstNumber(legalCase?.case_number) || firstNumber(lead.lead_name) || ''
+    let prefixToken = manualClosedPrefix && caseSeq ? `${manualClosedPrefix} ${caseSeq}` : ''
+    if (!prefixToken && lead.lead_number && lead.product_service_id) {
+      const { data: prod } = await supabase
+        .from('products_services')
+        .select('case_prefix')
+        .eq('id', lead.product_service_id)
+        .maybeSingle()
+      const pfx = (prod?.case_prefix || '').trim().toUpperCase()
+      prefixToken = pfx ? `LEAD-${lead.lead_number}(${pfx})` : `LEAD-${lead.lead_number}`
+    }
     if (prefixToken) parts.push(prefixToken)
 
     // Pré-carrega valores de campos personalizados (tokens cf:<id>)
@@ -195,7 +214,6 @@ Deno.serve(async (req) => {
     }
 
     for (const field of leadFields) {
-      // tokens legados de número já estão cobertos por caseNumber acima
       if (field === 'closed_seq' || field === 'case_number') continue
       else if (typeof field === 'string' && field.startsWith('text:')) {
         try { parts.push(decodeURIComponent(field.slice(5))) } catch { parts.push(field.slice(5)) }
