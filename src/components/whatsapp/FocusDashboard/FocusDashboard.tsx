@@ -17,6 +17,7 @@ import { usePageState } from '@/hooks/usePageState';
 import { KpiCard } from './KpiCard';
 import { FocusActionCard } from './FocusActionCard';
 import { CompactRankingCard } from './CompactRankingCard';
+import { ClosedPodiumCard } from './ClosedPodiumCard';
 import { ClosedLeadsSheet } from './ClosedLeadsSheet';
 import { cn } from '@/lib/utils';
 
@@ -266,6 +267,8 @@ export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpen
           })()}
 
           <CompactRankingCard />
+
+          <ClosedPodiumCard closedLeads={data.closedLeads} onClick={() => setClosedSheetOpen(true)} />
 
           <div className="flex-1" />
           <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0 self-center" onClick={data.refetch} disabled={data.loading}>
