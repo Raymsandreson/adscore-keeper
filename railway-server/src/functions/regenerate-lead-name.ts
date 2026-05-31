@@ -152,17 +152,8 @@ export const handler: RequestHandler = async (req, res) => {
     //  - FECHADO: usa SEMPRE o prefixo manual do funil + nº, nunca o fallback "CASO"
     //  - ABERTO:  "LEAD-{lead_number}({case_prefix do produto})"
     let prefixToken = '';
-    let caseNumberFromDb = '';
+    const manualClosedPrefix = String(settings.closed_group_name_prefix || '').trim();
     {
-      const { data: legalCase } = await ext
-        .from('legal_cases')
-        .select('case_number')
-        .eq('lead_id', lead_id)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      caseNumberFromDb = (legalCase?.case_number || '').trim();
-      const manualClosedPrefix = String(settings.closed_group_name_prefix || '').trim();
       if (useClosed) {
         prefixToken = manualClosedPrefix ? `${manualClosedPrefix} ${nextSeq}` : String(nextSeq);
       } else if (lead.lead_number && lead.product_service_id) {
@@ -218,7 +209,7 @@ export const handler: RequestHandler = async (req, res) => {
     const missingFields: string[] = [];
     for (const field of leadFields) {
       if (field === 'closed_seq' || field === 'case_number') {
-        if (useClosed) parts.push(seqStr);
+        continue;
       } else if (typeof field === 'string' && field.startsWith('text:')) {
         try { parts.push(decodeURIComponent(field.slice(5))); } catch { parts.push(field.slice(5)); }
       } else if (field === 'board_name') {
@@ -238,7 +229,7 @@ export const handler: RequestHandler = async (req, res) => {
         else missingFields.push(field);
       } else if (lead[field]) {
         const val = field === 'lead_name'
-          ? stripCaseFallbackPrefix(stripExistingSequence(String(lead[field]), prefixToken || activePrefix))
+          ? stripCaseFallbackPrefix(stripExistingSequence(String(lead[field]), manualClosedPrefix || activePrefix))
           : String(lead[field]);
         if (val) parts.push(val);
         else missingFields.push(field);
