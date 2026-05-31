@@ -7,7 +7,33 @@
 //   import-group-docs-to-lead) via CLOUD_FUNCTIONS_URL+CLOUD_ANON_KEY (mesma convenção do
 //   webhook ZapSign). Quando esses handlers migrarem, basta trocar a URL.
 import type { RequestHandler } from 'express';
+import { randomUUID } from 'node:crypto';
 import { supabase as ext } from '../lib/supabase';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BYPASS INTERNO (in-process). Permite que outros handlers do mesmo servidor
+// Railway (ex.: zapsign-post-sign-extras) chamem este endpoint sem JWT do Cloud.
+// Nonce vive 60s em memória; impossível forjar de fora porque é gerado aqui.
+// ─────────────────────────────────────────────────────────────────────────────
+declare global {
+  // eslint-disable-next-line no-var
+  var __INTERNAL_EXEC_NONCES: Set<string> | undefined;
+}
+const NONCES: Set<string> = (globalThis.__INTERNAL_EXEC_NONCES ||= new Set());
+
+export function mintInternalExecNonce(): string {
+  const n = randomUUID();
+  NONCES.add(n);
+  setTimeout(() => NONCES.delete(n), 60_000).unref?.();
+  return n;
+}
+
+function consumeInternalNonce(token: string | undefined): boolean {
+  if (!token) return false;
+  if (!NONCES.has(token)) return false;
+  NONCES.delete(token);
+  return true;
+}
 
 function toDateOnly(value: unknown): string | null {
   if (typeof value !== 'string' || !value.trim()) return null;
