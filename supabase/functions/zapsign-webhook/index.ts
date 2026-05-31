@@ -1294,12 +1294,19 @@ Deno.serve(async (req) => {
             console.log(`[zapsign-webhook] post_sign_mode=${postSignMode} creator_instance=${creatorInstanceId} (${creatorInstanceName})`)
 
             // ====================================================
-            // MODE: GROUP — original behavior
+            // MODE: GROUP — DESATIVADO em 2026-05-31.
+            // Criação de grupo agora é responsabilidade ÚNICA do fluxo
+            // Railway → onboarding-checkpoint-execute (step `create_group`),
+            // que tem anti-duplicação por telefone (whatsapp_groups_uazapi_snapshot).
+            // Manter este bloco ativo causava grupos duplicados (ex.: PREV 1310),
+            // porque B + Railway disparavam em paralelo e o claim PENDING expirava.
+            // [LEGACY — pode ser removido após 2026-06-15 se nenhuma regressão]
             // ====================================================
-            // [2026-05-11] Reativado SOMENTE quando a procuração foi gerada a partir
-            // do chat (lead_id + contact_id presentes no documento). Geração avulsa
-            // continua usando o fluxo manual de checkpoints.
             const isFromChatConversation = !!(localDoc.lead_id && localDoc.contact_id)
+            if (isFromChatConversation && postSignMode === 'group') {
+              console.log(`[zapsign-webhook] MODE:GROUP skipped (handled by Railway checkpoint) lead=${localDoc.lead_id}`)
+            }
+            /* DESATIVADO — ver comentário acima
             if (isFromChatConversation && postSignMode === 'group') {
               const action = leadForBoard.whatsapp_group_id ? 'reusing/renaming' : 'creating'
               console.log(`[zapsign-webhook] ${action} group for lead ${localDoc.lead_id}`)
@@ -1334,6 +1341,7 @@ Deno.serve(async (req) => {
                 console.error(`[zapsign-webhook] Group creation failed:`, groupData.error)
               }
             }
+            */
 
             // ====================================================
             // MODE: PRIVATE — send initial message in 1:1 chat,
