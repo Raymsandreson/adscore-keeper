@@ -1635,60 +1635,48 @@ export function ContactsListPage() {
                 return true;
               });
 
-              if (auditMode) {
-                if (auditOnlyMismatch) {
-                  visible = visible.filter(g => {
-                    const ng = normalizeName(g.group_name);
-                    const nl = normalizeName(g.lead_name);
-                    if (!ng || !nl) return true;
-                    return !ng.includes(nl) && !nl.includes(ng);
-                  });
-                }
-                visible.sort((a, b) => {
-                  const ca = extractCaseNum(a.group_name) ?? extractCaseNum(a.lead_name);
-                  const cb = extractCaseNum(b.group_name) ?? extractCaseNum(b.lead_name);
-                  if (ca == null && cb == null) {
-                    return (a.group_name || '').localeCompare(b.group_name || '', 'pt-BR');
-                  }
-                  if (ca == null) return 1;
-                  if (cb == null) return -1;
-                  const cmp = ca - cb;
-                  return groupSortDir === 'desc' ? -cmp : cmp;
-                });
-              } else {
-                visible.sort((a, b) => {
-                  const sortField = groupSearchScope === 'lead' ? 'lead_name' : 'group_name';
-                  const na = ((a as any)[sortField] || '').trim();
-                  const nb = ((b as any)[sortField] || '').trim();
-                  let cmp = 0;
-                  if (groupSort === 'date') {
-                    const ta = a.created_at ? new Date(a.created_at).getTime() : (a.lead_created_at ? new Date(a.lead_created_at).getTime() : null);
-                    const tb = b.created_at ? new Date(b.created_at).getTime() : (b.lead_created_at ? new Date(b.lead_created_at).getTime() : null);
-                    // Nulos sempre no fim, independente da direção
-                    if (ta == null && tb == null) return 0;
-                    if (ta == null) return 1;
-                    if (tb == null) return -1;
-                    cmp = ta - tb;
-                  } else if (groupSort === 'number') {
-                    const numA = parseInt(na.match(/\d+/)?.[0] || '', 10);
-                    const numB = parseInt(nb.match(/\d+/)?.[0] || '', 10);
-                    const aHas = !isNaN(numA);
-                    const bHas = !isNaN(numB);
-                    if (aHas && bHas && numA !== numB) cmp = numA - numB;
-                    else if (aHas && !bHas) cmp = -1;
-                    else if (!aHas && bHas) cmp = 1;
-                    else cmp = na.localeCompare(nb, 'pt-BR', { sensitivity: 'base' });
-                  } else if (groupSort === 'prefix') {
-                    const pa = (na.match(/^[^\s\d]+/)?.[0] || na).toLowerCase();
-                    const pb = (nb.match(/^[^\s\d]+/)?.[0] || nb).toLowerCase();
-                    cmp = pa.localeCompare(pb, 'pt-BR', { sensitivity: 'base' });
-                    if (cmp === 0) cmp = na.localeCompare(nb, 'pt-BR', { sensitivity: 'base' });
-                  } else {
-                    cmp = na.localeCompare(nb, 'pt-BR', { sensitivity: 'base' });
-                  }
-                  return groupSortDir === 'desc' ? -cmp : cmp;
+              if (auditMode && auditOnlyMismatch) {
+                visible = visible.filter(g => {
+                  const ng = normalizeName(g.group_name);
+                  const nl = normalizeName(g.lead_name);
+                  if (!ng || !nl) return true;
+                  return !ng.includes(nl) && !nl.includes(ng);
                 });
               }
+
+              visible.sort((a, b) => {
+                const sortField = groupSearchScope === 'lead' ? 'lead_name' : 'group_name';
+                const na = ((a as any)[sortField] || '').trim();
+                const nb = ((b as any)[sortField] || '').trim();
+                let cmp = 0;
+                if (groupSort === 'date') {
+                  const ta = a.created_at ? new Date(a.created_at).getTime() : (a.lead_created_at ? new Date(a.lead_created_at).getTime() : null);
+                  const tb = b.created_at ? new Date(b.created_at).getTime() : (b.lead_created_at ? new Date(b.lead_created_at).getTime() : null);
+                  // Nulos sempre no fim, independente da direção
+                  if (ta == null && tb == null) return 0;
+                  if (ta == null) return 1;
+                  if (tb == null) return -1;
+                  cmp = ta - tb;
+                } else if (groupSort === 'number') {
+                  const numA = parseInt(na.match(/\d+/)?.[0] || '', 10);
+                  const numB = parseInt(nb.match(/\d+/)?.[0] || '', 10);
+                  const aHas = !isNaN(numA);
+                  const bHas = !isNaN(numB);
+                  if (aHas && bHas && numA !== numB) cmp = numA - numB;
+                  else if (aHas && !bHas) cmp = -1;
+                  else if (!aHas && bHas) cmp = 1;
+                  else cmp = na.localeCompare(nb, 'pt-BR', { sensitivity: 'base' });
+                } else if (groupSort === 'prefix') {
+                  const pa = (na.match(/^[^\s\d]+/)?.[0] || na).toLowerCase();
+                  const pb = (nb.match(/^[^\s\d]+/)?.[0] || nb).toLowerCase();
+                  cmp = pa.localeCompare(pb, 'pt-BR', { sensitivity: 'base' });
+                  if (cmp === 0) cmp = na.localeCompare(nb, 'pt-BR', { sensitivity: 'base' });
+                } else {
+                  cmp = na.localeCompare(nb, 'pt-BR', { sensitivity: 'base' });
+                }
+                return groupSortDir === 'desc' ? -cmp : cmp;
+              });
+
 
               const highlight = (text: string | null | undefined, shouldHighlight: boolean) => {
                 const value = text || '';
