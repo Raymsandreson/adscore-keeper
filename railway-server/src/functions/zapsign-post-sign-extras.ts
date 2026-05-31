@@ -88,6 +88,16 @@ export async function runPostSignExtras(input: PostSignInput): Promise<void> {
   }
   console.log('[post-sign-extras] checkpoints registered for lead', doc.lead_id);
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // AUTO-EXECUÇÃO dos passos que NÃO exigem decisão humana.
+  // Os demais (`send_initial_message`, `import_docs`, `create_case_process`,
+  // `create_onboarding_activity`) continuam pendentes pra revisão via modal.
+  // Roda em sequência, fire-and-forget, em background.
+  // ─────────────────────────────────────────────────────────────────────────
+  void autoExecuteCheckpoints(doc.lead_id).catch((err) =>
+    console.error('[post-sign-extras] auto-execute error:', err),
+  );
+
   // Fire-and-forget: dispara enriquecimento do lead via IA (chat-based).
   // Garante que TODO lead com procuração assinada tenha cidade/estado/bairro/
   // victim_name extraídos, mesmo se o auto-enrich do whatsapp-webhook não
