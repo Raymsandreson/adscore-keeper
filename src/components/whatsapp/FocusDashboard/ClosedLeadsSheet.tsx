@@ -302,10 +302,11 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
 
 
   const sorted = [...closedLeads].sort((a, b) => {
-    const da = a.became_client_date || '';
-    const db = b.became_client_date || '';
+    const da = a.closed_at || (a.became_client_date ? a.became_client_date + 'T00:00:00' : '');
+    const db = b.closed_at || (b.became_client_date ? b.became_client_date + 'T00:00:00' : '');
     return db.localeCompare(da);
   });
+
 
   const handleOpenLead = async (leadId: string) => {
     const { data } = await db.from('leads').select('*').eq('id', leadId).maybeSingle();
