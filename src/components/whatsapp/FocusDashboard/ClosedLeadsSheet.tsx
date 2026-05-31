@@ -298,17 +298,29 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
   const [showLeadEdit, setShowLeadEdit] = useState(false);
   const [chatPreview, setChatPreview] = useState<{ phone: string; name: string | null; instanceName: string | null } | null>(null);
 
-  // Resolve a instância olhando a última conversa WhatsApp pelo telefone
+  // Descobre a instância que conversa com esse telefone (chave de identidade no WhatsApp).
+  // Tenta variantes do número (com/sem 9º dígito) porque o banco pode ter qualquer forma.
   useEffect(() => {
     if (!chatPreview || chatPreview.instanceName) return;
     const phone = chatPreview.phone;
+    const digits = (phone || '').replace(/\D/g, '');
+    if (!digits) return;
+    const variants = new Set<string>([phone, digits]);
+    // BR: alterna 9º dígito após DDD (posições 4 e 5)
+    if (/^55\d{10,11}$/.test(digits)) {
+      if (digits.length === 13 && digits[4] === '9') {
+        variants.add(digits.slice(0, 4) + digits.slice(5));
+      } else if (digits.length === 12) {
+        variants.add(digits.slice(0, 4) + '9' + digits.slice(4));
+      }
+    }
     let cancelled = false;
     (async () => {
       try {
         const { data } = await (db as any)
           .from('whatsapp_messages')
           .select('instance_name, created_at')
-          .eq('phone', phone)
+          .in('phone', Array.from(variants))
           .not('instance_name', 'is', null)
           .order('created_at', { ascending: false })
           .limit(1)
