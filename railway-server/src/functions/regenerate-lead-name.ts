@@ -11,7 +11,7 @@ const CLOUD_FUNCTIONS_URL =
   'https://gliigkupoebmlbwyvijp.supabase.co';
 const CLOUD_ANON_KEY = process.env.CLOUD_ANON_KEY || process.env.SUPABASE_ANON_KEY || '';
 
-const MAX_GROUP_NAME_LENGTH = 95;
+const MAX_GROUP_NAME_LENGTH = 100;
 
 function normalizeName(s: string): string {
   return String(s || '').replace(/\s+/g, ' ').trim().slice(0, MAX_GROUP_NAME_LENGTH);
