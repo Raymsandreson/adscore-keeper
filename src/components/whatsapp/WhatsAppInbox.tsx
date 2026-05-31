@@ -35,7 +35,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { MessageSquare, Settings, RefreshCw, Smartphone, BarChart3, Chrome, ListChecks, AlertTriangle, WifiOff, X, Sparkles, Check, Loader2, Download, Users, List, Contact2, Share2 } from 'lucide-react';
+import { MessageSquare, Settings, RefreshCw, Smartphone, BarChart3, Chrome, ListChecks, AlertTriangle, WifiOff, X, Sparkles, Check, Loader2, Download, Users, List, Contact2, Share2, QrCode } from 'lucide-react';
 import { SharedConversationsPanel } from './SharedConversationsPanel';
 import { useSharedWithMe } from '@/hooks/useSharedWithMe';
 import { FocusDashboard } from './FocusDashboard/FocusDashboard';
