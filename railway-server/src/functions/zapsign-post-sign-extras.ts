@@ -87,4 +87,35 @@ export async function runPostSignExtras(input: PostSignInput): Promise<void> {
     if (error) console.warn('[post-sign-extras] upsert checkpoint failed:', step, error.message);
   }
   console.log('[post-sign-extras] checkpoints registered for lead', doc.lead_id);
+
+  // Fire-and-forget: dispara enriquecimento do lead via IA (chat-based).
+  // Garante que TODO lead com procuração assinada tenha cidade/estado/bairro/
+  // victim_name extraídos, mesmo se o auto-enrich do whatsapp-webhook não
+  // disparou em tempo (race condition: lead vinculado tarde, sem inbound
+  // posterior). Passa force=true para furar o gate de "recent_enrich 2h".
+  const cloudUrl = process.env.CLOUD_FUNCTIONS_URL || process.env.SUPABASE_URL || '';
+  const cloudKey = process.env.CLOUD_ANON_KEY || process.env.SUPABASE_ANON_KEY || '';
+  const phone = (lead.lead_phone || '').replace(/\D/g, '');
+  if (cloudUrl && cloudKey && phone && doc.instance_name) {
+    fetch(`${cloudUrl}/functions/v1/auto-enrich-lead`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${cloudKey}`,
+      },
+      body: JSON.stringify({
+        phone,
+        instance_name: doc.instance_name,
+        lead_id: doc.lead_id,
+        contact_id: doc.contact_id,
+        force: true,
+      }),
+    })
+      .then((r) => console.log('[post-sign-extras] auto-enrich dispatched, status=', r.status))
+      .catch((e) => console.error('[post-sign-extras] auto-enrich fire-and-forget error:', e));
+  } else {
+    console.warn('[post-sign-extras] auto-enrich skipped: missing cloud env or phone/instance', {
+      hasUrl: !!cloudUrl, hasKey: !!cloudKey, phone, instance: doc.instance_name,
+    });
+  }
 }
