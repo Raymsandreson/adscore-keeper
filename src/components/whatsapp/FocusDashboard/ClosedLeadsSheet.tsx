@@ -306,10 +306,11 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
     (async () => {
       try {
         const { data } = await (db as any)
-          .from('whatsapp_conversations')
-          .select('instance_name, last_message_at')
+          .from('whatsapp_messages')
+          .select('instance_name, created_at')
           .eq('phone', phone)
-          .order('last_message_at', { ascending: false })
+          .not('instance_name', 'is', null)
+          .order('created_at', { ascending: false })
           .limit(1)
           .maybeSingle();
         if (cancelled) return;
