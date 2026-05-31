@@ -127,15 +127,24 @@ export const handler: RequestHandler = async (req, res) => {
   const ok = (b: Record<string, unknown>) => res.status(200).json(b);
   const rid = (req.headers['x-request-id'] as string) || Math.random().toString(36).slice(2, 10);
   try {
-    // 🔒 Bloqueia acesso anônimo: exige JWT válido do Lovable Cloud.
-    const authHeader = req.headers['authorization'] as string | undefined;
-    const auth = await verifyCloudJwt(authHeader);
-    logAuth(rid, 'pre', auth, { path: req.path, ip: req.ip });
-    if (auth.ok !== true) {
-      logAuth(rid, 'post', auth, { blocked: true });
-      return res.status(401).json({ success: false, error: 'unauthorized', reason: auth.reason, rid });
+    // 🔓 Bypass interno por nonce (in-process). Usado pelo zapsign-post-sign-extras
+    // para auto-executar checkpoints sem JWT do Cloud.
+    const internalNonce = req.headers['x-internal-exec-nonce'] as string | undefined;
+    const isInternal = consumeInternalNonce(internalNonce);
+
+    if (!isInternal) {
+      // 🔒 Bloqueia acesso anônimo: exige JWT válido do Lovable Cloud.
+      const authHeader = req.headers['authorization'] as string | undefined;
+      const auth = await verifyCloudJwt(authHeader);
+      logAuth(rid, 'pre', auth, { path: req.path, ip: req.ip });
+      if (auth.ok !== true) {
+        logAuth(rid, 'post', auth, { blocked: true });
+        return res.status(401).json({ success: false, error: 'unauthorized', reason: auth.reason, rid });
+      }
+      logAuth(rid, 'post', auth, { blocked: false });
+    } else {
+      console.log(JSON.stringify({ fn: 'onboarding-checkpoint-execute', event: 'auth.bypass_internal', rid }));
     }
-    logAuth(rid, 'post', auth, { blocked: false });
 
     const { checkpoint_id, user_id, extra } = (req.body || {}) as {
       checkpoint_id?: string;
