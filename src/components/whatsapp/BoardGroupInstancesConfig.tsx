@@ -871,11 +871,29 @@ export function BoardGroupInstancesConfig({ boardId, hideBoardSelector }: BoardG
                 onChange={e => setSettings(prev => ({ ...prev, initial_message_template: e.target.value }))}
                 placeholder={settings.use_ai_message
                   ? 'Ex: Gere um resumo do caso incluindo dados do lead, tipo de acidente e empresa...'
-                  : 'Ex: 📋 *Novo Caso* - {lead_name}\n\nTipo: {case_type}\nCidade: {city}/{state}'
+                  : 'Ex: 📋 *Novo Caso* - {lead_name}\n\nTipo: {case_type}\nCidade: {city}/{state}\n\n📝 Observação: {notes}'
                 }
                 className="text-xs min-h-[80px]"
               />
+              {settings.use_ai_message && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const snippet = 'Inclua uma seção "📝 Observações do Lead" com o conteúdo do campo de observações (resumo da conversa) — se houver. Se estiver vazio, omita a seção.';
+                    setSettings(prev => ({
+                      ...prev,
+                      initial_message_template: prev.initial_message_template
+                        ? prev.initial_message_template.trimEnd() + '\n\n' + snippet
+                        : snippet,
+                    }));
+                  }}
+                  className="text-[10px] px-2 py-1 rounded bg-primary/10 border border-primary/20 hover:bg-primary/20 text-primary transition-colors"
+                >
+                  + Incluir observação do lead na mensagem
+                </button>
+              )}
             </div>
+
 
             {!settings.use_ai_message && (
               <div className="space-y-1.5">
