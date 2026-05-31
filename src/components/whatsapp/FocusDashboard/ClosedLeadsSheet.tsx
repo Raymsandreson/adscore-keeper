@@ -421,7 +421,7 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
                         hasOverdueActivity={hasOverdueActivity}
                         chatTitle={chatTitle}
                         onOpenLead={() => handleOpenLead(lead.id)}
-                        onOpenChat={(phone, name) => setChatPreview({ phone, name })}
+                        onOpenChat={(phone, name) => setChatPreview({ phone, name, instanceName: null })}
                         isOpen={openLeadId === lead.id}
                         onToggle={() => setOpenLeadId((cur) => (cur === lead.id ? null : lead.id))}
                       />
