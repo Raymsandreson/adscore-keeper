@@ -88,6 +88,16 @@ export async function runPostSignExtras(input: PostSignInput): Promise<void> {
   }
   console.log('[post-sign-extras] checkpoints registered for lead', doc.lead_id);
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // AUTO-EXECUÇÃO dos passos que NÃO exigem decisão humana.
+  // Os demais (`send_initial_message`, `import_docs`, `create_case_process`,
+  // `create_onboarding_activity`) continuam pendentes pra revisão via modal.
+  // Roda em sequência, fire-and-forget, em background.
+  // ─────────────────────────────────────────────────────────────────────────
+  void autoExecuteCheckpoints(doc.lead_id).catch((err) =>
+    console.error('[post-sign-extras] auto-execute error:', err),
+  );
+
   // Fire-and-forget: dispara enriquecimento do lead via IA (chat-based).
   // Garante que TODO lead com procuração assinada tenha cidade/estado/bairro/
   // victim_name extraídos, mesmo se o auto-enrich do whatsapp-webhook não
@@ -119,3 +129,59 @@ export async function runPostSignExtras(input: PostSignInput): Promise<void> {
     });
   }
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// Auto-executor dos primeiros checkpoints (sem decisão humana).
+// Usa nonce in-process para chamar onboarding-checkpoint-execute sem JWT.
+// ────────────────────────────────────────────────────────────────────────────
+import { mintInternalExecNonce } from './onboarding-checkpoint-execute';
+
+const AUTO_STEPS = ['confirm_funnel', 'setup_lead_close', 'create_group'] as const;
+const RAILWAY_BASE = process.env.RAILWAY_PUBLIC_URL || `http://127.0.0.1:${process.env.PORT || 3000}`;
+
+async function autoExecuteCheckpoints(leadId: string): Promise<void> {
+  // Pequena espera pra garantir que os upserts pegaram no Externo
+  await new Promise((r) => setTimeout(r, 1500));
+
+  for (const step of AUTO_STEPS) {
+    try {
+      const { data: ck } = await supabase
+        .from('onboarding_checkpoints')
+        .select('id, status')
+        .eq('lead_id', leadId)
+        .eq('step', step)
+        .maybeSingle();
+
+      if (!ck) {
+        console.warn(`[post-sign-extras] auto-exec: checkpoint ${step} não encontrado para lead ${leadId}`);
+        continue;
+      }
+      if (ck.status === 'done') {
+        console.log(`[post-sign-extras] auto-exec: ${step} já está done, pulando`);
+        continue;
+      }
+
+      const nonce = mintInternalExecNonce();
+      const r = await fetch(`${RAILWAY_BASE}/functions/onboarding-checkpoint-execute`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-internal-exec-nonce': nonce,
+        },
+        body: JSON.stringify({ checkpoint_id: ck.id }),
+      });
+      const data: any = await r.json().catch(() => ({}));
+      console.log(`[post-sign-extras] auto-exec ${step}:`, data?.success ? 'OK' : `FAIL (${data?.error})`);
+
+      // Se um step falhou, para a corrente — os seguintes dependem dele.
+      if (!data?.success) {
+        console.warn(`[post-sign-extras] auto-exec parou em ${step}; restantes ficam pendentes pro modal`);
+        break;
+      }
+    } catch (e) {
+      console.error(`[post-sign-extras] auto-exec ${step} exception:`, e);
+      break;
+    }
+  }
+}
+

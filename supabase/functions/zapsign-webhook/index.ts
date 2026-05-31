@@ -1294,12 +1294,19 @@ Deno.serve(async (req) => {
             console.log(`[zapsign-webhook] post_sign_mode=${postSignMode} creator_instance=${creatorInstanceId} (${creatorInstanceName})`)
 
             // ====================================================
-            // MODE: GROUP — original behavior
+            // MODE: GROUP — DESATIVADO em 2026-05-31.
+            // Criação de grupo agora é responsabilidade ÚNICA do fluxo
+            // Railway → onboarding-checkpoint-execute (step `create_group`),
+            // que tem anti-duplicação por telefone (whatsapp_groups_uazapi_snapshot).
+            // Manter este bloco ativo causava grupos duplicados (ex.: PREV 1310),
+            // porque B + Railway disparavam em paralelo e o claim PENDING expirava.
+            // [LEGACY — pode ser removido após 2026-06-15 se nenhuma regressão]
             // ====================================================
-            // [2026-05-11] Reativado SOMENTE quando a procuração foi gerada a partir
-            // do chat (lead_id + contact_id presentes no documento). Geração avulsa
-            // continua usando o fluxo manual de checkpoints.
             const isFromChatConversation = !!(localDoc.lead_id && localDoc.contact_id)
+            if (isFromChatConversation && postSignMode === 'group') {
+              console.log(`[zapsign-webhook] MODE:GROUP skipped (handled by Railway checkpoint) lead=${localDoc.lead_id}`)
+            }
+            /* DESATIVADO — ver comentário acima
             if (isFromChatConversation && postSignMode === 'group') {
               const action = leadForBoard.whatsapp_group_id ? 'reusing/renaming' : 'creating'
               console.log(`[zapsign-webhook] ${action} group for lead ${localDoc.lead_id}`)
@@ -1334,6 +1341,7 @@ Deno.serve(async (req) => {
                 console.error(`[zapsign-webhook] Group creation failed:`, groupData.error)
               }
             }
+            */
 
             // ====================================================
             // MODE: PRIVATE — send initial message in 1:1 chat,
@@ -1436,16 +1444,17 @@ Deno.serve(async (req) => {
     }
 
     // ====================================================
-    // FALLBACK UNIVERSAL: garantir GRUPO de WhatsApp para qualquer
-    // procuração assinada com telefone + lead. Roda mesmo quando o board
-    // não tem `board_group_settings` (post_sign_mode null).
-    // O bloco anterior já cobriu o caso `post_sign_mode = 'group'`; aqui
-    // tratamos somente leads que ficaram sem grupo após aquele bloco.
+    // FALLBACK UNIVERSAL — DESATIVADO em 2026-05-31.
+    // Mesmo motivo do bloco MODE:GROUP acima: criação de grupo agora é
+    // responsabilidade ÚNICA do Railway (onboarding-checkpoint-execute),
+    // que tem anti-duplicação por telefone. Manter este fallback ativo
+    // recriava o problema de grupos duplicados.
+    // [LEGACY — pode ser removido após 2026-06-15 se nenhuma regressão]
     // ====================================================
-    // [2026-05-11] Fallback reativado quando documento tem lead_id + telefone.
-    // [2026-05-23] Removida exigência de contact_id — procurações geradas via
-    // GerarProcuracaoPage (sem chat prévio) não têm contact_id, e estavam
-    // ficando sem grupo criado. Grupo não depende de contato.
+    if (isDocFullySigned && localDoc.lead_id && localDoc.whatsapp_phone) {
+      console.log(`[zapsign-webhook] FALLBACK group creation skipped (handled by Railway checkpoint) lead=${localDoc.lead_id}`)
+    }
+    /* DESATIVADO — ver comentário acima
     if (isDocFullySigned && localDoc.lead_id && localDoc.whatsapp_phone) {
       try {
         const { data: leadForGroup } = await supabase
@@ -1456,8 +1465,6 @@ Deno.serve(async (req) => {
 
         if (leadForGroup && !leadForGroup.whatsapp_group_id) {
           const fallbackPhone = (leadForGroup.lead_phone || localDoc.whatsapp_phone || '').replace(/\D/g, '')
-
-          // Resolve uma instância: doc → criador → primeira ativa
           let fbInstanceId: string | null = null
           let fbInstanceName: string | null = localDoc.instance_name || null
           if (fbInstanceName) {
@@ -1486,44 +1493,28 @@ Deno.serve(async (req) => {
               .maybeSingle()
             if (anyInst) { fbInstanceId = anyInst.id; fbInstanceName = anyInst.instance_name }
           }
-
           if (fallbackPhone && fbInstanceId) {
-            console.log(`[zapsign-webhook] FALLBACK: criando grupo para lead ${localDoc.lead_id} (sem board settings)`)
             const groupRes = await fetch(`${cloudFunctionsUrl}/functions/v1/create-whatsapp-group`, {
               method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${cloudAnonKey}`,
-              },
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${cloudAnonKey}` },
               body: JSON.stringify({
-                phone: fallbackPhone,
-                lead_name: leadForGroup.lead_name || 'Lead',
-                board_id: leadForGroup.board_id || null,
-                contact_phone: fallbackPhone,
-                creator_instance_id: fbInstanceId,
-                lead_id: localDoc.lead_id,
-                creation_origin: 'auto_sign_fallback',
-                phase: 'closed',
+                phone: fallbackPhone, lead_name: leadForGroup.lead_name || 'Lead',
+                board_id: leadForGroup.board_id || null, contact_phone: fallbackPhone,
+                creator_instance_id: fbInstanceId, lead_id: localDoc.lead_id,
+                creation_origin: 'auto_sign_fallback', phase: 'closed',
               }),
             })
             const groupData = await groupRes.json().catch(() => ({}))
             if (groupData?.success && groupData?.group_id) {
-              await supabase
-                .from('leads')
-                .update({ whatsapp_group_id: groupData.group_id } as any)
-                .eq('id', localDoc.lead_id)
-              console.log(`[zapsign-webhook] FALLBACK group created: ${groupData.group_id}`)
-            } else {
-              console.error(`[zapsign-webhook] FALLBACK group creation failed:`, groupData?.error || groupRes.status)
+              await supabase.from('leads').update({ whatsapp_group_id: groupData.group_id } as any).eq('id', localDoc.lead_id)
             }
-          } else {
-            console.log(`[zapsign-webhook] FALLBACK skipped — phone=${fallbackPhone || 'NONE'} instance=${fbInstanceId || 'NONE'}`)
           }
         }
       } catch (fbErr) {
         console.error('[zapsign-webhook] FALLBACK group creation error:', fbErr)
       }
     }
+    */
 
     // ====================================================
     // SEND SIGNED PDF TO WHATSAPP GROUP (executed AFTER group creation)

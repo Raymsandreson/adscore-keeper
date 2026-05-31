@@ -7,7 +7,33 @@
 //   import-group-docs-to-lead) via CLOUD_FUNCTIONS_URL+CLOUD_ANON_KEY (mesma convenção do
 //   webhook ZapSign). Quando esses handlers migrarem, basta trocar a URL.
 import type { RequestHandler } from 'express';
+import { randomUUID } from 'node:crypto';
 import { supabase as ext } from '../lib/supabase';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BYPASS INTERNO (in-process). Permite que outros handlers do mesmo servidor
+// Railway (ex.: zapsign-post-sign-extras) chamem este endpoint sem JWT do Cloud.
+// Nonce vive 60s em memória; impossível forjar de fora porque é gerado aqui.
+// ─────────────────────────────────────────────────────────────────────────────
+declare global {
+  // eslint-disable-next-line no-var
+  var __INTERNAL_EXEC_NONCES: Set<string> | undefined;
+}
+const NONCES: Set<string> = (globalThis.__INTERNAL_EXEC_NONCES ||= new Set());
+
+export function mintInternalExecNonce(): string {
+  const n = randomUUID();
+  NONCES.add(n);
+  setTimeout(() => NONCES.delete(n), 60_000).unref?.();
+  return n;
+}
+
+function consumeInternalNonce(token: string | undefined): boolean {
+  if (!token) return false;
+  if (!NONCES.has(token)) return false;
+  NONCES.delete(token);
+  return true;
+}
 
 function toDateOnly(value: unknown): string | null {
   if (typeof value !== 'string' || !value.trim()) return null;
@@ -101,15 +127,24 @@ export const handler: RequestHandler = async (req, res) => {
   const ok = (b: Record<string, unknown>) => res.status(200).json(b);
   const rid = (req.headers['x-request-id'] as string) || Math.random().toString(36).slice(2, 10);
   try {
-    // 🔒 Bloqueia acesso anônimo: exige JWT válido do Lovable Cloud.
-    const authHeader = req.headers['authorization'] as string | undefined;
-    const auth = await verifyCloudJwt(authHeader);
-    logAuth(rid, 'pre', auth, { path: req.path, ip: req.ip });
-    if (auth.ok !== true) {
-      logAuth(rid, 'post', auth, { blocked: true });
-      return res.status(401).json({ success: false, error: 'unauthorized', reason: auth.reason, rid });
+    // 🔓 Bypass interno por nonce (in-process). Usado pelo zapsign-post-sign-extras
+    // para auto-executar checkpoints sem JWT do Cloud.
+    const internalNonce = req.headers['x-internal-exec-nonce'] as string | undefined;
+    const isInternal = consumeInternalNonce(internalNonce);
+
+    if (!isInternal) {
+      // 🔒 Bloqueia acesso anônimo: exige JWT válido do Lovable Cloud.
+      const authHeader = req.headers['authorization'] as string | undefined;
+      const auth = await verifyCloudJwt(authHeader);
+      logAuth(rid, 'pre', auth, { path: req.path, ip: req.ip });
+      if (auth.ok !== true) {
+        logAuth(rid, 'post', auth, { blocked: true });
+        return res.status(401).json({ success: false, error: 'unauthorized', reason: auth.reason, rid });
+      }
+      logAuth(rid, 'post', auth, { blocked: false });
+    } else {
+      console.log(JSON.stringify({ fn: 'onboarding-checkpoint-execute', event: 'auth.bypass_internal', rid }));
     }
-    logAuth(rid, 'post', auth, { blocked: false });
 
     const { checkpoint_id, user_id, extra } = (req.body || {}) as {
       checkpoint_id?: string;
