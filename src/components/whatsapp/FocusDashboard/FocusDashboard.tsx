@@ -146,26 +146,30 @@ export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpen
           {kpiCards.map((k) => {
             const Icon = k.icon;
             return (
-              <button
-                key={k.label}
-                type="button"
-                onClick={k.onClick}
-                className={cn(
-                  'flex flex-col items-start justify-center gap-0.5 px-2.5 py-1.5 rounded-md border min-w-[78px] transition-colors',
-                  k.tone,
-                  k.onClick && 'hover:brightness-95 cursor-pointer',
-                  !k.onClick && 'cursor-default'
+              <div key={k.label} className="flex items-stretch gap-1">
+                <button
+                  type="button"
+                  onClick={k.onClick}
+                  className={cn(
+                    'flex flex-col items-start justify-center gap-0.5 px-2.5 py-1.5 rounded-md border min-w-[78px] transition-colors',
+                    k.tone,
+                    k.onClick && 'hover:brightness-95 cursor-pointer',
+                    !k.onClick && 'cursor-default'
+                  )}
+                >
+                <span className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide opacity-80">
+                  <Icon className="h-3 w-3" />
+                  {k.label}
+                </span>
+                <span className="text-base font-bold tabular-nums leading-none">{k.value}</span>
+                {k.sub && (
+                  <span className="text-[10px] opacity-70 leading-none">{k.sub}</span>
                 )}
-              >
-              <span className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide opacity-80">
-                <Icon className="h-3 w-3" />
-                {k.label}
-              </span>
-              <span className="text-base font-bold tabular-nums leading-none">{k.value}</span>
-              {k.sub && (
-                <span className="text-[10px] opacity-70 leading-none">{k.sub}</span>
-              )}
-              </button>
+                </button>
+                {k.label === 'Fechados' && (
+                  <ClosedPodiumCard closedLeads={data.closedLeads} onClick={() => setClosedSheetOpen(true)} />
+                )}
+              </div>
             );
           })}
 
