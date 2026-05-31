@@ -334,9 +334,9 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
               Leads que viraram cliente no período. Use os atalhos pra abrir o lead ou a conversa.
             </SheetDescription>
             {(() => {
-              const buckets = { madrugada: 0, manha: 0, tarde: 0, noite: 0 };
+              const buckets = { madrugada: 0, manha: 0, tarde: 0, noite: 0, semHora: 0 };
               sorted.forEach((l) => {
-                if (!l.closed_at) return;
+                if (!l.closed_at) { buckets.semHora++; return; }
                 const hourStr = new Date(l.closed_at).toLocaleString('en-US', { timeZone: 'America/Sao_Paulo', hour: '2-digit', hour12: false });
                 const h = parseInt(hourStr, 10);
                 if (h < 7) buckets.madrugada++;
@@ -350,10 +350,14 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
                 { label: 'Noite', emoji: '🌙', count: buckets.noite, cls: 'bg-indigo-500/20 border-indigo-500/40 text-indigo-700 dark:text-indigo-300' },
                 { label: 'Madrug.', emoji: '🌌', count: buckets.madrugada, cls: 'bg-slate-500/20 border-slate-500/40 text-slate-700 dark:text-slate-300' },
               ];
+              if (buckets.semHora > 0) {
+                cells.push({ label: 'S/ hora', emoji: '❓', count: buckets.semHora, cls: 'bg-muted border-border text-muted-foreground' });
+              }
+              const cols = cells.length === 5 ? 'grid-cols-5' : 'grid-cols-4';
               return (
-                <div className="grid grid-cols-4 gap-1.5 pt-1">
+                <div className={`grid ${cols} gap-1.5 pt-1`}>
                   {cells.map((c) => (
-                    <div key={c.label} className={`rounded-md border px-1.5 py-1 text-center ${c.cls}`}>
+                    <div key={c.label} className={`rounded-md border px-1.5 py-1 text-center ${c.cls}`} title={c.label === 'S/ hora' ? 'Fechados sem hora registrada (sem documento assinado no ZapSign)' : undefined}>
                       <div className="text-[10px] font-medium leading-tight">{c.emoji} {c.label}</div>
                       <div className="text-base font-bold leading-tight">{c.count}</div>
                     </div>
