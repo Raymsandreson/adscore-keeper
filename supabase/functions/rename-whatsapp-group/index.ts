@@ -232,6 +232,13 @@ Deno.serve(async (req) => {
         const v = cfValuesById[field.slice(3)]
         if (v) parts.push(v)
       }
+      else if (field === 'city_state') {
+        const city = lead?.city ? String(lead.city).trim() : ''
+        const state = lead?.state ? String(lead.state).trim() : ''
+        if (city && state) parts.push(`${city}/${state}`)
+        else if (city) parts.push(city)
+        else if (state) parts.push(state)
+      }
       else if (lead[field]) parts.push(String(lead[field]))
     }
     let newName = parts.join(' ')

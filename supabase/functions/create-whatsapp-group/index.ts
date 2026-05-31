@@ -757,6 +757,12 @@ Deno.serve(async (req) => {
         } else if (typeof field === 'string' && field.startsWith('cf:')) {
           const v = cfValuesById[field.slice(3)]
           if (v) parts.push(v)
+        } else if (field === 'city_state') {
+          const city = leadData?.city ? String(leadData.city).trim() : ''
+          const state = leadData?.state ? String(leadData.state).trim() : ''
+          if (city && state) parts.push(`${city}/${state}`)
+          else if (city) parts.push(city)
+          else if (state) parts.push(state)
         } else if (leadData && leadData[field]) {
           parts.push(field === 'lead_name' ? stripExistingSequenceFromName(leadData[field], activePrefix) : String(leadData[field]))
         } else if (field === 'lead_name') {

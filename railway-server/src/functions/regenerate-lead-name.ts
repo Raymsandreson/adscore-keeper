@@ -223,6 +223,13 @@ export const handler: RequestHandler = async (req, res) => {
         const v = cfValuesById[cfId];
         if (v) parts.push(v);
         else missingFields.push(field);
+      } else if (field === 'city_state') {
+        const city = (lead as any)?.city ? String((lead as any).city).trim() : '';
+        const state = (lead as any)?.state ? String((lead as any).state).trim() : '';
+        if (city && state) parts.push(`${city}/${state}`);
+        else if (city) parts.push(city);
+        else if (state) parts.push(state);
+        else missingFields.push(field);
       } else if (lead[field]) {
         const val = field === 'lead_name'
           ? stripExistingSequence(String(lead[field]), activePrefix)
