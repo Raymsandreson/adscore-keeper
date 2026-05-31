@@ -21,8 +21,12 @@ function stripExistingSequence(name: string, prefix: string): string {
   if (!name) return '';
   const trimmed = name.trim();
   if (!prefix) return trimmed;
-  const re = new RegExp(`^${prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\d+\\s*`, 'i');
+  const re = new RegExp(`^${prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*[-|:]?\\s*\\d+\\s*`, 'i');
   return trimmed.replace(re, '').trim();
+}
+
+function stripCaseFallbackPrefix(name: string): string {
+  return String(name || '').replace(/^CASO\s*[-|:]?\s*\d+\s*/i, '').trim();
 }
 
 // Posição do lead na fila de fechados do funil. Resolvido em UMA SQL via RPC
@@ -144,8 +148,8 @@ export const handler: RequestHandler = async (req, res) => {
       nextSeq = useClosed ? position : Math.max(position, activeSeqStart);
     }
 
-    // Token de prefixo (igual ao rename-whatsapp-group):
-    //  - FECHADO: legal_cases.case_number ("PREV-5")
+    // Token de prefixo:
+    //  - FECHADO: usa SEMPRE o prefixo manual do funil + nº, nunca o fallback "CASO"
     //  - ABERTO:  "LEAD-{lead_number}({case_prefix do produto})"
     let prefixToken = '';
     let caseNumberFromDb = '';
@@ -158,11 +162,9 @@ export const handler: RequestHandler = async (req, res) => {
         .limit(1)
         .maybeSingle();
       caseNumberFromDb = (legalCase?.case_number || '').trim();
-      if (useClosed && caseNumberFromDb) {
-        prefixToken = caseNumberFromDb;
-      } else if (useClosed && (settings.closed_group_name_prefix || '').trim()) {
-        // Fallback: sem legal_case, monta "PREV 1311" a partir da config + posição
-        prefixToken = `${String(settings.closed_group_name_prefix).trim()} ${nextSeq}`;
+      const manualClosedPrefix = String(settings.closed_group_name_prefix || '').trim();
+      if (useClosed) {
+        prefixToken = manualClosedPrefix ? `${manualClosedPrefix} ${nextSeq}` : String(nextSeq);
       } else if (lead.lead_number && lead.product_service_id) {
         const { data: prod } = await ext
           .from('products_services')
@@ -189,7 +191,7 @@ export const handler: RequestHandler = async (req, res) => {
     if (prefixToken) parts.push(prefixToken);
 
     const leadFields: string[] = settings.lead_fields || ['lead_name'];
-    const seqStr = caseNumberFromDb || String(nextSeq);
+    const seqStr = String(nextSeq);
 
 
     // Pré-carrega valores de campos personalizados se houver tokens cf:<id>
@@ -236,7 +238,7 @@ export const handler: RequestHandler = async (req, res) => {
         else missingFields.push(field);
       } else if (lead[field]) {
         const val = field === 'lead_name'
-          ? stripExistingSequence(String(lead[field]), activePrefix)
+          ? stripCaseFallbackPrefix(stripExistingSequence(String(lead[field]), prefixToken || activePrefix))
           : String(lead[field]);
         if (val) parts.push(val);
         else missingFields.push(field);
