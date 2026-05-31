@@ -163,6 +163,11 @@ export function ContactsListPage() {
     fetchGroups();
   }, []);
 
+  // Enquanto a sync em massa estiver rodando, ela faz milhares de upserts nos
+  // snapshots → realtime dispararia refetch a cada ~800ms e a lista "pisca".
+  // Esta ref silencia o refetch do realtime durante a janela da sync.
+  const syncingRef = useRef(false);
+
   // Auto-sync silencioso ao abrir a aba "Grupos" (1x por sessão do navegador).
   // Garante que grupos criados após a última sync diária apareçam na lista
   // sem o usuário precisar lembrar de clicar no refresh manual.
@@ -172,12 +177,19 @@ export function ContactsListPage() {
     if (sessionStorage.getItem(FLAG)) return;
     sessionStorage.setItem(FLAG, '1');
     (async () => {
+      syncingRef.current = true;
       try {
         const { error } = await supabase.functions.invoke('sync-all-whatsapp-groups', { body: {} });
         if (error) { console.warn('auto sync-all-whatsapp-groups error:', error); return; }
-        fetchGroups();
       } catch (e) {
         console.warn('auto sync-all-whatsapp-groups failed:', e);
+      } finally {
+        // Mantém silenciado por +3s pra absorver realtimes atrasados,
+        // então faz UM único refetch com o snapshot já estabilizado.
+        setTimeout(() => {
+          syncingRef.current = false;
+          fetchGroups();
+        }, 3000);
       }
     })();
   }, [activeTab]);
