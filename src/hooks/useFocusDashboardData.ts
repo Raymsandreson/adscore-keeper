@@ -67,7 +67,7 @@ export interface OverdueActivityItem {
   whatsapp_group_jid?: string | null;
 }
 
-type ClosedLeadRow = Omit<ClosedLeadItem, 'has_overdue_activity' | 'whatsapp_group_jid' | 'activities'>;
+type ClosedLeadRow = Omit<ClosedLeadItem, 'has_overdue_activity' | 'whatsapp_group_jid' | 'activities' | 'closed_at'> & { updated_at?: string | null };
 type ActivityRow = { id: string; lead_id: string | null; title: string | null; status: string | null; deadline: string | null };
 type GroupRow = { lead_id: string | null; group_jid: string | null };
 
