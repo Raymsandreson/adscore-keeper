@@ -190,7 +190,7 @@ export function useFocusDashboardData(instanceName?: string | null): FocusData {
       // Fechados: não depende de created_at do lead. Quando uma instância é
       // selecionada, restringe a leads cujo telefone pertence àquela instância.
       let closedQuery: any = db.from('leads')
-        .select('id, lead_phone, lead_name, became_client_date, acolhedor', { count: 'exact', head: false })
+        .select('id, lead_phone, lead_name, became_client_date, updated_at, acolhedor', { count: 'exact', head: false })
         .eq('lead_status', 'closed')
         .gte('became_client_date', localDate(range.from))
         .lte('became_client_date', localDate(range.to))
