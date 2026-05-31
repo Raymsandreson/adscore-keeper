@@ -277,35 +277,99 @@ export const handler: RequestHandler = async (req, res) => {
       .eq('id', lead_id);
     if (updErr) return ok({ success: false, error: `falha ao atualizar lead: ${updErr.message}` });
 
+    // Renomeia o grupo direto via UazAPI (sem delegar ao create-whatsapp-group,
+    // que recalcula sequência própria e sobrescreve o lead_name causando duplicação).
     let groupRenamed = false;
     let groupName: string | null = null;
+    const renameErrors: string[] = [];
     if (settings.sync_lead_name_with_group && lead.whatsapp_group_id) {
-      try {
-        const r = await fetch(`${CLOUD_FUNCTIONS_URL}/functions/v1/create-whatsapp-group`, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${CLOUD_ANON_KEY}`,
-            apikey: CLOUD_ANON_KEY,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            lead_id,
-            lead_name: newName,
-            phone: lead.lead_phone,
-            contact_phone: lead.lead_phone,
-            board_id: lead.board_id,
-            creation_origin: 'regenerate_lead_name',
-            phase,
-            allow_rename: true,
-          }),
-        });
-        const data: any = await r.json().catch(() => ({}));
-        if (data?.success !== false) {
-          groupRenamed = true;
-          groupName = data?.group_name || null;
+      const fullJid = String(lead.whatsapp_group_id).includes('@g.us')
+        ? String(lead.whatsapp_group_id)
+        : `${lead.whatsapp_group_id}@g.us`;
+
+      // Lista candidatos: instâncias do board primeiro, depois qualquer conectada.
+      const candidates: any[] = [];
+      const { data: boardInstances } = await ext
+        .from('board_group_instances')
+        .select('instance_id')
+        .eq('board_id', lead.board_id);
+      if (boardInstances?.length) {
+        const { data: bInst } = await ext
+          .from('whatsapp_instances')
+          .select('id, instance_name, instance_token, base_url')
+          .in('id', boardInstances.map((b: any) => b.instance_id))
+          .eq('is_active', true)
+          .eq('connection_status', 'connected');
+        if (bInst) candidates.push(...bInst);
+      }
+      {
+        const excludeIds = candidates.map((c: any) => c.id);
+        let q = ext
+          .from('whatsapp_instances')
+          .select('id, instance_name, instance_token, base_url')
+          .eq('is_active', true)
+          .eq('connection_status', 'connected');
+        if (excludeIds.length) q = q.not('id', 'in', `(${excludeIds.join(',')})`);
+        const { data: anyInst } = await q;
+        if (anyInst) candidates.push(...anyInst);
+      }
+
+      // Probe /group/info pra achar uma instância que realmente enxerga o grupo
+      let actor: any = null;
+      let baseUrl = '';
+      for (const cand of candidates) {
+        const candBase = (cand.base_url || 'https://abraci.uazapi.com').replace(/\/$/, '');
+        try {
+          const probe = await fetch(`${candBase}/group/info`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', token: cand.instance_token },
+            body: JSON.stringify({ groupjid: fullJid }),
+          });
+          if (probe.ok) {
+            actor = cand;
+            baseUrl = candBase;
+            break;
+          } else {
+            renameErrors.push(`${cand.instance_name}: probe ${probe.status}`);
+          }
+        } catch (e: any) {
+          renameErrors.push(`${cand.instance_name}: ${e?.message || 'fetch error'}`);
         }
-      } catch (e) {
-        console.warn('[regenerate-lead-name] rename group failed:', e);
+      }
+
+      if (actor) {
+        try {
+          const r1 = await fetch(`${baseUrl}/group/updateName`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', token: actor.instance_token },
+            body: JSON.stringify({ groupjid: fullJid, name: newName }),
+          });
+          if (r1.ok) {
+            groupRenamed = true;
+            groupName = newName;
+          } else {
+            const r2 = await fetch(`${baseUrl}/group/subject`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', token: actor.instance_token },
+              body: JSON.stringify({ groupjid: fullJid, subject: newName }),
+            });
+            if (r2.ok) {
+              groupRenamed = true;
+              groupName = newName;
+            } else {
+              const t = await r2.text().catch(() => '');
+              renameErrors.push(`updateName ${r1.status} / subject ${r2.status}: ${t.slice(0, 160)}`);
+            }
+          }
+        } catch (e: any) {
+          renameErrors.push(`rename error: ${e?.message || e}`);
+        }
+      } else {
+        renameErrors.push('nenhuma instância conectada conseguiu enxergar o grupo');
+      }
+
+      if (!groupRenamed) {
+        console.warn('[regenerate-lead-name] rename failed:', renameErrors.join(' | '));
       }
     }
 
