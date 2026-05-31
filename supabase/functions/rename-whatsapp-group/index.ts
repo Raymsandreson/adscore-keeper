@@ -17,6 +17,21 @@ const normalizePhone = (raw: string | null | undefined): string => {
   return String(raw).replace(/\D/g, '');
 };
 
+const firstNumber = (raw: string | null | undefined): string => {
+  const match = String(raw || '').match(/\d+/)
+  return match?.[0] || ''
+}
+
+const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+const stripGeneratedCasePrefix = (name: string | null | undefined, manualPrefix: string): string => {
+  let cleaned = String(name || '').trim()
+  if (manualPrefix) {
+    cleaned = cleaned.replace(new RegExp(`^${escapeRegExp(manualPrefix)}\\s*[-|:]?\\s*\\d+\\s*`, 'i'), '').trim()
+  }
+  return cleaned.replace(/^CASO\s*[-|:]?\s*\d+\s*/i, '').trim()
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
@@ -66,38 +81,6 @@ Deno.serve(async (req) => {
         status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
-
-    // Token de prefixo do nome do grupo. Duas fases:
-    //  - FECHADO: legal_cases.case_number (ex: "PREV-5") — gerado pela RPC
-    //    generate_case_number(p_product_id) quando o lead vira cliente.
-    //  - ABERTO:  "LEAD-{lead.lead_number}({produto.case_prefix})" — atribuído
-    //    no INSERT do lead pela RPC generate_lead_number(p_product_id).
-    let prefixToken = ''
-    {
-      const { data: legalCase } = await supabase
-        .from('legal_cases')
-        .select('case_number')
-        .eq('lead_id', lead.id)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-      const caseNumber = legalCase?.case_number?.trim() || ''
-      if (caseNumber) {
-        prefixToken = caseNumber
-      } else if (lead.lead_number && lead.product_service_id) {
-        const { data: prod } = await supabase
-          .from('products_services')
-          .select('case_prefix')
-          .eq('id', lead.product_service_id)
-          .maybeSingle()
-        const pfx = (prod?.case_prefix || '').trim().toUpperCase()
-        prefixToken = pfx
-          ? `LEAD-${lead.lead_number}(${pfx})`
-          : `LEAD-${lead.lead_number}`
-      }
-      console.log(`[rename] prefixToken="${prefixToken}" for lead ${lead.id}`)
-    }
-
 
     // Find a connected instance to operate on the group.
     // We collect all candidates marked as connected and probe each one with a real
@@ -189,8 +172,8 @@ Deno.serve(async (req) => {
 
     const executorPhone = normalizePhone(instance.owner_phone || instance.phone || '')
 
-    // Build new name — fonte única do nº do caso = legal_cases.case_number (do produto).
-    // group_name_prefix legado ignorado: o prefixo já vem embutido em caseNumber (ex: "PREV-1").
+    // Build new name — no fechamento, o prefixo manual do funil manda.
+    // Se legal_cases.case_number vier como "CASO-1311", usamos só o número: "PREV 1311".
     const leadFields = settings.lead_fields || ['lead_name']
     const { data: board } = await supabase
       .from('kanban_boards')
@@ -198,6 +181,25 @@ Deno.serve(async (req) => {
       .eq('id', lead.board_id)
       .maybeSingle()
     const parts: string[] = []
+    const manualClosedPrefix = String(settings.closed_group_name_prefix || '').trim()
+    const { data: legalCase } = await supabase
+      .from('legal_cases')
+      .select('case_number')
+      .eq('lead_id', lead.id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    const caseSeq = firstNumber(lead.case_number) || firstNumber(legalCase?.case_number) || firstNumber(lead.lead_name) || ''
+    let prefixToken = manualClosedPrefix && caseSeq ? `${manualClosedPrefix} ${caseSeq}` : ''
+    if (!prefixToken && lead.lead_number && lead.product_service_id) {
+      const { data: prod } = await supabase
+        .from('products_services')
+        .select('case_prefix')
+        .eq('id', lead.product_service_id)
+        .maybeSingle()
+      const pfx = (prod?.case_prefix || '').trim().toUpperCase()
+      prefixToken = pfx ? `LEAD-${lead.lead_number}(${pfx})` : `LEAD-${lead.lead_number}`
+    }
     if (prefixToken) parts.push(prefixToken)
 
     // Pré-carrega valores de campos personalizados (tokens cf:<id>)
@@ -222,7 +224,6 @@ Deno.serve(async (req) => {
     }
 
     for (const field of leadFields) {
-      // tokens legados de número já estão cobertos por caseNumber acima
       if (field === 'closed_seq' || field === 'case_number') continue
       else if (typeof field === 'string' && field.startsWith('text:')) {
         try { parts.push(decodeURIComponent(field.slice(5))) } catch { parts.push(field.slice(5)) }
@@ -239,7 +240,7 @@ Deno.serve(async (req) => {
         else if (city) parts.push(city)
         else if (state) parts.push(state)
       }
-      else if (lead[field]) parts.push(String(lead[field]))
+      else if (lead[field]) parts.push(field === 'lead_name' ? stripGeneratedCasePrefix(lead[field], manualClosedPrefix) : String(lead[field]))
     }
     let newName = parts.join(' ')
     if (newName.length > 100) newName = newName.slice(0, 100).trim()
