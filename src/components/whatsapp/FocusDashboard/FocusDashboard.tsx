@@ -146,7 +146,7 @@ export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpen
           {kpiCards.map((k) => {
             const Icon = k.icon;
             return (
-              <div key={k.label} className="flex items-stretch gap-1">
+              <div key={k.label} className="inline-flex items-stretch gap-1 shrink-0">
                 <button
                   type="button"
                   onClick={k.onClick}
