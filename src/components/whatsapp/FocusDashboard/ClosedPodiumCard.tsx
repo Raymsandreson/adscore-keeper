@@ -53,7 +53,7 @@ export function ClosedPodiumCard({ closedLeads, onClick }: ClosedPodiumCardProps
       onClick={onClick}
       title={arr.map(([n, c]) => `${n}: ${c}`).join('\n')}
       className={cn(
-        'flex items-end gap-0.5 px-1.5 py-1 rounded-md border transition-colors hover:brightness-95 cursor-pointer',
+        'flex items-end gap-0.5 px-1.5 py-1 rounded-md border transition-colors hover:brightness-95 cursor-pointer shrink-0',
         tone
       )}
     >
