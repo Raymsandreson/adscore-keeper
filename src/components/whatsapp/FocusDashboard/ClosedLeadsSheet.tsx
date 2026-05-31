@@ -296,7 +296,29 @@ interface ClosedLeadsSheetProps {
 export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel, onOpenChat }: ClosedLeadsSheetProps) {
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [showLeadEdit, setShowLeadEdit] = useState(false);
-  const [chatPreview, setChatPreview] = useState<{ phone: string; name: string | null } | null>(null);
+  const [chatPreview, setChatPreview] = useState<{ phone: string; name: string | null; instanceName: string | null } | null>(null);
+
+  // Resolve a instância olhando a última conversa WhatsApp pelo telefone
+  useEffect(() => {
+    if (!chatPreview || chatPreview.instanceName) return;
+    const phone = chatPreview.phone;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await db
+          .from('whatsapp_conversations')
+          .select('instance_name, last_message_at')
+          .eq('phone', phone)
+          .order('last_message_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (cancelled) return;
+        const inst = (data as any)?.instance_name ?? null;
+        if (inst) setChatPreview((cur) => (cur && cur.phone === phone ? { ...cur, instanceName: inst } : cur));
+      } catch {/* ignore */}
+    })();
+    return () => { cancelled = true; };
+  }, [chatPreview?.phone]);
   const [openLeadId, setOpenLeadId] = useState<string | null>(null);
 
 
