@@ -89,11 +89,15 @@ ${fieldsContext}
 - Data assinatura: 26/03/2026
 - Endereço: Rua das Flores, 123, Centro, Teresina-PI, CEP 64000-000
 
+OBSERVAÇÃO DO LEAD (resumo da conversa — campo "notes" preenchido pelo acolhedor):
+"Cliente sofreu queda de andaime em obra. Já fez perícia no INSS, foi negado o benefício. Possui laudo médico e CAT emitida pela empresa. Está afastado há 6 meses. Família depende da renda. Cliente demonstrou bastante interesse e urgência."
+
 CAMPOS PERSONALIZADOS FICTÍCIOS:
 - Valor estimado da causa: R$ 150.000,00
 - Tipo de lesão: Fratura no fêmur
 - Tempo de afastamento: 6 meses
 - CID: S72.0
+
 
 ATIVIDADES ABERTAS FICTÍCIAS:
 - Coletar documentos médicos (prazo: 28/03/2026) - Link: https://app.exemplo.com/?openActivity=abc123
