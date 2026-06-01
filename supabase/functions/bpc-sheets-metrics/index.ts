@@ -77,7 +77,8 @@ async function fetchTab(tab: string): Promise<SheetRow[]> {
 
   return values.slice(1).filter((r) => r.length > 0).map((r) => {
     const o = rowToObject(headers, r);
-    const phoneRaw = o["telefone"] || o["qual_o_seu_número_de_contato_?"] || "";
+    const phoneRaw = o["telefone"] || o["phone_number"] || o["qual_o_seu_número_de_contato_?"] || "";
+    const name = o["nome_completo"] || o["full_name"] || "";
     return {
       form_lead_id: o["id"] || "",
       created_at: o["created_time"] || "",
@@ -85,10 +86,10 @@ async function fetchTab(tab: string): Promise<SheetRow[]> {
       ad_name: o["ad_name"] || "",
       form_name: o["form_name"] || "",
       is_organic: (o["is_organic"] || "").toLowerCase() === "true",
-      name: o["nome_completo"] || "",
+      name,
       phone_raw: phoneRaw,
       phone_normalized: normalizePhone(phoneRaw),
-      estado_civil: o["estado_civil"] || "",
+      estado_civil: o["estado_civil"] || o["marital_status"] || "",
       filho_autista: o["você_possui_filho_autista_ou_conhece_alguém_autista_?"] || "",
       laudo: o["possui_laudo_médico_ou_relatório_escolar_?"] || "",
       renda: o["qual_a_sua_renda_familiar_?"] || "",
@@ -98,6 +99,7 @@ async function fetchTab(tab: string): Promise<SheetRow[]> {
       tab,
     };
   }).filter((r) => r.phone_normalized.length >= 10 && !r.name.startsWith("<test"));
+
 }
 
 function isUnviable(row: SheetRow): boolean {
@@ -105,12 +107,35 @@ function isUnviable(row: SheetRow): boolean {
   return s.includes("ctt errado") || s.includes("invi") || s === "recusado";
 }
 
+// The sheet stores timestamps with -05:00 offset (Meta's TZ). To match what the
+// user SEES in the sheet (the YYYY-MM-DD prefix of the cell), we compare the
+// LOCAL date portion of the timestamp directly, in the sheet's own timezone.
+const SHEET_TZ_OFFSET_MIN = -5 * 60; // -05:00
+
+function localDateInSheetTZ(iso: string): string {
+  // iso example: "2026-06-01T04:26:25-05:00" -> "2026-06-01"
+  // Or any other tz -> shift to -05:00 first
+  if (!iso) return "";
+  const m = iso.match(/^(\d{4}-\d{2}-\d{2})T/);
+  if (!m) return "";
+  // If the ISO already ends with -05:00, the date prefix is already correct.
+  if (iso.endsWith("-05:00")) return m[1];
+  // Otherwise compute manually
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  const shifted = new Date(d.getTime() + SHEET_TZ_OFFSET_MIN * 60_000);
+  return shifted.toISOString().slice(0, 10);
+}
+
 function inPeriod(iso: string, fromISO: string, toISO: string): boolean {
   if (!iso) return false;
-  const t = new Date(iso).getTime();
-  if (isNaN(t)) return false;
-  return t >= new Date(fromISO).getTime() && t <= new Date(toISO).getTime();
+  const rowDate = localDateInSheetTZ(iso);
+  const fromDate = localDateInSheetTZ(fromISO);
+  const toDate = localDateInSheetTZ(toISO);
+  if (!rowDate) return false;
+  return rowDate >= fromDate && rowDate <= toDate;
 }
+
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
