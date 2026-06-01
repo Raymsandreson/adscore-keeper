@@ -107,25 +107,39 @@ function isUnviable(row: SheetRow): boolean {
   return s.includes("ctt errado") || s.includes("invi") || s === "recusado";
 }
 
-// The user filters in Brazil time (-03:00). Whatever TZ the sheet stores, we
-// convert the row timestamp to Brazil and compare the YYYY-MM-DD prefix to the
-// from/to range (also reduced to Brazil dates). This matches what the dashboard
-// labels mean: "Hoje" = today in Brazil, regardless of Meta's TZ.
-const BR_TZ_OFFSET_MIN = -3 * 60; // -03:00
+// A planilha grava timestamps em -05:00 (México, fuso Meta). O usuário conta
+// leads OLHANDO a planilha, então o que importa é o "dia em -05:00", não o
+// "dia em BR". Ex: 2026-05-31T22:29-05:00 → na planilha aparece como 31/05.
+// Em BR seria 01/06 00:29, mas o usuário continua contando como 31/05.
+//
+// Para o from/to vindos do dashboard (BR start/end of day) usamos o ponto
+// médio do intervalo deslocado para -05:00. Funciona para "hoje", "ontem",
+// "semana", "mês" porque o midpoint sempre cai no meio do dia/período.
+const SHEET_TZ_OFFSET_MIN = -5 * 60; // -05:00 (fuso México/Meta)
 
-function brDate(iso: string): string {
+function sheetDate(iso: string): string {
   if (!iso) return "";
   const d = new Date(iso);
   if (isNaN(d.getTime())) return "";
-  const shifted = new Date(d.getTime() + BR_TZ_OFFSET_MIN * 60_000);
+  const shifted = new Date(d.getTime() + SHEET_TZ_OFFSET_MIN * 60_000);
   return shifted.toISOString().slice(0, 10);
+}
+
+// Para o range, deslocamos +12h antes para garantir que o "miolo" do dia BR
+// caia no dia correto em -05:00 (BR e México têm 2h de diferença).
+function rangeSheetDate(iso: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  const midShifted = new Date(d.getTime() + 12 * 60 * 60_000 + SHEET_TZ_OFFSET_MIN * 60_000);
+  return midShifted.toISOString().slice(0, 10);
 }
 
 function inPeriod(iso: string, fromISO: string, toISO: string): boolean {
   if (!iso) return false;
-  const rowDate = brDate(iso);
-  const fromDate = brDate(fromISO);
-  const toDate = brDate(toISO);
+  const rowDate = sheetDate(iso);
+  const fromDate = rangeSheetDate(fromISO);
+  const toDate = rangeSheetDate(toISO);
   if (!rowDate) return false;
   return rowDate >= fromDate && rowDate <= toDate;
 }
