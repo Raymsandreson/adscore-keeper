@@ -74,6 +74,24 @@ function generateRequestId(): string {
   return `req-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+function parseFunctionErrorPayload(err: unknown): Record<string, any> | null {
+  const message = err instanceof Error ? err.message : String(err ?? '');
+  const jsonStart = message.indexOf('{');
+  if (jsonStart === -1) return null;
+
+  try {
+    return JSON.parse(message.slice(jsonStart));
+  } catch {
+    return null;
+  }
+}
+
+function isInvalidMetaTokenError(functionName: string, payload: Record<string, any> | null) {
+  return functionName.startsWith('list-meta-')
+    && payload?.error_type === 'OAuthException'
+    && Number(payload?.error_code) === 190;
+}
+
 async function callCloud<T>(
   functionName: string,
   body?: Record<string, any>,
@@ -188,6 +206,12 @@ async function invokeFunction<T = any>(
     }
     return result;
   } catch (err) {
+    const businessPayload = parseFunctionErrorPayload(err);
+    if (isInvalidMetaTokenError(functionName, businessPayload)) {
+      console.warn(`[Router] ${functionName} → token Meta inválido/expirado [rid=${requestId}]`);
+      return { data: { success: false, ...businessPayload } as T, error: null };
+    }
+
     console.warn(`[Router] ${functionName} → ${target} FALHOU [rid=${requestId}]:`, err);
 
     // Fallback: tenta o outro backend

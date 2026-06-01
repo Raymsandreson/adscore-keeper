@@ -59,6 +59,13 @@ interface MetaCampaign {
   destination_phone?: string | null;
 }
 
+const isInvalidMetaTokenResponse = (data: any, err?: unknown) => {
+  const rawMessage = err instanceof Error ? err.message : String(err ?? '');
+  return data?.error_type === 'OAuthException' && Number(data?.error_code) === 190
+    || rawMessage.includes('"error_code":190')
+    || rawMessage.includes('Error validating access token');
+};
+
 interface ConversationInfo {
   phone: string;
   contact_name: string | null;
@@ -131,6 +138,7 @@ export function CTWACampaignAutomation() {
   const [swapTargetCampaignId, setSwapTargetCampaignId] = useState<string>('');
   const [swapManualId, setSwapManualId] = useState('');
   const [expandedLinks, setExpandedLinks] = useState<Set<string>>(new Set());
+  const [metaTokenExpired, setMetaTokenExpired] = useState(false);
   const toggleExpanded = (id: string) => setExpandedLinks(prev => {
     const next = new Set(prev);
     if (next.has(id)) next.delete(id); else next.add(id);
@@ -262,10 +270,18 @@ export function CTWACampaignAutomation() {
       }));
       console.log('CTWA: Found', campaigns.length, 'campaigns');
       setMetaCampaigns(campaigns);
+      setMetaTokenExpired(false);
       if (campaigns.length === 0) setUseManualInput(true);
       else setUseManualInput(false);
     } catch (err) {
       console.error('CTWA: Error fetching campaigns:', err);
+      if (isInvalidMetaTokenResponse(null, err)) {
+        setMetaTokenExpired(true);
+        toast.error('Conta Meta precisa reconectar', {
+          description: 'O token da Meta foi invalidado. Reconecte em Marketing → Anúncios.',
+          duration: 9000,
+        });
+      }
       setUseManualInput(true);
     } finally {
       setLoadingCampaigns(false);
@@ -1356,6 +1372,29 @@ export function CTWACampaignAutomation() {
                 <p className="text-[10px] text-muted-foreground">
                   As campanhas listadas vêm desta conta. Troque para ver campanhas de outra conta.
                 </p>
+              </div>
+            )}
+
+            {metaTokenExpired && (
+              <div className="rounded-md border border-destructive/30 bg-destructive/10 p-2 text-[11px] text-destructive">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <p className="font-medium">Conta Meta desconectada</p>
+                    <p className="text-destructive/80">
+                      A Meta invalidou o token. Reconecte em Marketing → Anúncios para voltar a listar campanhas.
+                    </p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-7 border-destructive/40 px-2 text-[10px] text-destructive hover:bg-destructive/10"
+                      onClick={() => { window.location.href = '/dashboard?tab=paid'; }}
+                    >
+                      Reconectar Meta
+                    </Button>
+                  </div>
+                </div>
               </div>
             )}
 
