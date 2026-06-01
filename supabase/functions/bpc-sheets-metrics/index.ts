@@ -107,31 +107,25 @@ function isUnviable(row: SheetRow): boolean {
   return s.includes("ctt errado") || s.includes("invi") || s === "recusado";
 }
 
-// The sheet stores timestamps with -05:00 offset (Meta's TZ). To match what the
-// user SEES in the sheet (the YYYY-MM-DD prefix of the cell), we compare the
-// LOCAL date portion of the timestamp directly, in the sheet's own timezone.
-const SHEET_TZ_OFFSET_MIN = -5 * 60; // -05:00
+// The user filters in Brazil time (-03:00). Whatever TZ the sheet stores, we
+// convert the row timestamp to Brazil and compare the YYYY-MM-DD prefix to the
+// from/to range (also reduced to Brazil dates). This matches what the dashboard
+// labels mean: "Hoje" = today in Brazil, regardless of Meta's TZ.
+const BR_TZ_OFFSET_MIN = -3 * 60; // -03:00
 
-function localDateInSheetTZ(iso: string): string {
-  // iso example: "2026-06-01T04:26:25-05:00" -> "2026-06-01"
-  // Or any other tz -> shift to -05:00 first
+function brDate(iso: string): string {
   if (!iso) return "";
-  const m = iso.match(/^(\d{4}-\d{2}-\d{2})T/);
-  if (!m) return "";
-  // If the ISO already ends with -05:00, the date prefix is already correct.
-  if (iso.endsWith("-05:00")) return m[1];
-  // Otherwise compute manually
   const d = new Date(iso);
   if (isNaN(d.getTime())) return "";
-  const shifted = new Date(d.getTime() + SHEET_TZ_OFFSET_MIN * 60_000);
+  const shifted = new Date(d.getTime() + BR_TZ_OFFSET_MIN * 60_000);
   return shifted.toISOString().slice(0, 10);
 }
 
 function inPeriod(iso: string, fromISO: string, toISO: string): boolean {
   if (!iso) return false;
-  const rowDate = localDateInSheetTZ(iso);
-  const fromDate = localDateInSheetTZ(fromISO);
-  const toDate = localDateInSheetTZ(toISO);
+  const rowDate = brDate(iso);
+  const fromDate = brDate(fromISO);
+  const toDate = brDate(toISO);
   if (!rowDate) return false;
   return rowDate >= fromDate && rowDate <= toDate;
 }
