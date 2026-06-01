@@ -674,6 +674,10 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const [groupMentionAnchor, setGroupMentionAnchor] = useState(0); // index of the '@' being edited
   const [mentionedParticipants, setMentionedParticipants] = useState<Array<{ phone: string; name: string }>>([]);
   const [rosterParticipants, setRosterParticipants] = useState<Array<{ phone: string; name: string }>>([]);
+  // @lid (ID anônimo do WhatsApp em grupos) -> { phone, name } da participação real
+  const [groupLidMap, setGroupLidMap] = useState<Record<string, { phone: string; name: string }>>({});
+  // phone (somente dígitos) -> nome resolvido (roster do grupo)
+  const [groupPhoneNameMap, setGroupPhoneNameMap] = useState<Record<string, string>>({});
   const [agentEnabled, setAgentEnabled] = useState(false);
   const [activeAgentName, setActiveAgentName] = useState<string | null>(null);
   const [activeAgentId, setActiveAgentId] = useState<string | null>(null);
