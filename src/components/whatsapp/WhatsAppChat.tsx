@@ -102,6 +102,29 @@ interface Props {
   onClearConversation?: (phone: string, instanceName?: string) => Promise<boolean>;
 }
 
+function parseParticipants(raw: Array<Record<string, unknown>>) {
+  const mapped: Array<{ phone: string; name: string }> = [];
+  const lidMap: Record<string, { phone: string; name: string }> = {};
+  const phoneNameMap: Record<string, string> = {};
+  for (const p of raw) {
+    const rawId = String(p.JID || p.jid || p.id || p.participant || '');
+    const lidField = String(p.LID || p.lid || (rawId.includes('@lid') ? rawId : ''));
+    const lidDigits = lidField.replace('@lid', '').replace(/\D/g, '');
+    const phoneRaw = String(p.PhoneNumber || p.phoneNumber || p.phone || (rawId.includes('@s.whatsapp.net') ? rawId : ''));
+    const phone = phoneRaw.replace('@s.whatsapp.net', '').replace(/\D/g, '');
+    const name = String(p.DisplayName || p.displayName || p.Name || p.name || p.PushName || p.pushName || p.display_name || '');
+    if (phone.length >= 8 && name) {
+      mapped.push({ phone, name });
+      phoneNameMap[phone] = name;
+      phoneNameMap[phone.slice(-8)] = name;
+    }
+    if (lidDigits && phone.length >= 8) {
+      lidMap[lidDigits] = { phone, name: name || phone };
+    }
+  }
+  return { mapped, lidMap, phoneNameMap };
+}
+
 export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia, onSendLocation, onDeleteMessage, onLinkToLead, onLinkToContact, onCreateLead, onCreateContact, onCreateCase, extractingData, extractionStep, onCreateActivity, onNavigateToLead, onViewContact, onPrivacyChanged, shareInfo, onUpdateWithAI, onOpenChat, onClearConversation }: Props) {
   const { profile } = useAuthContext();
   const { boards: kanbanBoards } = useKanbanBoards();
@@ -130,6 +153,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const [isPrivate, setIsPrivate] = useState(false);
   const [togglingPrivate, setTogglingPrivate] = useState(false);
   const [showGroupMembers, setShowGroupMembers] = useState(false);
+  const [refreshingRoster, setRefreshingRoster] = useState(false);
   
   const [showSessionEditor, setShowSessionEditor] = useState(false);
   const [creatingGroup, setCreatingGroup] = useState(false);
@@ -662,6 +686,38 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     setBulkResyncing(false);
     setBulkResyncProgress(null);
   };
+
+  const handleRefreshRoster = async () => {
+    const groupJid =
+      conversation.messages.find(m => (m.metadata?.chat?.wa_chatid || '').includes('@g.us'))?.metadata?.chat?.wa_chatid ||
+      conversation.messages.find(m => (m.metadata?.message?.chatid || '').includes('@g.us'))?.metadata?.message?.chatid;
+    if (!groupJid || !conversation.instance_name) {
+      toast.info('Não foi possível identificar o grupo');
+      return;
+    }
+    setRefreshingRoster(true);
+    const t = toast.loading('Atualizando participantes...');
+    try {
+      const { data: fnData } = await supabase.functions.invoke('get-group-participants', {
+        body: { group_jid: groupJid, instance_name: conversation.instance_name, refresh: true },
+      });
+      const resp = fnData as { success?: boolean; participants?: Array<Record<string, unknown>> } | null;
+      if (resp?.success && Array.isArray(resp.participants)) {
+        const { mapped, lidMap, phoneNameMap } = parseParticipants(resp.participants);
+        if (mapped.length) setRosterParticipants(prev => (prev.length ? prev : mapped));
+        if (Object.keys(lidMap).length) setGroupLidMap(prev => ({ ...prev, ...lidMap }));
+        if (Object.keys(phoneNameMap).length) setGroupPhoneNameMap(prev => ({ ...prev, ...phoneNameMap }));
+        toast.success('Participantes atualizados', { id: t });
+      } else {
+        toast.error('Não foi possível atualizar os participantes', { id: t });
+      }
+    } catch {
+      toast.error('Erro ao atualizar participantes', { id: t });
+    } finally {
+      setRefreshingRoster(false);
+    }
+  };
+
   const [pastedImage, setPastedImage] = useState<{ file: File; previewUrl: string } | null>(null);
   const [pastedCaption, setPastedCaption] = useState('');
   const [inputMode, setInputMode] = useState<'message' | 'note' | 'chat'>('message');
@@ -1339,25 +1395,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     let cancelled = false;
 
     const applyParticipants = (raw: Array<Record<string, unknown>>) => {
-      const mapped: Array<{ phone: string; name: string }> = [];
-      const lidMap: Record<string, { phone: string; name: string }> = {};
-      const phoneNameMap: Record<string, string> = {};
-      for (const p of raw) {
-        const rawId = String(p.JID || p.jid || p.id || p.participant || '');
-        const lidField = String(p.LID || p.lid || (rawId.includes('@lid') ? rawId : ''));
-        const lidDigits = lidField.replace('@lid', '').replace(/\D/g, '');
-        const phoneRaw = String(p.PhoneNumber || p.phoneNumber || p.phone || (rawId.includes('@s.whatsapp.net') ? rawId : ''));
-        const phone = phoneRaw.replace('@s.whatsapp.net', '').replace(/\D/g, '');
-        const name = String(p.DisplayName || p.displayName || p.Name || p.name || p.PushName || p.pushName || p.display_name || '');
-        if (phone.length >= 8 && name) {
-          mapped.push({ phone, name });
-          phoneNameMap[phone] = name;
-          phoneNameMap[phone.slice(-8)] = name;
-        }
-        if (lidDigits && phone.length >= 8) {
-          lidMap[lidDigits] = { phone, name: name || phone };
-        }
-      }
+      const { mapped, lidMap, phoneNameMap } = parseParticipants(raw);
       if (cancelled) return;
       if (mapped.length) setRosterParticipants(prev => (prev.length ? prev : mapped));
       // Mescla por cima do que já existe (dados frescos sobrescrevem antigos)
@@ -2584,6 +2622,20 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>Membros do grupo</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={handleRefreshRoster}
+                    disabled={refreshingRoster}
+                  >
+                    {refreshingRoster ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Atualizar participantes</TooltipContent>
               </Tooltip>
               <GroupMembersDialog
                 open={showGroupMembers}
