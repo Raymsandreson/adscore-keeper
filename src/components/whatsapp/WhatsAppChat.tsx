@@ -674,6 +674,10 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const [groupMentionAnchor, setGroupMentionAnchor] = useState(0); // index of the '@' being edited
   const [mentionedParticipants, setMentionedParticipants] = useState<Array<{ phone: string; name: string }>>([]);
   const [rosterParticipants, setRosterParticipants] = useState<Array<{ phone: string; name: string }>>([]);
+  // @lid (ID anônimo do WhatsApp em grupos) -> { phone, name } da participação real
+  const [groupLidMap, setGroupLidMap] = useState<Record<string, { phone: string; name: string }>>({});
+  // phone (somente dígitos) -> nome resolvido (roster do grupo)
+  const [groupPhoneNameMap, setGroupPhoneNameMap] = useState<Record<string, string>>({});
   const [agentEnabled, setAgentEnabled] = useState(false);
   const [activeAgentName, setActiveAgentName] = useState<string | null>(null);
   const [activeAgentId, setActiveAgentId] = useState<string | null>(null);
@@ -1114,17 +1118,53 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   });
 
   // Extract sender info from group message metadata (UazAPI format)
+  // Lida com 3 cenários: (1) sender_pn = telefone real, (2) só @lid = ID anônimo
+  // que precisa ser mapeado via roster do grupo, (3) ambos disponíveis.
   const getGroupSenderInfo = (msg: any): { name: string | null; phone: string | null } => {
     const meta = msg.metadata;
     if (!meta || msg.direction === 'outbound') return { name: null, phone: null };
-    
-    // UazAPI: sender phone is in message.sender_pn (e.g. "5588...@s.whatsapp.net")
-    const senderPn = meta?.message?.sender_pn || meta?.sender_pn || '';
-    const senderPhone = senderPn.replace('@s.whatsapp.net', '').replace(/\D/g, '');
-    
-    // UazAPI: sender name is in message.senderName or message.groupName is the group name
-    const senderName = meta?.message?.senderName || meta?.senderName || meta?.chat?.pushName || null;
-    
+
+    // 1) Tenta telefone real direto
+    const senderPnRaw: string = String(
+      meta?.message?.sender_pn || meta?.sender_pn ||
+      meta?.message?.participantPn || meta?.participantPn ||
+      meta?.key?.participantPn || ''
+    );
+    let senderPhone = senderPnRaw.replace('@s.whatsapp.net', '').replace(/\D/g, '');
+
+    // 2) Tenta lid (id anônimo do WA em grupos) — chave para mapear no roster
+    const lidRaw: string = String(
+      meta?.message?.sender_lid || meta?.sender_lid ||
+      meta?.key?.participant || meta?.message?.participant || ''
+    );
+    const lidDigits = lidRaw.includes('@lid')
+      ? lidRaw.replace('@lid', '').replace(/\D/g, '')
+      : '';
+
+    // Nome direto no metadata (pushName etc.)
+    let senderName: string | null =
+      meta?.message?.senderName || meta?.senderName || meta?.chat?.pushName || null;
+
+    // 3) Se temos lid mapeado no roster, preenche telefone+nome que faltarem
+    if (lidDigits && groupLidMap[lidDigits]) {
+      const info = groupLidMap[lidDigits];
+      if (!senderPhone && info.phone) senderPhone = info.phone;
+      if (!senderName && info.name) senderName = info.name;
+    }
+
+    // 4) Se temos telefone mas nenhum nome, tenta resolver pelo phoneNameMap
+    if (senderPhone && !senderName) {
+      // Tenta exato, depois últimos 8 dígitos (tolerância ao "9" do BR)
+      senderName = groupPhoneNameMap[senderPhone]
+        || groupPhoneNameMap[senderPhone.slice(-8)]
+        || null;
+    }
+
+    // 5) Sem telefone real, mas com lid não mapeado → não expor o número anônimo
+    if (!senderPhone && lidDigits) {
+      return { name: senderName, phone: null };
+    }
+
     return { name: senderName, phone: senderPhone || null };
   };
 
@@ -1282,10 +1322,14 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     setMentionedParticipants([]);
     setRosterParticipants([]);
     setGroupMentionQuery(null);
+    setGroupLidMap({});
+    setGroupPhoneNameMap({});
     rosterFetchedForRef.current = null;
   }, [conversation.phone, conversation.instance_name]);
 
   // Load cached participant names (cheap DB read, no UazAPI call) so group @mentions render as names.
+  // Também popula groupLidMap (lid -> phone+nome) e groupPhoneNameMap (phone -> nome)
+  // a partir do cache. Em seguida, chama get-group-participants para garantir o mapa atualizado.
   useEffect(() => {
     if (!isGroup) return;
     const groupJid =
@@ -1293,7 +1337,35 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
       conversation.messages.find(m => (m.metadata?.message?.chatid || '').includes('@g.us'))?.metadata?.message?.chatid;
     if (!groupJid) return;
     let cancelled = false;
+
+    const applyParticipants = (raw: Array<Record<string, unknown>>) => {
+      const mapped: Array<{ phone: string; name: string }> = [];
+      const lidMap: Record<string, { phone: string; name: string }> = {};
+      const phoneNameMap: Record<string, string> = {};
+      for (const p of raw) {
+        const rawId = String(p.JID || p.jid || p.id || p.participant || '');
+        const lidField = String(p.LID || p.lid || (rawId.includes('@lid') ? rawId : ''));
+        const lidDigits = lidField.replace('@lid', '').replace(/\D/g, '');
+        const phoneRaw = String(p.PhoneNumber || p.phoneNumber || p.phone || (rawId.includes('@s.whatsapp.net') ? rawId : ''));
+        const phone = phoneRaw.replace('@s.whatsapp.net', '').replace(/\D/g, '');
+        const name = String(p.DisplayName || p.displayName || p.Name || p.name || p.PushName || p.pushName || p.display_name || '');
+        if (phone.length >= 8 && name) {
+          mapped.push({ phone, name });
+          phoneNameMap[phone] = name;
+          phoneNameMap[phone.slice(-8)] = name;
+        }
+        if (lidDigits && phone.length >= 8) {
+          lidMap[lidDigits] = { phone, name: name || phone };
+        }
+      }
+      if (cancelled) return;
+      if (mapped.length) setRosterParticipants(prev => (prev.length ? prev : mapped));
+      if (Object.keys(lidMap).length) setGroupLidMap(prev => ({ ...lidMap, ...prev }));
+      if (Object.keys(phoneNameMap).length) setGroupPhoneNameMap(prev => ({ ...phoneNameMap, ...prev }));
+    };
+
     (async () => {
+      // (a) Cache local: rápido, sem chamar UazAPI
       const { data } = await supabase
         .from('whatsapp_groups_cache')
         .select('participants')
@@ -1301,21 +1373,23 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         .order('fetched_at', { ascending: false })
         .limit(1)
         .maybeSingle();
-      const raw = (data as { participants?: Array<Record<string, unknown>> } | null)?.participants;
-      if (cancelled || !Array.isArray(raw) || raw.length === 0) return;
-      const mapped = raw
-        .map(p => {
-          const rawId = String(p.JID || p.jid || p.id || p.participant || '');
-          const phone = String(p.PhoneNumber || p.phoneNumber || p.phone || rawId)
-            .replace('@s.whatsapp.net', '').replace('@lid', '').replace(/\D/g, '');
-          const name = String(p.DisplayName || p.displayName || p.Name || p.name || p.PushName || p.pushName || '');
-          return { phone, name };
-        })
-        .filter(p => p.phone.length >= 8 && p.name);
-      if (mapped.length) setRosterParticipants(prev => (prev.length ? prev : mapped));
+      const cached = (data as { participants?: Array<Record<string, unknown>> } | null)?.participants;
+      if (Array.isArray(cached) && cached.length) applyParticipants(cached);
+
+      // (b) Edge function: pega o roster fresco (resolve @lid → phone via UazAPI)
+      if (!conversation.instance_name) return;
+      try {
+        const { data: fnData } = await supabase.functions.invoke('get-group-participants', {
+          body: { group_jid: groupJid, instance_name: conversation.instance_name, refresh: false },
+        });
+        const resp = fnData as { success?: boolean; participants?: Array<Record<string, unknown>> } | null;
+        if (resp?.success && Array.isArray(resp.participants)) applyParticipants(resp.participants);
+      } catch { /* mantém o que veio do cache */ }
     })();
     return () => { cancelled = true; };
-  }, [isGroup, conversation.phone]);
+  }, [isGroup, conversation.phone, conversation.instance_name]);
+
+
 
 
   useEffect(() => {
@@ -3108,7 +3182,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                       className={cn("text-[11px] font-semibold mb-0.5 cursor-pointer hover:underline", sender.phone ? getSenderColor(sender.phone) : 'text-primary')}
                       onClick={handleSenderClick}
                     >
-                      {sender.name || formatPhone(sender.phone || '')}
+                      {sender.name || (sender.phone ? formatPhone(sender.phone) : 'Participante')}
                       {sender.name && sender.phone && (
                         <span className="font-normal text-muted-foreground ml-1">~{formatPhone(sender.phone)}</span>
                       )}
