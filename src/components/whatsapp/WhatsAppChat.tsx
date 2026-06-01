@@ -686,6 +686,38 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     setBulkResyncing(false);
     setBulkResyncProgress(null);
   };
+
+  const handleRefreshRoster = async () => {
+    const groupJid =
+      conversation.messages.find(m => (m.metadata?.chat?.wa_chatid || '').includes('@g.us'))?.metadata?.chat?.wa_chatid ||
+      conversation.messages.find(m => (m.metadata?.message?.chatid || '').includes('@g.us'))?.metadata?.message?.chatid;
+    if (!groupJid || !conversation.instance_name) {
+      toast.info('Não foi possível identificar o grupo');
+      return;
+    }
+    setRefreshingRoster(true);
+    const t = toast.loading('Atualizando participantes...');
+    try {
+      const { data: fnData } = await supabase.functions.invoke('get-group-participants', {
+        body: { group_jid: groupJid, instance_name: conversation.instance_name, refresh: true },
+      });
+      const resp = fnData as { success?: boolean; participants?: Array<Record<string, unknown>> } | null;
+      if (resp?.success && Array.isArray(resp.participants)) {
+        const { mapped, lidMap, phoneNameMap } = parseParticipants(resp.participants);
+        if (mapped.length) setRosterParticipants(prev => (prev.length ? prev : mapped));
+        if (Object.keys(lidMap).length) setGroupLidMap(prev => ({ ...prev, ...lidMap }));
+        if (Object.keys(phoneNameMap).length) setGroupPhoneNameMap(prev => ({ ...prev, ...phoneNameMap }));
+        toast.success('Participantes atualizados', { id: t });
+      } else {
+        toast.error('Não foi possível atualizar os participantes', { id: t });
+      }
+    } catch {
+      toast.error('Erro ao atualizar participantes', { id: t });
+    } finally {
+      setRefreshingRoster(false);
+    }
+  };
+
   const [pastedImage, setPastedImage] = useState<{ file: File; previewUrl: string } | null>(null);
   const [pastedCaption, setPastedCaption] = useState('');
   const [inputMode, setInputMode] = useState<'message' | 'note' | 'chat'>('message');
