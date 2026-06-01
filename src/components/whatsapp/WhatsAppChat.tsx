@@ -1360,12 +1360,47 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
       }
       if (cancelled) return;
       if (mapped.length) setRosterParticipants(prev => (prev.length ? prev : mapped));
-      if (Object.keys(lidMap).length) setGroupLidMap(prev => ({ ...lidMap, ...prev }));
-      if (Object.keys(phoneNameMap).length) setGroupPhoneNameMap(prev => ({ ...phoneNameMap, ...prev }));
+      // Mescla por cima do que já existe (dados frescos sobrescrevem antigos)
+      if (Object.keys(lidMap).length) setGroupLidMap(prev => ({ ...prev, ...lidMap }));
+      if (Object.keys(phoneNameMap).length) setGroupPhoneNameMap(prev => ({ ...prev, ...phoneNameMap }));
+    };
+
+    // Quantos @lid das mensagens ainda estão sem phone mapeado?
+    // Se zero, pausamos a revalidação para não gastar UazAPI à toa.
+    const countUnresolvedLids = (currentLidMap: Record<string, { phone: string; name: string }>): number => {
+      const seen = new Set<string>();
+      let unresolved = 0;
+      for (const m of conversation.messages) {
+        const meta: any = m.metadata || {};
+        const lidRaw =
+          meta?.sender_lid || meta?.message?.sender_lid ||
+          meta?.key?.participantLid || meta?.key?.participant_lid ||
+          (typeof meta?.key?.participant === 'string' && meta.key.participant.includes('@lid') ? meta.key.participant : null);
+        if (!lidRaw) continue;
+        const lidDigits = String(lidRaw).replace('@lid', '').replace(/\D/g, '');
+        if (!lidDigits || seen.has(lidDigits)) continue;
+        seen.add(lidDigits);
+        const hasPhone =
+          !!currentLidMap[lidDigits] ||
+          !!meta?.sender_pn || !!meta?.message?.participantPn || !!meta?.key?.participantPn;
+        if (!hasPhone) unresolved++;
+      }
+      return unresolved;
+    };
+
+    const fetchRoster = async (opts: { refresh: boolean }) => {
+      if (!conversation.instance_name) return;
+      try {
+        const { data: fnData } = await supabase.functions.invoke('get-group-participants', {
+          body: { group_jid: groupJid, instance_name: conversation.instance_name, refresh: opts.refresh },
+        });
+        const resp = fnData as { success?: boolean; participants?: Array<Record<string, unknown>> } | null;
+        if (resp?.success && Array.isArray(resp.participants)) applyParticipants(resp.participants);
+      } catch { /* silencioso */ }
     };
 
     (async () => {
-      // (a) Cache local: rápido, sem chamar UazAPI
+      // (a) Cache local
       const { data } = await supabase
         .from('whatsapp_groups_cache')
         .select('participants')
@@ -1376,17 +1411,25 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
       const cached = (data as { participants?: Array<Record<string, unknown>> } | null)?.participants;
       if (Array.isArray(cached) && cached.length) applyParticipants(cached);
 
-      // (b) Edge function: pega o roster fresco (resolve @lid → phone via UazAPI)
-      if (!conversation.instance_name) return;
-      try {
-        const { data: fnData } = await supabase.functions.invoke('get-group-participants', {
-          body: { group_jid: groupJid, instance_name: conversation.instance_name, refresh: false },
-        });
-        const resp = fnData as { success?: boolean; participants?: Array<Record<string, unknown>> } | null;
-        if (resp?.success && Array.isArray(resp.participants)) applyParticipants(resp.participants);
-      } catch { /* mantém o que veio do cache */ }
+      // (b) Fetch inicial (cache do edge se válido)
+      await fetchRoster({ refresh: false });
     })();
-    return () => { cancelled = true; };
+
+    // (c) Revalidação em background: a cada 3 min força refresh na UazAPI
+    // apenas se ainda houver @lid pendente. Para após 8 tentativas (~24 min).
+    const REVALIDATE_MS = 3 * 60 * 1000;
+    const MAX_ATTEMPTS = 8;
+    let attempts = 0;
+    const interval = window.setInterval(() => {
+      if (cancelled) return;
+      if (countUnresolvedLids(groupLidMap) === 0) return;
+      if (attempts >= MAX_ATTEMPTS) return;
+      attempts++;
+      fetchRoster({ refresh: true });
+    }, REVALIDATE_MS);
+
+    return () => { cancelled = true; window.clearInterval(interval); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isGroup, conversation.phone, conversation.instance_name]);
 
 
