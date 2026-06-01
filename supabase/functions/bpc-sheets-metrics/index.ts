@@ -179,38 +179,53 @@ Deno.serve(async (req) => {
     // 2. Filter by period
     const periodRows = allRows.filter((r) => inPeriod(r.created_at, fromISO, toISO));
 
-    // 3. Cross-check phones against whatsapp_messages on External
+    // 3. Cross-check phones against whatsapp_messages on External.
+    //    Para cada telefone, pegamos a PRIMEIRA mensagem para saber quem iniciou:
+    //    direction='inbound' → cliente mandou primeiro; 'outbound' → operador foi proativo.
     const phones = Array.from(new Set(periodRows.map((r) => r.phone_normalized)));
-    let whatsappPhones = new Set<string>();
+    const firstByPhone = new Map<string, { direction: string; created_at: string }>();
 
     if (phones.length > 0) {
       const extUrl = Deno.env.get("EXTERNAL_SUPABASE_URL");
       const extKey = Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY");
       if (extUrl && extKey) {
         const ext = createClient(extUrl, extKey, { auth: { persistSession: false } });
-        // Build OR list of last-8-digits patterns to match Brazilian numbers
         const last8 = phones.map((p) => p.slice(-8)).filter((p) => p.length === 8);
         if (last8.length > 0) {
-          // Single IN query on the right-trimmed phone is cheaper than N ilikes.
-          // We fetch all matching phones from messages and keep the set.
           const { data } = await ext
             .from("whatsapp_messages")
-            .select("phone")
+            .select("phone, direction, created_at")
             .or(last8.map((p) => `phone.like.%${p}`).join(","))
-            .limit(10000);
+            .order("created_at", { ascending: true })
+            .limit(20000);
           (data || []).forEach((r: any) => {
             const np = normalizePhone(r.phone);
-            if (np) whatsappPhones.add(np.slice(-8));
+            if (!np) return;
+            const key = np.slice(-8);
+            if (!firstByPhone.has(key)) {
+              firstByPhone.set(key, {
+                direction: String(r.direction || "").toLowerCase(),
+                created_at: r.created_at,
+              });
+            }
           });
         }
       }
     }
 
-    const leads = periodRows.map((r) => ({
-      ...r,
-      has_whatsapp: whatsappPhones.has(r.phone_normalized.slice(-8)),
-      is_unviable: isUnviable(r),
-    }));
+    const leads = periodRows.map((r) => {
+      const first = firstByPhone.get(r.phone_normalized.slice(-8));
+      const has_whatsapp = !!first;
+      let first_contact_by: "client" | "operator" | null = null;
+      if (first) first_contact_by = first.direction === "inbound" ? "client" : "operator";
+      return {
+        ...r,
+        has_whatsapp,
+        first_contact_by,
+        first_contact_at: first?.created_at || null,
+        is_unviable: isUnviable(r),
+      };
+    });
 
     const total = leads.length;
     const unviable = leads.filter((l) => l.is_unviable).length;

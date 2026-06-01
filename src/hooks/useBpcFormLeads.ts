@@ -20,6 +20,8 @@ export interface BpcFormLead {
   operator: string;
   tab: string;
   has_whatsapp: boolean;
+  first_contact_by: "client" | "operator" | null;
+  first_contact_at: string | null;
   is_unviable: boolean;
 }
 
