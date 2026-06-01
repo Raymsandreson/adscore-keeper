@@ -1,65 +1,101 @@
+## Objetivo
 
-# Gerador de Procuração — Link Único (com login)
+Tirar a dependência do token Meta e usar a planilha oficial (`LEADS FORMULÁRIO BPC-LOAS`) como fonte real de quantos leads chegaram, quais são viáveis vs inviáveis e quais ainda não escreveram no WhatsApp.
 
-## Metáfora rápida
-Hoje cada etiqueta gera um "ingresso descartável" (token). Vamos criar uma "porta fixa" no app: o operador entra, digita o telefone do cliente, escolhe o modelo, e o sistema já busca tudo da conversa pra ele revisar e mandar. A etiqueta vira só um **atalho** que avisa "olha, esse cliente tá pronto, clica aqui".
+## Fonte de dados — Google Sheets
 
-## O que muda
+Planilha: `1EXB6oFovhX2LOHsC2X20LFk-JVIkjk-NR5Er4cUn6Qw`  
+Abas (uma por atendente): `LEADS ISRAEL`, `LEADS CRIS`, `LEADS MATEUS`, `LEADS EDILAN`, `LEDS KAROLYNE`
 
-### 1. Nova página `/gerar-procuracao` (frontend, dentro do app logado)
-Reutiliza toda a lógica do popup `ZapSignDocumentDialog`, mas como página standalone. Fluxo:
+Colunas relevantes detectadas:
+- `id`, `created_time`, `campaign_id`, `campaign_name`, `form_name`, `is_organic`, `platform`
+- `nome_completo`, `telefone`, `estado_civil`
+- `você_possui_filho_autista_ou_conhece_alguém_autista_?`
+- `possui_laudo_médico_ou_relatório_escolar_?`
+- `qual_a_sua_renda_familiar_?`
+- `possui_advogado_?`
+- `qual_o_seu_número_de_contato_?`
+- `lead_status` (CREATED, ok, ctt errado, etc.)
 
-```text
-[Tel + instância]  →  [Escolher modelo]  →  [IA extrai da conversa]
-       ↓                                              ↓
-   busca lead/contato/msgs                     campos editáveis ✨
-                                                      ↓
-                                          [Upload doc opcional]
-                                                      ↓
-                                               [Gerar e enviar]
+Conector Google Sheets já está conectado a este projeto. ✅
+
+## O que vai mudar
+
+### 1. Custom fields no funil "BPC - Autismo"
+Criar 7 campos personalizados (escopo = board BPC - Autismo) que correspondem 1:1 às perguntas do form Meta:
+- Filho autista / conhece autista (select)
+- Laudo médico ou relatório escolar (select)
+- Renda familiar (select)
+- Possui advogado (select)
+- Estado civil (text)
+- Campanha de origem (text — preenche `campaign_name`)
+- ID do lead no form Meta (text — chave de deduplicação)
+
+### 2. Edge function `sheets-bpc-sync` (Railway)
+Job que roda a cada 60s:
+1. Lê as 5 abas via Google Sheets API (gateway)
+2. Normaliza telefone (`p:+5537...` → `5537...`)
+3. Para cada linha nova (chave = `id` do form):
+   - Procura lead existente no Externo pelo telefone
+   - Se não existe → cria lead no board BPC - Autismo, com `source='meta_form_sheet'`, status inicial = "Novo"
+   - Se existe → só atualiza os custom fields
+4. Marca `responded_whatsapp = true` quando há mensagem em `whatsapp_messages` com aquele telefone
+5. Marca `unviable = true` quando `lead_status` na planilha = "ctt errado" ou similar
+
+### 3. Hook novo `useBpcFormLeads`
+Frontend lê uma RPC nova `get_bpc_form_metrics(period)` que devolve:
+- `total` — quantos vieram do form no período
+- `unviable` — quantos marcados inviável
+- `to_call_now` — preencheram form e NÃO mandaram WhatsApp ainda
+- `already_in_whatsapp` — preencheram E já escreveram
+- `leads` — lista completa pros sheets de detalhe
+
+### 4. UI — `FocusDashboard.tsx` (modo compact, que é o da sua tela)
+
+**Card "INVIÁVEIS" (circulado) vira "VIÁVEIS":**
 ```
+🏆 VIÁVEIS
+47/3
+total / inviável
+```
+Clicar abre sheet com a lista da planilha.
 
-- Aceita query params: `/gerar-procuracao?phone=5511999999999&instance=oficial&template=abc123`
-- Protegida por `<ProtectedRoute>` (mesmo login do app — resolve segurança/LGPD)
-- Mobile-first (operador vai usar no celular)
+**Card novo "LIGAR AGORA" ao lado:**
+```
+📞 LIGAR AGORA  🔥
+12
+preencheram e sumiram
+```
+Cor vermelha/laranja (urgência). Clicar abre sheet com nome+telefone+data do form de quem preencheu e não mandou WA.
 
-### 2. Etiqueta vira atalho (ajuste no Railway)
-`prepare-label-document-trigger.ts`: em vez de criar `pending_label_documents` com token único, manda WhatsApp pro operador (`reviewPhone`) com:
+### 5. Sheet detalhe `BpcFormLeadsSheet`
+Componente novo, estilo `ClosedLeadsSheet`, com 3 abas: Todos | Ligar agora | Inviáveis.  
+Cada linha: nome, telefone (com botão CallFace), data do form, campanha, status, badge "no WhatsApp" se aplicável.
 
-> 🔔 Cliente *Fulano* (+55 11 9...) pronto pra procuração.
-> Abrir: https://adscore-keeper.lovable.app/gerar-procuracao?phone=5511...&instance=oficial&template=BPC_LOAS
+## O que NÃO vai mudar
 
-- Não usa mais o sistema de token/expiração para esse fluxo
-- Mantém `pending_label_documents` só pra histórico/auditoria (opcional, podemos remover depois)
+- Token Meta continua intacto (ainda usado pra investimento/CPL, só não pra contagem de lead)
+- Card Fechados, Docs, Sem resp., Atrasadas, Assinatura, Ranking — mantidos como estão
+- `BMConnection.tsx` (status do token) — fica
+- Tabelas existentes de leads, contatos, mensagens — nada de schema novo no core
 
-### 3. Rota `/revisar/:token` mantida
-Continua funcionando pra links antigos já enviados, mas não geramos mais novos.
+## Custos e performance
 
-## Arquivos
+- 5 chamadas `GET values` por minuto = 7.200 calls/dia → bem abaixo do limite do Google Sheets API (60k/min/projeto)
+- Cada call retorna ~1.300 linhas × 21 colunas ≈ 80KB; total ~400KB/min
+- Frontend faz 1 RPC só (não consulta a planilha direto)
 
-**Novos:**
-- `src/pages/GerarProcuracaoPage.tsx` — página principal
+## Plano de execução
 
-**Editados:**
-- `src/App.tsx` — adicionar rota `<Route path="/gerar-procuracao" element={<ProtectedRoute><GerarProcuracaoPage /></ProtectedRoute>} />` dentro do SidebarLayout
-- `railway-server/src/functions/prepare-label-document-trigger.ts` — trocar criação de token por envio de link genérico ao operador
-- `.lovable/docs/agente-gerador-documento.md` — atualizar documentação
+1. **Criar custom fields no board BPC - Autismo** (run-external-migration via SQL INSERT em `lead_custom_fields`)
+2. **Edge function `sheets-bpc-sync`** no Railway + pg_cron 60s no Externo
+3. **RPC `get_bpc_form_metrics`** no Externo
+4. **Hook + Sheet novo** no frontend
+5. **Substituir card Inviáveis + adicionar card Ligar agora** em `FocusDashboard.tsx`
+6. **Verificar**: rodar sync manual, ver contadores aparecerem, abrir um lead e conferir custom fields
 
-**Reusados sem mexer:**
-- `supabase/functions/zapsign-api` (actions: `list_templates`, `get_template_fields`, `extract_fields`, `create_doc`)
-- Railway `extract-conversation-data` (proxy via Cloud edge se necessário)
-- Hooks de busca de contato/lead/mensagens já existentes
+## Rollback
 
-## O que NÃO vou mexer
-- `ZapSignDocumentDialog` (popup do print) — continua funcionando no chat
-- `submit-document-review.ts` e `get-pending-review.ts` — mantidos pra links antigos
-- Configuração do agente (aba Documento) — sem alteração
-- Sistema de auth/login — usa o que já existe
-- UazAPI/notas do contato — **não vamos** mexer mais nisso (link agora é genérico via WhatsApp pro operador)
-
-## Riscos / rollback
-- Risco baixo: tudo novo é frontend reusando edge functions existentes
-- Rollback: deletar página + reverter `prepare-label-document-trigger.ts` (1 commit)
-- `pending_label_documents` continua sendo escrito (não quebra dashboard)
-
-Posso seguir?
+- Reverter `FocusDashboard.tsx` (1 arquivo) volta UI ao estado atual
+- `DROP FUNCTION get_bpc_form_metrics` + `cron.unschedule('sheets-bpc-sync')` desliga o pipeline
+- Custom fields novos não quebram nada se ficarem (são opcionais)

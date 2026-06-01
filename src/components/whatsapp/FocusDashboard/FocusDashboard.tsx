@@ -7,10 +7,11 @@ import { Calendar } from '@/components/ui/calendar';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { CalendarIcon, RefreshCw, Trophy, Users, User as UserIcon, FileText, PenTool, MessageCircleOff, Flame, ChevronUp, ChevronDown, Percent, XCircle, TrendingUp, Clock, Filter, AlertTriangle, MessageCircle, ExternalLink } from 'lucide-react';
+import { CalendarIcon, RefreshCw, Trophy, Users, User as UserIcon, FileText, PenTool, MessageCircleOff, Flame, ChevronUp, ChevronDown, Percent, XCircle, TrendingUp, Clock, Filter, AlertTriangle, MessageCircle, ExternalLink, Phone, CheckCircle2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useFocusDashboardData, FocusPeriod } from '@/hooks/useFocusDashboardData';
+import { useBpcFormLeads } from '@/hooks/useBpcFormLeads';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useUserTeams } from '@/hooks/useUserTeams';
 import { usePageState } from '@/hooks/usePageState';
@@ -19,6 +20,7 @@ import { FocusActionCard } from './FocusActionCard';
 import { CompactRankingCard } from './CompactRankingCard';
 import { ClosedPodiumCard } from './ClosedPodiumCard';
 import { ClosedLeadsSheet } from './ClosedLeadsSheet';
+import { BpcFormLeadsSheet } from './BpcFormLeadsSheet';
 import { cn } from '@/lib/utils';
 
 interface FocusDashboardProps {
@@ -50,6 +52,11 @@ export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpen
   const [collapsed, setCollapsed] = useState(false);
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [closedSheetOpen, setClosedSheetOpen] = useState(false);
+  const [bpcSheetOpen, setBpcSheetOpen] = useState(false);
+  const [bpcDefaultTab, setBpcDefaultTab] = useState<'all' | 'to_call' | 'on_wa' | 'unviable'>('all');
+
+  // Leads do formulário Meta (Google Sheet) — independente do token Meta
+  const bpc = useBpcFormLeads({ from: data.range.from, to: data.range.to });
 
   const initials = useMemo(() => {
     const name = (user?.user_metadata as any)?.full_name || user?.email || '?';
@@ -79,12 +86,26 @@ export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpen
         onClick: () => setClosedSheetOpen(true),
       },
       {
-        label: 'Inviáveis',
-        value: `${data.kpis.unviable} (${data.kpis.unviablePercentage}%)`,
-        sub: data.kpis.unviableTopReason ? `Principal: ${data.kpis.unviableTopReason}` : undefined,
-        icon: XCircle,
-        tone: 'bg-amber-50 dark:bg-amber-950/30 border-amber-200/60 dark:border-amber-900/40 text-amber-700 dark:text-amber-300',
-        onClick: () => dispatchFilter('lead_inviavel'),
+        // ⚠️ Card "Viáveis" lê da planilha oficial do Meta (Google Sheets),
+        // não depende do token Meta. Mostra total de leads do form / quantos foram marcados inviáveis.
+        label: 'Viáveis',
+        value: `${bpc.metrics.total}/${bpc.metrics.unviable}`,
+        sub: bpc.loading ? 'sincronizando…' : 'total / inviável',
+        icon: CheckCircle2,
+        tone: 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200/60 dark:border-emerald-900/40 text-emerald-700 dark:text-emerald-300',
+        onClick: () => { setBpcDefaultTab('all'); setBpcSheetOpen(true); },
+      },
+      {
+        // 🔥 Card "Ligar Agora" — leads que preencheram o form Meta mas NÃO mandaram WhatsApp ainda.
+        // Esses precisam de ligação imediata.
+        label: 'Ligar agora',
+        value: bpc.metrics.toCallNow,
+        sub: bpc.metrics.toCallNow > 0 ? 'preencheu e sumiu' : 'tudo respondido',
+        icon: Phone,
+        tone: bpc.metrics.toCallNow > 0
+          ? 'bg-red-50 dark:bg-red-950/30 border-red-300 dark:border-red-700 text-red-700 dark:text-red-300 animate-pulse'
+          : 'bg-muted/40 border-border text-muted-foreground',
+        onClick: () => { setBpcDefaultTab('to_call'); setBpcSheetOpen(true); },
       },
       { label: 'Docs', value: data.actions.missingDocs, icon: FileText, tone: 'bg-orange-50 dark:bg-orange-950/30 border-orange-200/60 dark:border-orange-900/40 text-orange-700 dark:text-orange-300', onClick: onOpenMissingDocs },
       { label: 'Assinatura', value: data.actions.zapsignPending, icon: PenTool, tone: 'bg-stone-100 dark:bg-stone-900/40 border-stone-300/60 dark:border-stone-700/40 text-stone-700 dark:text-stone-300', onClick: onOpenZapsignPending },
@@ -110,6 +131,16 @@ export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpen
         closedLeads={data.closedLeads}
         periodLabel={periodLabel}
         onOpenChat={(phone) => onOpenChat?.(phone)}
+      />
+      <BpcFormLeadsSheet
+        open={bpcSheetOpen}
+        onOpenChange={setBpcSheetOpen}
+        metrics={bpc.metrics}
+        leads={bpc.leads}
+        loading={bpc.loading}
+        defaultTab={bpcDefaultTab}
+        onOpenChat={(phone) => onOpenChat?.(phone)}
+        onRefresh={bpc.refetch}
       />
       <Card className="rounded-none border-x-0 border-t-0 bg-card shrink-0">
         <div className="px-2 py-2 flex items-stretch gap-2 flex-wrap">
