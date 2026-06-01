@@ -1363,25 +1363,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     let cancelled = false;
 
     const applyParticipants = (raw: Array<Record<string, unknown>>) => {
-      const mapped: Array<{ phone: string; name: string }> = [];
-      const lidMap: Record<string, { phone: string; name: string }> = {};
-      const phoneNameMap: Record<string, string> = {};
-      for (const p of raw) {
-        const rawId = String(p.JID || p.jid || p.id || p.participant || '');
-        const lidField = String(p.LID || p.lid || (rawId.includes('@lid') ? rawId : ''));
-        const lidDigits = lidField.replace('@lid', '').replace(/\D/g, '');
-        const phoneRaw = String(p.PhoneNumber || p.phoneNumber || p.phone || (rawId.includes('@s.whatsapp.net') ? rawId : ''));
-        const phone = phoneRaw.replace('@s.whatsapp.net', '').replace(/\D/g, '');
-        const name = String(p.DisplayName || p.displayName || p.Name || p.name || p.PushName || p.pushName || p.display_name || '');
-        if (phone.length >= 8 && name) {
-          mapped.push({ phone, name });
-          phoneNameMap[phone] = name;
-          phoneNameMap[phone.slice(-8)] = name;
-        }
-        if (lidDigits && phone.length >= 8) {
-          lidMap[lidDigits] = { phone, name: name || phone };
-        }
-      }
+      const { mapped, lidMap, phoneNameMap } = parseParticipants(raw);
       if (cancelled) return;
       if (mapped.length) setRosterParticipants(prev => (prev.length ? prev : mapped));
       // Mescla por cima do que já existe (dados frescos sobrescrevem antigos)
