@@ -3177,10 +3177,17 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                     toast.success(`Contato "${contactName}" criado!`);
                     onViewContact?.(newContact.id);
                   };
+                  const isUnresolved = !sender.phone;
                   return (
                     <p
-                      className={cn("text-[11px] font-semibold mb-0.5 cursor-pointer hover:underline", sender.phone ? getSenderColor(sender.phone) : 'text-primary')}
-                      onClick={handleSenderClick}
+                      className={cn(
+                        "text-[11px] font-semibold mb-0.5",
+                        isUnresolved
+                          ? "text-muted-foreground italic cursor-default"
+                          : cn("cursor-pointer hover:underline", getSenderColor(sender.phone!)),
+                      )}
+                      onClick={isUnresolved ? undefined : handleSenderClick}
+                      title={isUnresolved ? "Participante ainda não identificado — aguardando lista do grupo" : undefined}
                     >
                       {sender.name || (sender.phone ? formatPhone(sender.phone) : 'Participante')}
                       {sender.name && sender.phone && (
