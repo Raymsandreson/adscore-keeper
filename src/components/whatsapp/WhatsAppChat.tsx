@@ -1322,10 +1322,14 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     setMentionedParticipants([]);
     setRosterParticipants([]);
     setGroupMentionQuery(null);
+    setGroupLidMap({});
+    setGroupPhoneNameMap({});
     rosterFetchedForRef.current = null;
   }, [conversation.phone, conversation.instance_name]);
 
   // Load cached participant names (cheap DB read, no UazAPI call) so group @mentions render as names.
+  // Também popula groupLidMap (lid -> phone+nome) e groupPhoneNameMap (phone -> nome)
+  // a partir do cache. Em seguida, chama get-group-participants para garantir o mapa atualizado.
   useEffect(() => {
     if (!isGroup) return;
     const groupJid =
@@ -1333,7 +1337,35 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
       conversation.messages.find(m => (m.metadata?.message?.chatid || '').includes('@g.us'))?.metadata?.message?.chatid;
     if (!groupJid) return;
     let cancelled = false;
+
+    const applyParticipants = (raw: Array<Record<string, unknown>>) => {
+      const mapped: Array<{ phone: string; name: string }> = [];
+      const lidMap: Record<string, { phone: string; name: string }> = {};
+      const phoneNameMap: Record<string, string> = {};
+      for (const p of raw) {
+        const rawId = String(p.JID || p.jid || p.id || p.participant || '');
+        const lidField = String(p.LID || p.lid || (rawId.includes('@lid') ? rawId : ''));
+        const lidDigits = lidField.replace('@lid', '').replace(/\D/g, '');
+        const phoneRaw = String(p.PhoneNumber || p.phoneNumber || p.phone || (rawId.includes('@s.whatsapp.net') ? rawId : ''));
+        const phone = phoneRaw.replace('@s.whatsapp.net', '').replace(/\D/g, '');
+        const name = String(p.DisplayName || p.displayName || p.Name || p.name || p.PushName || p.pushName || p.display_name || '');
+        if (phone.length >= 8 && name) {
+          mapped.push({ phone, name });
+          phoneNameMap[phone] = name;
+          phoneNameMap[phone.slice(-8)] = name;
+        }
+        if (lidDigits && phone.length >= 8) {
+          lidMap[lidDigits] = { phone, name: name || phone };
+        }
+      }
+      if (cancelled) return;
+      if (mapped.length) setRosterParticipants(prev => (prev.length ? prev : mapped));
+      if (Object.keys(lidMap).length) setGroupLidMap(prev => ({ ...lidMap, ...prev }));
+      if (Object.keys(phoneNameMap).length) setGroupPhoneNameMap(prev => ({ ...phoneNameMap, ...prev }));
+    };
+
     (async () => {
+      // (a) Cache local: rápido, sem chamar UazAPI
       const { data } = await supabase
         .from('whatsapp_groups_cache')
         .select('participants')
@@ -1341,21 +1373,23 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         .order('fetched_at', { ascending: false })
         .limit(1)
         .maybeSingle();
-      const raw = (data as { participants?: Array<Record<string, unknown>> } | null)?.participants;
-      if (cancelled || !Array.isArray(raw) || raw.length === 0) return;
-      const mapped = raw
-        .map(p => {
-          const rawId = String(p.JID || p.jid || p.id || p.participant || '');
-          const phone = String(p.PhoneNumber || p.phoneNumber || p.phone || rawId)
-            .replace('@s.whatsapp.net', '').replace('@lid', '').replace(/\D/g, '');
-          const name = String(p.DisplayName || p.displayName || p.Name || p.name || p.PushName || p.pushName || '');
-          return { phone, name };
-        })
-        .filter(p => p.phone.length >= 8 && p.name);
-      if (mapped.length) setRosterParticipants(prev => (prev.length ? prev : mapped));
+      const cached = (data as { participants?: Array<Record<string, unknown>> } | null)?.participants;
+      if (Array.isArray(cached) && cached.length) applyParticipants(cached);
+
+      // (b) Edge function: pega o roster fresco (resolve @lid → phone via UazAPI)
+      if (!conversation.instance_name) return;
+      try {
+        const { data: fnData } = await supabase.functions.invoke('get-group-participants', {
+          body: { group_jid: groupJid, instance_name: conversation.instance_name, refresh: false },
+        });
+        const resp = fnData as { success?: boolean; participants?: Array<Record<string, unknown>> } | null;
+        if (resp?.success && Array.isArray(resp.participants)) applyParticipants(resp.participants);
+      } catch { /* mantém o que veio do cache */ }
     })();
     return () => { cancelled = true; };
-  }, [isGroup, conversation.phone]);
+  }, [isGroup, conversation.phone, conversation.instance_name]);
+
+
 
 
   useEffect(() => {
