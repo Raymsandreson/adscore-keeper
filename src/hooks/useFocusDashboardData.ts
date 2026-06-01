@@ -69,7 +69,7 @@ export interface OverdueActivityItem {
 
 type ClosedLeadRow = Omit<ClosedLeadItem, 'has_overdue_activity' | 'whatsapp_group_jid' | 'activities' | 'closed_at'> & { updated_at?: string | null };
 type ActivityRow = { id: string; lead_id: string | null; title: string | null; status: string | null; deadline: string | null };
-type GroupRow = { lead_id: string | null; group_jid: string | null };
+type GroupRow = { lead_id: string | null; group_jid: string | null; created_at?: string | null };
 
 export interface FocusData {
   kpis: FocusKpis;
