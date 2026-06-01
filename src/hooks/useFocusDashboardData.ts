@@ -50,6 +50,8 @@ export interface ClosedLeadItem {
   became_client_date: string | null;
   closed_at: string | null;
   acolhedor: string | null;
+  inferred_closer: string | null;
+  inferred_source: 'zapsign_link' | 'group_creator' | null;
   has_overdue_activity?: boolean;
   whatsapp_group_jid?: string | null;
   activities?: ClosedLeadActivity[];
@@ -284,17 +286,80 @@ export function useFocusDashboardData(instanceName?: string | null): FocusData {
           }
         });
       }
-      setClosedLeads(closedRows.map((l) => ({
-        id: l.id,
-        lead_name: l.lead_name ?? null,
-        lead_phone: l.lead_phone ?? null,
-        became_client_date: l.became_client_date ?? null,
-        closed_at: signedAtByLead.get(l.id) ?? null,
-        acolhedor: l.acolhedor ?? null,
-        has_overdue_activity: overdueLeadIds.has(l.id),
-        whatsapp_group_jid: groupByLead.get(l.id) ?? null,
-        activities: activitiesByLead.get(l.id) ?? [],
-      })));
+      // Fallback: descobre quem provavelmente "fechou" leads sem acolhedor preenchido.
+      // 1) Quem mandou o link ZapSign primeiro (msg outbound contendo 'zapsign' pro telefone do lead).
+      // 2) Quem mandou a primeira msg outbound no grupo do lead (proxy de "quem criou o grupo").
+      // Resolve para o nome da instância WhatsApp (proxy do operador).
+      const inferredByLead = new Map<string, { name: string; source: 'zapsign_link' | 'group_creator' }>();
+      const closedNeedingInfer = closedRows.filter((l) => !l.acolhedor || !l.acolhedor.trim());
+      if (closedNeedingInfer.length > 0) {
+        const phones = Array.from(new Set(closedNeedingInfer.map((l) => l.lead_phone).filter(Boolean) as string[]));
+        const groupJids = Array.from(new Set(
+          closedNeedingInfer.map((l) => groupByLead.get(l.id)).filter(Boolean) as string[],
+        ));
+        try {
+          if (phones.length > 0) {
+            const { data: zapMsgs } = await db.from('whatsapp_messages')
+              .select('phone, instance_name, created_at')
+              .in('phone', phones)
+              .eq('direction', 'outbound')
+              .ilike('message_text', '%zapsign%')
+              .order('created_at', { ascending: true })
+              .limit(5000);
+            const firstZapByPhone = new Map<string, string>();
+            ((zapMsgs || []) as any[]).forEach((m) => {
+              if (m.phone && m.instance_name && !firstZapByPhone.has(m.phone)) {
+                firstZapByPhone.set(m.phone, m.instance_name);
+              }
+            });
+            closedNeedingInfer.forEach((l) => {
+              if (l.lead_phone && firstZapByPhone.has(l.lead_phone)) {
+                inferredByLead.set(l.id, { name: firstZapByPhone.get(l.lead_phone)!, source: 'zapsign_link' });
+              }
+            });
+          }
+          const stillMissing = closedNeedingInfer.filter((l) => !inferredByLead.has(l.id));
+          if (stillMissing.length > 0 && groupJids.length > 0) {
+            const { data: grpMsgs } = await db.from('whatsapp_messages')
+              .select('phone, instance_name, created_at')
+              .in('phone', groupJids)
+              .eq('direction', 'outbound')
+              .order('created_at', { ascending: true })
+              .limit(5000);
+            const firstByGroup = new Map<string, string>();
+            ((grpMsgs || []) as any[]).forEach((m) => {
+              if (m.phone && m.instance_name && !firstByGroup.has(m.phone)) {
+                firstByGroup.set(m.phone, m.instance_name);
+              }
+            });
+            stillMissing.forEach((l) => {
+              const jid = groupByLead.get(l.id);
+              if (jid && firstByGroup.has(jid)) {
+                inferredByLead.set(l.id, { name: firstByGroup.get(jid)!, source: 'group_creator' });
+              }
+            });
+          }
+        } catch (e) {
+          console.warn('[useFocusDashboardData] inferred closer query failed:', e);
+        }
+      }
+
+      setClosedLeads(closedRows.map((l) => {
+        const inf = inferredByLead.get(l.id);
+        return {
+          id: l.id,
+          lead_name: l.lead_name ?? null,
+          lead_phone: l.lead_phone ?? null,
+          became_client_date: l.became_client_date ?? null,
+          closed_at: signedAtByLead.get(l.id) ?? null,
+          acolhedor: l.acolhedor ?? null,
+          inferred_closer: inf?.name ?? null,
+          inferred_source: inf?.source ?? null,
+          has_overdue_activity: overdueLeadIds.has(l.id),
+          whatsapp_group_jid: groupByLead.get(l.id) ?? null,
+          activities: activitiesByLead.get(l.id) ?? [],
+        };
+      }));
 
 
       // === Atividades atrasadas (todas, do escopo) ===
