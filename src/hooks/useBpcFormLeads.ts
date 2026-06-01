@@ -30,7 +30,21 @@ export interface BpcMetrics {
   alreadyOnWhatsApp: number;
 }
 
-export function useBpcFormLeads(opts: { from: Date; to: Date; enabled?: boolean }) {
+export interface BpcOperatorBreakdown {
+  operator: string;
+  tab: string;
+  total: number;
+  unviable: number;
+  toCallNow: number;
+  alreadyOnWhatsApp: number;
+}
+
+export function useBpcFormLeads(opts: {
+  from: Date;
+  to: Date;
+  enabled?: boolean;
+  instanceName?: string | null;
+}) {
   const [metrics, setMetrics] = useState<BpcMetrics>({
     total: 0,
     unviable: 0,
@@ -38,6 +52,7 @@ export function useBpcFormLeads(opts: { from: Date; to: Date; enabled?: boolean 
     alreadyOnWhatsApp: 0,
   });
   const [leads, setLeads] = useState<BpcFormLead[]>([]);
+  const [byOperator, setByOperator] = useState<BpcOperatorBreakdown[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -51,6 +66,7 @@ export function useBpcFormLeads(opts: { from: Date; to: Date; enabled?: boolean 
       );
       url.searchParams.set("from", opts.from.toISOString());
       url.searchParams.set("to", opts.to.toISOString());
+      if (opts.instanceName) url.searchParams.set("instance_name", opts.instanceName);
       const { data: { session } } = await supabase.auth.getSession();
       const resp = await fetch(url.toString(), {
         headers: {
@@ -61,13 +77,14 @@ export function useBpcFormLeads(opts: { from: Date; to: Date; enabled?: boolean 
       if (!json.success) throw new Error(json.error || "Falha ao ler planilha");
       setMetrics(json.metrics);
       setLeads(json.leads || []);
+      setByOperator(json.byOperator || []);
     } catch (e: any) {
       console.error("[useBpcFormLeads]", e);
       setError(e?.message || String(e));
     } finally {
       setLoading(false);
     }
-  }, [opts.from.getTime(), opts.to.getTime(), opts.enabled]);
+  }, [opts.from.getTime(), opts.to.getTime(), opts.enabled, opts.instanceName]);
 
   useEffect(() => {
     fetchData();
@@ -76,5 +93,5 @@ export function useBpcFormLeads(opts: { from: Date; to: Date; enabled?: boolean 
     return () => clearInterval(id);
   }, [fetchData]);
 
-  return { metrics, leads, loading, error, refetch: fetchData };
+  return { metrics, leads, byOperator, loading, error, refetch: fetchData };
 }

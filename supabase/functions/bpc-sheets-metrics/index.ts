@@ -153,9 +153,20 @@ Deno.serve(async (req) => {
     const fromISO = url.searchParams.get("from") ||
       new Date(Date.now() - 7 * 86400 * 1000).toISOString();
     const toISO = url.searchParams.get("to") || new Date().toISOString();
+    const instanceFilter = (url.searchParams.get("instance_name") || "").toLowerCase().trim();
 
-    // 1. Fetch all sheets in parallel
-    const allRows = (await Promise.all(SHEET_TABS.map((s) => fetchTab(s.tab)))).flat();
+    // 1. Decide which tabs to read based on instance filter.
+    // Each operator tab corresponds to that operator's WhatsApp instance
+    // (e.g. tab "LEADS MATEUS" -> instance "mateus atendimento"). Match by
+    // checking if the operator name appears inside the instance name.
+    const tabsToRead = instanceFilter
+      ? SHEET_TABS.filter((s) => instanceFilter.includes(s.operator.toLowerCase()))
+      : SHEET_TABS;
+
+    // If a filter was set but no operator matched, return empty.
+    const allRows = tabsToRead.length === 0
+      ? []
+      : (await Promise.all(tabsToRead.map((s) => fetchTab(s.tab)))).flat();
 
     // 2. Filter by period
     const periodRows = allRows.filter((r) => inPeriod(r.created_at, fromISO, toISO));
@@ -198,11 +209,27 @@ Deno.serve(async (req) => {
     const toCallNow = leads.filter((l) => !l.has_whatsapp && !l.is_unviable).length;
     const alreadyOnWhatsApp = leads.filter((l) => l.has_whatsapp).length;
 
+    // Breakdown by operator (each tab = one operator/instance)
+    const byOperator = SHEET_TABS.map((meta) => {
+      const opLeads = leads.filter((l) => l.operator === meta.operator);
+      return {
+        operator: meta.operator,
+        tab: meta.tab,
+        total: opLeads.length,
+        unviable: opLeads.filter((l) => l.is_unviable).length,
+        toCallNow: opLeads.filter((l) => !l.has_whatsapp && !l.is_unviable).length,
+        alreadyOnWhatsApp: opLeads.filter((l) => l.has_whatsapp).length,
+      };
+    });
+
     return new Response(
       JSON.stringify({
         success: true,
         period: { from: fromISO, to: toISO },
+        instance_filter: instanceFilter || null,
+        tabs_read: tabsToRead.map((t) => t.tab),
         metrics: { total, unviable, toCallNow, alreadyOnWhatsApp },
+        byOperator,
         leads: leads.sort((a, b) =>
           new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
         ),
