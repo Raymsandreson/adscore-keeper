@@ -57,15 +57,15 @@ export function ClosedPodiumCard({ closedLeads, onClick }: ClosedPodiumCardProps
         tone
       )}
     >
-      {/* Mobile: linha horizontal compacta (medalha + contagem), evita overflow em telas estreitas */}
-      <div className="flex sm:hidden items-center gap-1 px-1.5 h-full min-h-[44px]">
+      {/* Mobile (<640px): coluna ultra-compacta de medalhas empilhadas, largura fixa cabe em 360px */}
+      <div className="flex sm:hidden flex-col items-center justify-center gap-0.5 px-1 py-1 h-full w-[34px]">
         {top3.map(([name, n]) => {
           const colorIdx = arr.findIndex(([nm]) => nm === name);
           return (
-            <div key={name} className="flex items-center gap-0.5">
-              <span className="text-[11px] leading-none">{medals[name]}</span>
+            <div key={name} className="flex items-center gap-0.5 leading-none">
+              <span className="text-[9px]">{medals[name]}</span>
               <span
-                className="text-[10px] font-bold leading-none px-1 py-0.5 rounded text-white tabular-nums"
+                className="text-[9px] font-bold px-1 rounded text-white tabular-nums"
                 style={{ background: PALETTE[colorIdx % PALETTE.length] }}
               >
                 {n}
