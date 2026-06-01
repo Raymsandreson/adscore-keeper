@@ -425,12 +425,27 @@ const BMConnection = ({
           {isConnected ? (
             <>
               <div className="relative">
-                <Wifi className="h-6 w-6 text-success" />
-                <div className="absolute -inset-1 bg-success/20 rounded-full"></div>
+                {connectedTokenInfo && !connectedTokenInfo.isValid ? (
+                  <WifiOff className="h-6 w-6 text-destructive" />
+                ) : (
+                  <>
+                    <Wifi className="h-6 w-6 text-success" />
+                    <div className="absolute -inset-1 bg-success/20 rounded-full"></div>
+                  </>
+                )}
               </div>
               <span className="text-foreground">Meta Business Manager</span>
-              <Badge className="status-success">Conectado</Badge>
-              {connectedTokenInfo && getTokenStatusBadge(connectedTokenInfo)}
+              {connectedTokenInfo && !connectedTokenInfo.isValid ? (
+                <Badge variant="destructive" className="gap-1">
+                  <XCircle className="h-3 w-3" />
+                  Token expirado — reconecte
+                </Badge>
+              ) : (
+                <>
+                  <Badge className="status-success">Conectado</Badge>
+                  {connectedTokenInfo && getTokenStatusBadge(connectedTokenInfo)}
+                </>
+              )}
             </>
           ) : (
             <>
