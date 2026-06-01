@@ -53,27 +53,48 @@ export function ClosedPodiumCard({ closedLeads, onClick }: ClosedPodiumCardProps
       onClick={onClick}
       title={arr.map(([n, c]) => `${n}: ${c}`).join('\n')}
       className={cn(
-        'flex items-end gap-0.5 px-1.5 py-1 rounded-md border transition-colors hover:brightness-95 cursor-pointer shrink-0',
+        'rounded-md border transition-colors hover:brightness-95 cursor-pointer shrink-0',
         tone
       )}
     >
-      {podiumOrder.map(([name, n]) => {
-        const colorIdx = arr.findIndex(([nm]) => nm === name);
-        return (
-          <div key={name} className="flex flex-col items-center w-9">
-            <div className="text-[10px] leading-none">{medals[name]}</div>
-            <div className="text-[9px] truncate w-full text-center font-medium text-foreground" title={name}>
-              {name.split(' ')[0]}
+      {/* Mobile: linha horizontal compacta (medalha + contagem), evita overflow em telas estreitas */}
+      <div className="flex sm:hidden items-center gap-1 px-1.5 h-full min-h-[44px]">
+        {top3.map(([name, n]) => {
+          const colorIdx = arr.findIndex(([nm]) => nm === name);
+          return (
+            <div key={name} className="flex items-center gap-0.5">
+              <span className="text-[11px] leading-none">{medals[name]}</span>
+              <span
+                className="text-[10px] font-bold leading-none px-1 py-0.5 rounded text-white tabular-nums"
+                style={{ background: PALETTE[colorIdx % PALETTE.length] }}
+              >
+                {n}
+              </span>
             </div>
-            <div
-              className={cn(heights[name], 'w-full rounded-t-sm flex items-center justify-center text-white text-[9px] font-bold')}
-              style={{ background: PALETTE[colorIdx % PALETTE.length] }}
-            >
-              {n}
+          );
+        })}
+      </div>
+
+      {/* Desktop/tablet: pódio vertical clássico */}
+      <div className="hidden sm:flex items-end gap-0.5 px-1.5 py-1">
+        {podiumOrder.map(([name, n]) => {
+          const colorIdx = arr.findIndex(([nm]) => nm === name);
+          return (
+            <div key={name} className="flex flex-col items-center w-9">
+              <div className="text-[10px] leading-none">{medals[name]}</div>
+              <div className="text-[9px] truncate w-full text-center font-medium text-foreground" title={name}>
+                {name.split(' ')[0]}
+              </div>
+              <div
+                className={cn(heights[name], 'w-full rounded-t-sm flex items-center justify-center text-white text-[9px] font-bold')}
+                style={{ background: PALETTE[colorIdx % PALETTE.length] }}
+              >
+                {n}
+              </div>
             </div>
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </button>
   );
 }
