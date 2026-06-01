@@ -153,9 +153,20 @@ Deno.serve(async (req) => {
     const fromISO = url.searchParams.get("from") ||
       new Date(Date.now() - 7 * 86400 * 1000).toISOString();
     const toISO = url.searchParams.get("to") || new Date().toISOString();
+    const instanceFilter = (url.searchParams.get("instance_name") || "").toLowerCase().trim();
 
-    // 1. Fetch all sheets in parallel
-    const allRows = (await Promise.all(SHEET_TABS.map((s) => fetchTab(s.tab)))).flat();
+    // 1. Decide which tabs to read based on instance filter.
+    // Each operator tab corresponds to that operator's WhatsApp instance
+    // (e.g. tab "LEADS MATEUS" -> instance "mateus atendimento"). Match by
+    // checking if the operator name appears inside the instance name.
+    const tabsToRead = instanceFilter
+      ? SHEET_TABS.filter((s) => instanceFilter.includes(s.operator.toLowerCase()))
+      : SHEET_TABS;
+
+    // If a filter was set but no operator matched, return empty.
+    const allRows = tabsToRead.length === 0
+      ? []
+      : (await Promise.all(tabsToRead.map((s) => fetchTab(s.tab)))).flat();
 
     // 2. Filter by period
     const periodRows = allRows.filter((r) => inPeriod(r.created_at, fromISO, toISO));
