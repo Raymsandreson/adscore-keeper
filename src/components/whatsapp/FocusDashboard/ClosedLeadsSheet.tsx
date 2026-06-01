@@ -145,18 +145,9 @@ function LeadRow({
           </div>
           <div className="text-[11px] text-muted-foreground flex items-center gap-2 mt-0.5 flex-wrap pr-1 min-w-0 max-w-full overflow-hidden">
             {lead.lead_phone && <span className="truncate max-w-full">📞 {lead.lead_phone}</span>}
-            {lead.acolhedor ? (
+            {lead.acolhedor && (
               <span className="truncate max-w-full">· {lead.acolhedor}</span>
-            ) : lead.inferred_closer ? (
-              <span
-                className="truncate max-w-full italic text-amber-600 dark:text-amber-400"
-                title={lead.inferred_source === 'zapsign_link'
-                  ? 'Inferido: instância que enviou o link ZapSign primeiro'
-                  : 'Inferido: instância que falou primeiro no grupo do lead'}
-              >
-                · {lead.inferred_closer} (inferido{lead.inferred_source === 'zapsign_link' ? ' · link' : ' · grupo'})
-              </span>
-            ) : null}
+            )}
             {lead.closed_at ? (
               <span>· {new Date(lead.closed_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
             ) : lead.became_client_date && (
