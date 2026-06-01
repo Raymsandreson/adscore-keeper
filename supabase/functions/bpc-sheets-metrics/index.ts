@@ -77,7 +77,8 @@ async function fetchTab(tab: string): Promise<SheetRow[]> {
 
   return values.slice(1).filter((r) => r.length > 0).map((r) => {
     const o = rowToObject(headers, r);
-    const phoneRaw = o["telefone"] || o["qual_o_seu_número_de_contato_?"] || "";
+    const phoneRaw = o["telefone"] || o["phone_number"] || o["qual_o_seu_número_de_contato_?"] || "";
+    const name = o["nome_completo"] || o["full_name"] || "";
     return {
       form_lead_id: o["id"] || "",
       created_at: o["created_time"] || "",
@@ -85,10 +86,10 @@ async function fetchTab(tab: string): Promise<SheetRow[]> {
       ad_name: o["ad_name"] || "",
       form_name: o["form_name"] || "",
       is_organic: (o["is_organic"] || "").toLowerCase() === "true",
-      name: o["nome_completo"] || "",
+      name,
       phone_raw: phoneRaw,
       phone_normalized: normalizePhone(phoneRaw),
-      estado_civil: o["estado_civil"] || "",
+      estado_civil: o["estado_civil"] || o["marital_status"] || "",
       filho_autista: o["você_possui_filho_autista_ou_conhece_alguém_autista_?"] || "",
       laudo: o["possui_laudo_médico_ou_relatório_escolar_?"] || "",
       renda: o["qual_a_sua_renda_familiar_?"] || "",
@@ -98,6 +99,7 @@ async function fetchTab(tab: string): Promise<SheetRow[]> {
       tab,
     };
   }).filter((r) => r.phone_normalized.length >= 10 && !r.name.startsWith("<test"));
+
 }
 
 function isUnviable(row: SheetRow): boolean {
