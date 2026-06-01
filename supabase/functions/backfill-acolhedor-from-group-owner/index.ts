@@ -132,13 +132,13 @@ Deno.serve(async (req) => {
           const r = await fetch(`${baseUrl}/group/info`, {
             method: "POST",
             headers: { "Content-Type": "application/json", token: inst.instance_token },
-            body: JSON.stringify({ id: groupJid }),
+            body: JSON.stringify({ groupjid: groupJid }),
             signal: ctrl.signal,
           });
           clearTimeout(tid);
           if (!r.ok) continue;
           const d = await r.json();
-          ownerJid = d?.owner || d?.GroupOwner || d?.creator || d?.data?.owner || null;
+          ownerJid = d?.OwnerPN || d?.OwnerJID || d?.owner || d?.GroupOwner || null;
           if (ownerJid) break;
         } catch (_) {/* try next */}
       }
