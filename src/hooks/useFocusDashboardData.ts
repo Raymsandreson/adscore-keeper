@@ -241,6 +241,7 @@ export function useFocusDashboardData(instanceName?: string | null): FocusData {
       let overdueLeadIds = new Set<string>();
       const activitiesByLead = new Map<string, ClosedLeadActivity[]>();
       const groupByLead = new Map<string, string>();
+      const groupCreatedByLead = new Map<string, string>();
       const signedAtByLead = new Map<string, string>();
       if (closedIds.length > 0) {
         const todayStr = format(new Date(), 'yyyy-MM-dd');
@@ -251,7 +252,7 @@ export function useFocusDashboardData(instanceName?: string | null): FocusData {
             .order('deadline', { ascending: true })
             .limit(10000),
           db.from('lead_whatsapp_groups')
-            .select('lead_id, group_jid')
+            .select('lead_id, group_jid, created_at')
             .in('lead_id', closedIds)
             .limit(5000),
           db.from('zapsign_documents')
@@ -272,8 +273,16 @@ export function useFocusDashboardData(instanceName?: string | null): FocusData {
           }
         });
         ((groupsRes.data || []) as GroupRow[]).forEach((g) => {
-          if (g.lead_id && g.group_jid && !groupByLead.has(g.lead_id)) {
+          if (!g.lead_id) return;
+          if (g.group_jid && !groupByLead.has(g.lead_id)) {
             groupByLead.set(g.lead_id, g.group_jid);
+          }
+          if (g.created_at) {
+            const cur = groupCreatedByLead.get(g.lead_id);
+            // Mantém o MAIS ANTIGO: data de criação do grupo do caso.
+            if (!cur || new Date(g.created_at) < new Date(cur)) {
+              groupCreatedByLead.set(g.lead_id, g.created_at);
+            }
           }
         });
         ((signedRes.data || []) as Array<{ lead_id: string | null; signed_at: string | null }>).forEach((d) => {
@@ -285,9 +294,15 @@ export function useFocusDashboardData(instanceName?: string | null): FocusData {
         });
       }
       setClosedLeads(closedRows.map((l) => {
-        // Fallback: sem ZapSign API (procuração manual) → usa updated_at do lead
-        // como hora aproximada do fechamento.
-        const closedAt = signedAtByLead.get(l.id) ?? l.updated_at ?? null;
+        // Prioridade do "fechamento":
+        // 1) ZapSign API (signed_at) — quando passou pela API.
+        // 2) Data de criação do grupo do caso — regra do negócio: caso = grupo.
+        // 3) updated_at do lead — último recurso (procuração manual sem grupo).
+        const closedAt =
+          signedAtByLead.get(l.id) ??
+          groupCreatedByLead.get(l.id) ??
+          l.updated_at ??
+          null;
         return {
           id: l.id,
           lead_name: l.lead_name ?? null,
