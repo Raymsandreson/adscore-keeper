@@ -117,22 +117,25 @@ Deno.serve(async (req) => {
       if (!groupJid) continue;
       if (!groupJid.includes("@")) groupJid = `${groupJid}@g.us`;
 
-      // Ordem de tentativas: a instância do grupo primeiro, depois as outras conectadas
-      const tryOrder = [
-        ...instances.filter((i) => i.instance_name === c.group_instance),
-        ...instances.filter((i) => i.instance_name !== c.group_instance),
-      ];
+      // Ordem de tentativas: a instância do grupo primeiro, depois até 3 outras
+      const groupInstFirst = instances.filter((i) => i.instance_name === c.group_instance);
+      const others = instances.filter((i) => i.instance_name !== c.group_instance).slice(0, 3);
+      const tryOrder = [...groupInstFirst, ...others];
 
       let ownerJid: string | null = null;
       for (const inst of tryOrder) {
         if (!inst.instance_token) continue;
         try {
           const baseUrl = inst.base_url || "https://abraci.uazapi.com";
+          const ctrl = new AbortController();
+          const tid = setTimeout(() => ctrl.abort(), 4000);
           const r = await fetch(`${baseUrl}/group/info`, {
             method: "POST",
             headers: { "Content-Type": "application/json", token: inst.instance_token },
             body: JSON.stringify({ id: groupJid }),
+            signal: ctrl.signal,
           });
+          clearTimeout(tid);
           if (!r.ok) continue;
           const d = await r.json();
           ownerJid = d?.owner || d?.GroupOwner || d?.creator || d?.data?.owner || null;
