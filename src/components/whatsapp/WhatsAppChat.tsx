@@ -1118,17 +1118,53 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   });
 
   // Extract sender info from group message metadata (UazAPI format)
+  // Lida com 3 cenários: (1) sender_pn = telefone real, (2) só @lid = ID anônimo
+  // que precisa ser mapeado via roster do grupo, (3) ambos disponíveis.
   const getGroupSenderInfo = (msg: any): { name: string | null; phone: string | null } => {
     const meta = msg.metadata;
     if (!meta || msg.direction === 'outbound') return { name: null, phone: null };
-    
-    // UazAPI: sender phone is in message.sender_pn (e.g. "5588...@s.whatsapp.net")
-    const senderPn = meta?.message?.sender_pn || meta?.sender_pn || '';
-    const senderPhone = senderPn.replace('@s.whatsapp.net', '').replace(/\D/g, '');
-    
-    // UazAPI: sender name is in message.senderName or message.groupName is the group name
-    const senderName = meta?.message?.senderName || meta?.senderName || meta?.chat?.pushName || null;
-    
+
+    // 1) Tenta telefone real direto
+    const senderPnRaw: string = String(
+      meta?.message?.sender_pn || meta?.sender_pn ||
+      meta?.message?.participantPn || meta?.participantPn ||
+      meta?.key?.participantPn || ''
+    );
+    let senderPhone = senderPnRaw.replace('@s.whatsapp.net', '').replace(/\D/g, '');
+
+    // 2) Tenta lid (id anônimo do WA em grupos) — chave para mapear no roster
+    const lidRaw: string = String(
+      meta?.message?.sender_lid || meta?.sender_lid ||
+      meta?.key?.participant || meta?.message?.participant || ''
+    );
+    const lidDigits = lidRaw.includes('@lid')
+      ? lidRaw.replace('@lid', '').replace(/\D/g, '')
+      : '';
+
+    // Nome direto no metadata (pushName etc.)
+    let senderName: string | null =
+      meta?.message?.senderName || meta?.senderName || meta?.chat?.pushName || null;
+
+    // 3) Se temos lid mapeado no roster, preenche telefone+nome que faltarem
+    if (lidDigits && groupLidMap[lidDigits]) {
+      const info = groupLidMap[lidDigits];
+      if (!senderPhone && info.phone) senderPhone = info.phone;
+      if (!senderName && info.name) senderName = info.name;
+    }
+
+    // 4) Se temos telefone mas nenhum nome, tenta resolver pelo phoneNameMap
+    if (senderPhone && !senderName) {
+      // Tenta exato, depois últimos 8 dígitos (tolerância ao "9" do BR)
+      senderName = groupPhoneNameMap[senderPhone]
+        || groupPhoneNameMap[senderPhone.slice(-8)]
+        || null;
+    }
+
+    // 5) Sem telefone real, mas com lid não mapeado → não expor o número anônimo
+    if (!senderPhone && lidDigits) {
+      return { name: senderName, phone: null };
+    }
+
     return { name: senderName, phone: senderPhone || null };
   };
 
