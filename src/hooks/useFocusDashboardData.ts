@@ -285,12 +285,15 @@ export function useFocusDashboardData(instanceName?: string | null): FocusData {
         });
       }
       setClosedLeads(closedRows.map((l) => {
+        // Fallback: sem ZapSign API (procuração manual) → usa updated_at do lead
+        // como hora aproximada do fechamento.
+        const closedAt = signedAtByLead.get(l.id) ?? l.updated_at ?? null;
         return {
           id: l.id,
           lead_name: l.lead_name ?? null,
           lead_phone: l.lead_phone ?? null,
           became_client_date: l.became_client_date ?? null,
-          closed_at: signedAtByLead.get(l.id) ?? null,
+          closed_at: closedAt,
           acolhedor: l.acolhedor ?? null,
           has_overdue_activity: overdueLeadIds.has(l.id),
           whatsapp_group_jid: groupByLead.get(l.id) ?? null,
