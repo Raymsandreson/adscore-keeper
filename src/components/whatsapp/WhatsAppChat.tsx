@@ -3148,7 +3148,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                       className={cn("text-[11px] font-semibold mb-0.5 cursor-pointer hover:underline", sender.phone ? getSenderColor(sender.phone) : 'text-primary')}
                       onClick={handleSenderClick}
                     >
-                      {sender.name || formatPhone(sender.phone || '')}
+                      {sender.name || (sender.phone ? formatPhone(sender.phone) : 'Participante')}
                       {sender.name && sender.phone && (
                         <span className="font-normal text-muted-foreground ml-1">~{formatPhone(sender.phone)}</span>
                       )}
