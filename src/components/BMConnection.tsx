@@ -52,7 +52,7 @@ const BMConnection = ({
   const [showConfigGuide, setShowConfigGuide] = useState(false);
   const { toast } = useToast();
 
-  // Selecionar primeira conta quando carregam do DB
+  // Selecionar primeira conta quando carregam do DB e validar o token de verdade
   useEffect(() => {
     if (savedAccounts.length > 0 && !selectedAccountId && !showNewForm) {
       const firstAccount = savedAccounts[0];
@@ -60,6 +60,11 @@ const BMConnection = ({
       setAccessToken(firstAccount.accessToken);
       setAccountId(firstAccount.accountId);
       setAccountName(firstAccount.name);
+      setConnectedAccountName(firstAccount.name);
+      // Valida contra o Facebook para o badge refletir o estado REAL
+      validateToken(firstAccount.accessToken).then((info) => {
+        if (info) setConnectedTokenInfo(info);
+      });
     }
   }, [savedAccounts]);
 
