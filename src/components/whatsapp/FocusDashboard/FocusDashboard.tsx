@@ -132,6 +132,16 @@ export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpen
         periodLabel={periodLabel}
         onOpenChat={(phone) => onOpenChat?.(phone)}
       />
+      <BpcFormLeadsSheet
+        open={bpcSheetOpen}
+        onOpenChange={setBpcSheetOpen}
+        metrics={bpc.metrics}
+        leads={bpc.leads}
+        loading={bpc.loading}
+        defaultTab={bpcDefaultTab}
+        onOpenChat={(phone) => onOpenChat?.(phone)}
+        onRefresh={bpc.refetch}
+      />
       <Card className="rounded-none border-x-0 border-t-0 bg-card shrink-0">
         <div className="px-2 py-2 flex items-stretch gap-2 flex-wrap">
           <ToggleGroup
