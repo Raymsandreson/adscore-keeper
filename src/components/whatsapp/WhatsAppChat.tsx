@@ -153,6 +153,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const [isPrivate, setIsPrivate] = useState(false);
   const [togglingPrivate, setTogglingPrivate] = useState(false);
   const [showGroupMembers, setShowGroupMembers] = useState(false);
+  const [refreshingRoster, setRefreshingRoster] = useState(false);
   
   const [showSessionEditor, setShowSessionEditor] = useState(false);
   const [creatingGroup, setCreatingGroup] = useState(false);
