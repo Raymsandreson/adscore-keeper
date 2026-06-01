@@ -1375,6 +1375,29 @@ export function CTWACampaignAutomation() {
               </div>
             )}
 
+            {metaTokenExpired && (
+              <div className="rounded-md border border-destructive/30 bg-destructive/10 p-2 text-[11px] text-destructive">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <p className="font-medium">Conta Meta desconectada</p>
+                    <p className="text-destructive/80">
+                      A Meta invalidou o token. Reconecte em Marketing → Anúncios para voltar a listar campanhas.
+                    </p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-7 border-destructive/40 px-2 text-[10px] text-destructive hover:bg-destructive/10"
+                      onClick={() => { window.location.href = '/dashboard?tab=paid'; }}
+                    >
+                      Reconectar Meta
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Campaign selector */}
             {useManualInput ? (
               <div className="space-y-1">
