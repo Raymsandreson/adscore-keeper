@@ -2623,6 +2623,20 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                 </TooltipTrigger>
                 <TooltipContent>Membros do grupo</TooltipContent>
               </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={handleRefreshRoster}
+                    disabled={refreshingRoster}
+                  >
+                    {refreshingRoster ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Atualizar participantes</TooltipContent>
+              </Tooltip>
               <GroupMembersDialog
                 open={showGroupMembers}
                 onOpenChange={setShowGroupMembers}
