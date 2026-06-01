@@ -55,8 +55,13 @@ export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpen
   const [bpcSheetOpen, setBpcSheetOpen] = useState(false);
   const [bpcDefaultTab, setBpcDefaultTab] = useState<'all' | 'to_call' | 'on_wa' | 'unviable'>('all');
 
-  // Leads do formulário Meta (Google Sheet) — independente do token Meta
-  const bpc = useBpcFormLeads({ from: data.range.from, to: data.range.to });
+  // Leads do formulário Meta (Google Sheet) — independente do token Meta.
+  // Quando há filtro de instância, só as abas do operador correspondente são lidas.
+  const bpc = useBpcFormLeads({
+    from: data.range.from,
+    to: data.range.to,
+    instanceName: kpiInstanceName === 'all' ? null : kpiInstanceName,
+  });
 
   const initials = useMemo(() => {
     const name = (user?.user_metadata as any)?.full_name || user?.email || '?';
