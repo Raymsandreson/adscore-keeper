@@ -57,8 +57,8 @@ export function ClosedPodiumCard({ closedLeads, onClick }: ClosedPodiumCardProps
         tone
       )}
     >
-      {/* Mobile (<640px): coluna ultra-compacta de medalhas empilhadas, largura fixa cabe em 360px */}
-      <div className="flex sm:hidden flex-col items-center justify-center gap-0.5 px-1 py-1 h-full w-[34px]">
+      {/* Mobile + tablet pequeno (<768px): coluna ultra-compacta de medalhas empilhadas */}
+      <div className="flex md:hidden flex-col items-center justify-center gap-0.5 px-1 py-1 h-full w-[34px]">
         {top3.map(([name, n]) => {
           const colorIdx = arr.findIndex(([nm]) => nm === name);
           return (
@@ -75,8 +75,9 @@ export function ClosedPodiumCard({ closedLeads, onClick }: ClosedPodiumCardProps
         })}
       </div>
 
-      {/* Desktop/tablet: pódio vertical clássico */}
-      <div className="hidden sm:flex items-end gap-0.5 px-1.5 py-1">
+      {/* Desktop (>=768px): pódio vertical clássico */}
+      <div className="hidden md:flex items-end gap-0.5 px-1.5 py-1">
+
         {podiumOrder.map(([name, n]) => {
           const colorIdx = arr.findIndex(([nm]) => nm === name);
           return (
