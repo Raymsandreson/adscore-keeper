@@ -209,11 +209,27 @@ Deno.serve(async (req) => {
     const toCallNow = leads.filter((l) => !l.has_whatsapp && !l.is_unviable).length;
     const alreadyOnWhatsApp = leads.filter((l) => l.has_whatsapp).length;
 
+    // Breakdown by operator (each tab = one operator/instance)
+    const byOperator = SHEET_TABS.map((meta) => {
+      const opLeads = leads.filter((l) => l.operator === meta.operator);
+      return {
+        operator: meta.operator,
+        tab: meta.tab,
+        total: opLeads.length,
+        unviable: opLeads.filter((l) => l.is_unviable).length,
+        toCallNow: opLeads.filter((l) => !l.has_whatsapp && !l.is_unviable).length,
+        alreadyOnWhatsApp: opLeads.filter((l) => l.has_whatsapp).length,
+      };
+    });
+
     return new Response(
       JSON.stringify({
         success: true,
         period: { from: fromISO, to: toISO },
+        instance_filter: instanceFilter || null,
+        tabs_read: tabsToRead.map((t) => t.tab),
         metrics: { total, unviable, toCallNow, alreadyOnWhatsApp },
+        byOperator,
         leads: leads.sort((a, b) =>
           new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
         ),
