@@ -50,6 +50,8 @@ export interface ClosedLeadItem {
   became_client_date: string | null;
   closed_at: string | null;
   acolhedor: string | null;
+  inferred_closer: string | null;
+  inferred_source: 'zapsign_link' | 'group_creator' | null;
   has_overdue_activity?: boolean;
   whatsapp_group_jid?: string | null;
   activities?: ClosedLeadActivity[];
