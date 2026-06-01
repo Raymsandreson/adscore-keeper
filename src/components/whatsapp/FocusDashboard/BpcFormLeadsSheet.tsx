@@ -155,6 +155,22 @@ export function BpcFormLeadsSheet({
                   <div className="text-[11px] text-muted-foreground mt-0.5">
                     {fmtPhone(l.phone_normalized)} · {l.operator}
                   </div>
+                  {/* Quem iniciou a conversa */}
+                  {l.has_whatsapp && (
+                    <div className="text-[10px] mt-1">
+                      {l.first_contact_by === "client" && (
+                        <span className="text-emerald-700">🟢 Cliente iniciou{l.first_contact_at ? ` · ${fmtBR(l.first_contact_at)}` : ""}</span>
+                      )}
+                      {l.first_contact_by === "operator" && (
+                        <span className="text-blue-700">🔵 Operador iniciou{l.first_contact_at ? ` · ${fmtBR(l.first_contact_at)}` : ""}</span>
+                      )}
+                    </div>
+                  )}
+                  {!l.has_whatsapp && !l.is_unviable && (
+                    <div className="text-[10px] mt-1 text-red-600">
+                      🔴 Ninguém respondeu ainda
+                    </div>
+                  )}
                   <div className="text-[10px] text-muted-foreground mt-1 grid grid-cols-2 gap-x-2 gap-y-0.5">
                     {l.renda && <span>💰 {l.renda}</span>}
                     {l.possui_advogado && <span>⚖️ Adv: {l.possui_advogado}</span>}
@@ -164,8 +180,7 @@ export function BpcFormLeadsSheet({
                     {l.campaign_name && <span className="truncate" title={l.campaign_name}>📣 {l.campaign_name}</span>}
                   </div>
                   <div className="text-[10px] text-muted-foreground mt-1">
-                    {l.created_at &&
-                      format(new Date(l.created_at), "dd/MM/yyyy HH:mm", { locale: ptBR })}
+                    {l.created_at && `Form: ${fmtBR(l.created_at)} (BR)`}
                   </div>
                 </div>
                 <div className="flex flex-col gap-1 shrink-0">
