@@ -46,7 +46,8 @@ const INSTANCE_TO_OPERATOR: Record<string, string> = {
 function phoneKey(raw: string | null | undefined): string | null {
   if (!raw) return null;
   const d = String(raw).replace(/\D/g, "");
-  return d.length >= 10 ? d.slice(-10) : null;
+  // Last 8 digits tolerate the Brazilian extra "9" prefix on mobile numbers.
+  return d.length >= 8 ? d.slice(-8) : null;
 }
 
 async function runExternalSQL(sql: string): Promise<any[]> {
