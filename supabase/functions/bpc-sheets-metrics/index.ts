@@ -14,8 +14,9 @@ const SHEET_TABS: { tab: string; operator: string }[] = [
   { tab: "LEADS ISRAEL", operator: "Israel" },
   { tab: "LEADS CRIS", operator: "Cris" },
   { tab: "LEADS MATEUS", operator: "Mateus" },
-  { tab: "LEADS EDILAN", operator: "Edilan" },
+  { tab: "1LEADS EDILAN", operator: "Edilan" },
   { tab: "LEDS KAROLYNE", operator: "Karolyne" },
+  { tab: "LEADS ANDRESSA", operator: "Andressa" },
 ];
 const GATEWAY = "https://connector-gateway.lovable.dev/google_sheets/v4";
 
@@ -172,9 +173,22 @@ Deno.serve(async (req) => {
       : SHEET_TABS;
 
     // If a filter was set but no operator matched, return empty.
-    const allRows = tabsToRead.length === 0
-      ? []
-      : (await Promise.all(tabsToRead.map((s) => fetchTab(s.tab)))).flat();
+    // Serializa as leituras (250ms entre cada) p/ evitar 429 do Google Sheets,
+    // e usa allSettled p/ que a falha de UMA aba não derrube as métricas das outras.
+    const tabErrors: { tab: string; error: string }[] = [];
+    const allRows: SheetRow[] = [];
+    for (let i = 0; i < tabsToRead.length; i++) {
+      const s = tabsToRead[i];
+      try {
+        const rows = await fetchTab(s.tab);
+        allRows.push(...rows);
+      } catch (e: any) {
+        const msg = e?.message || String(e);
+        console.error(`[bpc-sheets-metrics] tab "${s.tab}" failed:`, msg);
+        tabErrors.push({ tab: s.tab, error: msg.substring(0, 200) });
+      }
+      if (i < tabsToRead.length - 1) await new Promise((r) => setTimeout(r, 250));
+    }
 
     // 2. Filter by period
     const periodRows = allRows.filter((r) => inPeriod(r.created_at, fromISO, toISO));
@@ -251,6 +265,7 @@ Deno.serve(async (req) => {
         period: { from: fromISO, to: toISO },
         instance_filter: instanceFilter || null,
         tabs_read: tabsToRead.map((t) => t.tab),
+        tab_errors: tabErrors,
         metrics: { total, unviable, toCallNow, alreadyOnWhatsApp },
         byOperator,
         leads: leads.sort((a, b) =>
