@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 import { useAuthContext } from "@/contexts/AuthContext";
+import { canSeeCloudApi } from "@/lib/cloudApiAllowlist";
 import { toast } from "sonner";
 import { ActivityChatSheet } from "@/components/activities/ActivityChatSheet";
 import { MentionsPanel } from "@/components/chat/MentionsPanel";
@@ -86,6 +87,9 @@ export function AppSidebar() {
     { id: "leads", label: "Leads", icon: <Users className="h-4 w-4" />, path: "/leads" },
     { id: "calls", label: "Ligações", icon: <Phone className="h-4 w-4" />, path: "/calls", color: "text-blue-500" },
     { id: "whatsapp", label: "WhatsApp", icon: <MessageSquareIcon className="h-4 w-4" />, path: "/whatsapp", color: "text-green-500" },
+    ...(canSeeCloudApi(user?.email)
+      ? [{ id: "whatsapp-api", label: "WhatsApp API", icon: <MessageSquareIcon className="h-4 w-4" />, path: "/whatsapp-api", color: "text-emerald-600" } as NavItem]
+      : []),
     { id: "agent-monitor", label: "Monitor IA", icon: <Bot className="h-4 w-4" />, path: "/agent-monitor", color: "text-purple-500" },
     
     { id: "instagram", label: "Instagram", icon: <AtSign className="h-4 w-4" />, path: "/instagram", color: "text-pink-500" },
