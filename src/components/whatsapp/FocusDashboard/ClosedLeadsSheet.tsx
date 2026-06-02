@@ -145,9 +145,9 @@ function LeadRow({
           </div>
           <div className="text-[11px] text-muted-foreground flex items-center gap-2 mt-0.5 flex-wrap pr-1 min-w-0 max-w-full overflow-hidden">
             {lead.lead_phone && <span className="truncate max-w-full">📞 {lead.lead_phone}</span>}
-            {lead.acolhedor && (
-              <span className="truncate max-w-full">· {lead.acolhedor}</span>
-            )}
+            <span className={`truncate max-w-full ${lead.acolhedor ? 'text-foreground font-medium' : 'italic text-muted-foreground/70'}`}>
+              · 👤 {lead.acolhedor || 'Sem acolhedor'}
+            </span>
             {lead.closed_at ? (
               <span>· {new Date(lead.closed_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
             ) : lead.became_client_date && (
