@@ -4,6 +4,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Phone, MessageCircle, Search, RefreshCw } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -57,9 +58,24 @@ export function BpcFormLeadsSheet({
 }: Props) {
   const [tab, setTab] = useState<"all" | "to_call" | "on_wa" | "unviable">(defaultTab);
   const [q, setQ] = useState("");
+  const [operatorFilter, setOperatorFilter] = useState<string>("all");
+
+  const operators = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const l of leads) {
+      const key = (l.operator || "—").trim() || "—";
+      map.set(key, (map.get(key) || 0) + 1);
+    }
+    return Array.from(map.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([operator, count]) => ({ operator, count }));
+  }, [leads]);
 
   const filtered = useMemo(() => {
     let list = leads;
+    if (operatorFilter !== "all") {
+      list = list.filter((l) => ((l.operator || "—").trim() || "—") === operatorFilter);
+    }
     if (tab === "to_call") list = list.filter((l) => !l.has_whatsapp && !l.is_unviable);
     else if (tab === "on_wa") list = list.filter((l) => l.has_whatsapp);
     else if (tab === "unviable") list = list.filter((l) => l.is_unviable);
@@ -73,7 +89,7 @@ export function BpcFormLeadsSheet({
       );
     }
     return list;
-  }, [leads, tab, q]);
+  }, [leads, tab, q, operatorFilter]);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -110,14 +126,29 @@ export function BpcFormLeadsSheet({
               </TabsTrigger>
             </TabsList>
           </Tabs>
-          <div className="relative mt-2">
-            <Search className="absolute left-2 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
-            <Input
-              className="h-8 pl-7 text-xs"
-              placeholder="Buscar por nome, telefone ou operador…"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-            />
+          <div className="flex gap-2 mt-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-2 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                className="h-8 pl-7 text-xs"
+                placeholder="Buscar por nome, telefone ou operador…"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+              />
+            </div>
+            <Select value={operatorFilter} onValueChange={setOperatorFilter}>
+              <SelectTrigger className="h-8 w-[160px] text-xs">
+                <SelectValue placeholder="Operador" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all" className="text-xs">Todos operadores · {leads.length}</SelectItem>
+                {operators.map((o) => (
+                  <SelectItem key={o.operator} value={o.operator} className="text-xs">
+                    {o.operator} · {o.count}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
 
@@ -199,13 +230,11 @@ export function BpcFormLeadsSheet({
                     size="sm"
                     variant="outline"
                     className="h-7 w-7 p-0"
-                    title={l.has_whatsapp ? "Abrir conversa" : "Abrir WhatsApp (novo)"}
+                    title={l.has_whatsapp ? "Abrir conversa" : "Abrir conversa (iniciar)"}
                     onClick={() => {
-                      if (l.has_whatsapp && onOpenChat) {
+                      if (onOpenChat) {
                         onOpenChat(l.phone_normalized);
                       } else {
-                        // Lead que só preencheu o form — ainda não existe conversa.
-                        // Abre o wa.me direto pra iniciar.
                         window.open(`https://wa.me/${l.phone_normalized}`, "_blank");
                       }
                     }}
