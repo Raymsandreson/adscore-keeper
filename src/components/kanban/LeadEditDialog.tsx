@@ -3258,18 +3258,25 @@ ${scrapeData.content || ''}
                 },
               ];
             });
-            // Auto-sugere acolhedor a partir da instância que achou o grupo.
-            // Só preenche se o campo estiver vazio (respeita escolha manual).
-            if (!acolhedor) {
-              const suggested = resolveOperatorFromInstance(g.instance_name);
-              if (suggested) {
-                setAcolhedor(suggested);
-                toast.success(`Grupo vinculado. Acolhedor definido: ${suggested}. Lembre de salvar.`);
-              } else {
-                toast.success('Grupo vinculado ao lead. Lembre de salvar.');
-              }
-            } else {
-              toast.success('Grupo vinculado ao lead. Lembre de salvar.');
+            toast.success('Grupo vinculado ao lead. Lembre de salvar.');
+            // Auto-sugere acolhedor a partir do CRIADOR real do grupo
+            // (consulta /group/info via backfill em modo lookup). Só preenche
+            // se o campo estiver vazio — respeita escolha manual.
+            if (!acolhedor && g.jid) {
+              cloudFunctions
+                .invoke('backfill-acolhedor-from-group-owner', {
+                  body: { group_jid: g.jid, dry_run: true },
+                })
+                .then((res: any) => {
+                  const r = res?.data?.results?.[0];
+                  if (r?.status === 'ok' && r.operator) {
+                    setAcolhedor(r.operator);
+                    toast.success(`Acolhedor detectado pelo criador do grupo: ${r.operator}`);
+                  }
+                })
+                .catch((err: any) => {
+                  console.warn('[acolhedor-from-group-creator] falhou:', err?.message || err);
+                });
             }
           }}
         />
