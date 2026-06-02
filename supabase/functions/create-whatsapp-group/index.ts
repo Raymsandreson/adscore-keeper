@@ -1357,19 +1357,48 @@ Deno.serve(async (req) => {
             group_jid: groupJid,
             group_link: groupInviteLink || null,
             group_name: groupName || null,
+            instance_name: creatorInstance.instance_name || null,
           })
         if (lwgError) {
           console.warn('[save] Error saving to lead_whatsapp_groups:', lwgError)
         } else {
-          console.log(`[save] Group saved to lead_whatsapp_groups: ${groupJid}`)
+          console.log(`[save] Group saved to lead_whatsapp_groups: ${groupJid} (instance=${creatorInstance.instance_name})`)
         }
       } else {
-        // Update group_name if it changed
+        // Update group_name/link/instance if changed
         await extClient
           .from('lead_whatsapp_groups')
-          .update({ group_name: groupName, group_link: groupInviteLink || null })
+          .update({
+            group_name: groupName,
+            group_link: groupInviteLink || null,
+            instance_name: creatorInstance.instance_name || null,
+          })
           .eq('id', existingLwg.id)
         console.log(`[save] Updated existing lead_whatsapp_groups entry: ${existingLwg.id}`)
+      }
+
+      // Set acolhedor immediately based on creator instance (idempotent: only if null)
+      try {
+        const operatorName = resolveOperatorFromInstance(creatorInstance.instance_name)
+        if (operatorName) {
+          const { data: updated, error: accErr } = await extClient
+            .from('leads')
+            .update({ acolhedor: operatorName })
+            .eq('id', leadData.id)
+            .is('acolhedor', null)
+            .select('id')
+          if (accErr) {
+            console.warn('[save] acolhedor auto-set warn:', accErr.message)
+          } else if (updated && updated.length > 0) {
+            console.log(`[save] acolhedor auto-set -> "${operatorName}" (instance=${creatorInstance.instance_name})`)
+          } else {
+            console.log(`[save] acolhedor already set or lead missing; skipped (instance=${creatorInstance.instance_name})`)
+          }
+        } else {
+          console.log(`[save] acolhedor auto-set skipped: instance "${creatorInstance.instance_name}" is shared/unmapped`)
+        }
+      } catch (e) {
+        console.warn('[save] acolhedor auto-set exception:', (e as Error).message)
       }
     }))
 
