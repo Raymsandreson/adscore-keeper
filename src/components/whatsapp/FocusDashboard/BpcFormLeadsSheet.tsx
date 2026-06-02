@@ -58,9 +58,24 @@ export function BpcFormLeadsSheet({
 }: Props) {
   const [tab, setTab] = useState<"all" | "to_call" | "on_wa" | "unviable">(defaultTab);
   const [q, setQ] = useState("");
+  const [operatorFilter, setOperatorFilter] = useState<string>("all");
+
+  const operators = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const l of leads) {
+      const key = (l.operator || "—").trim() || "—";
+      map.set(key, (map.get(key) || 0) + 1);
+    }
+    return Array.from(map.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([operator, count]) => ({ operator, count }));
+  }, [leads]);
 
   const filtered = useMemo(() => {
     let list = leads;
+    if (operatorFilter !== "all") {
+      list = list.filter((l) => ((l.operator || "—").trim() || "—") === operatorFilter);
+    }
     if (tab === "to_call") list = list.filter((l) => !l.has_whatsapp && !l.is_unviable);
     else if (tab === "on_wa") list = list.filter((l) => l.has_whatsapp);
     else if (tab === "unviable") list = list.filter((l) => l.is_unviable);
@@ -74,7 +89,7 @@ export function BpcFormLeadsSheet({
       );
     }
     return list;
-  }, [leads, tab, q]);
+  }, [leads, tab, q, operatorFilter]);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
