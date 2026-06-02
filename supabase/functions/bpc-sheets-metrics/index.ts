@@ -14,8 +14,9 @@ const SHEET_TABS: { tab: string; operator: string }[] = [
   { tab: "LEADS ISRAEL", operator: "Israel" },
   { tab: "LEADS CRIS", operator: "Cris" },
   { tab: "LEADS MATEUS", operator: "Mateus" },
-  { tab: "LEADS EDILAN", operator: "Edilan" },
+  { tab: "1LEADS EDILAN", operator: "Edilan" },
   { tab: "LEDS KAROLYNE", operator: "Karolyne" },
+  { tab: "LEADS ANDRESSA", operator: "Andressa" },
 ];
 const GATEWAY = "https://connector-gateway.lovable.dev/google_sheets/v4";
 
