@@ -21,7 +21,7 @@ const DEFAULT_TEMPLATE = `*{{saudacao}} Sr(a). {{lead_name}}*
 
 {{campos_dinamicos}}
 
-{{responsavel_dr ? responsavel_dr + ' voltará com mais informações no dia ' + data_retorno + ', até o final do dia.' : ''}}
+{{linha_retorno}}
 {{tempo_dedicado}}
 
 Estamos à disposição para quaisquer dúvidas.
@@ -38,6 +38,7 @@ export const TEMPLATE_VARIABLES = [
   { var: '{{responsavel}}', label: 'Nome completo do responsável' },
   { var: '{{responsavel_dr}}', label: 'Nome do responsável com Dr. (ex: Dr. Martin Rafael)' },
   { var: '{{data_retorno}}', label: 'Data de retorno/notificação' },
+  { var: '{{linha_retorno}}', label: 'Frase de retorno com responsável quando houver' },
   { var: '{{criado_por}}', label: 'Nome de quem criou' },
   { var: '{{criado_em}}', label: 'Data/hora de criação' },
   { var: '{{atualizado_info}}', label: 'Info de última atualização' },
