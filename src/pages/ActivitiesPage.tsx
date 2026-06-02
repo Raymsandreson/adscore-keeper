@@ -1528,6 +1528,11 @@ const ActivitiesPage = () => {
     const tempoStr = timeSpent > 0 ? `⏱️ Tempo dedicado à atividade: ${formatDuration(timeSpent)}` : '';
     const activityLink = selectedActivity ? `🔗 Ver atividade: ${window.location.origin}/?openActivity=${selectedActivity.id}` : '';
     const updatedInfo = updatedByName && updatedAtFmt ? `\n*Última atualização por:* ${updatedByName} em ${updatedAtFmt}` : '';
+    const buildReturnDateLine = (responsavelDr: string) => {
+      if (!notifDate) return '';
+      const subject = responsavelDr ? `${responsavelDr} voltará` : 'Retornaremos';
+      return `*${subject} com mais informações no dia ${notifDate}, até o final do dia.*`;
+    };
 
     // Linked process info — "Referente ao processo n° "X" de "Y""
     const linkedProcessForMsg = formProcessId ? caseProcesses.find(p => p.id === formProcessId) : null;
@@ -1545,6 +1550,7 @@ const ActivitiesPage = () => {
       const responsavelDr = formAssignedToName
         ? `Dr. ${formAssignedToName.split(' ').slice(0, 2).join(' ')}`
         : '';
+      const returnDateLine = buildReturnDateLine(responsavelDr);
       const _hour = new Date().getHours();
       const saudacao = _hour < 12 ? 'Bom dia' : _hour < 18 ? 'Boa tarde' : 'Boa noite';
       const tplVars: Record<string, string> = {
@@ -1554,7 +1560,8 @@ const ActivitiesPage = () => {
         campos_dinamicos: fieldLines,
         responsavel: formAssignedToName || '',
         responsavel_dr: responsavelDr,
-        data_retorno: notifDate || '—',
+        data_retorno: notifDate,
+        linha_retorno: returnDateLine,
         criado_por: createdByName || '—',
         criado_em: createdAtFmt,
         atualizado_info: updatedInfo,
@@ -1601,6 +1608,16 @@ const ActivitiesPage = () => {
         result = lines.join('\n');
       }
 
+      // Templates antigos escondiam a data quando o responsável estava vazio.
+      // Se o modelo tentou usar data_retorno, garante que o cliente veja a data.
+      if (returnDateLine && template.includes('data_retorno') && !result.includes(notifDate)) {
+        const lines = result.split('\n');
+        const beforeSupportLine = lines.findIndex(line => line.includes('Estamos à disposição'));
+        if (beforeSupportLine >= 0) lines.splice(beforeSupportLine, 0, '', returnDateLine);
+        else lines.push('', returnDateLine);
+        result = lines.join('\n');
+      }
+
       return result
         .replace(/\n{3,}/g, '\n\n')
         .trim();
@@ -1614,7 +1631,7 @@ const ActivitiesPage = () => {
     const greetingLine = clientFirstName
       ? `*${saudacaoFb} Sr(a). ${clientFirstName}*`
       : `*${saudacaoFb}*`;
-    return `${greetingLine}${processInfo ? `\n\n${processInfo}` : ''}\n\n*Assunto da atividade:* ${formTitle.toUpperCase()}\n\n${fieldLines}\n\n${responsavelDrFb ? `*${responsavelDrFb} voltará com mais informações no dia ${notifDate || '—'}, até o final do dia.*` : ''}\n${tempoStr}\n\nEstamos à disposição para quaisquer dúvidas.\n\n🚀Avante!\n\nTem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se tudo está claro, digite 2.`;
+    return `${greetingLine}${processInfo ? `\n\n${processInfo}` : ''}\n\n*Assunto da atividade:* ${formTitle.toUpperCase()}\n\n${fieldLines}\n\n${buildReturnDateLine(responsavelDrFb)}\n${tempoStr}\n\nEstamos à disposição para quaisquer dúvidas.\n\n🚀Avante!\n\nTem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se tudo está claro, digite 2.`;
   };
 
   // Active step context — process workflow > lead's funnel board.
