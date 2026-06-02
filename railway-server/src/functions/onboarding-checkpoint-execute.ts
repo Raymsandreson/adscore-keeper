@@ -204,22 +204,15 @@ export const handler: RequestHandler = async (req, res) => {
 
           const { data: newBoard, error: nbErr } = await ext
             .from('kanban_boards')
-            .select('id, name, workspace_id, stages')
+            .select('id, name, stages')
             .eq('id', newBoardId)
             .maybeSingle();
-          if (nbErr || !newBoard) { errMsg = 'board destino não encontrado'; break; }
-
-          // Se mudou de board, valida workspace
-          if (leadRow.board_id && leadRow.board_id !== newBoardId) {
-            const { data: oldBoard } = await ext
-              .from('kanban_boards')
-              .select('workspace_id')
-              .eq('id', leadRow.board_id)
-              .maybeSingle();
-            if (oldBoard?.workspace_id && newBoard.workspace_id && oldBoard.workspace_id !== newBoard.workspace_id) {
-              errMsg = 'board destino é de outro workspace'; break;
-            }
-          }
+          if (nbErr) { errMsg = `erro consultando board: ${nbErr.message}`; break; }
+          if (!newBoard) { errMsg = 'board destino não encontrado'; break; }
+          // Validação de workspace removida: coluna workspace_id não existe
+          // mais em kanban_boards no Externo. Em 27/05/2026 isso passou a
+          // quebrar TODO confirm_funnel automático (board sumia no select),
+          // travando a cadeia auto-exec (create_group nunca rodava).
 
           // Atualiza lead.board_id + reseta status pra 1ª etapa do novo board
           const stages = Array.isArray(newBoard.stages) ? (newBoard.stages as any[]) : [];
