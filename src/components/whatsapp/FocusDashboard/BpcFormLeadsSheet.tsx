@@ -230,13 +230,11 @@ export function BpcFormLeadsSheet({
                     size="sm"
                     variant="outline"
                     className="h-7 w-7 p-0"
-                    title={l.has_whatsapp ? "Abrir conversa" : "Abrir WhatsApp (novo)"}
+                    title={l.has_whatsapp ? "Abrir conversa" : "Abrir conversa (iniciar)"}
                     onClick={() => {
-                      if (l.has_whatsapp && onOpenChat) {
+                      if (onOpenChat) {
                         onOpenChat(l.phone_normalized);
                       } else {
-                        // Lead que só preencheu o form — ainda não existe conversa.
-                        // Abre o wa.me direto pra iniciar.
                         window.open(`https://wa.me/${l.phone_normalized}`, "_blank");
                       }
                     }}
