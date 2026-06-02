@@ -126,14 +126,29 @@ export function BpcFormLeadsSheet({
               </TabsTrigger>
             </TabsList>
           </Tabs>
-          <div className="relative mt-2">
-            <Search className="absolute left-2 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
-            <Input
-              className="h-8 pl-7 text-xs"
-              placeholder="Buscar por nome, telefone ou operador…"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-            />
+          <div className="flex gap-2 mt-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-2 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                className="h-8 pl-7 text-xs"
+                placeholder="Buscar por nome, telefone ou operador…"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+              />
+            </div>
+            <Select value={operatorFilter} onValueChange={setOperatorFilter}>
+              <SelectTrigger className="h-8 w-[160px] text-xs">
+                <SelectValue placeholder="Operador" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all" className="text-xs">Todos operadores · {leads.length}</SelectItem>
+                {operators.map((o) => (
+                  <SelectItem key={o.operator} value={o.operator} className="text-xs">
+                    {o.operator} · {o.count}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
 
