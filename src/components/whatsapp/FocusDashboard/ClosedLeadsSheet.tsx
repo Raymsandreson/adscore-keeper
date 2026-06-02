@@ -335,14 +335,40 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
     return () => { cancelled = true; };
   }, [chatPreview?.phone]);
   const [openLeadId, setOpenLeadId] = useState<string | null>(null);
+  type PeriodKey = 'manha' | 'tarde' | 'noite' | 'madrugada' | 'semHora';
+  const [periodFilter, setPeriodFilter] = useState<PeriodKey | null>(null);
+  const [acolhedorFilter, setAcolhedorFilter] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (!open) {
+      setPeriodFilter(null);
+      setAcolhedorFilter(null);
+    }
+  }, [open]);
 
+  const getPeriod = (l: ClosedLeadItem): PeriodKey => {
+    if (!l.closed_at) return 'semHora';
+    const hourStr = new Date(l.closed_at).toLocaleString('en-US', { timeZone: 'America/Sao_Paulo', hour: '2-digit', hour12: false });
+    const h = parseInt(hourStr, 10);
+    if (h < 7) return 'madrugada';
+    if (h < 12) return 'manha';
+    if (h < 18) return 'tarde';
+    return 'noite';
+  };
+  const getAcolhedor = (l: ClosedLeadItem) => (l.acolhedor || '').trim() || 'Sem acolhedor';
 
   const sorted = [...closedLeads].sort((a, b) => {
     const da = a.closed_at || (a.became_client_date ? a.became_client_date + 'T00:00:00' : '');
     const db = b.closed_at || (b.became_client_date ? b.became_client_date + 'T00:00:00' : '');
     return db.localeCompare(da);
   });
+
+  const filtered = sorted.filter((l) => {
+    if (periodFilter && getPeriod(l) !== periodFilter) return false;
+    if (acolhedorFilter && getAcolhedor(l) !== acolhedorFilter) return false;
+    return true;
+  });
+  const hasFilter = !!periodFilter || !!acolhedorFilter;
 
 
   const handleOpenLead = async (leadId: string) => {
@@ -365,7 +391,7 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
             <SheetTitle className="flex items-center gap-2 text-base">
               <Trophy className="h-4 w-4 text-emerald-600" />
               Fechados · {periodLabel}
-              <span className="text-xs font-normal text-muted-foreground">({sorted.length})</span>
+              <span className="text-xs font-normal text-muted-foreground">({hasFilter ? `${filtered.length}/${sorted.length}` : sorted.length})</span>
             </SheetTitle>
             <SheetDescription className="text-xs">
               Leads que viraram cliente no período. Use os atalhos pra abrir o lead ou a conversa.
@@ -391,28 +417,39 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
                 cells.push({ label: 'S/ hora', emoji: '❓', count: buckets.semHora, cls: 'bg-muted border-border text-muted-foreground' });
               }
               const cols = cells.length === 5 ? 'grid-cols-5' : 'grid-cols-4';
+              const cellKeys: PeriodKey[] = ['manha', 'tarde', 'noite', 'madrugada', 'semHora'];
               return (
                 <div className={`grid ${cols} gap-1.5 pt-1`}>
-                  {cells.map((c) => (
-                    <div key={c.label} className={`rounded-md border px-1.5 py-1 text-center ${c.cls}`} title={c.label === 'S/ hora' ? 'Fechados sem hora registrada (sem documento assinado no ZapSign)' : undefined}>
-                      <div className="text-[10px] font-medium leading-tight">{c.emoji} {c.label}</div>
-                      <div className="text-base font-bold leading-tight">{c.count}</div>
-                    </div>
-                  ))}
+                  {cells.map((c, i) => {
+                    const key = cellKeys[i];
+                    const isSelected = periodFilter === key;
+                    const dim = periodFilter && !isSelected;
+                    return (
+                      <button
+                        type="button"
+                        key={c.label}
+                        onClick={() => setPeriodFilter(isSelected ? null : key)}
+                        className={`rounded-md border px-1.5 py-1 text-center transition-all hover:brightness-110 ${c.cls} ${dim ? 'opacity-40' : ''} ${isSelected ? 'ring-2 ring-primary scale-[1.02]' : ''}`}
+                        title={c.label === 'S/ hora' ? 'Fechados sem hora registrada' : `Filtrar por ${c.label}`}
+                      >
+                        <div className="text-[10px] font-medium leading-tight">{c.emoji} {c.label}</div>
+                        <div className="text-base font-bold leading-tight">{c.count}</div>
+                      </button>
+                    );
+                  })}
                 </div>
               );
             })()}
             {(() => {
               const counts = new Map<string, number>();
               sorted.forEach((l) => {
-                const k = (l.acolhedor || '').trim() || 'Sem acolhedor';
+                const k = getAcolhedor(l);
                 counts.set(k, (counts.get(k) || 0) + 1);
               });
               const arr = Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
               if (arr.length === 0) return null;
               const total = arr.reduce((s, [, n]) => s + n, 0);
               const palette = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
-              // Build conic-gradient slices
               let acc = 0;
               const stops = arr.map(([name, n], i) => {
                 const start = (acc / total) * 100;
@@ -448,19 +485,27 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
                   {/* Pódio */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-end justify-center gap-1.5 h-20">
-                      {podiumOrder.map(([name, n], idx) => {
+                      {podiumOrder.map(([name, n]) => {
                         const colorIdx = arr.findIndex(([nm]) => nm === name);
+                        const isSelected = acolhedorFilter === name;
+                        const dim = acolhedorFilter && !isSelected;
                         return (
-                          <div key={name} className="flex flex-col items-center flex-1 min-w-0 max-w-[80px]">
+                          <button
+                            type="button"
+                            key={name}
+                            onClick={() => setAcolhedorFilter(isSelected ? null : name)}
+                            className={`flex flex-col items-center flex-1 min-w-0 max-w-[80px] transition-all hover:brightness-110 ${dim ? 'opacity-40' : ''} ${isSelected ? 'scale-[1.05]' : ''}`}
+                            title={`Filtrar por ${name}`}
+                          >
                             <div className="text-base leading-none mb-0.5">{medals.get(name)}</div>
                             <div className="text-[10px] truncate w-full text-center font-medium" title={name}>{name}</div>
                             <div
-                              className={`${heights.get(name)} w-full rounded-t-md flex items-center justify-center text-white text-xs font-bold mt-0.5`}
+                              className={`${heights.get(name)} w-full rounded-t-md flex items-center justify-center text-white text-xs font-bold mt-0.5 ${isSelected ? 'ring-2 ring-primary' : ''}`}
                               style={{ background: palette[colorIdx % palette.length] }}
                             >
                               {n}
                             </div>
-                          </div>
+                          </button>
                         );
                       })}
                     </div>
@@ -468,12 +513,20 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
                       <div className="flex flex-wrap gap-1 mt-1.5 justify-center">
                         {rest.map(([name, n]) => {
                           const colorIdx = arr.findIndex(([nm]) => nm === name);
+                          const isSelected = acolhedorFilter === name;
+                          const dim = acolhedorFilter && !isSelected;
                           return (
-                            <span key={name} className="inline-flex items-center gap-1 text-[10px] text-muted-foreground" title={`${name}: ${n}`}>
+                            <button
+                              type="button"
+                              key={name}
+                              onClick={() => setAcolhedorFilter(isSelected ? null : name)}
+                              className={`inline-flex items-center gap-1 text-[10px] text-muted-foreground transition-all hover:text-foreground ${dim ? 'opacity-40' : ''} ${isSelected ? 'text-foreground font-semibold' : ''}`}
+                              title={`Filtrar por ${name}: ${n}`}
+                            >
                               <span className="w-2 h-2 rounded-sm" style={{ background: palette[colorIdx % palette.length] }} />
                               <span className="truncate max-w-[80px]">{name}</span>
                               <span className="font-semibold">{n}</span>
-                            </span>
+                            </button>
                           );
                         })}
                       </div>
@@ -483,19 +536,39 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
               );
             })()}
 
+            {hasFilter && (
+              <div className="flex items-center justify-between gap-2 pt-1">
+                <div className="text-[11px] text-muted-foreground truncate">
+                  Filtros:{' '}
+                  {periodFilter && <span className="font-medium text-foreground">{periodFilter === 'semHora' ? 'S/ hora' : periodFilter.charAt(0).toUpperCase() + periodFilter.slice(1)}</span>}
+                  {periodFilter && acolhedorFilter && ' · '}
+                  {acolhedorFilter && <span className="font-medium text-foreground">{acolhedorFilter}</span>}
+                  {' · '}
+                  <span>{filtered.length} de {sorted.length}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { setPeriodFilter(null); setAcolhedorFilter(null); }}
+                  className="text-[11px] font-medium text-primary hover:underline shrink-0"
+                >
+                  Limpar filtros
+                </button>
+              </div>
+            )}
+
           </SheetHeader>
 
 
 
           <ScrollArea className="flex-1 min-w-0 overflow-x-hidden">
             <div className="p-2 min-w-0 max-w-full overflow-x-hidden">
-              {sorted.length === 0 ? (
+              {filtered.length === 0 ? (
                 <div className="text-center text-sm text-muted-foreground py-8">
-                  Nenhum lead fechado neste período.
+                  {hasFilter ? 'Nenhum lead corresponde aos filtros aplicados.' : 'Nenhum lead fechado neste período.'}
                 </div>
               ) : (
                 <div className="space-y-1.5">
-                  {sorted.map((lead) => {
+                  {filtered.map((lead) => {
                     const hasOverdueActivity = !!lead.has_overdue_activity;
                     const chatTitle = lead.whatsapp_group_jid
                       ? 'Abrir conversa do grupo ou contatos'
