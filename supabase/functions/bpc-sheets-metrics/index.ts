@@ -265,6 +265,7 @@ Deno.serve(async (req) => {
         period: { from: fromISO, to: toISO },
         instance_filter: instanceFilter || null,
         tabs_read: tabsToRead.map((t) => t.tab),
+        tab_errors: tabErrors,
         metrics: { total, unviable, toCallNow, alreadyOnWhatsApp },
         byOperator,
         leads: leads.sort((a, b) =>
