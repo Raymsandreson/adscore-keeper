@@ -1,101 +1,37 @@
 ## Objetivo
 
-Tirar a dependência do token Meta e usar a planilha oficial (`LEADS FORMULÁRIO BPC-LOAS`) como fonte real de quantos leads chegaram, quais são viáveis vs inviáveis e quais ainda não escreveram no WhatsApp.
+Setar `leads.acolhedor` automaticamente nos **dois pontos onde o grupo é vinculado**, em vez de depender da função de faxina (`backfill-acolhedor-from-group-owner`).
 
-## Fonte de dados — Google Sheets
+## Onde plugar
 
-Planilha: `1EXB6oFovhX2LOHsC2X20LFk-JVIkjk-NR5Er4cUn6Qw`  
-Abas (uma por atendente): `LEADS ISRAEL`, `LEADS CRIS`, `LEADS MATEUS`, `LEADS EDILAN`, `LEDS KAROLYNE`
+**Ponto 1 — Grupo criado pelo bot (pós-ZapSign)**
+- Arquivo: `supabase/functions/create-whatsapp-group/index.ts`
+- Já existe `creatorInstance.instance_name` (a instância que criou o grupo é o dono óbvio).
+- Mudanças:
+  - Ao inserir/atualizar `lead_whatsapp_groups`, gravar também `instance_name: creatorInstance.instance_name` (coluna já existe, hoje fica `null`).
+  - Se `leadData.acolhedor` for nulo/vazio e a instância criadora **não** for compartilhada (lista `SHARED_INSTANCES`), mapear via `INSTANCE_TO_OPERATOR` e fazer `UPDATE leads SET acolhedor=... WHERE id=lead_id AND acolhedor IS NULL`.
 
-Colunas relevantes detectadas:
-- `id`, `created_time`, `campaign_id`, `campaign_name`, `form_name`, `is_organic`, `platform`
-- `nome_completo`, `telefone`, `estado_civil`
-- `você_possui_filho_autista_ou_conhece_alguém_autista_?`
-- `possui_laudo_médico_ou_relatório_escolar_?`
-- `qual_a_sua_renda_familiar_?`
-- `possui_advogado_?`
-- `qual_o_seu_número_de_contato_?`
-- `lead_status` (CREATED, ok, ctt errado, etc.)
+**Ponto 2 — Usuário cola link manualmente no `LeadEditDialog`**
+- Arquivo: `src/components/kanban/LeadEditDialog.tsx`, dentro do `handleSave`, logo depois do `insert` em `lead_whatsapp_groups` (linha ~1119) e do `onSave` do lead (linha ~1148).
+- Após salvar, se o lead não tem `acolhedor`, dispara fire-and-forget:
+  - `cloudFunctions.invoke('backfill-acolhedor-from-group-owner', { body: { lead_id: currentLead.id } })`
+- Não bloqueia UI, não espera resposta. A função já varre todas as instâncias agora (fix anterior) e atualiza no banco.
 
-Conector Google Sheets já está conectado a este projeto. ✅
+## Fonte única do mapeamento
 
-## O que vai mudar
+Extrair `SHARED_INSTANCES` e `INSTANCE_TO_OPERATOR` de `backfill-acolhedor-from-group-owner/index.ts` para `supabase/functions/_shared/instance-operator-map.ts`. Tanto o backfill quanto o `create-whatsapp-group` importam dali. Zero duplicação.
 
-### 1. Custom fields no funil "BPC - Autismo"
-Criar 7 campos personalizados (escopo = board BPC - Autismo) que correspondem 1:1 às perguntas do form Meta:
-- Filho autista / conhece autista (select)
-- Laudo médico ou relatório escolar (select)
-- Renda familiar (select)
-- Possui advogado (select)
-- Estado civil (text)
-- Campanha de origem (text — preenche `campaign_name`)
-- ID do lead no form Meta (text — chave de deduplicação)
+## Idempotência
 
-### 2. Edge function `sheets-bpc-sync` (Railway)
-Job que roda a cada 60s:
-1. Lê as 5 abas via Google Sheets API (gateway)
-2. Normaliza telefone (`p:+5537...` → `5537...`)
-3. Para cada linha nova (chave = `id` do form):
-   - Procura lead existente no Externo pelo telefone
-   - Se não existe → cria lead no board BPC - Autismo, com `source='meta_form_sheet'`, status inicial = "Novo"
-   - Se existe → só atualiza os custom fields
-4. Marca `responded_whatsapp = true` quando há mensagem em `whatsapp_messages` com aquele telefone
-5. Marca `unviable = true` quando `lead_status` na planilha = "ctt errado" ou similar
+Os dois pontos só escrevem quando `acolhedor IS NULL`. Se o usuário já preencheu manualmente, o automático respeita.
 
-### 3. Hook novo `useBpcFormLeads`
-Frontend lê uma RPC nova `get_bpc_form_metrics(period)` que devolve:
-- `total` — quantos vieram do form no período
-- `unviable` — quantos marcados inviável
-- `to_call_now` — preencheram form e NÃO mandaram WhatsApp ainda
-- `already_in_whatsapp` — preencheram E já escreveram
-- `leads` — lista completa pros sheets de detalhe
+## Metáfora
 
-### 4. UI — `FocusDashboard.tsx` (modo compact, que é o da sua tela)
+Hoje o porteiro do prédio é uma faxineira que passa de vez em quando anotando quem mora. Vamos colocar um porteiro fixo na portaria que anota na hora que o grupo é criado, e um sininho automático na recepção quando alguém cola o link manual. A faxineira continua existindo só pra emergência.
 
-**Card "INVIÁVEIS" (circulado) vira "VIÁVEIS":**
-```
-🏆 VIÁVEIS
-47/3
-total / inviável
-```
-Clicar abre sheet com a lista da planilha.
+## Arquivos tocados
 
-**Card novo "LIGAR AGORA" ao lado:**
-```
-📞 LIGAR AGORA  🔥
-12
-preencheram e sumiram
-```
-Cor vermelha/laranja (urgência). Clicar abre sheet com nome+telefone+data do form de quem preencheu e não mandou WA.
-
-### 5. Sheet detalhe `BpcFormLeadsSheet`
-Componente novo, estilo `ClosedLeadsSheet`, com 3 abas: Todos | Ligar agora | Inviáveis.  
-Cada linha: nome, telefone (com botão CallFace), data do form, campanha, status, badge "no WhatsApp" se aplicável.
-
-## O que NÃO vai mudar
-
-- Token Meta continua intacto (ainda usado pra investimento/CPL, só não pra contagem de lead)
-- Card Fechados, Docs, Sem resp., Atrasadas, Assinatura, Ranking — mantidos como estão
-- `BMConnection.tsx` (status do token) — fica
-- Tabelas existentes de leads, contatos, mensagens — nada de schema novo no core
-
-## Custos e performance
-
-- 5 chamadas `GET values` por minuto = 7.200 calls/dia → bem abaixo do limite do Google Sheets API (60k/min/projeto)
-- Cada call retorna ~1.300 linhas × 21 colunas ≈ 80KB; total ~400KB/min
-- Frontend faz 1 RPC só (não consulta a planilha direto)
-
-## Plano de execução
-
-1. **Criar custom fields no board BPC - Autismo** (run-external-migration via SQL INSERT em `lead_custom_fields`)
-2. **Edge function `sheets-bpc-sync`** no Railway + pg_cron 60s no Externo
-3. **RPC `get_bpc_form_metrics`** no Externo
-4. **Hook + Sheet novo** no frontend
-5. **Substituir card Inviáveis + adicionar card Ligar agora** em `FocusDashboard.tsx`
-6. **Verificar**: rodar sync manual, ver contadores aparecerem, abrir um lead e conferir custom fields
-
-## Rollback
-
-- Reverter `FocusDashboard.tsx` (1 arquivo) volta UI ao estado atual
-- `DROP FUNCTION get_bpc_form_metrics` + `cron.unschedule('sheets-bpc-sync')` desliga o pipeline
-- Custom fields novos não quebram nada se ficarem (são opcionais)
+- novo: `supabase/functions/_shared/instance-operator-map.ts`
+- editar: `supabase/functions/backfill-acolhedor-from-group-owner/index.ts` (importar do shared)
+- editar: `supabase/functions/create-whatsapp-group/index.ts` (gravar instance_name + setar acolhedor)
+- editar: `src/components/kanban/LeadEditDialog.tsx` (disparar backfill após save)
