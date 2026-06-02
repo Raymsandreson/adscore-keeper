@@ -144,13 +144,14 @@ Deno.serve(async (req) => {
       const operator = INSTANCE_TO_OPERATOR[ownerInstance] || ownerInstance;
       results.push({ id: c.id, status: "ok", instance: ownerInstance, operator, lead_name: c.lead_name });
 
-      if (!dryRun) {
+      if (!dryRun && c.id) {
         const upd = await runExternalSQL(
-          `UPDATE leads SET acolhedor = '${operator.replace(/'/g, "''")}' WHERE id = '${c.id}' RETURNING id`
+          `UPDATE leads SET acolhedor = '${operator.replace(/'/g, "''")}' WHERE id = '${c.id}' AND (acolhedor IS NULL OR btrim(acolhedor)='') RETURNING id`
         );
         if (upd.length) updated++; else errors++;
       } else {
         updated++; // contagem de previsão
+      }
       }
     }
 
