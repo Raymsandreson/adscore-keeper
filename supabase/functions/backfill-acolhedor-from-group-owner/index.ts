@@ -152,7 +152,6 @@ Deno.serve(async (req) => {
       } else {
         updated++; // contagem de previsão
       }
-      }
     }
 
     return new Response(JSON.stringify({
