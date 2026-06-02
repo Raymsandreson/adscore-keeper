@@ -41,6 +41,7 @@ Deno.serve(async (req) => {
     const limit = Math.min(body?.limit ?? 200, 500);
     const dryRun = body?.dry_run === true;
     const leadIdFilter: string | undefined = body?.lead_id;
+    const groupJidLookup: string | undefined = body?.group_jid; // modo lookup direto
 
     const cloud = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -66,18 +67,24 @@ Deno.serve(async (req) => {
       if (k) phoneToInstance.set(k, i.instance_name);
     }
 
-    // 2) Candidatos no Externo
-    const where = leadIdFilter
-      ? `l.id = '${leadIdFilter.replace(/'/g, "''")}'`
-      : `l.lead_status='closed' AND (l.acolhedor IS NULL OR btrim(l.acolhedor)='')`;
-    const candidates = await runExternalSQL(
-      `SELECT l.id, l.lead_name, lwg.group_jid, lwg.instance_name as group_instance
-       FROM leads l
-       JOIN lead_whatsapp_groups lwg ON lwg.lead_id = l.id
-       WHERE ${where}
-       ORDER BY l.updated_at DESC
-       LIMIT ${limit}`
-    );
+    // 2) Candidatos
+    let candidates: any[] = [];
+    if (groupJidLookup) {
+      // Modo lookup: sem DB. Só resolve o dono do grupo via /group/info.
+      candidates = [{ id: leadIdFilter || null, lead_name: null, group_jid: groupJidLookup, group_instance: null }];
+    } else {
+      const where = leadIdFilter
+        ? `l.id = '${leadIdFilter.replace(/'/g, "''")}'`
+        : `l.lead_status='closed' AND (l.acolhedor IS NULL OR btrim(l.acolhedor)='')`;
+      candidates = await runExternalSQL(
+        `SELECT l.id, l.lead_name, lwg.group_jid, lwg.instance_name as group_instance
+         FROM leads l
+         JOIN lead_whatsapp_groups lwg ON lwg.lead_id = l.id
+         WHERE ${where}
+         ORDER BY l.updated_at DESC
+         LIMIT ${limit}`
+      );
+    }
 
     const results: any[] = [];
     let updated = 0, notFound = 0, shared = 0, errors = 0, noOwner = 0;
@@ -137,9 +144,9 @@ Deno.serve(async (req) => {
       const operator = INSTANCE_TO_OPERATOR[ownerInstance] || ownerInstance;
       results.push({ id: c.id, status: "ok", instance: ownerInstance, operator, lead_name: c.lead_name });
 
-      if (!dryRun) {
+      if (!dryRun && c.id) {
         const upd = await runExternalSQL(
-          `UPDATE leads SET acolhedor = '${operator.replace(/'/g, "''")}' WHERE id = '${c.id}' RETURNING id`
+          `UPDATE leads SET acolhedor = '${operator.replace(/'/g, "''")}' WHERE id = '${c.id}' AND (acolhedor IS NULL OR btrim(acolhedor)='') RETURNING id`
         );
         if (upd.length) updated++; else errors++;
       } else {
