@@ -391,7 +391,7 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
             <SheetTitle className="flex items-center gap-2 text-base">
               <Trophy className="h-4 w-4 text-emerald-600" />
               Fechados · {periodLabel}
-              <span className="text-xs font-normal text-muted-foreground">({sorted.length})</span>
+              <span className="text-xs font-normal text-muted-foreground">({hasFilter ? `${filtered.length}/${sorted.length}` : sorted.length})</span>
             </SheetTitle>
             <SheetDescription className="text-xs">
               Leads que viraram cliente no período. Use os atalhos pra abrir o lead ou a conversa.
