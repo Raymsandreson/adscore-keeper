@@ -417,28 +417,39 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
                 cells.push({ label: 'S/ hora', emoji: '❓', count: buckets.semHora, cls: 'bg-muted border-border text-muted-foreground' });
               }
               const cols = cells.length === 5 ? 'grid-cols-5' : 'grid-cols-4';
+              const cellKeys: PeriodKey[] = ['manha', 'tarde', 'noite', 'madrugada', 'semHora'];
               return (
                 <div className={`grid ${cols} gap-1.5 pt-1`}>
-                  {cells.map((c) => (
-                    <div key={c.label} className={`rounded-md border px-1.5 py-1 text-center ${c.cls}`} title={c.label === 'S/ hora' ? 'Fechados sem hora registrada (sem documento assinado no ZapSign)' : undefined}>
-                      <div className="text-[10px] font-medium leading-tight">{c.emoji} {c.label}</div>
-                      <div className="text-base font-bold leading-tight">{c.count}</div>
-                    </div>
-                  ))}
+                  {cells.map((c, i) => {
+                    const key = cellKeys[i];
+                    const isSelected = periodFilter === key;
+                    const dim = periodFilter && !isSelected;
+                    return (
+                      <button
+                        type="button"
+                        key={c.label}
+                        onClick={() => setPeriodFilter(isSelected ? null : key)}
+                        className={`rounded-md border px-1.5 py-1 text-center transition-all hover:brightness-110 ${c.cls} ${dim ? 'opacity-40' : ''} ${isSelected ? 'ring-2 ring-primary scale-[1.02]' : ''}`}
+                        title={c.label === 'S/ hora' ? 'Fechados sem hora registrada' : `Filtrar por ${c.label}`}
+                      >
+                        <div className="text-[10px] font-medium leading-tight">{c.emoji} {c.label}</div>
+                        <div className="text-base font-bold leading-tight">{c.count}</div>
+                      </button>
+                    );
+                  })}
                 </div>
               );
             })()}
             {(() => {
               const counts = new Map<string, number>();
               sorted.forEach((l) => {
-                const k = (l.acolhedor || '').trim() || 'Sem acolhedor';
+                const k = getAcolhedor(l);
                 counts.set(k, (counts.get(k) || 0) + 1);
               });
               const arr = Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
               if (arr.length === 0) return null;
               const total = arr.reduce((s, [, n]) => s + n, 0);
               const palette = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
-              // Build conic-gradient slices
               let acc = 0;
               const stops = arr.map(([name, n], i) => {
                 const start = (acc / total) * 100;
