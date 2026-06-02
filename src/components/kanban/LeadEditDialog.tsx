@@ -131,6 +131,7 @@ import { useLegalCases } from '@/hooks/useLegalCases';
 import LeadDocumentsTab from '@/components/leads/LeadDocumentsTab';
 import { GroupContactSyncDialog } from '@/components/kanban/GroupContactSyncDialog';
 import { LeadGroupSearchDialog } from '@/components/kanban/LeadGroupSearchDialog';
+import { resolveOperatorFromInstance } from '@/lib/instanceOperatorMap';
 import { normalizeDateInput } from '@/utils/normalizeDateInput';
 import { useChecklists } from '@/hooks/useChecklists';
 
@@ -3257,7 +3258,19 @@ ${scrapeData.content || ''}
                 },
               ];
             });
-            toast.success('Grupo vinculado ao lead. Lembre de salvar.');
+            // Auto-sugere acolhedor a partir da instância que achou o grupo.
+            // Só preenche se o campo estiver vazio (respeita escolha manual).
+            if (!acolhedor) {
+              const suggested = resolveOperatorFromInstance(g.instance_name);
+              if (suggested) {
+                setAcolhedor(suggested);
+                toast.success(`Grupo vinculado. Acolhedor definido: ${suggested}. Lembre de salvar.`);
+              } else {
+                toast.success('Grupo vinculado ao lead. Lembre de salvar.');
+              }
+            } else {
+              toast.success('Grupo vinculado ao lead. Lembre de salvar.');
+            }
           }}
         />
       )}
