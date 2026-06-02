@@ -131,7 +131,6 @@ import { useLegalCases } from '@/hooks/useLegalCases';
 import LeadDocumentsTab from '@/components/leads/LeadDocumentsTab';
 import { GroupContactSyncDialog } from '@/components/kanban/GroupContactSyncDialog';
 import { LeadGroupSearchDialog } from '@/components/kanban/LeadGroupSearchDialog';
-import { resolveOperatorFromInstance } from '@/lib/instanceOperatorMap';
 import { normalizeDateInput } from '@/utils/normalizeDateInput';
 import { useChecklists } from '@/hooks/useChecklists';
 
