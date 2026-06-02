@@ -562,13 +562,13 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
 
           <ScrollArea className="flex-1 min-w-0 overflow-x-hidden">
             <div className="p-2 min-w-0 max-w-full overflow-x-hidden">
-              {sorted.length === 0 ? (
+              {filtered.length === 0 ? (
                 <div className="text-center text-sm text-muted-foreground py-8">
-                  Nenhum lead fechado neste período.
+                  {hasFilter ? 'Nenhum lead corresponde aos filtros aplicados.' : 'Nenhum lead fechado neste período.'}
                 </div>
               ) : (
                 <div className="space-y-1.5">
-                  {sorted.map((lead) => {
+                  {filtered.map((lead) => {
                     const hasOverdueActivity = !!lead.has_overdue_activity;
                     const chatTitle = lead.whatsapp_group_jid
                       ? 'Abrir conversa do grupo ou contatos'
