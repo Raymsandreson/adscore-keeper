@@ -485,19 +485,27 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
                   {/* Pódio */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-end justify-center gap-1.5 h-20">
-                      {podiumOrder.map(([name, n], idx) => {
+                      {podiumOrder.map(([name, n]) => {
                         const colorIdx = arr.findIndex(([nm]) => nm === name);
+                        const isSelected = acolhedorFilter === name;
+                        const dim = acolhedorFilter && !isSelected;
                         return (
-                          <div key={name} className="flex flex-col items-center flex-1 min-w-0 max-w-[80px]">
+                          <button
+                            type="button"
+                            key={name}
+                            onClick={() => setAcolhedorFilter(isSelected ? null : name)}
+                            className={`flex flex-col items-center flex-1 min-w-0 max-w-[80px] transition-all hover:brightness-110 ${dim ? 'opacity-40' : ''} ${isSelected ? 'scale-[1.05]' : ''}`}
+                            title={`Filtrar por ${name}`}
+                          >
                             <div className="text-base leading-none mb-0.5">{medals.get(name)}</div>
                             <div className="text-[10px] truncate w-full text-center font-medium" title={name}>{name}</div>
                             <div
-                              className={`${heights.get(name)} w-full rounded-t-md flex items-center justify-center text-white text-xs font-bold mt-0.5`}
+                              className={`${heights.get(name)} w-full rounded-t-md flex items-center justify-center text-white text-xs font-bold mt-0.5 ${isSelected ? 'ring-2 ring-primary' : ''}`}
                               style={{ background: palette[colorIdx % palette.length] }}
                             >
                               {n}
                             </div>
-                          </div>
+                          </button>
                         );
                       })}
                     </div>
@@ -505,12 +513,20 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
                       <div className="flex flex-wrap gap-1 mt-1.5 justify-center">
                         {rest.map(([name, n]) => {
                           const colorIdx = arr.findIndex(([nm]) => nm === name);
+                          const isSelected = acolhedorFilter === name;
+                          const dim = acolhedorFilter && !isSelected;
                           return (
-                            <span key={name} className="inline-flex items-center gap-1 text-[10px] text-muted-foreground" title={`${name}: ${n}`}>
+                            <button
+                              type="button"
+                              key={name}
+                              onClick={() => setAcolhedorFilter(isSelected ? null : name)}
+                              className={`inline-flex items-center gap-1 text-[10px] text-muted-foreground transition-all hover:text-foreground ${dim ? 'opacity-40' : ''} ${isSelected ? 'text-foreground font-semibold' : ''}`}
+                              title={`Filtrar por ${name}: ${n}`}
+                            >
                               <span className="w-2 h-2 rounded-sm" style={{ background: palette[colorIdx % palette.length] }} />
                               <span className="truncate max-w-[80px]">{name}</span>
                               <span className="font-semibold">{n}</span>
-                            </span>
+                            </button>
                           );
                         })}
                       </div>
@@ -519,6 +535,26 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
                 </div>
               );
             })()}
+
+            {hasFilter && (
+              <div className="flex items-center justify-between gap-2 pt-1">
+                <div className="text-[11px] text-muted-foreground truncate">
+                  Filtros:{' '}
+                  {periodFilter && <span className="font-medium text-foreground">{periodFilter === 'semHora' ? 'S/ hora' : periodFilter.charAt(0).toUpperCase() + periodFilter.slice(1)}</span>}
+                  {periodFilter && acolhedorFilter && ' · '}
+                  {acolhedorFilter && <span className="font-medium text-foreground">{acolhedorFilter}</span>}
+                  {' · '}
+                  <span>{filtered.length} de {sorted.length}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { setPeriodFilter(null); setAcolhedorFilter(null); }}
+                  className="text-[11px] font-medium text-primary hover:underline shrink-0"
+                >
+                  Limpar filtros
+                </button>
+              </div>
+            )}
 
           </SheetHeader>
 
