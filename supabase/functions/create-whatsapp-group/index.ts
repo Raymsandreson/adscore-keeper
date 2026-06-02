@@ -4,6 +4,7 @@ import { geminiChat } from '../_shared/gemini.ts'
 import { resolveSupabaseUrl, resolveServiceRoleKey } from "../_shared/supabase-url-resolver.ts";
 import { getExternalClient } from "../_shared/external-client.ts";
 import { remapToExternal } from "../_shared/uuid-remap.ts";
+import { resolveOperatorFromInstance } from "../_shared/instance-operator-map.ts";
 
 // Use external Supabase project when configured (hybrid architecture)
 const RESOLVED_SUPABASE_URL = resolveSupabaseUrl();
