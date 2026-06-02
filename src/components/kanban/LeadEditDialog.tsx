@@ -1139,6 +1139,25 @@ ${scrapeData.content || ''}
         setSyncGroupData({ jid: groupWithJid.group_jid, name: groupWithJid.group_name || '', instanceId: userInstanceId });
       }
 
+      // Auto-detect acolhedor from group owner (fire-and-forget).
+      // Runs only when user did NOT pick an acolhedor manually and there is at least one resolved group JID.
+      if (!acolhedor && groupWithJid?.group_jid) {
+        try {
+          cloudFunctions
+            .invoke('backfill-acolhedor-from-group-owner', {
+              body: { lead_id: currentLead.id },
+            })
+            .then((res: any) => {
+              console.log('[acolhedor-auto] backfill triggered for lead', currentLead.id, res?.data || res?.error);
+            })
+            .catch((err: any) => {
+              console.warn('[acolhedor-auto] backfill invoke failed:', err?.message || err);
+            });
+        } catch (e) {
+          console.warn('[acolhedor-auto] dispatch error:', (e as Error).message);
+        }
+      }
+
       // Keep legacy fields in sync (first group)
       const firstGroup = resolvedGroups[0];
       const finalGroupLink = firstGroup?.group_link || null;

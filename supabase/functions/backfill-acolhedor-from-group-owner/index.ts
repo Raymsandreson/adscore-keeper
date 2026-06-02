@@ -5,42 +5,11 @@
 //
 // Body: { limit?: number, dry_run?: boolean, lead_id?: string }
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { SHARED_INSTANCES, INSTANCE_TO_OPERATOR } from "../_shared/instance-operator-map.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-request-id",
-};
-
-// Instâncias compartilhadas / bots — NUNCA viram acolhedor
-const SHARED_INSTANCES = new Set([
-  "WHATSJUD IA",
-  "Atendimento Previdenciário",
-  "Atendimento Previdenciário 2",
-  "Atendimento Processual",
-  "Andreia Atendimento Maternidade",
-  "Luiz Abraci",
-  "Prudencred",
-  "Léo Teste",
-].map((s) => s.toLowerCase()));
-
-// instance_name → full_name canônico (profiles.full_name)
-const INSTANCE_TO_OPERATOR: Record<string, string> = {
-  "Ana Ligia": "Ana Lígia Santos Cavalcante",
-  "Analyne Oliveira": "Analyne Sousa de Oliveira",
-  "Andressa SDR": "Andressa Leão da Silva Duarte",
-  "BRUNO DANTAS": "Bruno Wenner Dantas Nunes",
-  "cris": "Crisley Costa de Oliveira",
-  "ISRAEL ATENDIMENTO": "Israel de Jesus Carvalho Filho",
-  "João Manoel- Acolhedor": "João Manoel Cavalcante Santana",
-  "João Pedro": "João Pedro Sá",
-  "Juliana Pimentel": "Juliana Clara Santos Pimentel",
-  "Karolyne Atendimento": "Maria Karolyne de Aguiar Nunes",
-  "Luana Gerente": "Luana Barros",
-  "Mateus Atendimento": "Mateus Santos Saraiva",
-  "Prev. Edilan": "Edilan da silva santos",
-  "Viviane": "Viviane Amorin",
-  "Raym": "Raymsandreson de Morais Prudêncio",
-  "Dom": "Dom",
 };
 
 function phoneKey(raw: string | null | undefined): string | null {
