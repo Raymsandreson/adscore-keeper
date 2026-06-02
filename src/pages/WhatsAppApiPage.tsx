@@ -130,7 +130,7 @@ export default function WhatsAppApiPage() {
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => navigate(`/whatsapp?instance=${INSTANCE_NAME}`)}
+                onClick={() => navigate('/whatsapp-api/conversas')}
               >
                 <MessageSquare className="h-4 w-4 mr-2" /> Ver conversas
               </Button>

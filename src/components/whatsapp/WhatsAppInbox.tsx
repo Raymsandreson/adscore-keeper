@@ -35,7 +35,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { MessageSquare, Settings, RefreshCw, Smartphone, BarChart3, Chrome, ListChecks, AlertTriangle, WifiOff, X, Sparkles, Check, Loader2, Download, Users, List, Contact2, Share2, QrCode } from 'lucide-react';
+import { MessageSquare, Settings, RefreshCw, Smartphone, BarChart3, Chrome, ListChecks, AlertTriangle, WifiOff, X, Sparkles, Check, Loader2, Download, Users, List, Contact2, Share2, QrCode, ArrowLeft } from 'lucide-react';
 import { SharedConversationsPanel } from './SharedConversationsPanel';
 import { useSharedWithMe } from '@/hooks/useSharedWithMe';
 import { FocusDashboard } from './FocusDashboard/FocusDashboard';
@@ -135,7 +135,17 @@ const normalizeInstanceName = (instanceName?: string | null) =>
   (instanceName || '').trim().toLowerCase();
 
 // Force clean rebuild
-export function WhatsAppInbox() {
+interface WhatsAppInboxProps {
+  // Trava o filtro de instância pelo nome (ex: 'cloud_gerencia'). Esconde o dropdown de seleção.
+  lockInstanceName?: string;
+  // 'minimal' esconde ferramentas que não se aplicam ao caso de uso Cloud-only.
+  chrome?: 'full' | 'minimal';
+  // Rota destino do botão Voltar quando chrome='minimal'. Ignorado em 'full'.
+  backTo?: string;
+}
+
+export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: WhatsAppInboxProps = {}) {
+  const isMinimal = chrome === 'minimal';
   // null = ainda não resolvi qual instância usar (não buscar nada).
   // 'all' ou um id = pronto para buscar.
   const [selectedInstanceId, setSelectedInstanceId] = useState<string | null>(null);
@@ -213,6 +223,18 @@ export function WhatsAppInbox() {
   useEffect(() => {
     if (defaultInstanceApplied || !user || instances.length === 0) return;
     const applyDefault = async () => {
+      // 0. lockInstanceName (prop) tem prioridade absoluta — modo embed (ex: WhatsApp API)
+      if (lockInstanceName) {
+        const target = lockInstanceName.trim().toLowerCase();
+        const locked = instances.find(i =>
+          (i.instance_name || '').trim().toLowerCase() === target,
+        );
+        if (locked) {
+          setSelectedInstanceId(locked.id);
+        }
+        setDefaultInstanceApplied(true);
+        return;
+      }
       // 1. Perfil default lido SEMPRE do Externo (fonte de verdade)
       const extUserId = await remapToExternal(user.id);
       const { data } = await externalSupabase
@@ -240,7 +262,7 @@ export function WhatsAppInbox() {
       setDefaultInstanceApplied(true);
     };
     applyDefault();
-  }, [user, instances, defaultInstanceApplied]);
+  }, [user, instances, defaultInstanceApplied, lockInstanceName]);
 
   // Popup: usuário sem instância padrão cadastrada não pode enviar.
   const [missingInstanceOpen, setMissingInstanceOpen] = useState(false);
@@ -1294,13 +1316,24 @@ export function WhatsAppInbox() {
     >
       {/* Header da inbox (instância + ações) — SEMPRE FIXO NO TOPO */}
       <div className={`flex items-center gap-2 md:gap-3 p-3 md:p-4 border-b bg-card flex-wrap md:flex-nowrap shrink-0 ${selectedPhone ? 'hidden md:flex' : 'flex'}`}>
+        {isMinimal && backTo && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => navigate(backTo)}
+            title="Voltar"
+            className="h-8 w-8"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+        )}
         <MessageSquare className="h-6 w-6 text-green-600" />
-        <h1 className="text-lg font-semibold">WhatsApp</h1>
+        <h1 className="text-lg font-semibold">{isMinimal ? 'WhatsApp API' : 'WhatsApp'}</h1>
         {totalUnread > 0 && (
           <Badge variant="destructive" className="text-xs">{totalUnread}</Badge>
         )}
 
-        {instances.length > 0 && (
+        {!isMinimal && instances.length > 0 && (
           <Select open={instanceSelectOpen} onOpenChange={setInstanceSelectOpen} value={selectedInstanceId} onValueChange={(val) => { guardLeaveCurrent(() => { setSelectedInstanceId(val); setSelectedPhone(null); setSelectedInstance(null); if (val !== 'all') localStorage.setItem('whatsapp_last_instance_id', val); }); }}>
             <SelectTrigger className="w-52 h-8 text-xs ml-0 md:ml-2">
               <Smartphone className="h-3.5 w-3.5 mr-1.5 text-muted-foreground" />
@@ -1344,7 +1377,7 @@ export function WhatsAppInbox() {
         )}
 
         {/* Atalho: reconectar (QR / código) a instância selecionada */}
-        {selectedInstanceId && selectedInstanceId !== 'all' && (() => {
+        {!isMinimal && selectedInstanceId && selectedInstanceId !== 'all' && (() => {
           const inst = instances.find(i => i.id === selectedInstanceId);
           if (!inst) return null;
           const status = statuses.find(s => (
@@ -1367,7 +1400,7 @@ export function WhatsAppInbox() {
 
 
         <div className="w-full md:w-auto md:ml-auto flex flex-wrap md:flex-nowrap gap-0.5 md:gap-1 items-center justify-end">
-          {relevantDisconnectedInstances.length > 0 && (
+          {!isMinimal && relevantDisconnectedInstances.length > 0 && (
             <Button
               variant="destructive"
               size="sm"
@@ -1386,33 +1419,39 @@ export function WhatsAppInbox() {
               Reconectar
             </Button>
           )}
-          <Button
-            variant={bulkMode ? "default" : "ghost"}
-            size={bulkMode ? "sm" : "icon"}
-            onClick={handleToggleBulkMode}
-            title="Seleção em lote"
-          >
-            <ListChecks className="h-4 w-4" />
-            {bulkMode && <span className="ml-1 text-xs">Lote</span>}
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setSharedPanelOpen(true)}
-            title="Conversas compartilhadas comigo"
-            className="relative"
-          >
-            <Share2 className="h-4 w-4" />
-            {sharedUnread > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 h-4 min-w-4 px-1 rounded-full bg-destructive text-destructive-foreground text-[9px] flex items-center justify-center font-semibold">
-                {sharedUnread}
-              </span>
-            )}
-          </Button>
-          <Button variant="ghost" size="icon" onClick={() => setShowGooglePanel(true)} title="Google Workspace">
-            <Chrome className="h-4 w-4" />
-          </Button>
-          {googleConnected && (
+          {!isMinimal && (
+            <Button
+              variant={bulkMode ? "default" : "ghost"}
+              size={bulkMode ? "sm" : "icon"}
+              onClick={handleToggleBulkMode}
+              title="Seleção em lote"
+            >
+              <ListChecks className="h-4 w-4" />
+              {bulkMode && <span className="ml-1 text-xs">Lote</span>}
+            </Button>
+          )}
+          {!isMinimal && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setSharedPanelOpen(true)}
+              title="Conversas compartilhadas comigo"
+              className="relative"
+            >
+              <Share2 className="h-4 w-4" />
+              {sharedUnread > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 h-4 min-w-4 px-1 rounded-full bg-destructive text-destructive-foreground text-[9px] flex items-center justify-center font-semibold">
+                  {sharedUnread}
+                </span>
+              )}
+            </Button>
+          )}
+          {!isMinimal && (
+            <Button variant="ghost" size="icon" onClick={() => setShowGooglePanel(true)} title="Google Workspace">
+              <Chrome className="h-4 w-4" />
+            </Button>
+          )}
+          {!isMinimal && googleConnected && (
             <Button
               variant="ghost"
               size="icon"
@@ -1433,13 +1472,14 @@ export function WhatsAppInbox() {
               {importingGoogle ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
             </Button>
           )}
+          {!isMinimal && (
           <Button
             variant="ghost"
             size="icon"
             disabled={importingWhatsApp}
             title="Importar Contatos do WhatsApp"
             onClick={async () => {
-              const targetInstance = selectedInstanceId !== 'all' 
+              const targetInstance = selectedInstanceId !== 'all'
                 ? instances.find(i => i.id === selectedInstanceId)
                 : instances[0];
               
@@ -1474,6 +1514,7 @@ export function WhatsAppInbox() {
           >
             {importingWhatsApp ? <Loader2 className="h-4 w-4 animate-spin" /> : <Users className="h-4 w-4" />}
           </Button>
+          )}
           <Button variant="outline" size="sm" onClick={() => navigate('/contacts')} title="Contatos & Lista de Transmissão" className="gap-1.5 h-8 text-xs">
             <Contact2 className="h-3.5 w-3.5" />
             Contatos
@@ -1498,13 +1539,16 @@ export function WhatsAppInbox() {
             <RefreshCw className={"h-4 w-4" + (loading ? " animate-spin" : "")} />
           </Button>
 
-          <Button variant="ghost" size="icon" onClick={() => { setSettingsTab('integration'); setShowSetup(true); }} title="Configuração">
-            <Settings className="h-4 w-4" />
-          </Button>
+          {!isMinimal && (
+            <Button variant="ghost" size="icon" onClick={() => { setSettingsTab('integration'); setShowSetup(true); }} title="Configuração">
+              <Settings className="h-4 w-4" />
+            </Button>
+          )}
         </div>
       </div>
 
       {/* Foco Agora — barra única sempre visível (condensada) para ver indicadores e conversas ao mesmo tempo */}
+      {!isMinimal && (
       <div className="shrink-0 border-b">
         <FocusDashboard
           compact
@@ -1517,6 +1561,7 @@ export function WhatsAppInbox() {
           onOpenChat={handleOpenChatByPhone}
         />
       </div>
+      )}
 
       {/* Reconnect Bar - apenas para instância padrão do usuário */}
       {relevantDisconnectedInstances.length > 0 && (
