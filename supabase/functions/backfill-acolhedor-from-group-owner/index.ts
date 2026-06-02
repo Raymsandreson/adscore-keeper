@@ -118,9 +118,13 @@ Deno.serve(async (req) => {
       if (!groupJid) continue;
       if (!groupJid.includes("@")) groupJid = `${groupJid}@g.us`;
 
-      // Ordem de tentativas: a instância do grupo primeiro, depois até 3 outras
+      // Ordem de tentativas: a instância do grupo primeiro, depois TODAS as outras.
+      // Antes limitávamos a 3, mas quando lwg.instance_name é null o backfill
+      // só falava com 3 instâncias aleatórias e marcava "no_owner" mesmo quando
+      // outra instância tinha acesso ao grupo (foi exatamente o que aconteceu
+      // com o grupo do Mateus). UazAPI responde rápido e abortamos no 1º match.
       const groupInstFirst = instances.filter((i) => i.instance_name === c.group_instance);
-      const others = instances.filter((i) => i.instance_name !== c.group_instance).slice(0, 3);
+      const others = instances.filter((i) => i.instance_name !== c.group_instance);
       const tryOrder = [...groupInstFirst, ...others];
 
       let ownerJid: string | null = null;
