@@ -335,14 +335,40 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
     return () => { cancelled = true; };
   }, [chatPreview?.phone]);
   const [openLeadId, setOpenLeadId] = useState<string | null>(null);
+  type PeriodKey = 'manha' | 'tarde' | 'noite' | 'madrugada' | 'semHora';
+  const [periodFilter, setPeriodFilter] = useState<PeriodKey | null>(null);
+  const [acolhedorFilter, setAcolhedorFilter] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (!open) {
+      setPeriodFilter(null);
+      setAcolhedorFilter(null);
+    }
+  }, [open]);
 
+  const getPeriod = (l: ClosedLeadItem): PeriodKey => {
+    if (!l.closed_at) return 'semHora';
+    const hourStr = new Date(l.closed_at).toLocaleString('en-US', { timeZone: 'America/Sao_Paulo', hour: '2-digit', hour12: false });
+    const h = parseInt(hourStr, 10);
+    if (h < 7) return 'madrugada';
+    if (h < 12) return 'manha';
+    if (h < 18) return 'tarde';
+    return 'noite';
+  };
+  const getAcolhedor = (l: ClosedLeadItem) => (l.acolhedor || '').trim() || 'Sem acolhedor';
 
   const sorted = [...closedLeads].sort((a, b) => {
     const da = a.closed_at || (a.became_client_date ? a.became_client_date + 'T00:00:00' : '');
     const db = b.closed_at || (b.became_client_date ? b.became_client_date + 'T00:00:00' : '');
     return db.localeCompare(da);
   });
+
+  const filtered = sorted.filter((l) => {
+    if (periodFilter && getPeriod(l) !== periodFilter) return false;
+    if (acolhedorFilter && getAcolhedor(l) !== acolhedorFilter) return false;
+    return true;
+  });
+  const hasFilter = !!periodFilter || !!acolhedorFilter;
 
 
   const handleOpenLead = async (leadId: string) => {
