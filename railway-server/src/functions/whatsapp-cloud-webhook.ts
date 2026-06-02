@@ -134,29 +134,18 @@ async function pickAssignee(phone: string, ctwaClid: string | null, referralUrl:
   const pool: string[] = Array.isArray(matched.eligible_user_ids) ? matched.eligible_user_ids : [];
   if (pool.length === 0) return { ruleId: matched.id, userId: null, matchedValue: matched.match_value };
 
-  // Round-robin: pega último atribuído da regra, escolhe o próximo do pool
-  const { data: assign } = await supabase
-    .from('whatsapp_cloud_assignments')
-    .select('last_assigned_user_id, total_assigned')
-    .eq('rule_id', matched.id)
-    .maybeSingle();
+  // Round-robin atômico: a RPC seleciona e atualiza dentro de uma transação com
+  // SELECT ... FOR UPDATE, evitando a corrida do antigo read-modify-write em JS.
+  // O pool é lido da própria regra dentro da função (fonte única de verdade).
+  const { data: nextUser, error: pickErr } = await supabase.rpc('pick_cloud_assignee', {
+    p_rule_id: matched.id,
+  });
+  if (pickErr) {
+    console.error('[wa-cloud] pick_cloud_assignee falhou', pickErr);
+    return { ruleId: matched.id, userId: null, matchedValue: matched.match_value };
+  }
 
-  const lastUser = assign?.last_assigned_user_id || null;
-  const lastIdx = lastUser ? pool.indexOf(lastUser) : -1;
-  const nextIdx = (lastIdx + 1) % pool.length;
-  const nextUser = pool[nextIdx];
-
-  await supabase
-    .from('whatsapp_cloud_assignments')
-    .upsert({
-      rule_id: matched.id,
-      last_assigned_user_id: nextUser,
-      last_assigned_at: new Date().toISOString(),
-      total_assigned: ((assign as any)?.total_assigned || 0) + 1,
-      updated_at: new Date().toISOString(),
-    } as any, { onConflict: 'rule_id' });
-
-  return { ruleId: matched.id, userId: nextUser, matchedValue: matched.match_value };
+  return { ruleId: matched.id, userId: (nextUser as string) || null, matchedValue: matched.match_value };
 }
 
 export async function handler(req: Request, res: Response): Promise<void> {
@@ -203,14 +192,37 @@ export async function handler(req: Request, res: Response): Promise<void> {
         action_source_detail: msg.ctwa_clid ? `ctwa:${msg.ctwa_clid}` : 'inbound',
       } as any);
 
-      // Decide atendente
-      const { ruleId, userId, matchedValue } = await pickAssignee(
-        msg.phone,
-        msg.ctwa_clid || null,
-        msg.referral_source_url || null,
-      );
+      // Decide atendente — atribuição "sticky": uma conversa já atribuída mantém o mesmo
+      // dono e NÃO avança o round-robin. Só telefone novo entra no rodízio.
+      const { data: existingAssignee } = await supabase
+        .from('whatsapp_cloud_assignees')
+        .select('assigned_user_id')
+        .eq('phone', msg.phone)
+        .eq('instance_name', INSTANCE_NAME)
+        .maybeSingle();
 
-      // Tenta vincular a um lead existente por telefone
+      let userId: string | null = (existingAssignee as any)?.assigned_user_id ?? null;
+      let ruleId: string | null = null;
+      let matchedValue: string | null = null;
+
+      if (!userId) {
+        ({ ruleId, userId, matchedValue } = await pickAssignee(
+          msg.phone,
+          msg.ctwa_clid || null,
+          msg.referral_source_url || null,
+        ));
+        // Persiste o dono na fonte de verdade filtrável (usada pela inbox da WhatsApp API).
+        if (userId) {
+          await supabase.from('whatsapp_cloud_assignees').upsert({
+            phone: msg.phone,
+            instance_name: INSTANCE_NAME,
+            assigned_user_id: userId,
+            updated_at: new Date().toISOString(),
+          } as any, { onConflict: 'phone,instance_name' });
+        }
+      }
+
+      // Tenta vincular a um lead existente por telefone (usado no log de roteamento).
       let leadId: string | null = null;
       try {
         const { data: leadRow } = await supabase
@@ -221,9 +233,6 @@ export async function handler(req: Request, res: Response): Promise<void> {
           .limit(1)
           .maybeSingle();
         leadId = (leadRow as any)?.id || null;
-        if (leadId && userId) {
-          await supabase.from('leads').update({ assigned_to: userId, updated_at: new Date().toISOString() } as any).eq('id', leadId);
-        }
       } catch (e) {
         console.warn('[wa-cloud] lead lookup falhou', e);
       }

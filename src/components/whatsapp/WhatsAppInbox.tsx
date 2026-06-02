@@ -500,6 +500,35 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
     fetchPrivate();
   }, []);
 
+  // Dono ("atendente atribuído") das conversas da WhatsApp API (cloud_gerencia).
+  // Só essa instância usa visibilidade por atendente; instâncias UazAPI não.
+  // Map<phone, assigned_user_id (ID Cloud)>. Recarrega no polling junto com as mensagens.
+  const [cloudAssignees, setCloudAssignees] = useState<Map<string, string>>(new Map());
+  const refreshCloudAssignees = useCallback(async () => {
+    // Tabela ainda não está em types.ts (criada via migration externa); cast segue o idioma do arquivo.
+    const { data } = await (externalSupabase as any)
+      .from('whatsapp_cloud_assignees')
+      .select('phone, assigned_user_id')
+      .eq('instance_name', 'cloud_gerencia');
+    const rows = (data || []) as Array<{ phone: string; assigned_user_id: string }>;
+    setCloudAssignees(new Map(rows.map(r => [r.phone, r.assigned_user_id])));
+  }, []);
+  useEffect(() => { refreshCloudAssignees(); }, [refreshCloudAssignees]);
+
+  // Recarrega os donos quando aparece/sai uma conversa do cloud_gerencia (atribuição só muda
+  // no primeiro contato — sticky). Assinatura estável pelos telefones cloud evita refetch a cada msg.
+  const cloudPhonesSig = useMemo(
+    () => conversations
+      .filter(c => (c.instance_name || '').toLowerCase() === 'cloud_gerencia')
+      .map(c => c.phone)
+      .sort()
+      .join(','),
+    [conversations]
+  );
+  useEffect(() => {
+    if (cloudPhonesSig) refreshCloudAssignees();
+  }, [cloudPhonesSig, refreshCloudAssignees]);
+
   // Fetch shared conversation records for this user
   useEffect(() => {
     if (!user) return;
@@ -573,6 +602,16 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
     if (!user) return conversations;
 
     const filtered = conversations.filter(conv => {
+      // WhatsApp API (cloud_gerencia): visibilidade por atendente.
+      // Supervisor (canViewPrivate, que já inclui admin) vê tudo; sem dono = pool comum
+      // visível a todos; com dono = só o dono. Não vale para instâncias UazAPI.
+      if ((conv.instance_name || '').toLowerCase() === 'cloud_gerencia') {
+        if (canViewPrivate) return true;
+        const owner = cloudAssignees.get(conv.phone);
+        if (!owner) return true;
+        return owner === user.id;
+      }
+
       const priv = privateConvs.find(
         p => getConversationKey(p.phone, p.instance_name) === getConversationKey(conv.phone, conv.instance_name)
       );
@@ -597,7 +636,7 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
     return filtered.sort(
       (a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime()
     );
-  }, [conversations, privateConvs, sharedMessages, user, canViewPrivate]);
+  }, [conversations, privateConvs, sharedMessages, user, canViewPrivate, cloudAssignees]);
 
   const [selectedInstance, setSelectedInstance] = usePageState<string | null>('wa_selected_instance', null);
   const selectedConversation = visibleConversations.find(
