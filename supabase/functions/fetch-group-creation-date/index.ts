@@ -81,14 +81,21 @@ Deno.serve(async (req) => {
     }
 
     // Try to get group info from UazAPI
-    for (const inst of sortedInstances) {
+    // Limita tentativas e usa timeout por chamada — sem isso, instâncias
+    // desconectadas penduram a função até o limite de 150s.
+    const MAX_TRIES = 8;
+    const PER_CALL_MS = 4000;
+    for (const inst of sortedInstances.slice(0, MAX_TRIES)) {
       const baseUrl = inst.base_url || "https://abraci.uazapi.com";
       try {
+        const ctrl = new AbortController();
+        const tid = setTimeout(() => ctrl.abort(), PER_CALL_MS);
         const res = await fetch(`${baseUrl}/group/info`, {
           method: "POST",
           headers: { "Content-Type": "application/json", token: inst.instance_token },
           body: JSON.stringify({ groupjid: groupJid }),
-        });
+          signal: ctrl.signal,
+        }).finally(() => clearTimeout(tid));
 
         if (!res.ok) continue;
 
