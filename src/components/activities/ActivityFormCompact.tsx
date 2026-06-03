@@ -24,6 +24,9 @@ import type { ActivityStepContext } from '@/hooks/useActivityStepContext';
 import type { TemplateVariation } from '@/hooks/useChecklists';
 import { cn } from '@/lib/utils';
 import { isInstanceDisconnectedError, showInstanceDisconnectedToast } from '@/lib/whatsappReconnectEvent';
+import { getMyAllowedInstanceIds } from '@/integrations/supabase/permissions';
+import { useUserRole } from '@/hooks/useUserRole';
+import { useAuthContext } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
@@ -142,6 +145,46 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
   formAssignedTo?: string;
 }) {
   const [sending, setSending] = useState(false);
+  const { user } = useAuthContext();
+  const { isAdmin } = useUserRole();
+  const [instances, setInstances] = useState<{ id: string; instance_name: string }[]>([]);
+  const [selectedInstanceId, setSelectedInstanceId] = useState<string>('');
+
+  // Lista as instâncias que o usuário pode usar para enviar (Externo = fonte da verdade).
+  useEffect(() => {
+    let cancelled = false;
+    const loadInstances = async () => {
+      if (!user) return;
+      try {
+        let query = externalSupabase
+          .from('whatsapp_instances')
+          .select('id, instance_name')
+          .eq('is_active', true)
+          .order('instance_name');
+        if (!isAdmin) {
+          const allowedIds = await getMyAllowedInstanceIds(user.id);
+          if (allowedIds.length === 0) { if (!cancelled) setInstances([]); return; }
+          query = query.in('id', allowedIds);
+        }
+        const { data } = await query;
+        if (cancelled) return;
+        const list = (data || []) as { id: string; instance_name: string }[];
+        setInstances(list);
+        // Pré-seleciona a instância default do perfil; senão, a primeira da lista.
+        const { data: prof } = await supabase
+          .from('profiles')
+          .select('default_instance_id')
+          .eq('user_id', user.id)
+          .maybeSingle();
+        const def = (prof as any)?.default_instance_id;
+        setSelectedInstanceId(prev => prev || (def && list.some(i => i.id === def) ? def : (list[0]?.id || '')));
+      } catch {
+        if (!cancelled) setInstances([]);
+      }
+    };
+    loadInstances();
+    return () => { cancelled = true; };
+  }, [user?.id, isAdmin]);
 
   const handleSendToGroup = async () => {
     if (!leadId) {
@@ -167,7 +210,7 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
             body: {
               phone: (profile!.phone as string).replace(/\D/g, ''),
               message,
-              instance_id: profile!.default_instance_id,
+              instance_id: selectedInstanceId || profile!.default_instance_id,
             },
           });
 
@@ -250,7 +293,7 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
         return;
       }
 
-      let instanceId: string | undefined = profileRes || undefined;
+      let instanceId: string | undefined = selectedInstanceId || profileRes || undefined;
       if (!instanceId && lead?.board_id) {
         const { data: boardInstances } = await supabase
           .from('board_group_instances')
@@ -297,6 +340,18 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
       <Button type="button" variant="outline" size="sm" className="gap-1 h-8 text-xs" onClick={() => { navigator.clipboard.writeText(buildMsg()); toast.success('Mensagem copiada!'); }}>
         <Copy className="h-3.5 w-3.5" /> Copiar
       </Button>
+      {instances.length > 0 && (
+        <Select value={selectedInstanceId} onValueChange={setSelectedInstanceId}>
+          <SelectTrigger className="h-8 text-xs w-[160px]">
+            <SelectValue placeholder="Instância" />
+          </SelectTrigger>
+          <SelectContent>
+            {instances.map((i) => (
+              <SelectItem key={i.id} value={i.id} className="text-xs">{i.instance_name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
       <Button type="button" variant="default" size="sm" className="gap-1 h-8 text-xs" onClick={handleSendToGroup} disabled={sending}>
         {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
         {buttonLabel}
