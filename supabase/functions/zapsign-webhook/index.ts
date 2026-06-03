@@ -1118,18 +1118,17 @@ Deno.serve(async (req) => {
 
               const updatePayload: any = { lead_status: 'closed' }
               if (lastStage?.id) updatePayload.status = lastStage.id
-              // Set closing date = signature date (fonte de verdade ZapSign)
-              // Prioridade da data de fechamento:
+              // Prioridade da data de fechamento (resolveClosingDate):
               //  1) data de criação do grupo já vinculado (revogação/re-import)
               //  2) signed_at do ZapSign (fluxo normal)
               //  3) hoje (último recurso, só se doc fully signed)
               const groupDate = await fetchGroupCreationDate(extClient, localDoc.lead_id, localDoc.instance_name)
               const signedAtIso = firstSigner?.signed_at || (isDocFullySigned ? new Date().toISOString() : null)
-              if (groupDate) {
-                updatePayload.became_client_date = groupDate
-                console.log('[zapsign-webhook] auto_close: usando data do grupo', { leadId: localDoc.lead_id, groupDate, signedAtIso })
-              } else if (signedAtIso) {
-                updatePayload.became_client_date = signedAtIso.slice(0, 10)
+              if (groupDate || signedAtIso) {
+                updatePayload.became_client_date = resolveClosingDate(groupDate, signedAtIso)
+                if (groupDate) {
+                  console.log('[zapsign-webhook] auto_close: usando data do grupo', { leadId: localDoc.lead_id, groupDate, signedAtIso })
+                }
               }
 
               await supabase
