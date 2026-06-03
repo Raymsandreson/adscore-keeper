@@ -411,7 +411,17 @@ export const handler: RequestHandler = async (req, res) => {
 
           // 4) Marca lead como closed usando a data real da assinatura ZapSign.
           // Se faltar signed_at no payload antigo, cai para hoje só como fallback.
-          const closingDate = toDateOnly(p.signed_at) || new Date().toISOString().slice(0, 10);
+          // Prioridade da data de fechamento:
+          //  1) data de criação do grupo já vinculado (caso de revogação/re-import)
+          //  2) signed_at do ZapSign (fluxo normal de novo cliente)
+          //  3) hoje (último recurso)
+          const groupDate = await fetchGroupCreationDate(ckpt.lead_id, p.instance_name);
+          const closingDate = groupDate
+            || toDateOnly(p.signed_at)
+            || new Date().toISOString().slice(0, 10);
+          if (groupDate) {
+            console.log('[onboarding-exec] setup_lead_close: usando data do grupo', { leadId: ckpt.lead_id, groupDate, signedAt: p.signed_at });
+          }
           await ext
             .from('leads')
             .update({
