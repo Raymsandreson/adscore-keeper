@@ -23,6 +23,7 @@ import { StepChecklistButton } from '@/components/activities/StepChecklistButton
 import type { ActivityStepContext } from '@/hooks/useActivityStepContext';
 import type { TemplateVariation } from '@/hooks/useChecklists';
 import { cn } from '@/lib/utils';
+import { isInstanceDisconnectedError, showInstanceDisconnectedToast } from '@/lib/whatsappReconnectEvent';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
@@ -171,7 +172,11 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
           });
 
           if (error || !data?.success) {
-            toast.error(data?.error || 'Erro ao enviar mensagem');
+            if (!error && isInstanceDisconnectedError(data)) {
+              showInstanceDisconnectedToast(data.instance_id || profile!.default_instance_id, data.instance_name);
+            } else {
+              toast.error(data?.error || 'Erro ao enviar mensagem');
+            }
           } else {
             toast.success(`Mensagem enviada para ${profile?.full_name || 'o assessor'} no WhatsApp!`);
           }
@@ -269,7 +274,11 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
       });
 
       if (error || !data?.success) {
-        toast.error(data?.error || 'Erro ao enviar mensagem');
+        if (!error && isInstanceDisconnectedError(data)) {
+          showInstanceDisconnectedToast(data.instance_id || instanceId, data.instance_name);
+        } else {
+          toast.error(data?.error || 'Erro ao enviar mensagem');
+        }
       } else {
         toast.success('Mensagem enviada ao grupo!');
       }
