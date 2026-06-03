@@ -382,6 +382,85 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
     }
   };
 
+  // === Backfill da data de fechamento usando a data de criação do grupo ===
+  // Pra cada lead filtrado, chama fetch-group-creation-date (edge function que já existe),
+  // compara com became_client_date atual, lista o que vai mudar e só grava após confirmação.
+  type BackfillRow = {
+    leadId: string;
+    name: string;
+    current: string | null;
+    groupDate: string | null;
+    willChange: boolean;
+    reason?: string;
+  };
+  const [backfillOpen, setBackfillOpen] = useState(false);
+  const [backfillRunning, setBackfillRunning] = useState(false);
+  const [backfillProgress, setBackfillProgress] = useState({ done: 0, total: 0 });
+  const [backfillRows, setBackfillRows] = useState<BackfillRow[]>([]);
+  const [backfillApplying, setBackfillApplying] = useState(false);
+
+  const runBackfillDryRun = async () => {
+    setBackfillOpen(true);
+    setBackfillRunning(true);
+    setBackfillRows([]);
+    const targets = filtered;
+    setBackfillProgress({ done: 0, total: targets.length });
+    const rows: BackfillRow[] = [];
+    for (let i = 0; i < targets.length; i++) {
+      const lead = targets[i];
+      try {
+        const { data, error } = await supabase.functions.invoke('fetch-group-creation-date', {
+          body: { lead_id: lead.id },
+        });
+        const groupDate: string | null = (data as any)?.creation_date ?? null;
+        const current = lead.became_client_date || null;
+        const willChange = !!groupDate && groupDate !== current;
+        rows.push({
+          leadId: lead.id,
+          name: lead.lead_name || 'Sem nome',
+          current,
+          groupDate,
+          willChange,
+          reason: error
+            ? `erro: ${error.message}`
+            : !groupDate
+              ? ((data as any)?.error || 'sem grupo vinculado')
+              : undefined,
+        });
+      } catch (e: any) {
+        rows.push({
+          leadId: lead.id,
+          name: lead.lead_name || 'Sem nome',
+          current: lead.became_client_date || null,
+          groupDate: null,
+          willChange: false,
+          reason: `erro: ${e?.message || e}`,
+        });
+      }
+      setBackfillProgress({ done: i + 1, total: targets.length });
+      setBackfillRows([...rows]);
+    }
+    setBackfillRunning(false);
+  };
+
+  const applyBackfill = async () => {
+    setBackfillApplying(true);
+    const toApply = backfillRows.filter((r) => r.willChange && r.groupDate);
+    let ok = 0;
+    let fail = 0;
+    for (const r of toApply) {
+      const { error } = await db.from('leads').update({ became_client_date: r.groupDate as string }).eq('id', r.leadId);
+      if (error) fail++; else ok++;
+    }
+    setBackfillApplying(false);
+    setBackfillOpen(false);
+    toast({
+      title: 'Backfill concluído',
+      description: `${ok} atualizados${fail ? `, ${fail} falharam` : ''}.`,
+    });
+  };
+
+
   return (
     <>
       <Sheet open={open} onOpenChange={onOpenChange}>
