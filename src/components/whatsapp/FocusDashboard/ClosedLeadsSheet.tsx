@@ -638,6 +638,21 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
               </div>
             )}
 
+            <div className="flex items-center justify-end pt-1">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={runBackfillDryRun}
+                disabled={filtered.length === 0}
+                className="h-7 gap-1.5 text-[11px]"
+                title="Busca a data de criação do grupo WhatsApp e corrige became_client_date dos leads filtrados"
+              >
+                <CalendarCheck className="h-3.5 w-3.5" />
+                Corrigir datas pelo grupo ({filtered.length})
+              </Button>
+            </div>
+
           </SheetHeader>
 
 
