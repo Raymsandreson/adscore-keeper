@@ -104,7 +104,7 @@ Deno.serve(async (req) => {
       return ok({});
     }
 
-    if (action === 'check_meta_status') {
+    if (action === 'check_meta_status' || action === 'validate_phone_number_id') {
       const token = (Deno.env.get('WHATSAPP_CLOUD_ACCESS_TOKEN') || Deno.env.get('META_ACCESS_TOKEN') || '').trim();
       if (!token) return fail('missing_secret:WHATSAPP_CLOUD_ACCESS_TOKEN_or_META_ACCESS_TOKEN');
       const { data: cfg } = await db
@@ -114,11 +114,47 @@ Deno.serve(async (req) => {
         .maybeSingle();
       if (!cfg?.phone_number_id) return fail('no_active_config');
 
+      // Validação: lista phone numbers da WABA e confere se o phone_number_id salvo existe
+      let validation: any = null;
+      if (cfg.waba_id) {
+        const listUrl = `https://graph.facebook.com/v21.0/${cfg.waba_id}/phone_numbers?fields=id,display_phone_number,verified_name`;
+        const listResp = await fetch(listUrl, { headers: { Authorization: `Bearer ${token}` } });
+        const listJson = await listResp.json();
+        if (listResp.ok && Array.isArray(listJson?.data)) {
+          const numbers = listJson.data.map((n: any) => ({
+            id: String(n.id),
+            display_phone_number: n.display_phone_number,
+            verified_name: n.verified_name,
+          }));
+          const match = numbers.find((n: any) => n.id === String(cfg.phone_number_id));
+          validation = {
+            saved_phone_number_id: cfg.phone_number_id,
+            matches: !!match,
+            matched: match || null,
+            available_numbers: numbers,
+          };
+        } else {
+          validation = {
+            saved_phone_number_id: cfg.phone_number_id,
+            matches: null,
+            error: listJson?.error?.message || `list_failed_${listResp.status}`,
+          };
+        }
+      }
+
+      // Se foi só validação OU se a validação falhou em encontrar o ID, retorna antes de consultar
+      if (action === 'validate_phone_number_id') {
+        return ok({ validation });
+      }
+      if (validation && validation.matches === false) {
+        return fail('phone_number_id_mismatch', { validation });
+      }
+
       const fields = 'verified_name,code_verification_status,display_phone_number,quality_rating,name_status,messaging_limit_tier';
       const url = `https://graph.facebook.com/v21.0/${cfg.phone_number_id}?fields=${fields}`;
       const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
       const meta = await resp.json();
-      if (!resp.ok) return fail(meta?.error?.message || `graph_api_${resp.status}`, { meta });
+      if (!resp.ok) return fail(meta?.error?.message || `graph_api_${resp.status}`, { meta, validation });
 
       // Mapeia name_status -> status interno: APPROVED => approved, resto => pending
       const nameStatus = String(meta.name_status || '').toUpperCase();
