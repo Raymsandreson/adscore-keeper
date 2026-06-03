@@ -105,8 +105,8 @@ Deno.serve(async (req) => {
     }
 
     if (action === 'check_meta_status') {
-      const token = (Deno.env.get('WHATSAPP_CLOUD_ACCESS_TOKEN') || '').trim();
-      if (!token) return fail('missing_secret:WHATSAPP_CLOUD_ACCESS_TOKEN');
+      const token = (Deno.env.get('WHATSAPP_CLOUD_ACCESS_TOKEN') || Deno.env.get('META_ACCESS_TOKEN') || '').trim();
+      if (!token) return fail('missing_secret:WHATSAPP_CLOUD_ACCESS_TOKEN_or_META_ACCESS_TOKEN');
       const { data: cfg } = await db
         .from('whatsapp_cloud_config')
         .select('*')
