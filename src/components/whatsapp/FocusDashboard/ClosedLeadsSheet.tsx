@@ -2,7 +2,9 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Trophy, MessageCircle, User, FileText, ListChecks, CheckCircle2, UsersRound, Phone } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Trophy, MessageCircle, User, FileText, ListChecks, CheckCircle2, UsersRound, Phone, CalendarCheck, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { db } from '@/integrations/supabase';
@@ -10,6 +12,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { DashboardChatPreview } from '@/components/whatsapp/DashboardChatPreview';
+import { toast } from '@/hooks/use-toast';
 import type { Lead } from '@/hooks/useLeads';
 import type { ClosedLeadItem, ClosedLeadActivity } from '@/hooks/useFocusDashboardData';
 
