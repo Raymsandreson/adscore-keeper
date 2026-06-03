@@ -1188,6 +1188,69 @@ export const handler: RequestHandler = async (req, res) => {
                         if (signedAt) finalPatch.became_client_date = String(signedAt).slice(0, 10);
                       } catch {}
                     }
+                    // Fallback adicional: se ainda não temos became_client_date,
+                    // tenta a data de criação do GRUPO vinculado ao lead.
+                    // Cenário: lead nasceu hoje no CRM (revogação ou re-importação),
+                    // mas o grupo do WhatsApp existe há meses/anos. A data real do
+                    // fechamento é a criação do grupo, não a do registro no CRM.
+                    if (lastMatch.result_key === 'closed' && !finalPatch.became_client_date) {
+                      try {
+                        // 1) Descobre o group_jid vinculado
+                        let groupJid: string | null = null;
+                        const { data: gRow } = await supabase
+                          .from('lead_whatsapp_groups')
+                          .select('group_jid')
+                          .eq('lead_id', leadId)
+                          .order('created_at', { ascending: false })
+                          .limit(1)
+                          .maybeSingle();
+                        groupJid = (gRow as any)?.group_jid || null;
+                        if (!groupJid) {
+                          const { data: lRow } = await supabase
+                            .from('leads').select('whatsapp_group_id').eq('id', leadId).maybeSingle();
+                          groupJid = (lRow as any)?.whatsapp_group_id || null;
+                        }
+                        if (groupJid && !groupJid.includes('@')) groupJid = `${groupJid}@g.us`;
+
+                        if (groupJid) {
+                          // 2) Pega token/baseUrl da instância do webhook (ou qualquer conectada)
+                          const { data: inst } = await supabase
+                            .from('whatsapp_instances')
+                            .select('instance_token, base_url')
+                            .ilike('instance_name', webhookInstanceName || '')
+                            .limit(1)
+                            .maybeSingle();
+                          const token = (inst as any)?.instance_token;
+                          const baseUrl = (inst as any)?.base_url || 'https://abraci.uazapi.com';
+                          if (token) {
+                            const ctrl = new AbortController();
+                            const tid = setTimeout(() => ctrl.abort(), 5000);
+                            const res = await fetch(`${baseUrl}/group/info`, {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json', token },
+                              body: JSON.stringify({ id: groupJid }),
+                              signal: ctrl.signal,
+                            }).catch(() => null);
+                            clearTimeout(tid);
+                            if (res && res.ok) {
+                              const data: any = await res.json().catch(() => ({}));
+                              const ts = data?.creation || data?.GroupCreated || data?.created_at
+                                || data?.data?.creation || data?.data?.GroupCreated;
+                              if (ts) {
+                                const d = typeof ts === 'number' ? new Date(ts * 1000) : new Date(ts);
+                                if (!isNaN(d.getTime())) {
+                                  finalPatch.became_client_date = d.toISOString().slice(0, 10);
+                                  console.log('[label-trigger][result] became_client_date from group creation', { leadId, groupJid, date: finalPatch.became_client_date });
+                                }
+                              }
+                            }
+                          }
+                        }
+                      } catch (e: any) {
+                        console.warn('[label-trigger][result] group-date fallback failed:', e?.message);
+                      }
+                    }
+
                   }
                 } catch (e: any) {
                   console.warn('[label-trigger][result] preserve-date check failed:', e?.message);
