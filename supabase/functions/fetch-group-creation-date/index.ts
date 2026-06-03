@@ -61,15 +61,17 @@ Deno.serve(async (req) => {
     // Pega qualquer instância com token — não exige status='connected' porque
     // pode estar como 'open'/'active' e ainda assim responder ao /group/info.
     // Ordena: connected primeiro, depois as outras.
-    const { data: instances } = await supabase
+    // whatsapp_instances vivem no Externo (não no Cloud).
+    const { data: instances } = await extClient
       .from("whatsapp_instances")
-      .select("id, instance_name, instance_token, base_url, status, is_active")
+      .select("id, instance_name, instance_token, base_url, is_active")
       .not("instance_token", "is", null);
 
     const sortedInstances = (instances || []).sort((a: any, b: any) => {
-      const score = (i: any) => (i.status === "connected" ? 0 : i.is_active ? 1 : 2);
+      const score = (i: any) => (i.is_active ? 0 : 1);
       return score(a) - score(b);
     });
+
 
     if (!sortedInstances.length) {
       return new Response(
