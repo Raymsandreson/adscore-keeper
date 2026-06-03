@@ -2,7 +2,9 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Trophy, MessageCircle, User, FileText, ListChecks, CheckCircle2, UsersRound, Phone } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Trophy, MessageCircle, User, FileText, ListChecks, CheckCircle2, UsersRound, Phone, CalendarCheck, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { db } from '@/integrations/supabase';
@@ -10,6 +12,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { DashboardChatPreview } from '@/components/whatsapp/DashboardChatPreview';
+import { toast } from '@/hooks/use-toast';
 import type { Lead } from '@/hooks/useLeads';
 import type { ClosedLeadItem, ClosedLeadActivity } from '@/hooks/useFocusDashboardData';
 
@@ -379,6 +382,85 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
     }
   };
 
+  // === Backfill da data de fechamento usando a data de criação do grupo ===
+  // Pra cada lead filtrado, chama fetch-group-creation-date (edge function que já existe),
+  // compara com became_client_date atual, lista o que vai mudar e só grava após confirmação.
+  type BackfillRow = {
+    leadId: string;
+    name: string;
+    current: string | null;
+    groupDate: string | null;
+    willChange: boolean;
+    reason?: string;
+  };
+  const [backfillOpen, setBackfillOpen] = useState(false);
+  const [backfillRunning, setBackfillRunning] = useState(false);
+  const [backfillProgress, setBackfillProgress] = useState({ done: 0, total: 0 });
+  const [backfillRows, setBackfillRows] = useState<BackfillRow[]>([]);
+  const [backfillApplying, setBackfillApplying] = useState(false);
+
+  const runBackfillDryRun = async () => {
+    setBackfillOpen(true);
+    setBackfillRunning(true);
+    setBackfillRows([]);
+    const targets = filtered;
+    setBackfillProgress({ done: 0, total: targets.length });
+    const rows: BackfillRow[] = [];
+    for (let i = 0; i < targets.length; i++) {
+      const lead = targets[i];
+      try {
+        const { data, error } = await supabase.functions.invoke('fetch-group-creation-date', {
+          body: { lead_id: lead.id },
+        });
+        const groupDate: string | null = (data as any)?.creation_date ?? null;
+        const current = lead.became_client_date || null;
+        const willChange = !!groupDate && groupDate !== current;
+        rows.push({
+          leadId: lead.id,
+          name: lead.lead_name || 'Sem nome',
+          current,
+          groupDate,
+          willChange,
+          reason: error
+            ? `erro: ${error.message}`
+            : !groupDate
+              ? ((data as any)?.error || 'sem grupo vinculado')
+              : undefined,
+        });
+      } catch (e: any) {
+        rows.push({
+          leadId: lead.id,
+          name: lead.lead_name || 'Sem nome',
+          current: lead.became_client_date || null,
+          groupDate: null,
+          willChange: false,
+          reason: `erro: ${e?.message || e}`,
+        });
+      }
+      setBackfillProgress({ done: i + 1, total: targets.length });
+      setBackfillRows([...rows]);
+    }
+    setBackfillRunning(false);
+  };
+
+  const applyBackfill = async () => {
+    setBackfillApplying(true);
+    const toApply = backfillRows.filter((r) => r.willChange && r.groupDate);
+    let ok = 0;
+    let fail = 0;
+    for (const r of toApply) {
+      const { error } = await db.from('leads').update({ became_client_date: r.groupDate as string }).eq('id', r.leadId);
+      if (error) fail++; else ok++;
+    }
+    setBackfillApplying(false);
+    setBackfillOpen(false);
+    toast({
+      title: 'Backfill concluído',
+      description: `${ok} atualizados${fail ? `, ${fail} falharam` : ''}.`,
+    });
+  };
+
+
   return (
     <>
       <Sheet open={open} onOpenChange={onOpenChange}>
@@ -556,6 +638,21 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
               </div>
             )}
 
+            <div className="flex items-center justify-end pt-1">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={runBackfillDryRun}
+                disabled={filtered.length === 0}
+                className="h-7 gap-1.5 text-[11px]"
+                title="Busca a data de criação do grupo WhatsApp e corrige became_client_date dos leads filtrados"
+              >
+                <CalendarCheck className="h-3.5 w-3.5" />
+                Corrigir datas pelo grupo ({filtered.length})
+              </Button>
+            </div>
+
           </SheetHeader>
 
 
@@ -638,6 +735,91 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
           onOpenChange(false);
         }}
       />
+
+      <Dialog open={backfillOpen} onOpenChange={(o) => { if (!backfillRunning && !backfillApplying) setBackfillOpen(o); }}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CalendarCheck className="h-4 w-4" />
+              Corrigir became_client_date pelo grupo
+            </DialogTitle>
+            <DialogDescription>
+              Pra cada lead filtrado, busca a data de criação do grupo WhatsApp via UazAPI e
+              mostra o que vai mudar. Nada é gravado até você clicar em Aplicar.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="text-xs text-muted-foreground">
+            {backfillRunning ? (
+              <span className="inline-flex items-center gap-1.5">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Consultando grupos… {backfillProgress.done}/{backfillProgress.total}
+              </span>
+            ) : (
+              <>
+                Verificados: {backfillRows.length} · Vão mudar:{' '}
+                <span className="font-semibold text-foreground">
+                  {backfillRows.filter((r) => r.willChange).length}
+                </span>
+              </>
+            )}
+          </div>
+
+          <ScrollArea className="max-h-[50vh] border rounded-md">
+            <div className="divide-y">
+              {backfillRows.map((r) => (
+                <div key={r.leadId} className="px-3 py-2 text-xs flex items-center gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium truncate">{r.name}</div>
+                    <div className="text-muted-foreground">
+                      atual: <span className="font-mono">{r.current || '—'}</span>
+                      {r.groupDate && (
+                        <>
+                          {' → '}
+                          <span className={`font-mono ${r.willChange ? 'text-emerald-600 font-semibold' : ''}`}>
+                            {r.groupDate}
+                          </span>
+                        </>
+                      )}
+                      {r.reason && <span className="ml-1 italic">({r.reason})</span>}
+                    </div>
+                  </div>
+                  <span
+                    className={`text-[10px] px-1.5 py-0.5 rounded ${
+                      r.willChange
+                        ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400'
+                        : 'bg-muted text-muted-foreground'
+                    }`}
+                  >
+                    {r.willChange ? 'mudar' : 'manter'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </ScrollArea>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setBackfillOpen(false)}
+              disabled={backfillRunning || backfillApplying}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={applyBackfill}
+              disabled={
+                backfillRunning ||
+                backfillApplying ||
+                backfillRows.filter((r) => r.willChange).length === 0
+              }
+            >
+              {backfillApplying && <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />}
+              Aplicar {backfillRows.filter((r) => r.willChange).length} alterações
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
