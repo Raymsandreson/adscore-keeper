@@ -37,14 +37,15 @@ Deno.serve(async (req) => {
     let groupJid = groups?.[0]?.group_jid;
 
     if (!groupJid) {
-      // Fallback: check leads.whatsapp_group_id
-      const { data: lead } = await supabase
+      // Fallback: check leads.whatsapp_group_id (External)
+      const { data: lead } = await extClient
         .from("leads")
         .select("whatsapp_group_id")
         .eq("id", lead_id)
         .maybeSingle();
-      groupJid = lead?.whatsapp_group_id;
+      groupJid = (lead as any)?.whatsapp_group_id;
     }
+
 
     if (!groupJid) {
       return new Response(
