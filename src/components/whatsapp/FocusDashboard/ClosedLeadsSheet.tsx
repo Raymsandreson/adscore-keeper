@@ -464,6 +464,98 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
     }
   };
 
+  // === Backfill do acolhedor usando o dono (criador) do grupo ===
+  type AcolhedorRow = {
+    leadId: string;
+    name: string;
+    current: string | null;
+    proposed: string | null;
+    willChange: boolean;
+    reason?: string;
+  };
+  const [acolOpen, setAcolOpen] = useState(false);
+  const [acolRunning, setAcolRunning] = useState(false);
+  const [acolProgress, setAcolProgress] = useState({ done: 0, total: 0 });
+  const [acolRows, setAcolRows] = useState<AcolhedorRow[]>([]);
+  const [acolApplying, setAcolApplying] = useState(false);
+
+  const runAcolhedorDryRun = async () => {
+    setAcolOpen(true);
+    setAcolRunning(true);
+    setAcolRows([]);
+    const targets = filtered;
+    setAcolProgress({ done: 0, total: targets.length });
+    const rows: AcolhedorRow[] = [];
+    for (let i = 0; i < targets.length; i++) {
+      const lead = targets[i];
+      try {
+        const { data, error } = await supabase.functions.invoke('backfill-acolhedor-from-group-owner', {
+          body: { lead_id: lead.id, dry_run: true },
+        });
+        const res = (data as any)?.results?.[0];
+        const status = res?.status;
+        const proposed: string | null = status === 'ok' ? (res?.operator || null) : null;
+        const current = (lead as any).acolhedor || null;
+        const willChange = !!proposed && proposed !== current;
+        rows.push({
+          leadId: lead.id,
+          name: lead.lead_name || 'Sem nome',
+          current,
+          proposed,
+          willChange,
+          reason: error
+            ? `erro: ${error.message}`
+            : status === 'no_owner'
+              ? 'dono do grupo não encontrado'
+              : status === 'owner_not_in_instances'
+                ? `dono fora das instâncias (${res?.owner || '—'})`
+                : status === 'shared_instance'
+                  ? `instância compartilhada (${res?.instance})`
+                  : !proposed
+                    ? ((data as any)?.error || 'sem grupo vinculado')
+                    : undefined,
+        });
+      } catch (e: any) {
+        rows.push({
+          leadId: lead.id,
+          name: lead.lead_name || 'Sem nome',
+          current: (lead as any).acolhedor || null,
+          proposed: null,
+          willChange: false,
+          reason: `erro: ${e?.message || e}`,
+        });
+      }
+      setAcolProgress({ done: i + 1, total: targets.length });
+      setAcolRows([...rows]);
+    }
+    setAcolRunning(false);
+  };
+
+  const applyAcolhedor = async () => {
+    setAcolApplying(true);
+    const toApply = acolRows.filter((r) => r.willChange && r.proposed);
+    let ok = 0;
+    let fail = 0;
+    for (const r of toApply) {
+      try {
+        const { data, error } = await supabase.functions.invoke('backfill-acolhedor-from-group-owner', {
+          body: { lead_id: r.leadId, dry_run: false },
+        });
+        if (error || (data as any)?.success === false) fail++;
+        else ok++;
+      } catch { fail++; }
+    }
+    setAcolApplying(false);
+    setAcolOpen(false);
+    toast({
+      title: 'Backfill de acolhedor concluído',
+      description: `${ok} atualizados${fail ? `, ${fail} falharam` : ''}.`,
+    });
+    if (ok > 0) {
+      try { await onRefresh?.(); } catch { /* noop */ }
+    }
+  };
+
 
   return (
     <>
