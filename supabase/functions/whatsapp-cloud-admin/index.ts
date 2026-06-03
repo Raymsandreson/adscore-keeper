@@ -175,7 +175,7 @@ Deno.serve(async (req) => {
         .select()
         .single();
       if (error) return fail(error.message, { meta });
-      return ok({ config: updated, meta });
+      return ok({ config: updated, meta, validation });
     }
 
     return fail(`unknown_action:${action}`);
