@@ -15,79 +15,9 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-request-id',
 }
 
-// Busca a data de criação do grupo WhatsApp vinculado ao lead via UazAPI.
-// Cenário-alvo: revogação ou re-importação — lead nasce hoje no CRM mas o
-// grupo do WhatsApp existe há meses/anos. A data real do fechamento é a
-// criação do grupo, não a data da assinatura ou a de hoje.
-// Retorna null se: não há grupo vinculado, instância indisponível, ou API falha.
-async function fetchGroupCreationDate(
-  client: any,
-  leadId: string,
-  instanceName?: string | null,
-): Promise<string | null> {
-  try {
-    let groupJid: string | null = null;
-    const { data: gRow } = await client
-      .from('lead_whatsapp_groups')
-      .select('group_jid')
-      .eq('lead_id', leadId)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    groupJid = (gRow as any)?.group_jid || null;
-    if (!groupJid) {
-      const { data: lRow } = await client
-        .from('leads').select('whatsapp_group_id').eq('id', leadId).maybeSingle();
-      groupJid = (lRow as any)?.whatsapp_group_id || null;
-    }
-    if (!groupJid) return null;
-    if (!groupJid.includes('@')) groupJid = `${groupJid}@g.us`;
+import { fetchGroupCreationDate, resolveClosingDate } from "./_closing-date.ts";
 
-    let inst: any = null;
-    if (instanceName) {
-      const { data } = await client
-        .from('whatsapp_instances')
-        .select('instance_token, base_url')
-        .ilike('instance_name', instanceName)
-        .limit(1)
-        .maybeSingle();
-      inst = data;
-    }
-    if (!inst?.instance_token) {
-      const { data } = await client
-        .from('whatsapp_instances')
-        .select('instance_token, base_url')
-        .eq('is_active', true)
-        .not('instance_token', 'is', null)
-        .limit(1)
-        .maybeSingle();
-      inst = data;
-    }
-    if (!inst?.instance_token) return null;
 
-    const baseUrl = inst.base_url || 'https://abraci.uazapi.com';
-    const ctrl = new AbortController();
-    const tid = setTimeout(() => ctrl.abort(), 5000);
-    const res = await fetch(`${baseUrl}/group/info`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', token: inst.instance_token },
-      body: JSON.stringify({ id: groupJid }),
-      signal: ctrl.signal,
-    }).catch(() => null);
-    clearTimeout(tid);
-    if (!res || !res.ok) return null;
-    const data: any = await res.json().catch(() => ({}));
-    const ts = data?.creation || data?.GroupCreated || data?.created_at
-      || data?.data?.creation || data?.data?.GroupCreated;
-    if (!ts) return null;
-    const d = typeof ts === 'number' ? new Date(ts * 1000) : new Date(ts);
-    if (Number.isNaN(d.getTime())) return null;
-    return d.toISOString().slice(0, 10);
-  } catch (e: any) {
-    console.warn('[zapsign-webhook] fetchGroupCreationDate failed:', e?.message);
-    return null;
-  }
-}
 
 
 async function fetchDocWithRetry(docToken: string, zapsignToken: string, retries = 3, delayMs = 3000): Promise<any> {
