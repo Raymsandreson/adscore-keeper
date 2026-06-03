@@ -95,10 +95,34 @@ export default function WhatsAppCloudPage() {
     else toast({ title: 'Erro', description: data?.error, variant: 'destructive' });
   };
 
+  const checkMetaStatus = async () => {
+    const { data } = await cloudFunctions.invoke('whatsapp-cloud-admin', { body: { action: 'check_meta_status' } });
+    if (data?.success) {
+      const meta = data.meta || {};
+      toast({
+        title: `Status: ${meta.name_status || '—'}`,
+        description: `Verificação: ${meta.code_verification_status || '—'} • Qualidade: ${meta.quality_rating || '—'} • Tier: ${meta.messaging_limit_tier || '—'}`,
+      });
+      load();
+    } else {
+      const err = data?.error || 'erro';
+      toast({
+        title: 'Falha ao consultar Meta',
+        description: err.includes('missing_secret')
+          ? 'Configure o secret WHATSAPP_CLOUD_ACCESS_TOKEN.'
+          : err.includes('no_active_config')
+          ? 'Salve a configuração (phone_number_id e waba_id) antes.'
+          : err,
+        variant: 'destructive',
+      });
+    }
+  };
+
   const deleteRule = async (rule_id: string) => {
     const { data } = await cloudFunctions.invoke('whatsapp-cloud-admin', { body: { action: 'delete_rule', rule_id } });
     if (data?.success) load();
   };
+
 
   return (
     <div className="container mx-auto p-4 space-y-6 max-w-6xl">
