@@ -734,7 +734,7 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
               </div>
             )}
 
-            <div className="flex items-center justify-end pt-1">
+            <div className="flex items-center justify-end gap-2 pt-1">
               <Button
                 type="button"
                 size="sm"
@@ -746,6 +746,18 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
               >
                 <CalendarCheck className="h-3.5 w-3.5" />
                 Corrigir datas pelo grupo ({filtered.length})
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={runAcolhedorDryRun}
+                disabled={filtered.length === 0}
+                className="h-7 gap-1.5 text-[11px]"
+                title="Busca o criador do grupo WhatsApp e preenche o acolhedor dos leads filtrados"
+              >
+                <UserCheck className="h-3.5 w-3.5" />
+                Corrigir acolhedor pelo grupo ({filtered.length})
               </Button>
             </div>
 
