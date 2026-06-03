@@ -136,6 +136,7 @@ export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpen
         closedLeads={data.closedLeads}
         periodLabel={periodLabel}
         onOpenChat={(phone) => onOpenChat?.(phone)}
+        onRefresh={data.refetch}
       />
       <BpcFormLeadsSheet
         open={bpcSheetOpen}
