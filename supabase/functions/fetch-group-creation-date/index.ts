@@ -87,7 +87,7 @@ Deno.serve(async (req) => {
         const res = await fetch(`${baseUrl}/group/info`, {
           method: "POST",
           headers: { "Content-Type": "application/json", token: inst.instance_token },
-          body: JSON.stringify({ id: groupJid }),
+          body: JSON.stringify({ groupjid: groupJid }),
         });
 
         if (!res.ok) continue;
