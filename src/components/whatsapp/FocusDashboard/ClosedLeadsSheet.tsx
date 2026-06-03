@@ -928,6 +928,91 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={acolOpen} onOpenChange={(o) => { if (!acolRunning && !acolApplying) setAcolOpen(o); }}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <UserCheck className="h-4 w-4" />
+              Corrigir acolhedor pelo criador do grupo
+            </DialogTitle>
+            <DialogDescription>
+              Pra cada lead filtrado, busca quem criou o grupo WhatsApp (dono) via UazAPI e
+              mostra qual operador será preenchido como acolhedor. Nada é gravado até você clicar em Aplicar.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="text-xs text-muted-foreground">
+            {acolRunning ? (
+              <span className="inline-flex items-center gap-1.5">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Consultando grupos… {acolProgress.done}/{acolProgress.total}
+              </span>
+            ) : (
+              <>
+                Verificados: {acolRows.length} · Vão mudar:{' '}
+                <span className="font-semibold text-foreground">
+                  {acolRows.filter((r) => r.willChange).length}
+                </span>
+              </>
+            )}
+          </div>
+
+          <ScrollArea className="max-h-[50vh] border rounded-md">
+            <div className="divide-y">
+              {acolRows.map((r) => (
+                <div key={r.leadId} className="px-3 py-2 text-xs flex items-center gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium truncate">{r.name}</div>
+                    <div className="text-muted-foreground">
+                      atual: <span className="font-mono">{r.current || '—'}</span>
+                      {r.proposed && (
+                        <>
+                          {' → '}
+                          <span className={`font-mono ${r.willChange ? 'text-emerald-600 font-semibold' : ''}`}>
+                            {r.proposed}
+                          </span>
+                        </>
+                      )}
+                      {r.reason && <span className="ml-1 italic">({r.reason})</span>}
+                    </div>
+                  </div>
+                  <span
+                    className={`text-[10px] px-1.5 py-0.5 rounded ${
+                      r.willChange
+                        ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400'
+                        : 'bg-muted text-muted-foreground'
+                    }`}
+                  >
+                    {r.willChange ? 'mudar' : 'manter'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </ScrollArea>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setAcolOpen(false)}
+              disabled={acolRunning || acolApplying}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={applyAcolhedor}
+              disabled={
+                acolRunning ||
+                acolApplying ||
+                acolRows.filter((r) => r.willChange).length === 0
+              }
+            >
+              {acolApplying && <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />}
+              Aplicar {acolRows.filter((r) => r.willChange).length} alterações
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
