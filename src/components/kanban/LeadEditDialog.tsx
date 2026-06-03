@@ -556,6 +556,42 @@ export function LeadEditDialog({
     }
   }, [open]);
 
+  // Auto-preenche acolhedor a partir do criador do grupo quando o lead abre sem ninguém atribuído.
+  // O edge function `backfill-acolhedor-from-group-owner` já grava no banco; aqui só refletimos
+  // o resultado no state local pra UI atualizar sozinha (sem precisar reabrir).
+  const autoAcolhedorTriedRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!open || !currentLead?.id) return;
+    if (acolhedor && acolhedor.trim()) return;
+    const hasJid = whatsappGroups.some((g) => g?.group_jid);
+    if (!hasJid) return;
+    if (autoAcolhedorTriedRef.current.has(currentLead.id)) return;
+    autoAcolhedorTriedRef.current.add(currentLead.id);
+
+    const leadId = currentLead.id;
+    (async () => {
+      try {
+        const res: any = await cloudFunctions.invoke('backfill-acolhedor-from-group-owner', {
+          body: { lead_id: leadId },
+        });
+        const data = res?.data ?? res;
+        const hit = (data?.results || []).find((r: any) => r?.status === 'ok' && r?.operator);
+        if (hit?.operator) {
+          // Só sobrescreve se o usuário ainda não escolheu nada manualmente.
+          setAcolhedor((cur) => (cur && cur.trim() ? cur : hit.operator));
+        }
+      } catch (err: any) {
+        console.warn('[acolhedor-auto-open] falhou:', err?.message || err);
+      }
+    })();
+  }, [open, currentLead?.id, whatsappGroups, acolhedor]);
+
+  // Limpa o controle de tentativa ao fechar o dialog.
+  useEffect(() => {
+    if (!open) autoAcolhedorTriedRef.current = new Set();
+  }, [open]);
+
+
   const loadCustomFieldValues = async (leadId: string) => {
     const values = leadFieldValuesCache.get(leadId) || await getFieldValues(leadId);
     leadFieldValuesCache.set(leadId, values);
