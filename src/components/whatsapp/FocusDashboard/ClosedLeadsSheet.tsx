@@ -459,6 +459,9 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
       title: 'Backfill concluído',
       description: `${ok} atualizados${fail ? `, ${fail} falharam` : ''}.`,
     });
+    if (ok > 0) {
+      try { await onRefresh?.(); } catch { /* noop */ }
+    }
   };
 
 
