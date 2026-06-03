@@ -78,7 +78,7 @@ Deno.serve(async (req) => {
     }
 
     // Try to get group info from UazAPI
-    for (const inst of instances) {
+    for (const inst of sortedInstances) {
       const baseUrl = inst.base_url || "https://abraci.uazapi.com";
       try {
         const res = await fetch(`${baseUrl}/group/info`, {
