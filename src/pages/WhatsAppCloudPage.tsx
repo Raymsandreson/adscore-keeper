@@ -95,7 +95,32 @@ export default function WhatsAppCloudPage() {
     else toast({ title: 'Erro', description: data?.error, variant: 'destructive' });
   };
 
-  const checkMetaStatus = async () => {
+  const checkMetaStatus = async (skipValidation = false) => {
+    // 1) Valida se o Phone Number ID salvo bate com o que está na WABA
+    if (!skipValidation) {
+      const { data: v } = await cloudFunctions.invoke('whatsapp-cloud-admin', {
+        body: { action: 'validate_phone_number_id' },
+      });
+      const validation = v?.validation;
+      if (v?.success && validation && validation.matches === false) {
+        const avail = (validation.available_numbers || [])
+          .map((n: any) => `• ${n.id} — ${n.display_phone_number || ''} ${n.verified_name ? `(${n.verified_name})` : ''}`)
+          .join('\n');
+        const msg =
+          `O Phone Number ID salvo (${validation.saved_phone_number_id}) NÃO existe na WABA configurada.\n\n` +
+          `IDs disponíveis nesta WABA:\n${avail || '(nenhum)'}\n\n` +
+          `Deseja consultar mesmo assim?`;
+        if (!window.confirm(msg)) {
+          toast({
+            title: 'Phone Number ID divergente',
+            description: 'Atualize o ID no painel com um dos números listados na WABA.',
+            variant: 'destructive',
+          });
+          return;
+        }
+      }
+    }
+
     const { data } = await cloudFunctions.invoke('whatsapp-cloud-admin', { body: { action: 'check_meta_status' } });
     if (data?.success) {
       const meta = data.meta || {};
@@ -112,6 +137,8 @@ export default function WhatsAppCloudPage() {
           ? 'Configure o secret WHATSAPP_CLOUD_ACCESS_TOKEN.'
           : err.includes('no_active_config')
           ? 'Salve a configuração (phone_number_id e waba_id) antes.'
+          : err.includes('phone_number_id_mismatch')
+          ? 'O Phone Number ID salvo não pertence à WABA configurada.'
           : err,
         variant: 'destructive',
       });
@@ -166,7 +193,7 @@ export default function WhatsAppCloudPage() {
               Os secrets <code>WHATSAPP_CLOUD_ACCESS_TOKEN</code>, <code>WHATSAPP_CLOUD_WEBHOOK_VERIFY_TOKEN</code> e <code>WHATSAPP_CLOUD_APP_SECRET</code> precisam estar configurados nos servidores antes de o webhook funcionar.
             </p>
             <div className="flex gap-2">
-              <Button variant="outline" onClick={checkMetaStatus} disabled={!config?.phone_number_id}>
+              <Button variant="outline" onClick={() => checkMetaStatus()} disabled={!config?.phone_number_id}>
                 <RefreshCw className="h-4 w-4 mr-2" /> Consultar status na Meta
               </Button>
               <Button onClick={saveConfig}>Salvar configuração</Button>
