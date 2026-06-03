@@ -104,8 +104,47 @@ Deno.serve(async (req) => {
       return ok({});
     }
 
+    if (action === 'check_meta_status') {
+      const token = (Deno.env.get('WHATSAPP_CLOUD_ACCESS_TOKEN') || '').trim();
+      if (!token) return fail('missing_secret:WHATSAPP_CLOUD_ACCESS_TOKEN');
+      const { data: cfg } = await db
+        .from('whatsapp_cloud_config')
+        .select('*')
+        .eq('is_active', true)
+        .maybeSingle();
+      if (!cfg?.phone_number_id) return fail('no_active_config');
+
+      const fields = 'verified_name,code_verification_status,display_phone_number,quality_rating,name_status,messaging_limit_tier';
+      const url = `https://graph.facebook.com/v21.0/${cfg.phone_number_id}?fields=${fields}`;
+      const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      const meta = await resp.json();
+      if (!resp.ok) return fail(meta?.error?.message || `graph_api_${resp.status}`, { meta });
+
+      // Mapeia name_status -> status interno: APPROVED => approved, resto => pending
+      const nameStatus = String(meta.name_status || '').toUpperCase();
+      const newStatus = nameStatus === 'APPROVED' ? 'approved' : 'pending';
+
+      const update: any = {
+        status: newStatus,
+        last_heartbeat_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      if (meta.display_phone_number) update.display_phone = meta.display_phone_number;
+      if (meta.verified_name) update.display_name = meta.verified_name;
+
+      const { data: updated, error } = await db
+        .from('whatsapp_cloud_config')
+        .update(update)
+        .eq('id', cfg.id)
+        .select()
+        .single();
+      if (error) return fail(error.message, { meta });
+      return ok({ config: updated, meta });
+    }
+
     return fail(`unknown_action:${action}`);
   } catch (e) {
     return fail(e instanceof Error ? e.message : String(e));
   }
 });
+
