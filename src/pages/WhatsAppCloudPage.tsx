@@ -161,12 +161,18 @@ export default function WhatsAppCloudPage() {
             <Label>Nome do número</Label>
             <Input value={configDraft.display_name || ''} onChange={(e) => setConfigDraft({ ...configDraft, display_name: e.target.value })} placeholder="Atendimento WhatsJUD" />
           </div>
-          <div className="md:col-span-2 flex justify-between items-center">
-            <p className="text-xs text-muted-foreground">
+          <div className="md:col-span-2 flex justify-between items-center gap-2 flex-wrap">
+            <p className="text-xs text-muted-foreground flex-1 min-w-[200px]">
               Os secrets <code>WHATSAPP_CLOUD_ACCESS_TOKEN</code>, <code>WHATSAPP_CLOUD_WEBHOOK_VERIFY_TOKEN</code> e <code>WHATSAPP_CLOUD_APP_SECRET</code> precisam estar configurados nos servidores antes de o webhook funcionar.
             </p>
-            <Button onClick={saveConfig}>Salvar configuração</Button>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={checkMetaStatus} disabled={!config?.phone_number_id}>
+                <RefreshCw className="h-4 w-4 mr-2" /> Consultar status na Meta
+              </Button>
+              <Button onClick={saveConfig}>Salvar configuração</Button>
+            </div>
           </div>
+
         </CardContent>
       </Card>
 
