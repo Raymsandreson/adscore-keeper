@@ -296,9 +296,10 @@ interface ClosedLeadsSheetProps {
   closedLeads: ClosedLeadItem[];
   periodLabel: string;
   onOpenChat: (phone: string) => void;
+  onRefresh?: () => void | Promise<void>;
 }
 
-export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel, onOpenChat }: ClosedLeadsSheetProps) {
+export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel, onOpenChat, onRefresh }: ClosedLeadsSheetProps) {
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [showLeadEdit, setShowLeadEdit] = useState(false);
   const [chatPreview, setChatPreview] = useState<{ phone: string; name: string | null; instanceName: string | null } | null>(null);
@@ -458,6 +459,9 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
       title: 'Backfill concluído',
       description: `${ok} atualizados${fail ? `, ${fail} falharam` : ''}.`,
     });
+    if (ok > 0) {
+      try { await onRefresh?.(); } catch { /* noop */ }
+    }
   };
 
 
