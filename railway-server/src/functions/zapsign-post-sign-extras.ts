@@ -57,6 +57,13 @@ export async function runPostSignExtras(input: PostSignInput): Promise<void> {
     return;
   }
 
+  // NOTA: este arquivo NÃO carimba became_client_date — só empilha checkpoints.
+  // A data real de fechamento é decidida em onboarding-checkpoint-execute.ts
+  // (handler setup_lead_close), que aplica a prioridade:
+  //   1) data de criação do grupo WhatsApp já vinculado (revogação/re-import)
+  //   2) signed_at do ZapSign (passa via payload abaixo)
+  //   3) hoje (último recurso)
+  // O instance_name é repassado pra que o helper /group/info use o token certo.
   const basePayload = {
     doc_token,
     lead_name: lead.lead_name,

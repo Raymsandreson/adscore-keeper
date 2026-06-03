@@ -42,6 +42,79 @@ function toDateOnly(value: unknown): string | null {
   return d.toISOString().slice(0, 10);
 }
 
+// Busca a data de criação do grupo WhatsApp vinculado ao lead via UazAPI.
+// Cenário-alvo: revogação ou re-importação — lead nasce hoje no CRM mas o
+// grupo do WhatsApp existe há meses/anos. A data real do fechamento é a
+// criação do grupo, não a data de criação do registro.
+// Retorna null se: não há grupo vinculado, instância indisponível, ou API falha.
+async function fetchGroupCreationDate(
+  leadId: string,
+  instanceName?: string | null,
+): Promise<string | null> {
+  try {
+    let groupJid: string | null = null;
+    const { data: gRow } = await ext
+      .from('lead_whatsapp_groups')
+      .select('group_jid')
+      .eq('lead_id', leadId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    groupJid = (gRow as any)?.group_jid || null;
+    if (!groupJid) {
+      const { data: lRow } = await ext
+        .from('leads').select('whatsapp_group_id').eq('id', leadId).maybeSingle();
+      groupJid = (lRow as any)?.whatsapp_group_id || null;
+    }
+    if (!groupJid) return null;
+    if (!groupJid.includes('@')) groupJid = `${groupJid}@g.us`;
+
+    let inst: any = null;
+    if (instanceName) {
+      const { data } = await ext
+        .from('whatsapp_instances')
+        .select('instance_token, base_url')
+        .ilike('instance_name', instanceName)
+        .limit(1)
+        .maybeSingle();
+      inst = data;
+    }
+    if (!inst?.instance_token) {
+      const { data } = await ext
+        .from('whatsapp_instances')
+        .select('instance_token, base_url')
+        .eq('is_active', true)
+        .not('instance_token', 'is', null)
+        .limit(1)
+        .maybeSingle();
+      inst = data;
+    }
+    if (!inst?.instance_token) return null;
+
+    const baseUrl = inst.base_url || 'https://abraci.uazapi.com';
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), 5000);
+    const res = await fetch(`${baseUrl}/group/info`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', token: inst.instance_token },
+      body: JSON.stringify({ id: groupJid }),
+      signal: ctrl.signal,
+    }).catch(() => null);
+    clearTimeout(tid);
+    if (!res || !res.ok) return null;
+    const data: any = await res.json().catch(() => ({}));
+    const ts = data?.creation || data?.GroupCreated || data?.created_at
+      || data?.data?.creation || data?.data?.GroupCreated;
+    if (!ts) return null;
+    const d = typeof ts === 'number' ? new Date(ts * 1000) : new Date(ts);
+    if (Number.isNaN(d.getTime())) return null;
+    return d.toISOString().slice(0, 10);
+  } catch (e: any) {
+    console.warn('[onboarding-exec] fetchGroupCreationDate failed:', e?.message);
+    return null;
+  }
+}
+
 const STEP_ORDER = [
   'confirm_funnel',
   'setup_lead_close',
@@ -338,7 +411,17 @@ export const handler: RequestHandler = async (req, res) => {
 
           // 4) Marca lead como closed usando a data real da assinatura ZapSign.
           // Se faltar signed_at no payload antigo, cai para hoje só como fallback.
-          const closingDate = toDateOnly(p.signed_at) || new Date().toISOString().slice(0, 10);
+          // Prioridade da data de fechamento:
+          //  1) data de criação do grupo já vinculado (caso de revogação/re-import)
+          //  2) signed_at do ZapSign (fluxo normal de novo cliente)
+          //  3) hoje (último recurso)
+          const groupDate = await fetchGroupCreationDate(ckpt.lead_id, p.instance_name);
+          const closingDate = groupDate
+            || toDateOnly(p.signed_at)
+            || new Date().toISOString().slice(0, 10);
+          if (groupDate) {
+            console.log('[onboarding-exec] setup_lead_close: usando data do grupo', { leadId: ckpt.lead_id, groupDate, signedAt: p.signed_at });
+          }
           await ext
             .from('leads')
             .update({
