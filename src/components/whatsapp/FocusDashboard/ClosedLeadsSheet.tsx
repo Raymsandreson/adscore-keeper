@@ -4,7 +4,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Trophy, MessageCircle, User, FileText, ListChecks, CheckCircle2, UsersRound, Phone, CalendarCheck, Loader2 } from 'lucide-react';
+import { Trophy, MessageCircle, User, FileText, ListChecks, CheckCircle2, UsersRound, Phone, CalendarCheck, Loader2, UserCheck } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { db } from '@/integrations/supabase';
@@ -464,6 +464,98 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
     }
   };
 
+  // === Backfill do acolhedor usando o dono (criador) do grupo ===
+  type AcolhedorRow = {
+    leadId: string;
+    name: string;
+    current: string | null;
+    proposed: string | null;
+    willChange: boolean;
+    reason?: string;
+  };
+  const [acolOpen, setAcolOpen] = useState(false);
+  const [acolRunning, setAcolRunning] = useState(false);
+  const [acolProgress, setAcolProgress] = useState({ done: 0, total: 0 });
+  const [acolRows, setAcolRows] = useState<AcolhedorRow[]>([]);
+  const [acolApplying, setAcolApplying] = useState(false);
+
+  const runAcolhedorDryRun = async () => {
+    setAcolOpen(true);
+    setAcolRunning(true);
+    setAcolRows([]);
+    const targets = filtered;
+    setAcolProgress({ done: 0, total: targets.length });
+    const rows: AcolhedorRow[] = [];
+    for (let i = 0; i < targets.length; i++) {
+      const lead = targets[i];
+      try {
+        const { data, error } = await supabase.functions.invoke('backfill-acolhedor-from-group-owner', {
+          body: { lead_id: lead.id, dry_run: true },
+        });
+        const res = (data as any)?.results?.[0];
+        const status = res?.status;
+        const proposed: string | null = status === 'ok' ? (res?.operator || null) : null;
+        const current = (lead as any).acolhedor || null;
+        const willChange = !!proposed && proposed !== current;
+        rows.push({
+          leadId: lead.id,
+          name: lead.lead_name || 'Sem nome',
+          current,
+          proposed,
+          willChange,
+          reason: error
+            ? `erro: ${error.message}`
+            : status === 'no_owner'
+              ? 'dono do grupo não encontrado'
+              : status === 'owner_not_in_instances'
+                ? `dono fora das instâncias (${res?.owner || '—'})`
+                : status === 'shared_instance'
+                  ? `instância compartilhada (${res?.instance})`
+                  : !proposed
+                    ? ((data as any)?.error || 'sem grupo vinculado')
+                    : undefined,
+        });
+      } catch (e: any) {
+        rows.push({
+          leadId: lead.id,
+          name: lead.lead_name || 'Sem nome',
+          current: (lead as any).acolhedor || null,
+          proposed: null,
+          willChange: false,
+          reason: `erro: ${e?.message || e}`,
+        });
+      }
+      setAcolProgress({ done: i + 1, total: targets.length });
+      setAcolRows([...rows]);
+    }
+    setAcolRunning(false);
+  };
+
+  const applyAcolhedor = async () => {
+    setAcolApplying(true);
+    const toApply = acolRows.filter((r) => r.willChange && r.proposed);
+    let ok = 0;
+    let fail = 0;
+    for (const r of toApply) {
+      try {
+        const { data, error } = await supabase.functions.invoke('backfill-acolhedor-from-group-owner', {
+          body: { lead_id: r.leadId, dry_run: false },
+        });
+        if (error || (data as any)?.success === false) fail++;
+        else ok++;
+      } catch { fail++; }
+    }
+    setAcolApplying(false);
+    setAcolOpen(false);
+    toast({
+      title: 'Backfill de acolhedor concluído',
+      description: `${ok} atualizados${fail ? `, ${fail} falharam` : ''}.`,
+    });
+    if (ok > 0) {
+      try { await onRefresh?.(); } catch { /* noop */ }
+    }
+  };
+
 
   return (
     <>
@@ -642,7 +734,7 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
               </div>
             )}
 
-            <div className="flex items-center justify-end pt-1">
+            <div className="flex items-center justify-end gap-2 pt-1">
               <Button
                 type="button"
                 size="sm"
@@ -654,6 +746,18 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
               >
                 <CalendarCheck className="h-3.5 w-3.5" />
                 Corrigir datas pelo grupo ({filtered.length})
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={runAcolhedorDryRun}
+                disabled={filtered.length === 0}
+                className="h-7 gap-1.5 text-[11px]"
+                title="Busca o criador do grupo WhatsApp e preenche o acolhedor dos leads filtrados"
+              >
+                <UserCheck className="h-3.5 w-3.5" />
+                Corrigir acolhedor pelo grupo ({filtered.length})
               </Button>
             </div>
 
@@ -820,6 +924,91 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
             >
               {backfillApplying && <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />}
               Aplicar {backfillRows.filter((r) => r.willChange).length} alterações
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={acolOpen} onOpenChange={(o) => { if (!acolRunning && !acolApplying) setAcolOpen(o); }}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <UserCheck className="h-4 w-4" />
+              Corrigir acolhedor pelo criador do grupo
+            </DialogTitle>
+            <DialogDescription>
+              Pra cada lead filtrado, busca quem criou o grupo WhatsApp (dono) via UazAPI e
+              mostra qual operador será preenchido como acolhedor. Nada é gravado até você clicar em Aplicar.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="text-xs text-muted-foreground">
+            {acolRunning ? (
+              <span className="inline-flex items-center gap-1.5">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Consultando grupos… {acolProgress.done}/{acolProgress.total}
+              </span>
+            ) : (
+              <>
+                Verificados: {acolRows.length} · Vão mudar:{' '}
+                <span className="font-semibold text-foreground">
+                  {acolRows.filter((r) => r.willChange).length}
+                </span>
+              </>
+            )}
+          </div>
+
+          <ScrollArea className="max-h-[50vh] border rounded-md">
+            <div className="divide-y">
+              {acolRows.map((r) => (
+                <div key={r.leadId} className="px-3 py-2 text-xs flex items-center gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium truncate">{r.name}</div>
+                    <div className="text-muted-foreground">
+                      atual: <span className="font-mono">{r.current || '—'}</span>
+                      {r.proposed && (
+                        <>
+                          {' → '}
+                          <span className={`font-mono ${r.willChange ? 'text-emerald-600 font-semibold' : ''}`}>
+                            {r.proposed}
+                          </span>
+                        </>
+                      )}
+                      {r.reason && <span className="ml-1 italic">({r.reason})</span>}
+                    </div>
+                  </div>
+                  <span
+                    className={`text-[10px] px-1.5 py-0.5 rounded ${
+                      r.willChange
+                        ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400'
+                        : 'bg-muted text-muted-foreground'
+                    }`}
+                  >
+                    {r.willChange ? 'mudar' : 'manter'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </ScrollArea>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setAcolOpen(false)}
+              disabled={acolRunning || acolApplying}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={applyAcolhedor}
+              disabled={
+                acolRunning ||
+                acolApplying ||
+                acolRows.filter((r) => r.willChange).length === 0
+              }
+            >
+              {acolApplying && <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />}
+              Aplicar {acolRows.filter((r) => r.willChange).length} alterações
             </Button>
           </DialogFooter>
         </DialogContent>
