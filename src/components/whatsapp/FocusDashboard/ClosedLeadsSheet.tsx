@@ -362,8 +362,8 @@ export function ClosedLeadsSheet({ open, onOpenChange, closedLeads, periodLabel,
   const getAcolhedor = (l: ClosedLeadItem) => (l.acolhedor || '').trim() || 'Sem acolhedor';
 
   const sorted = [...closedLeads].sort((a, b) => {
-    const da = a.closed_at || (a.became_client_date ? a.became_client_date + 'T00:00:00' : '');
-    const db = b.closed_at || (b.became_client_date ? b.became_client_date + 'T00:00:00' : '');
+    const da = (a.became_client_date ? a.became_client_date + 'T00:00:00' : '') || a.closed_at || '';
+    const db = (b.became_client_date ? b.became_client_date + 'T00:00:00' : '') || b.closed_at || '';
     return db.localeCompare(da);
   });
 
