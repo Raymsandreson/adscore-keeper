@@ -37,14 +37,15 @@ Deno.serve(async (req) => {
     let groupJid = groups?.[0]?.group_jid;
 
     if (!groupJid) {
-      // Fallback: check leads.whatsapp_group_id
-      const { data: lead } = await supabase
+      // Fallback: check leads.whatsapp_group_id (External)
+      const { data: lead } = await extClient
         .from("leads")
         .select("whatsapp_group_id")
         .eq("id", lead_id)
         .maybeSingle();
-      groupJid = lead?.whatsapp_group_id;
+      groupJid = (lead as any)?.whatsapp_group_id;
     }
+
 
     if (!groupJid) {
       return new Response(
@@ -60,15 +61,17 @@ Deno.serve(async (req) => {
     // Pega qualquer instância com token — não exige status='connected' porque
     // pode estar como 'open'/'active' e ainda assim responder ao /group/info.
     // Ordena: connected primeiro, depois as outras.
-    const { data: instances } = await supabase
+    // whatsapp_instances vivem no Externo (não no Cloud).
+    const { data: instances } = await extClient
       .from("whatsapp_instances")
-      .select("id, instance_name, instance_token, base_url, status, is_active")
+      .select("id, instance_name, instance_token, base_url, is_active")
       .not("instance_token", "is", null);
 
     const sortedInstances = (instances || []).sort((a: any, b: any) => {
-      const score = (i: any) => (i.status === "connected" ? 0 : i.is_active ? 1 : 2);
+      const score = (i: any) => (i.is_active ? 0 : 1);
       return score(a) - score(b);
     });
+
 
     if (!sortedInstances.length) {
       return new Response(
@@ -84,7 +87,7 @@ Deno.serve(async (req) => {
         const res = await fetch(`${baseUrl}/group/info`, {
           method: "POST",
           headers: { "Content-Type": "application/json", token: inst.instance_token },
-          body: JSON.stringify({ id: groupJid }),
+          body: JSON.stringify({ groupjid: groupJid }),
         });
 
         if (!res.ok) continue;
