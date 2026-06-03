@@ -57,21 +57,28 @@ Deno.serve(async (req) => {
       groupJid = `${groupJid}@g.us`;
     }
 
-    // Get available instances
+    // Pega qualquer instância com token — não exige status='connected' porque
+    // pode estar como 'open'/'active' e ainda assim responder ao /group/info.
+    // Ordena: connected primeiro, depois as outras.
     const { data: instances } = await supabase
       .from("whatsapp_instances")
-      .select("id, instance_name, instance_token, base_url, status")
-      .eq("status", "connected");
+      .select("id, instance_name, instance_token, base_url, status, is_active")
+      .not("instance_token", "is", null);
 
-    if (!instances?.length) {
+    const sortedInstances = (instances || []).sort((a: any, b: any) => {
+      const score = (i: any) => (i.status === "connected" ? 0 : i.is_active ? 1 : 2);
+      return score(a) - score(b);
+    });
+
+    if (!sortedInstances.length) {
       return new Response(
-        JSON.stringify({ success: false, error: "No connected instances" }),
+        JSON.stringify({ success: false, error: "No instances with token available" }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
     // Try to get group info from UazAPI
-    for (const inst of instances) {
+    for (const inst of sortedInstances) {
       const baseUrl = inst.base_url || "https://abraci.uazapi.com";
       try {
         const res = await fetch(`${baseUrl}/group/info`, {
