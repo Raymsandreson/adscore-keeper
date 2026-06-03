@@ -151,10 +151,10 @@ function LeadRow({
             <span className={`truncate max-w-full ${lead.acolhedor ? 'text-foreground font-medium' : 'italic text-muted-foreground/70'}`}>
               · 👤 {lead.acolhedor || 'Sem acolhedor'}
             </span>
-            {lead.closed_at ? (
+            {lead.became_client_date ? (
+              <span>· {format(new Date(lead.became_client_date + 'T00:00:00'), 'dd/MM/yy', { locale: ptBR })}</span>
+            ) : lead.closed_at && (
               <span>· {new Date(lead.closed_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
-            ) : lead.became_client_date && (
-              <span>· {format(new Date(lead.became_client_date + 'T00:00:00'), 'dd/MM', { locale: ptBR })}</span>
             )}
           </div>
 
