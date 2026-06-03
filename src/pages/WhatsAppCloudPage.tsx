@@ -193,7 +193,7 @@ export default function WhatsAppCloudPage() {
               Os secrets <code>WHATSAPP_CLOUD_ACCESS_TOKEN</code>, <code>WHATSAPP_CLOUD_WEBHOOK_VERIFY_TOKEN</code> e <code>WHATSAPP_CLOUD_APP_SECRET</code> precisam estar configurados nos servidores antes de o webhook funcionar.
             </p>
             <div className="flex gap-2">
-              <Button variant="outline" onClick={checkMetaStatus} disabled={!config?.phone_number_id}>
+              <Button variant="outline" onClick={() => checkMetaStatus()} disabled={!config?.phone_number_id}>
                 <RefreshCw className="h-4 w-4 mr-2" /> Consultar status na Meta
               </Button>
               <Button onClick={saveConfig}>Salvar configuração</Button>
