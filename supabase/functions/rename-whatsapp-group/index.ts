@@ -244,7 +244,11 @@ Deno.serve(async (req) => {
       }
       else if (lead[field]) parts.push(field === 'lead_name' ? stripGeneratedCasePrefix(lead[field], manualClosedPrefix) : String(lead[field]))
     }
-    let newName = parts.join(' ')
+    let newName = parts.join(' ').trim()
+    // Fechado sempre começa com ✅ (independente do prefixo configurado).
+    // Esta função só é chamada no fechamento → prefixa sem checar fase.
+    newName = newName.replace(/^(?:✅\s*)+/u, '').trim()
+    newName = `✅ ${newName}`.trim()
     if (newName.length > 100) newName = newName.slice(0, 100).trim()
 
 
