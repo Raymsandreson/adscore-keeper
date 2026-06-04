@@ -120,6 +120,9 @@ export default function AutoDialerPage() {
     setFilterFrom('');
     setFilterTo('');
     setFilterSearch('');
+  }
+
+
 
   async function loadAll() {
     setLoading(true);
