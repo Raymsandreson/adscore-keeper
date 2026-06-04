@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { db, authClient } from '@/integrations/supabase';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -11,6 +11,17 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { Phone, PhoneOff, Loader2, RotateCw, XCircle, AlertTriangle } from 'lucide-react';
+
+const STATUS_LABEL: Record<string, string> = {
+  pending_permission: 'Aguardando envio do template',
+  awaiting_permission: 'Template enviado, aguardando resposta',
+  ready_to_call: 'Pronto pra ligar',
+  awaiting_meta_calling_api: 'Stub Meta (sem API ainda)',
+  calling: 'Discando',
+  completed: 'Concluído',
+  failed: 'Falhou',
+  cancelled: 'Cancelado',
+};
 
 type QueueRow = {
   id: string;
