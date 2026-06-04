@@ -254,7 +254,7 @@ export const handler: RequestHandler = async (req, res) => {
     if (!newName) return ok({ success: false, error: 'nome resultante vazio' });
     // Fase fechada: prefixa ✅ na frente (idempotente — strip helpers já removem qualquer ✅ herdado).
     if (useClosed) {
-      newName = normalizeName(`✅ ${newName.replace(/^(?:✅\s*)+/u, '').trim()}`);
+      newName = normalizeName(`✅${newName.replace(/^(?:✅\s*)+/u, '').trim()}`);
     }
 
     if (dry_run) {
