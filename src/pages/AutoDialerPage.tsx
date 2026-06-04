@@ -82,6 +82,7 @@ export default function AutoDialerPage() {
   const [filterFrom, setFilterFrom] = useState<string>(''); // yyyy-mm-dd
   const [filterTo, setFilterTo] = useState<string>('');
   const [filterSearch, setFilterSearch] = useState<string>('');
+  const [connectionState, setConnectionState] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
 
   const profileName = (uid?: string | null) =>
     profiles.find((p) => p.user_id === uid)?.full_name || uid?.slice(0, 8) || '—';
