@@ -308,10 +308,13 @@ export default function AutoDialerPage() {
               </div>
               <div className="md:col-span-6 flex justify-between items-center">
                 <Button size="sm" variant="ghost" onClick={clearFilters}>Limpar filtros</Button>
-                <Button size="sm" variant="outline" onClick={loadAll} disabled={loading}>
-                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCw className="h-4 w-4" />}
-                  <span className="ml-1">Atualizar</span>
-                </Button>
+                <div className="flex items-center gap-3">
+                  <ConnectionBadge state={connectionState} />
+                  <Button size="sm" variant="outline" onClick={loadAll} disabled={loading}>
+                    {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCw className="h-4 w-4" />}
+                    <span className="ml-1">Atualizar</span>
+                  </Button>
+                </div>
               </div>
             </div>
           </Card>
