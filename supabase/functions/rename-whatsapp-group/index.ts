@@ -26,6 +26,8 @@ const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\
 
 const stripGeneratedCasePrefix = (name: string | null | undefined, manualPrefix: string): string => {
   let cleaned = String(name || '').trim()
+  // Remove ✅ inicial (qualquer quantidade) — evita acumular em re-runs
+  cleaned = cleaned.replace(/^(?:✅\s*)+/u, '').trim()
   if (manualPrefix) {
     cleaned = cleaned.replace(new RegExp(`^${escapeRegExp(manualPrefix)}\\s*[-|:]?\\s*\\d+\\s*`, 'i'), '').trim()
   }
