@@ -153,8 +153,48 @@ export default function AutoDialerPage() {
 
   useEffect(() => {
     loadAll();
-    const i = setInterval(loadAll, 15000);
-    return () => clearInterval(i);
+    // Fallback polling (caso o realtime caia)
+    const i = setInterval(loadAll, 60000);
+
+    // Realtime: assina mudanças na fila e atualiza incrementalmente
+    const channel = (db as any)
+      .channel('auto-dialer-queue')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'whatsapp_call_queue' },
+        (payload: any) => {
+          const row = (payload.new || payload.old) as QueueRow | undefined;
+          if (!row) return;
+          // Só nos interessa meta_cloud (o painel filtra por isso)
+          const provider = (payload.new?.provider ?? payload.old?.provider) as string | undefined;
+          if (provider && provider !== 'meta_cloud') return;
+
+          setQueue((prev) => {
+            if (payload.eventType === 'DELETE') {
+              return prev.filter((r) => r.id !== (payload.old as QueueRow).id);
+            }
+            if (payload.eventType === 'INSERT') {
+              const newRow = payload.new as QueueRow;
+              if (prev.some((r) => r.id === newRow.id)) return prev;
+              return [newRow, ...prev].slice(0, 200);
+            }
+            if (payload.eventType === 'UPDATE') {
+              const updated = payload.new as QueueRow;
+              const exists = prev.some((r) => r.id === updated.id);
+              return exists
+                ? prev.map((r) => (r.id === updated.id ? { ...r, ...updated } : r))
+                : [updated, ...prev].slice(0, 200);
+            }
+            return prev;
+          });
+        },
+      )
+      .subscribe();
+
+    return () => {
+      clearInterval(i);
+      try { (db as any).removeChannel(channel); } catch { /* noop */ }
+    };
   }, []);
 
   async function cancelItem(id: string) {
