@@ -76,15 +76,52 @@ export default function AutoDialerPage() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Filtros do painel
+  const [filterOwner, setFilterOwner] = useState<string>('all');
+  const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [filterFrom, setFilterFrom] = useState<string>(''); // yyyy-mm-dd
+  const [filterTo, setFilterTo] = useState<string>('');
+  const [filterSearch, setFilterSearch] = useState<string>('');
+
   const profileName = (uid?: string | null) =>
     profiles.find((p) => p.user_id === uid)?.full_name || uid?.slice(0, 8) || '—';
   const boardName = (bid?: string | null) => boards.find((b) => b.id === bid)?.name || '—';
 
-  async function loadAll() {
-    setLoading(true);
-    try {
-      const dbAny = db as any;
-      const authAny = authClient as any;
+  const filteredQueue = useMemo(() => {
+    return queue.filter((r) => {
+      if (filterOwner !== 'all' && (r.owner_user_id || '') !== filterOwner) return false;
+      if (filterStatus !== 'all' && r.status !== filterStatus) return false;
+      if (filterFrom) {
+        const from = new Date(filterFrom + 'T00:00:00');
+        if (new Date(r.scheduled_at) < from) return false;
+      }
+      if (filterTo) {
+        const to = new Date(filterTo + 'T23:59:59');
+        if (new Date(r.scheduled_at) > to) return false;
+      }
+      if (filterSearch.trim()) {
+        const q = filterSearch.trim().toLowerCase();
+        const hay = `${r.lead_name || ''} ${r.phone || ''}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [queue, filterOwner, filterStatus, filterFrom, filterTo, filterSearch]);
+
+  const kpis = useMemo(() => {
+    const acc: Record<string, number> = {};
+    for (const r of filteredQueue) acc[r.status] = (acc[r.status] || 0) + 1;
+    return acc;
+  }, [filteredQueue]);
+
+  function clearFilters() {
+    setFilterOwner('all');
+    setFilterStatus('all');
+    setFilterFrom('');
+    setFilterTo('');
+    setFilterSearch('');
+  }
+
       const [{ data: q }, { data: n }, { data: b }, { data: p }] = await Promise.all([
         dbAny
           .from('whatsapp_call_queue')
