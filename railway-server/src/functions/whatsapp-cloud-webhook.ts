@@ -192,6 +192,43 @@ export async function handler(req: Request, res: Response): Promise<void> {
         action_source_detail: msg.ctwa_clid ? `ctwa:${msg.ctwa_clid}` : 'inbound',
       } as any);
 
+      // Discadora automática: se há permissão pendente pra esse telefone,
+      // qualquer resposta inbound conta como aceite (granted) e a fila avança.
+      try {
+        const { data: pendingPerm } = await supabase
+          .from('whatsapp_call_permissions')
+          .select('id, phone_number_id, status')
+          .eq('phone', msg.phone)
+          .eq('status', 'pending')
+          .maybeSingle();
+
+        if (pendingPerm) {
+          const nowIso = new Date().toISOString();
+          const lower = (msg.message_text || '').toLowerCase().trim();
+          const isDeny = /\b(n[aã]o|nao|stop|sair|cancelar|recusar)\b/.test(lower);
+          const newStatus = isDeny ? 'denied' : 'granted';
+          await supabase
+            .from('whatsapp_call_permissions')
+            .update({ status: newStatus, responded_at: nowIso, updated_at: nowIso } as any)
+            .eq('id', (pendingPerm as any).id);
+
+          // Move itens da fila desse telefone+pnid pra próximo passo
+          await supabase
+            .from('whatsapp_call_queue')
+            .update({
+              status: newStatus === 'granted' ? 'ready_to_call' : 'failed',
+              last_result: newStatus === 'granted' ? 'permission_granted_by_reply' : 'permission_denied_by_reply',
+              scheduled_at: nowIso,
+              updated_at: nowIso,
+            } as any)
+            .eq('phone', msg.phone)
+            .eq('phone_number_id_used', (pendingPerm as any).phone_number_id)
+            .eq('status', 'awaiting_permission');
+        }
+      } catch (e) {
+        console.warn('[wa-cloud] permission update skipped:', e);
+      }
+
       // Decide atendente — atribuição "sticky": uma conversa já atribuída mantém o mesmo
       // dono e NÃO avança o round-robin. Só telefone novo entra no rodízio.
       const { data: existingAssignee } = await supabase
