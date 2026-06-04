@@ -250,8 +250,12 @@ export const handler: RequestHandler = async (req, res) => {
       }
     }
 
-    const newName = normalizeName(parts.join(' '));
+    let newName = normalizeName(parts.join(' '));
     if (!newName) return ok({ success: false, error: 'nome resultante vazio' });
+    // Fase fechada: prefixa ✅ na frente (idempotente — strip helpers já removem qualquer ✅ herdado).
+    if (useClosed) {
+      newName = normalizeName(`✅ ${newName.replace(/^(?:✅\s*)+/u, '').trim()}`);
+    }
 
     if (dry_run) {
       return ok({
