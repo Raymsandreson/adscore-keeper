@@ -397,6 +397,28 @@ export default function AutoDialerPage() {
   );
 }
 
+function ConnectionBadge({ state }: { state: 'connecting' | 'connected' | 'disconnected' }) {
+  if (state === 'connected') {
+    return (
+      <Badge variant="outline" className="gap-1 text-xs border-green-500/30 bg-green-500/10 text-green-700">
+        <Wifi className="h-3 w-3" /> Tempo real
+      </Badge>
+    );
+  }
+  if (state === 'connecting') {
+    return (
+      <Badge variant="outline" className="gap-1 text-xs border-blue-500/30 bg-blue-500/10 text-blue-700">
+        <Loader2 className="h-3 w-3 animate-spin" /> Conectando...
+      </Badge>
+    );
+  }
+  return (
+    <Badge variant="outline" className="gap-1 text-xs border-amber-500/30 bg-amber-500/10 text-amber-700">
+      <WifiOff className="h-3 w-3" /> Polling (60s)
+    </Badge>
+  );
+}
+
 function UserNumbersTab({
   numbers,
   profiles,
