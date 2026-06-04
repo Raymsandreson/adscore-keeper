@@ -26,6 +26,8 @@ const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\
 
 const stripGeneratedCasePrefix = (name: string | null | undefined, manualPrefix: string): string => {
   let cleaned = String(name || '').trim()
+  // Remove ✅ inicial (qualquer quantidade) — evita acumular em re-runs
+  cleaned = cleaned.replace(/^(?:✅\s*)+/u, '').trim()
   if (manualPrefix) {
     cleaned = cleaned.replace(new RegExp(`^${escapeRegExp(manualPrefix)}\\s*[-|:]?\\s*\\d+\\s*`, 'i'), '').trim()
   }
@@ -242,7 +244,11 @@ Deno.serve(async (req) => {
       }
       else if (lead[field]) parts.push(field === 'lead_name' ? stripGeneratedCasePrefix(lead[field], manualClosedPrefix) : String(lead[field]))
     }
-    let newName = parts.join(' ')
+    let newName = parts.join(' ').trim()
+    // Fechado sempre começa com ✅ (independente do prefixo configurado).
+    // Esta função só é chamada no fechamento → prefixa sem checar fase.
+    newName = newName.replace(/^(?:✅\s*)+/u, '').trim()
+    newName = `✅ ${newName}`.trim()
     if (newName.length > 100) newName = newName.slice(0, 100).trim()
 
 
