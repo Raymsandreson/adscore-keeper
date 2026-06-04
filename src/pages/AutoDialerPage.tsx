@@ -72,16 +72,18 @@ export default function AutoDialerPage() {
   async function loadAll() {
     setLoading(true);
     try {
+      const dbAny = db as any;
+      const authAny = authClient as any;
       const [{ data: q }, { data: n }, { data: b }, { data: p }] = await Promise.all([
-        db
+        dbAny
           .from('whatsapp_call_queue')
           .select('id, phone, lead_id, lead_name, status, attempts, max_attempts, scheduled_at, provider, phone_number_id_used, owner_user_id, board_id, last_result, next_action_at')
           .eq('provider', 'meta_cloud')
           .order('scheduled_at', { ascending: false })
           .limit(200),
-        db.from('whatsapp_cloud_user_numbers').select('*').order('created_at', { ascending: false }),
-        db.from('kanban_boards').select('id, name, settings').order('display_order', { ascending: true }),
-        authClient.from('profiles').select('user_id, full_name'),
+        dbAny.from('whatsapp_cloud_user_numbers').select('*').order('created_at', { ascending: false }),
+        dbAny.from('kanban_boards').select('id, name, settings').order('display_order', { ascending: true }),
+        authAny.from('profiles').select('user_id, full_name'),
       ]);
       setQueue((q as QueueRow[]) || []);
       setNumbers((n as UserNumber[]) || []);
@@ -101,9 +103,9 @@ export default function AutoDialerPage() {
   }, []);
 
   async function cancelItem(id: string) {
-    const { error } = await db
+    const { error } = await (db as any)
       .from('whatsapp_call_queue')
-      .update({ status: 'cancelled', last_result: 'cancelled_by_user' } as any)
+      .update({ status: 'cancelled', last_result: 'cancelled_by_user' })
       .eq('id', id);
     if (error) return toast.error(error.message);
     toast.success('Cancelado');
@@ -111,9 +113,9 @@ export default function AutoDialerPage() {
   }
 
   async function forceRetry(id: string) {
-    const { error } = await db
+    const { error } = await (db as any)
       .from('whatsapp_call_queue')
-      .update({ status: 'ready_to_call', scheduled_at: new Date().toISOString() } as any)
+      .update({ status: 'ready_to_call', scheduled_at: new Date().toISOString() })
       .eq('id', id);
     if (error) return toast.error(error.message);
     toast.success('Reagendado pra agora');
@@ -244,7 +246,7 @@ function UserNumbersTab({
 
   async function save() {
     if (!userId || !pnid) return toast.error('Selecione um usuário e informe o phone_number_id');
-    const { error } = await db.from('whatsapp_cloud_user_numbers').upsert(
+    const { error } = await (db as any).from('whatsapp_cloud_user_numbers').upsert(
       {
         user_id: userId,
         phone_number_id: pnid.trim(),
@@ -252,7 +254,7 @@ function UserNumbersTab({
         display_phone: display.trim() || null,
         is_active: true,
         updated_at: new Date().toISOString(),
-      } as any,
+      },
       { onConflict: 'user_id' },
     );
     if (error) return toast.error(error.message);
@@ -262,11 +264,11 @@ function UserNumbersTab({
   }
 
   async function toggle(id: string, active: boolean) {
-    await db.from('whatsapp_cloud_user_numbers').update({ is_active: active } as any).eq('id', id);
+    await (db as any).from('whatsapp_cloud_user_numbers').update({ is_active: active }).eq('id', id);
     reload();
   }
   async function remove(id: string) {
-    await db.from('whatsapp_cloud_user_numbers').delete().eq('id', id);
+    await (db as any).from('whatsapp_cloud_user_numbers').delete().eq('id', id);
     reload();
   }
 
@@ -346,7 +348,7 @@ function BoardSettingsTab({ boards, reload }: { boards: Board[]; reload: () => v
   async function update(boardId: string, patch: any) {
     const cur = boards.find((b) => b.id === boardId)?.settings || {};
     const next = { ...cur, ...patch };
-    const { error } = await db.from('kanban_boards').update({ settings: next } as any).eq('id', boardId);
+    const { error } = await (db as any).from('kanban_boards').update({ settings: next }).eq('id', boardId);
     if (error) return toast.error(error.message);
     reload();
   }
