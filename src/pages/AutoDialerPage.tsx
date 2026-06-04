@@ -10,7 +10,7 @@ import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { Phone, PhoneOff, Loader2, RotateCw, XCircle, AlertTriangle } from 'lucide-react';
+import { Phone, PhoneOff, Loader2, RotateCw, XCircle, AlertTriangle, Wifi, WifiOff, Radio } from 'lucide-react';
 
 const STATUS_LABEL: Record<string, string> = {
   pending_permission: 'Aguardando envio do template',
@@ -82,6 +82,7 @@ export default function AutoDialerPage() {
   const [filterFrom, setFilterFrom] = useState<string>(''); // yyyy-mm-dd
   const [filterTo, setFilterTo] = useState<string>('');
   const [filterSearch, setFilterSearch] = useState<string>('');
+  const [connectionState, setConnectionState] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
 
   const profileName = (uid?: string | null) =>
     profiles.find((p) => p.user_id === uid)?.full_name || uid?.slice(0, 8) || '—';
@@ -189,7 +190,10 @@ export default function AutoDialerPage() {
           });
         },
       )
-      .subscribe();
+      .subscribe((status: string) => {
+        if (status === 'SUBSCRIBED') setConnectionState('connected');
+        else if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') setConnectionState('disconnected');
+      });
 
     return () => {
       clearInterval(i);
@@ -304,10 +308,13 @@ export default function AutoDialerPage() {
               </div>
               <div className="md:col-span-6 flex justify-between items-center">
                 <Button size="sm" variant="ghost" onClick={clearFilters}>Limpar filtros</Button>
-                <Button size="sm" variant="outline" onClick={loadAll} disabled={loading}>
-                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCw className="h-4 w-4" />}
-                  <span className="ml-1">Atualizar</span>
-                </Button>
+                <div className="flex items-center gap-3">
+                  <ConnectionBadge state={connectionState} />
+                  <Button size="sm" variant="outline" onClick={loadAll} disabled={loading}>
+                    {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCw className="h-4 w-4" />}
+                    <span className="ml-1">Atualizar</span>
+                  </Button>
+                </div>
               </div>
             </div>
           </Card>
@@ -387,6 +394,28 @@ export default function AutoDialerPage() {
         </TabsContent>
       </Tabs>
     </div>
+  );
+}
+
+function ConnectionBadge({ state }: { state: 'connecting' | 'connected' | 'disconnected' }) {
+  if (state === 'connected') {
+    return (
+      <Badge variant="outline" className="gap-1 text-xs border-success/30 bg-success/10 text-success">
+        <Wifi className="h-3 w-3" /> Tempo real
+      </Badge>
+    );
+  }
+  if (state === 'connecting') {
+    return (
+      <Badge variant="outline" className="gap-1 text-xs border-primary/30 bg-primary/10 text-primary">
+        <Loader2 className="h-3 w-3 animate-spin" /> Conectando...
+      </Badge>
+    );
+  }
+  return (
+    <Badge variant="outline" className="gap-1 text-xs border-warning/30 bg-warning/10 text-warning">
+      <WifiOff className="h-3 w-3" /> Polling (60s)
+    </Badge>
   );
 }
 
