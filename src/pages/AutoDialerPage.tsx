@@ -120,8 +120,12 @@ export default function AutoDialerPage() {
     setFilterFrom('');
     setFilterTo('');
     setFilterSearch('');
-  }
 
+  async function loadAll() {
+    setLoading(true);
+    try {
+      const dbAny = db as any;
+      const authAny = authClient as any;
       const [{ data: q }, { data: n }, { data: b }, { data: p }] = await Promise.all([
         dbAny
           .from('whatsapp_call_queue')
