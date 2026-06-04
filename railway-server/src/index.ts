@@ -30,6 +30,7 @@ import { handler as submitDocumentReview } from './functions/submit-document-rev
 import { handler as syncAgentLabels } from './functions/sync-agent-labels';
 import { handler as syncResultLabels } from './functions/sync-result-labels';
 import { handler as sendWhatsappCloud } from './functions/send-whatsapp-cloud';
+import { handler as metaCallQueueProcessor } from './functions/meta-call-queue-processor';
 
 const functionHandlers: Record<string, express.RequestHandler> = {
   'whatsapp-webhook': whatsappWebhook,
@@ -53,6 +54,7 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'sync-agent-labels': syncAgentLabels,
   'sync-result-labels': syncResultLabels,
   'send-whatsapp-cloud': sendWhatsappCloud,
+  'meta-call-queue-processor': metaCallQueueProcessor,
 };
 
 const app = express();
