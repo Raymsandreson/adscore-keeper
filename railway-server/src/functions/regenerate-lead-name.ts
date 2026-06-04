@@ -19,14 +19,16 @@ function normalizeName(s: string): string {
 
 function stripExistingSequence(name: string, prefix: string): string {
   if (!name) return '';
-  const trimmed = name.trim();
+  let trimmed = name.trim();
+  // Remove ✅ inicial — evita acumular em re-runs
+  trimmed = trimmed.replace(/^(?:✅\s*)+/u, '').trim();
   if (!prefix) return trimmed;
   const re = new RegExp(`^${prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*[-|:]?\\s*\\d+\\s*`, 'i');
   return trimmed.replace(re, '').trim();
 }
 
 function stripCaseFallbackPrefix(name: string): string {
-  return String(name || '').replace(/^CASO\s*[-|:]?\s*\d+\s*/i, '').trim();
+  return String(name || '').replace(/^(?:✅\s*)+/u, '').replace(/^CASO\s*[-|:]?\s*\d+\s*/i, '').trim();
 }
 
 // Posição do lead na fila de fechados do funil. Resolvido em UMA SQL via RPC
