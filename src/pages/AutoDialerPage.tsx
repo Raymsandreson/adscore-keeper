@@ -190,7 +190,10 @@ export default function AutoDialerPage() {
           });
         },
       )
-      .subscribe();
+      .subscribe((status: string) => {
+        if (status === 'SUBSCRIBED') setConnectionState('connected');
+        else if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') setConnectionState('disconnected');
+      });
 
     return () => {
       clearInterval(i);
