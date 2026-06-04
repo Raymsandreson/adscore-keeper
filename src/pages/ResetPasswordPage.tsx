@@ -31,14 +31,18 @@ const ResetPasswordPage = () => {
 
   useEffect(() => {
     let isMounted = true;
+    let resolved = false;
     let safetyTimer: ReturnType<typeof setTimeout> | null = null;
 
     const hashParams = new URLSearchParams(initialHash.replace(/^#/, ''));
     const queryParams = new URLSearchParams(initialSearch);
     const urlType = hashParams.get('type') ?? queryParams.get('type');
     const hashAccessToken = hashParams.get('access_token');
-    const hashRefreshToken = hashParams.get('refresh_token');
     const queryCode = queryParams.get('code');
+    // Erro explícito devolvido pelo provedor no próprio link (ex.: otp_expired).
+    const urlError = queryParams.get('error') ?? hashParams.get('error');
+    const urlErrorDesc =
+      queryParams.get('error_description') ?? hashParams.get('error_description');
     const looksLikeRecovery =
       urlType === 'recovery' || !!hashAccessToken || !!queryCode;
 
@@ -48,91 +52,90 @@ const ResetPasswordPage = () => {
       } catch {}
     };
 
-    const markRecovery = () => {
-      if (!isMounted) return;
-      setIsRecovery(true);
-      setRecoveryError(null);
+    // Resolve o estado uma única vez (evita corrida entre o listener, a IIFE e o safety net).
+    const finish = (recovery: boolean, msg?: string) => {
+      if (!isMounted || resolved) return;
+      resolved = true;
+      if (safetyTimer) clearTimeout(safetyTimer);
+      if (recovery) {
+        setIsRecovery(true);
+        setRecoveryError(null);
+        cleanUrl();
+      } else {
+        setIsRecovery(false);
+        if (msg) setRecoveryError(msg);
+      }
       setInitializing(false);
-      cleanUrl();
     };
 
-    const markInvalid = (msg?: string) => {
-      if (!isMounted) return;
-      setIsRecovery(false);
-      if (msg) setRecoveryError(msg);
-      setInitializing(false);
-    };
+    // Link já veio com erro do provedor (expirado/usado) — decide na hora.
+    if (urlError) {
+      const expired = /expired|otp_expired/i.test(`${urlError} ${urlErrorDesc ?? ''}`);
+      finish(false, expired
+        ? 'Seu link de redefinição expirou. Solicite um novo.'
+        : (urlErrorDesc || 'Link inválido. Solicite um novo link de redefinição.'));
+      return () => { isMounted = false; };
+    }
 
-    // Listener primeiro — captura PASSWORD_RECOVERY / SIGNED_IN /
-    // INITIAL_SESSION disparados pelo detectSessionInUrl do supabase client.
+    // Listener: o detectSessionInUrl do client processa o hash automaticamente e dispara
+    // PASSWORD_RECOVERY / SIGNED_IN / INITIAL_SESSION. NÃO chamamos setSession manual aqui
+    // (a chamada dupla competia pelo lock de auth e travava → bug do timeout de 10s).
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
         if (!isMounted) return;
         if (event === 'PASSWORD_RECOVERY') {
-          markRecovery();
+          finish(true);
           return;
         }
-        if (
-          (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') &&
-          session?.user &&
-          looksLikeRecovery
-        ) {
-          markRecovery();
+        // Em /reset-password, sessão ativa só faz sentido para troca de senha.
+        if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session?.user) {
+          finish(true);
         }
       }
     );
 
     (async () => {
       try {
-        if (hashAccessToken && hashRefreshToken && urlType === 'recovery') {
-          const { error } = await supabase.auth.setSession({
-            access_token: hashAccessToken,
-            refresh_token: hashRefreshToken,
-          });
-          if (error) throw error;
-          markRecovery();
-          return;
-        }
-
+        // PKCE (?code=) não é auto-processado em flow implicit → troca manual.
         if (queryCode) {
           const { data, error } = await supabase.auth.exchangeCodeForSession(queryCode);
           if (error) throw error;
-          if (urlType === 'recovery' || data?.session) {
-            markRecovery();
-          } else {
-            markInvalid('Link inválido ou expirado. Solicite um novo link.');
-          }
+          if (data?.session) finish(true);
           return;
         }
-
-        // Hash já consumido pelo detectSessionInUrl — verificar sessão atual.
+        // Caminho do hash: o detectSessionInUrl é o ÚNICO consumidor. Não decidir "expirado"
+        // cedo aqui — a sessão pode chegar pelo evento logo em seguida. Só confirma se já existe.
         const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user && looksLikeRecovery) {
-          markRecovery();
+        if (session?.user) {
+          finish(true);
           return;
         }
-
-        if (looksLikeRecovery) {
-          markInvalid('Sua sessão de recuperação expirou. Solicite um novo link.');
-        } else {
-          markInvalid();
+        // Não há token/code a processar (link sem credencial) → decide na hora, sem esperar evento.
+        if (!hashAccessToken && !queryCode) {
+          finish(false, looksLikeRecovery
+            ? 'Sua sessão de recuperação expirou. Solicite um novo link.'
+            : undefined);
         }
-      } catch (error: any) {
+        // Caso reste hashAccessToken: aguarda o evento de auth ou o safety net abaixo.
+      } catch (error) {
+        const raw = String((error as { message?: string })?.message || '');
         console.error('[RESET] Error establishing recovery session:', error);
-        markInvalid(error?.message || 'Link inválido ou expirado. Solicite um novo link.');
+        if (/code verifier/i.test(raw)) {
+          finish(false, 'Abra o link no mesmo navegador/dispositivo onde você o solicitou, ou peça um novo.');
+        } else {
+          finish(false, 'Link inválido ou expirado. Solicite um novo link.');
+        }
       }
     })();
 
-    // Safety net: nunca deixar o spinner travado indefinidamente.
+    // Safety net: link válido resolve via evento de auth antes disto. Se nada chegou, declara
+    // falha SEM chamar getSession — um getSession aqui poderia pendurar (lock de auth travado por
+    // token inválido), que foi justamente o bug do timeout infinito.
     safetyTimer = setTimeout(() => {
-      if (!isMounted) return;
-      setInitializing((cur) => {
-        if (cur) {
-          setRecoveryError('Não foi possível validar o link. Tente novamente ou solicite um novo.');
-        }
-        return false;
-      });
-    }, 10000);
+      finish(false, looksLikeRecovery
+        ? 'Sua sessão de recuperação expirou. Solicite um novo link.'
+        : 'Não foi possível validar o link. Solicite um novo.');
+    }, 6000);
 
     return () => {
       isMounted = false;
