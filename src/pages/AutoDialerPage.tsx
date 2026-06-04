@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { db, authClient } from '@/integrations/supabase';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -11,6 +11,17 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { Phone, PhoneOff, Loader2, RotateCw, XCircle, AlertTriangle } from 'lucide-react';
+
+const STATUS_LABEL: Record<string, string> = {
+  pending_permission: 'Aguardando envio do template',
+  awaiting_permission: 'Template enviado, aguardando resposta',
+  ready_to_call: 'Pronto pra ligar',
+  awaiting_meta_calling_api: 'Stub Meta (sem API ainda)',
+  calling: 'Discando',
+  completed: 'Concluído',
+  failed: 'Falhou',
+  cancelled: 'Cancelado',
+};
 
 type QueueRow = {
   id: string;
@@ -65,9 +76,53 @@ export default function AutoDialerPage() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Filtros do painel
+  const [filterOwner, setFilterOwner] = useState<string>('all');
+  const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [filterFrom, setFilterFrom] = useState<string>(''); // yyyy-mm-dd
+  const [filterTo, setFilterTo] = useState<string>('');
+  const [filterSearch, setFilterSearch] = useState<string>('');
+
   const profileName = (uid?: string | null) =>
     profiles.find((p) => p.user_id === uid)?.full_name || uid?.slice(0, 8) || '—';
   const boardName = (bid?: string | null) => boards.find((b) => b.id === bid)?.name || '—';
+
+  const filteredQueue = useMemo(() => {
+    return queue.filter((r) => {
+      if (filterOwner !== 'all' && (r.owner_user_id || '') !== filterOwner) return false;
+      if (filterStatus !== 'all' && r.status !== filterStatus) return false;
+      if (filterFrom) {
+        const from = new Date(filterFrom + 'T00:00:00');
+        if (new Date(r.scheduled_at) < from) return false;
+      }
+      if (filterTo) {
+        const to = new Date(filterTo + 'T23:59:59');
+        if (new Date(r.scheduled_at) > to) return false;
+      }
+      if (filterSearch.trim()) {
+        const q = filterSearch.trim().toLowerCase();
+        const hay = `${r.lead_name || ''} ${r.phone || ''}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [queue, filterOwner, filterStatus, filterFrom, filterTo, filterSearch]);
+
+  const kpis = useMemo(() => {
+    const acc: Record<string, number> = {};
+    for (const r of filteredQueue) acc[r.status] = (acc[r.status] || 0) + 1;
+    return acc;
+  }, [filteredQueue]);
+
+  function clearFilters() {
+    setFilterOwner('all');
+    setFilterStatus('all');
+    setFilterFrom('');
+    setFilterTo('');
+    setFilterSearch('');
+  }
+
+
 
   async function loadAll() {
     setLoading(true);
@@ -146,18 +201,77 @@ export default function AutoDialerPage() {
 
       <Tabs defaultValue="queue">
         <TabsList>
-          <TabsTrigger value="queue">Fila ({queue.length})</TabsTrigger>
+          <TabsTrigger value="queue">Fila ({filteredQueue.length}/{queue.length})</TabsTrigger>
           <TabsTrigger value="numbers">Números Meta por usuário</TabsTrigger>
           <TabsTrigger value="boards">Configuração por funil</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="queue" className="space-y-2">
-          <div className="flex justify-end">
-            <Button size="sm" variant="outline" onClick={loadAll} disabled={loading}>
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCw className="h-4 w-4" />}
-              <span className="ml-1">Atualizar</span>
-            </Button>
+        <TabsContent value="queue" className="space-y-3">
+          {/* KPIs por status (sobre os itens já filtrados) */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
+            {Object.keys(STATUS_LABEL).map((st) => (
+              <Card key={st} className="p-2">
+                <div className="text-[10px] text-muted-foreground leading-tight">{STATUS_LABEL[st]}</div>
+                <div className="text-xl font-bold">{kpis[st] || 0}</div>
+              </Card>
+            ))}
           </div>
+
+          {/* Filtros */}
+          <Card className="p-3">
+            <div className="grid grid-cols-1 md:grid-cols-6 gap-2 items-end">
+              <div className="md:col-span-2">
+                <Label className="text-xs">Buscar (nome / telefone)</Label>
+                <Input
+                  value={filterSearch}
+                  onChange={(e) => setFilterSearch(e.target.value)}
+                  placeholder="Ex: Maria, 5511..."
+                />
+              </div>
+              <div>
+                <Label className="text-xs">Dono do lead</Label>
+                <Select value={filterOwner} onValueChange={setFilterOwner}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos</SelectItem>
+                    {profiles.map((p) => (
+                      <SelectItem key={p.user_id} value={p.user_id}>
+                        {p.full_name || p.user_id.slice(0, 8)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs">Status</Label>
+                <Select value={filterStatus} onValueChange={setFilterStatus}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos</SelectItem>
+                    {Object.entries(STATUS_LABEL).map(([k, v]) => (
+                      <SelectItem key={k} value={k}>{v}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs">De</Label>
+                <Input type="date" value={filterFrom} onChange={(e) => setFilterFrom(e.target.value)} />
+              </div>
+              <div>
+                <Label className="text-xs">Até</Label>
+                <Input type="date" value={filterTo} onChange={(e) => setFilterTo(e.target.value)} />
+              </div>
+              <div className="md:col-span-6 flex justify-between items-center">
+                <Button size="sm" variant="ghost" onClick={clearFilters}>Limpar filtros</Button>
+                <Button size="sm" variant="outline" onClick={loadAll} disabled={loading}>
+                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCw className="h-4 w-4" />}
+                  <span className="ml-1">Atualizar</span>
+                </Button>
+              </div>
+            </div>
+          </Card>
+
           <Card>
             <Table>
               <TableHeader>
@@ -168,19 +282,20 @@ export default function AutoDialerPage() {
                   <TableHead>Dono</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Tentativas</TableHead>
+                  <TableHead>Resultado</TableHead>
                   <TableHead>Próx. ação</TableHead>
                   <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {queue.length === 0 && (
+                {filteredQueue.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
-                      Nenhum item na fila.
+                    <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
+                      Nenhum item na fila com os filtros atuais.
                     </TableCell>
                   </TableRow>
                 )}
-                {queue.map((r) => (
+                {filteredQueue.map((r) => (
                   <TableRow key={r.id}>
                     <TableCell className="font-medium">{r.lead_name || '—'}</TableCell>
                     <TableCell className="font-mono text-xs">{r.phone}</TableCell>
@@ -188,11 +303,14 @@ export default function AutoDialerPage() {
                     <TableCell className="text-xs">{profileName(r.owner_user_id)}</TableCell>
                     <TableCell>
                       <Badge variant="outline" className={STATUS_COLORS[r.status] || ''}>
-                        {r.status}
+                        {STATUS_LABEL[r.status] || r.status}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-xs">
                       {r.attempts}/{r.max_attempts}
+                    </TableCell>
+                    <TableCell className="text-xs max-w-[180px] truncate" title={r.last_result || ''}>
+                      {r.last_result || '—'}
                     </TableCell>
                     <TableCell className="text-xs">
                       {new Date(r.scheduled_at).toLocaleString('pt-BR')}
@@ -217,6 +335,8 @@ export default function AutoDialerPage() {
             </Table>
           </Card>
         </TabsContent>
+
+
 
         <TabsContent value="numbers">
           <UserNumbersTab numbers={numbers} profiles={profiles} reload={loadAll} />
