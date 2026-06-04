@@ -10,7 +10,7 @@ import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { Phone, PhoneOff, Loader2, RotateCw, XCircle, AlertTriangle } from 'lucide-react';
+import { Phone, PhoneOff, Loader2, RotateCw, XCircle, AlertTriangle, Wifi, WifiOff, Radio } from 'lucide-react';
 
 const STATUS_LABEL: Record<string, string> = {
   pending_permission: 'Aguardando envio do template',
