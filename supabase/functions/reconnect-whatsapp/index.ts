@@ -251,6 +251,17 @@ serve(async (req) => {
         const data = await resp.json().catch(() => null);
         console.log(`/instance/connect (pairing) response status: ${resp.status}, data:`, JSON.stringify(data));
 
+        if (!resp.ok) {
+          return new Response(JSON.stringify({
+            success: false,
+            action: "pairing_code",
+            message: data?.message || data?.error || `Erro ${resp.status} ao gerar código de pareamento.`,
+            raw: data,
+          }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+
         if (data?.instance?.status === "connected" || data?.connected === true) {
           return new Response(JSON.stringify({
             success: true,
@@ -262,8 +273,18 @@ serve(async (req) => {
           });
         }
 
-        // Extract pairing code from response - UazAPI returns instance.paircode
-        const pairingCode = data?.instance?.paircode || data?.pairingCode || data?.pairing_code || data?.code || null;
+        // Extract pairing code from response - UazAPI returns instance.paircode.
+        // IMPORTANT: não usar `data.code` como fallback — quando a API retorna erro,
+        // ela manda `{ code: 401, message: "..." }` e isso vazava como "código 401".
+        const rawCode =
+          data?.instance?.paircode ||
+          data?.pairingCode ||
+          data?.pairing_code ||
+          null;
+        const pairingCode =
+          typeof rawCode === "string" && rawCode.trim().length >= 6
+            ? rawCode.trim()
+            : null;
 
         if (!pairingCode) {
           return new Response(JSON.stringify({
