@@ -161,6 +161,36 @@ export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpen
             ))}
           </ToggleGroup>
 
+          <Popover open={datePickerOpen} onOpenChange={setDatePickerOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                variant={data.period === 'custom' ? 'default' : 'outline'}
+                size="sm"
+                className="h-10 text-[11px] gap-1.5 shrink-0 self-center"
+              >
+                <CalendarIcon className="h-3.5 w-3.5" />
+                {data.period === 'custom'
+                  ? `${format(data.range.from, 'dd/MM')} — ${format(data.range.to, 'dd/MM')}`
+                  : 'Personalizado'}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="start">
+              <Calendar
+                mode="range"
+                selected={{ from: data.range.from, to: data.range.to }}
+                onSelect={(r) => {
+                  if (r?.from && r?.to) {
+                    data.setRange({ from: r.from, to: r.to });
+                    setDatePickerOpen(false);
+                  }
+                }}
+                numberOfMonths={2}
+                locale={ptBR}
+                className="pointer-events-auto"
+              />
+            </PopoverContent>
+          </Popover>
+
           {instances.length > 0 && (
             <Select value={kpiInstanceName} onValueChange={setKpiInstanceName}>
               <SelectTrigger className="h-10 text-[11px] w-[140px] shrink-0 self-center gap-1">
