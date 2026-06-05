@@ -454,6 +454,13 @@ export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpen
                 <ToggleGroupItem key={p.key} value={p.key} className="text-[11px] h-8 px-2.5">{p.label}</ToggleGroupItem>
               ))}
             </ToggleGroup>
+
+            {data.period !== 'custom' && (
+              <span className="text-[11px] text-muted-foreground self-center shrink-0">
+                {format(data.range.from, 'dd/MM')} — {format(data.range.to, 'dd/MM')}
+              </span>
+            )}
+
             <Popover open={datePickerOpen} onOpenChange={setDatePickerOpen}>
               <PopoverTrigger asChild>
                 <Button
