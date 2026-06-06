@@ -12,6 +12,7 @@ import { StageFunnelChart } from "@/components/kanban/StageFunnelChart";
 import { cn } from "@/lib/utils";
 import { Progress } from "@/components/ui/progress";
 import { WorkflowBuilder } from "@/components/workflow/WorkflowBuilder";
+import { FunnelTeamDialog } from "@/components/funnel/FunnelTeamDialog";
 
 interface ChecklistItem {
   id: string;
