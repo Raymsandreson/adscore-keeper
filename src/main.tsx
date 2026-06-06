@@ -2,7 +2,6 @@ import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import "./index.css";
 import { logAppInit } from "./utils/debugLogger";
-import { initPWAUpdater } from "./lib/pwaUpdater";
 import { initSentry } from "./lib/sentry";
 import { installDbRoutingGuard } from "./integrations/supabase/install-db-routing-guard";
 
@@ -128,14 +127,7 @@ const isPreviewHostname =
   window.location.hostname.includes("id-preview--") ||
   window.location.hostname.includes("lovableproject.com");
 
-if (import.meta.env.PROD && !isInIframe && !isPreviewHostname) {
-  if ("serviceWorker" in navigator) {
-    window.addEventListener("load", () => {
-      navigator.serviceWorker.register("/sw.js").catch(() => undefined);
-    });
-  }
-  initPWAUpdater();
-} else if (isInIframe || isPreviewHostname) {
+if (isInIframe || isPreviewHostname) {
   // Limpa qualquer SW que tenha sido registrado anteriormente no preview
   navigator.serviceWorker?.getRegistrations().then((regs) => {
     regs.forEach((r) => r.unregister());
