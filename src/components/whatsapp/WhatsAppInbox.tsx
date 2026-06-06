@@ -136,6 +136,12 @@ const getConversationKey = (phone: string, instanceName?: string | null) =>
 const normalizeInstanceName = (instanceName?: string | null) =>
   (instanceName || '').trim().toLowerCase();
 
+// Instâncias da WhatsApp Business Cloud API (WhatsJUD API) — vivem em aba separada
+// da inbox UazAPI para não misturar conversas de canais diferentes.
+const CLOUD_API_INSTANCE_NAMES = new Set<string>(['cloud_gerencia']);
+const isCloudApiInstance = (instanceName?: string | null) =>
+  CLOUD_API_INSTANCE_NAMES.has(normalizeInstanceName(instanceName));
+
 // Force clean rebuild
 interface WhatsAppInboxProps {
   // Trava o filtro de instância pelo nome (ex: 'cloud_gerencia'). Esconde o dropdown de seleção.
