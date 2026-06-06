@@ -34,6 +34,7 @@ import { ZapSignLeadCreationListener } from './ZapSignLeadCreationListener';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { MessageSquare, Settings, RefreshCw, Smartphone, BarChart3, Chrome, ListChecks, AlertTriangle, WifiOff, X, Sparkles, Check, Loader2, Download, Users, List, Contact2, Share2, QrCode, ArrowLeft } from 'lucide-react';
@@ -135,6 +136,12 @@ const getConversationKey = (phone: string, instanceName?: string | null) =>
 const normalizeInstanceName = (instanceName?: string | null) =>
   (instanceName || '').trim().toLowerCase();
 
+// Instâncias da WhatsApp Business Cloud API (WhatsJUD API) — vivem em aba separada
+// da inbox UazAPI para não misturar conversas de canais diferentes.
+const CLOUD_API_INSTANCE_NAMES = new Set<string>(['cloud_gerencia']);
+const isCloudApiInstance = (instanceName?: string | null) =>
+  CLOUD_API_INSTANCE_NAMES.has(normalizeInstanceName(instanceName));
+
 // Force clean rebuild
 interface WhatsAppInboxProps {
   // Trava o filtro de instância pelo nome (ex: 'cloud_gerencia'). Esconde o dropdown de seleção.
@@ -147,10 +154,50 @@ interface WhatsAppInboxProps {
 
 export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: WhatsAppInboxProps = {}) {
   const isMinimal = chrome === 'minimal';
+  // Aba: separa conversas das instâncias UazAPI da instância WhatsJUD API (Cloud).
+  const [inboxTab, setInboxTab] = useState<'whatsapp' | 'cloud_api'>(() => {
+    if (lockInstanceName && CLOUD_API_INSTANCE_NAMES.has(lockInstanceName.trim().toLowerCase())) return 'cloud_api';
+    const saved = typeof window !== 'undefined' ? localStorage.getItem('whatsapp_inbox_tab') : null;
+    return (saved === 'cloud_api' ? 'cloud_api' : 'whatsapp');
+  });
+  useEffect(() => {
+    if (lockInstanceName) return;
+    try { localStorage.setItem('whatsapp_inbox_tab', inboxTab); } catch {}
+  }, [inboxTab, lockInstanceName]);
   // null = ainda não resolvi qual instância usar (não buscar nada).
   // 'all' ou um id = pronto para buscar.
   const [selectedInstanceId, setSelectedInstanceId] = useState<string | null>(null);
-  const { conversations, loading, instanceSwitching, switchProgress, instances, instanceStats, statsLoading, hasLoaded, sendMessage, sendMedia, sendLocation, deleteMessage, clearConversation, markAsRead, linkToLead, linkToContact, refetch, refetchStats, refetchInstances, fetchFullConversation } = useWhatsAppMessages(selectedInstanceId);
+  const {
+    conversations: _allConversations,
+    loading, instanceSwitching, switchProgress,
+    instances: _allInstances,
+    instanceStats: _allInstanceStats,
+    statsLoading, hasLoaded, sendMessage, sendMedia, sendLocation, deleteMessage, clearConversation, markAsRead, linkToLead, linkToContact, refetch, refetchStats, refetchInstances, fetchFullConversation,
+  } = useWhatsAppMessages(selectedInstanceId);
+
+  // Filtra instâncias/conversas/stats por aba (UazAPI x WhatsJUD API).
+  const instances = useMemo(() => {
+    if (lockInstanceName) return _allInstances;
+    return _allInstances.filter(i =>
+      inboxTab === 'cloud_api' ? isCloudApiInstance(i.instance_name) : !isCloudApiInstance(i.instance_name)
+    );
+  }, [_allInstances, inboxTab, lockInstanceName]);
+  const conversations = useMemo(() => {
+    if (lockInstanceName) return _allConversations;
+    return _allConversations.filter(c =>
+      inboxTab === 'cloud_api' ? isCloudApiInstance(c.instance_name) : !isCloudApiInstance(c.instance_name)
+    );
+  }, [_allConversations, inboxTab, lockInstanceName]);
+  const instanceStats = useMemo(() => {
+    if (lockInstanceName) return _allInstanceStats;
+    return _allInstanceStats.filter(s =>
+      inboxTab === 'cloud_api' ? isCloudApiInstance(s.instance_name) : !isCloudApiInstance(s.instance_name)
+    );
+  }, [_allInstanceStats, inboxTab, lockInstanceName]);
+  const hasCloudApiInstance = useMemo(
+    () => _allInstances.some(i => isCloudApiInstance(i.instance_name)),
+    [_allInstances]
+  );
   const { statuses, disconnectedInstances, loading: statusLoading, refetchStatus } = useWhatsAppInstanceStatus(instances.length > 0);
   const [dismissedAlert, setDismissedAlert] = useState(false);
   const [reconnectInstance, setReconnectInstance] = useState<{ id: string; name: string } | null>(null);
@@ -216,6 +263,20 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
   useEffect(() => {
     setDismissedAlert(false);
   }, [disconnectedSignature]);
+
+  // Ao trocar de aba (UazAPI <-> WhatsJUD API), garante que a instância selecionada
+  // pertence ao conjunto atual; senão, cai para a primeira disponível ou 'all'.
+  useEffect(() => {
+    if (lockInstanceName) return;
+    if (!selectedInstanceId || selectedInstanceId === 'all') return;
+    const stillValid = instances.some(i => i.id === selectedInstanceId);
+    if (!stillValid) {
+      setSelectedInstanceId(instances[0]?.id ?? 'all');
+      setSelectedPhone(null);
+      setSelectedInstance(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inboxTab]);
 
   // Auto-select default instance on mount.
   // Ordem de prioridade (corrigida): perfil.default_instance_id > localStorage > primeira disponível.
@@ -1371,6 +1432,19 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
         <h1 className="text-lg font-semibold">{isMinimal ? 'WhatsApp API' : 'WhatsApp'}</h1>
         {totalUnread > 0 && (
           <Badge variant="destructive" className="text-xs">{totalUnread}</Badge>
+        )}
+
+        {!isMinimal && !lockInstanceName && hasCloudApiInstance && (
+          <Tabs
+            value={inboxTab}
+            onValueChange={(v) => setInboxTab(v as 'whatsapp' | 'cloud_api')}
+            className="ml-0 md:ml-2"
+          >
+            <TabsList className="h-8">
+              <TabsTrigger value="whatsapp" className="text-xs h-7 px-2.5">WhatsApp</TabsTrigger>
+              <TabsTrigger value="cloud_api" className="text-xs h-7 px-2.5">WhatsJUD API</TabsTrigger>
+            </TabsList>
+          </Tabs>
         )}
 
         {!isMinimal && instances.length > 0 && (
