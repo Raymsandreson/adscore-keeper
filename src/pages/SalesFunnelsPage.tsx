@@ -12,6 +12,7 @@ import { StageFunnelChart } from "@/components/kanban/StageFunnelChart";
 import { cn } from "@/lib/utils";
 import { Progress } from "@/components/ui/progress";
 import { WorkflowBuilder } from "@/components/workflow/WorkflowBuilder";
+import { FunnelTeamDialog } from "@/components/funnel/FunnelTeamDialog";
 
 interface ChecklistItem {
   id: string;
@@ -26,6 +27,7 @@ const SalesFunnelsPage = () => {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showBuilder, setShowBuilder] = useState(false);
   const [editBoardId, setEditBoardId] = useState<string | null>(null);
+  const [teamBoard, setTeamBoard] = useState<{ id: string; name: string } | null>(null);
 
   const salesFunnels = useMemo(
     () => boards.filter(b => b.board_type === 'funnel'),
@@ -339,6 +341,15 @@ const SalesFunnelsPage = () => {
                       variant="outline"
                       size="sm"
                       className="text-xs"
+                      onClick={() => setTeamBoard({ id: board.id, name: board.name })}
+                    >
+                      <Users className="h-3.5 w-3.5 mr-1.5" />
+                      Equipe
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-xs"
                       onClick={() => { setEditBoardId(board.id); setShowBuilder(true); }}
                     >
                       <Settings className="h-3.5 w-3.5 mr-1.5" />
@@ -370,6 +381,15 @@ const SalesFunnelsPage = () => {
         initialCreateNew={!editBoardId}
         boardType="funnel"
       />
+
+      {teamBoard && (
+        <FunnelTeamDialog
+          open={!!teamBoard}
+          onOpenChange={(o) => !o && setTeamBoard(null)}
+          boardId={teamBoard.id}
+          boardName={teamBoard.name}
+        />
+      )}
     </div>
   );
 };
