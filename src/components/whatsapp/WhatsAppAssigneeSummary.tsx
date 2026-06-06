@@ -18,6 +18,7 @@ interface Props {
 
 export function WhatsAppAssigneeSummary({ conversations, cloudAssignees }: Props) {
   const { fetchProfileNames, getDisplayName } = useProfileNames();
+  const [expanded, setExpanded] = useState(false);
 
   const availableInstances = useMemo(() => {
     const set = new Set<string>();
@@ -64,12 +65,10 @@ export function WhatsAppAssigneeSummary({ conversations, cloudAssignees }: Props
     if (ownerIds.length > 0) fetchProfileNames(ownerIds);
   }, [ownerIds, fetchProfileNames]);
 
-  if (conversations.length === 0) return null;
-
-  const [expanded, setExpanded] = useState(false);
-
   const total = filteredConversations.length;
   const ownerCount = ownerIds.length;
+
+  if (conversations.length === 0) return null;
 
   return (
     <div className="shrink-0 border-b bg-muted/30">
