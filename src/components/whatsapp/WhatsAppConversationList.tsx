@@ -5,7 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
-import { Search, User, Link2, Smartphone, PhoneCall, Unlink, Clock, CheckSquare, ChevronDown, ArrowDownAZ, ArrowDown, Lock, ArrowUpFromLine, ArrowDownToLine, Users, UserCheck, FileText, Trophy, AlertTriangle, Briefcase } from 'lucide-react';
+import { Search, User, Link2, Smartphone, PhoneCall, Unlink, Clock, CheckSquare, ChevronDown, ArrowDownAZ, ArrowDown, Lock, ArrowUpFromLine, ArrowDownToLine, Users, UserCheck, FileText, Trophy, AlertTriangle, Briefcase, SlidersHorizontal, X as XIcon } from 'lucide-react';
 import { format, formatDistanceToNow, isToday, isYesterday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -113,6 +113,7 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
   const [sortMode, setSortMode] = useState<SortMode>('last_activity');
   const [directionFilter, setDirectionFilter] = useState<DirectionFilter>('all');
   const [docFilter, setDocFilter] = useState<DocFilter>('all');
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const [phonesWithCalls, setPhonesWithCalls] = useState<Set<string>>(new Set());
   const [leadInfoMap, setLeadInfoMap] = useState<Map<string, LeadInfo>>(new Map());
@@ -486,205 +487,258 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
     <div className="flex flex-col h-full relative">
       {switchingOverlay}
       {/* Search */}
-      <div className="px-2 py-1.5 border-b">
-        <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-          <Input
-            placeholder="Buscar conversa..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="pl-8 h-7 text-xs"
-          />
-        </div>
-      </div>
-
-      {/* Quick filter chips + direction + advanced filters merged */}
-      <div className="px-2 py-1 border-b flex gap-1 flex-wrap items-center">
-        {quickFilters.map(f => (
-          <button
-            key={f.key}
-            onClick={() => setQuickFilter(f.key)}
-            className={cn(
-              "relative inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium transition-colors",
-              quickFilter === f.key
-                ? "bg-primary text-primary-foreground"
-                : "bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-            )}
-          >
-            {f.icon}
-            {f.label}
-            <span className={cn(
-              "rounded-full px-1 text-[9px]",
-              quickFilter === f.key ? "bg-primary-foreground/20" : "bg-background/60"
-            )}>
-              {counts[f.key]}
-            </span>
-            {f.key === 'shared' && sharedUnreadPhones.size > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-destructive ring-2 ring-background animate-pulse" />
-            )}
-          </button>
-        ))}
-        <span className="text-muted-foreground/30">|</span>
-        {[
-          { key: 'all' as DirectionFilter, label: 'Todas', icon: null },
-          { key: 'inbound' as DirectionFilter, label: '↓', icon: null },
-          { key: 'outbound' as DirectionFilter, label: '↑', icon: null },
-        ].map(f => (
-          <button
-            key={f.key}
-            onClick={() => setDirectionFilter(f.key)}
-            className={cn(
-              "inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium transition-colors",
-              directionFilter === f.key
-                ? "bg-secondary text-secondary-foreground"
-                : "bg-muted/50 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-            )}
-          >
-            {f.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Advanced filters - compact horizontal row */}
-      <div className="px-2 py-1 border-b flex flex-wrap gap-1 items-center">
-        {/* Funil */}
-        <Select value={selectedBoardId} onValueChange={v => { setSelectedBoardId(v); setSelectedStageId('all'); }}>
-          <SelectTrigger className="h-6 text-[11px] w-auto min-w-0 max-w-[120px] px-1.5 gap-0.5">
-            <SelectValue placeholder="Funil" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos os funis</SelectItem>
-            {boards.map(b => (
-              <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        {/* Fase */}
-        {selectedBoardId !== 'all' && availableStages.length > 0 && (
-          <Select value={selectedStageId} onValueChange={setSelectedStageId}>
-            <SelectTrigger className="h-6 text-[11px] w-auto min-w-0 max-w-[120px] px-1.5 gap-0.5">
-              <SelectValue placeholder="Fase" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todas as fases</SelectItem>
-              {availableStages.map(s => (
-                <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-
-        {/* Passos — multi-select popover */}
-        {checklistTemplates.length > 0 && (
-          <Popover open={checklistPopoverOpen} onOpenChange={setChecklistPopoverOpen}>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-6 text-[11px] justify-between font-normal px-1.5 gap-0.5"
-              >
-                <span className="flex items-center gap-1">
-                  <CheckSquare className="h-3 w-3 text-muted-foreground" />
-                  {selectedChecklistItemIds.length === 0
-                    ? 'Passos'
-                    : `${selectedChecklistItemIds.length}`
-                  }
-                </span>
-                <ChevronDown className="h-3 w-3 text-muted-foreground" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-72 p-2 max-h-[320px] overflow-y-auto" align="start">
-              <div className="space-y-1">
-                {/* Select all */}
-                <div
-                  className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-accent cursor-pointer"
-                  onClick={toggleAll}
-                >
-                  <Checkbox
-                    checked={selectedChecklistItemIds.length === allItemIds.length && allItemIds.length > 0}
-                    onCheckedChange={toggleAll}
-                    onClick={e => e.stopPropagation()}
+      {(() => {
+        const activeFilterCount =
+          (quickFilter !== 'all' ? 1 : 0) +
+          (directionFilter !== 'all' ? 1 : 0) +
+          (selectedBoardId !== 'all' ? 1 : 0) +
+          (selectedStageId !== 'all' ? 1 : 0) +
+          (selectedChecklistItemIds.length > 0 ? 1 : 0) +
+          (docFilter !== 'all' ? 1 : 0);
+        const showFilters = filtersOpen || search.length > 0 || activeFilterCount > 0;
+        const clearAll = () => {
+          setQuickFilter('all');
+          setDirectionFilter('all');
+          setSelectedBoardId('all');
+          setSelectedStageId('all');
+          setSelectedChecklistItemIds([]);
+          setDocFilter('all');
+          setSearch('');
+          setFiltersOpen(false);
+        };
+        return (
+          <>
+            <div className="px-2 py-1.5 border-b">
+              <div className="relative flex items-center gap-1">
+                <div className="relative flex-1">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar conversa..."
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                    onFocus={() => setFiltersOpen(true)}
+                    className="pl-8 h-7 text-xs"
                   />
-                  <span className="text-xs font-medium text-muted-foreground">Selecionar todos</span>
                 </div>
-                <div className="border-t my-1" />
-                {checklistTemplates.map(tmpl => {
-                  const tmplItemIds = tmpl.items.map(i => i.id);
-                  const allSelected = tmplItemIds.length > 0 && tmplItemIds.every(id => selectedChecklistItemIds.includes(id));
-                  const someSelected = tmplItemIds.some(id => selectedChecklistItemIds.includes(id));
-                  return (
-                    <div key={tmpl.id} className="space-y-0.5">
-                      <div
-                        className="flex items-center gap-2 px-2 py-1 rounded hover:bg-accent cursor-pointer"
-                        onClick={() => {
-                          if (allSelected) {
-                            setSelectedChecklistItemIds(prev => prev.filter(id => !tmplItemIds.includes(id)));
-                          } else {
-                            setSelectedChecklistItemIds(prev => [...new Set([...prev, ...tmplItemIds])]);
-                          }
-                        }}
-                      >
-                        <Checkbox
-                          checked={allSelected}
-                          className={someSelected && !allSelected ? 'opacity-50' : ''}
-                          onCheckedChange={() => {}}
-                          onClick={e => e.stopPropagation()}
-                        />
-                        <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">{tmpl.name}</span>
-                      </div>
-                      {tmpl.items.map(item => (
-                        <div
-                          key={item.id}
-                          className="flex items-center gap-2 pl-6 pr-2 py-1 rounded hover:bg-accent cursor-pointer"
-                          onClick={() => toggleChecklistItem(item.id)}
-                        >
-                          <Checkbox
-                            checked={selectedChecklistItemIds.includes(item.id)}
-                            onCheckedChange={() => toggleChecklistItem(item.id)}
-                            onClick={e => e.stopPropagation()}
-                          />
-                          <span className="text-xs truncate">{item.label}</span>
-                        </div>
-                      ))}
-                    </div>
-                  );
-                })}
-                {selectedChecklistItemIds.length > 0 && (
-                  <>
-                    <div className="border-t my-1" />
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="w-full h-7 text-xs text-muted-foreground"
-                      onClick={() => setSelectedChecklistItemIds([])}
-                    >
-                      Limpar seleção
-                    </Button>
-                  </>
+                <button
+                  type="button"
+                  onClick={() => setFiltersOpen(v => !v)}
+                  className={cn(
+                    "relative h-7 w-7 rounded-md flex items-center justify-center transition-colors shrink-0",
+                    showFilters ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-accent"
+                  )}
+                  title="Filtros"
+                >
+                  <SlidersHorizontal className="h-3.5 w-3.5" />
+                  {activeFilterCount > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 h-3.5 min-w-3.5 px-0.5 rounded-full bg-primary text-primary-foreground text-[8px] font-bold flex items-center justify-center">
+                      {activeFilterCount}
+                    </span>
+                  )}
+                </button>
+                {activeFilterCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={clearAll}
+                    className="h-7 w-7 rounded-md flex items-center justify-center text-muted-foreground hover:bg-accent shrink-0"
+                    title="Limpar filtros"
+                  >
+                    <XIcon className="h-3.5 w-3.5" />
+                  </button>
                 )}
               </div>
-            </PopoverContent>
-          </Popover>
-        )}
-
-        {/* Documentos filter */}
-        <Select value={docFilter} onValueChange={v => setDocFilter(v as DocFilter)}>
-          <SelectTrigger className="h-6 text-[11px] w-auto min-w-0 max-w-[120px] px-1.5 gap-0.5">
-            <div className="flex items-center gap-1">
-              <FileText className="h-3 w-3 text-muted-foreground" />
-              <SelectValue placeholder="Docs" />
             </div>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Docs</SelectItem>
-            <SelectItem value="has_doc">Com documento</SelectItem>
-            <SelectItem value="signed">Assinado</SelectItem>
-            <SelectItem value="unsigned">Não assinado</SelectItem>
-            <SelectItem value="no_doc">Sem documento</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
+
+            {showFilters && (
+              <>
+                {/* Quick filter chips + direction */}
+                <div className="px-2 py-1 border-b flex gap-1 flex-wrap items-center">
+                  {quickFilters.map(f => (
+                    <button
+                      key={f.key}
+                      onClick={() => setQuickFilter(f.key)}
+                      className={cn(
+                        "relative inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium transition-colors",
+                        quickFilter === f.key
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                      )}
+                    >
+                      {f.icon}
+                      {f.label}
+                      <span className={cn(
+                        "rounded-full px-1 text-[9px]",
+                        quickFilter === f.key ? "bg-primary-foreground/20" : "bg-background/60"
+                      )}>
+                        {counts[f.key]}
+                      </span>
+                      {f.key === 'shared' && sharedUnreadPhones.size > 0 && (
+                        <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-destructive ring-2 ring-background animate-pulse" />
+                      )}
+                    </button>
+                  ))}
+                  <span className="text-muted-foreground/30">|</span>
+                  {[
+                    { key: 'all' as DirectionFilter, label: 'Todas', icon: null },
+                    { key: 'inbound' as DirectionFilter, label: '↓', icon: null },
+                    { key: 'outbound' as DirectionFilter, label: '↑', icon: null },
+                  ].map(f => (
+                    <button
+                      key={f.key}
+                      onClick={() => setDirectionFilter(f.key)}
+                      className={cn(
+                        "inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium transition-colors",
+                        directionFilter === f.key
+                          ? "bg-secondary text-secondary-foreground"
+                          : "bg-muted/50 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                      )}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Advanced filters - compact horizontal row */}
+                <div className="px-2 py-1 border-b flex flex-wrap gap-1 items-center">
+                  <Select value={selectedBoardId} onValueChange={v => { setSelectedBoardId(v); setSelectedStageId('all'); }}>
+                    <SelectTrigger className="h-6 text-[11px] w-auto min-w-0 max-w-[120px] px-1.5 gap-0.5">
+                      <SelectValue placeholder="Funil" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos os funis</SelectItem>
+                      {boards.map(b => (
+                        <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  {selectedBoardId !== 'all' && availableStages.length > 0 && (
+                    <Select value={selectedStageId} onValueChange={setSelectedStageId}>
+                      <SelectTrigger className="h-6 text-[11px] w-auto min-w-0 max-w-[120px] px-1.5 gap-0.5">
+                        <SelectValue placeholder="Fase" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Todas as fases</SelectItem>
+                        {availableStages.map(s => (
+                          <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+
+                  {checklistTemplates.length > 0 && (
+                    <Popover open={checklistPopoverOpen} onOpenChange={setChecklistPopoverOpen}>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-6 text-[11px] justify-between font-normal px-1.5 gap-0.5"
+                        >
+                          <span className="flex items-center gap-1">
+                            <CheckSquare className="h-3 w-3 text-muted-foreground" />
+                            {selectedChecklistItemIds.length === 0
+                              ? 'Passos'
+                              : `${selectedChecklistItemIds.length}`
+                            }
+                          </span>
+                          <ChevronDown className="h-3 w-3 text-muted-foreground" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-72 p-2 max-h-[320px] overflow-y-auto" align="start">
+                        <div className="space-y-1">
+                          <div
+                            className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-accent cursor-pointer"
+                            onClick={toggleAll}
+                          >
+                            <Checkbox
+                              checked={selectedChecklistItemIds.length === allItemIds.length && allItemIds.length > 0}
+                              onCheckedChange={toggleAll}
+                              onClick={e => e.stopPropagation()}
+                            />
+                            <span className="text-xs font-medium text-muted-foreground">Selecionar todos</span>
+                          </div>
+                          <div className="border-t my-1" />
+                          {checklistTemplates.map(tmpl => {
+                            const tmplItemIds = tmpl.items.map(i => i.id);
+                            const allSelected = tmplItemIds.length > 0 && tmplItemIds.every(id => selectedChecklistItemIds.includes(id));
+                            const someSelected = tmplItemIds.some(id => selectedChecklistItemIds.includes(id));
+                            return (
+                              <div key={tmpl.id} className="space-y-0.5">
+                                <div
+                                  className="flex items-center gap-2 px-2 py-1 rounded hover:bg-accent cursor-pointer"
+                                  onClick={() => {
+                                    if (allSelected) {
+                                      setSelectedChecklistItemIds(prev => prev.filter(id => !tmplItemIds.includes(id)));
+                                    } else {
+                                      setSelectedChecklistItemIds(prev => [...new Set([...prev, ...tmplItemIds])]);
+                                    }
+                                  }}
+                                >
+                                  <Checkbox
+                                    checked={allSelected}
+                                    className={someSelected && !allSelected ? 'opacity-50' : ''}
+                                    onCheckedChange={() => {}}
+                                    onClick={e => e.stopPropagation()}
+                                  />
+                                  <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">{tmpl.name}</span>
+                                </div>
+                                {tmpl.items.map(item => (
+                                  <div
+                                    key={item.id}
+                                    className="flex items-center gap-2 pl-6 pr-2 py-1 rounded hover:bg-accent cursor-pointer"
+                                    onClick={() => toggleChecklistItem(item.id)}
+                                  >
+                                    <Checkbox
+                                      checked={selectedChecklistItemIds.includes(item.id)}
+                                      onCheckedChange={() => toggleChecklistItem(item.id)}
+                                      onClick={e => e.stopPropagation()}
+                                    />
+                                    <span className="text-xs truncate">{item.label}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            );
+                          })}
+                          {selectedChecklistItemIds.length > 0 && (
+                            <>
+                              <div className="border-t my-1" />
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="w-full h-7 text-xs text-muted-foreground"
+                                onClick={() => setSelectedChecklistItemIds([])}
+                              >
+                                Limpar seleção
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+                  )}
+
+                  <Select value={docFilter} onValueChange={v => setDocFilter(v as DocFilter)}>
+                    <SelectTrigger className="h-6 text-[11px] w-auto min-w-0 max-w-[120px] px-1.5 gap-0.5">
+                      <div className="flex items-center gap-1">
+                        <FileText className="h-3 w-3 text-muted-foreground" />
+                        <SelectValue placeholder="Docs" />
+                      </div>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Docs</SelectItem>
+                      <SelectItem value="has_doc">Com documento</SelectItem>
+                      <SelectItem value="signed">Assinado</SelectItem>
+                      <SelectItem value="unsigned">Não assinado</SelectItem>
+                      <SelectItem value="no_doc">Sem documento</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </>
+            )}
+          </>
+        );
+      })()}
+
 
       {/* Count */}
       <div className="px-3 py-1 text-[10px] text-muted-foreground border-b bg-muted/30 flex items-center gap-2">
