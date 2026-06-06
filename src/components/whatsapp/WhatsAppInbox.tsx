@@ -3,6 +3,7 @@ import { useWhatsAppMessages, WhatsAppConversation } from '@/hooks/useWhatsAppMe
 import { usePageState } from '@/hooks/usePageState';
 import { useWhatsAppInstanceStatus } from '@/hooks/useWhatsAppInstanceStatus';
 import { WhatsAppConversationList } from './WhatsAppConversationList';
+import { WhatsAppAssigneeSummary } from './WhatsAppAssigneeSummary';
 import { WhatsAppChat } from './WhatsAppChat';
 import { ZapSignDialogHost } from './ZapSignDialogHost';
 import { OnboardingCheckpointHost } from './OnboardingCheckpointHost';
