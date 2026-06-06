@@ -1727,6 +1727,10 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
         <div className={`md:hidden w-full flex ${selectedPhone ? '' : ''}`}>
           {!selectedPhone ? (
             <div className="w-full border-r flex-shrink-0 overflow-y-auto bg-card flex flex-col">
+              <WhatsAppAssigneeSummary
+                conversations={visibleConversations.filter(c => (c.instance_name || '').toLowerCase() === 'cloud_gerencia')}
+                cloudAssignees={cloudAssignees}
+              />
               <WhatsAppConversationList
                 conversations={visibleConversations}
                 loading={loading}
