@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, CalendarDays, TrendingUp, Trophy, UsersRound,
   MessageCircle, CreditCard, Filter, Bot, Target, Heart, Megaphone,
   Zap, Search, ClipboardList, Phone, Scale, Briefcase, AtSign, RefreshCw, FileText,
-  LogOut, MessagesSquare, Settings, ChevronRight, User, Chrome, Archive,
+  LogOut, MessagesSquare, Settings, ChevronRight, User, Chrome, Archive, MapPin,
   MessageSquare as MessageSquareIcon,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -85,6 +85,7 @@ export function AppSidebar() {
   const quickLinks: NavItem[] = [
     { id: "activities", label: "Atividades", icon: <ClipboardList className="h-4 w-4" />, path: "/", color: "text-emerald-600" },
     { id: "leads", label: "Leads", icon: <Users className="h-4 w-4" />, path: "/leads" },
+    { id: "leads-map", label: "Mapa de Leads", icon: <MapPin className="h-4 w-4" />, path: "/mapa-leads", color: "text-rose-500" },
     { id: "calls", label: "Ligações", icon: <Phone className="h-4 w-4" />, path: "/calls", color: "text-blue-500" },
     { id: "auto-dialer", label: "Discadora", icon: <Phone className="h-4 w-4" />, path: "/discadora", color: "text-cyan-500" },
     { id: "whatsapp", label: "WhatsApp", icon: <MessageSquareIcon className="h-4 w-4" />, path: "/whatsapp", color: "text-green-500" },
