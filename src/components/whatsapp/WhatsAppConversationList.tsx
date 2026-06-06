@@ -14,6 +14,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { KanbanBoard } from '@/hooks/useKanbanBoards';
 import { useSharedWithMe } from '@/hooks/useSharedWithMe';
+import { useProfileNames } from '@/hooks/useProfileNames';
 import { Share2 } from 'lucide-react';
 import { normalizeWhatsAppConversationPhone } from '@/lib/whatsappPhone';
 
@@ -55,6 +56,7 @@ type DocFilter = 'all' | 'has_doc' | 'signed' | 'unsigned' | 'no_doc';
 export function WhatsAppConversationList({ conversations, loading, instanceSwitching, switchProgress, selectedPhone, selectedInstanceName, onSelect, boards, selectedInstanceId, bulkMode, selectedPhones, onToggleBulkPhone, onSelectAllFiltered, privatePhones, cloudAssignees, currentUserId, canSeeAllAssignments }: Props) {
   const [search, setSearch] = useState('');
   const { items: sharedWithMe, sharedByMe } = useSharedWithMe();
+  const { fetchProfileNames, getDisplayName } = useProfileNames();
 
   // Phones (current instance) shared with me OR shared by me with others
   const sharedPhonesAll = useMemo(() => {
@@ -79,6 +81,13 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
   useEffect(() => {
     setSearch('');
   }, [selectedInstanceId]);
+
+  // Busca nomes dos donos das conversas cloud_gerencia para exibir badge
+  useEffect(() => {
+    if (!cloudAssignees || cloudAssignees.size === 0) return;
+    const ownerIds = Array.from(new Set(cloudAssignees.values()));
+    fetchProfileNames(ownerIds);
+  }, [cloudAssignees, fetchProfileNames]);
   const [quickFilter, setQuickFilter] = useState<QuickFilter>('all');
 
   // Listener para filtros disparados externamente (ex: cards do FocusDashboard)
@@ -814,8 +823,23 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
               </div>
             </div>
 
-            {(board || stage) && (
+            {(board || stage || (conv.instance_name || '').toLowerCase() === 'cloud_gerencia') && (
               <div className="flex items-center gap-1 mt-1 flex-wrap">
+                {(conv.instance_name || '').toLowerCase() === 'cloud_gerencia' && (
+                  <span className={cn(
+                    "text-[10px] px-1.5 py-0.5 rounded font-medium",
+                    isSelected
+                      ? "bg-primary-foreground/20 text-primary-foreground"
+                      : "bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
+                  )}>
+                    {(() => {
+                      const ownerId = cloudAssignees?.get(conv.phone);
+                      if (!ownerId) return 'Sem dono';
+                      const name = getDisplayName(ownerId);
+                      return name || ownerId.slice(0, 8) + '…';
+                    })()}
+                  </span>
+                )}
                 {board && (
                   <span className={cn(
                     "text-[10px] px-1.5 py-0.5 rounded",
