@@ -1434,6 +1434,19 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
           <Badge variant="destructive" className="text-xs">{totalUnread}</Badge>
         )}
 
+        {!isMinimal && !lockInstanceName && hasCloudApiInstance && (
+          <Tabs
+            value={inboxTab}
+            onValueChange={(v) => setInboxTab(v as 'whatsapp' | 'cloud_api')}
+            className="ml-0 md:ml-2"
+          >
+            <TabsList className="h-8">
+              <TabsTrigger value="whatsapp" className="text-xs h-7 px-2.5">WhatsApp</TabsTrigger>
+              <TabsTrigger value="cloud_api" className="text-xs h-7 px-2.5">WhatsJUD API</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        )}
+
         {!isMinimal && instances.length > 0 && (
           <Select open={instanceSelectOpen} onOpenChange={setInstanceSelectOpen} value={selectedInstanceId} onValueChange={(val) => { guardLeaveCurrent(() => { setSelectedInstanceId(val); setSelectedPhone(null); setSelectedInstance(null); if (val !== 'all') localStorage.setItem('whatsapp_last_instance_id', val); }); }}>
             <SelectTrigger className="w-52 h-8 text-xs ml-0 md:ml-2">
