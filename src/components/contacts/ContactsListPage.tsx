@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useDeferredValue, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { DashboardChatPreview } from '@/components/whatsapp/DashboardChatPreview';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import type { Lead } from '@/hooks/useLeads';
@@ -27,7 +27,7 @@ import { toast } from 'sonner';
 import {
   Search, Users, Send, Plus, Trash2, Radio, UserPlus,
   Phone, Loader2, X, ImagePlus, Bot, BotOff, Filter, UsersRound, Wand2, Info,
-  SlidersHorizontal, ArrowDownAZ, ArrowUpAZ, AlertTriangle, CheckCircle2, ClipboardCheck, MessageCircle
+  SlidersHorizontal, ArrowDownAZ, ArrowUpAZ, AlertTriangle, CheckCircle2, ClipboardCheck, MessageCircle, MapPin
 } from 'lucide-react';
 
 export function ContactsListPage() {
@@ -847,6 +847,12 @@ export function ContactsListPage() {
           <UserPlus className="h-3.5 w-3.5 mr-1" />
           Novo Contato
         </Button>
+        <Link to="/mapa-leads">
+          <Button variant="outline" size="sm" className="gap-1">
+            <MapPin className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Mapa</span>
+          </Button>
+        </Link>
         <div className="ml-auto flex gap-2">
           {selectedContacts.size > 0 && (
             <>
