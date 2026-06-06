@@ -27,6 +27,7 @@ const SalesFunnelsPage = () => {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showBuilder, setShowBuilder] = useState(false);
   const [editBoardId, setEditBoardId] = useState<string | null>(null);
+  const [teamBoard, setTeamBoard] = useState<{ id: string; name: string } | null>(null);
 
   const salesFunnels = useMemo(
     () => boards.filter(b => b.board_type === 'funnel'),
