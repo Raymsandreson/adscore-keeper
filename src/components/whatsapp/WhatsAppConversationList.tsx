@@ -56,6 +56,7 @@ type DocFilter = 'all' | 'has_doc' | 'signed' | 'unsigned' | 'no_doc';
 export function WhatsAppConversationList({ conversations, loading, instanceSwitching, switchProgress, selectedPhone, selectedInstanceName, onSelect, boards, selectedInstanceId, bulkMode, selectedPhones, onToggleBulkPhone, onSelectAllFiltered, privatePhones, cloudAssignees, currentUserId, canSeeAllAssignments }: Props) {
   const [search, setSearch] = useState('');
   const { items: sharedWithMe, sharedByMe } = useSharedWithMe();
+  const { fetchProfileNames, getDisplayName } = useProfileNames();
 
   // Phones (current instance) shared with me OR shared by me with others
   const sharedPhonesAll = useMemo(() => {
