@@ -3,6 +3,7 @@ import { useWhatsAppMessages, WhatsAppConversation } from '@/hooks/useWhatsAppMe
 import { usePageState } from '@/hooks/usePageState';
 import { useWhatsAppInstanceStatus } from '@/hooks/useWhatsAppInstanceStatus';
 import { WhatsAppConversationList } from './WhatsAppConversationList';
+import { WhatsAppAssigneeSummary } from './WhatsAppAssigneeSummary';
 import { WhatsAppChat } from './WhatsAppChat';
 import { ZapSignDialogHost } from './ZapSignDialogHost';
 import { OnboardingCheckpointHost } from './OnboardingCheckpointHost';
@@ -1726,6 +1727,10 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
         <div className={`md:hidden w-full flex ${selectedPhone ? '' : ''}`}>
           {!selectedPhone ? (
             <div className="w-full border-r flex-shrink-0 overflow-y-auto bg-card flex flex-col">
+              <WhatsAppAssigneeSummary
+                conversations={visibleConversations.filter(c => (c.instance_name || '').toLowerCase() === 'cloud_gerencia')}
+                cloudAssignees={cloudAssignees}
+              />
               <WhatsAppConversationList
                 conversations={visibleConversations}
                 loading={loading}
@@ -1796,6 +1801,10 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
             className="border-r overflow-y-auto bg-card flex flex-col flex-shrink-0"
             style={{ width: `${listWidth}px` }}
           >
+            <WhatsAppAssigneeSummary
+              conversations={visibleConversations.filter(c => (c.instance_name || '').toLowerCase() === 'cloud_gerencia')}
+              cloudAssignees={cloudAssignees}
+            />
             <WhatsAppConversationList
               conversations={visibleConversations}
               loading={loading}
