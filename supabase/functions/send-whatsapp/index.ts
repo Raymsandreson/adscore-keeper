@@ -78,6 +78,28 @@ Deno.serve(async (req) => {
       console.log(`[send-whatsapp ${requestId}] CLOUD RESPONSE ← status=${cloudResp.status} duration=${cloudDuration}ms`);
       if (cloudResp.status >= 400) {
         console.error(`[send-whatsapp ${requestId}] CLOUD ERROR BODY ← ${cloudText.substring(0, 500)}`);
+        let cloudBody: Record<string, unknown> = {};
+        try {
+          cloudBody = JSON.parse(cloudText);
+        } catch {
+          cloudBody = { error: cloudText || cloudResp.statusText };
+        }
+
+        // Erro de negócio vindo da Meta/Railway não deve virar HTTP 401 aqui,
+        // porque o client trata 4xx de edge function como falha runtime/tela branca.
+        return new Response(JSON.stringify({
+          success: false,
+          ...cloudBody,
+          upstream_status: cloudResp.status,
+          request_id: requestId,
+        }), {
+          status: 200,
+          headers: {
+            ...cors,
+            'Content-Type': 'application/json',
+            'x-request-id': requestId,
+          },
+        });
       }
       return new Response(cloudText, {
         status: cloudResp.status,
