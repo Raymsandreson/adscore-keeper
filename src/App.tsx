@@ -163,6 +163,7 @@ const HookDebugPage = lazyRetry(() => import("./pages/HookDebugPage"), "HookDebu
 const GroupAuditLogPage = lazyRetry(() => import("./pages/GroupAuditLogPage"), "GroupAuditLogPage");
 const DbDriftPage = lazyRetry(() => import("./pages/DbDriftPage"), "DbDriftPage");
 const DocumentReviewPage = lazyRetry(() => import("./pages/DocumentReviewPage"), "DocumentReviewPage");
+const LeadsMapPage = lazyRetry(() => import("./pages/LeadsMapPage"), "LeadsMapPage");
 
 const queryClient = new QueryClient();
 
