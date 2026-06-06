@@ -113,6 +113,7 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
   const [sortMode, setSortMode] = useState<SortMode>('last_activity');
   const [directionFilter, setDirectionFilter] = useState<DirectionFilter>('all');
   const [docFilter, setDocFilter] = useState<DocFilter>('all');
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const [phonesWithCalls, setPhonesWithCalls] = useState<Set<string>>(new Set());
   const [leadInfoMap, setLeadInfoMap] = useState<Map<string, LeadInfo>>(new Map());
