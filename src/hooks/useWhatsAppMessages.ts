@@ -731,6 +731,10 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
           return false;
 
         }
+        if (data?.error_code === 'INVALID_TOKEN' || data?.graph_code === 190) {
+          toast.error('Token da Meta inválido ou expirado. Atualize o WHATSAPP_CLOUD_TOKEN no Railway e aplique o deploy.');
+          return false;
+        }
         throw new Error(data?.error || 'Resposta inesperada do servidor');
       }
 
@@ -744,6 +748,8 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       // mostramos o mesmo toast amigável com atalho de Reconectar.
       if (/disconnect|not reconnectable|not connected/i.test(msg)) {
         showDisconnectedToast(fallbackInstanceId, targetInstanceName);
+      } else if (/INVALID_TOKEN|graph_code.*190|Edge function returned 401|Authentication Error/i.test(msg)) {
+        toast.error('Token da Meta inválido ou expirado. Atualize o WHATSAPP_CLOUD_TOKEN no Railway e aplique o deploy.');
       } else {
         toast.error('Erro ao enviar mensagem: ' + (msg || 'Erro desconhecido'));
       }
