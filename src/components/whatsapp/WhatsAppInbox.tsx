@@ -148,10 +148,50 @@ interface WhatsAppInboxProps {
 
 export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: WhatsAppInboxProps = {}) {
   const isMinimal = chrome === 'minimal';
+  // Aba: separa conversas das instâncias UazAPI da instância WhatsJUD API (Cloud).
+  const [inboxTab, setInboxTab] = useState<'whatsapp' | 'cloud_api'>(() => {
+    if (lockInstanceName && CLOUD_API_INSTANCE_NAMES.has(lockInstanceName.trim().toLowerCase())) return 'cloud_api';
+    const saved = typeof window !== 'undefined' ? localStorage.getItem('whatsapp_inbox_tab') : null;
+    return (saved === 'cloud_api' ? 'cloud_api' : 'whatsapp');
+  });
+  useEffect(() => {
+    if (lockInstanceName) return;
+    try { localStorage.setItem('whatsapp_inbox_tab', inboxTab); } catch {}
+  }, [inboxTab, lockInstanceName]);
   // null = ainda não resolvi qual instância usar (não buscar nada).
   // 'all' ou um id = pronto para buscar.
   const [selectedInstanceId, setSelectedInstanceId] = useState<string | null>(null);
-  const { conversations, loading, instanceSwitching, switchProgress, instances, instanceStats, statsLoading, hasLoaded, sendMessage, sendMedia, sendLocation, deleteMessage, clearConversation, markAsRead, linkToLead, linkToContact, refetch, refetchStats, refetchInstances, fetchFullConversation } = useWhatsAppMessages(selectedInstanceId);
+  const {
+    conversations: _allConversations,
+    loading, instanceSwitching, switchProgress,
+    instances: _allInstances,
+    instanceStats: _allInstanceStats,
+    statsLoading, hasLoaded, sendMessage, sendMedia, sendLocation, deleteMessage, clearConversation, markAsRead, linkToLead, linkToContact, refetch, refetchStats, refetchInstances, fetchFullConversation,
+  } = useWhatsAppMessages(selectedInstanceId);
+
+  // Filtra instâncias/conversas/stats por aba (UazAPI x WhatsJUD API).
+  const instances = useMemo(() => {
+    if (lockInstanceName) return _allInstances;
+    return _allInstances.filter(i =>
+      inboxTab === 'cloud_api' ? isCloudApiInstance(i.instance_name) : !isCloudApiInstance(i.instance_name)
+    );
+  }, [_allInstances, inboxTab, lockInstanceName]);
+  const conversations = useMemo(() => {
+    if (lockInstanceName) return _allConversations;
+    return _allConversations.filter(c =>
+      inboxTab === 'cloud_api' ? isCloudApiInstance(c.instance_name) : !isCloudApiInstance(c.instance_name)
+    );
+  }, [_allConversations, inboxTab, lockInstanceName]);
+  const instanceStats = useMemo(() => {
+    if (lockInstanceName) return _allInstanceStats;
+    return _allInstanceStats.filter(s =>
+      inboxTab === 'cloud_api' ? isCloudApiInstance(s.instance_name) : !isCloudApiInstance(s.instance_name)
+    );
+  }, [_allInstanceStats, inboxTab, lockInstanceName]);
+  const hasCloudApiInstance = useMemo(
+    () => _allInstances.some(i => isCloudApiInstance(i.instance_name)),
+    [_allInstances]
+  );
   const { statuses, disconnectedInstances, loading: statusLoading, refetchStatus } = useWhatsAppInstanceStatus(instances.length > 0);
   const [dismissedAlert, setDismissedAlert] = useState(false);
   const [reconnectInstance, setReconnectInstance] = useState<{ id: string; name: string } | null>(null);
