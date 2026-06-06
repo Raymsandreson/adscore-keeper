@@ -248,6 +248,7 @@ function SidebarLayout() {
                 <Route path="/index" element={<Navigate to="/dashboard" replace />} />
                 <Route path="/dashboard" element={<Index />} />
                 <Route path="/leads" element={<ProtectedRoute><LeadsCenter /></ProtectedRoute>} />
+                <Route path="/mapa-leads" element={<ProtectedRoute><LeadsMapPage /></ProtectedRoute>} />
                 <Route path="/analytics" element={<ProtectedRoute><AnalyticsPage /></ProtectedRoute>} />
                 <Route path="/leaderboard" element={<ProtectedRoute><LeaderboardPage /></ProtectedRoute>} />
                 <Route path="/team" element={<ProtectedRoute><TeamPage /></ProtectedRoute>} />
