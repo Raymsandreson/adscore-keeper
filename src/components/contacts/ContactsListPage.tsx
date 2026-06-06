@@ -27,7 +27,7 @@ import { toast } from 'sonner';
 import {
   Search, Users, Send, Plus, Trash2, Radio, UserPlus,
   Phone, Loader2, X, ImagePlus, Bot, BotOff, Filter, UsersRound, Wand2, Info,
-  SlidersHorizontal, ArrowDownAZ, ArrowUpAZ, AlertTriangle, CheckCircle2, ClipboardCheck, MessageCircle
+  SlidersHorizontal, ArrowDownAZ, ArrowUpAZ, AlertTriangle, CheckCircle2, ClipboardCheck, MessageCircle, MapPin
 } from 'lucide-react';
 
 export function ContactsListPage() {
