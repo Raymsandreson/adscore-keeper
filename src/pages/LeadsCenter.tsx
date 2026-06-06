@@ -199,12 +199,6 @@ const LeadsCenter = () => {
                 Informe ao Facebook quais leads converteram para receber leads melhores
               </p>
             </div>
-            <Link to="/mapa-leads">
-              <Button variant="outline" size="sm" className="gap-2">
-                <MapPin className="h-4 w-4" />
-                <span className="hidden sm:inline">Mapa de Leads</span>
-              </Button>
-            </Link>
           </div>
 
           {/* Connection Status Warning */}
