@@ -2,7 +2,7 @@ import { useMemo, useEffect, useState } from 'react';
 import { WhatsAppConversation } from '@/hooks/useWhatsAppMessages';
 import { useProfileNames } from '@/hooks/useProfileNames';
 import { cn } from '@/lib/utils';
-import { Users, UserX, Filter } from 'lucide-react';
+import { Users, UserX, Filter, ChevronDown, ChevronUp } from 'lucide-react';
 import {
   Select,
   SelectContent,
