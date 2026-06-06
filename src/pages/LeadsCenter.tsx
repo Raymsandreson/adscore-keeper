@@ -193,12 +193,18 @@ const LeadsCenter = () => {
                 <ArrowLeft className="h-5 w-5" />
               </Button>
             </Link>
-            <div>
+            <div className="flex-1">
               <h1 className="text-2xl font-bold">Central de Leads</h1>
               <p className="text-muted-foreground">
                 Informe ao Facebook quais leads converteram para receber leads melhores
               </p>
             </div>
+            <Link to="/mapa-leads">
+              <Button variant="outline" size="sm" className="gap-2">
+                <MapPin className="h-4 w-4" />
+                <span className="hidden sm:inline">Mapa de Leads</span>
+              </Button>
+            </Link>
           </div>
 
           {/* Connection Status Warning */}
