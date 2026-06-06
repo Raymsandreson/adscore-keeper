@@ -163,6 +163,7 @@ const HookDebugPage = lazyRetry(() => import("./pages/HookDebugPage"), "HookDebu
 const GroupAuditLogPage = lazyRetry(() => import("./pages/GroupAuditLogPage"), "GroupAuditLogPage");
 const DbDriftPage = lazyRetry(() => import("./pages/DbDriftPage"), "DbDriftPage");
 const DocumentReviewPage = lazyRetry(() => import("./pages/DocumentReviewPage"), "DocumentReviewPage");
+const LeadsMapPage = lazyRetry(() => import("./pages/LeadsMapPage"), "LeadsMapPage");
 
 const queryClient = new QueryClient();
 
@@ -247,6 +248,7 @@ function SidebarLayout() {
                 <Route path="/index" element={<Navigate to="/dashboard" replace />} />
                 <Route path="/dashboard" element={<Index />} />
                 <Route path="/leads" element={<ProtectedRoute><LeadsCenter /></ProtectedRoute>} />
+                <Route path="/mapa-leads" element={<ProtectedRoute><LeadsMapPage /></ProtectedRoute>} />
                 <Route path="/analytics" element={<ProtectedRoute><AnalyticsPage /></ProtectedRoute>} />
                 <Route path="/leaderboard" element={<ProtectedRoute><LeaderboardPage /></ProtectedRoute>} />
                 <Route path="/team" element={<ProtectedRoute><TeamPage /></ProtectedRoute>} />
