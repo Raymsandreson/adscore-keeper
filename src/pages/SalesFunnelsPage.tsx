@@ -381,6 +381,15 @@ const SalesFunnelsPage = () => {
         initialCreateNew={!editBoardId}
         boardType="funnel"
       />
+
+      {teamBoard && (
+        <FunnelTeamDialog
+          open={!!teamBoard}
+          onOpenChange={(o) => !o && setTeamBoard(null)}
+          boardId={teamBoard.id}
+          boardName={teamBoard.name}
+        />
+      )}
     </div>
   );
 };
