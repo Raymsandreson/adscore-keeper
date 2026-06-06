@@ -281,6 +281,17 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
     if (quickFilter === 'calls' && !hasCalls(c)) return false;
     if (quickFilter === 'groups' && !isGroupConversation(c)) return false;
     if (quickFilter === 'shared' && !sharedPhonesAll.has(c.phone)) return false;
+    // Filtros de atribuição (só fazem sentido para WhatsApp API: cloud_gerencia)
+    if (quickFilter === 'mine') {
+      if ((c.instance_name || '').toLowerCase() !== 'cloud_gerencia') return false;
+      const owner = cloudAssignees?.get(c.phone);
+      if (!owner || !currentUserId || owner !== currentUserId) return false;
+    }
+    if (quickFilter === 'unassigned') {
+      if ((c.instance_name || '').toLowerCase() !== 'cloud_gerencia') return false;
+      const owner = cloudAssignees?.get(c.phone);
+      if (owner) return false;
+    }
     if (quickFilter === 'lead_active') {
       const status = c.lead_id ? leadInfoMap.get(c.lead_id)?.lead_status : null;
       if (!c.lead_id || !isOpenLeadStatus(status)) return false;
