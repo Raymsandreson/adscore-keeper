@@ -847,6 +847,12 @@ export function ContactsListPage() {
           <UserPlus className="h-3.5 w-3.5 mr-1" />
           Novo Contato
         </Button>
+        <Link to="/mapa-leads">
+          <Button variant="outline" size="sm" className="gap-1">
+            <MapPin className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Mapa</span>
+          </Button>
+        </Link>
         <div className="ml-auto flex gap-2">
           {selectedContacts.size > 0 && (
             <>
