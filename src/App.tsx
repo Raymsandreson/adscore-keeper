@@ -21,6 +21,7 @@ import { FloatingWhatsAppCall } from "@/components/FloatingWhatsAppCall";
 import { PWAInstallBanner } from "@/components/PWAInstallBanner";
 import { MobileHeader } from "@/components/MobileHeader";
 import { MobileSwipeHandler } from "@/components/MobileSwipeHandler";
+import WhatsAppPage from "@/pages/WhatsAppPage";
 
 // Helper: retry dynamic import once per module on failure (stale chunk after deploy)
 function lazyRetry<T extends ComponentType<any>>(
@@ -130,7 +131,6 @@ const FinancePage = lazyRetry(() => import("./pages/FinancePage"), "FinancePage"
 const ExpenseFormPage = lazyRetry(() => import("./pages/ExpenseFormPage"), "ExpenseFormPage");
 const CallsPage = lazyRetry(() => import("./pages/CallsPage"), "CallsPage");
 const AutoDialerPage = lazyRetry(() => import("./pages/AutoDialerPage"), "AutoDialerPage");
-const WhatsAppPage = lazyRetry(() => import("./pages/WhatsAppPage"), "WhatsAppPage");
 const WhatsAppCloudPage = lazyRetry(() => import("./pages/WhatsAppCloudPage"), "WhatsAppCloudPage");
 const WhatsAppApiPage = lazyRetry(() => import("./pages/WhatsAppApiPage"), "WhatsAppApiPage");
 const WhatsAppApiConversasPage = lazyRetry(() => import("./pages/WhatsAppApiConversasPage"), "WhatsAppApiConversasPage");
