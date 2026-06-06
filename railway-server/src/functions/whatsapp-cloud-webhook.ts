@@ -229,8 +229,26 @@ export async function handler(req: Request, res: Response): Promise<void> {
         console.warn('[wa-cloud] permission update skipped:', e);
       }
 
-      // Decide atendente — atribuição "sticky": uma conversa já atribuída mantém o mesmo
-      // dono e NÃO avança o round-robin. Só telefone novo entra no rodízio.
+      // Lookup lead PRIMEIRO — usamos board_id pra escolher o pool do round-robin.
+      let leadId: string | null = null;
+      let leadBoardId: string | null = null;
+      let leadAssignedTo: string | null = null;
+      try {
+        const { data: leadRow } = await supabase
+          .from('leads')
+          .select('id, board_id, assigned_to')
+          .eq('lead_phone', msg.phone)
+          .is('deleted_at', null)
+          .limit(1)
+          .maybeSingle();
+        leadId = (leadRow as any)?.id || null;
+        leadBoardId = (leadRow as any)?.board_id || null;
+        leadAssignedTo = (leadRow as any)?.assigned_to || null;
+      } catch (e) {
+        console.warn('[wa-cloud] lead lookup falhou', e);
+      }
+
+      // Sticky: se a conversa já tem dono (em assignees OU no próprio lead), mantém.
       const { data: existingAssignee } = await supabase
         .from('whatsapp_cloud_assignees')
         .select('assigned_user_id')
@@ -238,17 +256,40 @@ export async function handler(req: Request, res: Response): Promise<void> {
         .eq('instance_name', INSTANCE_NAME)
         .maybeSingle();
 
-      let userId: string | null = (existingAssignee as any)?.assigned_user_id ?? null;
+      let userId: string | null =
+        (existingAssignee as any)?.assigned_user_id ?? leadAssignedTo ?? null;
       let ruleId: string | null = null;
       let matchedValue: string | null = null;
+      let assignmentSource: string | null = null;
 
       if (!userId) {
-        ({ ruleId, userId, matchedValue } = await pickAssignee(
-          msg.phone,
-          msg.ctwa_clid || null,
-          msg.referral_source_url || null,
-        ));
-        // Persiste o dono na fonte de verdade filtrável (usada pela inbox da WhatsApp API).
+        // 1) Round-robin do funil (membros configurados no board do lead).
+        if (leadBoardId) {
+          const { data: funnelUser, error: funnelErr } = await supabase.rpc(
+            'pick_funnel_assignee',
+            { p_board_id: leadBoardId },
+          );
+          if (funnelErr) {
+            console.warn('[wa-cloud] pick_funnel_assignee falhou', funnelErr);
+          } else if (funnelUser) {
+            userId = funnelUser as string;
+            assignmentSource = 'round_robin';
+            matchedValue = `board:${leadBoardId}`;
+          }
+        }
+        // 2) Fallback: regras antigas (CTWA / default) — para conversas sem lead/board.
+        if (!userId) {
+          ({ ruleId, userId, matchedValue } = await pickAssignee(
+            msg.phone,
+            msg.ctwa_clid || null,
+            msg.referral_source_url || null,
+          ));
+          if (userId) assignmentSource = ruleId ? 'ad_rule' : 'round_robin';
+        }
+        // 3) Sem dono — fica no pool "Sem dono" pra admin distribuir.
+        if (!userId) assignmentSource = 'orphan';
+
+        // Persiste o dono nas duas fontes (assignees pra inbox; lead pra filtragem por dono).
         if (userId) {
           await supabase.from('whatsapp_cloud_assignees').upsert({
             phone: msg.phone,
@@ -257,21 +298,16 @@ export async function handler(req: Request, res: Response): Promise<void> {
             updated_at: new Date().toISOString(),
           } as any, { onConflict: 'phone,instance_name' });
         }
-      }
-
-      // Tenta vincular a um lead existente por telefone (usado no log de roteamento).
-      let leadId: string | null = null;
-      try {
-        const { data: leadRow } = await supabase
-          .from('leads')
-          .select('id')
-          .eq('lead_phone', msg.phone)
-          .is('deleted_at', null)
-          .limit(1)
-          .maybeSingle();
-        leadId = (leadRow as any)?.id || null;
-      } catch (e) {
-        console.warn('[wa-cloud] lead lookup falhou', e);
+        if (leadId && userId && !leadAssignedTo) {
+          await supabase
+            .from('leads')
+            .update({
+              assigned_to: userId,
+              assignment_source: assignmentSource,
+              updated_at: new Date().toISOString(),
+            } as any)
+            .eq('id', leadId);
+        }
       }
 
       await supabase.from('whatsapp_cloud_routing_log').insert({
@@ -282,7 +318,7 @@ export async function handler(req: Request, res: Response): Promise<void> {
         matched_value: matchedValue,
       } as any);
 
-      console.log(`[wa-cloud] msg=${msg.external_message_id} from=${msg.phone} → user=${userId || 'none'} rule=${ruleId || 'none'}`);
+      console.log(`[wa-cloud] msg=${msg.external_message_id} from=${msg.phone} → user=${userId || 'none'} board=${leadBoardId || 'none'} src=${assignmentSource || 'sticky'}`);
     }
   } catch (err) {
     console.error('[wa-cloud] erro processando webhook:', err);
