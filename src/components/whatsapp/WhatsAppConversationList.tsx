@@ -42,14 +42,17 @@ interface Props {
   onToggleBulkPhone?: (phone: string) => void;
   onSelectAllFiltered?: (phones: string[]) => void;
   privatePhones?: Set<string>;
+  cloudAssignees?: Map<string, string>;
+  currentUserId?: string | null;
+  canSeeAllAssignments?: boolean;
 }
 
-type QuickFilter = 'all' | 'has_lead' | 'no_lead' | 'unanswered' | 'calls' | 'groups' | 'shared' | 'lead_active' | 'lead_closed' | 'lead_inviavel';
+type QuickFilter = 'all' | 'has_lead' | 'no_lead' | 'unanswered' | 'calls' | 'groups' | 'shared' | 'lead_active' | 'lead_closed' | 'lead_inviavel' | 'mine' | 'unassigned';
 type SortMode = 'alpha' | 'last_activity';
 type DirectionFilter = 'all' | 'inbound' | 'outbound';
 type DocFilter = 'all' | 'has_doc' | 'signed' | 'unsigned' | 'no_doc';
 
-export function WhatsAppConversationList({ conversations, loading, instanceSwitching, switchProgress, selectedPhone, selectedInstanceName, onSelect, boards, selectedInstanceId, bulkMode, selectedPhones, onToggleBulkPhone, onSelectAllFiltered, privatePhones }: Props) {
+export function WhatsAppConversationList({ conversations, loading, instanceSwitching, switchProgress, selectedPhone, selectedInstanceName, onSelect, boards, selectedInstanceId, bulkMode, selectedPhones, onToggleBulkPhone, onSelectAllFiltered, privatePhones, cloudAssignees, currentUserId, canSeeAllAssignments }: Props) {
   const [search, setSearch] = useState('');
   const { items: sharedWithMe, sharedByMe } = useSharedWithMe();
 
@@ -278,6 +281,17 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
     if (quickFilter === 'calls' && !hasCalls(c)) return false;
     if (quickFilter === 'groups' && !isGroupConversation(c)) return false;
     if (quickFilter === 'shared' && !sharedPhonesAll.has(c.phone)) return false;
+    // Filtros de atribuição (só fazem sentido para WhatsApp API: cloud_gerencia)
+    if (quickFilter === 'mine') {
+      if ((c.instance_name || '').toLowerCase() !== 'cloud_gerencia') return false;
+      const owner = cloudAssignees?.get(c.phone);
+      if (!owner || !currentUserId || owner !== currentUserId) return false;
+    }
+    if (quickFilter === 'unassigned') {
+      if ((c.instance_name || '').toLowerCase() !== 'cloud_gerencia') return false;
+      const owner = cloudAssignees?.get(c.phone);
+      if (owner) return false;
+    }
     if (quickFilter === 'lead_active') {
       const status = c.lead_id ? leadInfoMap.get(c.lead_id)?.lead_status : null;
       if (!c.lead_id || !isOpenLeadStatus(status)) return false;
@@ -384,8 +398,18 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
   const statusOf = (c: WhatsAppConversation) =>
     c.lead_id ? (leadInfoMap.get(c.lead_id)?.lead_status ?? null) : null;
 
+  // Detecta se há conversas da WhatsApp API (cloud_gerencia) para mostrar os filtros de atribuição
+  const hasCloudConvs = useMemo(
+    () => conversations.some(c => (c.instance_name || '').toLowerCase() === 'cloud_gerencia'),
+    [conversations]
+  );
+
   const quickFilters: { key: QuickFilter; label: string; icon: React.ReactNode }[] = [
     { key: 'all', label: 'Todas', icon: null },
+    ...(hasCloudConvs ? [
+      { key: 'mine' as QuickFilter, label: 'Meus', icon: <UserCheck className="h-3 w-3" /> },
+      ...(canSeeAllAssignments ? [{ key: 'unassigned' as QuickFilter, label: 'Sem dono', icon: <Unlink className="h-3 w-3" /> }] : []),
+    ] : []),
     { key: 'has_lead', label: 'Com lead', icon: <UserCheck className="h-3 w-3" /> },
     { key: 'no_lead', label: 'Sem lead', icon: <Unlink className="h-3 w-3" /> },
     { key: 'lead_active', label: 'Leads', icon: <Briefcase className="h-3 w-3" /> },
@@ -412,6 +436,15 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
     calls: conversations.filter(c => hasCalls(c)).length,
     groups: conversations.filter(c => isGroupConversation(c)).length,
     shared: conversations.filter(c => sharedPhonesAll.has(c.phone)).length,
+    mine: conversations.filter(c => {
+      if ((c.instance_name || '').toLowerCase() !== 'cloud_gerencia') return false;
+      const owner = cloudAssignees?.get(c.phone);
+      return !!owner && !!currentUserId && owner === currentUserId;
+    }).length,
+    unassigned: conversations.filter(c => {
+      if ((c.instance_name || '').toLowerCase() !== 'cloud_gerencia') return false;
+      return !cloudAssignees?.get(c.phone);
+    }).length,
   };
 
   if (loading) {
