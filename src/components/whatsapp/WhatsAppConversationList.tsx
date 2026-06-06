@@ -823,8 +823,23 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
               </div>
             </div>
 
-            {(board || stage) && (
+            {(board || stage || (conv.instance_name || '').toLowerCase() === 'cloud_gerencia') && (
               <div className="flex items-center gap-1 mt-1 flex-wrap">
+                {(conv.instance_name || '').toLowerCase() === 'cloud_gerencia' && (
+                  <span className={cn(
+                    "text-[10px] px-1.5 py-0.5 rounded font-medium",
+                    isSelected
+                      ? "bg-primary-foreground/20 text-primary-foreground"
+                      : "bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
+                  )}>
+                    {(() => {
+                      const ownerId = cloudAssignees?.get(conv.phone);
+                      if (!ownerId) return 'Sem dono';
+                      const name = getDisplayName(ownerId);
+                      return name || ownerId.slice(0, 8) + '…';
+                    })()}
+                  </span>
+                )}
                 {board && (
                   <span className={cn(
                     "text-[10px] px-1.5 py-0.5 rounded",
