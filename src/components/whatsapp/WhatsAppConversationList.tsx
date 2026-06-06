@@ -52,7 +52,7 @@ type SortMode = 'alpha' | 'last_activity';
 type DirectionFilter = 'all' | 'inbound' | 'outbound';
 type DocFilter = 'all' | 'has_doc' | 'signed' | 'unsigned' | 'no_doc';
 
-export function WhatsAppConversationList({ conversations, loading, instanceSwitching, switchProgress, selectedPhone, selectedInstanceName, onSelect, boards, selectedInstanceId, bulkMode, selectedPhones, onToggleBulkPhone, onSelectAllFiltered, privatePhones }: Props) {
+export function WhatsAppConversationList({ conversations, loading, instanceSwitching, switchProgress, selectedPhone, selectedInstanceName, onSelect, boards, selectedInstanceId, bulkMode, selectedPhones, onToggleBulkPhone, onSelectAllFiltered, privatePhones, cloudAssignees, currentUserId, canSeeAllAssignments }: Props) {
   const [search, setSearch] = useState('');
   const { items: sharedWithMe, sharedByMe } = useSharedWithMe();
 
