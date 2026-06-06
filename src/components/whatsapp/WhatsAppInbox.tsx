@@ -264,6 +264,20 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
     setDismissedAlert(false);
   }, [disconnectedSignature]);
 
+  // Ao trocar de aba (UazAPI <-> WhatsJUD API), garante que a instância selecionada
+  // pertence ao conjunto atual; senão, cai para a primeira disponível ou 'all'.
+  useEffect(() => {
+    if (lockInstanceName) return;
+    if (!selectedInstanceId || selectedInstanceId === 'all') return;
+    const stillValid = instances.some(i => i.id === selectedInstanceId);
+    if (!stillValid) {
+      setSelectedInstanceId(instances[0]?.id ?? 'all');
+      setSelectedPhone(null);
+      setSelectedInstance(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inboxTab]);
+
   // Auto-select default instance on mount.
   // Ordem de prioridade (corrigida): perfil.default_instance_id > localStorage > primeira disponível.
   // O default do perfil é soberano: se existir e estiver na lista de instâncias do user, ganha sempre.
