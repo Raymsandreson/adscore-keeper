@@ -42,6 +42,9 @@ interface Props {
   onToggleBulkPhone?: (phone: string) => void;
   onSelectAllFiltered?: (phones: string[]) => void;
   privatePhones?: Set<string>;
+  cloudAssignees?: Map<string, string>;
+  currentUserId?: string | null;
+  canSeeAllAssignments?: boolean;
 }
 
 type QuickFilter = 'all' | 'has_lead' | 'no_lead' | 'unanswered' | 'calls' | 'groups' | 'shared' | 'lead_active' | 'lead_closed' | 'lead_inviavel' | 'mine' | 'unassigned';
