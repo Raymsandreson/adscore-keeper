@@ -14,6 +14,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { KanbanBoard } from '@/hooks/useKanbanBoards';
 import { useSharedWithMe } from '@/hooks/useSharedWithMe';
+import { useProfileNames } from '@/hooks/useProfileNames';
 import { Share2 } from 'lucide-react';
 import { normalizeWhatsAppConversationPhone } from '@/lib/whatsappPhone';
 
