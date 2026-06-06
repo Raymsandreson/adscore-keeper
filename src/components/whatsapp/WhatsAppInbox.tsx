@@ -1811,6 +1811,9 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
               onToggleBulkPhone={handleToggleBulkPhone}
               onSelectAllFiltered={handleSelectAllFiltered}
               privatePhones={new Set(privateConvs.map(p => `${p.phone}__${(p.instance_name || '').toLowerCase()}`))}
+              cloudAssignees={cloudAssignees}
+              currentUserId={user?.id || null}
+              canSeeAllAssignments={canViewPrivate}
             />
           </div>
 
