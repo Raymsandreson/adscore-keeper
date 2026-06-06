@@ -81,6 +81,13 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
   useEffect(() => {
     setSearch('');
   }, [selectedInstanceId]);
+
+  // Busca nomes dos donos das conversas cloud_gerencia para exibir badge
+  useEffect(() => {
+    if (!cloudAssignees || cloudAssignees.size === 0) return;
+    const ownerIds = Array.from(new Set(cloudAssignees.values()));
+    fetchProfileNames(ownerIds);
+  }, [cloudAssignees, fetchProfileNames]);
   const [quickFilter, setQuickFilter] = useState<QuickFilter>('all');
 
   // Listener para filtros disparados externamente (ex: cards do FocusDashboard)
