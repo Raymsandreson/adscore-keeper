@@ -134,6 +134,7 @@ const AutoDialerPage = lazyRetry(() => import("./pages/AutoDialerPage"), "AutoDi
 const WhatsAppCloudPage = lazyRetry(() => import("./pages/WhatsAppCloudPage"), "WhatsAppCloudPage");
 const WhatsAppApiPage = lazyRetry(() => import("./pages/WhatsAppApiPage"), "WhatsAppApiPage");
 const WhatsAppApiConversasPage = lazyRetry(() => import("./pages/WhatsAppApiConversasPage"), "WhatsAppApiConversasPage");
+const WhatsAppTokenStatusPage = lazyRetry(() => import("./pages/WhatsAppTokenStatusPage"), "WhatsAppTokenStatusPage");
 const NotFound = lazyRetry(() => import("./pages/NotFound"), "NotFound");
 const PrivacyPolicyPage = lazyRetry(() => import("./pages/PrivacyPolicyPage"), "PrivacyPolicyPage");
 const TermsOfServicePage = lazyRetry(() => import("./pages/TermsOfServicePage"), "TermsOfServicePage");
@@ -263,6 +264,7 @@ function SidebarLayout() {
                 <Route path="/whatsapp/cloud" element={<ProtectedRoute><WhatsAppCloudPage /></ProtectedRoute>} />
                 <Route path="/whatsapp-api" element={<ProtectedRoute><WhatsAppApiPage /></ProtectedRoute>} />
                 <Route path="/whatsapp-api/conversas" element={<ProtectedRoute><WhatsAppApiConversasPage /></ProtectedRoute>} />
+                <Route path="/whatsapp-api/token" element={<ProtectedRoute><WhatsAppTokenStatusPage /></ProtectedRoute>} />
                 <Route path="/instagram" element={<ProtectedRoute><InstagramPage /></ProtectedRoute>} />
                 <Route path="/contacts" element={<ProtectedRoute><ContactsPage /></ProtectedRoute>} />
                 <Route path="/gerar-procuracao" element={<ProtectedRoute><GerarProcuracaoPage /></ProtectedRoute>} />
