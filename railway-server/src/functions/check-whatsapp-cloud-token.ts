@@ -96,7 +96,7 @@ export const handler: RequestHandler = async (_req, res) => {
     try {
       const url = `${GRAPH}/${API_VERSION}/${phoneNumberId}?fields=display_phone_number,verified_name`;
       const r = await fetch(url, { headers: { Authorization: `Bearer ${TOKEN}` } });
-      const body = await r.json();
+      const body: any = await r.json();
       if (r.status >= 400) {
         phoneCheck = { ok: false, error: body?.error?.message || `HTTP ${r.status}` };
       } else {
