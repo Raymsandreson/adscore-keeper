@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, RefreshCw, Settings, MessageSquare, ShieldCheck, ShieldAlert } from 'lucide-react';
+import { Loader2, RefreshCw, Settings, MessageSquare, ShieldCheck, ShieldAlert, KeyRound } from 'lucide-react';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { canSeeCloudApi } from '@/lib/cloudApiAllowlist';
@@ -61,6 +61,21 @@ export default function WhatsAppApiPage() {
           <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} /> Atualizar
         </Button>
       </header>
+
+      <Card className="border-l-4 border-l-amber-500">
+        <CardContent className="pt-4 flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-3">
+            <KeyRound className="h-5 w-5 text-amber-600" />
+            <div>
+              <div className="font-medium text-sm">Status do token Meta</div>
+              <div className="text-xs text-muted-foreground">Verifique se o token está válido antes de enviar mensagens.</div>
+            </div>
+          </div>
+          <Button size="sm" onClick={() => navigate('/whatsapp-api/token')}>
+            Verificar token
+          </Button>
+        </CardContent>
+      </Card>
 
       {loading && !config && (
         <div className="flex items-center justify-center py-10 text-muted-foreground text-sm gap-2">
