@@ -176,7 +176,7 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
     instances: _allInstances,
     instanceStats: _allInstanceStats,
     statsLoading, hasLoaded, sendMessage, sendMedia, sendLocation, deleteMessage, clearConversation, markAsRead, linkToLead, linkToContact, refetch, refetchStats, refetchInstances, fetchFullConversation,
-  } = useWhatsAppMessages(selectedInstanceId);
+  } = useWhatsAppMessages(selectedInstanceId, lockInstanceName);
 
   // Filtra instâncias/conversas/stats por aba (UazAPI x WhatsJUD API).
   const instances = useMemo(() => {
