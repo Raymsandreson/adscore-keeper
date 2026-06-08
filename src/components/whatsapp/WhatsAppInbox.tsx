@@ -378,23 +378,24 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
     return (sendLocation as any)(...args);
   }, [isCloudContext, userDefaultInstanceId, sendLocation]);
 
-  // Status REAL do número Cloud (Meta), independente da UazAPI. Verifica via Graph API
-  // (action check_meta_status). Roda 1x ao abrir + refresh manual — sem polling (gasta chamada Graph).
+  // Status REAL do número Cloud (Meta), independente da UazAPI. FONTE ÚNICA DE VERDADE:
+  // consulta o MESMO WHATSAPP_CLOUD_TOKEN usado no envio (Railway), via proxy check-whatsapp-cloud-token.
+  // Evita o "offline" falso de quando o token de status (Supabase) dessincroniza do token de envio.
+  // Roda 1x ao abrir + refresh manual — sem polling (cada checagem consome chamada Graph).
   const [cloudStatus, setCloudStatus] = useState<'idle' | 'checking' | 'online' | 'offline'>('idle');
   const [cloudStatusInfo, setCloudStatusInfo] = useState<string | null>(null);
   const checkCloudStatus = useCallback(async () => {
     if (!isCloudContext) return;
     setCloudStatus('checking');
     try {
-      const { data } = await cloudFunctions.invoke('whatsapp-cloud-admin', {
-        body: { action: 'check_meta_status' },
-      });
-      if (data?.success) {
+      const { data } = await cloudFunctions.invoke('check-whatsapp-cloud-token', { body: {} });
+      // Online só quando o token é válido E consegue acessar o número configurado.
+      if (data?.success && data?.status === 'valid' && data?.phone_check?.ok !== false) {
         setCloudStatus('online');
-        setCloudStatusInfo(data?.config?.display_phone || data?.meta?.display_phone_number || null);
+        setCloudStatusInfo(data?.phone_check?.display_phone || data?.display_phone || null);
       } else {
         setCloudStatus('offline');
-        setCloudStatusInfo(data?.error || null);
+        setCloudStatusInfo(data?.message || data?.phone_check?.error || null);
       }
     } catch (e) {
       setCloudStatus('offline');
