@@ -129,23 +129,44 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
 
   // Track lead IDs to avoid unnecessary re-fetches
   const prevLeadIdsRef = useRef<string>('');
-  
+  const callPhonesFetchedRef = useRef(false);
+  const templatesFetchedRef = useRef(false);
+
   useEffect(() => {
     const leadIds = conversations.filter(c => c.lead_id).map(c => c.lead_id as string);
     const leadIdsKey = leadIds.sort().join(',');
-    const shouldFetchLeadInfo = leadIdsKey !== prevLeadIdsRef.current;
-    
+    if (leadIdsKey === prevLeadIdsRef.current && callPhonesFetchedRef.current && templatesFetchedRef.current) {
+      return;
+    }
+
     const fetchData = async () => {
-      // Only fetch call phones once (or when instance changes)
-      const { data: callData } = await supabase
-        .from('call_records')
-        .select('contact_phone')
-        .not('contact_phone', 'is', null);
-      if (callData) {
-        setPhonesWithCalls(new Set(callData.map((r: any) => r.contact_phone as string)));
+      // Phones with calls: fetch once per session (rarely changes during a session)
+      if (!callPhonesFetchedRef.current) {
+        callPhonesFetchedRef.current = true;
+        const { data: callData } = await supabase
+          .from('call_records')
+          .select('contact_phone')
+          .not('contact_phone', 'is', null);
+        if (callData) {
+          setPhonesWithCalls(new Set(callData.map((r: any) => r.contact_phone as string)));
+        }
       }
 
-      if (!shouldFetchLeadInfo) return;
+      // Checklist templates: global table, fetch once per session
+      if (!templatesFetchedRef.current) {
+        templatesFetchedRef.current = true;
+        const { data: tplData } = await externalSupabase
+          .from('checklist_templates')
+          .select('id, name, items')
+          .order('name');
+        setChecklistTemplates((tplData || []).map(t => ({
+          id: t.id,
+          name: t.name,
+          items: ((t.items as any[]) || []).map((item: any) => ({ id: item.id, label: item.label })),
+        })));
+      }
+
+      if (leadIdsKey === prevLeadIdsRef.current) return;
       prevLeadIdsRef.current = leadIdsKey;
 
       if (leadIds.length === 0) {
@@ -153,7 +174,7 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
         return;
       }
 
-      const [leadsRes, leadsExtRes, stageRes, checklistInstancesRes, templatesRes, docsRes] = await Promise.all([
+      const [leadsRes, leadsExtRes, stageRes, checklistInstancesRes, docsRes] = await Promise.all([
         externalSupabase.from('leads').select('id, board_id, lead_status').in('id', leadIds),
         externalSupabase.from('leads').select('id, lead_name').in('id', leadIds),
         externalSupabase.from('lead_stage_history')
@@ -163,7 +184,6 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
         externalSupabase.from('lead_checklist_instances')
           .select('lead_id, checklist_template_id, is_completed, items')
           .in('lead_id', leadIds),
-        externalSupabase.from('checklist_templates').select('id, name, items').order('name'),
         externalSupabase.from('zapsign_documents')
           .select('lead_id, status, signed_at')
           .in('lead_id', leadIds),
@@ -223,15 +243,11 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
         });
       }
       setLeadInfoMap(map);
-      // Parse template items for hierarchical display
-      setChecklistTemplates((templatesRes.data || []).map(t => ({
-        id: t.id,
-        name: t.name,
-        items: ((t.items as any[]) || []).map((item: any) => ({ id: item.id, label: item.label })),
-      })));
     };
     fetchData();
-  }, [conversations, selectedInstanceId]);
+    // Refetch only when the set of lead IDs changes or the instance changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversations.map(c => c.lead_id).filter(Boolean).sort().join(','), selectedInstanceId]);
 
   const availableStages = useMemo(() => {
     if (selectedBoardId === 'all') return [];

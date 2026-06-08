@@ -11,16 +11,13 @@ import { CalendarIcon, RefreshCw, Trophy, Users, User as UserIcon, FileText, Pen
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useFocusDashboardData, FocusPeriod } from '@/hooks/useFocusDashboardData';
-import { useBpcFormLeads } from '@/hooks/useBpcFormLeads';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useUserTeams } from '@/hooks/useUserTeams';
 import { usePageState } from '@/hooks/usePageState';
 import { KpiCard } from './KpiCard';
 import { FocusActionCard } from './FocusActionCard';
-import { CompactRankingCard } from './CompactRankingCard';
 import { ClosedPodiumCard } from './ClosedPodiumCard';
 import { ClosedLeadsSheet } from './ClosedLeadsSheet';
-import { BpcFormLeadsSheet } from './BpcFormLeadsSheet';
 import { cn } from '@/lib/utils';
 
 interface FocusDashboardProps {
@@ -52,16 +49,6 @@ export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpen
   const [collapsed, setCollapsed] = useState(false);
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [closedSheetOpen, setClosedSheetOpen] = useState(false);
-  const [bpcSheetOpen, setBpcSheetOpen] = useState(false);
-  const [bpcDefaultTab, setBpcDefaultTab] = useState<'all' | 'to_call' | 'on_wa' | 'unviable'>('all');
-
-  // Leads do formulário Meta (Google Sheet) — independente do token Meta.
-  // Quando há filtro de instância, só as abas do operador correspondente são lidas.
-  const bpc = useBpcFormLeads({
-    from: data.range.from,
-    to: data.range.to,
-    instanceName: kpiInstanceName === 'all' ? null : kpiInstanceName,
-  });
 
   const initials = useMemo(() => {
     const name = (user?.user_metadata as any)?.full_name || user?.email || '?';
@@ -90,28 +77,6 @@ export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpen
         tone: 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200/60 dark:border-emerald-900/40 text-emerald-700 dark:text-emerald-300',
         onClick: () => setClosedSheetOpen(true),
       },
-      {
-        // ⚠️ Card "Viáveis" lê da planilha oficial do Meta (Google Sheets),
-        // não depende do token Meta. Mostra total de leads do form / quantos foram marcados inviáveis.
-        label: 'Viáveis',
-        value: `${bpc.metrics.total}/${bpc.metrics.unviable}`,
-        sub: bpc.loading ? 'sincronizando…' : 'total / inviável',
-        icon: CheckCircle2,
-        tone: 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200/60 dark:border-emerald-900/40 text-emerald-700 dark:text-emerald-300',
-        onClick: () => { setBpcDefaultTab('all'); setBpcSheetOpen(true); },
-      },
-      {
-        // 🔥 Card "Ligar Agora" — leads que preencheram o form Meta mas NÃO mandaram WhatsApp ainda.
-        // Esses precisam de ligação imediata.
-        label: 'Ligar agora',
-        value: bpc.metrics.toCallNow,
-        sub: bpc.metrics.toCallNow > 0 ? 'preencheu e sumiu' : 'tudo respondido',
-        icon: Phone,
-        tone: bpc.metrics.toCallNow > 0
-          ? 'bg-red-50 dark:bg-red-950/30 border-red-300 dark:border-red-700 text-red-700 dark:text-red-300 animate-pulse'
-          : 'bg-muted/40 border-border text-muted-foreground',
-        onClick: () => { setBpcDefaultTab('to_call'); setBpcSheetOpen(true); },
-      },
       { label: 'Docs', value: data.actions.missingDocs, icon: FileText, tone: 'bg-orange-50 dark:bg-orange-950/30 border-orange-200/60 dark:border-orange-900/40 text-orange-700 dark:text-orange-300', onClick: onOpenMissingDocs },
       { label: 'Assinatura', value: data.actions.zapsignPending, icon: PenTool, tone: 'bg-stone-100 dark:bg-stone-900/40 border-stone-300/60 dark:border-stone-700/40 text-stone-700 dark:text-stone-300', onClick: onOpenZapsignPending },
       {
@@ -137,16 +102,6 @@ export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpen
         periodLabel={periodLabel}
         onOpenChat={(phone) => onOpenChat?.(phone)}
         onRefresh={data.refetch}
-      />
-      <BpcFormLeadsSheet
-        open={bpcSheetOpen}
-        onOpenChange={setBpcSheetOpen}
-        metrics={bpc.metrics}
-        leads={bpc.leads}
-        loading={bpc.loading}
-        defaultTab={bpcDefaultTab}
-        onOpenChat={(phone) => onOpenChat?.(phone)}
-        onRefresh={bpc.refetch}
       />
       <Card className="rounded-none border-x-0 border-t-0 bg-card shrink-0">
         <div className="px-2 py-2 flex items-stretch gap-2 flex-wrap">
@@ -242,169 +197,10 @@ export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpen
                 {k.label === 'Fechados' && (
                   <ClosedPodiumCard closedLeads={data.closedLeads} onClick={() => setClosedSheetOpen(true)} />
                 )}
-                {k.label === 'Viáveis' && bpc.byOperator.length > 0 && (
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <button
-                        type="button"
-                        className="flex flex-col items-start justify-center gap-0.5 px-2 py-1.5 rounded-md border border-emerald-200/60 dark:border-emerald-900/40 bg-emerald-50/50 dark:bg-emerald-950/20 hover:brightness-95 cursor-pointer min-w-[64px]"
-                        title="Leads por instância (planilha Meta)"
-                      >
-                        <span className="text-[10px] font-semibold uppercase tracking-wide opacity-70 text-emerald-700 dark:text-emerald-300">
-                          Por inst.
-                        </span>
-                        <div className="flex gap-1 items-baseline">
-                          {bpc.byOperator
-                            .filter((o) => o.total > 0)
-                            .slice(0, 3)
-                            .map((o) => (
-                              <span key={o.operator} className="text-[10px] tabular-nums text-emerald-700 dark:text-emerald-300">
-                                <span className="opacity-60">{o.operator.slice(0, 3)}</span>
-                                <span className="font-bold ml-0.5">{o.total}</span>
-                              </span>
-                            ))}
-                          {bpc.byOperator.filter((o) => o.total > 0).length === 0 && (
-                            <span className="text-[10px] opacity-60">—</span>
-                          )}
-                        </div>
-                      </button>
-                    </PopoverTrigger>
-                    <PopoverContent align="start" className="w-64 p-2">
-                      <div className="text-xs font-semibold mb-2 flex items-center gap-1.5">
-                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-                        Leads por instância
-                      </div>
-                      <div className="space-y-1">
-                        {bpc.byOperator
-                          .sort((a, b) => b.total - a.total)
-                          .map((o) => (
-                            <div
-                              key={o.operator}
-                              className="flex items-center justify-between text-[11px] px-2 py-1 rounded hover:bg-muted/50"
-                            >
-                              <span className="font-medium truncate">{o.operator}</span>
-                              <div className="flex items-center gap-2 shrink-0 tabular-nums">
-                                <span className="text-emerald-700 dark:text-emerald-400 font-bold">{o.total}</span>
-                                {o.unviable > 0 && (
-                                  <span className="text-amber-600 text-[10px]" title="Inviáveis">⚠️{o.unviable}</span>
-                                )}
-                                {o.toCallNow > 0 && (
-                                  <span className="text-red-600 text-[10px]" title="Ligar agora">📞{o.toCallNow}</span>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        {bpc.byOperator.every((o) => o.total === 0) && (
-                          <div className="text-[11px] text-muted-foreground text-center py-2">
-                            Sem leads no período.
-                          </div>
-                        )}
-                      </div>
-                    </PopoverContent>
-                  </Popover>
-                )}
               </div>
             );
           })}
 
-          {/* Card: Atividades atrasadas (popover com agrupamento por responsável) */}
-          {(() => {
-            const overdue = data.overdueActivities || [];
-            const byOwner = new Map<string, typeof overdue>();
-            overdue.forEach((a) => {
-              const k = a.acolhedor || 'Sem responsável';
-              const arr = byOwner.get(k) || [];
-              arr.push(a);
-              byOwner.set(k, arr);
-            });
-            const owners = Array.from(byOwner.entries()).sort((a, b) => b[1].length - a[1].length);
-            const total = overdue.length;
-            const tone = total > 0
-              ? 'bg-red-50 dark:bg-red-950/30 border-red-200/60 dark:border-red-900/40 text-red-700 dark:text-red-300'
-              : 'bg-muted/40 border-border text-muted-foreground';
-            return (
-              <Popover>
-                <PopoverTrigger asChild>
-                  <button
-                    type="button"
-                    className={cn(
-                      'flex flex-col items-start justify-center gap-0.5 px-2.5 py-1.5 rounded-md border min-w-[78px] transition-colors',
-                      tone,
-                      'hover:brightness-95 cursor-pointer'
-                    )}
-                  >
-                    <span className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide opacity-80">
-                      <AlertTriangle className="h-3 w-3" />
-                      Atrasadas
-                    </span>
-                    <span className="text-base font-bold tabular-nums leading-none">{total}</span>
-                    <span className="text-[10px] opacity-70 leading-none">
-                      {total === 0 ? 'tudo em dia' : `${owners.length} responsável(is)`}
-                    </span>
-                  </button>
-                </PopoverTrigger>
-                <PopoverContent align="end" className="w-80 p-2 max-h-[70vh] overflow-y-auto">
-                  <div className="text-xs font-semibold mb-2 flex items-center gap-1.5">
-                    <AlertTriangle className="h-3.5 w-3.5 text-red-600" />
-                    Atividades atrasadas · {total}
-                  </div>
-                  {total === 0 ? (
-                    <div className="text-xs text-muted-foreground py-3 text-center">Nenhuma atividade atrasada.</div>
-                  ) : (
-                    <div className="space-y-3">
-                      {owners.map(([owner, items]) => (
-                        <div key={owner}>
-                          <div className="text-[11px] font-semibold text-foreground mb-1 flex items-center justify-between">
-                            <span className="truncate" title={owner}>{owner}</span>
-                            <span className="text-red-600 tabular-nums shrink-0 ml-2">{items.length}</span>
-                          </div>
-                          <div className="space-y-1">
-                            {items.slice(0, 8).map((a) => {
-                              const chatTarget = a.whatsapp_group_jid || a.lead_phone;
-                              return (
-                                <div
-                                  key={a.id}
-                                  className="text-[11px] px-2 py-1.5 rounded border border-red-500/30 bg-red-500/5 flex items-center gap-1.5"
-                                >
-                                  <div className="min-w-0 flex-1">
-                                    <div className="font-medium truncate" title={a.lead_name || ''}>
-                                      {a.lead_name || 'Sem nome'}
-                                    </div>
-                                    <div className="text-[10px] text-muted-foreground truncate" title={a.title || ''}>
-                                      {a.title || 'Sem título'}
-                                      {a.deadline && ` · ${format(new Date(a.deadline + 'T00:00:00'), 'dd/MM', { locale: ptBR })}`}
-                                    </div>
-                                  </div>
-                                  {chatTarget && onOpenChat && (
-                                    <Button
-                                      size="sm"
-                                      variant="ghost"
-                                      className="h-6 w-6 p-0 shrink-0"
-                                      title="Abrir conversa"
-                                      onClick={() => onOpenChat(chatTarget)}
-                                    >
-                                      <MessageCircle className="h-3 w-3" />
-                                    </Button>
-                                  )}
-                                </div>
-                              );
-                            })}
-                            {items.length > 8 && (
-                              <div className="text-[10px] text-muted-foreground text-center pt-0.5">
-                                + {items.length - 8} mais…
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </PopoverContent>
-              </Popover>
-            );
-          })()}
-
-          <CompactRankingCard />
 
           <div className="flex-1" />
           <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0 self-center" onClick={data.refetch} disabled={data.loading}>
