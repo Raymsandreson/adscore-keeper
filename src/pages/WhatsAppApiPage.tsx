@@ -27,12 +27,6 @@ export default function WhatsAppApiPage() {
   const [loading, setLoading] = useState(true);
   const [config, setConfig] = useState<CloudConfig | null>(null);
 
-  // Guard de acesso (defesa em profundidade — sidebar já esconde o item)
-  useEffect(() => {
-    if (user && !canSeeCloudApi(user.email)) {
-      navigate('/', { replace: true });
-    }
-  }, [user, navigate]);
 
   const load = async () => {
     setLoading(true);
