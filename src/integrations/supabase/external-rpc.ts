@@ -98,15 +98,27 @@ export async function getConversationSummaries(
     return allRows.map((row: ConversationSummary) => ({ ...row, instance_name: name }));
   };
 
-  const results = await Promise.all(instanceNames.map(callOne));
-  const merged = results.flat();
-  // Mantém ordem por última mensagem desc (a RPC já ordena por instância)
-  merged.sort((a, b) => {
-    const ta = a.last_message_at ? new Date(a.last_message_at).getTime() : 0;
-    const tb = b.last_message_at ? new Date(b.last_message_at).getTime() : 0;
-    return tb - ta;
-  });
-  return merged;
+  const run = (async () => {
+    const results = await Promise.all(instanceNames.map(callOne));
+    const merged = results.flat();
+    merged.sort((a, b) => {
+      const ta = a.last_message_at ? new Date(a.last_message_at).getTime() : 0;
+      const tb = b.last_message_at ? new Date(b.last_message_at).getTime() : 0;
+      return tb - ta;
+    });
+    return merged;
+  })();
+
+  inFlightSummaries.set(dedupeKey, { p: run, at: Date.now() });
+  try {
+    return await run;
+  } finally {
+    // Libera o slot logo após resolver — TTL só protege contra rajadas durante o await.
+    setTimeout(() => {
+      const cur = inFlightSummaries.get(dedupeKey);
+      if (cur && cur.p === run) inFlightSummaries.delete(dedupeKey);
+    }, INFLIGHT_TTL_MS);
+  }
 }
 
 function instanceNameVariants(name: string): string[] {
