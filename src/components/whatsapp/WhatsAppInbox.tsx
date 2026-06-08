@@ -1491,7 +1491,7 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
         )}
 
         {/* Atalho: reconectar (QR / código) a instância selecionada */}
-        {!isMinimal && selectedInstanceId && selectedInstanceId !== 'all' && (() => {
+        {!isMinimal && inboxTab !== 'cloud_api' && selectedInstanceId && selectedInstanceId !== 'all' && (() => {
           const inst = instances.find(i => i.id === selectedInstanceId);
           if (!inst) return null;
           const status = statuses.find(s => (
