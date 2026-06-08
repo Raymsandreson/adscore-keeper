@@ -184,17 +184,28 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
       // Externo é só pra buscar os DADOS das instâncias, filtradas pelos IDs do Cloud.
       const allowedIds = await getMyAllowedInstanceIds(user.id);
 
-      if (allowedIds.length === 0) {
+      const forcedName = (forceIncludeInstanceName || '').trim().toLowerCase();
+
+      if (allowedIds.length === 0 && !forcedName) {
         setInstances([]);
         return;
       }
 
-      const { data: instData, error: instError } = await db
+      let query = db
         .from('whatsapp_instances')
         .select('*')
-        .eq('is_active', true)
-        .in('id', allowedIds)
-        .order('instance_name');
+        .eq('is_active', true);
+
+      if (forcedName && allowedIds.length > 0) {
+        // Inclui IDs permitidos OU a instância forçada (por nome, case-insensitive)
+        query = query.or(`id.in.(${allowedIds.join(',')}),instance_name.ilike.${forcedName}`);
+      } else if (forcedName) {
+        query = query.ilike('instance_name', forcedName);
+      } else {
+        query = query.in('id', allowedIds);
+      }
+
+      const { data: instData, error: instError } = await query.order('instance_name');
 
       if (instError) throw instError;
 
@@ -205,7 +216,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
     } finally {
       setStatsLoading(false);
     }
-  }, [user, isAdmin]);
+  }, [user, isAdmin, forceIncludeInstanceName]);
 
   // Lightweight stats fetch — only counts, no full message data
   const fetchInstanceStats = useCallback(async () => {
