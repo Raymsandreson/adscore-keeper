@@ -1726,7 +1726,7 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
       )}
 
       {/* Disconnection Alert Overlay - apenas para instância padrão do usuário */}
-      {relevantDisconnectedInstances.length > 0 && !dismissedAlert && (
+      {relevantDisconnectedInstances.length > 0 && !dismissedAlert && !lockInstanceName && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm pointer-events-auto">
           <div className="relative bg-card border-2 border-destructive rounded-2xl shadow-2xl p-8 max-w-md w-full mx-4 text-center space-y-4 animate-in fade-in zoom-in-95">
             <Button
