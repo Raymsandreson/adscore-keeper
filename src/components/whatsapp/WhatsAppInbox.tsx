@@ -167,6 +167,13 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
   // WhatsApp API: usuário pode escolher ver TODAS as conversas (pool inteiro) ou só as suas atribuídas.
   // Default = false (só as minhas + sem dono). Persiste por usuário no localStorage.
   const [cloudShowAll, setCloudShowAll] = usePageState<boolean>('wa_cloud_show_all', false);
+  // Contexto WhatsApp Cloud API (Meta oficial). 'cloud_gerencia' NÃO é uma sessão UazAPI:
+  // não tem status /instance/status nem exige instância padrão para atender. Status real vem da Meta.
+  const isCloudInstanceName = useCallback(
+    (name?: string | null) => (name || '').trim().toLowerCase() === 'cloud_gerencia',
+    [],
+  );
+  const isCloudContext = isCloudInstanceName(lockInstanceName);
   // null = ainda não resolvi qual instância usar (não buscar nada).
   // 'all' ou um id = pronto para buscar.
   const [selectedInstanceId, setSelectedInstanceId] = useState<string | null>(null);
@@ -253,10 +260,13 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
     const defaultName = normalizeInstanceName(defaultInstance?.instance_name);
 
     return disconnectedInstances.filter((inst) => (
-      inst.id === userDefaultInstanceId ||
-      (defaultName && normalizeInstanceName(inst.instance_name) === defaultName)
+      // Número Cloud (Meta) não é sessão UazAPI — nunca alerta como "desconectado" por aqui.
+      !isCloudInstanceName(inst.instance_name) && (
+        inst.id === userDefaultInstanceId ||
+        (defaultName && normalizeInstanceName(inst.instance_name) === defaultName)
+      )
     ));
-  }, [disconnectedInstances, instances, userDefaultInstanceId]);
+  }, [disconnectedInstances, instances, userDefaultInstanceId, isCloudInstanceName]);
 
   const disconnectedSignature = useMemo(
     () => relevantDisconnectedInstances.map((inst) => inst.id).sort().join('|'),
@@ -334,9 +344,11 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
   const [pickingInstanceId, setPickingInstanceId] = useState<string>('');
   const [savingDefault, setSavingDefault] = useState(false);
 
+  // No contexto Cloud (Meta) o envio roteia direto pra Graph API via channel:'cloud' — não usa
+  // instância UazAPI padrão. Logo o guard de "cadastre uma instância" não se aplica aqui.
   const guardSendMessage = useCallback((fn: typeof sendMessage) => {
     return ((...args: Parameters<typeof sendMessage>) => {
-      if (!userDefaultInstanceId) {
+      if (!isCloudContext && !userDefaultInstanceId) {
         setPickingInstanceId('');
         setMissingInstanceOpen(true);
         toast.error('Cadastre uma instância de WhatsApp antes de enviar mensagens.');
@@ -344,27 +356,52 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
       }
       return fn(...args);
     }) as typeof sendMessage;
-  }, [userDefaultInstanceId, sendMessage]);
+  }, [isCloudContext, userDefaultInstanceId, sendMessage]);
 
   const guardSendMedia = useCallback((...args: Parameters<typeof sendMedia>) => {
-    if (!userDefaultInstanceId) {
+    if (!isCloudContext && !userDefaultInstanceId) {
       setPickingInstanceId('');
       setMissingInstanceOpen(true);
       toast.error('Cadastre uma instância de WhatsApp antes de enviar mensagens.');
       return Promise.resolve(undefined as any);
     }
     return (sendMedia as any)(...args);
-  }, [userDefaultInstanceId, sendMedia]);
+  }, [isCloudContext, userDefaultInstanceId, sendMedia]);
 
   const guardSendLocation = useCallback((...args: Parameters<typeof sendLocation>) => {
-    if (!userDefaultInstanceId) {
+    if (!isCloudContext && !userDefaultInstanceId) {
       setPickingInstanceId('');
       setMissingInstanceOpen(true);
       toast.error('Cadastre uma instância de WhatsApp antes de enviar mensagens.');
       return Promise.resolve(undefined as any);
     }
     return (sendLocation as any)(...args);
-  }, [userDefaultInstanceId, sendLocation]);
+  }, [isCloudContext, userDefaultInstanceId, sendLocation]);
+
+  // Status REAL do número Cloud (Meta), independente da UazAPI. Verifica via Graph API
+  // (action check_meta_status). Roda 1x ao abrir + refresh manual — sem polling (gasta chamada Graph).
+  const [cloudStatus, setCloudStatus] = useState<'idle' | 'checking' | 'online' | 'offline'>('idle');
+  const [cloudStatusInfo, setCloudStatusInfo] = useState<string | null>(null);
+  const checkCloudStatus = useCallback(async () => {
+    if (!isCloudContext) return;
+    setCloudStatus('checking');
+    try {
+      const { data } = await cloudFunctions.invoke('whatsapp-cloud-admin', {
+        body: { action: 'check_meta_status' },
+      });
+      if (data?.success) {
+        setCloudStatus('online');
+        setCloudStatusInfo(data?.config?.display_phone || data?.meta?.display_phone_number || null);
+      } else {
+        setCloudStatus('offline');
+        setCloudStatusInfo(data?.error || null);
+      }
+    } catch (e) {
+      setCloudStatus('offline');
+      setCloudStatusInfo(e instanceof Error ? e.message : null);
+    }
+  }, [isCloudContext]);
+  useEffect(() => { checkCloudStatus(); }, [checkCloudStatus]);
 
   const handleConfirmDefaultInstance = useCallback(async () => {
     if (!user || !pickingInstanceId) return;
@@ -1449,6 +1486,35 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
               <TabsTrigger value="cloud_api" className="text-xs h-7 px-2.5">WhatsJUD API</TabsTrigger>
             </TabsList>
           </Tabs>
+        )}
+        {isCloudContext && (
+          <button
+            type="button"
+            onClick={checkCloudStatus}
+            disabled={cloudStatus === 'checking'}
+            title={cloudStatusInfo
+              ? `WhatsApp Cloud API (Meta) — ${cloudStatusInfo}`
+              : 'Status do número Cloud (Meta). Clique para atualizar.'}
+            className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium hover:bg-accent transition-colors"
+          >
+            {cloudStatus === 'checking' ? (
+              <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+            ) : (
+              <span
+                className={`h-2 w-2 rounded-full ${
+                  cloudStatus === 'online' ? 'bg-green-500'
+                  : cloudStatus === 'offline' ? 'bg-destructive'
+                  : 'bg-muted-foreground'
+                }`}
+              />
+            )}
+            <span className={cloudStatus === 'offline' ? 'text-destructive' : ''}>
+              {cloudStatus === 'online' ? 'Conectado'
+                : cloudStatus === 'offline' ? 'Offline'
+                : cloudStatus === 'checking' ? 'Verificando…'
+                : 'Status'}
+            </span>
+          </button>
         )}
 
         {!isMinimal && inboxTab !== 'cloud_api' && instances.length > 0 && (
