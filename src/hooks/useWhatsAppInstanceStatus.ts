@@ -188,13 +188,18 @@ export function useWhatsAppInstanceStatus(enabled: boolean = true) {
   }, [enabled, notifyOfflineViaWhatsApp, notifyReconnectedViaWhatsApp]);
 
 
+  // Guarda contra double-fire em StrictMode / re-mount de pais. Só dispara
+  // o checkStatus uma vez por ciclo de vida quando `enabled` vira true.
+  const didCheckRef = useRef(false);
   useEffect(() => {
-    if (enabled) {
-      // Detector de status roda 1x ao montar. Polling de 1min foi removido
-      // a pedido — reconexão agora depende de webhook/refresh manual.
-      checkStatus();
+    if (!enabled) {
+      didCheckRef.current = false;
+      return;
     }
-  }, [checkStatus, enabled]);
+    if (didCheckRef.current) return;
+    didCheckRef.current = true;
+    checkStatus();
+  }, [enabled, checkStatus]);
 
   const connectedInstances = statuses.filter(s => s.connected);
   const disconnectedInstances = statuses.filter(s => !s.connected);
