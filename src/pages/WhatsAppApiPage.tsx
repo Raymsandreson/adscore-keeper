@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Loader2, RefreshCw, Settings, MessageSquare, ShieldCheck, ShieldAlert, KeyRound } from 'lucide-react';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { useAuthContext } from '@/contexts/AuthContext';
-import { canSeeCloudApi } from '@/lib/cloudApiAllowlist';
+
 
 interface CloudConfig {
   id?: string;
