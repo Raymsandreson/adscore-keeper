@@ -702,7 +702,7 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
     return filtered.sort(
       (a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime()
     );
-  }, [conversations, privateConvs, sharedMessages, user, canViewPrivate, cloudAssignees]);
+  }, [conversations, privateConvs, sharedMessages, user, canViewPrivate, cloudAssignees, cloudShowAll]);
 
   const [selectedInstance, setSelectedInstance] = usePageState<string | null>('wa_selected_instance', null);
   const selectedConversation = visibleConversations.find(
