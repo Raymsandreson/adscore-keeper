@@ -11,16 +11,13 @@ import { CalendarIcon, RefreshCw, Trophy, Users, User as UserIcon, FileText, Pen
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useFocusDashboardData, FocusPeriod } from '@/hooks/useFocusDashboardData';
-import { useBpcFormLeads } from '@/hooks/useBpcFormLeads';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useUserTeams } from '@/hooks/useUserTeams';
 import { usePageState } from '@/hooks/usePageState';
 import { KpiCard } from './KpiCard';
 import { FocusActionCard } from './FocusActionCard';
-import { CompactRankingCard } from './CompactRankingCard';
 import { ClosedPodiumCard } from './ClosedPodiumCard';
 import { ClosedLeadsSheet } from './ClosedLeadsSheet';
-import { BpcFormLeadsSheet } from './BpcFormLeadsSheet';
 import { cn } from '@/lib/utils';
 
 interface FocusDashboardProps {
