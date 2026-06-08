@@ -1,10 +1,6 @@
-// send-whatsapp v22 (projeto externo kmedldlepwiityjsdahz)
-// FIX v22: envio 1:1 (não-grupo) com instância explícita que NÃO resolve agora FALHA
-// com erro claro, em vez de rerotear calado pra outra instância (mandava do número
-// errado quando o instance_name da conversa não casava com o cadastro). Grupos e
-// chamadas sem instância explícita seguem com o fallback de instância-membro. Rollback: index.v21.rollback.ts
-// FIX v21: fallback de envio em grupo também dispara quando a instância escolhida
-// está DESCONECTADA (antes só disparava em "not participating").
+// send-whatsapp v21 (projeto externo kmedldlepwiityjsdahz)
+// FIX: fallback de envio em grupo agora também dispara quando a instância escolhida
+// está DESCONECTADA (antes só disparava em "not participating"). Rollback: index.v20.rollback.ts
 // @ts-ignore
 import { createClient } from 'npm:@supabase/supabase-js@2';
 const EXT_URL = Deno.env.get('SUPABASE_URL') ?? '';
@@ -84,18 +80,6 @@ async function getInstance(cloudClient, extClient, instance_id, target, instance
     const { data: n2 } = await extClient.from('whatsapp_instances').select('*').ilike('instance_name', n).eq('is_active', true).maybeSingle();
     if (n2) return n2;
     console.warn(`getInstance: instance_name="${n}" não encontrada ou inativa — caindo pra fallback`);
-  }
-  // 1c) SAFETY (v22): instância explícita foi pedida (id ou nome) mas não resolveu acima,
-  //     e o alvo é uma PESSOA (não-grupo). NÃO substituir por outra instância — isso mandaria
-  //     do número errado (vazamento/confusão p/ o cliente). Aborta → caller devolve erro claro.
-  //     Grupos seguem pro fallback de instância-membro abaixo; chamadas sem alvo-pessoa
-  //     (ops de grupo, target=null) ou sem instância explícita mantêm o comportamento legado.
-  const explicitRequested = !!instance_id || (typeof instance_name === 'string' && !!instance_name.trim());
-  const hasPersonTarget = typeof target === 'string' && !!target.trim()
-    && !isGroupJid(target) && target.replace(/\D/g, '').length <= 15;
-  if (explicitRequested && hasPersonTarget) {
-    console.warn(`getInstance: instância explícita não resolvida (id=${instance_id || '-'}, name="${instance_name || '-'}") e alvo é pessoa — abortando SEM rerotear`);
-    return null;
   }
   // 2) Se temos target (phone/jid), tenta usar a instância que MAIS RECENTEMENTE
   //    teve mensagem nesse phone — garante que ela é membro do grupo / tem histórico.
@@ -498,9 +482,7 @@ Deno.serve(async (req)=>{
     const inst = await getInstance(cloudClient, extClient, body.instance_id, target, body.instance_name);
     if (!inst) return jsonResp({
       success: false,
-      error: 'Instância da conversa indisponível (descadastrada/renomeada, ou nenhuma ativa). A mensagem NÃO foi enviada de outro número — reconecte ou selecione outra instância.',
-      error_code: 'INSTANCE_UNRESOLVED',
-      instance_name: body.instance_name || null
+      error: 'No active instance'
     });
     const base = inst.base_url || 'https://abraci.uazapi.com';
     const sendBody = {
