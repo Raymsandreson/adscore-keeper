@@ -105,7 +105,7 @@ const conversationsCache: Map<string, ConversationsCacheEntry> = new Map();
 const cacheKeyFor = (selectedInstanceId?: string | null) =>
   `inst:${selectedInstanceId ?? 'none'}`;
 
-export function useWhatsAppMessages(selectedInstanceId?: string | null) {
+export function useWhatsAppMessages(selectedInstanceId?: string | null, forceIncludeInstanceName?: string | null) {
   const { user } = useAuthContext();
   const { isAdmin } = useUserRole();
   const [messages, setMessages] = useState<WhatsAppMessage[]>([]);
