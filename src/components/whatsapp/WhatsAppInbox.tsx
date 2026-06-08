@@ -164,6 +164,9 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
     if (lockInstanceName) return;
     try { localStorage.setItem('whatsapp_inbox_tab', inboxTab); } catch {}
   }, [inboxTab, lockInstanceName]);
+  // WhatsApp API: usuário pode escolher ver TODAS as conversas (pool inteiro) ou só as suas atribuídas.
+  // Default = false (só as minhas + sem dono). Persiste por usuário no localStorage.
+  const [cloudShowAll, setCloudShowAll] = usePageState<boolean>('wa_cloud_show_all', false);
   // null = ainda não resolvi qual instância usar (não buscar nada).
   // 'all' ou um id = pronto para buscar.
   const [selectedInstanceId, setSelectedInstanceId] = useState<string | null>(null);
