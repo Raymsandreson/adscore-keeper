@@ -1494,6 +1494,22 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
           </Select>
         )}
 
+        {/* WhatsApp API: alterna entre "minhas + pool" e "todas as conversas" (qualquer usuário). */}
+        {inboxTab === 'cloud_api' && !canViewPrivate && (
+          <Button
+            variant={cloudShowAll ? 'default' : 'outline'}
+            size="sm"
+            className="h-8 gap-1.5 ml-0 md:ml-2"
+            onClick={() => setCloudShowAll(!cloudShowAll)}
+            title={cloudShowAll ? 'Mostrando todas as conversas — clique para ver só as suas' : 'Mostrando suas conversas + pool — clique para ver todas'}
+          >
+            <Users className="h-3.5 w-3.5" />
+            <span className="hidden md:inline text-xs">{cloudShowAll ? 'Todas as conversas' : 'Minhas + pool'}</span>
+          </Button>
+        )}
+
+
+
         {/* Atalho: reconectar (QR / código) a instância selecionada */}
         {!isMinimal && inboxTab !== 'cloud_api' && selectedInstanceId && selectedInstanceId !== 'all' && (() => {
           const inst = instances.find(i => i.id === selectedInstanceId);
