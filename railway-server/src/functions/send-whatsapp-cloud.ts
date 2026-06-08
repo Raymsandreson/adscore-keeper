@@ -39,6 +39,17 @@ function normalizePhone(raw: string): string {
   return d;
 }
 
+// Chave de thread/armazenamento: wa_id histórico (BR mobile SEM o 9), idêntico ao que o
+// whatsapp-cloud-webhook grava na ingestão. O outbound DEVE gravar nesse mesmo formato pra
+// cair na MESMA conversa do inbound — senão o 9 injetado pra entrega cria uma thread duplicada.
+function toThreadPhone(raw: string): string {
+  const d = (raw || '').replace(/\D/g, '');
+  if (d.length === 13 && d.startsWith('55') && d[4] === '9') {
+    return d.slice(0, 4) + d.slice(5);
+  }
+  return d;
+}
+
 function mapGraphError(code: number | undefined, subcode: number | undefined): string {
   if (code === 190) return 'INVALID_TOKEN';
   if (code === 131047 || subcode === 2018278) return 'OUTSIDE_24H_WINDOW';
@@ -62,7 +73,8 @@ export const handler: RequestHandler = async (req, res) => {
   }
 
   const body: SendBody = req.body || {};
-  const phone = normalizePhone(body.phone || '');
+  const sendPhone = normalizePhone(body.phone || ''); // E.164 com o 9 — entrega via Graph (Meta exige)
+  const phone = toThreadPhone(body.phone || '');      // SEM o 9 — mesma chave de thread do webhook (evita duplicar conversa)
   const text = (body.message || '').trim();
 
   if (!phone) {
@@ -113,7 +125,7 @@ export const handler: RequestHandler = async (req, res) => {
       },
       body: JSON.stringify({
         messaging_product: 'whatsapp',
-        to: phone,
+        to: sendPhone,
         type: 'text',
         text: { preview_url: false, body: text },
       }),
