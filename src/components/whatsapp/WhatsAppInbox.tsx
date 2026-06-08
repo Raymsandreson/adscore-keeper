@@ -1678,7 +1678,7 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
       )}
 
       {/* Reconnect Bar - apenas para instância padrão do usuário */}
-      {relevantDisconnectedInstances.length > 0 && (
+      {relevantDisconnectedInstances.length > 0 && !lockInstanceName && (
         <div className="flex items-center gap-2 px-4 py-2 border-b bg-destructive/10 shrink-0 animate-in slide-in-from-top">
           <WifiOff className="h-4 w-4 text-destructive flex-shrink-0" />
           <span className="text-sm font-medium text-destructive flex-1">
