@@ -40,7 +40,6 @@ export default function WhatsAppApiPage() {
 
   useEffect(() => { load(); }, []);
 
-  if (user && !canSeeCloudApi(user.email)) return null;
 
   return (
     <div className="container mx-auto p-4 space-y-6 max-w-5xl">
