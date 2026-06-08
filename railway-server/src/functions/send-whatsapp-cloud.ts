@@ -29,9 +29,14 @@ interface SendBody {
 }
 
 function normalizePhone(raw: string): string {
-  // ENVIO: mantém o 9 — Meta exige E.164 real (13 díg pra BR mobile).
-  // O wa_id legado sem 9 só vale na ingestão (whatsapp-cloud-webhook), não aqui.
-  return (raw || '').replace(/\D/g, '');
+  const d = (raw || '').replace(/\D/g, '');
+  // Mobile BR sem o 9 (12 díg, 55+DDD+8d, primeiro díg do assinante >= 6).
+  // Meta exige E.164 atual (com 9) no envio, mesmo que o wa_id histórico
+  // que chega no webhook não tenha. Fixos (assinante 2-5) não levam 9.
+  if (d.length === 12 && d.startsWith('55') && d[4] >= '6') {
+    return d.slice(0, 4) + '9' + d.slice(4);
+  }
+  return d;
 }
 
 function mapGraphError(code: number | undefined, subcode: number | undefined): string {
