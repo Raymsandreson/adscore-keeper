@@ -262,8 +262,9 @@ function SidebarLayout() {
                 <Route path="/discadora" element={<ProtectedRoute><AutoDialerPage /></ProtectedRoute>} />
                 <Route path="/whatsapp" element={<ProtectedRoute><WhatsAppPage /></ProtectedRoute>} />
                 <Route path="/whatsapp/cloud" element={<ProtectedRoute><WhatsAppCloudPage /></ProtectedRoute>} />
-                <Route path="/whatsapp-api" element={<ProtectedRoute><WhatsAppApiPage /></ProtectedRoute>} />
+                <Route path="/whatsapp-api" element={<ProtectedRoute><WhatsAppApiConversasPage /></ProtectedRoute>} />
                 <Route path="/whatsapp-api/conversas" element={<ProtectedRoute><WhatsAppApiConversasPage /></ProtectedRoute>} />
+                <Route path="/whatsapp-api/config" element={<ProtectedRoute><WhatsAppApiPage /></ProtectedRoute>} />
                 <Route path="/whatsapp-api/token" element={<ProtectedRoute><WhatsAppTokenStatusPage /></ProtectedRoute>} />
                 <Route path="/instagram" element={<ProtectedRoute><InstagramPage /></ProtectedRoute>} />
                 <Route path="/contacts" element={<ProtectedRoute><ContactsPage /></ProtectedRoute>} />
