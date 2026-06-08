@@ -77,28 +77,6 @@ export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpen
         tone: 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200/60 dark:border-emerald-900/40 text-emerald-700 dark:text-emerald-300',
         onClick: () => setClosedSheetOpen(true),
       },
-      {
-        // ⚠️ Card "Viáveis" lê da planilha oficial do Meta (Google Sheets),
-        // não depende do token Meta. Mostra total de leads do form / quantos foram marcados inviáveis.
-        label: 'Viáveis',
-        value: `${bpc.metrics.total}/${bpc.metrics.unviable}`,
-        sub: bpc.loading ? 'sincronizando…' : 'total / inviável',
-        icon: CheckCircle2,
-        tone: 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200/60 dark:border-emerald-900/40 text-emerald-700 dark:text-emerald-300',
-        onClick: () => { setBpcDefaultTab('all'); setBpcSheetOpen(true); },
-      },
-      {
-        // 🔥 Card "Ligar Agora" — leads que preencheram o form Meta mas NÃO mandaram WhatsApp ainda.
-        // Esses precisam de ligação imediata.
-        label: 'Ligar agora',
-        value: bpc.metrics.toCallNow,
-        sub: bpc.metrics.toCallNow > 0 ? 'preencheu e sumiu' : 'tudo respondido',
-        icon: Phone,
-        tone: bpc.metrics.toCallNow > 0
-          ? 'bg-red-50 dark:bg-red-950/30 border-red-300 dark:border-red-700 text-red-700 dark:text-red-300 animate-pulse'
-          : 'bg-muted/40 border-border text-muted-foreground',
-        onClick: () => { setBpcDefaultTab('to_call'); setBpcSheetOpen(true); },
-      },
       { label: 'Docs', value: data.actions.missingDocs, icon: FileText, tone: 'bg-orange-50 dark:bg-orange-950/30 border-orange-200/60 dark:border-orange-900/40 text-orange-700 dark:text-orange-300', onClick: onOpenMissingDocs },
       { label: 'Assinatura', value: data.actions.zapsignPending, icon: PenTool, tone: 'bg-stone-100 dark:bg-stone-900/40 border-stone-300/60 dark:border-stone-700/40 text-stone-700 dark:text-stone-300', onClick: onOpenZapsignPending },
       {
