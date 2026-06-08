@@ -672,6 +672,7 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
       // visível a todos; com dono = só o dono. Não vale para instâncias UazAPI.
       if ((conv.instance_name || '').toLowerCase() === 'cloud_gerencia') {
         if (canViewPrivate) return true;
+        if (cloudShowAll) return true;
         const owner = cloudAssignees.get(conv.phone);
         if (!owner) return true;
         return owner === user.id;
