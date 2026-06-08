@@ -164,6 +164,9 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
     if (lockInstanceName) return;
     try { localStorage.setItem('whatsapp_inbox_tab', inboxTab); } catch {}
   }, [inboxTab, lockInstanceName]);
+  // WhatsApp API: usuário pode escolher ver TODAS as conversas (pool inteiro) ou só as suas atribuídas.
+  // Default = false (só as minhas + sem dono). Persiste por usuário no localStorage.
+  const [cloudShowAll, setCloudShowAll] = usePageState<boolean>('wa_cloud_show_all', false);
   // null = ainda não resolvi qual instância usar (não buscar nada).
   // 'all' ou um id = pronto para buscar.
   const [selectedInstanceId, setSelectedInstanceId] = useState<string | null>(null);
@@ -669,6 +672,7 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
       // visível a todos; com dono = só o dono. Não vale para instâncias UazAPI.
       if ((conv.instance_name || '').toLowerCase() === 'cloud_gerencia') {
         if (canViewPrivate) return true;
+        if (cloudShowAll) return true;
         const owner = cloudAssignees.get(conv.phone);
         if (!owner) return true;
         return owner === user.id;
@@ -698,7 +702,7 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
     return filtered.sort(
       (a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime()
     );
-  }, [conversations, privateConvs, sharedMessages, user, canViewPrivate, cloudAssignees]);
+  }, [conversations, privateConvs, sharedMessages, user, canViewPrivate, cloudAssignees, cloudShowAll]);
 
   const [selectedInstance, setSelectedInstance] = usePageState<string | null>('wa_selected_instance', null);
   const selectedConversation = visibleConversations.find(
@@ -1489,6 +1493,22 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
             </SelectContent>
           </Select>
         )}
+
+        {/* WhatsApp API: alterna entre "minhas + pool" e "todas as conversas" (qualquer usuário). */}
+        {inboxTab === 'cloud_api' && !canViewPrivate && (
+          <Button
+            variant={cloudShowAll ? 'default' : 'outline'}
+            size="sm"
+            className="h-8 gap-1.5 ml-0 md:ml-2"
+            onClick={() => setCloudShowAll(!cloudShowAll)}
+            title={cloudShowAll ? 'Mostrando todas as conversas — clique para ver só as suas' : 'Mostrando suas conversas + pool — clique para ver todas'}
+          >
+            <Users className="h-3.5 w-3.5" />
+            <span className="hidden md:inline text-xs">{cloudShowAll ? 'Todas as conversas' : 'Minhas + pool'}</span>
+          </Button>
+        )}
+
+
 
         {/* Atalho: reconectar (QR / código) a instância selecionada */}
         {!isMinimal && inboxTab !== 'cloud_api' && selectedInstanceId && selectedInstanceId !== 'all' && (() => {
