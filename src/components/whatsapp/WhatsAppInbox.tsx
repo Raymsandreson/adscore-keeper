@@ -1888,10 +1888,6 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
         <div className={`md:hidden w-full flex ${selectedPhone ? '' : ''}`}>
           {!selectedPhone ? (
             <div className="w-full border-r flex-shrink-0 overflow-y-auto bg-card flex flex-col">
-              <WhatsAppAssigneeSummary
-                conversations={visibleConversations}
-                cloudAssignees={cloudAssignees}
-              />
               <WhatsAppConversationList
                 conversations={visibleConversations}
                 loading={loading}
