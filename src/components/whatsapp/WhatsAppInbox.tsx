@@ -1447,7 +1447,7 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
           </Tabs>
         )}
 
-        {!isMinimal && instances.length > 0 && (
+        {!isMinimal && inboxTab !== 'cloud_api' && instances.length > 0 && (
           <Select open={instanceSelectOpen} onOpenChange={setInstanceSelectOpen} value={selectedInstanceId} onValueChange={(val) => { guardLeaveCurrent(() => { setSelectedInstanceId(val); setSelectedPhone(null); setSelectedInstance(null); if (val !== 'all') localStorage.setItem('whatsapp_last_instance_id', val); }); }}>
             <SelectTrigger className="w-52 h-8 text-xs ml-0 md:ml-2">
               <Smartphone className="h-3.5 w-3.5 mr-1.5 text-muted-foreground" />
@@ -1491,7 +1491,7 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
         )}
 
         {/* Atalho: reconectar (QR / código) a instância selecionada */}
-        {!isMinimal && selectedInstanceId && selectedInstanceId !== 'all' && (() => {
+        {!isMinimal && inboxTab !== 'cloud_api' && selectedInstanceId && selectedInstanceId !== 'all' && (() => {
           const inst = instances.find(i => i.id === selectedInstanceId);
           if (!inst) return null;
           const status = statuses.find(s => (
@@ -1514,7 +1514,7 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
 
 
         <div className="w-full md:w-auto md:ml-auto flex flex-wrap md:flex-nowrap gap-0.5 md:gap-1 items-center justify-end">
-          {!isMinimal && relevantDisconnectedInstances.length > 0 && (
+          {!isMinimal && inboxTab !== 'cloud_api' && relevantDisconnectedInstances.length > 0 && (
             <Button
               variant="destructive"
               size="sm"
