@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Loader2, RefreshCw, Settings, MessageSquare, ShieldCheck, ShieldAlert, KeyRound } from 'lucide-react';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { useAuthContext } from '@/contexts/AuthContext';
-import { canSeeCloudApi } from '@/lib/cloudApiAllowlist';
+
 
 interface CloudConfig {
   id?: string;
@@ -27,12 +27,6 @@ export default function WhatsAppApiPage() {
   const [loading, setLoading] = useState(true);
   const [config, setConfig] = useState<CloudConfig | null>(null);
 
-  // Guard de acesso (defesa em profundidade — sidebar já esconde o item)
-  useEffect(() => {
-    if (user && !canSeeCloudApi(user.email)) {
-      navigate('/', { replace: true });
-    }
-  }, [user, navigate]);
 
   const load = async () => {
     setLoading(true);
@@ -46,7 +40,6 @@ export default function WhatsAppApiPage() {
 
   useEffect(() => { load(); }, []);
 
-  if (user && !canSeeCloudApi(user.email)) return null;
 
   return (
     <div className="container mx-auto p-4 space-y-6 max-w-5xl">
