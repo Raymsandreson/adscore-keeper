@@ -1380,14 +1380,19 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
   useEffect(() => {
     if (!hasLoaded || selectedInstanceId === null || selectedInstanceId === undefined) return;
 
-    // Fallback poll a cada 15s. Cobre casos em que o Realtime perde mensagens
-    // silenciosamente (canal sobe sem erro mas não entrega eventos durante picos
-    // de tráfego). Reduzido de 30s pra 15s pra que o pior caso de atraso percebido
-    // seja ~15s em vez de ~30s.
-    const POLL_INTERVAL_MS = 15_000;
+    // Fallback poll a cada 60s. Realtime é a fonte primária de deltas; o poll é
+    // só rede de segurança pra casos em que o canal cai silenciosamente. Antes
+    // estava em 15s, o que somado a multi-instância (N requests por refresh) +
+    // visibilitychange sem debounce estourava o console com get_conversation_summaries.
+    const POLL_INTERVAL_MS = 60_000;
+    const VISIBILITY_DEBOUNCE_MS = 2_000;
+    let lastRefetchAt = 0;
 
     const safeRefetch = () => {
       if (document.visibilityState !== 'visible') return;
+      const now = Date.now();
+      if (now - lastRefetchAt < VISIBILITY_DEBOUNCE_MS) return;
+      lastRefetchAt = now;
       fetchMessages(true).catch(() => {});
     };
 

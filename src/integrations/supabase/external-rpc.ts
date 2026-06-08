@@ -32,12 +32,26 @@ export interface WhatsAppMessage {
  * Busca resumos de conversas. UMA chamada por instância em paralelo (cada uma
  * rápida graças à função inlineada que usa idx_wam_inst_phone_created).
  */
+// Dedupe in-flight: chamadas concorrentes com a mesma chave compartilham a
+// mesma Promise. Evita rajadas quando vários efeitos (polling + visibility +
+// realtime fallback) disparam ao mesmo tempo. TTL curto (1.5s) só pra
+// coalescer rajadas, não pra cachear dados.
+const inFlightSummaries = new Map<string, { p: Promise<ConversationSummary[]>; at: number }>();
+const INFLIGHT_TTL_MS = 1500;
+
 export async function getConversationSummaries(
   instanceNames: string[],
   daysBack: number = 30
 ): Promise<ConversationSummary[]> {
+  if (!instanceNames || instanceNames.length === 0) return [];
+
+  const dedupeKey = JSON.stringify([[...instanceNames].sort(), daysBack]);
+  const existing = inFlightSummaries.get(dedupeKey);
+  if (existing && Date.now() - existing.at < INFLIGHT_TTL_MS) {
+    return existing.p;
+  }
+
   // Trace: detecta chamadas duplicadas/em rajada da RPC mais cara do Inbox
-  // (import dinâmico para evitar ciclo se um dia esse arquivo for usado fora do app)
   try {
     const { traceHook } = await import('@/utils/hookTracer');
     traceHook('getConversationSummaries', {
@@ -46,7 +60,6 @@ export async function getConversationSummaries(
       daysBack,
     });
   } catch {}
-  if (!instanceNames || instanceNames.length === 0) return [];
 
   const callOne = async (name: string): Promise<ConversationSummary[]> => {
     // Webhook pode gravar instance_name em caixas diferentes (ex: "KAROLYNE ATENDIMENTO"
@@ -85,15 +98,27 @@ export async function getConversationSummaries(
     return allRows.map((row: ConversationSummary) => ({ ...row, instance_name: name }));
   };
 
-  const results = await Promise.all(instanceNames.map(callOne));
-  const merged = results.flat();
-  // Mantém ordem por última mensagem desc (a RPC já ordena por instância)
-  merged.sort((a, b) => {
-    const ta = a.last_message_at ? new Date(a.last_message_at).getTime() : 0;
-    const tb = b.last_message_at ? new Date(b.last_message_at).getTime() : 0;
-    return tb - ta;
-  });
-  return merged;
+  const run = (async () => {
+    const results = await Promise.all(instanceNames.map(callOne));
+    const merged = results.flat();
+    merged.sort((a, b) => {
+      const ta = a.last_message_at ? new Date(a.last_message_at).getTime() : 0;
+      const tb = b.last_message_at ? new Date(b.last_message_at).getTime() : 0;
+      return tb - ta;
+    });
+    return merged;
+  })();
+
+  inFlightSummaries.set(dedupeKey, { p: run, at: Date.now() });
+  try {
+    return await run;
+  } finally {
+    // Libera o slot logo após resolver — TTL só protege contra rajadas durante o await.
+    setTimeout(() => {
+      const cur = inFlightSummaries.get(dedupeKey);
+      if (cur && cur.p === run) inFlightSummaries.delete(dedupeKey);
+    }, INFLIGHT_TTL_MS);
+  }
 }
 
 function instanceNameVariants(name: string): string[] {
