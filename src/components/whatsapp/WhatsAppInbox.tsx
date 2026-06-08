@@ -2270,7 +2270,7 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
 
       {/* Popup bloqueante: sem instância padrão = sem envio */}
       <Dialog
-        open={missingInstanceOpen}
+        open={missingInstanceOpen && !lockInstanceName}
         onOpenChange={(open) => {
           // Só fecha se já tiver instância cadastrada (não pode escapar sem escolher)
           if (!open && !userDefaultInstanceId) return;
