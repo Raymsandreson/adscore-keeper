@@ -1514,7 +1514,7 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
 
 
         <div className="w-full md:w-auto md:ml-auto flex flex-wrap md:flex-nowrap gap-0.5 md:gap-1 items-center justify-end">
-          {!isMinimal && relevantDisconnectedInstances.length > 0 && (
+          {!isMinimal && inboxTab !== 'cloud_api' && relevantDisconnectedInstances.length > 0 && (
             <Button
               variant="destructive"
               size="sm"
