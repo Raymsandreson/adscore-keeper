@@ -97,6 +97,42 @@ async function verifyCloudJwt(authHeader: string | undefined): Promise<boolean> 
   }
 }
 
+const META_GRAPH = 'https://graph.facebook.com';
+const META_API_VERSION = process.env.WHATSAPP_CLOUD_API_VERSION || 'v21.0';
+const META_TOKEN = process.env.WHATSAPP_CLOUD_TOKEN || '';
+
+function isCloudApiMessage(msg: any): boolean {
+  if ((msg?.instance_name || '').toLowerCase() === 'cloud_gerencia') return true;
+  if (typeof msg?.external_message_id === 'string' && msg.external_message_id.startsWith('wamid.')) return true;
+  if (msg?.metadata?.cloud_media?.id) return true;
+  return false;
+}
+
+async function downloadFromMetaCloud(mediaId: string): Promise<{ bytes: Buffer; contentType: string } | { error: string }> {
+  if (!META_TOKEN) return { error: 'WHATSAPP_CLOUD_TOKEN não configurado no Railway.' };
+  // 1) Resolver URL
+  const lookupResp = await fetch(`${META_GRAPH}/${META_API_VERSION}/${encodeURIComponent(mediaId)}`, {
+    headers: { Authorization: `Bearer ${META_TOKEN}` },
+  });
+  if (!lookupResp.ok) {
+    const t = await lookupResp.text().catch(() => '');
+    return { error: `Meta /{media_id} ${lookupResp.status}: ${t.slice(0, 200)}` };
+  }
+  const meta: any = await lookupResp.json().catch(() => ({}));
+  const url: string | undefined = meta?.url;
+  const mime: string = meta?.mime_type || 'application/octet-stream';
+  if (!url) return { error: 'Meta retornou sem url.' };
+  // 2) Baixar bytes (também exige Bearer)
+  const fileResp = await fetch(url, { headers: { Authorization: `Bearer ${META_TOKEN}` } });
+  if (!fileResp.ok) {
+    const t = await fileResp.text().catch(() => '');
+    return { error: `Meta media GET ${fileResp.status}: ${t.slice(0, 200)}` };
+  }
+  const bytes = Buffer.from(await fileResp.arrayBuffer());
+  return { bytes, contentType: fileResp.headers.get('content-type') || mime };
+}
+
+
 export const handler: RequestHandler = async (req, res) => {
   const ok = (body: Record<string, unknown>) => res.status(200).json(body);
   try {
