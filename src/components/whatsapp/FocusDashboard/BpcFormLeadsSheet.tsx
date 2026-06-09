@@ -1,23 +1,35 @@
 import { useMemo, useState } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Phone, MessageCircle, Search, RefreshCw } from "lucide-react";
-import { format } from "date-fns";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Phone, MessageCircle, Search, RefreshCw, CalendarIcon } from "lucide-react";
+import { format, startOfDay, endOfDay, subDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import type { BpcFormLead, BpcMetrics } from "@/hooks/useBpcFormLeads";
+import {
+  useBpcFormLeads,
+  BPC_DATE_TYPE_LABEL,
+  type BpcDateType,
+  type BpcFormLead,
+  type BpcMetrics,
+} from "@/hooks/useBpcFormLeads";
 
 interface Props {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  metrics: BpcMetrics;
-  leads: BpcFormLead[];
-  loading: boolean;
+  /** Filtra abas da planilha pra essa instância (ex: "mateus atendimento"). */
+  instanceName?: string | null;
   defaultTab?: "all" | "to_call" | "on_wa" | "unviable";
   onOpenChat?: (phone: string) => void;
+  /** Compat: se quiser ainda injetar dados externos, passe estes; senão o Sheet busca sozinho. */
+  externalMetrics?: BpcMetrics;
+  externalLeads?: BpcFormLead[];
+  externalLoading?: boolean;
   onRefresh?: () => void;
 }
 
@@ -29,8 +41,7 @@ function fmtPhone(p: string): string {
   return p;
 }
 
-// Força exibição em horário de Brasília (planilha grava em -05:00 / México).
-function fmtBR(iso: string): string {
+function fmtBR(iso: string | null): string {
   if (!iso) return "";
   try {
     return new Date(iso).toLocaleString("pt-BR", {
@@ -46,19 +57,51 @@ function fmtBR(iso: string): string {
   }
 }
 
+type PeriodPreset = "today" | "7d" | "30d" | "custom";
+
+function presetRange(p: PeriodPreset): { from: Date; to: Date } {
+  const now = new Date();
+  if (p === "today") return { from: startOfDay(now), to: endOfDay(now) };
+  if (p === "7d") return { from: startOfDay(subDays(now, 6)), to: endOfDay(now) };
+  if (p === "30d") return { from: startOfDay(subDays(now, 29)), to: endOfDay(now) };
+  return { from: startOfDay(subDays(now, 6)), to: endOfDay(now) };
+}
+
 export function BpcFormLeadsSheet({
   open,
   onOpenChange,
-  metrics,
-  leads,
-  loading,
+  instanceName,
   defaultTab = "all",
   onOpenChat,
+  externalMetrics,
+  externalLeads,
+  externalLoading,
   onRefresh,
 }: Props) {
   const [tab, setTab] = useState<"all" | "to_call" | "on_wa" | "unviable">(defaultTab);
   const [q, setQ] = useState("");
   const [operatorFilter, setOperatorFilter] = useState<string>("all");
+
+  // Período + tipo de data (modo auto-suficiente)
+  const [preset, setPreset] = useState<PeriodPreset>("today");
+  const [range, setRange] = useState<{ from: Date; to: Date }>(() => presetRange("today"));
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
+  const [dateType, setDateType] = useState<BpcDateType>("created");
+
+  const isSelfManaged = !externalLeads;
+
+  const internal = useBpcFormLeads({
+    from: range.from,
+    to: range.to,
+    enabled: isSelfManaged && open,
+    instanceName: instanceName || undefined,
+    dateType,
+  });
+
+  const metrics = externalMetrics ?? internal.metrics;
+  const leads = externalLeads ?? internal.leads;
+  const loading = externalLoading ?? internal.loading;
+  const refresh = onRefresh ?? internal.refetch;
 
   const operators = useMemo(() => {
     const map = new Map<string, number>();
@@ -91,39 +134,89 @@ export function BpcFormLeadsSheet({
     return list;
   }, [leads, tab, q, operatorFilter]);
 
+  const setPresetAndRange = (p: PeriodPreset) => {
+    setPreset(p);
+    if (p !== "custom") setRange(presetRange(p));
+  };
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full sm:max-w-2xl p-0 flex flex-col">
         <SheetHeader className="px-4 pt-4 pb-2 border-b">
           <SheetTitle className="flex items-center justify-between gap-2">
             <span>Leads do formulário Meta · BPC-LOAS</span>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              onClick={onRefresh}
-              disabled={loading}
-            >
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={refresh} disabled={loading}>
               <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
             </Button>
           </SheetTitle>
         </SheetHeader>
 
+        {isSelfManaged && (
+          <div className="px-4 pt-3 pb-2 border-b space-y-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Select value={dateType} onValueChange={(v) => setDateType(v as BpcDateType)}>
+                <SelectTrigger className="h-8 text-xs w-[200px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(Object.keys(BPC_DATE_TYPE_LABEL) as BpcDateType[]).map((k) => (
+                    <SelectItem key={k} value={k} className="text-xs">
+                      {BPC_DATE_TYPE_LABEL[k]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <ToggleGroup
+                type="single"
+                value={preset}
+                onValueChange={(v) => v && setPresetAndRange(v as PeriodPreset)}
+                className="border rounded-md"
+              >
+                <ToggleGroupItem value="today" className="text-[11px] h-8 px-2.5">Hoje</ToggleGroupItem>
+                <ToggleGroupItem value="7d" className="text-[11px] h-8 px-2.5">7d</ToggleGroupItem>
+                <ToggleGroupItem value="30d" className="text-[11px] h-8 px-2.5">30d</ToggleGroupItem>
+              </ToggleGroup>
+
+              <Popover open={datePickerOpen} onOpenChange={setDatePickerOpen}>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-8 text-[11px] gap-1.5">
+                    <CalendarIcon className="h-3.5 w-3.5" />
+                    {format(range.from, "dd/MM/yy")} — {format(range.to, "dd/MM/yy")}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="end">
+                  <Calendar
+                    mode="range"
+                    selected={{ from: range.from, to: range.to }}
+                    onSelect={(r) => {
+                      if (r?.from && r?.to) {
+                        setRange({ from: startOfDay(r.from), to: endOfDay(r.to) });
+                        setPreset("custom");
+                        setDatePickerOpen(false);
+                      } else if (r?.from) {
+                        setRange({ from: startOfDay(r.from), to: endOfDay(r.from) });
+                      }
+                    }}
+                    numberOfMonths={2}
+                    className="pointer-events-auto"
+                    locale={ptBR}
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+          </div>
+        )}
+
         <div className="px-4 pt-3 pb-2 border-b">
           <Tabs value={tab} onValueChange={(v) => setTab(v as any)}>
             <TabsList className="grid grid-cols-4 w-full h-9">
-              <TabsTrigger value="all" className="text-[11px]">
-                Todos · {metrics.total}
-              </TabsTrigger>
+              <TabsTrigger value="all" className="text-[11px]">Todos · {metrics.total}</TabsTrigger>
               <TabsTrigger value="to_call" className="text-[11px] data-[state=active]:text-red-600">
                 📞 Ligar · {metrics.toCallNow}
               </TabsTrigger>
-              <TabsTrigger value="on_wa" className="text-[11px]">
-                💬 No WA · {metrics.alreadyOnWhatsApp}
-              </TabsTrigger>
-              <TabsTrigger value="unviable" className="text-[11px]">
-                ⚠️ Inviável · {metrics.unviable}
-              </TabsTrigger>
+              <TabsTrigger value="on_wa" className="text-[11px]">💬 No WA · {metrics.alreadyOnWhatsApp}</TabsTrigger>
+              <TabsTrigger value="unviable" className="text-[11px]">⚠️ Inviável · {metrics.unviable}</TabsTrigger>
             </TabsList>
           </Tabs>
           <div className="flex gap-2 mt-2">
@@ -159,34 +252,24 @@ export function BpcFormLeadsSheet({
             </div>
           )}
           {filtered.map((l) => (
-            <div
-              key={l.form_lead_id}
-              className="border rounded-md p-2.5 text-xs hover:bg-muted/40 transition-colors"
-            >
+            <div key={l.form_lead_id} className="border rounded-md p-2.5 text-xs hover:bg-muted/40 transition-colors">
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">
                   <div className="font-semibold truncate flex items-center gap-1.5">
                     {l.name || "Sem nome"}
                     {!l.has_whatsapp && !l.is_unviable && (
-                      <Badge variant="destructive" className="text-[9px] px-1 py-0 h-4">
-                        LIGAR
-                      </Badge>
+                      <Badge variant="destructive" className="text-[9px] px-1 py-0 h-4">LIGAR</Badge>
                     )}
                     {l.has_whatsapp && (
-                      <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4 bg-emerald-100 text-emerald-700">
-                        WA
-                      </Badge>
+                      <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4 bg-emerald-100 text-emerald-700">WA</Badge>
                     )}
                     {l.is_unviable && (
-                      <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 text-amber-600 border-amber-300">
-                        INVIÁVEL
-                      </Badge>
+                      <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 text-amber-600 border-amber-300">INVIÁVEL</Badge>
                     )}
                   </div>
                   <div className="text-[11px] text-muted-foreground mt-0.5">
                     {fmtPhone(l.phone_normalized)} · {l.operator}
                   </div>
-                  {/* Quem iniciou a conversa */}
                   {l.has_whatsapp && (
                     <div className="text-[10px] mt-1">
                       {l.first_contact_by === "client" && (
@@ -198,9 +281,7 @@ export function BpcFormLeadsSheet({
                     </div>
                   )}
                   {!l.has_whatsapp && !l.is_unviable && (
-                    <div className="text-[10px] mt-1 text-red-600">
-                      🔴 Ninguém respondeu ainda
-                    </div>
+                    <div className="text-[10px] mt-1 text-red-600">🔴 Ninguém respondeu ainda</div>
                   )}
                   <div className="text-[10px] text-muted-foreground mt-1 grid grid-cols-2 gap-x-2 gap-y-0.5">
                     {l.renda && <span>💰 {l.renda}</span>}
@@ -210,8 +291,9 @@ export function BpcFormLeadsSheet({
                     {l.estado_civil && <span>💍 {l.estado_civil}</span>}
                     {l.campaign_name && <span className="truncate" title={l.campaign_name}>📣 {l.campaign_name}</span>}
                   </div>
-                  <div className="text-[10px] text-muted-foreground mt-1">
-                    {l.created_at && `Form: ${fmtBR(l.created_at)} (BR)`}
+                  <div className="text-[10px] text-muted-foreground mt-1 space-x-2">
+                    {l.created_at && <span>Form: {fmtBR(l.created_at)}</span>}
+                    {l.last_contact_at && <span>· Últ. msg: {fmtBR(l.last_contact_at)}</span>}
                   </div>
                 </div>
                 <div className="flex flex-col gap-1 shrink-0">
@@ -220,9 +302,7 @@ export function BpcFormLeadsSheet({
                     variant="outline"
                     className="h-7 w-7 p-0"
                     title="Ligar"
-                    onClick={() => {
-                      window.location.href = `tel:+${l.phone_normalized}`;
-                    }}
+                    onClick={() => { window.location.href = `tel:+${l.phone_normalized}`; }}
                   >
                     <Phone className="h-3 w-3" />
                   </Button>
@@ -232,16 +312,12 @@ export function BpcFormLeadsSheet({
                     className="h-7 w-7 p-0"
                     title={l.has_whatsapp ? "Abrir conversa" : "Abrir conversa (iniciar)"}
                     onClick={() => {
-                      if (onOpenChat) {
-                        onOpenChat(l.phone_normalized);
-                      } else {
-                        window.open(`https://wa.me/${l.phone_normalized}`, "_blank");
-                      }
+                      if (onOpenChat) onOpenChat(l.phone_normalized);
+                      else window.open(`https://wa.me/${l.phone_normalized}`, "_blank");
                     }}
                   >
                     <MessageCircle className="h-3 w-3" />
                   </Button>
-
                 </div>
               </div>
             </div>

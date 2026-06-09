@@ -165,18 +165,13 @@ Deno.serve(async (req) => {
       new Date(Date.now() - 7 * 86400 * 1000).toISOString();
     const toISO = url.searchParams.get("to") || new Date().toISOString();
     const instanceFilter = (url.searchParams.get("instance_name") || "").toLowerCase().trim();
+    // date_type: created (default) | first_contact | last_contact
+    const dateType = (url.searchParams.get("date_type") || "created").toLowerCase();
 
-    // 1. Decide which tabs to read based on instance filter.
-    // Each operator tab corresponds to that operator's WhatsApp instance
-    // (e.g. tab "LEADS MATEUS" -> instance "mateus atendimento"). Match by
-    // checking if the operator name appears inside the instance name.
     const tabsToRead = instanceFilter
       ? SHEET_TABS.filter((s) => instanceFilter.includes(s.operator.toLowerCase()))
       : SHEET_TABS;
 
-    // If a filter was set but no operator matched, return empty.
-    // Serializa as leituras (250ms entre cada) p/ evitar 429 do Google Sheets,
-    // e usa allSettled p/ que a falha de UMA aba não derrube as métricas das outras.
     const tabErrors: { tab: string; error: string }[] = [];
     const allRows: SheetRow[] = [];
     for (let i = 0; i < tabsToRead.length; i++) {
@@ -192,14 +187,16 @@ Deno.serve(async (req) => {
       if (i < tabsToRead.length - 1) await new Promise((r) => setTimeout(r, 250));
     }
 
-    // 2. Filter by period
-    const periodRows = allRows.filter((r) => inPeriod(r.created_at, fromISO, toISO));
+    // Para "created" filtramos cedo (economia). Pros outros precisamos cruzar
+    // com WA antes — então usamos todas as linhas como base.
+    const baseRows = dateType === "created"
+      ? allRows.filter((r) => inPeriod(r.created_at, fromISO, toISO))
+      : allRows;
 
-    // 3. Cross-check phones against whatsapp_messages on External.
-    //    Para cada telefone, pegamos a PRIMEIRA mensagem para saber quem iniciou:
-    //    direction='inbound' → cliente mandou primeiro; 'outbound' → operador foi proativo.
-    const phones = Array.from(new Set(periodRows.map((r) => r.phone_normalized)));
+    // Cross-check com whatsapp_messages: pegamos PRIMEIRA e ÚLTIMA mensagem por telefone.
+    const phones = Array.from(new Set(baseRows.map((r) => r.phone_normalized)));
     const firstByPhone = new Map<string, { direction: string; created_at: string }>();
+    const lastByPhone = new Map<string, { created_at: string }>();
 
     if (phones.length > 0) {
       const extUrl = Deno.env.get("EXTERNAL_SUPABASE_URL");
@@ -213,7 +210,7 @@ Deno.serve(async (req) => {
             .select("phone, direction, created_at")
             .or(last8.map((p) => `phone.like.%${p}`).join(","))
             .order("created_at", { ascending: true })
-            .limit(20000);
+            .limit(50000);
           (data || []).forEach((r: any) => {
             const np = normalizePhone(r.phone);
             if (!np) return;
@@ -224,13 +221,15 @@ Deno.serve(async (req) => {
                 created_at: r.created_at,
               });
             }
+            lastByPhone.set(key, { created_at: r.created_at }); // sobrescreve até a última
           });
         }
       }
     }
 
-    const leads = periodRows.map((r) => {
+    let leads = baseRows.map((r) => {
       const first = firstByPhone.get(r.phone_normalized.slice(-8));
+      const last = lastByPhone.get(r.phone_normalized.slice(-8));
       const has_whatsapp = !!first;
       let first_contact_by: "client" | "operator" | null = null;
       if (first) first_contact_by = first.direction === "inbound" ? "client" : "operator";
@@ -239,9 +238,17 @@ Deno.serve(async (req) => {
         has_whatsapp,
         first_contact_by,
         first_contact_at: first?.created_at || null,
+        last_contact_at: last?.created_at || null,
         is_unviable: isUnviable(r),
       };
     });
+
+    // Filtro de período por tipo de data (quando não for "created" — esse já foi)
+    if (dateType === "first_contact") {
+      leads = leads.filter((l) => l.first_contact_at && inPeriod(l.first_contact_at, fromISO, toISO));
+    } else if (dateType === "last_contact") {
+      leads = leads.filter((l) => l.last_contact_at && inPeriod(l.last_contact_at, fromISO, toISO));
+    }
 
     const total = leads.length;
     const unviable = leads.filter((l) => l.is_unviable).length;
@@ -264,7 +271,7 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
-        period: { from: fromISO, to: toISO },
+        period: { from: fromISO, to: toISO, date_type: dateType },
         instance_filter: instanceFilter || null,
         tabs_read: tabsToRead.map((t) => t.tab),
         tab_errors: tabErrors,

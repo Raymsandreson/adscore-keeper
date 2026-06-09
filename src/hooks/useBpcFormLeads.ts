@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
+export type BpcDateType = "created" | "first_contact" | "last_contact";
+
+export const BPC_DATE_TYPE_LABEL: Record<BpcDateType, string> = {
+  created: "Data de cadastro",
+  first_contact: "Data do 1º contato",
+  last_contact: "Data do último contato",
+};
+
 export interface BpcFormLead {
   form_lead_id: string;
   created_at: string;
@@ -22,6 +30,7 @@ export interface BpcFormLead {
   has_whatsapp: boolean;
   first_contact_by: "client" | "operator" | null;
   first_contact_at: string | null;
+  last_contact_at: string | null;
   is_unviable: boolean;
 }
 
@@ -46,6 +55,7 @@ export function useBpcFormLeads(opts: {
   to: Date;
   enabled?: boolean;
   instanceName?: string | null;
+  dateType?: BpcDateType;
 }) {
   const [metrics, setMetrics] = useState<BpcMetrics>({
     total: 0,
@@ -57,6 +67,7 @@ export function useBpcFormLeads(opts: {
   const [byOperator, setByOperator] = useState<BpcOperatorBreakdown[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const dateType: BpcDateType = opts.dateType ?? "created";
 
   const fetchData = useCallback(async () => {
     if (opts.enabled === false) return;
@@ -68,6 +79,7 @@ export function useBpcFormLeads(opts: {
       );
       url.searchParams.set("from", opts.from.toISOString());
       url.searchParams.set("to", opts.to.toISOString());
+      url.searchParams.set("date_type", dateType);
       if (opts.instanceName) url.searchParams.set("instance_name", opts.instanceName);
       const { data: { session } } = await supabase.auth.getSession();
       const resp = await fetch(url.toString(), {
@@ -86,7 +98,7 @@ export function useBpcFormLeads(opts: {
     } finally {
       setLoading(false);
     }
-  }, [opts.from.getTime(), opts.to.getTime(), opts.enabled, opts.instanceName]);
+  }, [opts.from.getTime(), opts.to.getTime(), opts.enabled, opts.instanceName, dateType]);
 
   useEffect(() => {
     fetchData();
