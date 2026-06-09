@@ -687,6 +687,49 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     setBulkResyncProgress(null);
   };
 
+  // Auto-sync de áudios criptografados em conversas do WhatsApp API (cloud_gerencia).
+  // Dispara silenciosamente em background ao abrir/atualizar a conversa, com throttle,
+  // sem toasts e sem bloquear a UI. Cada mensagem é tentada no máximo 1x por sessão.
+  const autoSyncAttemptedRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const instName = (conversation.instance_name || '').trim().toLowerCase();
+    if (instName !== 'cloud_gerencia') return;
+    const pending = (conversation.messages || []).filter(
+      (m: any) =>
+        m?.message_type === 'audio' &&
+        m?.external_message_id &&
+        isMissingMedia(m) &&
+        !autoSyncAttemptedRef.current.has(m.id),
+    );
+    if (pending.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      for (const msg of pending) {
+        if (cancelled) return;
+        autoSyncAttemptedRef.current.add(msg.id);
+        try {
+          const { data, error } = await cloudFunctions.invoke('whatsapp-download-media', {
+            body: { message_row_id: msg.id },
+          });
+          const payload = data as any;
+          if (!error && payload?.success && payload?.media_url) {
+            (msg as any).media_url = payload.media_url;
+            if (payload.media_type) (msg as any).media_type = payload.media_type;
+            forceRerender();
+          }
+        } catch {
+          /* silencioso */
+        }
+        await new Promise((r) => setTimeout(r, 450));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [conversation.instance_name, conversation.messages]);
+
+
+
   const handleRefreshRoster = async () => {
     const groupJid =
       conversation.messages.find(m => (m.metadata?.chat?.wa_chatid || '').includes('@g.us'))?.metadata?.chat?.wa_chatid ||
