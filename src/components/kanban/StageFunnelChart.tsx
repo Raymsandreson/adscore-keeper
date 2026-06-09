@@ -21,11 +21,12 @@ interface StageFunnelChartProps {
   board: KanbanBoard;
   leadsPerStage: Record<string, number>;
   conversionAlerts?: ConversionAlert[];
+  dateFilter?: { field: "created_at" | "updated_at"; from: string | null; to: string | null };
 }
 
 type StatusFilter = 'closed' | 'refused' | 'inviavel' | 'cancelled' | 'blocked' | 'active' | 'stage';
 
-export function StageFunnelChart({ board, leadsPerStage, conversionAlerts = [] }: StageFunnelChartProps) {
+export function StageFunnelChart({ board, leadsPerStage, conversionAlerts = [], dateFilter }: StageFunnelChartProps) {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [activeFilter, setActiveFilter] = useState<StatusFilter | null>(null);
   const [activeStageId, setActiveStageId] = useState<string | null>(null);
@@ -33,12 +34,15 @@ export function StageFunnelChart({ board, leadsPerStage, conversionAlerts = [] }
 
   // Fetch status counts for this board
   const { data: statusCounts } = useQuery({
-    queryKey: ['funnel-status-counts', board.id],
+    queryKey: ['funnel-status-counts', board.id, dateFilter],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let q = supabase
         .from('leads')
         .select('lead_status, is_blocked')
         .eq('board_id', board.id);
+      if (dateFilter?.from) q = q.gte(dateFilter.field, dateFilter.from);
+      if (dateFilter?.to) q = q.lte(dateFilter.field, dateFilter.to);
+      const { data, error } = await q;
       if (error) throw error;
       const isOpenLeadStatus = (status?: string | null) =>
         !status || ['no_response', 'in_progress', 'active', 'novo', 'new', 'open'].includes(status);
@@ -57,7 +61,7 @@ export function StageFunnelChart({ board, leadsPerStage, conversionAlerts = [] }
 
   // Fetch leads for side sheet
   const { data: sheetLeads, isLoading: sheetLoading } = useQuery({
-    queryKey: ['funnel-sheet-leads', board.id, activeFilter, activeStageId],
+    queryKey: ['funnel-sheet-leads', board.id, activeFilter, activeStageId, dateFilter],
     queryFn: async () => {
       let query = supabase
         .from('leads')
@@ -74,6 +78,9 @@ export function StageFunnelChart({ board, leadsPerStage, conversionAlerts = [] }
       } else if (activeFilter) {
         query = query.eq('lead_status', activeFilter);
       }
+
+      if (dateFilter?.from) query = query.gte(dateFilter.field, dateFilter.from);
+      if (dateFilter?.to) query = query.lte(dateFilter.field, dateFilter.to);
 
       const { data, error } = await query;
       if (error) throw error;

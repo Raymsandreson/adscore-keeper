@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, LayoutGrid, Users, ArrowRight, Settings, Filter, Maximize2, Minimize2, Target, CheckCircle2, Plus } from "lucide-react";
+import { Search, LayoutGrid, Users, ArrowRight, Settings, Filter, Maximize2, Minimize2, Target, CheckCircle2, Plus, CalendarIcon } from "lucide-react";
 import { db as supabase } from "@/integrations/supabase";
 import { useQuery } from "@tanstack/react-query";
 import { StageFunnelChart } from "@/components/kanban/StageFunnelChart";
@@ -13,6 +13,33 @@ import { cn } from "@/lib/utils";
 import { Progress } from "@/components/ui/progress";
 import { WorkflowBuilder } from "@/components/workflow/WorkflowBuilder";
 import { FunnelTeamDialog } from "@/components/funnel/FunnelTeamDialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { format } from "date-fns";
+import { ptBR } from "date-fns/locale";
+
+type DateField = "created_at" | "updated_at";
+type RangePreset = "today" | "7d" | "30d" | "all" | "custom";
+
+function computeRange(preset: RangePreset, custom?: { from?: Date; to?: Date }): { from: Date | null; to: Date | null } {
+  const now = new Date();
+  if (preset === "all") return { from: null, to: null };
+  if (preset === "today") {
+    const f = new Date(now); f.setHours(0, 0, 0, 0);
+    const t = new Date(now); t.setHours(23, 59, 59, 999);
+    return { from: f, to: t };
+  }
+  if (preset === "7d") {
+    const f = new Date(now); f.setDate(f.getDate() - 6); f.setHours(0, 0, 0, 0);
+    return { from: f, to: now };
+  }
+  if (preset === "30d") {
+    const f = new Date(now); f.setDate(f.getDate() - 29); f.setHours(0, 0, 0, 0);
+    return { from: f, to: now };
+  }
+  return { from: custom?.from ?? null, to: custom?.to ?? null };
+}
 
 interface ChecklistItem {
   id: string;
@@ -28,6 +55,17 @@ const SalesFunnelsPage = () => {
   const [showBuilder, setShowBuilder] = useState(false);
   const [editBoardId, setEditBoardId] = useState<string | null>(null);
   const [teamBoard, setTeamBoard] = useState<{ id: string; name: string } | null>(null);
+  const [dateField, setDateField] = useState<DateField>("created_at");
+  const [rangePreset, setRangePreset] = useState<RangePreset>("today");
+  const [customRange, setCustomRange] = useState<{ from?: Date; to?: Date }>({});
+  const { from: fromDate, to: toDate } = useMemo(
+    () => computeRange(rangePreset, customRange),
+    [rangePreset, customRange.from?.getTime(), customRange.to?.getTime()]
+  );
+  const dateFilter = useMemo(
+    () => ({ field: dateField, from: fromDate?.toISOString() ?? null, to: toDate?.toISOString() ?? null }),
+    [dateField, fromDate, toDate]
+  );
 
   const salesFunnels = useMemo(
     () => boards.filter(b => b.board_type === 'funnel'),
@@ -43,14 +81,17 @@ const SalesFunnelsPage = () => {
 
   // Fetch lead counts per board+stage
   const { data: leadCounts } = useQuery({
-    queryKey: ['funnel-lead-counts', salesFunnels.map(b => b.id)],
+    queryKey: ['funnel-lead-counts', salesFunnels.map(b => b.id), dateFilter],
     queryFn: async () => {
       if (!salesFunnels.length) return {};
       const boardIds = salesFunnels.map(b => b.id);
-      const { data, error } = await supabase
+      let q = supabase
         .from('leads')
         .select('board_id, status')
         .in('board_id', boardIds);
+      if (dateFilter.from) q = q.gte(dateFilter.field, dateFilter.from);
+      if (dateFilter.to) q = q.lte(dateFilter.field, dateFilter.to);
+      const { data, error } = await q;
       if (error) throw error;
 
       const counts: Record<string, { total: number; byStage: Record<string, number> }> = {};
@@ -158,16 +199,71 @@ const SalesFunnelsPage = () => {
         </div>
       </div>
 
-      {/* Search */}
-      <div className="relative max-w-md">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder="Buscar funis..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="pl-9"
-        />
+      {/* Search + Date filter */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative flex-1 min-w-[200px] max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Buscar funis..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+        <Select value={dateField} onValueChange={(v) => setDateField(v as DateField)}>
+          <SelectTrigger className="w-[180px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="created_at">📥 Data de cadastro</SelectItem>
+            <SelectItem value="updated_at">🔄 Última atualização</SelectItem>
+          </SelectContent>
+        </Select>
+        <div className="flex items-center gap-1 rounded-md border bg-background p-0.5">
+          {([
+            { v: "today", l: "Hoje" },
+            { v: "7d", l: "7d" },
+            { v: "30d", l: "30d" },
+            { v: "all", l: "Tudo" },
+          ] as { v: RangePreset; l: string }[]).map(opt => (
+            <Button
+              key={opt.v}
+              size="sm"
+              variant={rangePreset === opt.v ? "default" : "ghost"}
+              className="h-7 px-2 text-xs"
+              onClick={() => setRangePreset(opt.v)}
+            >
+              {opt.l}
+            </Button>
+          ))}
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                size="sm"
+                variant={rangePreset === "custom" ? "default" : "ghost"}
+                className="h-7 px-2 text-xs gap-1"
+              >
+                <CalendarIcon className="h-3 w-3" />
+                {rangePreset === "custom" && customRange.from
+                  ? `${format(customRange.from, "dd/MM", { locale: ptBR })}${customRange.to ? ` - ${format(customRange.to, "dd/MM", { locale: ptBR })}` : ""}`
+                  : "Período"}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="end">
+              <Calendar
+                mode="range"
+                selected={{ from: customRange.from, to: customRange.to }}
+                onSelect={(r) => {
+                  setCustomRange({ from: r?.from, to: r?.to });
+                  setRangePreset("custom");
+                }}
+                locale={ptBR}
+              />
+            </PopoverContent>
+          </Popover>
+        </div>
       </div>
+
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -268,7 +364,9 @@ const SalesFunnelsPage = () => {
                   <StageFunnelChart
                     board={board}
                     leadsPerStage={stageData}
+                    dateFilter={dateFilter}
                   />
+
 
                   {/* Objectives detail when expanded */}
                   {isExpanded && boardObjectives && board.stages?.length > 0 && (
