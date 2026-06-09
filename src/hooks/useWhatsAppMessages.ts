@@ -679,7 +679,8 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
         // Group @mentions: array of phone numbers (digits) to tag in a group message.
         mentions: mentions && mentions.length ? mentions : undefined,
         // Canal Cloud API (Meta oficial) → edge proxy reroteia pra Railway send-whatsapp-cloud.
-        channel: conversationInstanceName === 'cloud_gerencia' ? 'cloud' : undefined,
+        // Comparação case-insensitive + trim: instance_name pode vir com variação de caixa.
+        channel: (conversationInstanceName || '').trim().toLowerCase() === 'cloud_gerencia' ? 'cloud' : undefined,
       };
 
 
