@@ -112,8 +112,8 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
   const [docChecklistDialog, setDocChecklistDialog] = useState<{ phaseIdx: number; objIdx: number; stepId: string; items: DocChecklistItem[]; checklistType: ChecklistType } | null>(null);
   const [msgTemplatesDialog, setMsgTemplatesDialog] = useState<{ phaseIdx: number; objIdx: number; stepId: string; templates: Record<string, TemplateVariation[]>; activeTab: string } | null>(null);
   const [newDocItem, setNewDocItem] = useState('');
-  const [dragItem, setDragItem] = useState<{ type: 'objective' | 'step'; phaseIdx: number; objIdx: number; stepIdx?: number } | null>(null);
-  const [dragOverItem, setDragOverItem] = useState<{ type: 'objective' | 'step'; phaseIdx: number; objIdx: number; stepIdx?: number } | null>(null);
+  const [dragItem, setDragItem] = useState<{ type: 'phase' | 'objective' | 'step'; phaseIdx: number; objIdx?: number; stepIdx?: number } | null>(null);
+  const [dragOverItem, setDragOverItem] = useState<{ type: 'phase' | 'objective' | 'step'; phaseIdx: number; objIdx?: number; stepIdx?: number } | null>(null);
   const [aiPrompt, setAiPrompt] = useState('');
   const [generating, setGenerating] = useState(false);
   const [showAiDialog, setShowAiDialog] = useState(false);
