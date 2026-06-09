@@ -791,7 +791,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
         return false;
       }
 
-      const isCloud = conversationInstanceName === 'cloud_gerencia';
+      const isCloud = (conversationInstanceName || '').trim().toLowerCase() === 'cloud_gerencia';
       const { data, error } = await cloudFunctions.invoke('send-whatsapp', {
         body: {
           action: 'send_media',
