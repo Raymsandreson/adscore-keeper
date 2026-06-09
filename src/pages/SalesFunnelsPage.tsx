@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Search, LayoutGrid, Users, ArrowRight, Settings, Filter, Maximize2, Minimize2, Target, CheckCircle2, Plus } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { db as supabase } from "@/integrations/supabase";
 import { useQuery } from "@tanstack/react-query";
 import { StageFunnelChart } from "@/components/kanban/StageFunnelChart";
 import { cn } from "@/lib/utils";
