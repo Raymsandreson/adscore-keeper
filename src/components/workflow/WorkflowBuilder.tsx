@@ -1197,9 +1197,6 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                     )}
                     aria-live="polite"
                   >
-                    {autosaveStatus === 'pending' && '• mudanças pendentes…'}
-                    {autosaveStatus === 'saving' && '⟳ sincronizando…'}
-                    {autosaveStatus === 'saved' && '✓ salvo automaticamente'}
                     {autosaveStatus === 'error' && '⚠ falha ao sincronizar'}
                   </span>
                 )}
