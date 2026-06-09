@@ -2040,7 +2040,19 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+
+      // Cloud API (Meta) NÃO aceita audio/webm — só ogg/mpeg/mp4/amr/aac.
+      // Para conversas Cloud, grava direto em audio/ogg;codecs=opus (suportado em Chromium/Firefox).
+      // UazAPI aceita ambos, então ogg é seguro como padrão universal.
+      const isCloud = (conversation.instance_name || '').trim().toLowerCase() === 'cloud_gerencia';
+      const preferredMime = isCloud ? 'audio/ogg;codecs=opus' : 'audio/webm';
+      const fallbackMime = 'audio/webm';
+      const chosenMime = (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported?.(preferredMime))
+        ? preferredMime
+        : fallbackMime;
+      const mediaRecorder = new MediaRecorder(stream, { mimeType: chosenMime });
+      const outMime = chosenMime.startsWith('audio/ogg') ? 'audio/ogg' : 'audio/webm';
+      const ext = outMime === 'audio/ogg' ? 'ogg' : 'webm';
       audioChunksRef.current = [];
       mediaRecorder.ondataavailable = (e) => {
         if (e.data.size > 0) audioChunksRef.current.push(e.data);
@@ -2049,16 +2061,16 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         stream.getTracks().forEach(t => t.stop());
         if (recordingIntervalRef.current) clearInterval(recordingIntervalRef.current);
         setRecordingTime(0);
-        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        const blob = new Blob(audioChunksRef.current, { type: outMime });
         if (blob.size < 100) return;
         setUploadingMedia(true);
         try {
-          const path = `outbound/audio_${Date.now()}.webm`;
-          const { error: uploadError } = await supabase.storage.from('whatsapp-media').upload(path, blob);
+          const path = `outbound/audio_${Date.now()}.${ext}`;
+          const { error: uploadError } = await supabase.storage.from('whatsapp-media').upload(path, blob, { contentType: outMime });
           if (uploadError) throw uploadError;
           const { data: { publicUrl } } = supabase.storage.from('whatsapp-media').getPublicUrl(path);
           await onSendMedia(
-            conversation.phone, publicUrl, 'audio/webm', undefined, undefined,
+            conversation.phone, publicUrl, outMime, undefined, undefined,
             conversation.contact_id || undefined, conversation.lead_id || undefined,
             conversation.instance_name, conversationChatId
           );
