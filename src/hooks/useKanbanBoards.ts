@@ -22,6 +22,11 @@ export interface KanbanBoard {
   ad_account_id: string | null;
   board_type: 'funnel' | 'workflow';
   product_service_id: string | null;
+  sheet_webhook_token?: string | null;
+  sheet_field_mapping?: Record<string, string> | null;
+  sheet_initial_stage_id?: string | null;
+  sheet_source_url?: string | null;
+  sheet_enabled?: boolean | null;
   created_at: string;
   updated_at: string;
 }
@@ -123,6 +128,11 @@ export const useKanbanBoards = (adAccountId?: string) => {
       if (updates.board_type !== undefined) updatePayload.board_type = updates.board_type;
       if (updates.stages !== undefined) updatePayload.stages = JSON.parse(JSON.stringify(updates.stages));
       if (updates.product_service_id !== undefined) updatePayload.product_service_id = updates.product_service_id;
+      if (updates.sheet_webhook_token !== undefined) updatePayload.sheet_webhook_token = updates.sheet_webhook_token;
+      if (updates.sheet_field_mapping !== undefined) updatePayload.sheet_field_mapping = updates.sheet_field_mapping;
+      if (updates.sheet_initial_stage_id !== undefined) updatePayload.sheet_initial_stage_id = updates.sheet_initial_stage_id;
+      if (updates.sheet_source_url !== undefined) updatePayload.sheet_source_url = updates.sheet_source_url;
+      if (updates.sheet_enabled !== undefined) updatePayload.sheet_enabled = updates.sheet_enabled;
 
       const { data, error } = await supabase
         .from('kanban_boards')
