@@ -199,16 +199,71 @@ const SalesFunnelsPage = () => {
         </div>
       </div>
 
-      {/* Search */}
-      <div className="relative max-w-md">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder="Buscar funis..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="pl-9"
-        />
+      {/* Search + Date filter */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative flex-1 min-w-[200px] max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Buscar funis..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+        <Select value={dateField} onValueChange={(v) => setDateField(v as DateField)}>
+          <SelectTrigger className="w-[180px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="created_at">📥 Data de cadastro</SelectItem>
+            <SelectItem value="updated_at">🔄 Última atualização</SelectItem>
+          </SelectContent>
+        </Select>
+        <div className="flex items-center gap-1 rounded-md border bg-background p-0.5">
+          {([
+            { v: "today", l: "Hoje" },
+            { v: "7d", l: "7d" },
+            { v: "30d", l: "30d" },
+            { v: "all", l: "Tudo" },
+          ] as { v: RangePreset; l: string }[]).map(opt => (
+            <Button
+              key={opt.v}
+              size="sm"
+              variant={rangePreset === opt.v ? "default" : "ghost"}
+              className="h-7 px-2 text-xs"
+              onClick={() => setRangePreset(opt.v)}
+            >
+              {opt.l}
+            </Button>
+          ))}
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                size="sm"
+                variant={rangePreset === "custom" ? "default" : "ghost"}
+                className="h-7 px-2 text-xs gap-1"
+              >
+                <CalendarIcon className="h-3 w-3" />
+                {rangePreset === "custom" && customRange.from
+                  ? `${format(customRange.from, "dd/MM", { locale: ptBR })}${customRange.to ? ` - ${format(customRange.to, "dd/MM", { locale: ptBR })}` : ""}`
+                  : "Período"}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="end">
+              <Calendar
+                mode="range"
+                selected={{ from: customRange.from, to: customRange.to }}
+                onSelect={(r) => {
+                  setCustomRange({ from: r?.from, to: r?.to });
+                  setRangePreset("custom");
+                }}
+                locale={ptBR}
+              />
+            </PopoverContent>
+          </Popover>
+        </div>
       </div>
+
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
