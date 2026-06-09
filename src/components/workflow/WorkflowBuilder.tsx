@@ -853,7 +853,26 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                    <div key={phase.stageId} className="border rounded-lg overflow-hidden">
                      {/* Phase header */}
                      <div className="flex items-center gap-2 px-3 py-2 bg-muted/30 border-l-4 border-muted-foreground/30">
-                       <GripVertical className="h-4 w-4 text-muted-foreground/50 flex-shrink-0" />
+                       <div className="flex flex-col -my-1 flex-shrink-0">
+                         <button
+                           type="button"
+                           onClick={() => movePhase(phaseIdx, -1)}
+                           disabled={phaseIdx === 0}
+                           title="Mover para cima"
+                           className="p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
+                         >
+                           <ChevronUp className="h-3 w-3" />
+                         </button>
+                         <button
+                           type="button"
+                           onClick={() => movePhase(phaseIdx, 1)}
+                           disabled={phaseIdx === phases.length - 1}
+                           title="Mover para baixo"
+                           className="p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
+                         >
+                           <ChevronDown className="h-3 w-3" />
+                         </button>
+                       </div>
                         <Collapsible open={phase.isExpanded} onOpenChange={() => togglePhase(phaseIdx)} className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 w-full min-w-0">
                             <CollapsibleTrigger asChild>
