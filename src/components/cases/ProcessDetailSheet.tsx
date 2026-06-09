@@ -205,11 +205,11 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
         fee_percentage: process.fee_percentage ?? 30,
       });
       setDirty(process.fee_percentage == null); // marca dirty se aplicou default
-      setActiveTab('partes');
+      setActiveTab(defaultTab ?? 'partes');
       setActivities([]);
       setDocuments([]);
     }
-  }, [process]);
+  }, [process, defaultTab]);
 
   // Fetch activities when the tab is activated
   const fetchActivities = useCallback(async () => {
