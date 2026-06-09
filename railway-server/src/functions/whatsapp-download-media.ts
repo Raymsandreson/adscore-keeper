@@ -154,14 +154,45 @@ export const handler: RequestHandler = async (req, res) => {
       return ok({ success: true, already_synced: true, media_url: msg.media_url });
     }
 
-    const { data: inst, error: instErr } = await ext
-      .from('whatsapp_instances')
-      .select('instance_name, instance_token, base_url')
-      .ilike('instance_name', msg.instance_name || '')
-      .limit(1)
-      .maybeSingle();
-    if (instErr) return ok({ success: false, error: instErr.message });
-    if (!inst?.instance_token) return ok({ success: false, error: `Instância ${msg.instance_name || ''} sem token.` });
+    const messageType = msg.message_type || 'document';
+    const debugSteps: string[] = [];
+    let bytes: Buffer | null = null;
+    let contentType = msg.media_type || 'application/octet-stream';
+    let usedId: string | null = null;
+    let transcription: string | null = null;
+
+    // ===== Branch Cloud API (Meta oficial) — NÃO usa UazAPI =====
+    if (isCloudApiMessage(msg)) {
+      const mediaId = msg.metadata?.cloud_media?.id;
+      if (!mediaId) {
+        return ok({
+          success: false,
+          error: 'Mensagem da Cloud API sem media_id salvo (recebida antes do fix do webhook). Áudios antigos não podem ser recuperados — apenas novos serão sincronizados.',
+        });
+      }
+      const dl = await downloadFromMetaCloud(String(mediaId));
+      if ('error' in dl) {
+        debugSteps.push(`meta:${dl.error}`);
+        return ok({ success: false, error: `Falha Meta Cloud: ${dl.error}` });
+      }
+      bytes = dl.bytes;
+      contentType = dl.contentType;
+      usedId = `meta-cloud:${mediaId}`;
+      debugSteps.push('meta-cloud:ok');
+    }
+
+    // ===== Branch UazAPI (instâncias não-Cloud) =====
+    const { data: inst } = !isCloudApiMessage(msg)
+      ? await ext
+          .from('whatsapp_instances')
+          .select('instance_name, instance_token, base_url')
+          .ilike('instance_name', msg.instance_name || '')
+          .limit(1)
+          .maybeSingle()
+      : { data: null };
+    if (!isCloudApiMessage(msg) && !inst?.instance_token) {
+      return ok({ success: false, error: `Instância ${msg.instance_name || ''} sem token.` });
+    }
 
     const baseUrl = inst.base_url || 'https://abraci.uazapi.com';
     const fullId = String(msg.external_message_id || msg.metadata?.message?.id || '').trim();
