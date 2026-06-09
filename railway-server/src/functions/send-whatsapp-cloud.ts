@@ -22,10 +22,24 @@ const GRAPH = 'https://graph.facebook.com';
 const INSTANCE_NAME = 'cloud_gerencia';
 
 interface SendBody {
+  action?: string;
   phone?: string;
   message?: string;
   contact_id?: string | null;
   lead_id?: string | null;
+  // Media (Cloud API)
+  media_url?: string;
+  media_type?: string; // MIME (image/png, audio/ogg, application/pdf, ...)
+  caption?: string;
+  file_name?: string;
+}
+
+function mediaKindFromMime(mime: string | undefined): 'image' | 'audio' | 'video' | 'document' {
+  const m = (mime || '').toLowerCase();
+  if (m.startsWith('image/')) return 'image';
+  if (m.startsWith('audio/')) return 'audio';
+  if (m.startsWith('video/')) return 'video';
+  return 'document';
 }
 
 function normalizePhone(raw: string): string {
