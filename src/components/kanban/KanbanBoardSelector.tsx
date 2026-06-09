@@ -4,6 +4,7 @@ import { useLeadCustomFields, FieldType } from '@/hooks/useLeadCustomFields';
 import { useFieldStageRequirements } from '@/hooks/useFieldStageRequirements';
 import { useProductsServices } from '@/hooks/useProductsServices';
 import { StageAgentSelector } from './StageAgentSelector';
+import { BoardSheetIngestSection } from './BoardSheetIngestSection';
 import { Pencil, Trash2 as Trash2Fields } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
@@ -744,6 +745,7 @@ export function KanbanBoardSelector({
               <>
                 <BoardCustomFieldsSection boardId={editingBoard.id} stages={editingBoard.stages} />
                 <StageAgentSelector boardId={editingBoard.id} stages={formStages} />
+                <BoardSheetIngestSection board={editingBoard} stages={formStages} onSave={onUpdateBoard} />
               </>
             )}
           </div>
