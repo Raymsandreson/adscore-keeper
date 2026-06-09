@@ -61,7 +61,7 @@ export function StageFunnelChart({ board, leadsPerStage, conversionAlerts = [], 
 
   // Fetch leads for side sheet
   const { data: sheetLeads, isLoading: sheetLoading } = useQuery({
-    queryKey: ['funnel-sheet-leads', board.id, activeFilter, activeStageId],
+    queryKey: ['funnel-sheet-leads', board.id, activeFilter, activeStageId, dateFilter],
     queryFn: async () => {
       let query = supabase
         .from('leads')
@@ -78,6 +78,9 @@ export function StageFunnelChart({ board, leadsPerStage, conversionAlerts = [], 
       } else if (activeFilter) {
         query = query.eq('lead_status', activeFilter);
       }
+
+      if (dateFilter?.from) query = query.gte(dateFilter.field, dateFilter.from);
+      if (dateFilter?.to) query = query.lte(dateFilter.field, dateFilter.to);
 
       const { data, error } = await query;
       if (error) throw error;
