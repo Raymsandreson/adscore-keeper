@@ -97,6 +97,42 @@ async function verifyCloudJwt(authHeader: string | undefined): Promise<boolean> 
   }
 }
 
+const META_GRAPH = 'https://graph.facebook.com';
+const META_API_VERSION = process.env.WHATSAPP_CLOUD_API_VERSION || 'v21.0';
+const META_TOKEN = process.env.WHATSAPP_CLOUD_TOKEN || '';
+
+function isCloudApiMessage(msg: any): boolean {
+  if ((msg?.instance_name || '').toLowerCase() === 'cloud_gerencia') return true;
+  if (typeof msg?.external_message_id === 'string' && msg.external_message_id.startsWith('wamid.')) return true;
+  if (msg?.metadata?.cloud_media?.id) return true;
+  return false;
+}
+
+async function downloadFromMetaCloud(mediaId: string): Promise<{ bytes: Buffer; contentType: string } | { error: string }> {
+  if (!META_TOKEN) return { error: 'WHATSAPP_CLOUD_TOKEN não configurado no Railway.' };
+  // 1) Resolver URL
+  const lookupResp = await fetch(`${META_GRAPH}/${META_API_VERSION}/${encodeURIComponent(mediaId)}`, {
+    headers: { Authorization: `Bearer ${META_TOKEN}` },
+  });
+  if (!lookupResp.ok) {
+    const t = await lookupResp.text().catch(() => '');
+    return { error: `Meta /{media_id} ${lookupResp.status}: ${t.slice(0, 200)}` };
+  }
+  const meta: any = await lookupResp.json().catch(() => ({}));
+  const url: string | undefined = meta?.url;
+  const mime: string = meta?.mime_type || 'application/octet-stream';
+  if (!url) return { error: 'Meta retornou sem url.' };
+  // 2) Baixar bytes (também exige Bearer)
+  const fileResp = await fetch(url, { headers: { Authorization: `Bearer ${META_TOKEN}` } });
+  if (!fileResp.ok) {
+    const t = await fileResp.text().catch(() => '');
+    return { error: `Meta media GET ${fileResp.status}: ${t.slice(0, 200)}` };
+  }
+  const bytes = Buffer.from(await fileResp.arrayBuffer());
+  return { bytes, contentType: fileResp.headers.get('content-type') || mime };
+}
+
+
 export const handler: RequestHandler = async (req, res) => {
   const ok = (body: Record<string, unknown>) => res.status(200).json(body);
   try {
@@ -118,36 +154,59 @@ export const handler: RequestHandler = async (req, res) => {
       return ok({ success: true, already_synced: true, media_url: msg.media_url });
     }
 
-    const { data: inst, error: instErr } = await ext
-      .from('whatsapp_instances')
-      .select('instance_name, instance_token, base_url')
-      .ilike('instance_name', msg.instance_name || '')
-      .limit(1)
-      .maybeSingle();
-    if (instErr) return ok({ success: false, error: instErr.message });
-    if (!inst?.instance_token) return ok({ success: false, error: `Instância ${msg.instance_name || ''} sem token.` });
+    const messageType = msg.message_type || 'document';
+    const debugSteps: string[] = [];
+    let bytes: Buffer | null = null;
+    let contentType = msg.media_type || 'application/octet-stream';
+    let usedId: string | null = null;
+    let transcription: string | null = null;
 
-    const baseUrl = inst.base_url || 'https://abraci.uazapi.com';
+    // ===== Branch Cloud API (Meta oficial) — NÃO usa UazAPI =====
+    if (isCloudApiMessage(msg)) {
+      const mediaId = msg.metadata?.cloud_media?.id;
+      if (!mediaId) {
+        return ok({
+          success: false,
+          error: 'Mensagem da Cloud API sem media_id salvo (recebida antes do fix do webhook). Áudios antigos não podem ser recuperados — apenas novos serão sincronizados.',
+        });
+      }
+      const dl = await downloadFromMetaCloud(String(mediaId));
+      if ('error' in dl) {
+        debugSteps.push(`meta:${dl.error}`);
+        return ok({ success: false, error: `Falha Meta Cloud: ${dl.error}` });
+      }
+      bytes = dl.bytes;
+      contentType = dl.contentType;
+      usedId = `meta-cloud:${mediaId}`;
+      debugSteps.push('meta-cloud:ok');
+    }
+
+    // ===== Branch UazAPI (instâncias não-Cloud) =====
+    const { data: inst } = !isCloudApiMessage(msg)
+      ? await ext
+          .from('whatsapp_instances')
+          .select('instance_name, instance_token, base_url')
+          .ilike('instance_name', msg.instance_name || '')
+          .limit(1)
+          .maybeSingle()
+      : { data: null };
+    if (!isCloudApiMessage(msg) && !inst?.instance_token) {
+      return ok({ success: false, error: `Instância ${msg.instance_name || ''} sem token.` });
+    }
+
+    const baseUrl = inst?.base_url || 'https://abraci.uazapi.com';
     const fullId = String(msg.external_message_id || msg.metadata?.message?.id || '').trim();
     const bareId = String(msg.metadata?.message?.messageid || (fullId.includes(':') ? fullId.split(':').pop() : fullId) || '').trim();
     const candidates = Array.from(new Set([bareId, fullId].filter(Boolean)));
     const mediaKey = pickMediaKey(msg.metadata);
-    const messageType = msg.message_type || 'document';
-
-    let bytes: Buffer | null = null;
-    let contentType = msg.media_type || msg.metadata?.message?.content?.mimetype || 'application/octet-stream';
-    let usedId: string | null = null;
-    let transcription: string | null = null;
-    const debugSteps: string[] = [];
 
     const WA_HEADERS = {
       'User-Agent': 'WhatsApp/2.24.20.85 A',
       'Accept': '*/*',
     } as Record<string, string>;
 
-    // STEP 1 (preferido): se temos a URL .enc + mediaKey, decifrar direto.
-    // Isso funciona para qualquer instância do grupo, sem depender da UazAPI conhecer o ID.
-    if (msg.media_url && isEncryptedWhatsAppUrl(msg.media_url) && mediaKey) {
+    // STEP 1 (UazAPI .enc direto via mediaKey) — só se não-Cloud e ainda sem bytes.
+    if (!bytes && !isCloudApiMessage(msg) && msg.media_url && isEncryptedWhatsAppUrl(msg.media_url) && mediaKey) {
       try {
         const enc = await fetch(msg.media_url, { headers: WA_HEADERS });
         debugSteps.push(`enc-direct:${enc.status}`);
@@ -161,8 +220,8 @@ export const handler: RequestHandler = async (req, res) => {
       }
     }
 
-    // STEP 2 (fallback): pedir para UazAPI baixar/decifrar
-    if (!bytes) {
+    // STEP 2 (UazAPI /message/download) — só se não-Cloud e ainda sem bytes.
+    if (!bytes && !isCloudApiMessage(msg) && inst?.instance_token) {
       for (const candidate of candidates) {
         const dl = await fetch(`${baseUrl}/message/download`, {
           method: 'POST',
@@ -206,7 +265,7 @@ export const handler: RequestHandler = async (req, res) => {
     contentType = normalizeContentType(contentType, messageType, bytes);
     const extName = extensionFor(contentType, messageType);
     // Sanitize key (remove acentos, cedilha, hífen, espaços) — Supabase Storage rejeita
-    const safeInstance = String(inst.instance_name || msg.instance_name || 'unknown')
+    const safeInstance = String(inst?.instance_name || msg.instance_name || 'unknown')
       .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
       .replace(/[^a-zA-Z0-9]+/g, '_')
       .replace(/^_+|_+$/g, '') || 'unknown';

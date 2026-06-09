@@ -56,6 +56,13 @@ interface NormalizedMessage {
   external_message_id: string;
   ctwa_clid?: string | null;
   referral_source_url?: string | null;
+  media?: {
+    id: string;
+    mime_type?: string | null;
+    sha256?: string | null;
+    filename?: string | null;
+    voice?: boolean | null;
+  } | null;
 }
 
 function extractMessages(body: any): NormalizedMessage[] {
@@ -81,6 +88,26 @@ function extractMessages(body: any): NormalizedMessage[] {
           text = m.interactive?.button_reply?.title || m.interactive?.list_reply?.title || '';
         } else text = `(${type})`;
 
+        // Captura media id (Cloud API) — necessário pra baixar via Graph API depois.
+        let media: NormalizedMessage['media'] = null;
+        const mediaTypes = ['audio', 'image', 'video', 'document', 'sticker', 'voice'] as const;
+        for (const mt of mediaTypes) {
+          const node = (m as any)[mt];
+          if (node && typeof node === 'object' && node.id) {
+            media = {
+              id: String(node.id),
+              mime_type: node.mime_type || null,
+              sha256: node.sha256 || null,
+              filename: node.filename || null,
+              voice: typeof node.voice === 'boolean' ? node.voice : null,
+            };
+            if (typeof node.caption === 'string' && node.caption && text.startsWith('(')) {
+              text = node.caption;
+            }
+            break;
+          }
+        }
+
         out.push({
           phone: normalizePhone(m.from),
           contact_name: nameByWaId[m.from] || null,
@@ -89,6 +116,7 @@ function extractMessages(body: any): NormalizedMessage[] {
           external_message_id: m.id,
           ctwa_clid: m.referral?.ctwa_clid || null,
           referral_source_url: m.referral?.source_url || null,
+          media,
         });
       }
     }
@@ -179,7 +207,21 @@ export async function handler(req: Request, res: Response): Promise<void> {
   try {
     const messages = extractMessages(req.body);
     for (const msg of messages) {
-      // Insere no whatsapp_messages (mesma tabela do resto do sistema)
+      // Insere no whatsapp_messages (mesma tabela do resto do sistema).
+      // Para mídias da Cloud API, guarda media_id no metadata pra permitir
+      // download posterior via Graph API (/{media_id} → url → bytes).
+      const metadata: Record<string, unknown> | null = msg.media
+        ? {
+            cloud_media: {
+              id: msg.media.id,
+              mime_type: msg.media.mime_type,
+              sha256: msg.media.sha256,
+              filename: msg.media.filename,
+              voice: msg.media.voice,
+              captured_at: new Date().toISOString(),
+            },
+          }
+        : null;
       await supabase.from('whatsapp_messages').insert({
         phone: msg.phone,
         instance_name: INSTANCE_NAME,
@@ -190,6 +232,8 @@ export async function handler(req: Request, res: Response): Promise<void> {
         contact_name: msg.contact_name,
         action_source: 'cloud_api',
         action_source_detail: msg.ctwa_clid ? `ctwa:${msg.ctwa_clid}` : 'inbound',
+        media_type: msg.media?.mime_type || null,
+        metadata,
       } as any);
 
       // Discadora automática: se há permissão pendente pra esse telefone,
