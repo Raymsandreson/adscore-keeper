@@ -22,10 +22,24 @@ const GRAPH = 'https://graph.facebook.com';
 const INSTANCE_NAME = 'cloud_gerencia';
 
 interface SendBody {
+  action?: string;
   phone?: string;
   message?: string;
   contact_id?: string | null;
   lead_id?: string | null;
+  // Media (Cloud API)
+  media_url?: string;
+  media_type?: string; // MIME (image/png, audio/ogg, application/pdf, ...)
+  caption?: string;
+  file_name?: string;
+}
+
+function mediaKindFromMime(mime: string | undefined): 'image' | 'audio' | 'video' | 'document' {
+  const m = (mime || '').toLowerCase();
+  if (m.startsWith('image/')) return 'image';
+  if (m.startsWith('audio/')) return 'audio';
+  if (m.startsWith('video/')) return 'video';
+  return 'document';
 }
 
 function normalizePhone(raw: string): string {
@@ -73,16 +87,22 @@ export const handler: RequestHandler = async (req, res) => {
   }
 
   const body: SendBody = req.body || {};
-  const sendPhone = normalizePhone(body.phone || ''); // E.164 com o 9 — entrega via Graph (Meta exige)
-  const phone = toThreadPhone(body.phone || '');      // SEM o 9 — mesma chave de thread do webhook (evita duplicar conversa)
+  const isMedia = body.action === 'send_media' || !!body.media_url;
+  const sendPhone = normalizePhone(body.phone || ''); // E.164 com o 9 — entrega via Graph
+  const phone = toThreadPhone(body.phone || '');      // SEM o 9 — chave de thread do webhook
   const text = (body.message || '').trim();
+  const caption = (body.caption || '').trim();
 
   if (!phone) {
     res.status(400).json({ success: false, error: 'phone obrigatório', error_code: 'MISSING_PHONE' });
     return;
   }
-  if (!text) {
+  if (!isMedia && !text) {
     res.status(400).json({ success: false, error: 'message obrigatório', error_code: 'MISSING_MESSAGE' });
+    return;
+  }
+  if (isMedia && !body.media_url) {
+    res.status(400).json({ success: false, error: 'media_url obrigatório', error_code: 'MISSING_MEDIA_URL' });
     return;
   }
 
@@ -110,9 +130,40 @@ export const handler: RequestHandler = async (req, res) => {
     return;
   }
 
-  // Chamada Graph API
+  // Monta payload Graph API.
+  // Para mídia usamos `link` (Meta baixa do nosso Supabase Storage) — evita upload prévio.
+  // Requisitos: URL pública HTTPS, content-type correto, dentro dos limites Meta
+  // (image ≤5MB, audio ≤16MB, video ≤16MB, document ≤100MB).
+  let payload: Record<string, unknown>;
+  let mediaKind: 'image' | 'audio' | 'video' | 'document' | null = null;
+  let dbMessageType = 'text';
+  if (isMedia) {
+    mediaKind = mediaKindFromMime(body.media_type);
+    dbMessageType = mediaKind;
+    const link = String(body.media_url);
+    const mediaPayload: Record<string, unknown> = { link };
+    // Audio NÃO aceita caption nem filename na Cloud API.
+    if (mediaKind !== 'audio' && caption) mediaPayload.caption = caption;
+    if (mediaKind === 'document') {
+      mediaPayload.filename = body.file_name || link.split('/').pop()?.split('?')[0] || 'arquivo';
+    }
+    payload = {
+      messaging_product: 'whatsapp',
+      to: sendPhone,
+      type: mediaKind,
+      [mediaKind]: mediaPayload,
+    };
+  } else {
+    payload = {
+      messaging_product: 'whatsapp',
+      to: sendPhone,
+      type: 'text',
+      text: { preview_url: false, body: text },
+    };
+  }
+
   const url = `${GRAPH}/${API_VERSION}/${phoneNumberId}/messages`;
-  console.log(`[send-cloud ${rid}] → Graph to=***${phone.slice(-4)} chars=${text.length} pnid=${phoneNumberId}`);
+  console.log(`[send-cloud ${rid}] → Graph to=***${phone.slice(-4)} type=${isMedia ? mediaKind : 'text'} pnid=${phoneNumberId}`);
 
   let httpStatus = 0;
   let graphResp: any = null;
@@ -123,12 +174,7 @@ export const handler: RequestHandler = async (req, res) => {
         'Authorization': `Bearer ${TOKEN}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        messaging_product: 'whatsapp',
-        to: sendPhone,
-        type: 'text',
-        text: { preview_url: false, body: text },
-      }),
+      body: JSON.stringify(payload),
     });
     httpStatus = resp.status;
     graphResp = await resp.json();
@@ -164,8 +210,8 @@ export const handler: RequestHandler = async (req, res) => {
       .insert({
         phone,
         instance_name: INSTANCE_NAME,
-        message_text: text,
-        message_type: 'text',
+        message_text: isMedia ? (caption || null) : text,
+        message_type: dbMessageType,
         direction: 'outbound',
         status: 'sent',
         external_message_id: externalId,
@@ -173,6 +219,8 @@ export const handler: RequestHandler = async (req, res) => {
         lead_id: body.lead_id || null,
         action_source: 'cloud_api',
         action_source_detail: 'outbound',
+        media_url: isMedia ? body.media_url : null,
+        media_type: isMedia ? (body.media_type || null) : null,
       } as any)
       .select('id')
       .single();

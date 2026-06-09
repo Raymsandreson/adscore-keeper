@@ -790,6 +790,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
         return false;
       }
 
+      const isCloud = conversationInstanceName === 'cloud_gerencia';
       const { data, error } = await cloudFunctions.invoke('send-whatsapp', {
         body: {
           action: 'send_media',
@@ -802,6 +803,8 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
           contact_id: contactId,
           lead_id: leadId,
           instance_id: targetInstanceId,
+          // Cloud API (Meta oficial) → proxy reroteia pra Railway send-whatsapp-cloud.
+          channel: isCloud ? 'cloud' : undefined,
         },
       });
       if (error) throw error;
