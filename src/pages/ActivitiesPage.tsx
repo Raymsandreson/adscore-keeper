@@ -3781,6 +3781,7 @@ const ActivitiesPage = () => {
               onOpenChange={(o) => { if (!o) setShowProcessSheetId(null); }}
               process={proc}
               onUpdated={applyUpdatedCaseProcess}
+              defaultTab="atividades"
             />
           </Suspense>
         );

@@ -27,6 +27,7 @@ interface ProcessDetailSheetProps {
   process: any;
   onUpdated?: (updatedProcess?: any) => void;
   mode?: 'sheet' | 'dialog';
+  defaultTab?: TabId;
 }
 
 function formatDateBR(val: string): string {
@@ -171,12 +172,12 @@ function classifyDocumentType(text: string): string {
   return 'outro';
 }
 
-export default function ProcessDetailSheet({ open, onOpenChange, process, onUpdated, mode = 'sheet' }: ProcessDetailSheetProps) {
+export default function ProcessDetailSheet({ open, onOpenChange, process, onUpdated, mode = 'sheet', defaultTab }: ProcessDetailSheetProps) {
   const navFn = useNavigate();
   const [form, setForm] = useState<Record<string, any>>({});
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
-  const [activeTab, setActiveTab] = useState<TabId>('partes');
+  const [activeTab, setActiveTab] = useState<TabId>(defaultTab ?? 'partes');
   const [activities, setActivities] = useState<ProcessActivity[]>([]);
   const [loadingActivities, setLoadingActivities] = useState(false);
   const [documents, setDocuments] = useState<ProcessDocument[]>([]);
@@ -204,11 +205,11 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
         fee_percentage: process.fee_percentage ?? 30,
       });
       setDirty(process.fee_percentage == null); // marca dirty se aplicou default
-      setActiveTab('partes');
+      setActiveTab(defaultTab ?? 'partes');
       setActivities([]);
       setDocuments([]);
     }
-  }, [process]);
+  }, [process, defaultTab]);
 
   // Fetch activities when the tab is activated
   const fetchActivities = useCallback(async () => {
