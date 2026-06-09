@@ -480,11 +480,11 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
       ),
     });
   };
-  const handleDragStart = (type: 'objective' | 'step', phaseIdx: number, objIdx: number, stepIdx?: number) => {
+  const handleDragStart = (type: 'phase' | 'objective' | 'step', phaseIdx: number, objIdx?: number, stepIdx?: number) => {
     setDragItem({ type, phaseIdx, objIdx, stepIdx });
   };
 
-  const handleDragOver = (e: React.DragEvent, type: 'objective' | 'step', phaseIdx: number, objIdx: number, stepIdx?: number) => {
+  const handleDragOver = (e: React.DragEvent, type: 'phase' | 'objective' | 'step', phaseIdx: number, objIdx?: number, stepIdx?: number) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
     setDragOverItem({ type, phaseIdx, objIdx, stepIdx });
@@ -497,23 +497,28 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
       return;
     }
 
-    if (dragItem.type === 'objective' && dragOverItem.type === 'objective') {
-      // Move objective within same phase or between phases
+    if (dragItem.type === 'phase' && dragOverItem.type === 'phase' && dragItem.phaseIdx !== dragOverItem.phaseIdx) {
       setPhases(prev => {
-        const next = prev.map(p => ({ ...p, objectives: [...p.objectives] }));
-        const [moved] = next[dragItem.phaseIdx].objectives.splice(dragItem.objIdx, 1);
-        next[dragOverItem.phaseIdx].objectives.splice(dragOverItem.objIdx, 0, moved);
+        const next = [...prev];
+        const [moved] = next.splice(dragItem.phaseIdx, 1);
+        next.splice(dragOverItem.phaseIdx, 0, moved);
         return next;
       });
-    } else if (dragItem.type === 'step' && dragOverItem.type === 'step' && dragItem.stepIdx !== undefined && dragOverItem.stepIdx !== undefined) {
-      // Move step within same objective or between objectives
+    } else if (dragItem.type === 'objective' && dragOverItem.type === 'objective' && dragItem.objIdx !== undefined && dragOverItem.objIdx !== undefined) {
+      setPhases(prev => {
+        const next = prev.map(p => ({ ...p, objectives: [...p.objectives] }));
+        const [moved] = next[dragItem.phaseIdx].objectives.splice(dragItem.objIdx!, 1);
+        next[dragOverItem.phaseIdx].objectives.splice(dragOverItem.objIdx!, 0, moved);
+        return next;
+      });
+    } else if (dragItem.type === 'step' && dragOverItem.type === 'step' && dragItem.stepIdx !== undefined && dragOverItem.stepIdx !== undefined && dragItem.objIdx !== undefined && dragOverItem.objIdx !== undefined) {
       setPhases(prev => {
         const next = prev.map(p => ({
           ...p,
           objectives: p.objectives.map(o => ({ ...o, items: [...o.items] })),
         }));
-        const [moved] = next[dragItem.phaseIdx].objectives[dragItem.objIdx].items.splice(dragItem.stepIdx!, 1);
-        next[dragOverItem.phaseIdx].objectives[dragOverItem.objIdx].items.splice(dragOverItem.stepIdx!, 0, moved);
+        const [moved] = next[dragItem.phaseIdx].objectives[dragItem.objIdx!].items.splice(dragItem.stepIdx!, 1);
+        next[dragOverItem.phaseIdx].objectives[dragOverItem.objIdx!].items.splice(dragOverItem.stepIdx!, 0, moved);
         return next;
       });
     }
