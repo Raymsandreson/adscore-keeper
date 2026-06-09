@@ -55,6 +55,17 @@ const SalesFunnelsPage = () => {
   const [showBuilder, setShowBuilder] = useState(false);
   const [editBoardId, setEditBoardId] = useState<string | null>(null);
   const [teamBoard, setTeamBoard] = useState<{ id: string; name: string } | null>(null);
+  const [dateField, setDateField] = useState<DateField>("created_at");
+  const [rangePreset, setRangePreset] = useState<RangePreset>("today");
+  const [customRange, setCustomRange] = useState<{ from?: Date; to?: Date }>({});
+  const { from: fromDate, to: toDate } = useMemo(
+    () => computeRange(rangePreset, customRange),
+    [rangePreset, customRange.from?.getTime(), customRange.to?.getTime()]
+  );
+  const dateFilter = useMemo(
+    () => ({ field: dateField, from: fromDate?.toISOString() ?? null, to: toDate?.toISOString() ?? null }),
+    [dateField, fromDate, toDate]
+  );
 
   const salesFunnels = useMemo(
     () => boards.filter(b => b.board_type === 'funnel'),
@@ -70,14 +81,17 @@ const SalesFunnelsPage = () => {
 
   // Fetch lead counts per board+stage
   const { data: leadCounts } = useQuery({
-    queryKey: ['funnel-lead-counts', salesFunnels.map(b => b.id)],
+    queryKey: ['funnel-lead-counts', salesFunnels.map(b => b.id), dateFilter],
     queryFn: async () => {
       if (!salesFunnels.length) return {};
       const boardIds = salesFunnels.map(b => b.id);
-      const { data, error } = await supabase
+      let q = supabase
         .from('leads')
         .select('board_id, status')
         .in('board_id', boardIds);
+      if (dateFilter.from) q = q.gte(dateFilter.field, dateFilter.from);
+      if (dateFilter.to) q = q.lte(dateFilter.field, dateFilter.to);
+      const { data, error } = await q;
       if (error) throw error;
 
       const counts: Record<string, { total: number; byStage: Record<string, number> }> = {};
