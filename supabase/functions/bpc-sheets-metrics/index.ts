@@ -11,12 +11,14 @@ const corsHeaders = {
 
 const SPREADSHEET_ID = "1EXB6oFovhX2LOHsC2X20LFk-JVIkjk-NR5Er4cUn6Qw";
 const SHEET_TABS: { tab: string; operator: string }[] = [
+  { tab: "LEADS API", operator: "API" },
   { tab: "LEADS ISRAEL", operator: "Israel" },
   { tab: "LEADS CRIS", operator: "Cris" },
   { tab: "LEADS MATEUS", operator: "Mateus" },
   { tab: "1LEADS EDILAN", operator: "Edilan" },
   { tab: "LEDS KAROLYNE", operator: "Karolyne" },
   { tab: "LEADS ANDRESSA", operator: "Andressa" },
+  { tab: "LEAD KEILANE", operator: "Keilane" },
 ];
 const GATEWAY = "https://connector-gateway.lovable.dev/google_sheets/v4";
 
