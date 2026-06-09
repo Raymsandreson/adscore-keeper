@@ -271,7 +271,7 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
-        period: { from: fromISO, to: toISO },
+        period: { from: fromISO, to: toISO, date_type: dateType },
         instance_filter: instanceFilter || null,
         tabs_read: tabsToRead.map((t) => t.tab),
         tab_errors: tabErrors,
