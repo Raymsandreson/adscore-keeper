@@ -207,7 +207,21 @@ export async function handler(req: Request, res: Response): Promise<void> {
   try {
     const messages = extractMessages(req.body);
     for (const msg of messages) {
-      // Insere no whatsapp_messages (mesma tabela do resto do sistema)
+      // Insere no whatsapp_messages (mesma tabela do resto do sistema).
+      // Para mídias da Cloud API, guarda media_id no metadata pra permitir
+      // download posterior via Graph API (/{media_id} → url → bytes).
+      const metadata: Record<string, unknown> | null = msg.media
+        ? {
+            cloud_media: {
+              id: msg.media.id,
+              mime_type: msg.media.mime_type,
+              sha256: msg.media.sha256,
+              filename: msg.media.filename,
+              voice: msg.media.voice,
+              captured_at: new Date().toISOString(),
+            },
+          }
+        : null;
       await supabase.from('whatsapp_messages').insert({
         phone: msg.phone,
         instance_name: INSTANCE_NAME,
@@ -218,6 +232,8 @@ export async function handler(req: Request, res: Response): Promise<void> {
         contact_name: msg.contact_name,
         action_source: 'cloud_api',
         action_source_detail: msg.ctwa_clid ? `ctwa:${msg.ctwa_clid}` : 'inbound',
+        media_type: msg.media?.mime_type || null,
+        metadata,
       } as any);
 
       // Discadora automática: se há permissão pendente pra esse telefone,
