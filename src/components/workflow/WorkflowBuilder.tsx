@@ -40,6 +40,7 @@ import {
   Sparkles,
   Loader2,
   PenLine,
+  ChevronUp,
 } from 'lucide-react';
 import { useKanbanBoards, KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
 import { useChecklists, ChecklistItem, DocChecklistItem, CHECKLIST_TYPES, ChecklistType, ACTIVITY_MESSAGE_FIELDS, TemplateVariation, normalizeMessageTemplates, serializeMessageTemplates } from '@/hooks/useChecklists';
