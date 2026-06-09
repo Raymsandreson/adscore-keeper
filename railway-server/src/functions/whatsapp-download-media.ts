@@ -265,7 +265,7 @@ export const handler: RequestHandler = async (req, res) => {
     contentType = normalizeContentType(contentType, messageType, bytes);
     const extName = extensionFor(contentType, messageType);
     // Sanitize key (remove acentos, cedilha, hífen, espaços) — Supabase Storage rejeita
-    const safeInstance = String(inst.instance_name || msg.instance_name || 'unknown')
+    const safeInstance = String(inst?.instance_name || msg.instance_name || 'unknown')
       .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
       .replace(/[^a-zA-Z0-9]+/g, '_')
       .replace(/^_+|_+$/g, '') || 'unknown';
