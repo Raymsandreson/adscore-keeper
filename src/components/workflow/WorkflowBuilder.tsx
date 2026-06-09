@@ -358,6 +358,16 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
 
   const removePhase = (idx: number) => setPhases(prev => prev.filter((_, i) => i !== idx));
 
+  const movePhase = (idx: number, dir: -1 | 1) => {
+    setPhases(prev => {
+      const target = idx + dir;
+      if (target < 0 || target >= prev.length) return prev;
+      const next = [...prev];
+      [next[idx], next[target]] = [next[target], next[idx]];
+      return next;
+    });
+  };
+
   const togglePhase = (idx: number) =>
     setPhases(prev => prev.map((p, i) => i === idx ? { ...p, isExpanded: !p.isExpanded } : p));
 
