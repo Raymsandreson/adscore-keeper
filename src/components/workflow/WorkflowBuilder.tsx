@@ -112,8 +112,8 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
   const [docChecklistDialog, setDocChecklistDialog] = useState<{ phaseIdx: number; objIdx: number; stepId: string; items: DocChecklistItem[]; checklistType: ChecklistType } | null>(null);
   const [msgTemplatesDialog, setMsgTemplatesDialog] = useState<{ phaseIdx: number; objIdx: number; stepId: string; templates: Record<string, TemplateVariation[]>; activeTab: string } | null>(null);
   const [newDocItem, setNewDocItem] = useState('');
-  const [dragItem, setDragItem] = useState<{ type: 'objective' | 'step'; phaseIdx: number; objIdx: number; stepIdx?: number } | null>(null);
-  const [dragOverItem, setDragOverItem] = useState<{ type: 'objective' | 'step'; phaseIdx: number; objIdx: number; stepIdx?: number } | null>(null);
+  const [dragItem, setDragItem] = useState<{ type: 'phase' | 'objective' | 'step'; phaseIdx: number; objIdx?: number; stepIdx?: number } | null>(null);
+  const [dragOverItem, setDragOverItem] = useState<{ type: 'phase' | 'objective' | 'step'; phaseIdx: number; objIdx?: number; stepIdx?: number } | null>(null);
   const [aiPrompt, setAiPrompt] = useState('');
   const [generating, setGenerating] = useState(false);
   const [showAiDialog, setShowAiDialog] = useState(false);
@@ -480,11 +480,11 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
       ),
     });
   };
-  const handleDragStart = (type: 'objective' | 'step', phaseIdx: number, objIdx: number, stepIdx?: number) => {
+  const handleDragStart = (type: 'phase' | 'objective' | 'step', phaseIdx: number, objIdx?: number, stepIdx?: number) => {
     setDragItem({ type, phaseIdx, objIdx, stepIdx });
   };
 
-  const handleDragOver = (e: React.DragEvent, type: 'objective' | 'step', phaseIdx: number, objIdx: number, stepIdx?: number) => {
+  const handleDragOver = (e: React.DragEvent, type: 'phase' | 'objective' | 'step', phaseIdx: number, objIdx?: number, stepIdx?: number) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
     setDragOverItem({ type, phaseIdx, objIdx, stepIdx });
@@ -497,23 +497,28 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
       return;
     }
 
-    if (dragItem.type === 'objective' && dragOverItem.type === 'objective') {
-      // Move objective within same phase or between phases
+    if (dragItem.type === 'phase' && dragOverItem.type === 'phase' && dragItem.phaseIdx !== dragOverItem.phaseIdx) {
       setPhases(prev => {
-        const next = prev.map(p => ({ ...p, objectives: [...p.objectives] }));
-        const [moved] = next[dragItem.phaseIdx].objectives.splice(dragItem.objIdx, 1);
-        next[dragOverItem.phaseIdx].objectives.splice(dragOverItem.objIdx, 0, moved);
+        const next = [...prev];
+        const [moved] = next.splice(dragItem.phaseIdx, 1);
+        next.splice(dragOverItem.phaseIdx, 0, moved);
         return next;
       });
-    } else if (dragItem.type === 'step' && dragOverItem.type === 'step' && dragItem.stepIdx !== undefined && dragOverItem.stepIdx !== undefined) {
-      // Move step within same objective or between objectives
+    } else if (dragItem.type === 'objective' && dragOverItem.type === 'objective' && dragItem.objIdx !== undefined && dragOverItem.objIdx !== undefined) {
+      setPhases(prev => {
+        const next = prev.map(p => ({ ...p, objectives: [...p.objectives] }));
+        const [moved] = next[dragItem.phaseIdx].objectives.splice(dragItem.objIdx!, 1);
+        next[dragOverItem.phaseIdx].objectives.splice(dragOverItem.objIdx!, 0, moved);
+        return next;
+      });
+    } else if (dragItem.type === 'step' && dragOverItem.type === 'step' && dragItem.stepIdx !== undefined && dragOverItem.stepIdx !== undefined && dragItem.objIdx !== undefined && dragOverItem.objIdx !== undefined) {
       setPhases(prev => {
         const next = prev.map(p => ({
           ...p,
           objectives: p.objectives.map(o => ({ ...o, items: [...o.items] })),
         }));
-        const [moved] = next[dragItem.phaseIdx].objectives[dragItem.objIdx].items.splice(dragItem.stepIdx!, 1);
-        next[dragOverItem.phaseIdx].objectives[dragOverItem.objIdx].items.splice(dragOverItem.stepIdx!, 0, moved);
+        const [moved] = next[dragItem.phaseIdx].objectives[dragItem.objIdx!].items.splice(dragItem.stepIdx!, 1);
+        next[dragOverItem.phaseIdx].objectives[dragOverItem.objIdx!].items.splice(dragOverItem.stepIdx!, 0, moved);
         return next;
       });
     }
@@ -850,29 +855,21 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
               {/* Phases → Objectives → Steps */}
               <div className="space-y-3">
                 {phases.map((phase, phaseIdx) => (
-                   <div key={phase.stageId} className="border rounded-lg overflow-hidden">
+                   <div
+                     key={phase.stageId}
+                     className={cn(
+                       "border rounded-lg overflow-hidden transition-all",
+                       dragOverItem?.type === 'phase' && dragOverItem.phaseIdx === phaseIdx && "border-t-2 border-t-blue-400",
+                       dragItem?.type === 'phase' && dragItem.phaseIdx === phaseIdx && "opacity-50",
+                     )}
+                     draggable
+                     onDragStart={(e) => { e.stopPropagation(); handleDragStart('phase', phaseIdx); }}
+                     onDragOver={(e) => { e.stopPropagation(); handleDragOver(e, 'phase', phaseIdx); }}
+                     onDragEnd={handleDragEnd}
+                   >
                      {/* Phase header */}
                      <div className="flex items-center gap-2 px-3 py-2 bg-muted/30 border-l-4 border-muted-foreground/30">
-                       <div className="flex flex-col -my-1 flex-shrink-0">
-                         <button
-                           type="button"
-                           onClick={() => movePhase(phaseIdx, -1)}
-                           disabled={phaseIdx === 0}
-                           title="Mover para cima"
-                           className="p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
-                         >
-                           <ChevronUp className="h-3 w-3" />
-                         </button>
-                         <button
-                           type="button"
-                           onClick={() => movePhase(phaseIdx, 1)}
-                           disabled={phaseIdx === phases.length - 1}
-                           title="Mover para baixo"
-                           className="p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
-                         >
-                           <ChevronDown className="h-3 w-3" />
-                         </button>
-                       </div>
+                       <GripVertical className="h-4 w-4 text-muted-foreground/50 flex-shrink-0 cursor-grab active:cursor-grabbing" />
                         <Collapsible open={phase.isExpanded} onOpenChange={() => togglePhase(phaseIdx)} className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 w-full min-w-0">
                             <CollapsibleTrigger asChild>
