@@ -16,8 +16,8 @@ import { Copy, FileSpreadsheet, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 const RAILWAY_BASE_URL =
-  (import.meta.env.VITE_RAILWAY_WEBHOOK_BASE_URL as string | undefined) ||
-  'https://YOUR-RAILWAY-APP.up.railway.app';
+  (import.meta.env.VITE_RAILWAY_URL as string | undefined) ||
+  'https://adscore-keeper-production.up.railway.app';
 
 const FIELD_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'phone', label: 'Telefone (obrigatório)' },
