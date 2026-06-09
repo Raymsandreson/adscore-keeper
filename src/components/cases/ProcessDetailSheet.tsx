@@ -172,7 +172,7 @@ function classifyDocumentType(text: string): string {
   return 'outro';
 }
 
-export default function ProcessDetailSheet({ open, onOpenChange, process, onUpdated, mode = 'sheet' }: ProcessDetailSheetProps) {
+export default function ProcessDetailSheet({ open, onOpenChange, process, onUpdated, mode = 'sheet', defaultTab }: ProcessDetailSheetProps) {
   const navFn = useNavigate();
   const [form, setForm] = useState<Record<string, any>>({});
   const [saving, setSaving] = useState(false);
