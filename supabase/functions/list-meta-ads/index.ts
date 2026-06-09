@@ -143,15 +143,20 @@ serve(async (req) => {
     if (campaignData.error) {
       const metaError = campaignData.error;
       console.error('Meta API error:', JSON.stringify(metaError));
+      const isTokenInvalid = metaError.code === 190 || metaError.type === 'OAuthException';
       return new Response(
         JSON.stringify({ 
+          success: false,
+          token_invalid: isTokenInvalid,
+          fallback: true,
           error: metaError.message || 'Failed to fetch campaigns',
           error_type: metaError.type || 'unknown',
           error_code: metaError.code || 0,
           error_subcode: metaError.error_subcode || 0,
-          fbtrace_id: metaError.fbtrace_id || null
+          fbtrace_id: metaError.fbtrace_id || null,
+          campaigns: []
         }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
