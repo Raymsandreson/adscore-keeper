@@ -27,6 +27,7 @@ interface ProcessDetailSheetProps {
   process: any;
   onUpdated?: (updatedProcess?: any) => void;
   mode?: 'sheet' | 'dialog';
+  defaultTab?: TabId;
 }
 
 function formatDateBR(val: string): string {
