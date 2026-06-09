@@ -632,6 +632,39 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
     if (cloudPhonesSig) refreshCloudAssignees();
   }, [cloudPhonesSig, refreshCloudAssignees]);
 
+  // Realtime no dono da conversa. O webhook responde 200 ANTES de gravar o assignee
+  // (processamento async), então o refresh disparado pela conversa nova corre na frente
+  // da escrita e o Map fica sem a entrada → badge preso em "Sem dono". Assinar a tabela
+  // garante que, quando o webhook grava o dono ~1-2s depois, o Map atualiza na hora —
+  // sem depender de novo poll/mudança de telefone. (Fase 3: realtime > setInterval.)
+  useEffect(() => {
+    const channelName = `cloud-assignees-realtime-${Date.now()}`;
+    const ch = (externalSupabase as any)
+      .channel(channelName)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'whatsapp_cloud_assignees', filter: `instance_name=eq.cloud_gerencia` },
+        (payload: any) => {
+          const row = payload.new || payload.old || {};
+          const phone = row.phone as string | undefined;
+          if (!phone) return;
+          setCloudAssignees((prev) => {
+            const next = new Map(prev);
+            if (payload.eventType === 'DELETE' || !payload.new?.assigned_user_id) {
+              next.delete(phone);
+            } else {
+              next.set(phone, payload.new.assigned_user_id as string);
+            }
+            return next;
+          });
+        }
+      )
+      .subscribe();
+    return () => {
+      (externalSupabase as any).removeChannel(ch);
+    };
+  }, []);
+
   // Fetch shared conversation records for this user
   useEffect(() => {
     if (!user) return;
