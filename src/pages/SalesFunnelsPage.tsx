@@ -364,7 +364,9 @@ const SalesFunnelsPage = () => {
                   <StageFunnelChart
                     board={board}
                     leadsPerStage={stageData}
+                    dateFilter={dateFilter}
                   />
+
 
                   {/* Objectives detail when expanded */}
                   {isExpanded && boardObjectives && board.stages?.length > 0 && (
