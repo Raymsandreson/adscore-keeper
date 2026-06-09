@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, LayoutGrid, Users, ArrowRight, Settings, Filter, Maximize2, Minimize2, Target, CheckCircle2, Plus } from "lucide-react";
+import { Search, LayoutGrid, Users, ArrowRight, Settings, Filter, Maximize2, Minimize2, Target, CheckCircle2, Plus, CalendarIcon } from "lucide-react";
 import { db as supabase } from "@/integrations/supabase";
 import { useQuery } from "@tanstack/react-query";
 import { StageFunnelChart } from "@/components/kanban/StageFunnelChart";
@@ -13,6 +13,33 @@ import { cn } from "@/lib/utils";
 import { Progress } from "@/components/ui/progress";
 import { WorkflowBuilder } from "@/components/workflow/WorkflowBuilder";
 import { FunnelTeamDialog } from "@/components/funnel/FunnelTeamDialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { format } from "date-fns";
+import { ptBR } from "date-fns/locale";
+
+type DateField = "created_at" | "updated_at";
+type RangePreset = "today" | "7d" | "30d" | "all" | "custom";
+
+function computeRange(preset: RangePreset, custom?: { from?: Date; to?: Date }): { from: Date | null; to: Date | null } {
+  const now = new Date();
+  if (preset === "all") return { from: null, to: null };
+  if (preset === "today") {
+    const f = new Date(now); f.setHours(0, 0, 0, 0);
+    const t = new Date(now); t.setHours(23, 59, 59, 999);
+    return { from: f, to: t };
+  }
+  if (preset === "7d") {
+    const f = new Date(now); f.setDate(f.getDate() - 6); f.setHours(0, 0, 0, 0);
+    return { from: f, to: now };
+  }
+  if (preset === "30d") {
+    const f = new Date(now); f.setDate(f.getDate() - 29); f.setHours(0, 0, 0, 0);
+    return { from: f, to: now };
+  }
+  return { from: custom?.from ?? null, to: custom?.to ?? null };
+}
 
 interface ChecklistItem {
   id: string;
