@@ -34,12 +34,15 @@ export function StageFunnelChart({ board, leadsPerStage, conversionAlerts = [], 
 
   // Fetch status counts for this board
   const { data: statusCounts } = useQuery({
-    queryKey: ['funnel-status-counts', board.id],
+    queryKey: ['funnel-status-counts', board.id, dateFilter],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let q = supabase
         .from('leads')
         .select('lead_status, is_blocked')
         .eq('board_id', board.id);
+      if (dateFilter?.from) q = q.gte(dateFilter.field, dateFilter.from);
+      if (dateFilter?.to) q = q.lte(dateFilter.field, dateFilter.to);
+      const { data, error } = await q;
       if (error) throw error;
       const isOpenLeadStatus = (status?: string | null) =>
         !status || ['no_response', 'in_progress', 'active', 'novo', 'new', 'open'].includes(status);
