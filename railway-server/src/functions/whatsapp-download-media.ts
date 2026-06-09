@@ -194,27 +194,19 @@ export const handler: RequestHandler = async (req, res) => {
       return ok({ success: false, error: `Instância ${msg.instance_name || ''} sem token.` });
     }
 
-    const baseUrl = inst.base_url || 'https://abraci.uazapi.com';
+    const baseUrl = inst?.base_url || 'https://abraci.uazapi.com';
     const fullId = String(msg.external_message_id || msg.metadata?.message?.id || '').trim();
     const bareId = String(msg.metadata?.message?.messageid || (fullId.includes(':') ? fullId.split(':').pop() : fullId) || '').trim();
     const candidates = Array.from(new Set([bareId, fullId].filter(Boolean)));
     const mediaKey = pickMediaKey(msg.metadata);
-    const messageType = msg.message_type || 'document';
-
-    let bytes: Buffer | null = null;
-    let contentType = msg.media_type || msg.metadata?.message?.content?.mimetype || 'application/octet-stream';
-    let usedId: string | null = null;
-    let transcription: string | null = null;
-    const debugSteps: string[] = [];
 
     const WA_HEADERS = {
       'User-Agent': 'WhatsApp/2.24.20.85 A',
       'Accept': '*/*',
     } as Record<string, string>;
 
-    // STEP 1 (preferido): se temos a URL .enc + mediaKey, decifrar direto.
-    // Isso funciona para qualquer instância do grupo, sem depender da UazAPI conhecer o ID.
-    if (msg.media_url && isEncryptedWhatsAppUrl(msg.media_url) && mediaKey) {
+    // STEP 1 (UazAPI .enc direto via mediaKey) — só se não-Cloud e ainda sem bytes.
+    if (!bytes && !isCloudApiMessage(msg) && msg.media_url && isEncryptedWhatsAppUrl(msg.media_url) && mediaKey) {
       try {
         const enc = await fetch(msg.media_url, { headers: WA_HEADERS });
         debugSteps.push(`enc-direct:${enc.status}`);
@@ -228,8 +220,8 @@ export const handler: RequestHandler = async (req, res) => {
       }
     }
 
-    // STEP 2 (fallback): pedir para UazAPI baixar/decifrar
-    if (!bytes) {
+    // STEP 2 (UazAPI /message/download) — só se não-Cloud e ainda sem bytes.
+    if (!bytes && !isCloudApiMessage(msg) && inst?.instance_token) {
       for (const candidate of candidates) {
         const dl = await fetch(`${baseUrl}/message/download`, {
           method: 'POST',
