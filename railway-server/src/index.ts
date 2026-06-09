@@ -32,6 +32,7 @@ import { handler as syncResultLabels } from './functions/sync-result-labels';
 import { handler as sendWhatsappCloud } from './functions/send-whatsapp-cloud';
 import { handler as checkWhatsappCloudToken } from './functions/check-whatsapp-cloud-token';
 import { handler as metaCallQueueProcessor } from './functions/meta-call-queue-processor';
+import { handler as sheetLeadIngest } from './functions/sheet-lead-ingest';
 
 const functionHandlers: Record<string, express.RequestHandler> = {
   'whatsapp-webhook': whatsappWebhook,
@@ -129,6 +130,17 @@ app.post('/public/review/submit', async (req, res) => {
     res.status(200).json({ success: false, error: err instanceof Error ? err.message : 'Unknown error' });
   }
 });
+  }
+});
+
+// Rota pública chamada pelo Google Apps Script (onFormSubmit) — sem x-api-key.
+// Segurança vem do token aleatório de 32 chars gravado em kanban_boards.sheet_webhook_token.
+app.post('/webhooks/sheet-lead-ingest/:token', async (req, res) => {
+  try {
+    await sheetLeadIngest(req, res, () => {});
+  } catch (err) {
+    console.error('[webhooks/sheet-lead-ingest] Error:', err);
+    res.status(200).json({ success: false, error: err instanceof Error ? err.message : 'Unknown error' });
   }
 });
 
