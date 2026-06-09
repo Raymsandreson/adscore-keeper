@@ -177,7 +177,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
   const [form, setForm] = useState<Record<string, any>>({});
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
-  const [activeTab, setActiveTab] = useState<TabId>('partes');
+  const [activeTab, setActiveTab] = useState<TabId>(defaultTab ?? 'partes');
   const [activities, setActivities] = useState<ProcessActivity[]>([]);
   const [loadingActivities, setLoadingActivities] = useState(false);
   const [documents, setDocuments] = useState<ProcessDocument[]>([]);
