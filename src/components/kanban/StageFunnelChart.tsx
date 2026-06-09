@@ -21,11 +21,12 @@ interface StageFunnelChartProps {
   board: KanbanBoard;
   leadsPerStage: Record<string, number>;
   conversionAlerts?: ConversionAlert[];
+  dateFilter?: { field: "created_at" | "updated_at"; from: string | null; to: string | null };
 }
 
 type StatusFilter = 'closed' | 'refused' | 'inviavel' | 'cancelled' | 'blocked' | 'active' | 'stage';
 
-export function StageFunnelChart({ board, leadsPerStage, conversionAlerts = [] }: StageFunnelChartProps) {
+export function StageFunnelChart({ board, leadsPerStage, conversionAlerts = [], dateFilter }: StageFunnelChartProps) {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [activeFilter, setActiveFilter] = useState<StatusFilter | null>(null);
   const [activeStageId, setActiveStageId] = useState<string | null>(null);
