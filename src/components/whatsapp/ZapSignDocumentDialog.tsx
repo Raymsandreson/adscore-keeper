@@ -664,7 +664,9 @@ export function ZapSignDocumentDialog({
 
   const selectedTemplateName = templates.find(t => t.token === selectedTemplate)?.name || '';
   const isBpcLoasTemplate = /bpc|loas/i.test(selectedTemplateName);
-  const selectedMinimumWages = templateFields.find(f => isMinimumWageTelefoneField(f.de))?.para.trim() || '';
+  const selectedMinimumWagesRaw = templateFields.find(f => isMinimumWageTelefoneField(f.de))?.para.trim() || '';
+  const selectedMinimumWages = MINIMUM_WAGE_OPTIONS.includes(selectedMinimumWagesRaw) ? selectedMinimumWagesRaw : '';
+  const bpcMinimumWageMissing = isBpcLoasTemplate && !selectedMinimumWages;
   const applyMinimumWagesToTelefone = (value: string) => {
     setTemplateFields(prev => {
       const idx = prev.findIndex(f => isMinimumWageTelefoneField(f.de));
@@ -696,6 +698,10 @@ export function ZapSignDocumentDialog({
 
   const handleCreateDocument = async (skipConfirm = false) => {
     if (!selectedTemplate) return;
+    if (bpcMinimumWageMissing) {
+      toast.error('Selecione a quantidade de salários mínimos de 6 a 10.');
+      return;
+    }
     if (!skipConfirm) {
       setConfirmStep('pre-create');
       return;
