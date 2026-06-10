@@ -117,7 +117,7 @@ const EMPTY_ACTIONS: FocusActions = {
   avgResponseMinutes: 0,
 };
 
-export function useFocusDashboardData(instanceName?: string | null): FocusData {
+export function useFocusDashboardData(acolhedorUserId?: string | null): FocusData {
   const { user } = useAuthContext();
   const [period, setPeriod] = usePageState<FocusPeriod>('focus_dashboard_period', 'today');
   const [scope, setScope] = usePageState<FocusScope>('focus_dashboard_scope', 'personal');
