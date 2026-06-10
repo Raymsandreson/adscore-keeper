@@ -1234,24 +1234,30 @@ export function ZapSignDocumentDialog({
                   </Button>
                 </div>
 
-                {/* Seletor de Salários Mínimos (honorários BPC/LOAS) */}
+                {/* Seletor de Salários Mínimos (honorários BPC/LOAS)
+                    ZapSign não aceita campos dinâmicos novos no template, então
+                    reaproveitamos a variável {{WHATSAPP}} para carregar o nº de
+                    salários no lugar onde antes ficava "10" hardcoded. */}
                 <div className="flex items-center gap-2 p-2 rounded-md border bg-muted/30 flex-wrap">
                   <Label className="text-xs font-medium whitespace-nowrap">Salários mínimos (honorários):</Label>
                   <Select
                     value={(() => {
-                      const f = templateFields.find(x => /salar/i.test(x.de));
-                      const v = (f?.para || '').match(/\d+/)?.[0];
+                      const f = templateFields.find(x => /whatsapp/i.test(x.de));
+                      const raw = (f?.para || '').trim();
+                      // Se o valor parece telefone (>=10 dígitos), considera não preenchido
+                      if (raw.replace(/\D/g, '').length >= 10) return '';
+                      const v = raw.match(/\d+/)?.[0];
                       return v || '';
                     })()}
                     onValueChange={(val) => {
                       setTemplateFields(prev => {
-                        const idx = prev.findIndex(x => /salar/i.test(x.de));
+                        const idx = prev.findIndex(x => /whatsapp/i.test(x.de));
                         if (idx >= 0) {
                           const next = [...prev];
                           next[idx] = { ...next[idx], para: val, source: 'manual', editing: false };
                           return next;
                         }
-                        return [...prev, { de: 'salarios_minimos', para: val, source: 'manual', editing: false }];
+                        return [...prev, { de: 'WHATSAPP', para: val, source: 'manual', editing: false }];
                       });
                     }}
                   >
@@ -1262,7 +1268,7 @@ export function ZapSignDocumentDialog({
                       ))}
                     </SelectContent>
                   </Select>
-                  <span className="text-[10px] text-muted-foreground">Preenche a variável do template que contém "salar".</span>
+                  <span className="text-[10px] text-muted-foreground">Sobrescreve {`{{WHATSAPP}}`} do template com o nº de salários.</span>
                 </div>
 
 
