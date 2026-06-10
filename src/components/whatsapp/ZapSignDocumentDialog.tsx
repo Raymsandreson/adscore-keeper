@@ -75,13 +75,19 @@ function isMinimumWageTelefoneField(field: string): boolean {
   return getTemplateFieldKey(field) === 'telefone';
 }
 
+function isMinimumWageCurrencyMarkerField(field: string, bpcLoasTemplate: boolean): boolean {
+  if (!bpcLoasTemplate) return false;
+  const key = getTemplateFieldKey(field);
+  return key === 'rs' || key === 'r' || key === 'reais';
+}
+
 function isPhoneLikeDocumentField(field: string): boolean {
   const key = getTemplateFieldKey(field);
   return key.includes('telefone') || key.includes('celular') || key.includes('whatsapp');
 }
 
 function isMinimumWageDocumentField(field: string, bpcLoasTemplate: boolean): boolean {
-  return isMinimumWageTelefoneField(field) || (bpcLoasTemplate && isPhoneLikeDocumentField(field));
+  return isMinimumWageTelefoneField(field) || isMinimumWageCurrencyMarkerField(field, bpcLoasTemplate) || (bpcLoasTemplate && isPhoneLikeDocumentField(field));
 }
 
 function isDocumentContactPhoneField(field: string, bpcLoasTemplate: boolean): boolean {
