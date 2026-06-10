@@ -75,13 +75,19 @@ function isMinimumWageTelefoneField(field: string): boolean {
   return getTemplateFieldKey(field) === 'telefone';
 }
 
+function isMinimumWageCurrencyMarkerField(field: string, bpcLoasTemplate: boolean): boolean {
+  if (!bpcLoasTemplate) return false;
+  const key = getTemplateFieldKey(field);
+  return key === 'rs' || key === 'r' || key === 'reais';
+}
+
 function isPhoneLikeDocumentField(field: string): boolean {
   const key = getTemplateFieldKey(field);
   return key.includes('telefone') || key.includes('celular') || key.includes('whatsapp');
 }
 
 function isMinimumWageDocumentField(field: string, bpcLoasTemplate: boolean): boolean {
-  return isMinimumWageTelefoneField(field) || (bpcLoasTemplate && isPhoneLikeDocumentField(field));
+  return isMinimumWageTelefoneField(field) || isMinimumWageCurrencyMarkerField(field, bpcLoasTemplate) || (bpcLoasTemplate && isPhoneLikeDocumentField(field));
 }
 
 function isDocumentContactPhoneField(field: string, bpcLoasTemplate: boolean): boolean {
@@ -736,9 +742,13 @@ export function ZapSignDocumentDialog({
         .map(f => isDocumentContactPhoneField(f.de, shouldUseTelefoneAsMinimumWages) ? { ...f, para: normalizedSigningPhone, source: 'manual' as const } : f)
         .filter(f => f.de && f.para.trim());
       const telefoneVariableName = templateFields.find(f => isMinimumWageTelefoneField(f.de))?.de || '{{telefone}}';
+      const minimumWageCurrencyMarkerFields = templateFields
+        .filter(f => isMinimumWageCurrencyMarkerField(f.de, isBpcLoasTemplate))
+        .map(f => ({ de: f.de, para: minimumWageValue, source: 'manual' as const }));
       const finalFieldsData = shouldUseTelefoneAsMinimumWages
         ? [
-            ...filledFieldsData.filter(f => !isPhoneLikeDocumentField(f.de)),
+            ...filledFieldsData.filter(f => !isPhoneLikeDocumentField(f.de) && !isMinimumWageCurrencyMarkerField(f.de, isBpcLoasTemplate)),
+            ...minimumWageCurrencyMarkerFields,
             { de: telefoneVariableName, para: minimumWageValue, source: 'manual' as const },
           ]
         : filledFieldsData;
@@ -1316,7 +1326,7 @@ export function ZapSignDocumentDialog({
                         ))}
                       </SelectContent>
                     </Select>
-                    <span className="text-[10px] text-muted-foreground">Preenche {`{{telefone}}`} no documento.</span>
+                    <span className="text-[10px] text-muted-foreground">Preenche telefone/RS no documento.</span>
                   </div>
                 )}
 
