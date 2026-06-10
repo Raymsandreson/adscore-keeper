@@ -73,6 +73,7 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
   const [editingLeadId, setEditingLeadId] = usePageState<string | null>('kanban_editingLeadId', null);
   const [showExtractor, setShowExtractor] = useState(false);
   const [advancedFilters, setAdvancedFilters] = usePageState<LeadFilters>('kanban_advFilters', emptyFilters);
+  const [todayOnly, setTodayOnly] = usePageState<boolean>('kanban_todayOnly', false);
   const [checklistFilteredIds, setChecklistFilteredIds] = useState<Set<string> | null>(null);
 
   // Handle URL param to auto-open a lead
@@ -165,6 +166,17 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
       result = result.filter(lead => checklistFilteredIds.has(lead.id));
     }
     
+    // Apply "today only" filter (leads created hoje)
+    if (todayOnly) {
+      const start = new Date(); start.setHours(0, 0, 0, 0);
+      const end = new Date(); end.setHours(23, 59, 59, 999);
+      const s = start.getTime(); const e = end.getTime();
+      result = result.filter(lead => {
+        const t = lead.created_at ? new Date(lead.created_at).getTime() : 0;
+        return t >= s && t <= e;
+      });
+    }
+    
     // Apply search filter — busca apenas pelo nome do lead
     if (searchQuery) {
       const query = searchQuery.toLowerCase().trim();
@@ -180,7 +192,7 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
     }
     
     return result;
-  }, [boardLeads, searchQuery, checklistFilteredIds, advancedFilters]);
+  }, [boardLeads, searchQuery, checklistFilteredIds, advancedFilters, todayOnly]);
 
   // Derive available filter options from all leads in the board
   const filterOptions = useMemo(() => {
@@ -205,8 +217,8 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
 
   // Check if any filter is active
   const hasActiveFilters = useMemo(() => {
-    return !!searchQuery || checklistFilteredIds !== null || Object.values(advancedFilters).some(v => v !== '');
-  }, [searchQuery, checklistFilteredIds, advancedFilters]);
+    return !!searchQuery || checklistFilteredIds !== null || todayOnly || Object.values(advancedFilters).some(v => v !== '');
+  }, [searchQuery, checklistFilteredIds, advancedFilters, todayOnly]);
 
   // Stats for selected board using stage type classification
   const stats = useMemo(() => {
@@ -504,6 +516,15 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
             />
           </div>
           
+          <Button
+            variant={todayOnly ? "default" : "outline"}
+            size="sm"
+            onClick={() => setTodayOnly(!todayOnly)}
+            title="Mostrar apenas leads criados hoje"
+          >
+            Hoje
+          </Button>
+
           <Button variant="outline" size="icon" onClick={() => fetchLeads()}>
             <RefreshCw className="h-4 w-4" />
           </Button>
