@@ -75,9 +75,18 @@ function isMinimumWageTelefoneField(field: string): boolean {
   return getTemplateFieldKey(field) === 'telefone';
 }
 
+function isPhoneLikeDocumentField(field: string): boolean {
+  const key = getTemplateFieldKey(field);
+  return key.includes('telefone') || key.includes('celular') || key.includes('whatsapp');
+}
+
+function isMinimumWageDocumentField(field: string, bpcLoasTemplate: boolean): boolean {
+  return isMinimumWageTelefoneField(field) || (bpcLoasTemplate && isPhoneLikeDocumentField(field));
+}
+
 function isDocumentContactPhoneField(field: string, bpcLoasTemplate: boolean): boolean {
   const key = getTemplateFieldKey(field);
-  if (bpcLoasTemplate && key === 'telefone') return false;
+  if (bpcLoasTemplate && isPhoneLikeDocumentField(field)) return false;
   return key.includes('whatsapp') || key.includes('telefone') || key.includes('celular');
 }
 
@@ -664,18 +673,19 @@ export function ZapSignDocumentDialog({
 
   const selectedTemplateName = templates.find(t => t.token === selectedTemplate)?.name || '';
   const isBpcLoasTemplate = /bpc|loas/i.test(selectedTemplateName);
-  const hasMinimumWageTelefoneField = templateFields.some(f => isMinimumWageTelefoneField(f.de));
+  const hasMinimumWageTelefoneField = templateFields.some(f => isMinimumWageDocumentField(f.de, isBpcLoasTemplate));
   const shouldUseTelefoneAsMinimumWages = isBpcLoasTemplate || hasMinimumWageTelefoneField;
-  const selectedMinimumWagesRaw = templateFields.find(f => isMinimumWageTelefoneField(f.de))?.para.trim() || '';
+  const selectedMinimumWagesRaw = templateFields.find(f => isMinimumWageDocumentField(f.de, isBpcLoasTemplate))?.para.trim() || '';
   const selectedMinimumWages = MINIMUM_WAGE_OPTIONS.includes(selectedMinimumWagesRaw) ? selectedMinimumWagesRaw : '';
-  const bpcMinimumWageMissing = shouldUseTelefoneAsMinimumWages && !selectedMinimumWages;
+  const minimumWageValue = selectedMinimumWages || '10';
+  const bpcMinimumWageMissing = shouldUseTelefoneAsMinimumWages && !MINIMUM_WAGE_OPTIONS.includes(minimumWageValue);
   const applyMinimumWagesToTelefone = (value: string) => {
     setTemplateFields(prev => {
-      const idx = prev.findIndex(f => isMinimumWageTelefoneField(f.de));
-      if (idx >= 0) {
-        const next = [...prev];
-        next[idx] = { ...next[idx], para: value, source: 'manual', editing: false };
-        return next;
+      const matchingIndexes = prev
+        .map((f, idx) => (isMinimumWageDocumentField(f.de, isBpcLoasTemplate) ? idx : -1))
+        .filter(idx => idx >= 0);
+      if (matchingIndexes.length > 0) {
+        return prev.map((f, idx) => matchingIndexes.includes(idx) ? { ...f, para: value, source: 'manual', editing: false } : f);
       }
       return [...prev, { de: '{{telefone}}', para: value, source: 'manual', editing: false }];
     });
