@@ -25,8 +25,8 @@ interface FocusDashboardProps {
   /** Callback usado pelo sheet de Fechados pra abrir a conversa de um lead. */
   onOpenChat?: (phone: string) => void;
   compact?: boolean;
-  /** Lista de instâncias disponíveis para o seletor próprio dos KPIs. */
-  instances?: { id: string; instance_name: string }[];
+  /** Lista de usuários (acolhedores) disponíveis para o seletor próprio dos KPIs. */
+  users?: { id: string; full_name: string }[];
 }
 
 const PERIOD_OPTIONS: { key: FocusPeriod; label: string }[] = [
@@ -37,13 +37,14 @@ const PERIOD_OPTIONS: { key: FocusPeriod; label: string }[] = [
   { key: 'year', label: 'Ano' },
 ];
 
-export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpenUnanswered, onOpenChat, compact = false, instances = [] }: FocusDashboardProps) {
+export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpenUnanswered, onOpenChat, compact = false, users = [] }: FocusDashboardProps) {
   const { user } = useAuthContext();
   const { teams } = useUserTeams();
-  // Filtro de instância EXCLUSIVO dos KPIs (não afeta a lista de conversas).
-  // 'all' = sem filtro; senão, o instance_name escolhido.
-  const [kpiInstanceName, setKpiInstanceName] = usePageState<string>('focus_dashboard_kpi_instance', 'all');
-  const data = useFocusDashboardData(kpiInstanceName === 'all' ? null : kpiInstanceName);
+  // Filtro de ACOLHEDOR EXCLUSIVO dos KPIs (não afeta a lista de conversas).
+  // 'all' = sem filtro; senão, o user_id escolhido.
+  const [kpiAcolhedorId, setKpiAcolhedorId] = usePageState<string>('focus_dashboard_kpi_acolhedor', 'all');
+  const data = useFocusDashboardData(kpiAcolhedorId === 'all' ? null : kpiAcolhedorId);
+
   const [collapsed, setCollapsed] = useState(false);
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [closedSheetOpen, setClosedSheetOpen] = useState(false);
