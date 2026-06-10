@@ -17,8 +17,6 @@ function normalizePhone(raw: unknown): string {
 }
 
 function pickByMapping(row: Record<string, unknown>, mapping: Record<string, string>, targetField: string): string | null {
-  // mapping é { "lead_field": "Sheet Column Header" }. Procura primeiro
-  // a coluna mapeada; se ausente, devolve null.
   const sheetCol = mapping?.[targetField];
   if (!sheetCol) return null;
   const v = row[sheetCol];
@@ -27,7 +25,6 @@ function pickByMapping(row: Record<string, unknown>, mapping: Record<string, str
 }
 
 export const handler: RequestHandler = async (req, res) => {
-  // Sempre HTTP 200 com payload — Apps Script não reage bem a 4xx/5xx.
   const ok = (b: Record<string, unknown>) => res.status(200).json(b);
 
   try {
@@ -38,7 +35,6 @@ export const handler: RequestHandler = async (req, res) => {
     const rows = body.rows || (body.row ? [body.row] : []);
     if (!rows.length) return ok({ success: false, error: 'no rows in payload' });
 
-    // Localiza o board pelo token
     const { data: board, error: boardErr } = await ext
       .from('kanban_boards')
       .select('id, name, sheet_enabled, sheet_field_mapping, sheet_initial_stage_id, stages')
@@ -66,21 +62,24 @@ export const handler: RequestHandler = async (req, res) => {
         }
 
         const name = pickByMapping(row, mapping, 'name') || `Lead ${phone.slice(-4)}`;
+        if (name.startsWith('<test lead')) {
+          results.push({ row_index: i, status: 'skipped', reason: 'test lead' });
+          continue;
+        }
 
-        // Dedup: mesmo board + telefone nos últimos 30 dias
+        // Dedup: mesmo board + lead_phone nos últimos 30 dias
         const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
         const { data: dup } = await ext
           .from('leads')
           .select('id, lead_name')
           .eq('board_id', board.id)
-          .eq('phone', phone)
+          .eq('lead_phone', phone)
           .gte('created_at', thirtyDaysAgo)
           .order('created_at', { ascending: false })
           .limit(1)
           .maybeSingle();
 
         if (dup) {
-          // Cria atividade "Possível duplicata" no lead existente
           await ext.from('lead_activities').insert({
             lead_id: dup.id,
             title: 'Possível duplicata recebida via planilha',
@@ -92,24 +91,25 @@ export const handler: RequestHandler = async (req, res) => {
           continue;
         }
 
-        // Coleta campos extras mapeados (ex: estado_civil, renda, laudo) em details
+        // Coleta campos extras mapeados; serializa como nota
         const extras: Record<string, string> = {};
         for (const [leadField, sheetCol] of Object.entries(mapping)) {
           if (leadField === 'phone' || leadField === 'name') continue;
           const v = row[sheetCol];
           if (v !== undefined && v !== null && v !== '') extras[leadField] = String(v);
         }
+        const notes = `Importado via planilha: ${board.name}\n` +
+          Object.entries(extras).map(([k, v]) => `- ${k}: ${v}`).join('\n');
 
         const { data: created, error: insErr } = await ext
           .from('leads')
           .insert({
             lead_name: name,
-            phone,
+            lead_phone: phone,
             board_id: board.id,
-            stage_id: initialStageId,
-            status: 'new',
-            lead_source_label: `Planilha: ${board.name}`,
-            details: { sheet_ingest: extras, sheet_row: row },
+            status: initialStageId,
+            source: `Planilha: ${board.name}`,
+            notes: notes.slice(0, 4000),
           })
           .select('id')
           .single();
