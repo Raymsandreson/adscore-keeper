@@ -217,8 +217,8 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
 
   // Check if any filter is active
   const hasActiveFilters = useMemo(() => {
-    return !!searchQuery || checklistFilteredIds !== null || Object.values(advancedFilters).some(v => v !== '');
-  }, [searchQuery, checklistFilteredIds, advancedFilters]);
+    return !!searchQuery || checklistFilteredIds !== null || todayOnly || Object.values(advancedFilters).some(v => v !== '');
+  }, [searchQuery, checklistFilteredIds, advancedFilters, todayOnly]);
 
   // Stats for selected board using stage type classification
   const stats = useMemo(() => {
