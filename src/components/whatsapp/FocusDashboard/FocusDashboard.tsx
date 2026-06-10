@@ -7,15 +7,13 @@ import { Calendar } from '@/components/ui/calendar';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { CalendarIcon, RefreshCw, Trophy, Users, User as UserIcon, FileText, PenTool, MessageCircleOff, Flame, ChevronUp, ChevronDown, Percent, XCircle, TrendingUp, Clock, Filter, AlertTriangle, MessageCircle, ExternalLink, Phone, CheckCircle2 } from 'lucide-react';
+import { CalendarIcon, RefreshCw, Trophy, Users, User as UserIcon, ChevronUp, ChevronDown, Percent, XCircle, Clock, Filter } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useFocusDashboardData, FocusPeriod } from '@/hooks/useFocusDashboardData';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useUserTeams } from '@/hooks/useUserTeams';
 import { usePageState } from '@/hooks/usePageState';
-import { KpiCard } from './KpiCard';
-import { FocusActionCard } from './FocusActionCard';
 import { ClosedPodiumCard } from './ClosedPodiumCard';
 import { ClosedLeadsSheet } from './ClosedLeadsSheet';
 import { cn } from '@/lib/utils';
@@ -76,18 +74,6 @@ export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpen
         icon: Trophy,
         tone: 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200/60 dark:border-emerald-900/40 text-emerald-700 dark:text-emerald-300',
         onClick: () => setClosedSheetOpen(true),
-      },
-      { label: 'Docs', value: data.actions.missingDocs, icon: FileText, tone: 'bg-orange-50 dark:bg-orange-950/30 border-orange-200/60 dark:border-orange-900/40 text-orange-700 dark:text-orange-300', onClick: onOpenMissingDocs },
-      { label: 'Assinatura', value: data.actions.zapsignPending, icon: PenTool, tone: 'bg-stone-100 dark:bg-stone-900/40 border-stone-300/60 dark:border-stone-700/40 text-stone-700 dark:text-stone-300', onClick: onOpenZapsignPending },
-      {
-        label: 'Sem resp.',
-        value: `${data.actions.unansweredOwedByMe}/${data.actions.unansweredClientGhosted}`,
-        sub: data.actions.avgResponseMinutes > 0
-          ? `eu/cliente · ⌀ ${data.actions.avgResponseMinutes < 60 ? `${data.actions.avgResponseMinutes}min` : `${(data.actions.avgResponseMinutes / 60).toFixed(1)}h`}`
-          : 'eu / cliente',
-        icon: MessageCircleOff,
-        tone: 'bg-rose-50 dark:bg-rose-950/30 border-rose-200/60 dark:border-rose-900/40 text-rose-700 dark:text-rose-300',
-        onClick: onOpenUnanswered,
       },
     ];
 
@@ -329,94 +315,6 @@ export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpen
               </div>
             </Card>
 
-            {/* FOCO AGORA */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5 text-[11px] font-bold text-orange-600 dark:text-orange-400 uppercase tracking-wide">
-                <Flame className="h-3 w-3" />
-                Foco agora
-              </div>
-              <span className="text-[10px] text-muted-foreground">não muda com o período</span>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-1.5">
-              {/* Card combinado: Faltam documentos + Pendentes assinatura */}
-              <Card className="px-2 py-1.5 border bg-orange-50/60 dark:bg-orange-950/20 border-orange-200/60 dark:border-orange-900/40">
-                <div className="grid grid-cols-2 gap-2 divide-x divide-border/40">
-                  {/* Faltam documentos */}
-                  <div className="pr-2 flex flex-col gap-1">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1 text-[11px] font-semibold text-orange-800 dark:text-orange-300">
-                        <FileText className="h-3 w-3" /> Faltam docs
-                      </div>
-                      {data.actions.missingDocs > 0 && (
-                        <span className="text-[9px] px-1 py-0 rounded-full bg-orange-600 text-white font-bold flex items-center gap-0.5">
-                          <Flame className="h-2.5 w-2.5" /> QUENTE
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex items-baseline gap-1">
-                      <span className="text-lg font-bold tabular-nums leading-none text-orange-800 dark:text-orange-200">{data.actions.missingDocs}</span>
-                      <span className="text-[10px] text-muted-foreground truncate">prontos pra fechar</span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={onOpenMissingDocs}
-                      className="w-full h-6 text-[10px] rounded bg-orange-600 hover:bg-orange-700 text-white font-medium transition-colors"
-                    >
-                      Cobrar docs →
-                    </button>
-                  </div>
-                  {/* Pendentes assinatura */}
-                  <div className="pl-2 flex flex-col gap-1">
-                    <div className="flex items-center gap-1 text-[11px] font-semibold text-stone-800 dark:text-amber-300">
-                      <PenTool className="h-3 w-3" /> Pendentes assinatura
-                    </div>
-                    <div className="flex items-baseline gap-1">
-                      <span className="text-lg font-bold tabular-nums leading-none text-stone-800 dark:text-amber-200">{data.actions.zapsignPending}</span>
-                      <span className="text-[10px] text-muted-foreground truncate">no ZapSign</span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={onOpenZapsignPending}
-                      className="w-full h-6 text-[10px] rounded bg-stone-700 hover:bg-stone-800 text-white font-medium transition-colors"
-                    >
-                      Reenviar / cobrar →
-                    </button>
-                  </div>
-                </div>
-              </Card>
-
-              {/* Sem resposta - compacto */}
-              <Card className="px-2 py-1.5 border bg-rose-50/60 dark:bg-rose-950/20 border-rose-200/60 dark:border-rose-900/40 flex flex-col gap-1">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1 text-[11px] font-semibold text-rose-800 dark:text-rose-300">
-                    <MessageCircleOff className="h-3 w-3" /> Sem resposta
-                  </div>
-                  <span className="text-[10px] text-muted-foreground">+30min</span>
-                </div>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-lg font-bold tabular-nums leading-none text-rose-800 dark:text-rose-200">{data.actions.unansweredOwedByMe}</span>
-                  <span className="text-[10px] text-muted-foreground">aguardando você</span>
-                  <span className="text-[10px] text-muted-foreground ml-auto">
-                    +30 <b>{data.actions.unansweredBuckets.plus30}</b> · +4h <b>{data.actions.unansweredBuckets.plus4h}</b> · +24h <b>{data.actions.unansweredBuckets.plus24h}</b>
-                  </span>
-                </div>
-                <div className="flex gap-1">
-                  <div className="flex-1 text-center text-[10px] py-0.5 rounded bg-rose-700 text-white font-medium">
-                    Eu devo ({data.actions.unansweredOwedByMe})
-                  </div>
-                  <div className="flex-1 text-center text-[10px] py-0.5 rounded bg-background border font-medium">
-                    Cliente sumiu ({data.actions.unansweredClientGhosted})
-                  </div>
-                  <button
-                    type="button"
-                    onClick={onOpenUnanswered}
-                    className="px-2 text-[10px] rounded bg-rose-600 hover:bg-rose-700 text-white font-medium"
-                  >
-                    Responder →
-                  </button>
-                </div>
-              </Card>
-            </div>
           </>
         )}
       </div>
