@@ -681,6 +681,14 @@ export function ZapSignDocumentDialog({
     });
   };
 
+  // Default automático: 10 salários mínimos quando o template usar {{telefone}} como salários
+  useEffect(() => {
+    if (shouldUseTelefoneAsMinimumWages && !selectedMinimumWages) {
+      applyMinimumWagesToTelefone('10');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shouldUseTelefoneAsMinimumWages, selectedMinimumWages]);
+
   const handleRequestMissingData = async () => {
     const missing = templateFields.filter(f => f.de && !f.para.trim());
     if (missing.length === 0) { toast.info('Todos os campos já estão preenchidos!'); return; }
