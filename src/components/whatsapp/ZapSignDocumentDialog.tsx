@@ -60,6 +60,27 @@ function normalizeBrazilMobilePhoneForDoc(raw: string): string {
   return digits.startsWith('55') ? digits : `55${digits}`;
 }
 
+const MINIMUM_WAGE_OPTIONS = ['6', '7', '8', '9', '10'];
+
+function getTemplateFieldKey(field: string): string {
+  return field
+    .replace(/\{\{|\}\}/g, '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9]/g, '')
+    .toLowerCase();
+}
+
+function isMinimumWageTelefoneField(field: string): boolean {
+  return getTemplateFieldKey(field) === 'telefone';
+}
+
+function isDocumentContactPhoneField(field: string, bpcLoasTemplate: boolean): boolean {
+  const key = getTemplateFieldKey(field);
+  if (bpcLoasTemplate && key === 'telefone') return false;
+  return key.includes('whatsapp') || key.includes('telefone') || key.includes('celular');
+}
+
 function phoneCandidatesForConversation(raw: string): string[] {
   const digits = onlyDigits(raw);
   const normalized = normalizeBrazilMobilePhoneForDoc(raw);
@@ -641,6 +662,23 @@ export function ZapSignDocumentDialog({
     return field.replace(/\{\{|\}\}/g, '').replace(/_/g, ' ');
   };
 
+  const selectedTemplateName = templates.find(t => t.token === selectedTemplate)?.name || '';
+  const isBpcLoasTemplate = /bpc|loas/i.test(selectedTemplateName);
+  const selectedMinimumWagesRaw = templateFields.find(f => isMinimumWageTelefoneField(f.de))?.para.trim() || '';
+  const selectedMinimumWages = MINIMUM_WAGE_OPTIONS.includes(selectedMinimumWagesRaw) ? selectedMinimumWagesRaw : '';
+  const bpcMinimumWageMissing = isBpcLoasTemplate && !selectedMinimumWages;
+  const applyMinimumWagesToTelefone = (value: string) => {
+    setTemplateFields(prev => {
+      const idx = prev.findIndex(f => isMinimumWageTelefoneField(f.de));
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = { ...next[idx], para: value, source: 'manual', editing: false };
+        return next;
+      }
+      return [...prev, { de: '{{telefone}}', para: value, source: 'manual', editing: false }];
+    });
+  };
+
   const handleRequestMissingData = async () => {
     const missing = templateFields.filter(f => f.de && !f.para.trim());
     if (missing.length === 0) { toast.info('Todos os campos já estão preenchidos!'); return; }
@@ -660,6 +698,10 @@ export function ZapSignDocumentDialog({
 
   const handleCreateDocument = async (skipConfirm = false) => {
     if (!selectedTemplate) return;
+    if (bpcMinimumWageMissing) {
+      toast.error('Selecione a quantidade de salários mínimos de 6 a 10.');
+      return;
+    }
     if (!skipConfirm) {
       setConfirmStep('pre-create');
       return;
@@ -670,7 +712,7 @@ export function ZapSignDocumentDialog({
       const mainSigner = signers[0];
       const normalizedSigningPhone = normalizeBrazilMobilePhoneForDoc(phone || mainSigner.phone || '');
       const filledFieldsData = templateFields
-        .map(f => /whatsapp|telefone|celular/i.test(formatFieldLabel(f.de)) ? { ...f, para: normalizedSigningPhone, source: 'manual' as const } : f)
+        .map(f => isDocumentContactPhoneField(f.de, isBpcLoasTemplate) ? { ...f, para: normalizedSigningPhone, source: 'manual' as const } : f)
         .filter(f => f.de && f.para.trim());
 
       // Build signers array for the API
@@ -1234,47 +1276,20 @@ export function ZapSignDocumentDialog({
                   </Button>
                 </div>
 
-                {/* Seletor de Salários Mínimos (honorários BPC/LOAS)
-                    Aparece SOMENTE quando o template selecionado é BPC/LOAS.
-                    Reaproveita a variável {{WHATSAPP}} (ZapSign não aceita
-                    novos campos no template) para carregar o nº de salários. */}
-                {(() => {
-                  const tplName = templates.find(t => t.token === selectedTemplate)?.name || '';
-                  if (!/bpc|loas/i.test(tplName)) return null;
-                  return (
-                    <div className="flex items-center gap-2 p-2 rounded-md border bg-muted/30 flex-wrap">
-                      <Label className="text-xs font-medium whitespace-nowrap">Salários mínimos (honorários):</Label>
-                      <Select
-                        value={(() => {
-                          const f = templateFields.find(x => /whatsapp/i.test(x.de));
-                          const raw = (f?.para || '').trim();
-                          if (raw.replace(/\D/g, '').length >= 10) return '';
-                          const v = raw.match(/\d+/)?.[0];
-                          return v || '';
-                        })()}
-                        onValueChange={(val) => {
-                          setTemplateFields(prev => {
-                            const idx = prev.findIndex(x => /whatsapp/i.test(x.de));
-                            if (idx >= 0) {
-                              const next = [...prev];
-                              next[idx] = { ...next[idx], para: val, source: 'manual', editing: false };
-                              return next;
-                            }
-                            return [...prev, { de: 'WHATSAPP', para: val, source: 'manual', editing: false }];
-                          });
-                        }}
-                      >
-                        <SelectTrigger className="h-8 w-32 text-xs"><SelectValue placeholder="Selecione" /></SelectTrigger>
-                        <SelectContent>
-                          {[6,7,8,9,10].map(n => (
-                            <SelectItem key={n} value={String(n)}>{n} salários</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <span className="text-[10px] text-muted-foreground">Sobrescreve {`{{WHATSAPP}}`} do template com o nº de salários.</span>
-                    </div>
-                  );
-                })()}
+                {isBpcLoasTemplate && (
+                  <div className="flex items-center gap-2 p-2 rounded-md border bg-muted/30 flex-wrap">
+                    <Label className="text-xs font-medium whitespace-nowrap">Salários mínimos:</Label>
+                    <Select value={selectedMinimumWages} onValueChange={applyMinimumWagesToTelefone}>
+                      <SelectTrigger className="h-8 w-32 text-xs"><SelectValue placeholder="Selecione" /></SelectTrigger>
+                      <SelectContent>
+                        {MINIMUM_WAGE_OPTIONS.map(n => (
+                          <SelectItem key={n} value={n}>{n} salários</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <span className="text-[10px] text-muted-foreground">Preenche {`{{telefone}}`} no documento.</span>
+                  </div>
+                )}
 
 
 
@@ -1374,9 +1389,9 @@ export function ZapSignDocumentDialog({
           {step === 'fill' && !extracting && !showPreview && (
             <div className="flex gap-2 w-full">
               <Button variant="outline" onClick={() => setStep('signers')}>Voltar</Button>
-              <Button className="flex-1 gap-2" onClick={() => handleCreateDocument(false)} disabled={creating || emptyFields.length > 0}>
+              <Button className="flex-1 gap-2" onClick={() => handleCreateDocument(false)} disabled={creating || emptyFields.length > 0 || bpcMinimumWageMissing}>
                 {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSignature className="h-4 w-4" />}
-                {emptyFields.length > 0 ? `Preencha ${emptyFields.length} campo(s) faltante(s)` : 'Gerar documento'}
+                {bpcMinimumWageMissing ? 'Selecione salários mínimos' : emptyFields.length > 0 ? `Preencha ${emptyFields.length} campo(s) faltante(s)` : 'Gerar documento'}
               </Button>
             </div>
           )}
