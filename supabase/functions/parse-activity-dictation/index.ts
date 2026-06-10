@@ -11,7 +11,16 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-request-id, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-async function callLovableAI(body: any) {
+// Cascata: tenta o mais forte primeiro, cai pra mais leve/barata se falhar
+const MODEL_CASCADE = [
+  "google/gemini-2.5-flash",
+  "google/gemini-2.5-flash-lite",
+  "google/gemini-3-flash-preview",
+];
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+async function callOnce(body: any) {
   const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -21,11 +30,43 @@ async function callLovableAI(body: any) {
     },
     body: JSON.stringify(body),
   });
-  if (!res.ok) {
-    const t = await res.text();
-    throw new Error(`Lovable AI ${res.status}: ${t.slice(0, 300)}`);
+  return res;
+}
+
+// Retry com backoff em 429/503 + fallback de modelo em falha persistente
+async function callLovableAI(body: any) {
+  let lastErr = "";
+  for (const model of MODEL_CASCADE) {
+    const attemptBody = { ...body, model };
+    // até 3 tentativas por modelo (1s → 2s → 4s)
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const res = await callOnce(attemptBody);
+        if (res.ok) {
+          if (model !== MODEL_CASCADE[0] || attempt > 0) {
+            console.log(`[parse-activity] sucesso com ${model} na tentativa ${attempt + 1}`);
+          }
+          return await res.json();
+        }
+        const text = (await res.text()).slice(0, 300);
+        lastErr = `${model} ${res.status}: ${text}`;
+        console.warn(`[parse-activity] falha ${lastErr} (tentativa ${attempt + 1})`);
+        // 429/503 → vale a pena esperar e tentar de novo o MESMO modelo
+        if (res.status === 429 || res.status === 503) {
+          await sleep(1000 * Math.pow(2, attempt));
+          continue;
+        }
+        // outros erros → pula direto pro próximo modelo
+        break;
+      } catch (e: any) {
+        lastErr = `${model} network: ${e.message}`;
+        console.warn(`[parse-activity] ${lastErr}`);
+        await sleep(1000 * Math.pow(2, attempt));
+      }
+    }
+    // próximo modelo da cascata
   }
-  return res.json();
+  throw new Error(`Todos os modelos falharam. Último erro: ${lastErr}`);
 }
 
 serve(async (req) => {
@@ -44,7 +85,6 @@ serve(async (req) => {
     const typesList = (types || []).map((t: any) => `"${t.key}" (${t.label})`).join(", ");
 
     const result = await callLovableAI({
-      model: "google/gemini-2.5-flash",
       temperature: 0.1,
       messages: [
         {
