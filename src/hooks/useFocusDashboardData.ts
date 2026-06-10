@@ -530,7 +530,7 @@ export function useFocusDashboardData(acolhedorUserId?: string | null): FocusDat
     } finally {
       setLoading(false);
     }
-  }, [user, scopeUserIds, range, instanceName]);
+  }, [user, scopeUserIds, range, acolhedorUserId]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
