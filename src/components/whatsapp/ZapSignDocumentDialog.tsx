@@ -1279,7 +1279,7 @@ export function ZapSignDocumentDialog({
                   </Button>
                 </div>
 
-                {isBpcLoasTemplate && (
+                {shouldUseTelefoneAsMinimumWages && (
                   <div className="flex items-center gap-2 p-2 rounded-md border bg-muted/30 flex-wrap">
                     <Label className="text-xs font-medium whitespace-nowrap">Salários mínimos:</Label>
                     <Select value={selectedMinimumWages} onValueChange={applyMinimumWagesToTelefone}>
