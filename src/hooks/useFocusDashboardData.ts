@@ -215,7 +215,42 @@ export function useFocusDashboardData(acolhedorUserId?: string | null): FocusDat
         : activeLeadsQ.in('created_by', scopeUserIds);
 
 
-      const [leadsRes, closedRes, yestRes, yestClosedRes, zapRes, activeRes] = await Promise.all([leadsQuery, closedQuery, yestLeadsQ, yestClosedQ, zapsignQ, activeLeadsQ]);
+      const [leadsResRaw, closedResRaw, yestResRaw, yestClosedResRaw, zapRes, activeResRaw] = await Promise.all([leadsQuery, closedQuery, yestLeadsQ, yestClosedQ, zapsignQ, activeLeadsQ]);
+
+      // Cross-check "casos da API": quando filtro de acolhedor está ativo,
+      // restringe a leads cujo lead_phone existe em whatsapp_conversation_agents
+      // (qualquer instância da API). Buscamos só os phones do conjunto retornado.
+      let leadsRes = leadsResRaw, closedRes = closedResRaw, yestRes = yestResRaw,
+          yestClosedRes = yestClosedResRaw, activeRes = activeResRaw;
+      if (useAcolhedorFilter) {
+        const normalize = (p: any) => String(p || '').replace(/\D/g, '');
+        const phonePool = new Set<string>();
+        [leadsResRaw, closedResRaw, yestResRaw, yestClosedResRaw, activeResRaw].forEach((r: any) => {
+          (r?.data || []).forEach((l: any) => { if (l?.lead_phone) phonePool.add(normalize(l.lead_phone)); });
+        });
+        const phoneList = Array.from(phonePool).filter(Boolean);
+        const apiPhones = new Set<string>();
+        if (phoneList.length > 0) {
+          // Query em chunks de 1000 pra evitar URL gigante.
+          for (let i = 0; i < phoneList.length; i += 1000) {
+            const chunk = phoneList.slice(i, i + 1000);
+            const { data: wca } = await db.from('whatsapp_conversation_agents')
+              .select('phone')
+              .in('phone', chunk);
+            (wca || []).forEach((w: any) => { if (w?.phone) apiPhones.add(normalize(w.phone)); });
+          }
+        }
+        const keep = (l: any) => !!l?.lead_phone && apiPhones.has(normalize(l.lead_phone));
+        const filterRes = (r: any) => {
+          const data = (r?.data || []).filter(keep);
+          return { ...r, data, count: data.length };
+        };
+        leadsRes = filterRes(leadsResRaw);
+        closedRes = filterRes(closedResRaw);
+        yestRes = filterRes(yestResRaw);
+        yestClosedRes = filterRes(yestClosedResRaw);
+        activeRes = filterRes(activeResRaw);
+      }
 
       const leads = (leadsRes.data || []) as any[];
       const yestLeads = (yestRes.data || []) as any[];
@@ -224,6 +259,7 @@ export function useFocusDashboardData(acolhedorUserId?: string | null): FocusDat
       const closedCount = closedRes.count ?? (closedRes.data || []).length;
       const closedRows = (closedRes.data || []) as ClosedLeadRow[];
       const closedIds = closedRows.map((l) => l.id).filter(Boolean);
+
       let overdueLeadIds = new Set<string>();
       const activitiesByLead = new Map<string, ClosedLeadActivity[]>();
       const groupByLead = new Map<string, string>();
