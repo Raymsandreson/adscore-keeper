@@ -251,6 +251,27 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
 
   // Default instance do perfil do usuário (fonte da verdade para alertas e fallback).
   const [userDefaultInstanceId, setUserDefaultInstanceId] = useState<string | null>(null);
+  // Lista de acolhedores possíveis (pra filtro do FocusDashboard).
+  const [acolhedorUsers, setAcolhedorUsers] = useState<{ id: string; full_name: string }[]>([]);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const { data } = await externalSupabase
+          .from('profiles')
+          .select('user_id, full_name')
+          .not('full_name', 'is', null)
+          .order('full_name', { ascending: true })
+          .limit(500);
+        if (!alive) return;
+        const list = (data || [])
+          .map((p: any) => ({ id: p.user_id, full_name: p.full_name }))
+          .filter((u) => u.id && u.full_name);
+        setAcolhedorUsers(list);
+      } catch { /* silencioso */ }
+    })();
+    return () => { alive = false; };
+  }, []);
 
   // Filtra alertas de desconexão: só mostra se a instância caída é a default do user.
   // Admins continuam vendo todas (não têm default específico ou enxergam o pool inteiro).
@@ -1767,7 +1788,7 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
       <div className="shrink-0 border-b">
         <FocusDashboard
           compact
-          instances={instances.map(i => ({ id: i.id, instance_name: i.instance_name }))}
+          users={acolhedorUsers}
           onOpenMissingDocs={() => toast.info('Filtro "faltam documentos" em breve')}
           onOpenZapsignPending={() => toast.info('Lista de pendentes ZapSign em breve')}
           onOpenUnanswered={() => {

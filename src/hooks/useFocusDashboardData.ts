@@ -117,7 +117,7 @@ const EMPTY_ACTIONS: FocusActions = {
   avgResponseMinutes: 0,
 };
 
-export function useFocusDashboardData(instanceName?: string | null): FocusData {
+export function useFocusDashboardData(acolhedorUserId?: string | null): FocusData {
   const { user } = useAuthContext();
   const [period, setPeriod] = usePageState<FocusPeriod>('focus_dashboard_period', 'today');
   const [scope, setScope] = usePageState<FocusScope>('focus_dashboard_scope', 'personal');
@@ -160,57 +160,42 @@ export function useFocusDashboardData(instanceName?: string | null): FocusData {
       const fromISO = range.from.toISOString();
       const toISO = range.to.toISOString();
 
-      // Quando uma instância específica está selecionada, descobrimos a lista de
-      // telefones daquela instância via whatsapp_conversation_agents e filtramos
-      // leads por lead_phone — desacopla o filtro do created_by do lead.
-      const useInstanceFilter = !!instanceName && instanceName !== 'all';
-      let phonesForInstance: string[] | null = null;
-      if (useInstanceFilter) {
-        const { data: convs } = await db.from('whatsapp_conversation_agents')
-          .select('phone')
-          .ilike('instance_name', instanceName as string)
-          .limit(5000);
-        const set = new Set<string>();
-        (convs || []).forEach((c: any) => {
-          if (c.phone) set.add(String(c.phone));
-          if (c.phone) set.add(String(c.phone).replace(/\D/g, ''));
-        });
-        phonesForInstance = Array.from(set);
-        if (phonesForInstance.length === 0) phonesForInstance = ['__none__'];
-      }
+      // Filtro novo: por ACOLHEDOR (usuário que recebeu a distribuição).
+      // Quando ativo, restringe a leads cujo telefone existe em
+      // whatsapp_conversation_agents (qualquer instância da API).
+      const useAcolhedorFilter = !!acolhedorUserId && acolhedorUserId !== 'all';
 
       // === KPIs ===
       let leadsQuery: any = db.from('leads')
-        .select('id, lead_status, lead_status_reason, created_at, lead_name, created_by, details, lead_phone', { count: 'exact' })
+        .select('id, lead_status, lead_status_reason, created_at, lead_name, created_by, details, lead_phone, acolhedor', { count: 'exact' })
         .gte('created_at', fromISO).lte('created_at', toISO);
-      leadsQuery = useInstanceFilter
-        ? leadsQuery.in('lead_phone', phonesForInstance!)
+      leadsQuery = useAcolhedorFilter
+        ? leadsQuery.eq('acolhedor', acolhedorUserId)
         : leadsQuery.in('created_by', scopeUserIds);
 
-      // Fechados: não depende de created_at do lead. Quando uma instância é
-      // selecionada, restringe a leads cujo telefone pertence àquela instância.
+      // Fechados: não depende de created_at do lead.
       let closedQuery: any = db.from('leads')
         .select('id, lead_phone, lead_name, became_client_date, updated_at, acolhedor', { count: 'exact', head: false })
         .eq('lead_status', 'closed')
         .gte('became_client_date', localDate(range.from))
         .lte('became_client_date', localDate(range.to))
         .is('deleted_at', null);
-      if (useInstanceFilter) closedQuery = closedQuery.in('lead_phone', phonesForInstance!);
+      if (useAcolhedorFilter) closedQuery = closedQuery.eq('acolhedor', acolhedorUserId);
 
       const yest = { from: startOfDay(subDays(new Date(), 1)), to: endOfDay(subDays(new Date(), 1)) };
       let yestLeadsQ: any = db.from('leads')
-        .select('id, lead_status', { count: 'exact', head: false })
+        .select('id, lead_status, lead_phone', { count: 'exact', head: false })
         .gte('created_at', yest.from.toISOString()).lte('created_at', yest.to.toISOString());
-      yestLeadsQ = useInstanceFilter
-        ? yestLeadsQ.in('lead_phone', phonesForInstance!)
+      yestLeadsQ = useAcolhedorFilter
+        ? yestLeadsQ.eq('acolhedor', acolhedorUserId)
         : yestLeadsQ.in('created_by', scopeUserIds);
 
       let yestClosedQ: any = db.from('leads')
-        .select('id', { count: 'exact', head: false })
+        .select('id, lead_phone', { count: 'exact', head: false })
         .eq('lead_status', 'closed')
         .eq('became_client_date', localDate(yest.from))
         .is('deleted_at', null);
-      if (useInstanceFilter) yestClosedQ = yestClosedQ.in('lead_phone', phonesForInstance!);
+      if (useAcolhedorFilter) yestClosedQ = yestClosedQ.eq('acolhedor', acolhedorUserId);
 
       // ZapSign pendentes (estado atual)
       const zapsignQ = db.from('zapsign_documents')
@@ -221,15 +206,51 @@ export function useFocusDashboardData(instanceName?: string | null): FocusData {
 
       // Leads ativos (heurística faltam docs)
       let activeLeadsQ: any = db.from('leads')
-        .select('id, lead_name, lead_phone, updated_at, lead_status')
+        .select('id, lead_name, lead_phone, updated_at, lead_status, acolhedor')
         .not('lead_status', 'in', '("closed","unviable","refused")')
         .order('updated_at', { ascending: false })
         .limit(200);
-      activeLeadsQ = useInstanceFilter
-        ? activeLeadsQ.in('lead_phone', phonesForInstance!)
+      activeLeadsQ = useAcolhedorFilter
+        ? activeLeadsQ.eq('acolhedor', acolhedorUserId)
         : activeLeadsQ.in('created_by', scopeUserIds);
 
-      const [leadsRes, closedRes, yestRes, yestClosedRes, zapRes, activeRes] = await Promise.all([leadsQuery, closedQuery, yestLeadsQ, yestClosedQ, zapsignQ, activeLeadsQ]);
+
+      const [leadsResRaw, closedResRaw, yestResRaw, yestClosedResRaw, zapRes, activeResRaw] = await Promise.all([leadsQuery, closedQuery, yestLeadsQ, yestClosedQ, zapsignQ, activeLeadsQ]);
+
+      // Cross-check "casos da API": quando filtro de acolhedor está ativo,
+      // restringe a leads cujo lead_phone existe em whatsapp_conversation_agents
+      // (qualquer instância da API). Buscamos só os phones do conjunto retornado.
+      let leadsRes = leadsResRaw, closedRes = closedResRaw, yestRes = yestResRaw,
+          yestClosedRes = yestClosedResRaw, activeRes = activeResRaw;
+      if (useAcolhedorFilter) {
+        const normalize = (p: any) => String(p || '').replace(/\D/g, '');
+        const phonePool = new Set<string>();
+        [leadsResRaw, closedResRaw, yestResRaw, yestClosedResRaw, activeResRaw].forEach((r: any) => {
+          (r?.data || []).forEach((l: any) => { if (l?.lead_phone) phonePool.add(normalize(l.lead_phone)); });
+        });
+        const phoneList = Array.from(phonePool).filter(Boolean);
+        const apiPhones = new Set<string>();
+        if (phoneList.length > 0) {
+          // Query em chunks de 1000 pra evitar URL gigante.
+          for (let i = 0; i < phoneList.length; i += 1000) {
+            const chunk = phoneList.slice(i, i + 1000);
+            const { data: wca } = await db.from('whatsapp_conversation_agents')
+              .select('phone')
+              .in('phone', chunk);
+            (wca || []).forEach((w: any) => { if (w?.phone) apiPhones.add(normalize(w.phone)); });
+          }
+        }
+        const keep = (l: any) => !!l?.lead_phone && apiPhones.has(normalize(l.lead_phone));
+        const filterRes = (r: any) => {
+          const data = (r?.data || []).filter(keep);
+          return { ...r, data, count: data.length };
+        };
+        leadsRes = filterRes(leadsResRaw);
+        closedRes = filterRes(closedResRaw);
+        yestRes = filterRes(yestResRaw);
+        yestClosedRes = filterRes(yestClosedResRaw);
+        activeRes = filterRes(activeResRaw);
+      }
 
       const leads = (leadsRes.data || []) as any[];
       const yestLeads = (yestRes.data || []) as any[];
@@ -238,6 +259,7 @@ export function useFocusDashboardData(instanceName?: string | null): FocusData {
       const closedCount = closedRes.count ?? (closedRes.data || []).length;
       const closedRows = (closedRes.data || []) as ClosedLeadRow[];
       const closedIds = closedRows.map((l) => l.id).filter(Boolean);
+
       let overdueLeadIds = new Set<string>();
       const activitiesByLead = new Map<string, ClosedLeadActivity[]>();
       const groupByLead = new Map<string, string>();
@@ -406,7 +428,7 @@ export function useFocusDashboardData(instanceName?: string | null): FocusData {
         ...((activeRes.data || []) as any[]).map((l: any) => l.id),
       ]);
       let zapDocs = (zapRes.data || []) as any[];
-      if (useInstanceFilter) {
+      if (useAcolhedorFilter) {
         zapDocs = zapDocs.filter(z => z.lead_id && scopedLeadIds.has(z.lead_id));
       }
       const zapsignPending = zapDocs.length;
@@ -430,7 +452,7 @@ export function useFocusDashboardData(instanceName?: string | null): FocusData {
         .gte('created_at', since)
         .order('created_at', { ascending: false })
         .limit(5000);
-      if (useInstanceFilter) msgsQ = msgsQ.ilike('instance_name', instanceName as string);
+      // Sem resposta: msgs não tem coluna acolhedor; mantemos visão global.
       const { data: msgs } = await msgsQ;
 
       // Group by phone+instance, find last inbound/outbound + collect pairs for avg response
@@ -508,7 +530,7 @@ export function useFocusDashboardData(instanceName?: string | null): FocusData {
     } finally {
       setLoading(false);
     }
-  }, [user, scopeUserIds, range, instanceName]);
+  }, [user, scopeUserIds, range, acolhedorUserId]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
