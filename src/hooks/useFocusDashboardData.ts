@@ -160,57 +160,42 @@ export function useFocusDashboardData(acolhedorUserId?: string | null): FocusDat
       const fromISO = range.from.toISOString();
       const toISO = range.to.toISOString();
 
-      // Quando uma instância específica está selecionada, descobrimos a lista de
-      // telefones daquela instância via whatsapp_conversation_agents e filtramos
-      // leads por lead_phone — desacopla o filtro do created_by do lead.
-      const useInstanceFilter = !!instanceName && instanceName !== 'all';
-      let phonesForInstance: string[] | null = null;
-      if (useInstanceFilter) {
-        const { data: convs } = await db.from('whatsapp_conversation_agents')
-          .select('phone')
-          .ilike('instance_name', instanceName as string)
-          .limit(5000);
-        const set = new Set<string>();
-        (convs || []).forEach((c: any) => {
-          if (c.phone) set.add(String(c.phone));
-          if (c.phone) set.add(String(c.phone).replace(/\D/g, ''));
-        });
-        phonesForInstance = Array.from(set);
-        if (phonesForInstance.length === 0) phonesForInstance = ['__none__'];
-      }
+      // Filtro novo: por ACOLHEDOR (usuário que recebeu a distribuição).
+      // Quando ativo, restringe a leads cujo telefone existe em
+      // whatsapp_conversation_agents (qualquer instância da API).
+      const useAcolhedorFilter = !!acolhedorUserId && acolhedorUserId !== 'all';
 
       // === KPIs ===
       let leadsQuery: any = db.from('leads')
-        .select('id, lead_status, lead_status_reason, created_at, lead_name, created_by, details, lead_phone', { count: 'exact' })
+        .select('id, lead_status, lead_status_reason, created_at, lead_name, created_by, details, lead_phone, acolhedor', { count: 'exact' })
         .gte('created_at', fromISO).lte('created_at', toISO);
-      leadsQuery = useInstanceFilter
-        ? leadsQuery.in('lead_phone', phonesForInstance!)
+      leadsQuery = useAcolhedorFilter
+        ? leadsQuery.eq('acolhedor', acolhedorUserId)
         : leadsQuery.in('created_by', scopeUserIds);
 
-      // Fechados: não depende de created_at do lead. Quando uma instância é
-      // selecionada, restringe a leads cujo telefone pertence àquela instância.
+      // Fechados: não depende de created_at do lead.
       let closedQuery: any = db.from('leads')
         .select('id, lead_phone, lead_name, became_client_date, updated_at, acolhedor', { count: 'exact', head: false })
         .eq('lead_status', 'closed')
         .gte('became_client_date', localDate(range.from))
         .lte('became_client_date', localDate(range.to))
         .is('deleted_at', null);
-      if (useInstanceFilter) closedQuery = closedQuery.in('lead_phone', phonesForInstance!);
+      if (useAcolhedorFilter) closedQuery = closedQuery.eq('acolhedor', acolhedorUserId);
 
       const yest = { from: startOfDay(subDays(new Date(), 1)), to: endOfDay(subDays(new Date(), 1)) };
       let yestLeadsQ: any = db.from('leads')
-        .select('id, lead_status', { count: 'exact', head: false })
+        .select('id, lead_status, lead_phone', { count: 'exact', head: false })
         .gte('created_at', yest.from.toISOString()).lte('created_at', yest.to.toISOString());
-      yestLeadsQ = useInstanceFilter
-        ? yestLeadsQ.in('lead_phone', phonesForInstance!)
+      yestLeadsQ = useAcolhedorFilter
+        ? yestLeadsQ.eq('acolhedor', acolhedorUserId)
         : yestLeadsQ.in('created_by', scopeUserIds);
 
       let yestClosedQ: any = db.from('leads')
-        .select('id', { count: 'exact', head: false })
+        .select('id, lead_phone', { count: 'exact', head: false })
         .eq('lead_status', 'closed')
         .eq('became_client_date', localDate(yest.from))
         .is('deleted_at', null);
-      if (useInstanceFilter) yestClosedQ = yestClosedQ.in('lead_phone', phonesForInstance!);
+      if (useAcolhedorFilter) yestClosedQ = yestClosedQ.eq('acolhedor', acolhedorUserId);
 
       // ZapSign pendentes (estado atual)
       const zapsignQ = db.from('zapsign_documents')
@@ -221,13 +206,14 @@ export function useFocusDashboardData(acolhedorUserId?: string | null): FocusDat
 
       // Leads ativos (heurística faltam docs)
       let activeLeadsQ: any = db.from('leads')
-        .select('id, lead_name, lead_phone, updated_at, lead_status')
+        .select('id, lead_name, lead_phone, updated_at, lead_status, acolhedor')
         .not('lead_status', 'in', '("closed","unviable","refused")')
         .order('updated_at', { ascending: false })
         .limit(200);
-      activeLeadsQ = useInstanceFilter
-        ? activeLeadsQ.in('lead_phone', phonesForInstance!)
+      activeLeadsQ = useAcolhedorFilter
+        ? activeLeadsQ.eq('acolhedor', acolhedorUserId)
         : activeLeadsQ.in('created_by', scopeUserIds);
+
 
       const [leadsRes, closedRes, yestRes, yestClosedRes, zapRes, activeRes] = await Promise.all([leadsQuery, closedQuery, yestLeadsQ, yestClosedQ, zapsignQ, activeLeadsQ]);
 
