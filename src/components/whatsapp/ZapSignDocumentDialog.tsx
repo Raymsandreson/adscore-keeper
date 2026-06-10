@@ -662,6 +662,21 @@ export function ZapSignDocumentDialog({
     return field.replace(/\{\{|\}\}/g, '').replace(/_/g, ' ');
   };
 
+  const selectedTemplateName = templates.find(t => t.token === selectedTemplate)?.name || '';
+  const isBpcLoasTemplate = /bpc|loas/i.test(selectedTemplateName);
+  const selectedMinimumWages = templateFields.find(f => isMinimumWageTelefoneField(f.de))?.para.trim() || '';
+  const applyMinimumWagesToTelefone = (value: string) => {
+    setTemplateFields(prev => {
+      const idx = prev.findIndex(f => isMinimumWageTelefoneField(f.de));
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = { ...next[idx], para: value, source: 'manual', editing: false };
+        return next;
+      }
+      return [...prev, { de: '{{telefone}}', para: value, source: 'manual', editing: false }];
+    });
+  };
+
   const handleRequestMissingData = async () => {
     const missing = templateFields.filter(f => f.de && !f.para.trim());
     if (missing.length === 0) { toast.info('Todos os campos já estão preenchidos!'); return; }
@@ -691,7 +706,7 @@ export function ZapSignDocumentDialog({
       const mainSigner = signers[0];
       const normalizedSigningPhone = normalizeBrazilMobilePhoneForDoc(phone || mainSigner.phone || '');
       const filledFieldsData = templateFields
-        .map(f => /whatsapp|telefone|celular/i.test(formatFieldLabel(f.de)) ? { ...f, para: normalizedSigningPhone, source: 'manual' as const } : f)
+        .map(f => isDocumentContactPhoneField(f.de, isBpcLoasTemplate) ? { ...f, para: normalizedSigningPhone, source: 'manual' as const } : f)
         .filter(f => f.de && f.para.trim());
 
       // Build signers array for the API
