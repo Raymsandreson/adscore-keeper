@@ -1,5 +1,4 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { geminiChat } from "../_shared/gemini.ts";
 import {
   resolveServiceRoleKey,
   resolveSupabaseUrl,
@@ -17,6 +16,37 @@ const corsHeaders = {
 };
 
 const ZAPSIGN_API_URL = "https://api.zapsign.com.br/api/v1";
+const AI_GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
+
+async function callLovableAI(options: { model: string; messages: any[]; temperature?: number }) {
+  const apiKey = Deno.env.get("LOVABLE_API_KEY");
+  if (!apiKey) throw new Error("LOVABLE_API_KEY not configured");
+
+  const response = await fetch(AI_GATEWAY_URL, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      "X-Lovable-AIG-SDK": "zapsign-api-edge",
+    },
+    body: JSON.stringify({
+      model: options.model,
+      messages: options.messages,
+      temperature: options.temperature ?? 0.2,
+    }),
+  });
+
+  const text = await response.text();
+  if (!response.ok) {
+    throw new Error(`AI gateway error ${response.status}: ${text.slice(0, 500)}`);
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(`AI gateway invalid JSON: ${text.slice(0, 500)}`);
+  }
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -688,8 +718,8 @@ Responda APENAS o JSON, sem markdown.`;
 
 
       try {
-        const aiData = await geminiChat({
-          model: "google/gemini-2.5-pro",
+        const aiData = await callLovableAI({
+          model: "google/gemini-2.5-flash",
           messages: [
             {
               role: "system",
@@ -698,6 +728,7 @@ Responda APENAS o JSON, sem markdown.`;
             },
             { role: "user", content: userContent },
           ],
+          temperature: 0.1,
         });
 
         const responseText = aiData.choices?.[0]?.message?.content || "[]";
@@ -832,7 +863,7 @@ Responda APENAS o JSON, sem markdown.`;
       }
 
       try {
-        const aiData = await geminiChat({
+        const aiData = await callLovableAI({
           model: "google/gemini-2.5-flash",
           messages: [
             {
@@ -842,6 +873,7 @@ Responda APENAS o JSON, sem markdown.`;
             },
             { role: "user", content: userContent },
           ],
+          temperature: 0.1,
         });
 
         const respText = aiData.choices?.[0]?.message?.content || "[]";
