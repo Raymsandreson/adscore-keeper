@@ -60,6 +60,27 @@ function normalizeBrazilMobilePhoneForDoc(raw: string): string {
   return digits.startsWith('55') ? digits : `55${digits}`;
 }
 
+const MINIMUM_WAGE_OPTIONS = ['6', '7', '8', '9', '10'];
+
+function getTemplateFieldKey(field: string): string {
+  return field
+    .replace(/\{\{|\}\}/g, '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9]/g, '')
+    .toLowerCase();
+}
+
+function isMinimumWageTelefoneField(field: string): boolean {
+  return getTemplateFieldKey(field) === 'telefone';
+}
+
+function isDocumentContactPhoneField(field: string, bpcLoasTemplate: boolean): boolean {
+  const key = getTemplateFieldKey(field);
+  if (bpcLoasTemplate && key === 'telefone') return false;
+  return key.includes('whatsapp') || key.includes('telefone') || key.includes('celular');
+}
+
 function phoneCandidatesForConversation(raw: string): string[] {
   const digits = onlyDigits(raw);
   const normalized = normalizeBrazilMobilePhoneForDoc(raw);
