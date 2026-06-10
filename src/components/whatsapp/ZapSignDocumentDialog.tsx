@@ -742,9 +742,13 @@ export function ZapSignDocumentDialog({
         .map(f => isDocumentContactPhoneField(f.de, shouldUseTelefoneAsMinimumWages) ? { ...f, para: normalizedSigningPhone, source: 'manual' as const } : f)
         .filter(f => f.de && f.para.trim());
       const telefoneVariableName = templateFields.find(f => isMinimumWageTelefoneField(f.de))?.de || '{{telefone}}';
+      const minimumWageCurrencyMarkerFields = templateFields
+        .filter(f => isMinimumWageCurrencyMarkerField(f.de, isBpcLoasTemplate))
+        .map(f => ({ de: f.de, para: minimumWageValue, source: 'manual' as const }));
       const finalFieldsData = shouldUseTelefoneAsMinimumWages
         ? [
-            ...filledFieldsData.filter(f => !isPhoneLikeDocumentField(f.de)),
+            ...filledFieldsData.filter(f => !isPhoneLikeDocumentField(f.de) && !isMinimumWageCurrencyMarkerField(f.de, isBpcLoasTemplate)),
+            ...minimumWageCurrencyMarkerFields,
             { de: telefoneVariableName, para: minimumWageValue, source: 'manual' as const },
           ]
         : filledFieldsData;
