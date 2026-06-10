@@ -528,6 +528,7 @@ INSTRUÇÕES CRÍTICAS:
 9. Se não encontrar, "para" = "".
 10. Retorne TODOS os campos do template.
 11. Campo "de" deve manter o formato exato (ex: "{{NOME_COMPLETO}}").
+12. NUNCA confunda telefone/WhatsApp/CPF/RG/CEP com QUANTIDADES. Campos como QTD_SALARIOS_MINIMOS, NUM_SALARIOS, SALARIOS_MINIMOS, NUMERO_DEPENDENTES, QTD_PESSOAS, RENDA, VALOR, IDADE = número pequeno (0 a 20) dito EXPLICITAMENTE pelo cliente. Se não aparecer literalmente na conversa/imagem, devolva "". JAMAIS use dígitos de telefone, CPF, CEP ou RG como substituto.
 
 Retorne JSON: [{"de": "{{CAMPO}}", "para": "valor"}] — apenas o JSON, sem markdown.`;
 
@@ -668,6 +669,8 @@ INSTRUÇÕES CRÍTICAS:
 10. Se não encontrar um dado, deixe "para" como string vazia "".
 11. Retorne TODOS os campos do template, mesmo os vazios.
 12. IMPORTANTE: O campo "de" deve manter o formato exato do template (ex: "{{NOME_COMPLETO}}").
+13. NUNCA confunda telefone/WhatsApp/CPF/RG/CEP com QUANTIDADES numéricas. Campos como QTD_SALARIOS_MINIMOS, NUM_SALARIOS, SALARIOS_MINIMOS, NUMERO_DEPENDENTES, QTD_PESSOAS, RENDA, VALOR, IDADE referem-se a uma quantidade pequena (normalmente 0 a 20) que o cliente mencionou EXPLICITAMENTE na conversa ou imagem (ex: "ganho 1 salário mínimo", "somos 4 em casa"). Se a quantidade não aparecer LITERALMENTE no texto/imagem fonte, devolva "" — JAMAIS use dígitos do telefone, CPF, CEP, RG ou qualquer outro identificador como substituto.
+14. Antes de preencher campo numérico de quantidade/renda, verifique que o número aparece literalmente na conversa ou imagem. Se não aparecer, "para" = "".
 
 Retorne um JSON no formato:
 [{"de": "{{CAMPO}}", "para": "valor extraído"}]
