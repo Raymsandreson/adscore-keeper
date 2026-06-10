@@ -1235,41 +1235,48 @@ export function ZapSignDocumentDialog({
                 </div>
 
                 {/* Seletor de Salários Mínimos (honorários BPC/LOAS)
-                    ZapSign não aceita campos dinâmicos novos no template, então
-                    reaproveitamos a variável {{WHATSAPP}} para carregar o nº de
-                    salários no lugar onde antes ficava "10" hardcoded. */}
-                <div className="flex items-center gap-2 p-2 rounded-md border bg-muted/30 flex-wrap">
-                  <Label className="text-xs font-medium whitespace-nowrap">Salários mínimos (honorários):</Label>
-                  <Select
-                    value={(() => {
-                      const f = templateFields.find(x => /whatsapp/i.test(x.de));
-                      const raw = (f?.para || '').trim();
-                      // Se o valor parece telefone (>=10 dígitos), considera não preenchido
-                      if (raw.replace(/\D/g, '').length >= 10) return '';
-                      const v = raw.match(/\d+/)?.[0];
-                      return v || '';
-                    })()}
-                    onValueChange={(val) => {
-                      setTemplateFields(prev => {
-                        const idx = prev.findIndex(x => /whatsapp/i.test(x.de));
-                        if (idx >= 0) {
-                          const next = [...prev];
-                          next[idx] = { ...next[idx], para: val, source: 'manual', editing: false };
-                          return next;
-                        }
-                        return [...prev, { de: 'WHATSAPP', para: val, source: 'manual', editing: false }];
-                      });
-                    }}
-                  >
-                    <SelectTrigger className="h-8 w-32 text-xs"><SelectValue placeholder="Selecione" /></SelectTrigger>
-                    <SelectContent>
-                      {[6,7,8,9,10].map(n => (
-                        <SelectItem key={n} value={String(n)}>{n} salários</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <span className="text-[10px] text-muted-foreground">Sobrescreve {`{{WHATSAPP}}`} do template com o nº de salários.</span>
-                </div>
+                    Aparece SOMENTE quando o template selecionado é BPC/LOAS.
+                    Reaproveita a variável {{WHATSAPP}} (ZapSign não aceita
+                    novos campos no template) para carregar o nº de salários. */}
+                {(() => {
+                  const tplName = templates.find(t => t.token === selectedTemplate)?.name || '';
+                  if (!/bpc|loas/i.test(tplName)) return null;
+                  return (
+                    <div className="flex items-center gap-2 p-2 rounded-md border bg-muted/30 flex-wrap">
+                      <Label className="text-xs font-medium whitespace-nowrap">Salários mínimos (honorários):</Label>
+                      <Select
+                        value={(() => {
+                          const f = templateFields.find(x => /whatsapp/i.test(x.de));
+                          const raw = (f?.para || '').trim();
+                          if (raw.replace(/\D/g, '').length >= 10) return '';
+                          const v = raw.match(/\d+/)?.[0];
+                          return v || '';
+                        })()}
+                        onValueChange={(val) => {
+                          setTemplateFields(prev => {
+                            const idx = prev.findIndex(x => /whatsapp/i.test(x.de));
+                            if (idx >= 0) {
+                              const next = [...prev];
+                              next[idx] = { ...next[idx], para: val, source: 'manual', editing: false };
+                              return next;
+                            }
+                            return [...prev, { de: 'WHATSAPP', para: val, source: 'manual', editing: false }];
+                          });
+                        }}
+                      >
+                        <SelectTrigger className="h-8 w-32 text-xs"><SelectValue placeholder="Selecione" /></SelectTrigger>
+                        <SelectContent>
+                          {[6,7,8,9,10].map(n => (
+                            <SelectItem key={n} value={String(n)}>{n} salários</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <span className="text-[10px] text-muted-foreground">Sobrescreve {`{{WHATSAPP}}`} do template com o nº de salários.</span>
+                    </div>
+                  );
+                })()}
+
+
 
 
                 <Tabs defaultValue="filled" className="flex-1 overflow-hidden flex flex-col">
