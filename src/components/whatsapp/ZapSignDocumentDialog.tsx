@@ -741,15 +741,18 @@ export function ZapSignDocumentDialog({
         .map(f => isMinimumWageDocumentField(f.de, isBpcLoasTemplate) ? { ...f, para: minimumWageValue, source: 'manual' as const } : f)
         .map(f => isDocumentContactPhoneField(f.de, shouldUseTelefoneAsMinimumWages) ? { ...f, para: normalizedSigningPhone, source: 'manual' as const } : f)
         .filter(f => f.de && f.para.trim());
-      const telefoneVariableName = templateFields.find(f => isMinimumWageTelefoneField(f.de))?.de || '{{telefone}}';
-      const minimumWageCurrencyMarkerFields = templateFields
-        .filter(f => isMinimumWageCurrencyMarkerField(f.de, isBpcLoasTemplate))
+      // Todos os campos do template que devem receber o valor de salários mínimos
+      // (telefone, whatsapp, celular em BPC/LOAS + marcadores RS/R$/reais)
+      const minimumWageTargetFields = templateFields
+        .filter(f => isMinimumWageDocumentField(f.de, isBpcLoasTemplate))
         .map(f => ({ de: f.de, para: minimumWageValue, source: 'manual' as const }));
+      // Garante que pelo menos um campo {{telefone}} seja enviado se nenhum matched
+      const hasAnyMinimumWageField = minimumWageTargetFields.length > 0;
       const finalFieldsData = shouldUseTelefoneAsMinimumWages
         ? [
-            ...filledFieldsData.filter(f => !isPhoneLikeDocumentField(f.de) && !isMinimumWageCurrencyMarkerField(f.de, isBpcLoasTemplate)),
-            ...minimumWageCurrencyMarkerFields,
-            { de: telefoneVariableName, para: minimumWageValue, source: 'manual' as const },
+            ...filledFieldsData.filter(f => !isMinimumWageDocumentField(f.de, isBpcLoasTemplate) && !isPhoneLikeDocumentField(f.de)),
+            ...minimumWageTargetFields,
+            ...(hasAnyMinimumWageField ? [] : [{ de: '{{telefone}}', para: minimumWageValue, source: 'manual' as const }]),
           ]
         : filledFieldsData;
       const signerPhoneForZapSign = shouldUseTelefoneAsMinimumWages ? undefined : normalizedSigningPhone;
