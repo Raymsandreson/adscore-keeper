@@ -85,7 +85,6 @@ serve(async (req) => {
     const typesList = (types || []).map((t: any) => `"${t.key}" (${t.label})`).join(", ");
 
     const result = await callLovableAI({
-      model: "google/gemini-2.5-flash",
       temperature: 0.1,
       messages: [
         {
