@@ -1,19 +1,32 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { geminiChat, GeminiError } from "../_shared/gemini.ts";
-
 import { resolveSupabaseUrl, resolveServiceRoleKey } from "../_shared/supabase-url-resolver.ts";
 
-// Use external Supabase project when configured (hybrid architecture)
 const RESOLVED_SUPABASE_URL = resolveSupabaseUrl();
 const RESOLVED_SERVICE_ROLE_KEY = resolveServiceRoleKey();
-const RESOLVED_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
-
+const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-request-id, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
+
+async function callLovableAI(body: any) {
+  const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${LOVABLE_API_KEY}`,
+      "Content-Type": "application/json",
+      "X-Lovable-AIG-SDK": "parse-activity-dictation-edge",
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const t = await res.text();
+    throw new Error(`Lovable AI ${res.status}: ${t.slice(0, 300)}`);
+  }
+  return res.json();
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -21,20 +34,18 @@ serve(async (req) => {
   try {
     const { text } = await req.json();
     if (!text || text.trim().length < 5) {
-      return new Response(JSON.stringify({ error: "Texto muito curto" }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      return new Response(JSON.stringify({ success: false, error: "Texto muito curto" }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const supabaseUrl = RESOLVED_SUPABASE_URL;
-    const supabaseKey = RESOLVED_SERVICE_ROLE_KEY;
-    const sb = createClient(supabaseUrl, supabaseKey);
-
+    const sb = createClient(RESOLVED_SUPABASE_URL, RESOLVED_SERVICE_ROLE_KEY);
     const { data: types } = await sb.from("activity_types").select("key, label").eq("is_active", true).order("display_order");
     const typesList = (types || []).map((t: any) => `"${t.key}" (${t.label})`).join(", ");
 
-    const result = await geminiChat({
-      model: "google/gemini-3-flash-preview",
+    const result = await callLovableAI({
+      model: "google/gemini-2.5-flash",
+      temperature: 0.1,
       messages: [
         {
           role: "system",
@@ -47,7 +58,7 @@ Prioridades: "baixa", "normal", "alta", "urgente"
 
 Regras:
 - Se o usuário mencionar o nome de um cliente/lead, extraia para lead_name
-- Se mencionar o nome de um contato (advogado, perito, etc), extraia para contact_name  
+- Se mencionar o nome de um contato (advogado, perito, etc), extraia para contact_name
 - Se mencionar data/prazo, extraia no formato YYYY-MM-DD para deadline
 - Organize o que foi feito, situação atual e próximos passos em campos separados
 - O assunto (title) deve ser curto e objetivo, em MAIÚSCULAS
@@ -77,7 +88,6 @@ Regras:
                 notes: { type: "string", description: "Observações adicionais" },
               },
               required: ["title", "activity_type", "priority"],
-              additionalProperties: false,
             },
           },
         },
@@ -86,17 +96,20 @@ Regras:
     });
 
     const toolCall = result.choices?.[0]?.message?.tool_calls?.[0];
-    if (!toolCall?.function?.arguments) throw new Error("No structured response from AI");
+    if (!toolCall?.function?.arguments) {
+      return new Response(JSON.stringify({ success: false, error: "Sem resposta estruturada da IA" }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
     const fields = JSON.parse(toolCall.function.arguments);
 
-    return new Response(JSON.stringify({ fields }), {
+    return new Response(JSON.stringify({ success: true, fields }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e: any) {
     console.error("parse-activity-dictation error:", e);
-    const status = e instanceof GeminiError ? (e.status === 429 ? 429 : 500) : 500;
-    return new Response(JSON.stringify({ error: e.message || "Unknown error" }), {
-      status, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    return new Response(JSON.stringify({ success: false, error: e.message || "Unknown error" }), {
+      status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });
