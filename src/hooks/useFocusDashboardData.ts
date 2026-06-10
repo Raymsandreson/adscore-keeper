@@ -428,7 +428,7 @@ export function useFocusDashboardData(acolhedorUserId?: string | null): FocusDat
         ...((activeRes.data || []) as any[]).map((l: any) => l.id),
       ]);
       let zapDocs = (zapRes.data || []) as any[];
-      if (useInstanceFilter) {
+      if (useAcolhedorFilter) {
         zapDocs = zapDocs.filter(z => z.lead_id && scopedLeadIds.has(z.lead_id));
       }
       const zapsignPending = zapDocs.length;
