@@ -718,8 +718,8 @@ Responda APENAS o JSON, sem markdown.`;
 
 
       try {
-        const aiData = await geminiChat({
-          model: "google/gemini-2.5-pro",
+        const aiData = await callLovableAI({
+          model: "google/gemini-2.5-flash",
           messages: [
             {
               role: "system",
@@ -728,6 +728,7 @@ Responda APENAS o JSON, sem markdown.`;
             },
             { role: "user", content: userContent },
           ],
+          temperature: 0.1,
         });
 
         const responseText = aiData.choices?.[0]?.message?.content || "[]";
@@ -862,7 +863,7 @@ Responda APENAS o JSON, sem markdown.`;
       }
 
       try {
-        const aiData = await geminiChat({
+        const aiData = await callLovableAI({
           model: "google/gemini-2.5-flash",
           messages: [
             {
@@ -872,6 +873,7 @@ Responda APENAS o JSON, sem markdown.`;
             },
             { role: "user", content: userContent },
           ],
+          temperature: 0.1,
         });
 
         const respText = aiData.choices?.[0]?.message?.content || "[]";
