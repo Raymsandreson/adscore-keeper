@@ -516,6 +516,15 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
             />
           </div>
           
+          <Button
+            variant={todayOnly ? "default" : "outline"}
+            size="sm"
+            onClick={() => setTodayOnly(!todayOnly)}
+            title="Mostrar apenas leads criados hoje"
+          >
+            Hoje
+          </Button>
+
           <Button variant="outline" size="icon" onClick={() => fetchLeads()}>
             <RefreshCw className="h-4 w-4" />
           </Button>
