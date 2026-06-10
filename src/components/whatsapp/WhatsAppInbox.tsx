@@ -1763,7 +1763,7 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
       </div>
 
       {/* Foco Agora — barra única sempre visível (condensada) para ver indicadores e conversas ao mesmo tempo */}
-      {!isMinimal && (
+      {/* Foco Agora — barra única sempre visível (condensada) para ver indicadores e conversas ao mesmo tempo */}
       <div className="shrink-0 border-b">
         <FocusDashboard
           compact
@@ -1776,7 +1776,6 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
           onOpenChat={handleOpenChatByPhone}
         />
       </div>
-      )}
 
       {/* Reconnect Bar - apenas para instância padrão do usuário */}
       {relevantDisconnectedInstances.length > 0 && !lockInstanceName && (
