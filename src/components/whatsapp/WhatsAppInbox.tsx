@@ -344,39 +344,20 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
   const [pickingInstanceId, setPickingInstanceId] = useState<string>('');
   const [savingDefault, setSavingDefault] = useState(false);
 
-  // No contexto Cloud (Meta) o envio roteia direto pra Graph API via channel:'cloud' — não usa
-  // instância UazAPI padrão. Logo o guard de "cadastre uma instância" não se aplica aqui.
+  // Envio é independente de instância padrão cadastrada — a conversa carrega o
+  // instance_name correto (UazAPI ou cloud_gerencia) e o servidor resolve a rota.
+  // Mantemos os wrappers como passthrough pra preservar a assinatura usada na árvore.
   const guardSendMessage = useCallback((fn: typeof sendMessage) => {
-    return ((...args: Parameters<typeof sendMessage>) => {
-      if (!isCloudContext && !userDefaultInstanceId) {
-        setPickingInstanceId('');
-        setMissingInstanceOpen(true);
-        toast.error('Cadastre uma instância de WhatsApp antes de enviar mensagens.');
-        return Promise.resolve(undefined as any);
-      }
-      return fn(...args);
-    }) as typeof sendMessage;
-  }, [isCloudContext, userDefaultInstanceId, sendMessage]);
+    return ((...args: Parameters<typeof sendMessage>) => fn(...args)) as typeof sendMessage;
+  }, [sendMessage]);
 
   const guardSendMedia = useCallback((...args: Parameters<typeof sendMedia>) => {
-    if (!isCloudContext && !userDefaultInstanceId) {
-      setPickingInstanceId('');
-      setMissingInstanceOpen(true);
-      toast.error('Cadastre uma instância de WhatsApp antes de enviar mensagens.');
-      return Promise.resolve(undefined as any);
-    }
     return (sendMedia as any)(...args);
-  }, [isCloudContext, userDefaultInstanceId, sendMedia]);
+  }, [sendMedia]);
 
   const guardSendLocation = useCallback((...args: Parameters<typeof sendLocation>) => {
-    if (!isCloudContext && !userDefaultInstanceId) {
-      setPickingInstanceId('');
-      setMissingInstanceOpen(true);
-      toast.error('Cadastre uma instância de WhatsApp antes de enviar mensagens.');
-      return Promise.resolve(undefined as any);
-    }
     return (sendLocation as any)(...args);
-  }, [isCloudContext, userDefaultInstanceId, sendLocation]);
+  }, [sendLocation]);
 
   // Status REAL do número Cloud (Meta), independente da UazAPI. FONTE ÚNICA DE VERDADE:
   // consulta o MESMO WHATSAPP_CLOUD_TOKEN usado no envio (Railway), via proxy check-whatsapp-cloud-token.
