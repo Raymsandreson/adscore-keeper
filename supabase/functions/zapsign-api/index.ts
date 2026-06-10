@@ -528,6 +528,7 @@ INSTRUÇÕES CRÍTICAS:
 9. Se não encontrar, "para" = "".
 10. Retorne TODOS os campos do template.
 11. Campo "de" deve manter o formato exato (ex: "{{NOME_COMPLETO}}").
+12. NUNCA confunda telefone/WhatsApp/CPF/RG/CEP com QUANTIDADES. Campos como QTD_SALARIOS_MINIMOS, NUM_SALARIOS, SALARIOS_MINIMOS, NUMERO_DEPENDENTES, QTD_PESSOAS, RENDA, VALOR, IDADE = número pequeno (0 a 20) dito EXPLICITAMENTE pelo cliente. Se não aparecer literalmente na conversa/imagem, devolva "". JAMAIS use dígitos de telefone, CPF, CEP ou RG como substituto.
 
 Retorne JSON: [{"de": "{{CAMPO}}", "para": "valor"}] — apenas o JSON, sem markdown.`;
 
