@@ -1788,7 +1788,7 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
       <div className="shrink-0 border-b">
         <FocusDashboard
           compact
-          instances={instances.map(i => ({ id: i.id, instance_name: i.instance_name }))}
+          users={acolhedorUsers}
           onOpenMissingDocs={() => toast.info('Filtro "faltam documentos" em breve')}
           onOpenZapsignPending={() => toast.info('Lista de pendentes ZapSign em breve')}
           onOpenUnanswered={() => {
