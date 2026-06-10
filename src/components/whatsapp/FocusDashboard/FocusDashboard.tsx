@@ -139,22 +139,23 @@ export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpen
             </PopoverContent>
           </Popover>
 
-          {instances.length > 0 && (
-            <Select value={kpiInstanceName} onValueChange={setKpiInstanceName}>
-              <SelectTrigger className="h-10 text-[11px] w-[140px] shrink-0 self-center gap-1">
+          {users.length > 0 && (
+            <Select value={kpiAcolhedorId} onValueChange={setKpiAcolhedorId}>
+              <SelectTrigger className="h-10 text-[11px] w-[160px] shrink-0 self-center gap-1">
                 <Filter className="h-3 w-3 opacity-60" />
-                <SelectValue placeholder="Instância" />
+                <SelectValue placeholder="Acolhedor" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all" className="text-xs">Todas instâncias</SelectItem>
-                {instances.map(inst => (
-                  <SelectItem key={inst.id} value={inst.instance_name} className="text-xs">
-                    {inst.instance_name}
+                <SelectItem value="all" className="text-xs">Todos acolhedores</SelectItem>
+                {users.map(u => (
+                  <SelectItem key={u.id} value={u.id} className="text-xs">
+                    {u.full_name}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           )}
+
 
 
 
