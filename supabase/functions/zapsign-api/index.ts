@@ -3,6 +3,7 @@ import {
   resolveServiceRoleKey,
   resolveSupabaseUrl,
 } from "../_shared/supabase-url-resolver.ts";
+import { geminiChat } from "../_shared/gemini.ts";
 
 const RESOLVED_SUPABASE_URL = resolveSupabaseUrl();
 const RESOLVED_SERVICE_ROLE_KEY = resolveServiceRoleKey();
@@ -16,36 +17,20 @@ const corsHeaders = {
 };
 
 const ZAPSIGN_API_URL = "https://api.zapsign.com.br/api/v1";
-const AI_GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 
+// Chama Gemini DIRETO via GOOGLE_AI_API_KEY (sem passar pelo gateway Lovable
+// = sem consumir crédito do workspace, sem erro 402). O helper geminiChat já
+// converte do formato OpenAI-compatível pro formato nativo do Google e
+// devolve a resposta no mesmo formato OpenAI que o resto do arquivo espera.
 async function callLovableAI(options: { model: string; messages: any[]; temperature?: number }) {
-  const apiKey = Deno.env.get("LOVABLE_API_KEY");
-  if (!apiKey) throw new Error("LOVABLE_API_KEY not configured");
-
-  const response = await fetch(AI_GATEWAY_URL, {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-      "X-Lovable-AIG-SDK": "zapsign-api-edge",
-    },
-    body: JSON.stringify({
-      model: options.model,
-      messages: options.messages,
-      temperature: options.temperature ?? 0.2,
-    }),
+  if (!Deno.env.get("GOOGLE_AI_API_KEY")) {
+    throw new Error("GOOGLE_AI_API_KEY not configured");
+  }
+  return await geminiChat({
+    model: options.model,
+    messages: options.messages,
+    temperature: options.temperature ?? 0.2,
   });
-
-  const text = await response.text();
-  if (!response.ok) {
-    throw new Error(`AI gateway error ${response.status}: ${text.slice(0, 500)}`);
-  }
-
-  try {
-    return JSON.parse(text);
-  } catch {
-    throw new Error(`AI gateway invalid JSON: ${text.slice(0, 500)}`);
-  }
 }
 
 Deno.serve(async (req) => {
