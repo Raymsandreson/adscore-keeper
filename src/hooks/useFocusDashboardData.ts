@@ -452,7 +452,7 @@ export function useFocusDashboardData(acolhedorUserId?: string | null): FocusDat
         .gte('created_at', since)
         .order('created_at', { ascending: false })
         .limit(5000);
-      if (useInstanceFilter) msgsQ = msgsQ.ilike('instance_name', instanceName as string);
+      // Sem resposta: msgs não tem coluna acolhedor; mantemos visão global.
       const { data: msgs } = await msgsQ;
 
       // Group by phone+instance, find last inbound/outbound + collect pairs for avg response
