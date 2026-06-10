@@ -75,9 +75,18 @@ function isMinimumWageTelefoneField(field: string): boolean {
   return getTemplateFieldKey(field) === 'telefone';
 }
 
+function isPhoneLikeDocumentField(field: string): boolean {
+  const key = getTemplateFieldKey(field);
+  return key.includes('telefone') || key.includes('celular') || key.includes('whatsapp');
+}
+
+function isMinimumWageDocumentField(field: string, bpcLoasTemplate: boolean): boolean {
+  return isMinimumWageTelefoneField(field) || (bpcLoasTemplate && isPhoneLikeDocumentField(field));
+}
+
 function isDocumentContactPhoneField(field: string, bpcLoasTemplate: boolean): boolean {
   const key = getTemplateFieldKey(field);
-  if (bpcLoasTemplate && key === 'telefone') return false;
+  if (bpcLoasTemplate && isPhoneLikeDocumentField(field)) return false;
   return key.includes('whatsapp') || key.includes('telefone') || key.includes('celular');
 }
 
@@ -664,18 +673,19 @@ export function ZapSignDocumentDialog({
 
   const selectedTemplateName = templates.find(t => t.token === selectedTemplate)?.name || '';
   const isBpcLoasTemplate = /bpc|loas/i.test(selectedTemplateName);
-  const hasMinimumWageTelefoneField = templateFields.some(f => isMinimumWageTelefoneField(f.de));
+  const hasMinimumWageTelefoneField = templateFields.some(f => isMinimumWageDocumentField(f.de, isBpcLoasTemplate));
   const shouldUseTelefoneAsMinimumWages = isBpcLoasTemplate || hasMinimumWageTelefoneField;
-  const selectedMinimumWagesRaw = templateFields.find(f => isMinimumWageTelefoneField(f.de))?.para.trim() || '';
+  const selectedMinimumWagesRaw = templateFields.find(f => isMinimumWageDocumentField(f.de, isBpcLoasTemplate))?.para.trim() || '';
   const selectedMinimumWages = MINIMUM_WAGE_OPTIONS.includes(selectedMinimumWagesRaw) ? selectedMinimumWagesRaw : '';
-  const bpcMinimumWageMissing = shouldUseTelefoneAsMinimumWages && !selectedMinimumWages;
+  const minimumWageValue = selectedMinimumWages || '10';
+  const bpcMinimumWageMissing = shouldUseTelefoneAsMinimumWages && !MINIMUM_WAGE_OPTIONS.includes(minimumWageValue);
   const applyMinimumWagesToTelefone = (value: string) => {
     setTemplateFields(prev => {
-      const idx = prev.findIndex(f => isMinimumWageTelefoneField(f.de));
-      if (idx >= 0) {
-        const next = [...prev];
-        next[idx] = { ...next[idx], para: value, source: 'manual', editing: false };
-        return next;
+      const matchingIndexes = prev
+        .map((f, idx) => (isMinimumWageDocumentField(f.de, isBpcLoasTemplate) ? idx : -1))
+        .filter(idx => idx >= 0);
+      if (matchingIndexes.length > 0) {
+        return prev.map((f, idx) => matchingIndexes.includes(idx) ? { ...f, para: value, source: 'manual', editing: false } : f);
       }
       return [...prev, { de: '{{telefone}}', para: value, source: 'manual', editing: false }];
     });
@@ -722,15 +732,23 @@ export function ZapSignDocumentDialog({
       const mainSigner = signers[0];
       const normalizedSigningPhone = normalizeBrazilMobilePhoneForDoc(phone || mainSigner.phone || '');
       const filledFieldsData = templateFields
-        .map(f => isMinimumWageTelefoneField(f.de) ? { ...f, para: selectedMinimumWages, source: 'manual' as const } : f)
+        .map(f => isMinimumWageDocumentField(f.de, isBpcLoasTemplate) ? { ...f, para: minimumWageValue, source: 'manual' as const } : f)
         .map(f => isDocumentContactPhoneField(f.de, shouldUseTelefoneAsMinimumWages) ? { ...f, para: normalizedSigningPhone, source: 'manual' as const } : f)
         .filter(f => f.de && f.para.trim());
+      const telefoneVariableName = templateFields.find(f => isMinimumWageTelefoneField(f.de))?.de || '{{telefone}}';
+      const finalFieldsData = shouldUseTelefoneAsMinimumWages
+        ? [
+            ...filledFieldsData.filter(f => !isPhoneLikeDocumentField(f.de)),
+            { de: telefoneVariableName, para: minimumWageValue, source: 'manual' as const },
+          ]
+        : filledFieldsData;
+      const signerPhoneForZapSign = shouldUseTelefoneAsMinimumWages ? undefined : normalizedSigningPhone;
 
       // Build signers array for the API
       const signersPayload = signers.map((s, idx) => ({
         name: s.name,
         email: s.email || undefined,
-        phone: idx === 0 ? normalizedSigningPhone : (s.phone || undefined),
+        phone: idx === 0 ? signerPhoneForZapSign : (s.phone || undefined),
         role: s.role,
         auth_mode: s.auth_mode || 'assinaturaTela',
       }));
@@ -741,9 +759,9 @@ export function ZapSignDocumentDialog({
           template_id: selectedTemplate,
           signer_name: mainSigner.name,
           signer_email: mainSigner.email || undefined,
-          signer_phone: normalizedSigningPhone || undefined,
+          signer_phone: signerPhoneForZapSign || undefined,
           signers: signersPayload,
-          data: filledFieldsData,
+          data: finalFieldsData,
           document_name: template?.name || 'Documento',
           lead_id: leadId || null,
           contact_id: contactId || null,
