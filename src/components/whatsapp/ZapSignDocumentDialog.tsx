@@ -1326,7 +1326,7 @@ export function ZapSignDocumentDialog({
                         ))}
                       </SelectContent>
                     </Select>
-                    <span className="text-[10px] text-muted-foreground">Preenche {`{{telefone}}`} no documento.</span>
+                    <span className="text-[10px] text-muted-foreground">Preenche telefone/RS no documento.</span>
                   </div>
                 )}
 
