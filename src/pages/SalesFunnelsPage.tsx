@@ -56,7 +56,7 @@ const SalesFunnelsPage = () => {
   const [editBoardId, setEditBoardId] = useState<string | null>(null);
   const [teamBoard, setTeamBoard] = useState<{ id: string; name: string } | null>(null);
   const [dateField, setDateField] = useState<DateField>("created_at");
-  const [rangePreset, setRangePreset] = useState<RangePreset>("today");
+  const [rangePreset, setRangePreset] = useState<RangePreset>("all");
   const [customRange, setCustomRange] = useState<{ from?: Date; to?: Date }>({});
   const { from: fromDate, to: toDate } = useMemo(
     () => computeRange(rangePreset, customRange),
