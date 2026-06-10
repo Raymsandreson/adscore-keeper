@@ -1485,7 +1485,7 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
           </Button>
         )}
         <MessageSquare className="h-6 w-6 text-green-600" />
-        <h1 className="text-lg font-semibold">{isMinimal ? 'WhatsApp API' : 'WhatsApp'}</h1>
+        {!isMinimal && <h1 className="text-lg font-semibold">WhatsApp</h1>}
         {totalUnread > 0 && (
           <Badge variant="destructive" className="text-xs">{totalUnread}</Badge>
         )}
