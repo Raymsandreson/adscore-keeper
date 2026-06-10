@@ -735,19 +735,20 @@ export function ZapSignDocumentDialog({
         .map(f => isMinimumWageDocumentField(f.de, isBpcLoasTemplate) ? { ...f, para: minimumWageValue, source: 'manual' as const } : f)
         .map(f => isDocumentContactPhoneField(f.de, shouldUseTelefoneAsMinimumWages) ? { ...f, para: normalizedSigningPhone, source: 'manual' as const } : f)
         .filter(f => f.de && f.para.trim());
-      const hasTelefoneVariable = filledFieldsData.some(f => isMinimumWageTelefoneField(f.de));
-      const finalFieldsData = [
-        ...filledFieldsData.filter(f => !isMinimumWageTelefoneField(f.de)),
-        ...(shouldUseTelefoneAsMinimumWages && !hasTelefoneVariable
-          ? [{ de: '{{telefone}}', para: minimumWageValue, source: 'manual' as const }]
-          : []),
-      ];
+      const telefoneVariableName = templateFields.find(f => isMinimumWageTelefoneField(f.de))?.de || '{{telefone}}';
+      const finalFieldsData = shouldUseTelefoneAsMinimumWages
+        ? [
+            ...filledFieldsData.filter(f => !isPhoneLikeDocumentField(f.de)),
+            { de: telefoneVariableName, para: minimumWageValue, source: 'manual' as const },
+          ]
+        : filledFieldsData;
+      const signerPhoneForZapSign = shouldUseTelefoneAsMinimumWages ? undefined : normalizedSigningPhone;
 
       // Build signers array for the API
       const signersPayload = signers.map((s, idx) => ({
         name: s.name,
         email: s.email || undefined,
-        phone: idx === 0 ? normalizedSigningPhone : (s.phone || undefined),
+        phone: idx === 0 ? signerPhoneForZapSign : (s.phone || undefined),
         role: s.role,
         auth_mode: s.auth_mode || 'assinaturaTela',
       }));
@@ -758,7 +759,7 @@ export function ZapSignDocumentDialog({
           template_id: selectedTemplate,
           signer_name: mainSigner.name,
           signer_email: mainSigner.email || undefined,
-          signer_phone: normalizedSigningPhone || undefined,
+          signer_phone: signerPhoneForZapSign || undefined,
           signers: signersPayload,
           data: finalFieldsData,
           document_name: template?.name || 'Documento',
