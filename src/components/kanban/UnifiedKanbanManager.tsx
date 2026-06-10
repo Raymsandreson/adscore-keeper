@@ -166,6 +166,17 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
       result = result.filter(lead => checklistFilteredIds.has(lead.id));
     }
     
+    // Apply "today only" filter (leads created hoje)
+    if (todayOnly) {
+      const start = new Date(); start.setHours(0, 0, 0, 0);
+      const end = new Date(); end.setHours(23, 59, 59, 999);
+      const s = start.getTime(); const e = end.getTime();
+      result = result.filter(lead => {
+        const t = lead.created_at ? new Date(lead.created_at).getTime() : 0;
+        return t >= s && t <= e;
+      });
+    }
+    
     // Apply search filter — busca apenas pelo nome do lead
     if (searchQuery) {
       const query = searchQuery.toLowerCase().trim();
@@ -181,7 +192,7 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
     }
     
     return result;
-  }, [boardLeads, searchQuery, checklistFilteredIds, advancedFilters]);
+  }, [boardLeads, searchQuery, checklistFilteredIds, advancedFilters, todayOnly]);
 
   // Derive available filter options from all leads in the board
   const filterOptions = useMemo(() => {
