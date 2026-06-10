@@ -73,6 +73,7 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
   const [editingLeadId, setEditingLeadId] = usePageState<string | null>('kanban_editingLeadId', null);
   const [showExtractor, setShowExtractor] = useState(false);
   const [advancedFilters, setAdvancedFilters] = usePageState<LeadFilters>('kanban_advFilters', emptyFilters);
+  const [todayOnly, setTodayOnly] = usePageState<boolean>('kanban_todayOnly', false);
   const [checklistFilteredIds, setChecklistFilteredIds] = useState<Set<string> | null>(null);
 
   // Handle URL param to auto-open a lead
