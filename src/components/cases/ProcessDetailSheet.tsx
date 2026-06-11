@@ -475,7 +475,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
         'data_ultima_movimentacao', 'data_arquivamento', 'data_ultima_verificacao',
         'quantidade_movimentacoes', 'segredo_justica', 'arquivado', 'fisico',
         'status_predito', 'situacao', 'moeda', 'description', 'notes',
-        'workflow_id', 'workflow_name', 'workflow_stage_id',
+        'workflow_id', 'workflow_name', 'workflow_stage_id', 'responsible_user_id',
       ];
 
       for (const key of editableKeys) {
