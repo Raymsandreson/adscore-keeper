@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { db as supabase } from '@/integrations/supabase';
+import { db as supabase, ensureExternalSession } from '@/integrations/supabase';
 import { toast } from 'sonner';
 
 export interface NucleusCompanyLink {
