@@ -32,6 +32,7 @@ import { externalSupabase, ensureExternalSession } from '@/integrations/supabase
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { useLeads } from '@/hooks/useLeads';
 import { useLegalCases } from '@/hooks/useLegalCases';
+import { useSpecializedNuclei } from '@/hooks/useSpecializedNuclei';
 import { toast } from 'sonner';
 
 function copyField(text: string | null | undefined) {
