@@ -1325,6 +1325,20 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                     </div>
                     <Switch checked={form.respond_in_groups} onCheckedChange={v => setForm(f => ({ ...f, respond_in_groups: v }))} />
                   </div>
+                  {form.respond_in_groups && (
+                    <div className="flex items-center justify-between pl-2 border-l-2 border-primary/20">
+                      <div>
+                        <Label className="text-xs">Descrever documentos enviados no grupo</Label>
+                        <p className="text-[10px] text-muted-foreground">
+                          Desligue para o agente NÃO narrar conteúdo extraído (nomes, valores, honorários) toda vez que alguém mandar documento no grupo. Apenas confirma o recebimento. Evita "cara de robô".
+                        </p>
+                      </div>
+                      <Switch
+                        checked={form.describe_documents_in_groups ?? true}
+                        onCheckedChange={v => setForm(f => ({ ...f, describe_documents_in_groups: v }))}
+                      />
+                    </div>
+                  )}
                   <div className="flex items-center justify-between">
                     <div>
                       <Label className="text-xs">Responder com áudio</Label>
