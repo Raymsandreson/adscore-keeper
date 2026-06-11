@@ -543,9 +543,18 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
                 >
                   <Plus className="h-4 w-4" />
                 </Button>
-              </div>
             </div>
           </div>
+          <div>
+            <Label className="text-xs font-semibold">Responsável pelo processo</Label>
+            <ResponsibleUserSelect
+              value={responsibleExtId}
+              onChange={setResponsibleExtId}
+              className="h-9 text-xs"
+              placeholder="Sem responsável (usa acolhedor/dono do lead)"
+            />
+          </div>
+        </div>
         </div>
 
         <Tabs value={tab} onValueChange={v => setTab(v as any)}>
