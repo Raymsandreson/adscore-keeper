@@ -1294,8 +1294,10 @@ const ActivitiesPage = () => {
   const activitiesByDate = useMemo(() => {
     const map: Record<string, LeadActivity[]> = {};
     activities.forEach(a => {
-      if (a.deadline) {
-        const key = a.deadline;
+      // Usa deadline como chave principal; cai pra notification_date quando não há prazo
+      // (ex: atividades concluídas sem prazo definido mas com data de notificação)
+      const key = a.deadline || (a as any).notification_date || null;
+      if (key) {
         if (!map[key]) map[key] = [];
         map[key].push(a);
       }
