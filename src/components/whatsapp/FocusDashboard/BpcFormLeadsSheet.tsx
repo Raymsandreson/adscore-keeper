@@ -24,6 +24,8 @@ interface Props {
   onOpenChange: (v: boolean) => void;
   /** Filtra abas da planilha pra essa instância (ex: "mateus atendimento"). */
   instanceName?: string | null;
+  /** "unificada" lê a aba BASE_UNIFICADA (usado pelo funil BPC - Autismo). */
+  source?: "unificada";
   defaultTab?: "all" | "to_call" | "on_wa" | "unviable";
   onOpenChat?: (phone: string) => void;
   /** Compat: se quiser ainda injetar dados externos, passe estes; senão o Sheet busca sozinho. */
@@ -71,6 +73,7 @@ export function BpcFormLeadsSheet({
   open,
   onOpenChange,
   instanceName,
+  source,
   defaultTab = "all",
   onOpenChat,
   externalMetrics,
@@ -96,6 +99,7 @@ export function BpcFormLeadsSheet({
     enabled: isSelfManaged && open,
     instanceName: instanceName || undefined,
     dateType,
+    source,
   });
 
   const metrics = externalMetrics ?? internal.metrics;

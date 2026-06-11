@@ -56,6 +56,8 @@ export function useBpcFormLeads(opts: {
   enabled?: boolean;
   instanceName?: string | null;
   dateType?: BpcDateType;
+  /** "unificada" lê a aba BASE_UNIFICADA (operador vem da coluna origem_vendedor). */
+  source?: "unificada";
 }) {
   const [metrics, setMetrics] = useState<BpcMetrics>({
     total: 0,
@@ -80,6 +82,7 @@ export function useBpcFormLeads(opts: {
       url.searchParams.set("from", opts.from.toISOString());
       url.searchParams.set("to", opts.to.toISOString());
       url.searchParams.set("date_type", dateType);
+      if (opts.source) url.searchParams.set("source", opts.source);
       if (opts.instanceName) url.searchParams.set("instance_name", opts.instanceName);
       const { data: { session } } = await supabase.auth.getSession();
       const resp = await fetch(url.toString(), {
@@ -98,7 +101,7 @@ export function useBpcFormLeads(opts: {
     } finally {
       setLoading(false);
     }
-  }, [opts.from.getTime(), opts.to.getTime(), opts.enabled, opts.instanceName, dateType]);
+  }, [opts.from.getTime(), opts.to.getTime(), opts.enabled, opts.instanceName, dateType, opts.source]);
 
   useEffect(() => {
     fetchData();

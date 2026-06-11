@@ -20,6 +20,9 @@ const SHEET_TABS: { tab: string; operator: string }[] = [
   { tab: "LEADS ANDRESSA", operator: "Andressa" },
   { tab: "LEAD KEILANE", operator: "Keilane" },
 ];
+// Aba que unifica todas as outras. Aqui o operador vem da COLUNA `origem_vendedor`,
+// não do nome da aba. Usada pelo funil "BPC - Autismo" (source=unificada).
+const UNIFIED_TAB = "BASE_UNIFICADA";
 const GATEWAY = "https://connector-gateway.lovable.dev/google_sheets/v4";
 
 type SheetRow = {
@@ -55,7 +58,11 @@ function rowToObject(headers: string[], row: any[]): Record<string, string> {
   return o;
 }
 
-async function fetchTab(tab: string): Promise<SheetRow[]> {
+async function fetchTab(
+  tab: string,
+  operatorFromColumn = false,
+  onHeaders?: (h: string[]) => void,
+): Promise<SheetRow[]> {
   const lovableKey = Deno.env.get("LOVABLE_API_KEY");
   const gsKey = Deno.env.get("GOOGLE_SHEETS_API_KEY");
   if (!lovableKey || !gsKey) throw new Error("Missing connector keys");
@@ -76,7 +83,8 @@ async function fetchTab(tab: string): Promise<SheetRow[]> {
   const values: any[][] = json.values || [];
   if (values.length < 2) return [];
   const headers = values[0].map((h: string) => String(h).toLowerCase().trim());
-  const meta = SHEET_TABS.find((s) => s.tab === tab)!;
+  if (onHeaders) onHeaders(headers);
+  const meta = SHEET_TABS.find((s) => s.tab === tab);
 
   return values.slice(1).filter((r) => r.length > 0).map((r) => {
     const o = rowToObject(headers, r);
@@ -98,7 +106,9 @@ async function fetchTab(tab: string): Promise<SheetRow[]> {
       renda: o["qual_a_sua_renda_familiar_?"] || "",
       possui_advogado: o["possui_advogado_?"] || "",
       lead_status: o["lead_status"] || "",
-      operator: meta.operator,
+      operator: operatorFromColumn
+        ? (o["origem_vendedor"] || o["operador"] || o["operator"] || "—")
+        : (meta?.operator ?? ""),
       tab,
     };
   }).filter((r) => r.phone_normalized.length >= 10 && !r.name.startsWith("<test"));
@@ -167,24 +177,41 @@ Deno.serve(async (req) => {
     const instanceFilter = (url.searchParams.get("instance_name") || "").toLowerCase().trim();
     // date_type: created (default) | first_contact | last_contact
     const dateType = (url.searchParams.get("date_type") || "created").toLowerCase();
-
-    const tabsToRead = instanceFilter
-      ? SHEET_TABS.filter((s) => instanceFilter.includes(s.operator.toLowerCase()))
-      : SHEET_TABS;
+    // source: "" (abas por operador, padrão) | "unificada" (aba BASE_UNIFICADA)
+    const source = (url.searchParams.get("source") || "").toLowerCase().trim();
 
     const tabErrors: { tab: string; error: string }[] = [];
     const allRows: SheetRow[] = [];
-    for (let i = 0; i < tabsToRead.length; i++) {
-      const s = tabsToRead[i];
+    const tabsReadNames: string[] = [];
+    let debugHeaders: string[] = [];
+
+    if (source === "unificada") {
+      tabsReadNames.push(UNIFIED_TAB);
       try {
-        const rows = await fetchTab(s.tab);
+        const rows = await fetchTab(UNIFIED_TAB, true, (h) => { debugHeaders = h; });
         allRows.push(...rows);
       } catch (e: any) {
         const msg = e?.message || String(e);
-        console.error(`[bpc-sheets-metrics] tab "${s.tab}" failed:`, msg);
-        tabErrors.push({ tab: s.tab, error: msg.substring(0, 200) });
+        console.error(`[bpc-sheets-metrics] unified tab failed:`, msg);
+        tabErrors.push({ tab: UNIFIED_TAB, error: msg.substring(0, 200) });
       }
-      if (i < tabsToRead.length - 1) await new Promise((r) => setTimeout(r, 250));
+    } else {
+      const tabsToRead = instanceFilter
+        ? SHEET_TABS.filter((s) => instanceFilter.includes(s.operator.toLowerCase()))
+        : SHEET_TABS;
+      tabsReadNames.push(...tabsToRead.map((t) => t.tab));
+      for (let i = 0; i < tabsToRead.length; i++) {
+        const s = tabsToRead[i];
+        try {
+          const rows = await fetchTab(s.tab);
+          allRows.push(...rows);
+        } catch (e: any) {
+          const msg = e?.message || String(e);
+          console.error(`[bpc-sheets-metrics] tab "${s.tab}" failed:`, msg);
+          tabErrors.push({ tab: s.tab, error: msg.substring(0, 200) });
+        }
+        if (i < tabsToRead.length - 1) await new Promise((r) => setTimeout(r, 250));
+      }
     }
 
     // Para "created" filtramos cedo (economia). Pros outros precisamos cruzar
@@ -255,12 +282,18 @@ Deno.serve(async (req) => {
     const toCallNow = leads.filter((l) => !l.has_whatsapp && !l.is_unviable).length;
     const alreadyOnWhatsApp = leads.filter((l) => l.has_whatsapp).length;
 
-    // Breakdown by operator (each tab = one operator/instance)
-    const byOperator = SHEET_TABS.map((meta) => {
-      const opLeads = leads.filter((l) => l.operator === meta.operator);
+    // Breakdown by operator. Nas abas por operador, cada aba = um operador.
+    // Na unificada, os operadores vêm da coluna `origem_vendedor`.
+    const operatorKeys = source === "unificada"
+      ? Array.from(new Set(leads.map((l) => l.operator).filter(Boolean)))
+      : SHEET_TABS.map((m) => m.operator);
+    const byOperator = operatorKeys.map((op) => {
+      const opLeads = leads.filter((l) => l.operator === op);
       return {
-        operator: meta.operator,
-        tab: meta.tab,
+        operator: op,
+        tab: source === "unificada"
+          ? UNIFIED_TAB
+          : (SHEET_TABS.find((m) => m.operator === op)?.tab ?? ""),
         total: opLeads.length,
         unviable: opLeads.filter((l) => l.is_unviable).length,
         toCallNow: opLeads.filter((l) => !l.has_whatsapp && !l.is_unviable).length,
@@ -273,7 +306,9 @@ Deno.serve(async (req) => {
         success: true,
         period: { from: fromISO, to: toISO, date_type: dateType },
         instance_filter: instanceFilter || null,
-        tabs_read: tabsToRead.map((t) => t.tab),
+        source: source || null,
+        tabs_read: tabsReadNames,
+        debug_headers: debugHeaders,
         tab_errors: tabErrors,
         metrics: { total, unviable, toCallNow, alreadyOnWhatsApp },
         byOperator,

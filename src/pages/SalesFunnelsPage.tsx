@@ -9,6 +9,7 @@ import { Search, LayoutGrid, Users, ArrowRight, Settings, Filter, Maximize2, Min
 import { db as supabase } from "@/integrations/supabase";
 import { useQuery } from "@tanstack/react-query";
 import { StageFunnelChart } from "@/components/kanban/StageFunnelChart";
+import { BpcFormLeadsSheet } from "@/components/whatsapp/FocusDashboard/BpcFormLeadsSheet";
 import { cn } from "@/lib/utils";
 import { Progress } from "@/components/ui/progress";
 import { WorkflowBuilder } from "@/components/workflow/WorkflowBuilder";
@@ -47,6 +48,10 @@ interface ChecklistItem {
   checked: boolean;
 }
 
+// O funil "BPC - Autismo" não tem leads na tabela `leads` — eles vêm da planilha
+// BPC-LOAS (aba BASE_UNIFICADA). Detectamos pelo nome para trocar a visualização.
+const isBpcFunnel = (name: string) => /bpc|autis/i.test(name);
+
 const SalesFunnelsPage = () => {
   const navigate = useNavigate();
   const { boards, fetchBoards } = useKanbanBoards();
@@ -55,6 +60,7 @@ const SalesFunnelsPage = () => {
   const [showBuilder, setShowBuilder] = useState(false);
   const [editBoardId, setEditBoardId] = useState<string | null>(null);
   const [teamBoard, setTeamBoard] = useState<{ id: string; name: string } | null>(null);
+  const [bpcSheetOpen, setBpcSheetOpen] = useState(false);
   const [dateField, setDateField] = useState<DateField>("created_at");
   const [rangePreset, setRangePreset] = useState<RangePreset>("all");
   const [customRange, setCustomRange] = useState<{ from?: Date; to?: Date }>({});
@@ -316,6 +322,7 @@ const SalesFunnelsPage = () => {
             const counts = leadCounts?.[board.id];
             const totalLeads = counts?.total || 0;
             const stageData = counts?.byStage || {};
+            const isBpc = isBpcFunnel(board.name);
             const isExpanded = expandedId === board.id;
             const boardObjectives = isExpanded ? objectiveData : null;
 
@@ -335,8 +342,11 @@ const SalesFunnelsPage = () => {
                     </CardTitle>
                     <div className="flex items-center gap-2">
                       <Badge variant="secondary" className="text-xs">
-                        <Users className="h-3 w-3 mr-1" />
-                        {totalLeads} leads
+                        {isBpc ? (
+                          <>📊 via planilha</>
+                        ) : (
+                          <><Users className="h-3 w-3 mr-1" />{totalLeads} leads</>
+                        )}
                       </Badge>
                       <Button
                         variant="ghost"
@@ -360,12 +370,25 @@ const SalesFunnelsPage = () => {
                   )}
                 </CardHeader>
                 <CardContent className="pt-0 space-y-3">
-                  {/* Mini funnel visualization */}
-                  <StageFunnelChart
-                    board={board}
-                    leadsPerStage={stageData}
-                    dateFilter={dateFilter}
-                  />
+                  {/* BPC - Autismo: leads vêm da planilha BPC-LOAS, não da tabela leads */}
+                  {isBpc ? (
+                    <div className="rounded-lg border border-dashed border-border/60 bg-muted/20 p-4 flex flex-col items-center gap-2 text-center">
+                      <p className="text-sm text-muted-foreground">
+                        Os leads deste funil vêm da planilha BPC-LOAS (aba <code className="text-xs">BASE_UNIFICADA</code>).
+                      </p>
+                      <Button size="sm" onClick={() => setBpcSheetOpen(true)}>
+                        <Users className="h-3.5 w-3.5 mr-1.5" />
+                        Ver leads da planilha
+                      </Button>
+                    </div>
+                  ) : (
+                    /* Mini funnel visualization */
+                    <StageFunnelChart
+                      board={board}
+                      leadsPerStage={stageData}
+                      dateFilter={dateFilter}
+                    />
+                  )}
 
 
                   {/* Objectives detail when expanded */}
@@ -488,6 +511,13 @@ const SalesFunnelsPage = () => {
           boardName={teamBoard.name}
         />
       )}
+
+      {/* Listagem de leads do funil BPC - Autismo (planilha BASE_UNIFICADA) */}
+      <BpcFormLeadsSheet
+        open={bpcSheetOpen}
+        onOpenChange={setBpcSheetOpen}
+        source="unificada"
+      />
     </div>
   );
 };
