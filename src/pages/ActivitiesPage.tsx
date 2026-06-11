@@ -274,6 +274,7 @@ const ActivitiesPage = () => {
   // Activity counts for filter badges
   const [allActivitiesRaw, setAllActivitiesRaw] = useState<{ lead_id: string | null; contact_id: string | null; assigned_to: string | null; activity_type: string; status: string }[]>([]);
   const [openFilterKey, setOpenFilterKey] = useState<string | null>(null);
+  const [showAllTypes, setShowAllTypes] = useState(false);
 
   // Workflow mode state
   const [workflowMode, setWorkflowMode] = useState(false);
