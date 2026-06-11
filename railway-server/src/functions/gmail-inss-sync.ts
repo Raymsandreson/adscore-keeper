@@ -128,13 +128,12 @@ function parseInssSubject(subject: string, body: string): {
   return out;
 }
 
-async function gmailFetch(path: string, params?: Record<string, string>): Promise<any> {
+async function gmailFetch(path: string, gmailKey: string, params?: Record<string, string>): Promise<any> {
   const url = new URL(`${GATEWAY_BASE}${path}`);
   if (params) Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
   const lovableKey = process.env.LOVABLE_API_KEY;
-  const gmailKey = process.env.GOOGLE_MAIL_API_KEY;
   if (!lovableKey || !gmailKey) {
-    throw new Error('Missing LOVABLE_API_KEY or GOOGLE_MAIL_API_KEY on Railway env');
+    throw new Error('Missing LOVABLE_API_KEY or gmailKey on Railway env');
   }
   const resp = await fetch(url.toString(), {
     headers: {
@@ -149,161 +148,192 @@ async function gmailFetch(path: string, params?: Record<string, string>): Promis
   return resp.json();
 }
 
+/** Lê a lista de caixas Gmail configuradas (adm + processual etc.). */
+function getInboxKeys(): Array<{ label: string; key: string }> {
+  const inboxes: Array<{ label: string; key: string }> = [];
+  if (process.env.GOOGLE_MAIL_API_KEY) inboxes.push({ label: 'inbox#1', key: process.env.GOOGLE_MAIL_API_KEY });
+  if (process.env.GOOGLE_MAIL_API_KEY_1) inboxes.push({ label: 'inbox#2', key: process.env.GOOGLE_MAIL_API_KEY_1 });
+  // Suporte futuro: GOOGLE_MAIL_API_KEY_2, _3 ...
+  for (let i = 2; i <= 5; i++) {
+    const k = process.env[`GOOGLE_MAIL_API_KEY_${i}`];
+    if (k) inboxes.push({ label: `inbox#${i + 1}`, key: k });
+  }
+  return inboxes;
+}
+
 export const handler: RequestHandler = async (req, res) => {
   const lookbackHours = Number(req.body?.lookback_hours || req.query?.lookback_hours || 24);
   const maxMessages = Number(req.body?.max_messages || 50);
 
+  const inboxes = getInboxKeys();
+  if (inboxes.length === 0) {
+    return res.status(200).json({ success: false, error: 'No GOOGLE_MAIL_API_KEY* env vars configured' });
+  }
+
   try {
-    // 1) Buscar emails do INSS recentes
-    const query = `from:noreply [INSS] newer_than:${lookbackHours}h`;
-    const list = await gmailFetch('/users/me/messages', {
-      q: query,
-      maxResults: String(maxMessages),
-    });
-    const messageIds: GmailMessageListItem[] = list.messages || [];
+    let totalChecked = 0;
+    let totalNew = 0;
+    let totalCreatedProcesses = 0;
+    let totalCreatedHistory = 0;
+    let totalNotifyTriggers = 0;
+    const allErrors: string[] = [];
+    const perInbox: Record<string, any> = {};
 
-    if (messageIds.length === 0) {
-      await supabase.from('inss_sync_state').update({
-        last_run_at: new Date().toISOString(),
-        last_result: { processed: 0, message: 'no new emails' },
-      }).eq('id', 1);
-      return res.status(200).json({ success: true, processed: 0, message: 'no new emails' });
-    }
+    for (const inbox of inboxes) {
+      const inboxResult = { checked: 0, new: 0, created_processes: 0, created_history: 0, notify_triggers: 0, errors: [] as string[] };
 
-    // 2) Filtrar quais já processamos (gmail_message_id único)
-    const ids = messageIds.map((m) => m.id);
-    const { data: existing } = await supabase
-      .from('inss_status_history')
-      .select('gmail_message_id')
-      .in('gmail_message_id', ids);
-    const seenIds = new Set((existing || []).map((r: any) => r.gmail_message_id));
-    const toProcess = messageIds.filter((m) => !seenIds.has(m.id));
-
-    let createdProcesses = 0;
-    let createdHistory = 0;
-    let notifyTriggers = 0;
-    const errors: string[] = [];
-
-    for (const item of toProcess) {
       try {
-        const msg: GmailMessage = await gmailFetch(`/users/me/messages/${item.id}`, {
-          format: 'full',
+        const query = `from:noreply [INSS] newer_than:${lookbackHours}h`;
+        const list = await gmailFetch('/users/me/messages', inbox.key, {
+          q: query,
+          maxResults: String(maxMessages),
         });
-        const subject = getHeader(msg, 'Subject') || '';
-        const body = extractPlainText(msg);
-        const receivedAt = msg.internalDate
-          ? new Date(Number(msg.internalDate)).toISOString()
-          : new Date().toISOString();
+        const messageIds: GmailMessageListItem[] = list.messages || [];
+        inboxResult.checked = messageIds.length;
+        totalChecked += messageIds.length;
 
-        const parsed = parseInssSubject(subject, body);
-        if (!parsed.requerimento) {
-          // Não conseguiu extrair número — pula (mas marca pra não reprocessar)
-          await supabase.from('inss_status_history').insert({
-            process_id: null as any, // não consegue sem requerimento; sky entry
-            gmail_message_id: item.id,
-            email_subject: subject,
-            email_snippet: msg.snippet?.slice(0, 500),
-            email_received_at: receivedAt,
-            to_status: 'PARSE_FAILED',
-          } as any).then(() => {}, () => {});
+        if (messageIds.length === 0) {
+          perInbox[inbox.label] = inboxResult;
           continue;
         }
 
-        // 3) Upsert no processo
-        const { data: existingProc } = await supabase
-          .from('inss_admin_processes')
-          .select('id, current_status, case_id, lead_id')
-          .eq('requerimento_number', parsed.requerimento)
-          .maybeSingle();
+        const ids = messageIds.map((m) => m.id);
+        const { data: existing } = await supabase
+          .from('inss_status_history')
+          .select('gmail_message_id')
+          .in('gmail_message_id', ids);
+        const seenIds = new Set((existing || []).map((r: any) => r.gmail_message_id));
+        const toProcess = messageIds.filter((m) => !seenIds.has(m.id));
+        inboxResult.new = toProcess.length;
+        totalNew += toProcess.length;
 
-        let processId: string;
-        let fromStatus: string | null = null;
-        let caseId: string | null = null;
-        let leadId: string | null = null;
+        for (const item of toProcess) {
+          try {
+            const msg: GmailMessage = await gmailFetch(`/users/me/messages/${item.id}`, inbox.key, {
+              format: 'full',
+            });
+            const subject = getHeader(msg, 'Subject') || '';
+            const body = extractPlainText(msg);
+            const receivedAt = msg.internalDate
+              ? new Date(Number(msg.internalDate)).toISOString()
+              : new Date().toISOString();
 
-        if (existingProc) {
-          processId = existingProc.id;
-          fromStatus = existingProc.current_status || null;
-          caseId = existingProc.case_id || null;
-          leadId = existingProc.lead_id || null;
+            const parsed = parseInssSubject(subject, body);
+            if (!parsed.requerimento) {
+              await supabase.from('inss_status_history').insert({
+                process_id: null as any,
+                gmail_message_id: item.id,
+                email_subject: subject,
+                email_snippet: msg.snippet?.slice(0, 500),
+                email_received_at: receivedAt,
+                to_status: 'PARSE_FAILED',
+              } as any).then(() => {}, () => {});
+              continue;
+            }
 
-          await supabase
-            .from('inss_admin_processes')
-            .update({
-              current_status: parsed.status || fromStatus,
-              cpf_segurado: parsed.cpf || undefined,
-              nome_segurado: parsed.nome || undefined,
-              benefit_type: parsed.beneficio || undefined,
-              benefit_number: parsed.beneficio_num || undefined,
-              protocol_date: parsed.protocol_date || undefined,
-              last_email_at: receivedAt,
-              last_email_subject: subject,
-            })
-            .eq('id', processId);
-        } else {
-          const { data: created, error: createErr } = await supabase
-            .from('inss_admin_processes')
-            .insert({
-              requerimento_number: parsed.requerimento,
-              current_status: parsed.status || 'Desconhecido',
-              cpf_segurado: parsed.cpf,
-              nome_segurado: parsed.nome,
-              benefit_type: parsed.beneficio,
-              benefit_number: parsed.beneficio_num,
-              protocol_date: parsed.protocol_date,
-              last_email_at: receivedAt,
-              last_email_subject: subject,
-            })
-            .select('id')
-            .single();
-          if (createErr || !created) {
-            errors.push(`create process ${parsed.requerimento}: ${createErr?.message}`);
-            continue;
+            const { data: existingProc } = await supabase
+              .from('inss_admin_processes')
+              .select('id, current_status, case_id, lead_id')
+              .eq('requerimento_number', parsed.requerimento)
+              .maybeSingle();
+
+            let processId: string;
+            let fromStatus: string | null = null;
+            let caseId: string | null = null;
+
+            if (existingProc) {
+              processId = existingProc.id;
+              fromStatus = existingProc.current_status || null;
+              caseId = existingProc.case_id || null;
+
+              await supabase
+                .from('inss_admin_processes')
+                .update({
+                  current_status: parsed.status || fromStatus,
+                  cpf_segurado: parsed.cpf || undefined,
+                  nome_segurado: parsed.nome || undefined,
+                  benefit_type: parsed.beneficio || undefined,
+                  benefit_number: parsed.beneficio_num || undefined,
+                  protocol_date: parsed.protocol_date || undefined,
+                  last_email_at: receivedAt,
+                  last_email_subject: subject,
+                })
+                .eq('id', processId);
+            } else {
+              const { data: created, error: createErr } = await supabase
+                .from('inss_admin_processes')
+                .insert({
+                  requerimento_number: parsed.requerimento,
+                  current_status: parsed.status || 'Desconhecido',
+                  cpf_segurado: parsed.cpf,
+                  nome_segurado: parsed.nome,
+                  benefit_type: parsed.beneficio,
+                  benefit_number: parsed.beneficio_num,
+                  protocol_date: parsed.protocol_date,
+                  last_email_at: receivedAt,
+                  last_email_subject: subject,
+                })
+                .select('id')
+                .single();
+              if (createErr || !created) {
+                inboxResult.errors.push(`create process ${parsed.requerimento}: ${createErr?.message}`);
+                continue;
+              }
+              processId = created.id;
+              inboxResult.created_processes++;
+              totalCreatedProcesses++;
+            }
+
+            await supabase.from('inss_status_history').insert({
+              process_id: processId,
+              from_status: fromStatus,
+              to_status: parsed.status || 'Desconhecido',
+              email_received_at: receivedAt,
+              email_subject: subject,
+              email_snippet: msg.snippet?.slice(0, 500),
+              gmail_message_id: item.id,
+              notified: false,
+            });
+            inboxResult.created_history++;
+            totalCreatedHistory++;
+
+            if (caseId) {
+              inboxResult.notify_triggers++;
+              totalNotifyTriggers++;
+              const railwayUrl = process.env.RAILWAY_PUBLIC_URL || `http://localhost:${process.env.PORT || 3000}`;
+              fetch(`${railwayUrl}/functions/notify-inss-update`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'x-api-key': process.env.RAILWAY_API_KEY || '',
+                },
+                body: JSON.stringify({ process_id: processId }),
+              }).catch((e) => console.error('[gmail-inss-sync] notify fire failed:', e));
+            }
+          } catch (err) {
+            inboxResult.errors.push(`${item.id}: ${err instanceof Error ? err.message : String(err)}`);
           }
-          processId = created.id;
-          createdProcesses++;
-        }
-
-        // 4) Cria histórico
-        await supabase.from('inss_status_history').insert({
-          process_id: processId,
-          from_status: fromStatus,
-          to_status: parsed.status || 'Desconhecido',
-          email_received_at: receivedAt,
-          email_subject: subject,
-          email_snippet: msg.snippet?.slice(0, 500),
-          gmail_message_id: item.id,
-          notified: false,
-        });
-        createdHistory++;
-
-        // 5) Se já vinculado ao caso → dispara notificação
-        if (caseId) {
-          notifyTriggers++;
-          // Fire-and-forget (não bloqueia o sync)
-          const railwayUrl = process.env.RAILWAY_PUBLIC_URL || `http://localhost:${process.env.PORT || 3000}`;
-          fetch(`${railwayUrl}/functions/notify-inss-update`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-api-key': process.env.RAILWAY_API_KEY || '',
-            },
-            body: JSON.stringify({ process_id: processId }),
-          }).catch((e) => console.error('[gmail-inss-sync] notify fire failed:', e));
         }
       } catch (err) {
-        errors.push(`${item.id}: ${err instanceof Error ? err.message : String(err)}`);
+        const msg = err instanceof Error ? err.message : String(err);
+        inboxResult.errors.push(`fatal: ${msg}`);
+        allErrors.push(`${inbox.label}: ${msg}`);
       }
+
+      allErrors.push(...inboxResult.errors.map((e) => `${inbox.label}: ${e}`));
+      perInbox[inbox.label] = inboxResult;
     }
 
     const result = {
       success: true,
-      checked: messageIds.length,
-      new: toProcess.length,
-      created_processes: createdProcesses,
-      created_history: createdHistory,
-      notify_triggers: notifyTriggers,
-      errors: errors.slice(0, 5),
+      inboxes: inboxes.length,
+      checked: totalChecked,
+      new: totalNew,
+      created_processes: totalCreatedProcesses,
+      created_history: totalCreatedHistory,
+      notify_triggers: totalNotifyTriggers,
+      per_inbox: perInbox,
+      errors: allErrors.slice(0, 10),
     };
 
     await supabase.from('inss_sync_state').update({
