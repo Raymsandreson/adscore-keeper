@@ -287,6 +287,7 @@ export function WhatsAppAIAgents() {
         send_call_followup_audio: editingAgent.send_call_followup_audio ?? false,
         forward_questions_to_group: editingAgent.forward_questions_to_group ?? false,
         notify_instance_name: editingAgent.notify_instance_name || null,
+        handoff_config: editingAgent.handoff_config ?? null,
         max_repeat_cycles: (editingAgent as any).max_repeat_cycles ?? 3,
         min_call_delay_minutes: (editingAgent as any).min_call_delay_minutes ?? 30,
         max_consecutive_call_failures: (editingAgent as any).max_consecutive_call_failures ?? 3,
