@@ -222,6 +222,12 @@ export function WhatsAppActivitySheet({
       setFormLeadName(defaultLeadName || '');
       setFormContactId(defaultContactId || '');
       setFormContactName(defaultContactName || '');
+      setFormCaseId('');
+      setFormCaseLabel('');
+      setFormProcessId('');
+      setFormProcessLabel('');
+      setLeadCases([]);
+      setCaseProcesses([]);
       setFormWhatWasDone('');
       setFormCurrentStatus('');
       setFormNextSteps('');
