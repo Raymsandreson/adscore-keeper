@@ -1,86 +1,126 @@
-# Reestruturação do Funil BPC-Autismo
+## Visão geral (metáfora)
 
-## Estado atual (verificado no banco)
+Vou montar um **"carteiro robô"** que:
+1. Abre o Gmail do escritório de hora em hora
+2. Lê só emails do INSS
+3. Pega número do requerimento + status novo
+4. Joga numa **"caixa de órfãos"** dentro do WhatsJUD
+5. Operador entra ali e diz "esse requerimento é do Caso X"
+6. A partir do vínculo, toda atualização vira **atividade** + **mensagem no grupo do lead** em linguagem simples
 
-Board `BPC - Autismo` (`c8e8c466-...`), tipo `funnel`, hoje só tem 2 fases:
+---
 
-| stage_id      | nome          |
-|---------------|---------------|
-| `new`         | Novo          |
-| `in_progress` | Em Andamento  |
+## Peças que vou construir
 
-Existe um terceiro vínculo de checklist apontando pra `done` (órfão — fase já foi removida do board).
+### 1. Conexão Gmail (workspace única)
+- Usar o **App connector "Google Mail"** da Lovable (OAuth gerenciado)
+- Você loga 1x com a conta do escritório que recebe os emails do INSS
+- Sistema usa essa conta para todos os usuários
 
-Cada fase tem 1 objetivo vazio (sem itens) ligado via `checklist_stage_links` → `checklist_templates`.
+### 2. Tabela nova no Supabase Externo: `inss_admin_processes`
+Campos principais:
+- `requerimento_number` (único, ex: 1874188131)
+- `current_status` (Pendente / Concluída / Exigência / Indeferido…)
+- `cpf_segurado` (extraído do email se vier)
+- `nome_segurado` (extraído do email)
+- `case_id` (NULL até operador vincular = órfão)
+- `lead_id` (preenchido por consequência do case)
+- `linked_at`, `linked_by`
+- `last_email_at`, `last_email_subject`
+- `deleted_at` (soft-delete padrão)
 
-## Estado proposto (modelo B+C)
+### 3. Tabela `inss_status_history`
+Cada atualização vira uma linha:
+- `process_id` → fk pra `inss_admin_processes`
+- `from_status`, `to_status`
+- `email_received_at`
+- `email_subject`
+- `gmail_message_id` (pra não processar 2x)
+- `notified` (boolean — virou atividade + zap no grupo?)
+
+### 4. Edge function no Externo: `gmail-inss-sync`
+- Roda via **pg_cron a cada 1h**
+- Usa Gmail API via gateway Lovable
+- Query: `from:noreply newer_than:1h "[INSS]"`
+- Pra cada email:
+  - Regex pega número do requerimento + status no subject
+  - Se já existe processo → cria linha em `inss_status_history`
+  - Se não existe → cria processo órfão
+  - Se `case_id` já vinculado → dispara notificação (passo 6)
+
+### 5. UI nova dentro do módulo Processos (sem rota nova no sidebar)
+Aba **"INSS Administrativo"** dentro de `/processos` com:
+- **Filtro "Órfãos"** no topo (badge vermelho com contagem)
+- Lista com: número, status atual, segurado, último update
+- Botão **"Vincular ao caso"** → modal pra escolher caso/lead
+- Histórico de status expandível por linha
+
+### 6. Notificação automática (quando vinculado)
+Quando chega update de processo já vinculado:
+- Cria **atividade** no caso:
+  - Título: "INSS atualizou requerimento 1874188131"
+  - Descrição: "Status mudou de Pendente → Exigência. Verificar próxima ação."
+  - Atribui ao dono do lead
+- Envia **zap no grupo do lead** via Railway, mensagem humanizada (IA Lovable gera):
+  > "Oi! Tivemos novidade no seu pedido junto ao INSS. O status mudou para *Exigência*, isso quer dizer que o INSS pediu mais alguma informação ou documento. Vamos verificar o que precisa e te retornar. 🙏"
+
+### 7. Vínculo retroativo
+Quando operador vincula um órfão a um caso, dispara notificação **para cada update anterior não notificado** (limitado aos últimos 5 pra não floodar).
+
+---
+
+## Stack técnica
 
 ```text
-Novo  →  Em Qualificação  →  Viável  →  Em Andamento  →  Fechado
-                          ↘
-                            Inviável (terminal)
+[Gmail conta escritório]
+        │ OAuth (App connector "google_mail")
+        ▼
+[pg_cron 1x/hora no Externo]
+        │ chama
+        ▼
+[edge function gmail-inss-sync (Externo)]
+        │ - busca emails INSS (gateway Lovable)
+        │ - parsing regex
+        │ - upsert inss_admin_processes
+        │ - insert inss_status_history
+        │ - se vinculado → POST Railway /functions/notify-inss-update
+        ▼
+[Railway notify-inss-update]
+        │ - cria lead_activity no Externo
+        │ - chama IA Lovable pra humanizar texto
+        │ - envia zap no grupo via UazAPI
+        ▼
+[Operador vê atividade + cliente recebe zap]
 ```
 
-| stage_id        | nome             | cor      | papel no Kanban           |
-|-----------------|------------------|----------|---------------------------|
-| `new`           | Novo             | #3b82f6  | Inbox (1ª coluna)         |
-| `qualificacao`  | Em Qualificação  | #eab308  | Operador rodando checklist|
-| `viavel`        | Viável           | #22c55e  | Aprovado — pronto pra ação|
-| `in_progress`   | Em Andamento     | #f97316  | Caso em execução          |
-| `closed`        | Fechado          | #16a34a  | Ganho (won)               |
-| `inviavel`      | Inviável         | #ef4444  | Terminal (lost/refused)   |
+---
 
-`closed` e `inviavel` já casam com `kanbanStageTypes.ts` (won/lost reconhecidos automaticamente).
+## Ordem de execução
 
-## Critérios de qualificação (checklist da fase "Em Qualificação")
+1. Conectar Google Mail connector (você faz OAuth)
+2. Migration no Externo: 2 tabelas + índices
+3. Edge function `gmail-inss-sync` no Externo
+4. pg_cron horário no Externo
+5. Handler `notify-inss-update` no Railway
+6. UI aba "INSS Administrativo" em `/processos`
+7. Teste manual: rodar sync 1x, vincular 1 órfão, ver atividade + zap
 
-Vou criar 1 objetivo `Avaliar viabilidade BPC` com 1 passo `Conferir critérios` cujo `docChecklist` traz:
-
-- Laudo médico com CID F84 (TEA) anexado
-- Renda familiar per capita ≤ 1/4 do salário mínimo
-- Idade do beneficiário confirmada
-- CPF do beneficiário válido
-- Responsável legal identificado (procuração possível)
-- Comprovante de residência atualizado
-
-## Movimento automático no Kanban
-
-No WorkflowBuilder cada passo tem `nextStageId` (já existe). Vou configurar:
-
-1. Passo `Conferir critérios` (em `qualificacao`) ganha 2 ações de conclusão:
-   - **Aprovar** → move card pra `viavel`
-   - **Reprovar** → move card pra `inviavel`
-
-2. Passo `Iniciar atendimento` em `viavel` → move pra `in_progress` ao concluir.
-3. Passo `Encerrar caso` em `in_progress` → move pra `closed` ao concluir.
-
-O motor de movimento automático ao concluir passo já existe (`nextStageId` é lido pelo runtime de atividades). Não preciso criar código novo — só configurar dados.
-
-## Execução (na ordem, com rollback)
-
-1. **Snapshot**: salvar `stages` atual + linhas de `checklist_stage_links`/`checklist_templates` do board num JSON local antes de qualquer escrita (rollback = re-inserir).
-2. **UPDATE** `kanban_boards.stages` do board com o array novo de 6 fases.
-3. **DELETE** o link órfão de `stage_id='done'`.
-4. **INSERT** novos `checklist_templates` (Avaliar viabilidade, Iniciar atendimento, Encerrar caso) com items+steps no formato que o WorkflowBuilder lê (incluindo `nextStageId` nos passos).
-5. **INSERT** novos `checklist_stage_links` ligando cada template à sua fase.
-6. Manter os templates antigos vazios (`Objetivo`/`Novo objetivo`) por 24h marcados pra remoção depois — não vou deletar agora pra não quebrar leads que estejam apontando neles via `lead_checklist_instances`.
+---
 
 ## O que NÃO vou mexer
 
-- `lead_checklist_instances` existentes (cards em andamento mantêm progresso).
-- Outros boards.
-- Código frontend — toda mudança é em dados.
-- Roteamento, edge functions, RLS.
+- Tabela `lead_processes` existente (esses são processos **judiciais**; INSS administrativo é tabela separada pra não misturar)
+- Notificações de movimentação judicial (`check-process-movements` continua igual)
+- Outras integrações Gmail/Google que possam existir
 
-## Riscos
+---
 
-- Cards hoje na coluna `in_progress` continuam lá (stage_id preservado).
-- Cards que estiverem teoricamente em `done` (não deveria ter nenhum porque a fase já sumiu) ficariam órfãos — vou rodar `SELECT count(*) FROM leads WHERE board_id=... AND stage_id='done'` antes e te aviso se aparecer algo.
+## Custos e riscos
 
-## Verificação pós-execução
+- Gmail API: 250 quota units/user/segundo — sem risco com 1h de intervalo
+- IA Lovable pra humanizar mensagem: ~50 tokens por update, custo desprezível
+- Risco principal: regex de parsing pode falhar em formatos novos do INSS. Mitigação: log do email cru em `inss_status_history.raw_subject` pra debug, e fallback "Status desconhecido" criando o processo mesmo assim pra revisão manual
 
-- Query confirmando 6 stages em ordem.
-- Query listando templates+links por stage.
-- Você abre o board no preview e confirma que as 6 colunas aparecem e o checklist da fase "Em Qualificação" mostra os 6 critérios.
+---
 
-Confirma que sigo?
+Confirma esse plano que eu sigo na ordem acima.
