@@ -236,6 +236,7 @@ export function WhatsAppAIAgents() {
       send_call_followup_audio: false,
       forward_questions_to_group: false,
       notify_instance_name: null,
+      describe_documents_in_groups: true,
       handoff_config: null,
     });
     fetchAvailableCampaigns();
