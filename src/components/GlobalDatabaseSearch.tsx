@@ -102,6 +102,17 @@ export function GlobalDatabaseSearch() {
         return { data: merged };
       };
 
+      // Helper: roda só no Externo (para tabelas onde Cloud tem dados órfãos/legados que travam ao abrir)
+      const externalOnly = async (
+        table: string,
+        orFilter: string,
+        orderCol: string,
+        limit: number,
+      ): Promise<{ data: any[] }> => {
+        const r = await (externalSupabase as any).from(table).select('*').or(orFilter).order(orderCol, { ascending: false }).limit(limit);
+        return { data: r?.data || [] };
+      };
+
       // Detect case-number-like queries (e.g. "369", "CASO-369", "caso 369")
       const numericMatch = term.trim().match(/^(?:caso[\s-]*)?(\d{1,8})$/i);
       const caseNumberTerm = numericMatch ? `%${numericMatch[1]}%` : `%${term}%`;
