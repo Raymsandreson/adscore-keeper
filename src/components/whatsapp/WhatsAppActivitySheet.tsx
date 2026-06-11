@@ -564,6 +564,74 @@ export function WhatsAppActivitySheet({
             )}
           </div>
 
+          {/* Caso + Processo (aparecem quando há lead selecionado) */}
+          {formLeadId && (
+            <div className="grid grid-cols-1 gap-3">
+              <div>
+                <Label>Caso jurídico (opcional)</Label>
+                <Select
+                  value={formCaseId || undefined}
+                  onValueChange={(v) => {
+                    setFormCaseId(v);
+                    const c = leadCases.find(x => x.id === v);
+                    setFormCaseLabel(c ? `${c.case_number} — ${c.title}` : '');
+                    setFormProcessId('');
+                    setFormProcessLabel('');
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={leadCases.length ? 'Selecionar caso' : 'Nenhum caso para este lead'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {leadCases.map(c => (
+                      <SelectItem key={c.id} value={c.id}>{c.case_number} — {c.title}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {formCaseId && (
+                  <div className="flex items-center gap-2 mt-1">
+                    <Badge variant="secondary">{formCaseLabel}</Badge>
+                    <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => { setFormCaseId(''); setFormCaseLabel(''); }}>
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                )}
+              </div>
+              {formCaseId && (
+                <div>
+                  <Label>Processo (opcional)</Label>
+                  <Select
+                    value={formProcessId || undefined}
+                    onValueChange={(v) => {
+                      setFormProcessId(v);
+                      const p = caseProcesses.find(x => x.id === v);
+                      setFormProcessLabel(p ? (p.process_number ? `${p.process_number} — ${p.title}` : p.title) : '');
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder={caseProcesses.length ? 'Selecionar processo' : 'Nenhum processo neste caso'} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {caseProcesses.map(p => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.process_number ? `${p.process_number} — ${p.title}` : p.title}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {formProcessId && (
+                    <div className="flex items-center gap-2 mt-1">
+                      <Badge variant="secondary">{formProcessLabel}</Badge>
+                      <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => { setFormProcessId(''); setFormProcessLabel(''); }}>
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Atividade do Sistema (alternativa ao vínculo obrigatório) */}
           <div className="flex items-center gap-2">
             <Button
