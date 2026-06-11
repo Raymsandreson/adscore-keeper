@@ -128,13 +128,12 @@ function parseInssSubject(subject: string, body: string): {
   return out;
 }
 
-async function gmailFetch(path: string, params?: Record<string, string>): Promise<any> {
+async function gmailFetch(path: string, gmailKey: string, params?: Record<string, string>): Promise<any> {
   const url = new URL(`${GATEWAY_BASE}${path}`);
   if (params) Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
   const lovableKey = process.env.LOVABLE_API_KEY;
-  const gmailKey = process.env.GOOGLE_MAIL_API_KEY;
   if (!lovableKey || !gmailKey) {
-    throw new Error('Missing LOVABLE_API_KEY or GOOGLE_MAIL_API_KEY on Railway env');
+    throw new Error('Missing LOVABLE_API_KEY or gmailKey on Railway env');
   }
   const resp = await fetch(url.toString(), {
     headers: {
@@ -147,6 +146,19 @@ async function gmailFetch(path: string, params?: Record<string, string>): Promis
     throw new Error(`Gmail gateway ${resp.status}: ${txt.slice(0, 300)}`);
   }
   return resp.json();
+}
+
+/** Lê a lista de caixas Gmail configuradas (adm + processual etc.). */
+function getInboxKeys(): Array<{ label: string; key: string }> {
+  const inboxes: Array<{ label: string; key: string }> = [];
+  if (process.env.GOOGLE_MAIL_API_KEY) inboxes.push({ label: 'inbox#1', key: process.env.GOOGLE_MAIL_API_KEY });
+  if (process.env.GOOGLE_MAIL_API_KEY_1) inboxes.push({ label: 'inbox#2', key: process.env.GOOGLE_MAIL_API_KEY_1 });
+  // Suporte futuro: GOOGLE_MAIL_API_KEY_2, _3 ...
+  for (let i = 2; i <= 5; i++) {
+    const k = process.env[`GOOGLE_MAIL_API_KEY_${i}`];
+    if (k) inboxes.push({ label: `inbox#${i + 1}`, key: k });
+  }
+  return inboxes;
 }
 
 export const handler: RequestHandler = async (req, res) => {
