@@ -162,12 +162,29 @@ function getInboxKeys(): Array<{ label: string; key: string }> {
 }
 
 export const handler: RequestHandler = async (req, res) => {
-  const lookbackHours = Number(req.body?.lookback_hours || req.query?.lookback_hours || 24);
-  const maxMessages = Number(req.body?.max_messages || 50);
+  const body = (req.body || {}) as any;
+  const query = (req.query || {}) as any;
 
-  const inboxes = getInboxKeys();
+  const lookbackDays = Number(body.lookback_days ?? query.lookback_days ?? 0);
+  const lookbackHours = lookbackDays > 0
+    ? lookbackDays * 24
+    : Number(body.lookback_hours ?? query.lookback_hours ?? 24);
+  const maxMessages = Number(body.max_messages ?? query.max_messages ?? 50);
+  const inboxFilter: string | undefined = body.inbox ?? query.inbox; // ex: "inbox#1"
+  const dryRun: boolean = Boolean(body.dry_run ?? query.dry_run);
+
+  const allInboxes = getInboxKeys();
+  const inboxes = inboxFilter
+    ? allInboxes.filter((i) => i.label === inboxFilter)
+    : allInboxes;
+
   if (inboxes.length === 0) {
-    return res.status(200).json({ success: false, error: 'No GOOGLE_MAIL_API_KEY* env vars configured' });
+    return res.status(200).json({
+      success: false,
+      error: inboxFilter
+        ? `Inbox "${inboxFilter}" não configurada. Disponíveis: ${allInboxes.map((i) => i.label).join(', ') || 'nenhuma'}`
+        : 'No GOOGLE_MAIL_API_KEY* env vars configured',
+    });
   }
 
   try {
@@ -178,14 +195,25 @@ export const handler: RequestHandler = async (req, res) => {
     let totalNotifyTriggers = 0;
     const allErrors: string[] = [];
     const perInbox: Record<string, any> = {};
+    let globalOldest: string | null = null;
+    let globalNewest: string | null = null;
 
     for (const inbox of inboxes) {
-      const inboxResult = { checked: 0, new: 0, created_processes: 0, created_history: 0, notify_triggers: 0, errors: [] as string[] };
+      const inboxResult = {
+        checked: 0,
+        new: 0,
+        created_processes: 0,
+        created_history: 0,
+        notify_triggers: 0,
+        oldest_email_at: null as string | null,
+        newest_email_at: null as string | null,
+        errors: [] as string[],
+      };
 
       try {
-        const query = `from:noreply [INSS] newer_than:${lookbackHours}h`;
+        const gmailQuery = `from:noreply [INSS] newer_than:${lookbackHours}h`;
         const list = await gmailFetch('/users/me/messages', inbox.key, {
-          q: query,
+          q: gmailQuery,
           maxResults: String(maxMessages),
         });
         const messageIds: GmailMessageListItem[] = list.messages || [];
@@ -198,12 +226,19 @@ export const handler: RequestHandler = async (req, res) => {
         }
 
         const ids = messageIds.map((m) => m.id);
-        const { data: existing } = await supabase
-          .from('inss_status_history')
-          .select('gmail_message_id')
-          .in('gmail_message_id', ids);
-        const seenIds = new Set((existing || []).map((r: any) => r.gmail_message_id));
-        const toProcess = messageIds.filter((m) => !seenIds.has(m.id));
+
+        // Em dry_run nós pulamos a checagem de "já visto" e listamos tudo
+        let toProcess: GmailMessageListItem[];
+        if (dryRun) {
+          toProcess = messageIds;
+        } else {
+          const { data: existing } = await supabase
+            .from('inss_status_history')
+            .select('gmail_message_id')
+            .in('gmail_message_id', ids);
+          const seenIds = new Set((existing || []).map((r: any) => r.gmail_message_id));
+          toProcess = messageIds.filter((m) => !seenIds.has(m.id));
+        }
         inboxResult.new = toProcess.length;
         totalNew += toProcess.length;
 
@@ -218,7 +253,17 @@ export const handler: RequestHandler = async (req, res) => {
               ? new Date(Number(msg.internalDate)).toISOString()
               : new Date().toISOString();
 
+            // Atualiza janela de datas (mín/máx) por inbox e global
+            if (!inboxResult.oldest_email_at || receivedAt < inboxResult.oldest_email_at) inboxResult.oldest_email_at = receivedAt;
+            if (!inboxResult.newest_email_at || receivedAt > inboxResult.newest_email_at) inboxResult.newest_email_at = receivedAt;
+            if (!globalOldest || receivedAt < globalOldest) globalOldest = receivedAt;
+            if (!globalNewest || receivedAt > globalNewest) globalNewest = receivedAt;
+
             const parsed = parseInssSubject(subject, body);
+
+            // Em dry_run só conta, não grava nada
+            if (dryRun) continue;
+
             if (!parsed.requerimento) {
               await supabase.from('inss_status_history').insert({
                 process_id: null as any,
@@ -230,6 +275,7 @@ export const handler: RequestHandler = async (req, res) => {
               } as any).then(() => {}, () => {});
               continue;
             }
+
 
             const { data: existingProc } = await supabase
               .from('inss_admin_processes')
@@ -326,23 +372,36 @@ export const handler: RequestHandler = async (req, res) => {
 
     const result = {
       success: true,
+      dry_run: dryRun,
+      params: {
+        lookback_hours: lookbackHours,
+        lookback_days: Math.round((lookbackHours / 24) * 100) / 100,
+        max_messages: maxMessages,
+        inbox_filter: inboxFilter || null,
+      },
       inboxes: inboxes.length,
+      inbox_labels: inboxes.map((i) => i.label),
       checked: totalChecked,
       new: totalNew,
       created_processes: totalCreatedProcesses,
       created_history: totalCreatedHistory,
       notify_triggers: totalNotifyTriggers,
+      oldest_email_at: globalOldest,
+      newest_email_at: globalNewest,
       per_inbox: perInbox,
       errors: allErrors.slice(0, 10),
     };
 
-    await supabase.from('inss_sync_state').update({
-      last_run_at: new Date().toISOString(),
-      last_synced_at: new Date().toISOString(),
-      last_result: result,
-    }).eq('id', 1);
+    if (!dryRun) {
+      await supabase.from('inss_sync_state').update({
+        last_run_at: new Date().toISOString(),
+        last_synced_at: new Date().toISOString(),
+        last_result: result,
+      }).eq('id', 1);
+    }
 
     return res.status(200).json(result);
+
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[gmail-inss-sync] fatal:', msg);
