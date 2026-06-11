@@ -22,6 +22,7 @@ import { Slider } from '@/components/ui/slider';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Bot, Plus, Pencil, Trash2, Power, PowerOff, Sparkles, Loader2, Phone, Clock, Megaphone, X, FileText, Zap, Layers, Volume2 } from 'lucide-react';
 import { AgentKnowledgeDocs } from './AgentKnowledgeDocs';
+import { HandoffConfigSection, type HandoffConfig } from './HandoffConfigSection';
 import { toast } from 'sonner';
 
 interface AIAgent {
@@ -61,6 +62,7 @@ interface AIAgent {
   send_call_followup_audio: boolean;
   forward_questions_to_group: boolean;
   notify_instance_name: string | null;
+  handoff_config: HandoffConfig | null;
   created_at: string;
 }
 
@@ -233,6 +235,7 @@ export function WhatsAppAIAgents() {
       send_call_followup_audio: false,
       forward_questions_to_group: false,
       notify_instance_name: null,
+      handoff_config: null,
     });
     fetchAvailableCampaigns();
     setShowEditor(true);
@@ -284,6 +287,7 @@ export function WhatsAppAIAgents() {
         send_call_followup_audio: editingAgent.send_call_followup_audio ?? false,
         forward_questions_to_group: editingAgent.forward_questions_to_group ?? false,
         notify_instance_name: editingAgent.notify_instance_name || null,
+        handoff_config: editingAgent.handoff_config ?? null,
         max_repeat_cycles: (editingAgent as any).max_repeat_cycles ?? 3,
         min_call_delay_minutes: (editingAgent as any).min_call_delay_minutes ?? 30,
         max_consecutive_call_failures: (editingAgent as any).max_consecutive_call_failures ?? 3,
@@ -455,13 +459,14 @@ export function WhatsAppAIAgents() {
           </DialogHeader>
           {editingAgent && (
             <Tabs defaultValue="general" className="w-full">
-              <TabsList className="w-full grid grid-cols-7">
+              <TabsList className="w-full grid grid-cols-8">
                 <TabsTrigger value="general" className="text-xs">⚙️ Geral</TabsTrigger>
                 <TabsTrigger value="ia" className="text-xs">🧠 IA</TabsTrigger>
                 <TabsTrigger value="ai_assistant" className="text-xs gap-1">
                   <Sparkles className="h-3 w-3" />
                   Assistente
                 </TabsTrigger>
+                <TabsTrigger value="handoff" className="text-xs">🤝 Handoff</TabsTrigger>
                 <TabsTrigger value="automations" className="text-xs">⚡ Automações</TabsTrigger>
                 <TabsTrigger value="timing" className="text-xs">⏱️ Tempos</TabsTrigger>
                 <TabsTrigger value="calls" className="text-xs">📞 Chamadas</TabsTrigger>
@@ -1007,6 +1012,13 @@ Contexto: Use o histórico da conversa para personalizar a mensagem de retorno.`
                     <p className="text-xs text-muted-foreground italic">Salve o agente primeiro para vincular campanhas</p>
                   )}
                 </div>
+              </TabsContent>
+
+              <TabsContent value="handoff" className="space-y-4 mt-4">
+                <HandoffConfigSection
+                  value={editingAgent.handoff_config ?? null}
+                  onChange={(v) => setEditingAgent({ ...editingAgent, handoff_config: v })}
+                />
               </TabsContent>
             </Tabs>
           )}
