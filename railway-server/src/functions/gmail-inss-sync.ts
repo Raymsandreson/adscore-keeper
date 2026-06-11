@@ -162,12 +162,29 @@ function getInboxKeys(): Array<{ label: string; key: string }> {
 }
 
 export const handler: RequestHandler = async (req, res) => {
-  const lookbackHours = Number(req.body?.lookback_hours || req.query?.lookback_hours || 24);
-  const maxMessages = Number(req.body?.max_messages || 50);
+  const body = (req.body || {}) as any;
+  const query = (req.query || {}) as any;
 
-  const inboxes = getInboxKeys();
+  const lookbackDays = Number(body.lookback_days ?? query.lookback_days ?? 0);
+  const lookbackHours = lookbackDays > 0
+    ? lookbackDays * 24
+    : Number(body.lookback_hours ?? query.lookback_hours ?? 24);
+  const maxMessages = Number(body.max_messages ?? query.max_messages ?? 50);
+  const inboxFilter: string | undefined = body.inbox ?? query.inbox; // ex: "inbox#1"
+  const dryRun: boolean = Boolean(body.dry_run ?? query.dry_run);
+
+  const allInboxes = getInboxKeys();
+  const inboxes = inboxFilter
+    ? allInboxes.filter((i) => i.label === inboxFilter)
+    : allInboxes;
+
   if (inboxes.length === 0) {
-    return res.status(200).json({ success: false, error: 'No GOOGLE_MAIL_API_KEY* env vars configured' });
+    return res.status(200).json({
+      success: false,
+      error: inboxFilter
+        ? `Inbox "${inboxFilter}" não configurada. Disponíveis: ${allInboxes.map((i) => i.label).join(', ') || 'nenhuma'}`
+        : 'No GOOGLE_MAIL_API_KEY* env vars configured',
+    });
   }
 
   try {
@@ -178,14 +195,25 @@ export const handler: RequestHandler = async (req, res) => {
     let totalNotifyTriggers = 0;
     const allErrors: string[] = [];
     const perInbox: Record<string, any> = {};
+    let globalOldest: string | null = null;
+    let globalNewest: string | null = null;
 
     for (const inbox of inboxes) {
-      const inboxResult = { checked: 0, new: 0, created_processes: 0, created_history: 0, notify_triggers: 0, errors: [] as string[] };
+      const inboxResult = {
+        checked: 0,
+        new: 0,
+        created_processes: 0,
+        created_history: 0,
+        notify_triggers: 0,
+        oldest_email_at: null as string | null,
+        newest_email_at: null as string | null,
+        errors: [] as string[],
+      };
 
       try {
-        const query = `from:noreply [INSS] newer_than:${lookbackHours}h`;
+        const gmailQuery = `from:noreply [INSS] newer_than:${lookbackHours}h`;
         const list = await gmailFetch('/users/me/messages', inbox.key, {
-          q: query,
+          q: gmailQuery,
           maxResults: String(maxMessages),
         });
         const messageIds: GmailMessageListItem[] = list.messages || [];
@@ -198,6 +226,7 @@ export const handler: RequestHandler = async (req, res) => {
         }
 
         const ids = messageIds.map((m) => m.id);
+
         const { data: existing } = await supabase
           .from('inss_status_history')
           .select('gmail_message_id')
