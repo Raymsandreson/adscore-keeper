@@ -232,8 +232,18 @@ export function WhatsAppActivitySheet({
     }
   }, [open, defaultLeadId, defaultLeadName, defaultContactId, defaultContactName, defaultDictationText]);
 
-  const fetchLeads = async () => {
-    const { data } = await externalSupabase.from('leads').select('id, lead_name').order('created_at', { ascending: false }).limit(200);
+  const fetchLeads = async (term?: string) => {
+    const q = (term || '').trim();
+    let query = externalSupabase.from('leads').select('id, lead_name, lead_phone').order('created_at', { ascending: false });
+    if (q) {
+      const digits = q.replace(/\D/g, '');
+      const filters = [`lead_name.ilike.%${q}%`];
+      if (digits.length >= 3) filters.push(`lead_phone.ilike.%${digits}%`);
+      query = query.or(filters.join(',')).limit(50);
+    } else {
+      query = query.limit(200);
+    }
+    const { data } = await query;
     setLeads(data || []);
   };
 
