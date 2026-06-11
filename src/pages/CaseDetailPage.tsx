@@ -86,25 +86,12 @@ export default function CaseDetailPage() {
       setLoading(true);
       setNotFound(false);
       try {
-        let { data, error } = await externalSupabase
+        const { data, error } = await externalSupabase
           .from('legal_cases')
           .select('*, specialized_nuclei(name, prefix, color), leads(id, lead_name, lead_phone, became_client_date)')
           .eq('id', caseId)
           .maybeSingle();
         if (error) throw error;
-
-        // Fallback: caso legado vive só no Cloud (sem joins disponíveis)
-        if (!data) {
-          const cloudRes = await (supabase as any)
-            .from('legal_cases')
-            .select('*')
-            .eq('id', caseId)
-            .maybeSingle();
-          if (cloudRes?.data) {
-            data = { ...cloudRes.data, specialized_nuclei: null, leads: null };
-          }
-        }
-
         if (!data) { if (!cancelled) setNotFound(true); return; }
         if (!cancelled) setLegalCase(data as CaseFull);
 
