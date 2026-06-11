@@ -6,11 +6,13 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Search, FileText, ExternalLink, Calendar, Building2, Briefcase, Trash2 } from "lucide-react";
+import { Search, FileText, ExternalLink, Calendar, Building2, Briefcase, Trash2, Mail } from "lucide-react";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { format } from "date-fns";
 import { toast } from "sonner";
 
 const ProcessDetailSheet = lazy(() => import("@/components/cases/ProcessDetailSheet"));
+const InssAdminProcessesTab = lazy(() => import("@/components/processes/InssAdminProcessesTab"));
 
 interface Process {
   id: string;
@@ -110,26 +112,38 @@ export default function ProcessesPage() {
     <div className="space-y-4 p-4 md:p-6">
       <div>
         <h1 className="text-2xl font-bold">Processos</h1>
-        <p className="text-sm text-muted-foreground">Todos os processos jurídicos cadastrados</p>
+        <p className="text-sm text-muted-foreground">Judiciais e administrativos (INSS via Gmail)</p>
       </div>
 
-      <div className="relative max-w-md">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder="Buscar por número, título, parte, tribunal..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="pl-9"
-        />
-      </div>
+      <Tabs defaultValue="judiciais" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="judiciais" className="gap-2">
+            <FileText className="h-4 w-4" /> Judiciais
+          </TabsTrigger>
+          <TabsTrigger value="inss" className="gap-2">
+            <Mail className="h-4 w-4" /> INSS Administrativo
+          </TabsTrigger>
+        </TabsList>
 
-      {loading ? (
-        <div className="text-center py-12 text-muted-foreground">Carregando processos...</div>
-      ) : filtered.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground">
-          {search ? "Nenhum processo encontrado para essa busca." : "Nenhum processo cadastrado."}
-        </div>
-      ) : (
+        <TabsContent value="judiciais" className="space-y-4">
+          <div className="relative max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar por número, título, parte, tribunal..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+
+          {loading ? (
+            <div className="text-center py-12 text-muted-foreground">Carregando processos...</div>
+          ) : filtered.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              {search ? "Nenhum processo encontrado para essa busca." : "Nenhum processo cadastrado."}
+            </div>
+          ) : null}
+
         <div className="grid gap-3">
           {filtered.map((p) => (
             <Card
