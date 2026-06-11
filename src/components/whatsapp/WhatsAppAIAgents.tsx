@@ -62,6 +62,7 @@ interface AIAgent {
   send_call_followup_audio: boolean;
   forward_questions_to_group: boolean;
   notify_instance_name: string | null;
+  describe_documents_in_groups: boolean;
   handoff_config: HandoffConfig | null;
   created_at: string;
 }
