@@ -303,6 +303,7 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
             escavador_raw: fullResult,
             workflow_id: workflowId || null,
             workflow_name: selectedBoard?.name || null,
+            responsible_user_id: responsibleExtId,
             created_by: extUserId,
             // New Escavador fields
             estado_origem: estadoOrigem?.nome || null,
