@@ -1013,6 +1013,13 @@ Contexto: Use o histórico da conversa para personalizar a mensagem de retorno.`
                   )}
                 </div>
               </TabsContent>
+
+              <TabsContent value="handoff" className="space-y-4 mt-4">
+                <HandoffConfigSection
+                  value={editingAgent.handoff_config ?? null}
+                  onChange={(v) => setEditingAgent({ ...editingAgent, handoff_config: v })}
+                />
+              </TabsContent>
             </Tabs>
           )}
           <DialogFooter>
