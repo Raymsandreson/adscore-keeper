@@ -114,6 +114,7 @@ interface ShortcutFormState {
   reply_with_audio: boolean;
   reply_voice_id: string | null;
   respond_in_groups: boolean;
+  describe_documents_in_groups: boolean;
   max_tts_chars: number;
   send_window_start_hour: number;
   send_window_end_hour: number;
