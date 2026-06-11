@@ -43,6 +43,7 @@ interface WhatsAppActivitySheetProps {
 interface LeadOption {
   id: string;
   lead_name: string | null;
+  lead_phone?: string | null;
 }
 
 interface TeamMember {
