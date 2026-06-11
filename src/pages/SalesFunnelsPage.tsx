@@ -9,7 +9,9 @@ import { Search, LayoutGrid, Users, ArrowRight, Settings, Filter, Maximize2, Min
 import { db as supabase } from "@/integrations/supabase";
 import { useQuery } from "@tanstack/react-query";
 import { StageFunnelChart } from "@/components/kanban/StageFunnelChart";
+import { BpcFunnelBars } from "@/components/kanban/BpcFunnelBars";
 import { BpcFormLeadsSheet } from "@/components/whatsapp/FocusDashboard/BpcFormLeadsSheet";
+import { useBpcFormLeads } from "@/hooks/useBpcFormLeads";
 import { cn } from "@/lib/utils";
 import { Progress } from "@/components/ui/progress";
 import { WorkflowBuilder } from "@/components/workflow/WorkflowBuilder";
@@ -77,6 +79,25 @@ const SalesFunnelsPage = () => {
     () => boards.filter(b => b.board_type === 'funnel'),
     [boards]
   );
+
+  // Funil BPC - Autismo: dados vêm da planilha (BASE_UNIFICADA), não da tabela leads.
+  // Busca uma vez no nível da página e compartilha entre as barras e a listagem.
+  const hasBpc = useMemo(() => salesFunnels.some(b => isBpcFunnel(b.name)), [salesFunnels]);
+  const bpcRange = useMemo(() => ({
+    from: fromDate ?? new Date("2020-01-01T00:00:00Z"),
+    to: toDate ?? new Date(),
+  }), [fromDate, toDate]);
+  const {
+    metrics: bpcMetrics,
+    leads: bpcLeads,
+    loading: bpcLoading,
+    refetch: bpcRefetch,
+  } = useBpcFormLeads({
+    from: bpcRange.from,
+    to: bpcRange.to,
+    enabled: hasBpc,
+    source: "unificada",
+  });
 
   const filtered = useMemo(
     () => salesFunnels.filter(b =>
@@ -342,11 +363,8 @@ const SalesFunnelsPage = () => {
                     </CardTitle>
                     <div className="flex items-center gap-2">
                       <Badge variant="secondary" className="text-xs">
-                        {isBpc ? (
-                          <>📊 via planilha</>
-                        ) : (
-                          <><Users className="h-3 w-3 mr-1" />{totalLeads} leads</>
-                        )}
+                        <Users className="h-3 w-3 mr-1" />
+                        {isBpc ? bpcMetrics.total : totalLeads} leads
                       </Badge>
                       <Button
                         variant="ghost"
@@ -370,17 +388,14 @@ const SalesFunnelsPage = () => {
                   )}
                 </CardHeader>
                 <CardContent className="pt-0 space-y-3">
-                  {/* BPC - Autismo: leads vêm da planilha BPC-LOAS, não da tabela leads */}
+                  {/* BPC - Autismo: barras alimentadas pela planilha; demais funis usam a tabela leads */}
                   {isBpc ? (
-                    <div className="rounded-lg border border-dashed border-border/60 bg-muted/20 p-4 flex flex-col items-center gap-2 text-center">
-                      <p className="text-sm text-muted-foreground">
-                        Os leads deste funil vêm da planilha BPC-LOAS (aba <code className="text-xs">BASE_UNIFICADA</code>).
-                      </p>
-                      <Button size="sm" onClick={() => setBpcSheetOpen(true)}>
-                        <Users className="h-3.5 w-3.5 mr-1.5" />
-                        Ver leads da planilha
-                      </Button>
-                    </div>
+                    <BpcFunnelBars
+                      board={board}
+                      metrics={bpcMetrics}
+                      loading={bpcLoading}
+                      onOpenList={() => setBpcSheetOpen(true)}
+                    />
                   ) : (
                     /* Mini funnel visualization */
                     <StageFunnelChart
@@ -512,11 +527,15 @@ const SalesFunnelsPage = () => {
         />
       )}
 
-      {/* Listagem de leads do funil BPC - Autismo (planilha BASE_UNIFICADA) */}
+      {/* Listagem de leads do funil BPC - Autismo (mesma base das barras) */}
       <BpcFormLeadsSheet
         open={bpcSheetOpen}
         onOpenChange={setBpcSheetOpen}
         source="unificada"
+        externalLeads={bpcLeads}
+        externalMetrics={bpcMetrics}
+        externalLoading={bpcLoading}
+        onRefresh={bpcRefetch}
       />
     </div>
   );
