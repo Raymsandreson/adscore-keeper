@@ -2075,7 +2075,10 @@ const ActivitiesPage = () => {
                   </CommandItem>
                   {(() => {
                     const withCounts = ACTIVITY_TYPES.map(t => ({ t, c: countByField('activity_type', t.value) }));
-                    const visible = showAllTypes
+                    // Sem assessor selecionado = mostra todos os tipos cadastrados na rotina.
+                    // Com assessor(es) selecionado(s) = só os tipos que aquele(s) assessor(es) usa(m).
+                    const hasAssigneeFilter = filterAssignee.length > 0;
+                    const visible = (showAllTypes || !hasAssigneeFilter)
                       ? withCounts
                       : withCounts.filter(({ t, c }) => (c.open + c.done) > 0 || filterType.includes(t.value));
                     const hiddenCount = withCounts.length - visible.length;
@@ -2094,7 +2097,7 @@ const ActivitiesPage = () => {
                             </CommandItem>
                           );
                         })}
-                        {(hiddenCount > 0 || showAllTypes) && (
+                        {hasAssigneeFilter && (hiddenCount > 0 || showAllTypes) && (
                           <CommandItem
                             value="__toggle_show_all_types"
                             onSelect={() => setShowAllTypes(v => !v)}
