@@ -136,7 +136,7 @@ export function GlobalDatabaseSearch() {
         dual('kanban_boards',
           `name.ilike.${searchTerm},description.ilike.${searchTerm}`,
           'updated_at', 10),
-        dual('legal_cases',
+        externalOnly('legal_cases',
           `case_number.ilike.${caseNumberTerm},title.ilike.${searchTerm},description.ilike.${searchTerm}`,
           'updated_at', 10),
       ]);
