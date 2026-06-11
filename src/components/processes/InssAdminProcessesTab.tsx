@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { db } from "@/integrations/supabase";
 import { authClient } from "@/integrations/supabase";
 import { Input } from "@/components/ui/input";
@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/collapsible";
 import {
   Search, Mail, Link2, Unlink, ChevronDown, RefreshCw, AlertCircle, Clock,
+  Sparkles, User,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -22,10 +23,12 @@ interface InssProcess {
   requerimento_number: string;
   current_status: string | null;
   benefit_type: string | null;
+  benefit_number: string | null;
   cpf_segurado: string | null;
   nome_segurado: string | null;
   case_id: string | null;
   lead_id: string | null;
+  protocol_date: string | null;
   last_email_at: string | null;
   last_email_subject: string | null;
   created_at: string;
@@ -45,11 +48,13 @@ interface CaseOption {
   case_number: string;
   title: string;
   lead_id: string | null;
+  lead_name?: string | null;
+  matched_via?: string; // "nome do contato Y", "CPF do lead", etc
 }
 
 const RAILWAY_BASE =
   (import.meta as any).env?.VITE_RAILWAY_BASE_URL ||
-  "https://adscore-railway-production.up.railway.app";
+  "https://adscore-keeper-production.up.railway.app";
 
 const statusVariant = (s?: string | null) => {
   const v = (s || "").toLowerCase();
@@ -58,6 +63,13 @@ const statusVariant = (s?: string | null) => {
   if (v.includes("inde")) return "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300";
   if (v.includes("pend") || v.includes("anali")) return "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300";
   return "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300";
+};
+
+const normalizeCpf = (s?: string | null) => (s || "").replace(/\D/g, "");
+const fmtDate = (s?: string | null, withTime = false) => {
+  if (!s) return null;
+  try { return format(new Date(s), withTime ? "dd/MM/yyyy HH:mm" : "dd/MM/yyyy"); }
+  catch { return null; }
 };
 
 export default function InssAdminProcessesTab() {
@@ -72,9 +84,10 @@ export default function InssAdminProcessesTab() {
   // Dialog state
   const [caseSearch, setCaseSearch] = useState("");
   const [caseOptions, setCaseOptions] = useState<CaseOption[]>([]);
+  const [suggestions, setSuggestions] = useState<CaseOption[]>([]);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [linkingBusy, setLinkingBusy] = useState(false);
 
-  // Auth UUID for linked_by
   const [userId, setUserId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -152,23 +165,134 @@ export default function InssAdminProcessesTab() {
     }
   };
 
-  // Busca casos pelo termo
+  // === Sugestões automáticas ao abrir o dialog ===
+  const fetchSuggestions = useCallback(async (proc: InssProcess) => {
+    setLoadingSuggestions(true);
+    const found = new Map<string, CaseOption>(); // case_id -> option
+
+    const addCase = async (caseId: string, via: string) => {
+      if (found.has(caseId)) return;
+      const { data: c } = await db
+        .from("legal_cases" as any)
+        .select("id, case_number, title, lead_id")
+        .eq("id", caseId)
+        .maybeSingle();
+      if (!c) return;
+      let leadName: string | null = null;
+      if ((c as any).lead_id) {
+        const { data: l } = await db
+          .from("leads" as any)
+          .select("lead_name")
+          .eq("id", (c as any).lead_id)
+          .maybeSingle();
+        leadName = (l as any)?.lead_name || null;
+      }
+      found.set(caseId, { ...(c as any), lead_name: leadName, matched_via: via });
+    };
+
+    const addLead = async (leadId: string, leadName: string | null, via: string) => {
+      const { data: cs } = await db
+        .from("legal_cases" as any)
+        .select("id, case_number, title, lead_id")
+        .eq("lead_id", leadId)
+        .limit(5);
+      for (const c of (cs || []) as any[]) {
+        if (found.has(c.id)) continue;
+        found.set(c.id, { ...c, lead_name: leadName, matched_via: via });
+      }
+    };
+
+    // 1) Match por CPF exato em contacts
+    const cpf = normalizeCpf(proc.cpf_segurado);
+    if (cpf) {
+      const { data: contactsByCpf } = await db
+        .from("contacts" as any)
+        .select("id, full_name, cpf, lead_id")
+        .or(`cpf.eq.${cpf},cpf.eq.${proc.cpf_segurado}`)
+        .is("deleted_at", null)
+        .limit(10);
+      for (const ct of (contactsByCpf || []) as any[]) {
+        // contato pode estar ligado direto a lead via contacts.lead_id
+        if (ct.lead_id) await addLead(ct.lead_id, ct.full_name, `CPF bate com contato "${ct.full_name}"`);
+        // ou via tabela ponte contact_leads
+        const { data: cl } = await db
+          .from("contact_leads" as any)
+          .select("lead_id")
+          .eq("contact_id", ct.id);
+        for (const link of (cl || []) as any[]) {
+          await addLead(link.lead_id, ct.full_name, `CPF bate com contato "${ct.full_name}"`);
+        }
+      }
+
+      // 2) CPF em leads diretamente (campos comuns: cpf, document)
+      const { data: leadsByCpf } = await db
+        .from("leads" as any)
+        .select("id, lead_name")
+        .or(`cpf.eq.${cpf},cpf.eq.${proc.cpf_segurado}`)
+        .limit(10);
+      for (const l of (leadsByCpf || []) as any[]) {
+        await addLead(l.id, l.lead_name, "CPF bate com o lead");
+      }
+    }
+
+    // 3) Match por nome (similaridade) em contacts
+    const nome = (proc.nome_segurado || "").trim();
+    if (nome.length >= 4) {
+      const { data: contactsByName } = await db
+        .from("contacts" as any)
+        .select("id, full_name, lead_id")
+        .ilike("full_name", `%${nome}%`)
+        .is("deleted_at", null)
+        .limit(10);
+      for (const ct of (contactsByName || []) as any[]) {
+        if (ct.lead_id) await addLead(ct.lead_id, ct.full_name, `Nome bate com contato "${ct.full_name}"`);
+        const { data: cl } = await db
+          .from("contact_leads" as any)
+          .select("lead_id")
+          .eq("contact_id", ct.id);
+        for (const link of (cl || []) as any[]) {
+          await addLead(link.lead_id, ct.full_name, `Nome bate com contato "${ct.full_name}"`);
+        }
+      }
+
+      // 4) Nome em leads
+      const { data: leadsByName } = await db
+        .from("leads" as any)
+        .select("id, lead_name")
+        .ilike("lead_name", `%${nome}%`)
+        .limit(10);
+      for (const l of (leadsByName || []) as any[]) {
+        await addLead(l.id, l.lead_name, "Nome bate com o lead");
+      }
+    }
+
+    setSuggestions(Array.from(found.values()).slice(0, 12));
+    setLoadingSuggestions(false);
+  }, []);
+
+  useEffect(() => {
+    if (linkingProc) {
+      setSuggestions([]);
+      setCaseSearch("");
+      fetchSuggestions(linkingProc);
+    }
+  }, [linkingProc, fetchSuggestions]);
+
+  // Busca manual de casos
   useEffect(() => {
     if (!linkingProc) return;
     const q = caseSearch.trim();
+    if (!q) { setCaseOptions([]); return; }
     const run = async () => {
-      let query = db
+      const { data } = await db
         .from("legal_cases" as any)
         .select("id, case_number, title, lead_id")
+        .or(`case_number.ilike.%${q}%,title.ilike.%${q}%`)
         .order("created_at", { ascending: false })
-        .limit(20);
-      if (q) {
-        query = query.or(`case_number.ilike.%${q}%,title.ilike.%${q}%`);
-      }
-      const { data } = await query;
+        .limit(15);
       setCaseOptions((data || []) as any);
     };
-    const t = setTimeout(run, 200);
+    const t = setTimeout(run, 250);
     return () => clearTimeout(t);
   }, [linkingProc, caseSearch]);
 
@@ -188,7 +312,6 @@ export default function InssAdminProcessesTab() {
       if (error) throw error;
       toast.success("Processo vinculado ao caso " + caseOpt.case_number);
 
-      // Dispara notificação retroativa
       fetch(`${RAILWAY_BASE}/functions/notify-inss-update`, {
         method: "POST",
         headers: {
@@ -199,7 +322,6 @@ export default function InssAdminProcessesTab() {
       }).catch(() => {});
 
       setLinkingProc(null);
-      setCaseSearch("");
       loadProcesses();
     } catch (e: any) {
       toast.error("Erro ao vincular: " + e.message);
@@ -291,10 +413,14 @@ export default function InssAdminProcessesTab() {
                         {p.nome_segurado && <div>👤 {p.nome_segurado}</div>}
                         {p.cpf_segurado && <div>CPF: {p.cpf_segurado}</div>}
                         {p.benefit_type && <div>Benefício: {p.benefit_type}</div>}
+                        {p.benefit_number && <div>NB: {p.benefit_number}</div>}
+                        {p.protocol_date && (
+                          <div>📅 Protocolo: {fmtDate(p.protocol_date)}</div>
+                        )}
                         {p.last_email_at && (
                           <div className="flex items-center gap-1">
                             <Clock className="h-3 w-3" />
-                            {format(new Date(p.last_email_at), "dd/MM/yyyy HH:mm")}
+                            Última atualização: {fmtDate(p.last_email_at, true)}
                           </div>
                         )}
                       </div>
@@ -331,7 +457,7 @@ export default function InssAdminProcessesTab() {
                   <CollapsibleContent className="mt-3 pt-3 border-t">
                     <div className="space-y-1.5">
                       {(historyByProc[p.id] || []).map((h) => (
-                        <div key={h.id} className="text-xs flex items-center gap-2">
+                        <div key={h.id} className="text-xs flex items-center gap-2 flex-wrap">
                           <span className="text-muted-foreground">
                             {h.email_received_at ? format(new Date(h.email_received_at), "dd/MM HH:mm") : "—"}
                           </span>
@@ -362,34 +488,90 @@ export default function InssAdminProcessesTab() {
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Vincular {linkingProc?.requerimento_number} a um caso</DialogTitle>
+            {linkingProc?.nome_segurado && (
+              <p className="text-sm text-muted-foreground">
+                Segurado: <span className="font-medium">{linkingProc.nome_segurado}</span>
+                {linkingProc.cpf_segurado && <> · CPF {linkingProc.cpf_segurado}</>}
+              </p>
+            )}
           </DialogHeader>
-          <div className="space-y-3">
-            <Input
-              placeholder="Buscar caso por número ou título..."
-              value={caseSearch}
-              onChange={(e) => setCaseSearch(e.target.value)}
-              autoFocus
-            />
-            <div className="max-h-80 overflow-y-auto space-y-1">
-              {caseOptions.map((c) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  className="w-full text-left p-2 rounded hover:bg-muted text-sm border"
-                  disabled={linkingBusy}
-                  onClick={() => linkToCase(c)}
-                >
-                  <div className="font-medium">{c.case_number}</div>
-                  <div className="text-xs text-muted-foreground">{c.title}</div>
-                </button>
-              ))}
-              {caseOptions.length === 0 && (
-                <div className="text-sm text-muted-foreground text-center py-4">
-                  Nenhum caso encontrado.
+
+          <div className="space-y-4">
+            {/* Sugestões automáticas */}
+            <div>
+              <div className="flex items-center gap-2 text-sm font-medium mb-2">
+                <Sparkles className="h-4 w-4 text-amber-500" />
+                Sugestões automáticas
+                {loadingSuggestions && (
+                  <RefreshCw className="h-3 w-3 animate-spin text-muted-foreground" />
+                )}
+              </div>
+              {loadingSuggestions ? (
+                <div className="text-xs text-muted-foreground py-2">Procurando matches…</div>
+              ) : suggestions.length === 0 ? (
+                <div className="text-xs text-muted-foreground py-2">
+                  Nenhum lead/contato encontrado com esse nome ou CPF. Use a busca manual abaixo.
+                </div>
+              ) : (
+                <div className="space-y-1 max-h-48 overflow-y-auto">
+                  {suggestions.map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      className="w-full text-left p-2 rounded-md hover:bg-muted text-sm border border-amber-200 dark:border-amber-900/40 bg-amber-50/40 dark:bg-amber-950/10"
+                      disabled={linkingBusy}
+                      onClick={() => linkToCase(c)}
+                    >
+                      <div className="font-medium flex items-center gap-2">
+                        {c.case_number}
+                        {c.lead_name && (
+                          <span className="text-xs text-muted-foreground flex items-center gap-1">
+                            <User className="h-3 w-3" /> {c.lead_name}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs text-muted-foreground">{c.title}</div>
+                      {c.matched_via && (
+                        <div className="text-[11px] text-amber-700 dark:text-amber-400 mt-0.5">
+                          ↳ {c.matched_via}
+                        </div>
+                      )}
+                    </button>
+                  ))}
                 </div>
               )}
             </div>
+
+            {/* Busca manual */}
+            <div>
+              <div className="text-sm font-medium mb-2">Busca manual</div>
+              <Input
+                placeholder="Número do caso ou título..."
+                value={caseSearch}
+                onChange={(e) => setCaseSearch(e.target.value)}
+              />
+              <div className="max-h-48 overflow-y-auto space-y-1 mt-2">
+                {caseOptions.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    className="w-full text-left p-2 rounded hover:bg-muted text-sm border"
+                    disabled={linkingBusy}
+                    onClick={() => linkToCase(c)}
+                  >
+                    <div className="font-medium">{c.case_number}</div>
+                    <div className="text-xs text-muted-foreground">{c.title}</div>
+                  </button>
+                ))}
+                {caseSearch && caseOptions.length === 0 && (
+                  <div className="text-xs text-muted-foreground text-center py-2">
+                    Nenhum caso encontrado.
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
+
           <DialogFooter>
             <Button variant="outline" onClick={() => setLinkingProc(null)}>
               Cancelar

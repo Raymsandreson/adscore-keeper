@@ -62,12 +62,21 @@ function extractPlainText(msg: GmailMessage): string {
  *   "[INSS] O status do requerimento 1874188131 foi alterado para Exigência"
  *   "[INSS] Requerimento realizado com sucesso"  (corpo traz o número)
  */
+function parseBrDate(s: string): string | undefined {
+  // dd/mm/yyyy ou dd-mm-yyyy
+  const m = s.match(/(\d{2})[\/\-](\d{2})[\/\-](\d{4})/);
+  if (!m) return undefined;
+  return `${m[3]}-${m[2]}-${m[1]}`; // ISO yyyy-mm-dd
+}
+
 function parseInssSubject(subject: string, body: string): {
   requerimento?: string;
   status?: string;
   cpf?: string;
   nome?: string;
   beneficio?: string;
+  beneficio_num?: string;
+  protocol_date?: string;
 } {
   const out: any = {};
 
@@ -84,7 +93,6 @@ function parseInssSubject(subject: string, body: string): {
     subject.match(/\[INSS\]\s+(.+?)(?:\s*$)/i);
   if (statusMatch) {
     let s = statusMatch[1].trim();
-    // Normalizar
     if (/realizado com sucesso/i.test(s)) s = 'Em análise';
     out.status = s;
   }
@@ -96,12 +104,26 @@ function parseInssSubject(subject: string, body: string): {
   // Nome do segurado
   const nomeMatch =
     body.match(/segurado[:\s]+([A-Z][A-ZÀ-Ú\s]{5,80})/i) ||
-    body.match(/nome[:\s]+([A-Z][A-ZÀ-Ú\s]{5,80})/i);
+    body.match(/nome[:\s]+([A-Z][A-ZÀ-Ú\s]{5,80})/i) ||
+    body.match(/requerente[:\s]+([A-Z][A-ZÀ-Ú\s]{5,80})/i);
   if (nomeMatch) out.nome = nomeMatch[1].trim().replace(/\s+/g, ' ');
 
   // Tipo de benefício
-  const benMatch = body.match(/benef[íi]cio[:\s]+([^\n]{3,80})/i);
+  const benMatch = body.match(/benef[íi]cio[:\s]+([^\n]{3,80})/i) ||
+                   body.match(/servi[çc]o[:\s]+([^\n]{3,80})/i);
   if (benMatch) out.beneficio = benMatch[1].trim();
+
+  // Número do benefício (NB) - diferente do requerimento
+  const nbMatch = body.match(/\bNB[:\s]*(\d{6,12})/i) ||
+                  body.match(/n[uú]mero\s+do\s+benef[íi]cio[:\s]*(\d{6,12})/i);
+  if (nbMatch) out.beneficio_num = nbMatch[1];
+
+  // Data do protocolo (data de entrada do requerimento)
+  const protoMatch =
+    body.match(/data\s+(?:do\s+)?protocolo[:\s]+(\d{2}[\/\-]\d{2}[\/\-]\d{4})/i) ||
+    body.match(/data\s+de\s+entrada[:\s]+(\d{2}[\/\-]\d{2}[\/\-]\d{4})/i) ||
+    body.match(/protocolado\s+em[:\s]+(\d{2}[\/\-]\d{2}[\/\-]\d{4})/i);
+  if (protoMatch) out.protocol_date = parseBrDate(protoMatch[1]);
 
   return out;
 }
@@ -212,6 +234,8 @@ export const handler: RequestHandler = async (req, res) => {
               cpf_segurado: parsed.cpf || undefined,
               nome_segurado: parsed.nome || undefined,
               benefit_type: parsed.beneficio || undefined,
+              benefit_number: parsed.beneficio_num || undefined,
+              protocol_date: parsed.protocol_date || undefined,
               last_email_at: receivedAt,
               last_email_subject: subject,
             })
@@ -225,6 +249,8 @@ export const handler: RequestHandler = async (req, res) => {
               cpf_segurado: parsed.cpf,
               nome_segurado: parsed.nome,
               benefit_type: parsed.beneficio,
+              benefit_number: parsed.beneficio_num,
+              protocol_date: parsed.protocol_date,
               last_email_at: receivedAt,
               last_email_subject: subject,
             })
