@@ -1325,6 +1325,14 @@ const ActivitiesPage = () => {
         const dateKey = a.deadline || a.notification_date;
         return dateKey ? selectedCalDays.includes(dateKey) : false;
       });
+    } else if (viewMode === 'list') {
+      // Sem dia selecionado: a lista acompanha o mês exibido no calendário.
+      // Atividades sem nenhuma data continuam visíveis (não têm lugar no calendário).
+      const monthPrefix = format(calendarMonth, 'yyyy-MM');
+      list = list.filter(a => {
+        const dateKey = a.deadline || a.notification_date;
+        return !dateKey || dateKey.startsWith(monthPrefix);
+      });
     }
     // Ordena por prioridade: urgente > alta > normal > baixa (mantém ordem original como tiebreaker)
     const priorityRank: Record<string, number> = { urgente: 0, alta: 1, normal: 2, baixa: 3 };
@@ -1333,7 +1341,7 @@ const ActivitiesPage = () => {
       const rb = priorityRank[b.priority || 'normal'] ?? 2;
       return ra - rb;
     });
-  }, [activities, selectedCalDays, filterCase]);
+  }, [activities, selectedCalDays, filterCase, viewMode, calendarMonth]);
 
   const resolveUserName = (userId: string | null) => {
     if (!userId) return null;
@@ -2808,7 +2816,7 @@ const ActivitiesPage = () => {
                         <span>Por tipo de atv</span>
                         <Badge variant="secondary" className="text-[10px] h-4 px-1.5">
                           {(() => {
-                            const base = selectedCalDays.length > 0 ? displayedActivities : activities;
+                            const base = displayedActivities;
                             const open = base.filter(a => a.status !== 'concluida').length;
                             const done = base.filter(a => a.status === 'concluida').length;
                             return `${open}⏳ ${done}✓`;
@@ -2820,7 +2828,7 @@ const ActivitiesPage = () => {
                       <p className="text-xs font-bold text-muted-foreground mb-2 uppercase tracking-wider">Resumo por tipo de atividade</p>
                       <div className="max-h-[300px] overflow-y-auto space-y-1">
                         {(() => {
-                          const baseActivities = selectedCalDays.length > 0 ? displayedActivities : activities;
+                          const baseActivities = displayedActivities;
                           const typeSummary = allKnownActivityTypes.map(t => {
                             const typeActs = baseActivities.filter(a => a.activity_type === t.value);
                             const openCount = typeActs.filter(a => a.status !== 'concluida').length;
@@ -2878,7 +2886,7 @@ const ActivitiesPage = () => {
                       <p className="text-xs font-bold text-muted-foreground mb-2 uppercase tracking-wider">Resumo por assessor</p>
                       <div className="max-h-[300px] overflow-y-auto space-y-1">
                         {(() => {
-                          const baseActivities = selectedCalDays.length > 0 ? displayedActivities : activities;
+                          const baseActivities = displayedActivities;
                           const selectedMembers = filterAssignee.length > 0
                             ? teamMembers.filter(m => filterAssignee.includes(m.user_id))
                             : teamMembers.filter(m => baseActivities.some(a => a.assigned_to === m.user_id));
