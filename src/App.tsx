@@ -44,9 +44,20 @@ function lazyRetry<T extends ComponentType<any>>(
     } catch (error) {
       const retries = Number(sessionStorage.getItem(storageKey) ?? "0");
 
-      if (retries < 1) {
+      if (retries < 2) {
         sessionStorage.setItem(storageKey, String(retries + 1));
-        window.location.reload();
+
+        if (retries === 0) {
+          // 1st retry: simple reload (handles transient network failures)
+          window.location.reload();
+        } else {
+          // 2nd retry: the page may be pinned to a stale build via
+          // __lovable_sha. Strip pin params so the latest build is served.
+          const url = new URL(window.location.href);
+          url.searchParams.delete("__lovable_sha");
+          url.searchParams.delete("__lovable_load_id");
+          window.location.replace(url.toString());
+        }
 
         // Keep suspense pending until reload happens
         return new Promise<{ default: T }>(() => {});
