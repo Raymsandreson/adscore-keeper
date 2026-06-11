@@ -227,12 +227,18 @@ export const handler: RequestHandler = async (req, res) => {
 
         const ids = messageIds.map((m) => m.id);
 
-        const { data: existing } = await supabase
-          .from('inss_status_history')
-          .select('gmail_message_id')
-          .in('gmail_message_id', ids);
-        const seenIds = new Set((existing || []).map((r: any) => r.gmail_message_id));
-        const toProcess = messageIds.filter((m) => !seenIds.has(m.id));
+        // Em dry_run nós pulamos a checagem de "já visto" e listamos tudo
+        let toProcess: GmailMessageListItem[];
+        if (dryRun) {
+          toProcess = messageIds;
+        } else {
+          const { data: existing } = await supabase
+            .from('inss_status_history')
+            .select('gmail_message_id')
+            .in('gmail_message_id', ids);
+          const seenIds = new Set((existing || []).map((r: any) => r.gmail_message_id));
+          toProcess = messageIds.filter((m) => !seenIds.has(m.id));
+        }
         inboxResult.new = toProcess.length;
         totalNew += toProcess.length;
 
@@ -247,7 +253,17 @@ export const handler: RequestHandler = async (req, res) => {
               ? new Date(Number(msg.internalDate)).toISOString()
               : new Date().toISOString();
 
+            // Atualiza janela de datas (mín/máx) por inbox e global
+            if (!inboxResult.oldest_email_at || receivedAt < inboxResult.oldest_email_at) inboxResult.oldest_email_at = receivedAt;
+            if (!inboxResult.newest_email_at || receivedAt > inboxResult.newest_email_at) inboxResult.newest_email_at = receivedAt;
+            if (!globalOldest || receivedAt < globalOldest) globalOldest = receivedAt;
+            if (!globalNewest || receivedAt > globalNewest) globalNewest = receivedAt;
+
             const parsed = parseInssSubject(subject, body);
+
+            // Em dry_run só conta, não grava nada
+            if (dryRun) continue;
+
             if (!parsed.requerimento) {
               await supabase.from('inss_status_history').insert({
                 process_id: null as any,
@@ -259,6 +275,7 @@ export const handler: RequestHandler = async (req, res) => {
               } as any).then(() => {}, () => {});
               continue;
             }
+
 
             const { data: existingProc } = await supabase
               .from('inss_admin_processes')
