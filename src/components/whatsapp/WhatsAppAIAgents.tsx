@@ -22,6 +22,7 @@ import { Slider } from '@/components/ui/slider';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Bot, Plus, Pencil, Trash2, Power, PowerOff, Sparkles, Loader2, Phone, Clock, Megaphone, X, FileText, Zap, Layers, Volume2 } from 'lucide-react';
 import { AgentKnowledgeDocs } from './AgentKnowledgeDocs';
+import { HandoffConfigSection, type HandoffConfig } from './HandoffConfigSection';
 import { toast } from 'sonner';
 
 interface AIAgent {
