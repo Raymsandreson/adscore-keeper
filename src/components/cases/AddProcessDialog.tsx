@@ -482,6 +482,7 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
     setOabEstado('SP');
     setProcessType('judicial');
     setWorkflowId('');
+    setResponsibleExtId(null);
     setManualForm({ title: '', process_number: '', description: '', fee_percentage: '', valor_causa: '', estimated_fee_value: '', started_at: new Date().toISOString().slice(0, 10), notes: '' });
   };
 
