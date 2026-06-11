@@ -614,6 +614,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       reply_with_audio: form.reply_with_audio,
       reply_voice_id: form.reply_voice_id,
       respond_in_groups: form.respond_in_groups,
+      describe_documents_in_groups: form.describe_documents_in_groups ?? true,
       max_tts_chars: form.max_tts_chars,
       send_window_start_hour: form.send_window_start_hour ?? 8,
       send_window_end_hour: form.send_window_end_hour ?? 20,
