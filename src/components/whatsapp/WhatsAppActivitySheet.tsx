@@ -295,6 +295,32 @@ export function WhatsAppActivitySheet({
     return () => clearTimeout(handle);
   }, [leadSearch, open]);
 
+  // Load cases when lead changes
+  useEffect(() => {
+    if (!formLeadId) { setLeadCases([]); setFormCaseId(''); setFormCaseLabel(''); return; }
+    (async () => {
+      const { data } = await externalSupabase
+        .from('legal_cases')
+        .select('id, case_number, title')
+        .eq('lead_id', formLeadId)
+        .order('created_at', { ascending: false });
+      setLeadCases((data || []) as any);
+    })();
+  }, [formLeadId]);
+
+  // Load processes when case changes
+  useEffect(() => {
+    if (!formCaseId) { setCaseProcesses([]); setFormProcessId(''); setFormProcessLabel(''); return; }
+    (async () => {
+      const { data } = await externalSupabase
+        .from('lead_processes')
+        .select('id, title, process_number')
+        .eq('case_id', formCaseId)
+        .order('created_at', { ascending: false });
+      setCaseProcesses((data || []) as any);
+    })();
+  }, [formCaseId]);
+
   const filteredLeads = leadSearch
     ? leads.filter(l => l.lead_name?.toLowerCase().includes(leadSearch.toLowerCase()) || (l as any).lead_phone?.includes(leadSearch.replace(/\D/g, '')))
     : leads.slice(0, 20);
