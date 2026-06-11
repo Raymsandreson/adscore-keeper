@@ -140,7 +140,7 @@ const DEFAULT_FORM: ShortcutFormState = {
   model: 'google/gemini-2.5-flash', temperature: 0.7, max_tokens: 2048,
   response_delay_seconds: 2, skip_confirmation: false, partial_min_fields: [],
   history_limit: 50, split_messages: false, split_delay_seconds: 3,
-  reply_with_audio: false, reply_voice_id: null, respond_in_groups: false,
+  reply_with_audio: false, reply_voice_id: null, respond_in_groups: false, describe_documents_in_groups: true,
   max_tts_chars: 1000, send_window_start_hour: 8, send_window_end_hour: 20,
   send_call_followup_audio: false, zapsign_mode: 'final_document', zapsign_settings: {},
   forward_questions_to_group: false, notify_instance_name: null,
