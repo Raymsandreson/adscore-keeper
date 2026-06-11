@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { LeadFunnelProgressBar } from '@/components/activities/LeadFunnelProgressBar';
+import { ResponsibleUserSelect } from './ResponsibleUserSelect';
 
 interface ProcessDetailSheetProps {
   open: boolean;
