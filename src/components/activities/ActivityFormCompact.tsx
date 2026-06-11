@@ -395,6 +395,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
   // Create-new flows (reuses existing forms/hooks)
   const { addLead } = useLeads();
   const { createCase } = useLegalCases();
+  const { nuclei } = useSpecializedNuclei();
   const [newLeadOpen, setNewLeadOpen] = useState(false);
   const [newLeadName, setNewLeadName] = useState('');
   const [newLeadPhone, setNewLeadPhone] = useState('');
@@ -402,6 +403,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
   const [newCaseOpen, setNewCaseOpen] = useState(false);
   const [newCaseTitle, setNewCaseTitle] = useState('');
   const [newCaseNumber, setNewCaseNumber] = useState('');
+  const [newCaseNucleusId, setNewCaseNucleusId] = useState<string>('none');
   const [creatingCase, setCreatingCase] = useState(false);
   const [newProcessOpen, setNewProcessOpen] = useState(false);
 
