@@ -114,6 +114,7 @@ interface ShortcutFormState {
   reply_with_audio: boolean;
   reply_voice_id: string | null;
   respond_in_groups: boolean;
+  describe_documents_in_groups: boolean;
   max_tts_chars: number;
   send_window_start_hour: number;
   send_window_end_hour: number;
@@ -139,7 +140,7 @@ const DEFAULT_FORM: ShortcutFormState = {
   model: 'google/gemini-2.5-flash', temperature: 0.7, max_tokens: 2048,
   response_delay_seconds: 2, skip_confirmation: false, partial_min_fields: [],
   history_limit: 50, split_messages: false, split_delay_seconds: 3,
-  reply_with_audio: false, reply_voice_id: null, respond_in_groups: false,
+  reply_with_audio: false, reply_voice_id: null, respond_in_groups: false, describe_documents_in_groups: true,
   max_tts_chars: 1000, send_window_start_hour: 8, send_window_end_hour: 20,
   send_call_followup_audio: false, zapsign_mode: 'final_document', zapsign_settings: {},
   forward_questions_to_group: false, notify_instance_name: null,
@@ -519,6 +520,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       reply_with_audio: (s as any).reply_with_audio ?? false,
       reply_voice_id: (s as any).reply_voice_id || null,
       respond_in_groups: (s as any).respond_in_groups ?? false,
+      describe_documents_in_groups: (s as any).describe_documents_in_groups ?? true,
       max_tts_chars: (s as any).max_tts_chars ?? 1000,
       send_window_start_hour: (s as any).send_window_start_hour ?? 8,
       send_window_end_hour: (s as any).send_window_end_hour ?? 20,
@@ -612,6 +614,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       reply_with_audio: form.reply_with_audio,
       reply_voice_id: form.reply_voice_id,
       respond_in_groups: form.respond_in_groups,
+      describe_documents_in_groups: form.describe_documents_in_groups ?? true,
       max_tts_chars: form.max_tts_chars,
       send_window_start_hour: form.send_window_start_hour ?? 8,
       send_window_end_hour: form.send_window_end_hour ?? 20,
@@ -1322,6 +1325,20 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
                     </div>
                     <Switch checked={form.respond_in_groups} onCheckedChange={v => setForm(f => ({ ...f, respond_in_groups: v }))} />
                   </div>
+                  {form.respond_in_groups && (
+                    <div className="flex items-center justify-between pl-2 border-l-2 border-primary/20">
+                      <div>
+                        <Label className="text-xs">Descrever documentos enviados no grupo</Label>
+                        <p className="text-[10px] text-muted-foreground">
+                          Desligue para o agente NÃO narrar conteúdo extraído (nomes, valores, honorários) toda vez que alguém mandar documento no grupo. Apenas confirma o recebimento. Evita "cara de robô".
+                        </p>
+                      </div>
+                      <Switch
+                        checked={form.describe_documents_in_groups ?? true}
+                        onCheckedChange={v => setForm(f => ({ ...f, describe_documents_in_groups: v }))}
+                      />
+                    </div>
+                  )}
                   <div className="flex items-center justify-between">
                     <div>
                       <Label className="text-xs">Responder com áudio</Label>
