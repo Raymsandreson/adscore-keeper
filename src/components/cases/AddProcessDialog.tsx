@@ -68,6 +68,7 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
   // Common fields - always asked
   const [processType, setProcessType] = useState<'judicial' | 'administrativo'>('judicial');
   const [workflowId, setWorkflowId] = useState('');
+  const [responsibleExtId, setResponsibleExtId] = useState<string | null>(null);
   const [showNewWorkflow, setShowNewWorkflow] = useState(false);
   const [newWorkflowName, setNewWorkflowName] = useState('');
   const [newWorkflowDesc, setNewWorkflowDesc] = useState('');
