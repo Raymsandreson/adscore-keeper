@@ -628,6 +628,18 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
               A barra de progresso aparece quando o processo está vinculado a um lead.
             </p>
           )}
+
+          <div className="pt-2 space-y-1">
+            <Label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+              Responsável pelo processo
+            </Label>
+            <ResponsibleUserSelect
+              value={form.responsible_user_id || null}
+              onChange={(v) => set('responsible_user_id', v)}
+              className="h-8 text-xs bg-background"
+              placeholder="Sem responsável (usa acolhedor/dono do lead)"
+            />
+          </div>
         </div>
       </div>
 
