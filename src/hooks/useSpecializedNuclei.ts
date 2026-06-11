@@ -34,8 +34,6 @@ export function useSpecializedNuclei() {
         supabase.from('specialized_nuclei').select('*').order('name'),
         supabase.from('nucleus_companies').select('*'),
       ]);
-        supabase.from('nucleus_companies').select('*'),
-      ]);
       if (nucleiRes.error) throw nucleiRes.error;
 
       const links = (linksRes.data || []) as NucleusCompanyLink[];
