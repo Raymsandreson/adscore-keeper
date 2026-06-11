@@ -136,9 +136,9 @@ export function GlobalDatabaseSearch() {
         dual('kanban_boards',
           `name.ilike.${searchTerm},description.ilike.${searchTerm}`,
           'updated_at', 10),
-        externalOnly('legal_cases',
+        dual('legal_cases',
           `case_number.ilike.${caseNumberTerm},title.ilike.${searchTerm},description.ilike.${searchTerm}`,
-          'updated_at', 10),
+          'updated_at', 30),
       ]);
 
       const mapped: SearchResult[] = [];
