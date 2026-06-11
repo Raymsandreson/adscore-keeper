@@ -62,6 +62,7 @@ interface AIAgent {
   send_call_followup_audio: boolean;
   forward_questions_to_group: boolean;
   notify_instance_name: string | null;
+  handoff_config: HandoffConfig | null;
   created_at: string;
 }
 
