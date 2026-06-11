@@ -372,23 +372,36 @@ export const handler: RequestHandler = async (req, res) => {
 
     const result = {
       success: true,
+      dry_run: dryRun,
+      params: {
+        lookback_hours: lookbackHours,
+        lookback_days: Math.round((lookbackHours / 24) * 100) / 100,
+        max_messages: maxMessages,
+        inbox_filter: inboxFilter || null,
+      },
       inboxes: inboxes.length,
+      inbox_labels: inboxes.map((i) => i.label),
       checked: totalChecked,
       new: totalNew,
       created_processes: totalCreatedProcesses,
       created_history: totalCreatedHistory,
       notify_triggers: totalNotifyTriggers,
+      oldest_email_at: globalOldest,
+      newest_email_at: globalNewest,
       per_inbox: perInbox,
       errors: allErrors.slice(0, 10),
     };
 
-    await supabase.from('inss_sync_state').update({
-      last_run_at: new Date().toISOString(),
-      last_synced_at: new Date().toISOString(),
-      last_result: result,
-    }).eq('id', 1);
+    if (!dryRun) {
+      await supabase.from('inss_sync_state').update({
+        last_run_at: new Date().toISOString(),
+        last_synced_at: new Date().toISOString(),
+        last_result: result,
+      }).eq('id', 1);
+    }
 
     return res.status(200).json(result);
+
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[gmail-inss-sync] fatal:', msg);
