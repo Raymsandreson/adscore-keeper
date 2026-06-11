@@ -434,6 +434,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
         lead_id: props.formLeadId,
         title: newCaseTitle.trim(),
         case_number: newCaseNumber.trim() || undefined,
+        nucleus_id: newCaseNucleusId !== 'none' ? newCaseNucleusId : null,
       });
       if (c?.id) {
         props.setFormCaseId(c.id);
@@ -441,7 +442,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
         props.setFormProcessId(''); props.setFormProcessTitle('');
         props.setCaseProcesses([]);
         setNewCaseOpen(false);
-        setNewCaseTitle(''); setNewCaseNumber('');
+        setNewCaseTitle(''); setNewCaseNumber(''); setNewCaseNucleusId('none');
         // trigger upstream lead-cases refresh by reselecting the lead
         props.handleSelectLead(props.formLeadId);
       }
