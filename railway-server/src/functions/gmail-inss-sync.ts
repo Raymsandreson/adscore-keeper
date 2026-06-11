@@ -234,6 +234,8 @@ export const handler: RequestHandler = async (req, res) => {
               cpf_segurado: parsed.cpf || undefined,
               nome_segurado: parsed.nome || undefined,
               benefit_type: parsed.beneficio || undefined,
+              benefit_number: parsed.beneficio_num || undefined,
+              protocol_date: parsed.protocol_date || undefined,
               last_email_at: receivedAt,
               last_email_subject: subject,
             })
@@ -247,6 +249,8 @@ export const handler: RequestHandler = async (req, res) => {
               cpf_segurado: parsed.cpf,
               nome_segurado: parsed.nome,
               benefit_type: parsed.beneficio,
+              benefit_number: parsed.beneficio_num,
+              protocol_date: parsed.protocol_date,
               last_email_at: receivedAt,
               last_email_subject: subject,
             })
