@@ -43,6 +43,7 @@ interface WhatsAppActivitySheetProps {
 interface LeadOption {
   id: string;
   lead_name: string | null;
+  lead_phone?: string | null;
 }
 
 interface TeamMember {
@@ -232,8 +233,18 @@ export function WhatsAppActivitySheet({
     }
   }, [open, defaultLeadId, defaultLeadName, defaultContactId, defaultContactName, defaultDictationText]);
 
-  const fetchLeads = async () => {
-    const { data } = await externalSupabase.from('leads').select('id, lead_name').order('created_at', { ascending: false }).limit(200);
+  const fetchLeads = async (term?: string) => {
+    const q = (term || '').trim();
+    let query = externalSupabase.from('leads').select('id, lead_name, lead_phone').order('created_at', { ascending: false });
+    if (q) {
+      const digits = q.replace(/\D/g, '');
+      const filters = [`lead_name.ilike.%${q}%`];
+      if (digits.length >= 3) filters.push(`lead_phone.ilike.%${digits}%`);
+      query = query.or(filters.join(',')).limit(50);
+    } else {
+      query = query.limit(200);
+    }
+    const { data } = await query;
     setLeads(data || []);
   };
 
@@ -265,8 +276,15 @@ export function WhatsAppActivitySheet({
     setFormLeadName(lead?.lead_name || '');
   };
 
+  // Debounced DB search for leads (covers older leads outside the initial 200)
+  useEffect(() => {
+    if (!open) return;
+    const handle = setTimeout(() => { fetchLeads(leadSearch); }, 250);
+    return () => clearTimeout(handle);
+  }, [leadSearch, open]);
+
   const filteredLeads = leadSearch
-    ? leads.filter(l => l.lead_name?.toLowerCase().includes(leadSearch.toLowerCase()))
+    ? leads.filter(l => l.lead_name?.toLowerCase().includes(leadSearch.toLowerCase()) || (l as any).lead_phone?.includes(leadSearch.replace(/\D/g, '')))
     : leads.slice(0, 20);
 
   const filteredContacts = contactSearch
