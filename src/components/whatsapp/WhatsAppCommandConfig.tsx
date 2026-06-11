@@ -520,6 +520,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       reply_with_audio: (s as any).reply_with_audio ?? false,
       reply_voice_id: (s as any).reply_voice_id || null,
       respond_in_groups: (s as any).respond_in_groups ?? false,
+      describe_documents_in_groups: (s as any).describe_documents_in_groups ?? true,
       max_tts_chars: (s as any).max_tts_chars ?? 1000,
       send_window_start_hour: (s as any).send_window_start_hour ?? 8,
       send_window_end_hour: (s as any).send_window_end_hour ?? 20,
