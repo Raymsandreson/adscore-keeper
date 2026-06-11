@@ -33,6 +33,9 @@ import { handler as sendWhatsappCloud } from './functions/send-whatsapp-cloud';
 import { handler as checkWhatsappCloudToken } from './functions/check-whatsapp-cloud-token';
 import { handler as metaCallQueueProcessor } from './functions/meta-call-queue-processor';
 import { handler as sheetLeadIngest } from './functions/sheet-lead-ingest';
+import { handler as gmailInssSync } from './functions/gmail-inss-sync';
+import { handler as notifyInssUpdate } from './functions/notify-inss-update';
+
 
 const functionHandlers: Record<string, express.RequestHandler> = {
   'whatsapp-webhook': whatsappWebhook,
@@ -58,6 +61,8 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'send-whatsapp-cloud': sendWhatsappCloud,
   'check-whatsapp-cloud-token': checkWhatsappCloudToken,
   'meta-call-queue-processor': metaCallQueueProcessor,
+  'gmail-inss-sync': gmailInssSync,
+  'notify-inss-update': notifyInssUpdate,
 };
 
 const app = express();
