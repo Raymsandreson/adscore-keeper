@@ -274,6 +274,7 @@ const ActivitiesPage = () => {
   // Activity counts for filter badges
   const [allActivitiesRaw, setAllActivitiesRaw] = useState<{ lead_id: string | null; contact_id: string | null; assigned_to: string | null; activity_type: string; status: string }[]>([]);
   const [openFilterKey, setOpenFilterKey] = useState<string | null>(null);
+  const [showAllTypes, setShowAllTypes] = useState(false);
 
   // Workflow mode state
   const [workflowMode, setWorkflowMode] = useState(false);
@@ -2072,20 +2073,41 @@ const ActivitiesPage = () => {
                     <Check className={cn("mr-2 h-3.5 w-3.5", filterType.length === 0 ? "opacity-100" : "opacity-0")} />
                     Todos
                   </CommandItem>
-                  {ACTIVITY_TYPES.map(t => {
-                    const c = countByField('activity_type', t.value);
-                    const isSelected = filterType.includes(t.value);
+                  {(() => {
+                    const withCounts = ACTIVITY_TYPES.map(t => ({ t, c: countByField('activity_type', t.value) }));
+                    const visible = showAllTypes
+                      ? withCounts
+                      : withCounts.filter(({ t, c }) => (c.open + c.done) > 0 || filterType.includes(t.value));
+                    const hiddenCount = withCounts.length - visible.length;
                     return (
-                      <CommandItem key={t.value} value={t.label} onSelect={() => toggleFilter(setFilterType, filterType, t.value)}>
-                        <Check className={cn("mr-2 h-3.5 w-3.5", isSelected ? "opacity-100" : "opacity-0")} />
-                        <span className="flex-1">{t.label}</span>
-                        <span className="ml-2 flex gap-1 text-[10px]">
-                          <Badge variant="outline" className="px-1 py-0 text-[10px]">{c.open}⏳</Badge>
-                          <Badge variant="secondary" className="px-1 py-0 text-[10px]">{c.done}✓</Badge>
-                        </span>
-                      </CommandItem>
+                      <>
+                        {visible.map(({ t, c }) => {
+                          const isSelected = filterType.includes(t.value);
+                          return (
+                            <CommandItem key={t.value} value={t.label} onSelect={() => toggleFilter(setFilterType, filterType, t.value)}>
+                              <Check className={cn("mr-2 h-3.5 w-3.5", isSelected ? "opacity-100" : "opacity-0")} />
+                              <span className="flex-1">{t.label}</span>
+                              <span className="ml-2 flex gap-1 text-[10px]">
+                                <Badge variant="outline" className="px-1 py-0 text-[10px]">{c.open}⏳</Badge>
+                                <Badge variant="secondary" className="px-1 py-0 text-[10px]">{c.done}✓</Badge>
+                              </span>
+                            </CommandItem>
+                          );
+                        })}
+                        {(hiddenCount > 0 || showAllTypes) && (
+                          <CommandItem
+                            value="__toggle_show_all_types"
+                            onSelect={() => setShowAllTypes(v => !v)}
+                            className="text-xs text-muted-foreground border-t mt-1 pt-2"
+                          >
+                            <span className="ml-5">
+                              {showAllTypes ? 'Ocultar tipos sem atividades' : `Mostrar todos os tipos (+${hiddenCount} sem uso)`}
+                            </span>
+                          </CommandItem>
+                        )}
+                      </>
                     );
-                  })}
+                  })()}
                 </CommandGroup>
               </CommandList>
             </Command>
