@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { db as supabase } from '@/integrations/supabase';
+import { db as supabase, ensureExternalSession } from '@/integrations/supabase';
 import { toast } from 'sonner';
 
 export interface NucleusCompanyLink {
@@ -29,6 +29,7 @@ export function useSpecializedNuclei() {
   const fetchNuclei = useCallback(async () => {
     setLoading(true);
     try {
+      await ensureExternalSession().catch(() => {});
       const [nucleiRes, linksRes] = await Promise.all([
         supabase.from('specialized_nuclei').select('*').order('name'),
         supabase.from('nucleus_companies').select('*'),
