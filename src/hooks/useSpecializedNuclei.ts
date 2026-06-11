@@ -29,8 +29,11 @@ export function useSpecializedNuclei() {
   const fetchNuclei = useCallback(async () => {
     setLoading(true);
     try {
+      await ensureExternalSession().catch(() => {});
       const [nucleiRes, linksRes] = await Promise.all([
         supabase.from('specialized_nuclei').select('*').order('name'),
+        supabase.from('nucleus_companies').select('*'),
+      ]);
         supabase.from('nucleus_companies').select('*'),
       ]);
       if (nucleiRes.error) throw nucleiRes.error;
