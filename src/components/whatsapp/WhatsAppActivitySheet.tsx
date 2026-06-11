@@ -77,6 +77,12 @@ export function WhatsAppActivitySheet({
   const [formLeadName, setFormLeadName] = useState('');
   const [formContactId, setFormContactId] = useState('');
   const [formContactName, setFormContactName] = useState('');
+  const [formCaseId, setFormCaseId] = useState('');
+  const [formCaseLabel, setFormCaseLabel] = useState('');
+  const [formProcessId, setFormProcessId] = useState('');
+  const [formProcessLabel, setFormProcessLabel] = useState('');
+  const [leadCases, setLeadCases] = useState<Array<{ id: string; case_number: string; title: string }>>([]);
+  const [caseProcesses, setCaseProcesses] = useState<Array<{ id: string; title: string; process_number: string | null }>>([]);
   const [formWhatWasDone, setFormWhatWasDone] = useState('');
   const [formCurrentStatus, setFormCurrentStatus] = useState('');
   const [formNextSteps, setFormNextSteps] = useState('');
