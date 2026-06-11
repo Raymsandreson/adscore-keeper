@@ -62,6 +62,7 @@ interface AIAgent {
   send_call_followup_audio: boolean;
   forward_questions_to_group: boolean;
   notify_instance_name: string | null;
+  describe_documents_in_groups: boolean;
   handoff_config: HandoffConfig | null;
   created_at: string;
 }
@@ -235,6 +236,7 @@ export function WhatsAppAIAgents() {
       send_call_followup_audio: false,
       forward_questions_to_group: false,
       notify_instance_name: null,
+      describe_documents_in_groups: true,
       handoff_config: null,
     });
     fetchAvailableCampaigns();
@@ -287,6 +289,7 @@ export function WhatsAppAIAgents() {
         send_call_followup_audio: editingAgent.send_call_followup_audio ?? false,
         forward_questions_to_group: editingAgent.forward_questions_to_group ?? false,
         notify_instance_name: editingAgent.notify_instance_name || null,
+        describe_documents_in_groups: editingAgent.describe_documents_in_groups ?? true,
         handoff_config: editingAgent.handoff_config ?? null,
         max_repeat_cycles: (editingAgent as any).max_repeat_cycles ?? 3,
         min_call_delay_minutes: (editingAgent as any).min_call_delay_minutes ?? 30,
@@ -623,12 +626,28 @@ export function WhatsAppAIAgents() {
                 </div>
 
                 {/* Respond in groups */}
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label className="text-xs">Responder em grupos</Label>
-                    <p className="text-[10px] text-muted-foreground">Permitir que este agente responda mensagens em grupos do WhatsApp</p>
+                <div className="border rounded-lg p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label className="text-xs">Responder em grupos</Label>
+                      <p className="text-[10px] text-muted-foreground">Permitir que este agente responda mensagens em grupos do WhatsApp</p>
+                    </div>
+                    <Switch checked={editingAgent.respond_in_groups ?? false} onCheckedChange={v => setEditingAgent({ ...editingAgent, respond_in_groups: v })} />
                   </div>
-                  <Switch checked={editingAgent.respond_in_groups ?? false} onCheckedChange={v => setEditingAgent({ ...editingAgent, respond_in_groups: v })} />
+                  {editingAgent.respond_in_groups && (
+                    <div className="flex items-center justify-between pl-2 border-l-2 border-primary/20">
+                      <div>
+                        <Label className="text-xs">Descrever documentos enviados no grupo</Label>
+                        <p className="text-[10px] text-muted-foreground">
+                          Desligue para o agente NÃO narrar o conteúdo extraído (nomes, valores, honorários, datas) toda vez que alguém manda um documento no grupo. Vai apenas reconhecer o recebimento. Evita aquele "cara de robô".
+                        </p>
+                      </div>
+                      <Switch
+                        checked={editingAgent.describe_documents_in_groups ?? true}
+                        onCheckedChange={v => setEditingAgent({ ...editingAgent, describe_documents_in_groups: v })}
+                      />
+                    </div>
+                  )}
                 </div>
 
                 {/* Audio response */}
