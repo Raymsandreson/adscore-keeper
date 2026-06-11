@@ -235,6 +235,7 @@ export function WhatsAppAIAgents() {
       send_call_followup_audio: false,
       forward_questions_to_group: false,
       notify_instance_name: null,
+      handoff_config: null,
     });
     fetchAvailableCampaigns();
     setShowEditor(true);
