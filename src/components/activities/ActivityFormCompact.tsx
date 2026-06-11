@@ -1266,6 +1266,25 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
           <div className="space-y-3 pt-2">
             <div><Label>Título *</Label><Input value={newCaseTitle} onChange={e => setNewCaseTitle(e.target.value)} autoFocus /></div>
             <div><Label>Número (opcional)</Label><Input value={newCaseNumber} onChange={e => setNewCaseNumber(e.target.value)} placeholder="auto-gerado se vazio" /></div>
+            <div>
+              <Label>Núcleo Especializado</Label>
+              <Select value={newCaseNucleusId} onValueChange={setNewCaseNucleusId}>
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="Nenhum (sequência geral)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Nenhum (sequência geral)</SelectItem>
+                  {nuclei.filter(n => n.is_active).map(n => (
+                    <SelectItem key={n.id} value={n.id}>
+                      <div className="flex items-center gap-2">
+                        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: n.color }} />
+                        {n.name} ({n.prefix})
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setNewCaseOpen(false)}>Cancelar</Button>
