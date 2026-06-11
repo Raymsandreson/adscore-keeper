@@ -353,6 +353,8 @@ export function WhatsAppActivitySheet({
         lead_name: formLeadName || null,
         contact_id: formContactId || null,
         contact_name: formContactName || null,
+        case_id: formCaseId || null,
+        process_id: formProcessId || null,
         what_was_done: formWhatWasDone || null,
         current_status_notes: formCurrentStatus || null,
         next_steps: formNextSteps || null,
