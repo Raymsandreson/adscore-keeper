@@ -434,6 +434,7 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
             : (autoCalculatedFee ? parseFloat(autoCalculatedFee) : null),
           workflow_id: workflowId || null,
           workflow_name: selectedBoard?.name || null,
+          responsible_user_id: responsibleExtId,
           started_at: manualForm.started_at || null,
           notes: manualForm.notes || null,
           status: 'em_andamento',
