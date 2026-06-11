@@ -9447,6 +9447,7 @@ export type Database = {
           followup_repeat_forever: boolean
           followup_steps: Json | null
           forward_questions_to_group: boolean | null
+          handoff_config: Json | null
           history_limit: number | null
           human_reply_pause_minutes: number | null
           id: string
@@ -9499,6 +9500,7 @@ export type Database = {
           followup_repeat_forever?: boolean
           followup_steps?: Json | null
           forward_questions_to_group?: boolean | null
+          handoff_config?: Json | null
           history_limit?: number | null
           human_reply_pause_minutes?: number | null
           id?: string
@@ -9551,6 +9553,7 @@ export type Database = {
           followup_repeat_forever?: boolean
           followup_steps?: Json | null
           forward_questions_to_group?: boolean | null
+          handoff_config?: Json | null
           history_limit?: number | null
           human_reply_pause_minutes?: number | null
           id?: string
