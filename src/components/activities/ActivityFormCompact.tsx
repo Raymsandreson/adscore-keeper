@@ -32,6 +32,7 @@ import { externalSupabase, ensureExternalSession } from '@/integrations/supabase
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { useLeads } from '@/hooks/useLeads';
 import { useLegalCases } from '@/hooks/useLegalCases';
+import { useSpecializedNuclei } from '@/hooks/useSpecializedNuclei';
 import { toast } from 'sonner';
 
 function copyField(text: string | null | undefined) {
@@ -394,6 +395,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
   // Create-new flows (reuses existing forms/hooks)
   const { addLead } = useLeads();
   const { createCase } = useLegalCases();
+  const { nuclei } = useSpecializedNuclei();
   const [newLeadOpen, setNewLeadOpen] = useState(false);
   const [newLeadName, setNewLeadName] = useState('');
   const [newLeadPhone, setNewLeadPhone] = useState('');
@@ -401,6 +403,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
   const [newCaseOpen, setNewCaseOpen] = useState(false);
   const [newCaseTitle, setNewCaseTitle] = useState('');
   const [newCaseNumber, setNewCaseNumber] = useState('');
+  const [newCaseNucleusId, setNewCaseNucleusId] = useState<string>('none');
   const [creatingCase, setCreatingCase] = useState(false);
   const [newProcessOpen, setNewProcessOpen] = useState(false);
 
@@ -431,6 +434,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
         lead_id: props.formLeadId,
         title: newCaseTitle.trim(),
         case_number: newCaseNumber.trim() || undefined,
+        nucleus_id: newCaseNucleusId !== 'none' ? newCaseNucleusId : null,
       });
       if (c?.id) {
         props.setFormCaseId(c.id);
@@ -438,7 +442,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
         props.setFormProcessId(''); props.setFormProcessTitle('');
         props.setCaseProcesses([]);
         setNewCaseOpen(false);
-        setNewCaseTitle(''); setNewCaseNumber('');
+        setNewCaseTitle(''); setNewCaseNumber(''); setNewCaseNucleusId('none');
         // trigger upstream lead-cases refresh by reselecting the lead
         props.handleSelectLead(props.formLeadId);
       }
@@ -1262,6 +1266,25 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
           <div className="space-y-3 pt-2">
             <div><Label>Título *</Label><Input value={newCaseTitle} onChange={e => setNewCaseTitle(e.target.value)} autoFocus /></div>
             <div><Label>Número (opcional)</Label><Input value={newCaseNumber} onChange={e => setNewCaseNumber(e.target.value)} placeholder="auto-gerado se vazio" /></div>
+            <div>
+              <Label>Núcleo Especializado</Label>
+              <Select value={newCaseNucleusId} onValueChange={setNewCaseNucleusId}>
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="Nenhum (sequência geral)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Nenhum (sequência geral)</SelectItem>
+                  {nuclei.filter(n => n.is_active).map(n => (
+                    <SelectItem key={n.id} value={n.id}>
+                      <div className="flex items-center gap-2">
+                        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: n.color }} />
+                        {n.name} ({n.prefix})
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setNewCaseOpen(false)}>Cancelar</Button>
