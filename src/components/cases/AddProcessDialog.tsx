@@ -23,6 +23,7 @@ import { toast } from 'sonner';
 import { KanbanBoard } from '@/hooks/useKanbanBoards';
 import { autoCreatePartiesFromEnvolvidos } from '@/utils/escavadorPartyUtils';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
+import { ResponsibleUserSelect } from './ResponsibleUserSelect';
 
 interface AddProcessDialogProps {
   open: boolean;
@@ -67,6 +68,7 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
   // Common fields - always asked
   const [processType, setProcessType] = useState<'judicial' | 'administrativo'>('judicial');
   const [workflowId, setWorkflowId] = useState('');
+  const [responsibleExtId, setResponsibleExtId] = useState<string | null>(null);
   const [showNewWorkflow, setShowNewWorkflow] = useState(false);
   const [newWorkflowName, setNewWorkflowName] = useState('');
   const [newWorkflowDesc, setNewWorkflowDesc] = useState('');
@@ -301,6 +303,7 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
             escavador_raw: fullResult,
             workflow_id: workflowId || null,
             workflow_name: selectedBoard?.name || null,
+            responsible_user_id: responsibleExtId,
             created_by: extUserId,
             // New Escavador fields
             estado_origem: estadoOrigem?.nome || null,
@@ -431,6 +434,7 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
             : (autoCalculatedFee ? parseFloat(autoCalculatedFee) : null),
           workflow_id: workflowId || null,
           workflow_name: selectedBoard?.name || null,
+          responsible_user_id: responsibleExtId,
           started_at: manualForm.started_at || null,
           notes: manualForm.notes || null,
           status: 'em_andamento',
@@ -478,6 +482,7 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
     setOabEstado('SP');
     setProcessType('judicial');
     setWorkflowId('');
+    setResponsibleExtId(null);
     setManualForm({ title: '', process_number: '', description: '', fee_percentage: '', valor_causa: '', estimated_fee_value: '', started_at: new Date().toISOString().slice(0, 10), notes: '' });
   };
 
@@ -538,9 +543,18 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
                 >
                   <Plus className="h-4 w-4" />
                 </Button>
-              </div>
             </div>
           </div>
+          <div>
+            <Label className="text-xs font-semibold">Responsável pelo processo</Label>
+            <ResponsibleUserSelect
+              value={responsibleExtId}
+              onChange={setResponsibleExtId}
+              className="h-9 text-xs"
+              placeholder="Sem responsável (usa acolhedor/dono do lead)"
+            />
+          </div>
+        </div>
         </div>
 
         <Tabs value={tab} onValueChange={v => setTab(v as any)}>

@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { LeadFunnelProgressBar } from '@/components/activities/LeadFunnelProgressBar';
+import { ResponsibleUserSelect } from './ResponsibleUserSelect';
 
 interface ProcessDetailSheetProps {
   open: boolean;
@@ -474,7 +475,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
         'data_ultima_movimentacao', 'data_arquivamento', 'data_ultima_verificacao',
         'quantidade_movimentacoes', 'segredo_justica', 'arquivado', 'fisico',
         'status_predito', 'situacao', 'moeda', 'description', 'notes',
-        'workflow_id', 'workflow_name', 'workflow_stage_id',
+        'workflow_id', 'workflow_name', 'workflow_stage_id', 'responsible_user_id',
       ];
 
       for (const key of editableKeys) {
@@ -627,6 +628,18 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
               A barra de progresso aparece quando o processo está vinculado a um lead.
             </p>
           )}
+
+          <div className="pt-2 space-y-1">
+            <Label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+              Responsável pelo processo
+            </Label>
+            <ResponsibleUserSelect
+              value={form.responsible_user_id || null}
+              onChange={(v) => set('responsible_user_id', v)}
+              className="h-8 text-xs bg-background"
+              placeholder="Sem responsável (usa acolhedor/dono do lead)"
+            />
+          </div>
         </div>
       </div>
 
