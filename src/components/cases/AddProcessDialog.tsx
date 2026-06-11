@@ -23,6 +23,7 @@ import { toast } from 'sonner';
 import { KanbanBoard } from '@/hooks/useKanbanBoards';
 import { autoCreatePartiesFromEnvolvidos } from '@/utils/escavadorPartyUtils';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
+import { ResponsibleUserSelect } from './ResponsibleUserSelect';
 
 interface AddProcessDialogProps {
   open: boolean;
