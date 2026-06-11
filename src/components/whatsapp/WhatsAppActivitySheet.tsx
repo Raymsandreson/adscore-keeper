@@ -275,8 +275,15 @@ export function WhatsAppActivitySheet({
     setFormLeadName(lead?.lead_name || '');
   };
 
+  // Debounced DB search for leads (covers older leads outside the initial 200)
+  useEffect(() => {
+    if (!open) return;
+    const handle = setTimeout(() => { fetchLeads(leadSearch); }, 250);
+    return () => clearTimeout(handle);
+  }, [leadSearch, open]);
+
   const filteredLeads = leadSearch
-    ? leads.filter(l => l.lead_name?.toLowerCase().includes(leadSearch.toLowerCase()))
+    ? leads.filter(l => l.lead_name?.toLowerCase().includes(leadSearch.toLowerCase()) || (l as any).lead_phone?.includes(leadSearch.replace(/\D/g, '')))
     : leads.slice(0, 20);
 
   const filteredContacts = contactSearch
