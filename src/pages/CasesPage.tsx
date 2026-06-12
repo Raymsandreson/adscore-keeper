@@ -743,7 +743,40 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
                     </div>
                   ))}
                 </div>
+
+                {/* Processos citados em atividades mas nunca cadastrados */}
+                {mentionedProcesses.length > 0 && (
+                  <div className="mt-3">
+                    <h4 className="text-xs font-semibold flex items-center gap-1.5 mb-2 text-amber-600 dark:text-amber-400">
+                      <FileText className="h-3.5 w-3.5" /> Citados em atividades, sem cadastro ({mentionedProcesses.length})
+                    </h4>
+                    <div className="space-y-1.5">
+                      {mentionedProcesses.map(title => (
+                        <div key={title} className="border border-dashed rounded-lg p-2 flex items-center gap-2 bg-muted/20">
+                          <CopyableText copyValue={title} label="Processo citado" showIcon={false} className="text-xs flex-1 min-w-0 truncate">{title}</CopyableText>
+                          {legalCase.lead_id && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-6 text-[10px] gap-1 shrink-0"
+                              disabled={registeringTitle === title}
+                              onClick={(e) => { e.stopPropagation(); registerMentionedProcess(title); }}
+                            >
+                              {registeringTitle === title
+                                ? <Loader2 className="h-3 w-3 animate-spin" />
+                                : <Plus className="h-3 w-3" />} Cadastrar
+                            </Button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      Esses processos foram digitados em atividades, mas não existem no cadastro do caso. Clique em "Cadastrar" para criá-los e vinculá-los às atividades.
+                    </p>
+                  </div>
+                )}
               </div>
+
 
               {/* Workflow Board */}
               <CaseWorkflowBoard
