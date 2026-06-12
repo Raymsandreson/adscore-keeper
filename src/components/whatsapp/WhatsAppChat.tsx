@@ -2150,9 +2150,11 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   };
 
   const fetchLeads = async (search?: string) => {
-    let query = supabase
+    // Leads vivem no Externo (regra do projeto). Cloud não tem essa tabela populada.
+    let query = externalSupabase
       .from('leads')
       .select('id, lead_name, lead_phone')
+      .is('deleted_at', null)
       .order('created_at', { ascending: false });
     
     if (search && search.trim().length >= 2) {
