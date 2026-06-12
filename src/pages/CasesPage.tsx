@@ -377,10 +377,21 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
       externalSupabase.from('lead_processes').select('*').eq('case_id', legalCase.id).order('created_at'),
       legalCase.lead_id
         ? externalSupabase.from('leads').select('id, lead_name, lead_phone, status, board_id, became_client_date').eq('id', legalCase.lead_id).maybeSingle()
-        : Promise.resolve({ data: null }),
-    ]).then(([procRes, leadRes]) => {
-      setProcesses(procRes.data || []);
-      setLeadInfo(leadRes.data || null);
+        : Promise.resolve({ data: null, error: null }),
+    ]).then(([procRes, leadRes]: any) => {
+      if (procRes?.error) {
+        console.error('[CasesPage] lead_processes load failed', { caseId: legalCase.id, error: procRes.error });
+        toast.error(`Erro ao carregar processos: ${procRes.error.message}`);
+      } else {
+        console.debug('[CasesPage] processes loaded', { caseId: legalCase.id, count: (procRes?.data || []).length });
+      }
+      if (leadRes?.error) {
+        console.error('[CasesPage] lead info load failed', { leadId: legalCase.lead_id, error: leadRes.error });
+      }
+      setProcesses(procRes?.data || []);
+      setLeadInfo(leadRes?.data || null);
+    }).catch(err => {
+      console.error('[CasesPage] loadDetails unexpected error', err);
     }).finally(() => setLoadingDetails(false));
   }, [expanded, legalCase.id, legalCase.lead_id]);
 
