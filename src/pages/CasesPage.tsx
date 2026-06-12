@@ -538,6 +538,19 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
               created_by: user?.id,
             } as any).select('id').single();
 
+            // Adota atividades-fantasma cujo process_title bate com este título (case-insensitive)
+            if (savedProcess?.id) {
+              try {
+                await externalSupabase.from('lead_activities')
+                  .update({ process_id: savedProcess.id } as any)
+                  .eq('case_id', legalCase.id)
+                  .is('process_id', null)
+                  .ilike('process_title', title);
+              } catch (linkErr) {
+                console.warn(`[CasesPage] failed to link orphan activities for "${title}":`, linkErr);
+              }
+            }
+
             // Auto-create activity. INSS sempre vai pro criador do caso.
             const isInss = title === 'Benefício INSS';
             const assignment = isInss ? null : CASO_PROCESS_ASSIGNMENTS[title];
