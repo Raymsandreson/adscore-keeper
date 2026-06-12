@@ -336,6 +336,7 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
   const [processes, setProcesses] = useState<any[]>([]);
   const [mentionedProcesses, setMentionedProcesses] = useState<string[]>([]);
   const [registeringTitle, setRegisteringTitle] = useState<string | null>(null);
+  const [registeringAll, setRegisteringAll] = useState(false);
   const [leadInfo, setLeadInfo] = useState<any>(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [showAddProcess, setShowAddProcess] = useState(false);
