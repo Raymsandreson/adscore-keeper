@@ -900,6 +900,7 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
         process={selectedProcess}
         onUpdated={onCaseUpdated}
         mode="dialog"
+        defaultTab="atividades"
       />
     </>
   );
