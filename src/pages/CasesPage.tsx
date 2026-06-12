@@ -766,9 +766,24 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
                 {/* Processos citados em atividades mas nunca cadastrados */}
                 {mentionedProcesses.length > 0 && (
                   <div className="mt-3">
-                    <h4 className="text-xs font-semibold flex items-center gap-1.5 mb-2 text-amber-600 dark:text-amber-400">
-                      <FileText className="h-3.5 w-3.5" /> Citados em atividades, sem cadastro ({mentionedProcesses.length})
-                    </h4>
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="text-xs font-semibold flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
+                        <FileText className="h-3.5 w-3.5" /> Citados em atividades, sem cadastro ({mentionedProcesses.length})
+                      </h4>
+                      {legalCase.lead_id && mentionedProcesses.length > 1 && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-6 text-[10px] gap-1"
+                          disabled={registeringAll}
+                          onClick={(e) => { e.stopPropagation(); registerAllMentioned(); }}
+                        >
+                          {registeringAll
+                            ? <Loader2 className="h-3 w-3 animate-spin" />
+                            : <Plus className="h-3 w-3" />} Cadastrar todos
+                        </Button>
+                      )}
+                    </div>
                     <div className="space-y-1.5">
                       {mentionedProcesses.map(title => (
                         <div key={title} className="border border-dashed rounded-lg p-2 flex items-center gap-2 bg-muted/20">
