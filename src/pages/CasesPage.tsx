@@ -380,7 +380,14 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
       legalCase.lead_id
         ? externalSupabase.from('leads').select('id, lead_name, lead_phone, status, board_id, became_client_date').eq('id', legalCase.lead_id).maybeSingle()
         : Promise.resolve({ data: null, error: null }),
-    ]).then(([procRes, leadRes]: any) => {
+      externalSupabase.from('lead_activities')
+        .select('process_title')
+        .eq('case_id', legalCase.id)
+        .is('process_id', null)
+        .is('deleted_at', null)
+        .not('process_title', 'is', null)
+        .limit(500),
+    ]).then(([procRes, leadRes, actRes]: any) => {
       if (procRes?.error) {
         console.error('[CasesPage] lead_processes load failed', { caseId: legalCase.id, error: procRes.error });
         toast.error(`Erro ao carregar processos: ${procRes.error.message}`);
@@ -390,12 +397,66 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
       if (leadRes?.error) {
         console.error('[CasesPage] lead info load failed', { leadId: legalCase.lead_id, error: leadRes.error });
       }
-      setProcesses(procRes?.data || []);
+      const procs = procRes?.data || [];
+      setProcesses(procs);
       setLeadInfo(leadRes?.data || null);
+      // Processos citados em atividades mas nunca cadastrados em lead_processes
+      const titles = Array.from(new Set(
+        ((actRes?.data || []) as { process_title: string | null }[])
+          .map(a => (a.process_title || '').trim())
+          .filter(Boolean)
+      )).filter(t =>
+        !procs.some((p: any) =>
+          (p.title || '').trim().toLowerCase() === t.toLowerCase() ||
+          (p.process_number && t.includes(p.process_number))
+        )
+      );
+      setMentionedProcesses(titles);
     }).catch(err => {
       console.error('[CasesPage] loadDetails unexpected error', err);
     }).finally(() => setLoadingDetails(false));
   }, [expanded, legalCase.id, legalCase.lead_id]);
+
+  // Cadastra de verdade um processo que só existia como texto em atividades
+  const registerMentionedProcess = async (title: string) => {
+    if (!legalCase.lead_id) { toast.error('Caso sem lead vinculado'); return; }
+    setRegisteringTitle(title);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const numMatch = title.match(/\d{7}-\d{2}\.\d{4}\.\d{1,2}\.\d{2}\.\d{4}/);
+      const processNumber = numMatch ? numMatch[0] : null;
+      const cleanTitle = processNumber
+        ? (title.replace(processNumber, '').replace(/^[\s\-–—:]+|[\s\-–—:]+$/g, '') || title)
+        : title;
+      const { data: saved, error } = await externalSupabase.from('lead_processes').insert({
+        lead_id: legalCase.lead_id,
+        case_id: legalCase.id,
+        title: cleanTitle,
+        process_number: processNumber,
+        process_type: processNumber ? 'judicial' : 'administrativo',
+        status: 'em_andamento',
+        started_at: new Date().toISOString().slice(0, 10),
+        created_by: user?.id,
+      } as any).select('id').single();
+      if (error) throw error;
+      // Vincula as atividades que citavam esse processo ao registro criado
+      if (saved?.id) {
+        await externalSupabase.from('lead_activities')
+          .update({ process_id: saved.id } as any)
+          .eq('case_id', legalCase.id)
+          .eq('process_title', title)
+          .is('process_id', null);
+      }
+      toast.success(`Processo "${cleanTitle}" cadastrado no caso`);
+      loadDetails();
+    } catch (err: any) {
+      console.error('[CasesPage] registerMentionedProcess failed', err);
+      toast.error(`Erro ao cadastrar processo: ${err?.message || err}`);
+    } finally {
+      setRegisteringTitle(null);
+    }
+  };
+
 
   useEffect(() => {
     loadDetails();
