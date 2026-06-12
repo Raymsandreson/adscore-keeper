@@ -109,8 +109,8 @@ async function transcodeAudioToOpus(
     await fs.unlink(outPath).catch(() => {});
   }
 }
-const GRAPH = 'https://graph.facebook.com';
-const INSTANCE_NAME = 'cloud_gerencia';
+
+
 
 interface SendBody {
   action?: string;
