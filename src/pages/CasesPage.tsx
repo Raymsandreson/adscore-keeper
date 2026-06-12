@@ -334,6 +334,8 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
 }) {
   const navigate = useNavigate();
   const [processes, setProcesses] = useState<any[]>([]);
+  const [mentionedProcesses, setMentionedProcesses] = useState<string[]>([]);
+  const [registeringTitle, setRegisteringTitle] = useState<string | null>(null);
   const [leadInfo, setLeadInfo] = useState<any>(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [showAddProcess, setShowAddProcess] = useState(false);
@@ -378,7 +380,14 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
       legalCase.lead_id
         ? externalSupabase.from('leads').select('id, lead_name, lead_phone, status, board_id, became_client_date').eq('id', legalCase.lead_id).maybeSingle()
         : Promise.resolve({ data: null, error: null }),
-    ]).then(([procRes, leadRes]: any) => {
+      externalSupabase.from('lead_activities')
+        .select('process_title')
+        .eq('case_id', legalCase.id)
+        .is('process_id', null)
+        .is('deleted_at', null)
+        .not('process_title', 'is', null)
+        .limit(500),
+    ]).then(([procRes, leadRes, actRes]: any) => {
       if (procRes?.error) {
         console.error('[CasesPage] lead_processes load failed', { caseId: legalCase.id, error: procRes.error });
         toast.error(`Erro ao carregar processos: ${procRes.error.message}`);
@@ -388,12 +397,66 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
       if (leadRes?.error) {
         console.error('[CasesPage] lead info load failed', { leadId: legalCase.lead_id, error: leadRes.error });
       }
-      setProcesses(procRes?.data || []);
+      const procs = procRes?.data || [];
+      setProcesses(procs);
       setLeadInfo(leadRes?.data || null);
+      // Processos citados em atividades mas nunca cadastrados em lead_processes
+      const titles = Array.from(new Set(
+        ((actRes?.data || []) as { process_title: string | null }[])
+          .map(a => (a.process_title || '').trim())
+          .filter(Boolean)
+      )).filter(t =>
+        !procs.some((p: any) =>
+          (p.title || '').trim().toLowerCase() === t.toLowerCase() ||
+          (p.process_number && t.includes(p.process_number))
+        )
+      );
+      setMentionedProcesses(titles);
     }).catch(err => {
       console.error('[CasesPage] loadDetails unexpected error', err);
     }).finally(() => setLoadingDetails(false));
   }, [expanded, legalCase.id, legalCase.lead_id]);
+
+  // Cadastra de verdade um processo que só existia como texto em atividades
+  const registerMentionedProcess = async (title: string) => {
+    if (!legalCase.lead_id) { toast.error('Caso sem lead vinculado'); return; }
+    setRegisteringTitle(title);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const numMatch = title.match(/\d{7}-\d{2}\.\d{4}\.\d{1,2}\.\d{2}\.\d{4}/);
+      const processNumber = numMatch ? numMatch[0] : null;
+      const cleanTitle = processNumber
+        ? (title.replace(processNumber, '').replace(/^[\s\-–—:]+|[\s\-–—:]+$/g, '') || title)
+        : title;
+      const { data: saved, error } = await externalSupabase.from('lead_processes').insert({
+        lead_id: legalCase.lead_id,
+        case_id: legalCase.id,
+        title: cleanTitle,
+        process_number: processNumber,
+        process_type: processNumber ? 'judicial' : 'administrativo',
+        status: 'em_andamento',
+        started_at: new Date().toISOString().slice(0, 10),
+        created_by: user?.id,
+      } as any).select('id').single();
+      if (error) throw error;
+      // Vincula as atividades que citavam esse processo ao registro criado
+      if (saved?.id) {
+        await externalSupabase.from('lead_activities')
+          .update({ process_id: saved.id } as any)
+          .eq('case_id', legalCase.id)
+          .eq('process_title', title)
+          .is('process_id', null);
+      }
+      toast.success(`Processo "${cleanTitle}" cadastrado no caso`);
+      loadDetails();
+    } catch (err: any) {
+      console.error('[CasesPage] registerMentionedProcess failed', err);
+      toast.error(`Erro ao cadastrar processo: ${err?.message || err}`);
+    } finally {
+      setRegisteringTitle(null);
+    }
+  };
+
 
   useEffect(() => {
     loadDetails();
@@ -680,7 +743,40 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
                     </div>
                   ))}
                 </div>
+
+                {/* Processos citados em atividades mas nunca cadastrados */}
+                {mentionedProcesses.length > 0 && (
+                  <div className="mt-3">
+                    <h4 className="text-xs font-semibold flex items-center gap-1.5 mb-2 text-amber-600 dark:text-amber-400">
+                      <FileText className="h-3.5 w-3.5" /> Citados em atividades, sem cadastro ({mentionedProcesses.length})
+                    </h4>
+                    <div className="space-y-1.5">
+                      {mentionedProcesses.map(title => (
+                        <div key={title} className="border border-dashed rounded-lg p-2 flex items-center gap-2 bg-muted/20">
+                          <CopyableText copyValue={title} label="Processo citado" showIcon={false} className="text-xs flex-1 min-w-0 truncate">{title}</CopyableText>
+                          {legalCase.lead_id && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-6 text-[10px] gap-1 shrink-0"
+                              disabled={registeringTitle === title}
+                              onClick={(e) => { e.stopPropagation(); registerMentionedProcess(title); }}
+                            >
+                              {registeringTitle === title
+                                ? <Loader2 className="h-3 w-3 animate-spin" />
+                                : <Plus className="h-3 w-3" />} Cadastrar
+                            </Button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      Esses processos foram digitados em atividades, mas não existem no cadastro do caso. Clique em "Cadastrar" para criá-los e vinculá-los às atividades.
+                    </p>
+                  </div>
+                )}
               </div>
+
 
               {/* Workflow Board */}
               <CaseWorkflowBoard
