@@ -458,6 +458,24 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
     }
   };
 
+  // Cadastra em lote todos os processos citados (apenas os com conteúdo plausível)
+  const registerAllMentioned = async () => {
+    if (!legalCase.lead_id) { toast.error('Caso sem lead vinculado'); return; }
+    const valid = mentionedProcesses.filter(t => t.trim().length >= 4);
+    if (valid.length === 0) { toast.info('Nenhum processo válido para cadastrar'); return; }
+    setRegisteringAll(true);
+    let ok = 0, fail = 0;
+    for (const title of valid) {
+      try {
+        await registerMentionedProcess(title);
+        ok++;
+      } catch { fail++; }
+    }
+    setRegisteringAll(false);
+    toast.success(`${ok} cadastrado(s)${fail ? `, ${fail} falharam` : ''}`);
+  };
+
+
 
   useEffect(() => {
     loadDetails();
