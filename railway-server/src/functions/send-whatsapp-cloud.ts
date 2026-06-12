@@ -231,7 +231,26 @@ export const handler: RequestHandler = async (req, res) => {
   if (isMedia) {
     mediaKind = mediaKindFromMime(body.media_type);
     dbMessageType = mediaKind;
-    const link = String(body.media_url);
+    let link = String(body.media_url);
+
+    // Áudio em mime que a Meta não entrega (ex: audio/webm do Chrome) → transcodifica
+    // pra ogg/opus mono. Reescreve body.media_url/media_type pro INSERT lá embaixo
+    // refletir o asset que de fato foi entregue.
+    if (mediaKind === 'audio') {
+      const normalized = normalizeAudioMime(body.media_type);
+      if (!META_AUDIO_MIMES.has(normalized)) {
+        console.log(`[send-cloud ${rid}] áudio em mime incompatível (${normalized || 'desconhecido'}) → transcodificando`);
+        const transcoded = await transcodeAudioToOpus(link, rid);
+        if (transcoded) {
+          link = transcoded.url;
+          body.media_url = transcoded.url;
+          body.media_type = transcoded.mime;
+        } else {
+          console.warn(`[send-cloud ${rid}] transcode falhou — enviando original (provável falha de entrega)`);
+        }
+      }
+    }
+
     const mediaPayload: Record<string, unknown> = { link };
     // Audio NÃO aceita caption nem filename na Cloud API.
     if (mediaKind !== 'audio' && caption) mediaPayload.caption = caption;
