@@ -14,12 +14,103 @@
  */
 
 import { RequestHandler } from 'express';
+import { spawn } from 'child_process';
+import { promises as fs } from 'fs';
+import { tmpdir } from 'os';
+import path from 'path';
+import ffmpegPath from 'ffmpeg-static';
 import { supabase } from '../lib/supabase';
 
 const TOKEN = process.env.WHATSAPP_CLOUD_TOKEN || '';
 const API_VERSION = process.env.WHATSAPP_CLOUD_API_VERSION || 'v21.0';
 const GRAPH = 'https://graph.facebook.com';
 const INSTANCE_NAME = 'cloud_gerencia';
+
+// Mimes que a WhatsApp Cloud API aceita pra áudio. Qualquer coisa fora dessa
+// lista (ex: audio/webm gravado pelo Chrome) é aceito pelo Graph mas NÃO entrega
+// — message_id volta válido e a mensagem some no meio do caminho.
+const META_AUDIO_MIMES = new Set([
+  'audio/aac',
+  'audio/mp4',
+  'audio/mpeg',
+  'audio/amr',
+  'audio/ogg',
+]);
+
+function normalizeAudioMime(mime: string | undefined): string {
+  return (mime || '').toLowerCase().split(';')[0].trim();
+}
+
+/**
+ * Baixa o áudio, transcodifica pra audio/ogg;codecs=opus (mono 48k 32kbps) usando
+ * o ffmpeg estático embarcado, sobe pro bucket whatsapp-media e retorna a nova URL
+ * pública + mime correto. Se qualquer passo falhar, devolve null e o caller envia
+ * o original (entrega vai falhar, mas pelo menos não trava o fluxo).
+ */
+async function transcodeAudioToOpus(
+  srcUrl: string,
+  rid: string,
+): Promise<{ url: string; mime: string } | null> {
+  if (!ffmpegPath) {
+    console.error(`[send-cloud ${rid}] ffmpeg-static não disponível`);
+    return null;
+  }
+  const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const inPath = path.join(tmpdir(), `audio-in-${stamp}.bin`);
+  const outPath = path.join(tmpdir(), `audio-out-${stamp}.ogg`);
+  try {
+    const resp = await fetch(srcUrl);
+    if (!resp.ok) {
+      console.error(`[send-cloud ${rid}] download áudio falhou: ${resp.status}`);
+      return null;
+    }
+    const buf = Buffer.from(await resp.arrayBuffer());
+    await fs.writeFile(inPath, buf);
+
+    await new Promise<void>((resolve, reject) => {
+      const proc = spawn(ffmpegPath as string, [
+        '-y',
+        '-i', inPath,
+        '-vn',
+        '-c:a', 'libopus',
+        '-b:a', '32k',
+        '-ac', '1',
+        '-ar', '48000',
+        '-f', 'ogg',
+        outPath,
+      ]);
+      let stderr = '';
+      proc.stderr.on('data', (d) => { stderr += d.toString(); });
+      proc.on('error', reject);
+      proc.on('close', (code) => {
+        if (code === 0) resolve();
+        else reject(new Error(`ffmpeg exit ${code}: ${stderr.slice(-500)}`));
+      });
+    });
+
+    const outBytes = await fs.readFile(outPath);
+    const storagePath = `outbound/audio-opus-${stamp}.ogg`;
+    const { error: upErr } = await supabase.storage
+      .from('whatsapp-media')
+      .upload(storagePath, outBytes, { contentType: 'audio/ogg', upsert: false });
+    if (upErr) {
+      console.error(`[send-cloud ${rid}] upload transcoded falhou:`, upErr);
+      return null;
+    }
+    const { data: pub } = supabase.storage.from('whatsapp-media').getPublicUrl(storagePath);
+    if (!pub?.publicUrl) return null;
+    console.log(`[send-cloud ${rid}] áudio transcodificado ${buf.length}B → ${outBytes.length}B`);
+    return { url: pub.publicUrl, mime: 'audio/ogg' };
+  } catch (err) {
+    console.error(`[send-cloud ${rid}] transcode exceção:`, err);
+    return null;
+  } finally {
+    await fs.unlink(inPath).catch(() => {});
+    await fs.unlink(outPath).catch(() => {});
+  }
+}
+
+
 
 interface SendBody {
   action?: string;
@@ -140,7 +231,26 @@ export const handler: RequestHandler = async (req, res) => {
   if (isMedia) {
     mediaKind = mediaKindFromMime(body.media_type);
     dbMessageType = mediaKind;
-    const link = String(body.media_url);
+    let link = String(body.media_url);
+
+    // Áudio em mime que a Meta não entrega (ex: audio/webm do Chrome) → transcodifica
+    // pra ogg/opus mono. Reescreve body.media_url/media_type pro INSERT lá embaixo
+    // refletir o asset que de fato foi entregue.
+    if (mediaKind === 'audio') {
+      const normalized = normalizeAudioMime(body.media_type);
+      if (!META_AUDIO_MIMES.has(normalized)) {
+        console.log(`[send-cloud ${rid}] áudio em mime incompatível (${normalized || 'desconhecido'}) → transcodificando`);
+        const transcoded = await transcodeAudioToOpus(link, rid);
+        if (transcoded) {
+          link = transcoded.url;
+          body.media_url = transcoded.url;
+          body.media_type = transcoded.mime;
+        } else {
+          console.warn(`[send-cloud ${rid}] transcode falhou — enviando original (provável falha de entrega)`);
+        }
+      }
+    }
+
     const mediaPayload: Record<string, unknown> = { link };
     // Audio NÃO aceita caption nem filename na Cloud API.
     if (mediaKind !== 'audio' && caption) mediaPayload.caption = caption;
