@@ -135,6 +135,28 @@ export async function runPostSignExtras(input: PostSignInput): Promise<void> {
       hasUrl: !!cloudUrl, hasKey: !!cloudKey, phone, instance: doc.instance_name,
     });
   }
+
+  // Fire-and-forget: extrai dados da PROCURAÇÃO (PDF) via Vision.
+  // Diferente do auto-enrich acima (que lê CHAT), este abre o PDF assinado e
+  // extrai CPF, RG, CEP, endereço completo, data de nascimento direto do
+  // documento. Sem isso, contato fica sem dados pessoais (cf. caso Rosa Gomes
+  // 2026-06-13: PDF assinado mas extract_pdf nunca rodou porque essa chamada
+  // não tinha sido portada do webhook antigo do Cloud pro Railway).
+  if (cloudUrl && cloudKey) {
+    fetch(`${cloudUrl}/functions/v1/lead-reprocess-procuracao`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${cloudKey}`,
+      },
+      body: JSON.stringify({
+        lead_id: doc.lead_id,
+        force_instance_name: doc.instance_name || undefined,
+      }),
+    })
+      .then((r) => console.log('[post-sign-extras] pdf-enrich dispatched, status=', r.status))
+      .catch((e) => console.error('[post-sign-extras] pdf-enrich fire-and-forget error:', e));
+  }
 }
 
 // ────────────────────────────────────────────────────────────────────────────
