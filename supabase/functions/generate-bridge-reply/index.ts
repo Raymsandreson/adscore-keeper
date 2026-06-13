@@ -86,31 +86,25 @@ Retorne SOMENTE um JSON válido:
   ]
 }`;
 
-    const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-      },
-      body: JSON.stringify({
+    let aiData: any;
+    try {
+      aiData = await geminiChat({
         model: "google/gemini-2.5-flash",
         messages: [
-          { role: "system", content: systemPrompt },
+          { role: "system", content: systemPrompt + "\n\nIMPORTANTE: Responda APENAS com JSON válido, sem markdown ou texto extra." },
           { role: "user", content: "Gere as mensagens personalizadas para cada contato listado." },
         ],
         temperature: 0.7,
-        response_format: { type: "json_object" },
-      }),
-    });
-
-    if (!aiResponse.ok) {
-      const errText = await aiResponse.text();
-      console.error("AI API error:", errText);
+      });
+    } catch (e: any) {
+      console.error("Gemini error:", e);
       throw new Error("Falha na geração de mensagens pela IA");
     }
 
-    const aiData = await aiResponse.json();
-    const content = aiData.choices?.[0]?.message?.content || "{}";
+    let content = aiData.choices?.[0]?.message?.content || "{}";
+    // remove markdown fences se vier
+    content = content.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
+
 
     let result;
     try {
