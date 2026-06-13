@@ -16,6 +16,7 @@
 //  ?dry_run=false&start=0&limit=20 -> lote completo
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { geminiChat } from "../_shared/gemini.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
