@@ -4,29 +4,29 @@ import { resolveSupabaseUrl, resolveServiceRoleKey } from "../_shared/supabase-u
 
 const RESOLVED_SUPABASE_URL = resolveSupabaseUrl();
 const RESOLVED_SERVICE_ROLE_KEY = resolveServiceRoleKey();
-const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
+const GOOGLE_AI_API_KEY = Deno.env.get("GOOGLE_AI_API_KEY")!;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-request-id, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-// Cascata: tenta o mais forte primeiro, cai pra mais leve/barata se falhar
+// Chama Google AI Studio direto (endpoint OpenAI-compatible), sem Lovable Gateway no meio.
+// Cascata de modelos: tenta o melhor, cai pro mais leve em falha.
 const MODEL_CASCADE = [
-  "google/gemini-2.5-flash",
-  "google/gemini-2.5-flash-lite",
-  "google/gemini-3-flash-preview",
+  "gemini-2.5-flash",
+  "gemini-2.5-flash-lite",
+  "gemini-2.0-flash",
 ];
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function callOnce(body: any) {
-  const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+  const res = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
     method: "POST",
     headers: {
-      "Authorization": `Bearer ${LOVABLE_API_KEY}`,
+      "Authorization": `Bearer ${GOOGLE_AI_API_KEY}`,
       "Content-Type": "application/json",
-      "X-Lovable-AIG-SDK": "parse-activity-dictation-edge",
     },
     body: JSON.stringify(body),
   });
