@@ -650,39 +650,49 @@ export function LeadEditDialog({
       }];
     }
 
-    // Fallback: tenta resolver o nome do grupo via whatsapp_messages.contact_name
-    const needsName = mappedGroups
-      .filter((g) => !g.group_name && g.group_jid?.includes('@g.us'))
-      .map((g) => g.group_jid);
-    if (needsName.length > 0) {
+    // Fonte primária para nome do grupo: whatsapp_groups_index (sync diária da UazAPI).
+    // Sempre consulta — assim refletimos renomeações sem chamar a API a cada abertura.
+    const allJids = mappedGroups.filter((g) => g.group_jid?.includes('@g.us')).map((g) => g.group_jid);
+    if (allJids.length > 0) {
       try {
-        const { data: msgs } = await externalSupabase
-          .from('whatsapp_messages')
-          .select('phone, contact_name, created_at')
-          .in('phone', needsName)
-          .not('contact_name', 'is', null)
-          .order('created_at', { ascending: false })
-          .limit(needsName.length * 5);
+        const { data: idx } = await (externalSupabase as any)
+          .from('whatsapp_groups_index')
+          .select('group_jid, contact_name, last_seen')
+          .in('group_jid', allJids)
+          .order('last_seen', { ascending: false });
         const nameByJid = new Map<string, string>();
-        (msgs || []).forEach((m: any) => {
-          if (m.phone && m.contact_name && !nameByJid.has(m.phone)) {
-            nameByJid.set(m.phone, String(m.contact_name).trim());
-          }
+        (idx || []).forEach((r: any) => {
+          const nm = r.contact_name ? String(r.contact_name).trim() : '';
+          if (nm && !nameByJid.has(r.group_jid)) nameByJid.set(r.group_jid, nm);
         });
-        if (nameByJid.size > 0) {
-          mappedGroups = mappedGroups.map((g) =>
-            !g.group_name && nameByJid.has(g.group_jid)
-              ? { ...g, group_name: nameByJid.get(g.group_jid)! }
-              : g
-          );
+
+        // Atualiza em memória + persiste mudanças no banco (fire-and-forget)
+        const toPersist: Array<{ jid: string; name: string }> = [];
+        mappedGroups = mappedGroups.map((g) => {
+          const fresh = nameByJid.get(g.group_jid);
+          if (fresh && fresh !== g.group_name) {
+            toPersist.push({ jid: g.group_jid, name: fresh });
+            return { ...g, group_name: fresh };
+          }
+          return g;
+        });
+        if (toPersist.length > 0) {
+          Promise.all(
+            toPersist.map((p) =>
+              externalSupabase
+                .from('lead_whatsapp_groups')
+                .update({ group_name: p.name })
+                .eq('lead_id', leadId)
+                .eq('group_jid', p.jid)
+            )
+          ).catch((e) => console.warn('Falha ao persistir nome de grupo:', e));
         }
       } catch (err) {
-        console.warn('Falha ao resolver nome do grupo via whatsapp_messages:', err);
+        console.warn('Falha ao consultar whatsapp_groups_index:', err);
       }
     }
 
-    // Fallback final: para grupos ainda sem nome, busca na UazAPI /group/info
-    // (a edge function persiste em lead_whatsapp_groups.group_name → próxima vez é instantâneo)
+    // Último fallback: grupo ainda sem nome (não está no index) → UazAPI direto
     const stillMissing = mappedGroups.filter((g) => !g.group_name && g.group_jid?.includes('@g.us'));
     if (stillMissing.length > 0) {
       await Promise.all(
