@@ -109,12 +109,11 @@ function last8Phone(phone?: string | null): string | null {
   return d.slice(-8);
 }
 
-async function runOcr(pdfUrl: string, geminiKey: string): Promise<OcrResult | null> {
+async function runOcr(pdfUrl: string, _geminiKey: string): Promise<OcrResult | null> {
   // Baixa PDF e converte pra base64
   const r = await fetch(pdfUrl);
   if (!r.ok) throw new Error(`download PDF HTTP ${r.status}`);
   const buf = new Uint8Array(await r.arrayBuffer());
-  // base64 em chunks pra evitar stack overflow
   let bin = "";
   const CHUNK = 0x8000;
   for (let i = 0; i < buf.length; i += CHUNK) {
@@ -141,33 +140,20 @@ Retorne APENAS JSON válido (sem markdown, sem explicação) com este formato:
 
 Use null para campos que não encontrar. Não invente nada.`;
 
-  const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${geminiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "google/gemini-2.5-flash",
-      messages: [
-        {
-          role: "user",
-          content: [
-            { type: "text", text: prompt },
-            { type: "image_url", image_url: { url: `data:application/pdf;base64,${b64}` } },
-          ],
-        },
-      ],
-    }),
+  const aiData = await geminiChat({
+    model: "google/gemini-2.5-flash",
+    messages: [
+      {
+        role: "user",
+        content: [
+          { type: "text", text: prompt },
+          { type: "image_url", image_url: { url: `data:application/pdf;base64,${b64}` } },
+        ],
+      },
+    ],
   });
 
-  if (!aiResp.ok) {
-    const t = await aiResp.text();
-    throw new Error(`Gemini HTTP ${aiResp.status}: ${t.slice(0, 300)}`);
-  }
-  const aiData = await aiResp.json();
   const content: string = aiData.choices?.[0]?.message?.content || "";
-  // Tenta extrair JSON limpo
   const jsonMatch = content.match(/\{[\s\S]*\}/);
   if (!jsonMatch) return null;
   try {
