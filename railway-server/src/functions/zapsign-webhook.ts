@@ -238,7 +238,82 @@ export const handler = async (req: Request, res: Response) => {
         const needsContact = !existingDoc?.contact_id;
         const needsLead = !existingDoc?.lead_id;
         if (needsContact || needsLead) {
-          const { contact_id, lead_id } = await resolveContactAndLead(candidatePhone);
+          let { contact_id, lead_id } = await resolveContactAndLead(candidatePhone);
+
+          // ÓRFÃO: phone do signer não bate com nenhum contato/lead existente.
+          // Cria contato + lead "fechado sem funil" pra não perder o cliente.
+          const signerName = (update.signer_name || signer?.name || '').toString().trim();
+          if (!contact_id && signerName) {
+            try {
+              const { data: newContact, error: cErr } = await supabase
+                .from('contacts')
+                .insert({
+                  full_name: signerName,
+                  phone: candidatePhone,
+                  classification: 'client',
+                  source: 'zapsign_manual',
+                })
+                .select('id')
+                .maybeSingle();
+              if (cErr) {
+                // fallback sem `source` se a coluna não existir
+                if (/column.*source/i.test(cErr.message || '')) {
+                  const retry = await supabase
+                    .from('contacts')
+                    .insert({ full_name: signerName, phone: candidatePhone, classification: 'client' })
+                    .select('id')
+                    .maybeSingle();
+                  if (!retry.error) contact_id = retry.data?.id || null;
+                  else console.error('[zapsign-webhook] orphan contact insert retry error:', retry.error.message);
+                } else {
+                  console.error('[zapsign-webhook] orphan contact insert error:', cErr.message);
+                }
+              } else {
+                contact_id = newContact?.id || null;
+                console.log('[zapsign-webhook] orphan contact created', { phone: candidatePhone, name: signerName });
+              }
+            } catch (e: any) {
+              console.error('[zapsign-webhook] orphan contact create exception:', e?.message || e);
+            }
+          }
+
+          if (!lead_id && signerName) {
+            try {
+              const leadInsert: any = {
+                lead_name: signerName,
+                lead_phone: candidatePhone,
+                board_id: null,
+                status: null,
+                lead_status: 'closed',
+                closed_at: new Date().toISOString(),
+                source: 'zapsign_manual',
+                details: { zapsign_doc_token: docToken, orphan: true },
+              };
+              const { data: newLead, error: lErr } = await supabase
+                .from('leads')
+                .insert(leadInsert)
+                .select('id')
+                .maybeSingle();
+              if (lErr) {
+                console.error('[zapsign-webhook] orphan lead insert error:', lErr.message);
+              } else {
+                lead_id = newLead?.id || null;
+                console.log('[zapsign-webhook] orphan lead created', { id: lead_id, name: signerName });
+                // Vincula contato ⇄ lead como titular
+                if (contact_id && lead_id) {
+                  const { error: linkErr } = await supabase
+                    .from('contact_leads')
+                    .insert({ contact_id, lead_id, relationship: 'titular' });
+                  if (linkErr && !/duplicate|unique/i.test(linkErr.message || '')) {
+                    console.error('[zapsign-webhook] contact_leads link error:', linkErr.message);
+                  }
+                }
+              }
+            } catch (e: any) {
+              console.error('[zapsign-webhook] orphan lead create exception:', e?.message || e);
+            }
+          }
+
           if (needsContact && contact_id) update.contact_id = contact_id;
           if (needsLead && lead_id) update.lead_id = lead_id;
         }
