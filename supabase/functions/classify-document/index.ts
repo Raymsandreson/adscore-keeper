@@ -8,7 +8,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY')!;
+import { geminiChat, GeminiError } from "../_shared/gemini.ts";
+
 const MODEL = 'google/gemini-2.5-flash';
 
 const SYSTEM_PROMPT = `Você analisa documentos pessoais/processuais brasileiros a partir de uma ou mais imagens (que podem ser páginas distintas do MESMO documento).
