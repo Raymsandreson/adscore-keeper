@@ -681,6 +681,28 @@ export function LeadEditDialog({
       }
     }
 
+    // Fallback final: para grupos ainda sem nome, busca na UazAPI /group/info
+    // (a edge function persiste em lead_whatsapp_groups.group_name → próxima vez é instantâneo)
+    const stillMissing = mappedGroups.filter((g) => !g.group_name && g.group_jid?.includes('@g.us'));
+    if (stillMissing.length > 0) {
+      await Promise.all(
+        stillMissing.map(async (g) => {
+          try {
+            const { data: infoData } = await cloudFunctions.invoke<any>('get-whatsapp-group-info', {
+              body: { group_jid: g.group_jid, lead_id: leadId },
+            });
+            if (infoData?.success && infoData.name) {
+              mappedGroups = mappedGroups.map((m) =>
+                m.group_jid === g.group_jid ? { ...m, group_name: infoData.name } : m
+              );
+            }
+          } catch (e) {
+            console.warn('Falha ao buscar nome do grupo na UazAPI:', e);
+          }
+        })
+      );
+    }
+
     leadGroupsCache.set(leadId, mappedGroups);
     setWhatsappGroups(mappedGroups);
   };
