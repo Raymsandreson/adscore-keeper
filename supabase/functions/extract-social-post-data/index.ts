@@ -75,31 +75,24 @@ IMPORTANTE:
 - Identifique menções a localidades, profissões e situações
 - Se houver hashtags relevantes, inclua nos tags`;
 
-    const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-      },
-      body: JSON.stringify({
+    let aiData: any;
+    try {
+      aiData = await geminiChat({
         model: "google/gemini-2.5-flash",
         messages: [
-          { role: "system", content: systemPrompt },
+          { role: "system", content: systemPrompt + "\n\nIMPORTANTE: Responda APENAS com JSON válido, sem markdown." },
           { role: "user", content: `Legenda do post (${postUrl || 'sem URL'}):\n\n${caption}` },
         ],
         temperature: 0.2,
-        response_format: { type: "json_object" },
-      }),
-    });
-
-    if (!aiResponse.ok) {
-      const errText = await aiResponse.text();
-      console.error("AI API error:", errText);
+      });
+    } catch (e: any) {
+      console.error("Gemini error:", e);
       throw new Error("Falha na análise por IA");
     }
 
-    const aiData = await aiResponse.json();
-    const content = aiData.choices?.[0]?.message?.content || "{}";
+    let content = aiData.choices?.[0]?.message?.content || "{}";
+    content = String(content).replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
+
     
     let extracted;
     try {
