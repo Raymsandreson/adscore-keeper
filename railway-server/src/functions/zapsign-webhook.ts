@@ -91,6 +91,59 @@ export const handler = async (req: Request, res: Response) => {
       .eq('doc_token', docToken)
       .maybeSingle();
     documentId = doc?.id || null;
+
+    // ATALHO PARA DOC MANUAL: se o documento foi criado direto no painel ZapSign
+    // (sem passar pela nossa API), não existe linha em zapsign_documents.
+    // Cria uma linha mínima na hora pra que o UPDATE + auto-link abaixo rodem normalmente.
+    if (!documentId) {
+      const initialStatus =
+        eventType === 'doc_signed' ? 'signed' :
+        eventType === 'doc_refused' ? 'refused' :
+        (raw.status || raw?.doc?.status || 'pending');
+      const minimalInsert: any = {
+        doc_token: docToken,
+        document_name: raw.name || raw?.doc?.name || 'Documento (manual ZapSign)',
+        status: initialStatus,
+        original_file_url: raw.original_file || raw?.doc?.original_file || null,
+        signed_file_url: raw.signed_file || raw?.doc?.signed_file || null,
+        signer_name: signer?.name || null,
+        signer_email: signer?.email || null,
+        signer_phone: signerPhone || null,
+        signer_token: signer?.token || null,
+        signer_status: signer?.status || null,
+        signed_at: signedAtIso,
+        sent_via_whatsapp: false,
+        source: 'zapsign_manual',
+      };
+      Object.keys(minimalInsert).forEach((k) => minimalInsert[k] === undefined && delete minimalInsert[k]);
+      const { data: inserted, error: insertErr } = await supabase
+        .from('zapsign_documents')
+        .insert(minimalInsert)
+        .select('id')
+        .maybeSingle();
+      if (insertErr) {
+        // Pode falhar se a coluna `source` não existir — tenta sem ela
+        if (/column.*source/i.test(insertErr.message || '')) {
+          delete minimalInsert.source;
+          const retry = await supabase
+            .from('zapsign_documents')
+            .insert(minimalInsert)
+            .select('id')
+            .maybeSingle();
+          if (retry.error) {
+            console.error('[zapsign-webhook] manual-doc insert retry error:', retry.error.message);
+          } else {
+            documentId = retry.data?.id || null;
+            console.log('[zapsign-webhook] manual doc shortcut → inserted', docToken);
+          }
+        } else {
+          console.error('[zapsign-webhook] manual-doc insert error:', insertErr.message);
+        }
+      } else {
+        documentId = inserted?.id || null;
+        console.log('[zapsign-webhook] manual doc shortcut → inserted', docToken);
+      }
+    }
   }
 
   const eventInsert = {
