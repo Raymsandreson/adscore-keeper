@@ -618,72 +618,64 @@ Deno.serve(async (req) => {
         }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
-      const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-      if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY missing");
+      if (!Deno.env.get("GOOGLE_AI_API_KEY")) throw new Error("GOOGLE_AI_API_KEY missing");
 
-      const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
-          messages: [
-            {
-              role: "system",
-              content: "Você analisa documentos brasileiros (RG, CPF, CNH, certidões de nascimento/casamento/óbito, comprovantes, procurações, laudos periciais, boletins, holerites, extratos, etc.). Seja ESPECÍFICO no document_type — nunca use 'Outro' se houver qualquer indicação clara (título do documento, brasão, layout). SEMPRE preencha document_subtype indicando se é 'frente', 'verso', 'frente e verso' ou 'único' (documento de página única que não tem verso). Devolva APENAS via tool call.",
-            },
-            {
-              role: "user",
-              content: userContent,
-            },
-          ],
-          tools: [
-            {
-              type: "function",
-              function: {
-                name: "save_analysis",
-                parameters: {
-                  type: "object",
-                  properties: {
-                    document_type: {
-                      type: "string",
-                      description: "Nome específico do documento em português. Ex: 'Certidão de Nascimento', 'Certidão de Casamento', 'Certidão de Óbito', 'RG', 'CPF', 'CNH', 'Carteira de Trabalho', 'Comprovante de Endereço', 'Holerite', 'Extrato Bancário', 'Procuração', 'Laudo Pericial', 'Boletim de Ocorrência', 'Contrato', 'Atestado Médico', 'Histórico Escolar', 'Título de Eleitor', 'Passaporte', 'Foto'. Use 'Outro' SOMENTE se for impossível identificar.",
-                    },
-                    document_subtype: { type: "string", enum: ["frente", "verso", "frente e verso", "único"], description: "Identifique sempre. 'único' = documento de página única sem verso (ex: certidão completa, comprovante)." },
-                    holder_name: { type: ["string", "null"], description: "Nome do titular do documento" },
-                    holder_cpf: { type: ["string", "null"] },
-                    description: { type: "string", description: "Resumo de 1-2 linhas do conteúdo" },
-                    confidence: { type: "string", enum: ["alta", "média", "baixa"] },
-                    extracted_fields: {
-                      type: "array",
-                      description: "Valores extraídos para os campos personalizados do CRM. Inclua somente os campos cujos valores aparecem claramente no documento.",
-                      items: {
-                        type: "object",
-                        properties: {
-                          field_id: { type: "string" },
-                          value: { type: "string", description: "Sempre como string. Datas em YYYY-MM-DD. Checkbox como 'true'/'false'." },
-                        },
-                        required: ["field_id", "value"],
-                        additionalProperties: false,
+      const aiData = await geminiChat({
+        model: "google/gemini-2.5-flash",
+        messages: [
+          {
+            role: "system",
+            content: "Você analisa documentos brasileiros (RG, CPF, CNH, certidões de nascimento/casamento/óbito, comprovantes, procurações, laudos periciais, boletins, holerites, extratos, etc.). Seja ESPECÍFICO no document_type — nunca use 'Outro' se houver qualquer indicação clara (título do documento, brasão, layout). SEMPRE preencha document_subtype indicando se é 'frente', 'verso', 'frente e verso' ou 'único' (documento de página única que não tem verso). Devolva APENAS via tool call.",
+          },
+          {
+            role: "user",
+            content: userContent,
+          },
+        ],
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "save_analysis",
+              parameters: {
+                type: "object",
+                properties: {
+                  document_type: {
+                    type: "string",
+                    description: "Nome específico do documento em português. Ex: 'Certidão de Nascimento', 'Certidão de Casamento', 'Certidão de Óbito', 'RG', 'CPF', 'CNH', 'Carteira de Trabalho', 'Comprovante de Endereço', 'Holerite', 'Extrato Bancário', 'Procuração', 'Laudo Pericial', 'Boletim de Ocorrência', 'Contrato', 'Atestado Médico', 'Histórico Escolar', 'Título de Eleitor', 'Passaporte', 'Foto'. Use 'Outro' SOMENTE se for impossível identificar.",
+                  },
+                  document_subtype: { type: "string", enum: ["frente", "verso", "frente e verso", "único"], description: "Identifique sempre. 'único' = documento de página única sem verso (ex: certidão completa, comprovante)." },
+                  holder_name: { type: ["string", "null"], description: "Nome do titular do documento" },
+                  holder_cpf: { type: ["string", "null"] },
+                  description: { type: "string", description: "Resumo de 1-2 linhas do conteúdo" },
+                  confidence: { type: "string", enum: ["alta", "média", "baixa"] },
+                  extracted_fields: {
+                    type: "array",
+                    description: "Valores extraídos para os campos personalizados do CRM. Inclua somente os campos cujos valores aparecem claramente no documento.",
+                    items: {
+                      type: "object",
+                      properties: {
+                        field_id: { type: "string" },
+                        value: { type: "string", description: "Sempre como string. Datas em YYYY-MM-DD. Checkbox como 'true'/'false'." },
                       },
+                      required: ["field_id", "value"],
+                      additionalProperties: false,
                     },
                   },
-                  required: ["document_type", "document_subtype", "description", "confidence"],
-                  additionalProperties: false,
                 },
+                required: ["document_type", "document_subtype", "description", "confidence"],
+                additionalProperties: false,
               },
             },
-          ],
-          tool_choice: { type: "function", function: { name: "save_analysis" } },
-        }),
+          },
+        ],
+        tool_choice: { type: "function", function: { name: "save_analysis" } },
       });
-      if (!aiRes.ok) {
-        const t = await aiRes.text();
-        throw new Error(`AI analyze failed [${aiRes.status}]: ${t}`);
-      }
-      const aiData = await aiRes.json();
+
       const args = aiData?.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments;
       let analysis: any = {};
       try { analysis = args ? JSON.parse(args) : {}; } catch { analysis = {}; }
+
 
       // Auto-rename in Drive based on AI analysis (preserve extension)
       let renamed: string | null = null;
