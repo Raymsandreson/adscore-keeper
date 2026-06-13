@@ -2,6 +2,7 @@
 // Actions: ensure_folder, list_files, upload, delete, get_root
 // Storage: pasta única por lead dentro do Drive do escritório
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { geminiChat } from "../_shared/gemini.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
