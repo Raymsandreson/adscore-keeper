@@ -22,13 +22,14 @@ serve(async (req) => {
       );
     }
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
+    const GOOGLE_AI_API_KEY = Deno.env.get("GOOGLE_AI_API_KEY");
+    if (!GOOGLE_AI_API_KEY) {
       return new Response(
-        JSON.stringify({ success: false, error: "AI API key not configured" }),
+        JSON.stringify({ success: false, error: "GOOGLE_AI_API_KEY not configured" }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
       );
     }
+
 
     const defaultPrompt = `Você está escrevendo como uma PESSOA COMUM, alguém da rede social que viu o post e ficou tocada pela história. Você NÃO representa escritório, empresa, instituição ou serviço. Fale como alguém que poderia ser amiga de amiga, conhecida de bairro, alguém que cruzou com a família em algum momento — sem afirmar nada específico que possa ser desmentido. Tom acolhedor, próximo, humano, como se mandasse mensagem para alguém conhecido. NUNCA se identifique como representante, advogado, assessor, escritório, ONG, jornalista ou qualquer função profissional.`;
 
