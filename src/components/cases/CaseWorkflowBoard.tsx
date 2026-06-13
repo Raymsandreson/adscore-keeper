@@ -398,7 +398,7 @@ function ProcessStageChecklists({
           }));
 
         if (newInstances.length > 0) {
-          await supabase.from('lead_checklist_instances').insert(newInstances);
+          await externalSupabase.from('lead_checklist_instances').insert(newInstances);
         }
       }
 
