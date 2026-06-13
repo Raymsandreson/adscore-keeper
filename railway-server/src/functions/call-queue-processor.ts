@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { supabase } from '../lib/supabase';
+import { geminiChat } from '../lib/gemini';
 
-const LOVABLE_API_KEY = process.env.LOVABLE_API_KEY || '';
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY || '';
 
 /**
