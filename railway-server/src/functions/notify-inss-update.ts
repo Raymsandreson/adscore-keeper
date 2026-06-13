@@ -1,5 +1,6 @@
 import type { RequestHandler } from 'express';
 import { supabase } from '../lib/supabase';
+import { geminiChat } from '../lib/gemini';
 
 /**
  * Quando chega um update do INSS para processo já vinculado:
@@ -9,34 +10,23 @@ import { supabase } from '../lib/supabase';
  * Body: { process_id: string, force_history_id?: string }
  */
 
-const LOVABLE_AI_URL = 'https://ai.gateway.lovable.dev/v1/chat/completions';
-
 async function humanizeStatusChange(input: {
   from?: string | null;
   to: string;
   nome?: string | null;
   beneficio?: string | null;
 }): Promise<string> {
-  const key = process.env.LOVABLE_API_KEY;
+  const key = process.env.GOOGLE_AI_API_KEY;
   if (!key) {
-    // Fallback: mensagem fixa decente
     return `Olá! 👋 Temos uma atualização do seu pedido junto ao INSS.\n\nO status mudou para *${input.to}*.\n\nVamos verificar o que isso significa e te retornar em seguida. 🙏`;
   }
   try {
     const prompt = `Você é uma atendente jurídica gentil. Escreva uma mensagem de WhatsApp CURTA (máx 4 linhas), em português brasileiro simples — entendível por alguém com baixa escolaridade — informando que o pedido do INSS teve uma atualização.\n\nDe: ${input.from || 'sem status anterior'}\nPara: ${input.to}\nNome do cliente (se houver): ${input.nome || ''}\nBenefício (se houver): ${input.beneficio || ''}\n\nRegras:\n- Sem termos técnicos jurídicos.\n- Sem citar "requerimento", use "pedido".\n- Explique em 1 linha o que esse status significa na prática.\n- Termine com algo tipo "vamos te orientar" ou "te avisaremos os próximos passos".\n- Use 1 ou 2 emojis no total, no máximo.\n- Não use saudações como "Bom dia" (não sabemos a hora).`;
-    const resp = await fetch(LOVABLE_AI_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${key}`,
-      },
-      body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
-        messages: [{ role: 'user', content: prompt }],
-        max_tokens: 200,
-      }),
+    const j = await geminiChat({
+      model: 'google/gemini-2.5-flash',
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 200,
     });
-    const j: any = await resp.json();
     const txt = j?.choices?.[0]?.message?.content?.trim();
     if (txt) return txt;
   } catch (e) {
@@ -44,6 +34,7 @@ async function humanizeStatusChange(input: {
   }
   return `Olá! 👋 Atualização do seu pedido no INSS: agora ele está como *${input.to}*. Vamos verificar e te dizer o próximo passo.`;
 }
+
 
 async function sendUazapiText(args: {
   group_jid: string;
