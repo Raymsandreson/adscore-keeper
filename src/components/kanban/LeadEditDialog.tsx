@@ -650,6 +650,37 @@ export function LeadEditDialog({
       }];
     }
 
+    // Fallback: tenta resolver o nome do grupo via whatsapp_messages.contact_name
+    const needsName = mappedGroups
+      .filter((g) => !g.group_name && g.group_jid?.includes('@g.us'))
+      .map((g) => g.group_jid);
+    if (needsName.length > 0) {
+      try {
+        const { data: msgs } = await externalSupabase
+          .from('whatsapp_messages')
+          .select('phone, contact_name, created_at')
+          .in('phone', needsName)
+          .not('contact_name', 'is', null)
+          .order('created_at', { ascending: false })
+          .limit(needsName.length * 5);
+        const nameByJid = new Map<string, string>();
+        (msgs || []).forEach((m: any) => {
+          if (m.phone && m.contact_name && !nameByJid.has(m.phone)) {
+            nameByJid.set(m.phone, String(m.contact_name).trim());
+          }
+        });
+        if (nameByJid.size > 0) {
+          mappedGroups = mappedGroups.map((g) =>
+            !g.group_name && nameByJid.has(g.group_jid)
+              ? { ...g, group_name: nameByJid.get(g.group_jid)! }
+              : g
+          );
+        }
+      } catch (err) {
+        console.warn('Falha ao resolver nome do grupo via whatsapp_messages:', err);
+      }
+    }
+
     leadGroupsCache.set(leadId, mappedGroups);
     setWhatsappGroups(mappedGroups);
   };
@@ -2280,9 +2311,10 @@ ${scrapeData.content || ''}
                           </p>
                         )}
                         {g.group_jid?.includes('@g.us') ? (
-                          <p className="text-xs text-green-600 flex items-center gap-1 mt-0.5">
-                            ✅ {g.group_name ? <span className="font-medium">{g.group_name}</span> : null}
-                            <span className="font-mono text-green-700 text-[10px]">{g.group_jid}</span>
+                          <p className="text-xs text-green-600 flex items-center gap-1 mt-0.5" title={g.group_jid}>
+                            ✅ <span className="font-medium truncate">
+                              {g.group_name || `Grupo ${g.group_jid.replace('@g.us', '').slice(-6)}`}
+                            </span>
                           </p>
                         ) : (
                           <p className="text-xs text-muted-foreground mt-0.5">
