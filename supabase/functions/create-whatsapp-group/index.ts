@@ -1320,25 +1320,16 @@ Deno.serve(async (req) => {
         groupContactId = newContact?.id || null
         console.log(`[save] Contact created for group: ${groupContactId}`)
       } else {
-        await supabase
-          .from('contacts')
-          .update({ lead_id: leadData.id })
-          .eq('id', groupContactId)
-        console.log(`[save] Existing contact ${groupContactId} linked to lead ${leadData.id}`)
+        // IMPORTANT: do NOT overwrite lead_id here. Reusing an existing group-contact
+        // (matched by whatsapp_group_id) means the JID may already belong to another
+        // lead. The group→lead relationship lives in `lead_whatsapp_groups` only.
+        console.log(`[save] Reusing existing group-contact ${groupContactId} (lead_id NOT overwritten)`)
       }
 
-      // Ensure junction-table link (contact_leads) exists so the new UI sees this contact.
-      // Idempotent: ignore duplicate-key errors.
-      if (groupContactId) {
-        const { error: clErr } = await extClient
-          .from('contact_leads')
-          .insert({ contact_id: groupContactId, lead_id: leadData.id })
-        if (clErr && !`${clErr.message || ''}`.toLowerCase().includes('duplicate')) {
-          console.warn('[save] contact_leads insert warn:', clErr.message)
-        } else if (!clErr) {
-          console.log(`[save] contact_leads link created: ${groupContactId} -> ${leadData.id}`)
-        }
-      }
+      // NOTE: We intentionally do NOT insert into `contact_leads` for the group-contact.
+      // The group is surfaced on the contact via `whatsapp_group_id` and on the lead
+      // via `lead_whatsapp_groups`. Adding it to `contact_leads` would make a phantom
+      // "Grupo - X" appear as a real contact of the lead (bug observed with CG78).
 
       // Also save to lead_whatsapp_groups table for proper tracking
       // Check if group already exists in lead_whatsapp_groups
