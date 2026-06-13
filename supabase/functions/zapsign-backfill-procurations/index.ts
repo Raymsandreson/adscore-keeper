@@ -172,8 +172,8 @@ Deno.serve(async (req) => {
   try {
     const zapToken = Deno.env.get("ZAPSIGN_API_TOKEN");
     if (!zapToken) throw new Error("ZAPSIGN_API_TOKEN ausente");
-    const geminiKey = Deno.env.get("LOVABLE_API_KEY");
-    if (!geminiKey) throw new Error("LOVABLE_API_KEY ausente");
+    const geminiKey = Deno.env.get("GOOGLE_AI_API_KEY");
+    if (!geminiKey) throw new Error("GOOGLE_AI_API_KEY ausente");
 
     const extUrl = Deno.env.get("EXTERNAL_SUPABASE_URL");
     const extKey = Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY");
