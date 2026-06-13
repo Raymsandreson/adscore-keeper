@@ -42,13 +42,12 @@ async function downloadAsBase64(url: string): Promise<{ base64: string; mime: st
 }
 
 async function extractFromPdf(pdfUrl: string): Promise<Extracted> {
-  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-  if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY missing");
+  if (!Deno.env.get("GOOGLE_AI_API_KEY")) throw new Error("GOOGLE_AI_API_KEY missing");
 
   const { base64, mime } = await downloadAsBase64(pdfUrl);
   const dataUrl = `data:${mime};base64,${base64}`;
 
-  const body = {
+  const data = await geminiChat({
     model: MODEL,
     messages: [
       {
@@ -96,18 +95,8 @@ async function extractFromPdf(pdfUrl: string): Promise<Extracted> {
       },
     ],
     tool_choice: { type: "function", function: { name: "save_extracted_data" } },
-  };
-
-  const res = await fetch(AI_GATEWAY, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify(body),
   });
-  if (!res.ok) {
-    const t = await res.text();
-    throw new Error(`AI gateway [${res.status}]: ${t}`);
-  }
-  const data = await res.json();
+
   const args = data?.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments;
   if (!args) return {};
   try {
