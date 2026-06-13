@@ -5,13 +5,13 @@
 // - Define acolhedor = dono da instância (default_instance_id reverso, fallback owner_name)
 // - Faz upload do PDF assinado na pasta Drive do lead com nome descritivo
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { geminiChat } from "../_shared/gemini.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-request-id",
 };
 
-const AI_GATEWAY = "https://ai.gateway.lovable.dev/v1/chat/completions";
 const MODEL = "google/gemini-2.5-flash"; // suporta PDF/imagem inline
 
 interface Extracted {
