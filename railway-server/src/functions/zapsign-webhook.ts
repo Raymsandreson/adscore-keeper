@@ -279,15 +279,63 @@ export const handler = async (req: Request, res: Response) => {
 
           if (!lead_id && signerName) {
             try {
+              // Tenta mapear funil pelo template do ZapSign (manual ou via API).
+              // Procura primeiro em funnel_zapsign_defaults, depois em kanban_boards.zapsign_template_id.
+              const templateToken: string | null =
+                raw?.template_id || raw?.template?.token || raw?.template?.id ||
+                raw?.doc?.template_id || raw?.doc?.template?.token || raw?.doc?.template?.id ||
+                raw?.created_through_template || null;
+
+              let resolvedBoardId: string | null = null;
+              let resolvedStatus: string | null = null;
+              if (templateToken) {
+                const { data: fdef } = await supabase
+                  .from('funnel_zapsign_defaults')
+                  .select('board_id')
+                  .eq('zapsign_template_token', String(templateToken))
+                  .limit(1)
+                  .maybeSingle();
+                resolvedBoardId = fdef?.board_id || null;
+                if (!resolvedBoardId) {
+                  const { data: kb } = await supabase
+                    .from('kanban_boards')
+                    .select('id')
+                    .eq('zapsign_template_id', String(templateToken))
+                    .limit(1)
+                    .maybeSingle();
+                  resolvedBoardId = kb?.id || null;
+                }
+                // Acha etapa "fechado" do board pra colocar o lead no lugar certo
+                if (resolvedBoardId) {
+                  const { data: board } = await supabase
+                    .from('kanban_boards')
+                    .select('stages')
+                    .eq('id', resolvedBoardId)
+                    .maybeSingle();
+                  const stages: any[] = Array.isArray(board?.stages) ? board!.stages : [];
+                  const closed = stages.find((s: any) => {
+                    const id = String(s?.id || '').toLowerCase();
+                    return id === 'closed' || id === 'fechado' || id === 'fechados' || id === 'done' || id.startsWith('closed_') || id.startsWith('fechado_');
+                  });
+                  resolvedStatus = closed?.id || null;
+                }
+              }
+
+              const isOrphan = !resolvedBoardId;
               const leadInsert: any = {
                 lead_name: signerName,
                 lead_phone: candidatePhone,
-                board_id: null,
-                status: null,
+                board_id: resolvedBoardId,
+                status: resolvedStatus,
                 lead_status: 'closed',
                 closed_at: new Date().toISOString(),
                 source: 'zapsign_manual',
-                details: { zapsign_doc_token: docToken, orphan: true },
+                details: {
+                  zapsign_doc_token: docToken,
+                  zapsign_template_token: templateToken || null,
+                  orphan: isOrphan,
+                  matched_via: resolvedBoardId ? 'template' : null,
+                },
               };
               const { data: newLead, error: lErr } = await supabase
                 .from('leads')
@@ -295,11 +343,10 @@ export const handler = async (req: Request, res: Response) => {
                 .select('id')
                 .maybeSingle();
               if (lErr) {
-                console.error('[zapsign-webhook] orphan lead insert error:', lErr.message);
+                console.error('[zapsign-webhook] auto lead insert error:', lErr.message);
               } else {
                 lead_id = newLead?.id || null;
-                console.log('[zapsign-webhook] orphan lead created', { id: lead_id, name: signerName });
-                // Vincula contato ⇄ lead como titular
+                console.log('[zapsign-webhook] auto lead created', { id: lead_id, name: signerName, board_id: resolvedBoardId, orphan: isOrphan });
                 if (contact_id && lead_id) {
                   const { error: linkErr } = await supabase
                     .from('contact_leads')
@@ -310,7 +357,7 @@ export const handler = async (req: Request, res: Response) => {
                 }
               }
             } catch (e: any) {
-              console.error('[zapsign-webhook] orphan lead create exception:', e?.message || e);
+              console.error('[zapsign-webhook] auto lead create exception:', e?.message || e);
             }
           }
 
