@@ -21,13 +21,14 @@ serve(async (req) => {
       );
     }
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
+    const GOOGLE_AI_API_KEY = Deno.env.get("GOOGLE_AI_API_KEY");
+    if (!GOOGLE_AI_API_KEY) {
       return new Response(
-        JSON.stringify({ success: false, error: "AI API key not configured" }),
+        JSON.stringify({ success: false, error: "GOOGLE_AI_API_KEY not configured" }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
       );
     }
+
 
     const systemPrompt = `Você é um assistente especializado em extrair informações de legendas de posts de redes sociais (Instagram, Facebook, TikTok) para um CRM jurídico de acidentes de trabalho.
 Analise a legenda fornecida e extraia todas as informações relevantes para criar um registro no CRM.
