@@ -62,29 +62,23 @@ serve(async (req) => {
 
     // Analyze with AI if requested and comments exist
     let analysis = null;
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    
-    if (analyzeWithAI && LOVABLE_API_KEY && comments.length > 0) {
+    const GOOGLE_AI_API_KEY = Deno.env.get("GOOGLE_AI_API_KEY");
+
+    if (analyzeWithAI && GOOGLE_AI_API_KEY && comments.length > 0) {
       const commentsText = comments
         .slice(0, 50)
         .map((c: any, i: number) => `[${i + 1}] @${c.ownerUsername || c.username || 'anon'}: ${c.text || ''}`)
         .join("\n");
 
       try {
-        const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          },
-          body: JSON.stringify({
-            model: "google/gemini-2.5-flash",
-            messages: [
-              {
-                role: "system",
-                content: `Você analisa comentários de posts sobre acidentes (trabalho, trânsito, etc). Extraia informações úteis.
+        const aiData = await geminiChat({
+          model: "google/gemini-2.5-flash",
+          messages: [
+            {
+              role: "system",
+              content: `Você analisa comentários de posts sobre acidentes (trabalho, trânsito, etc). Extraia informações úteis.
 
-Retorne APENAS um JSON válido:
+Retorne APENAS um JSON válido (sem markdown):
 {
   "victim_info": {
     "name": "Nome da vítima se mencionado nos comentários",
@@ -115,31 +109,28 @@ Retorne APENAS um JSON válido:
 
 Se não encontrar informação para um campo, use null.
 Foque em identificar pessoas que conhecem a vítima (possíveis pontes/indicações).`
-              },
-              {
-                role: "user",
-                content: `Analise estes ${comments.length} comentários:\n\n${commentsText}`,
-              },
-            ],
-            temperature: 0.2,
-            response_format: { type: "json_object" },
-          }),
+            },
+            {
+              role: "user",
+              content: `Analise estes ${comments.length} comentários:\n\n${commentsText}`,
+            },
+          ],
+          temperature: 0.2,
         });
 
-        if (aiResponse.ok) {
-          const aiData = await aiResponse.json();
-          const content = aiData.choices?.[0]?.message?.content || "{}";
-          try {
-            analysis = JSON.parse(content);
-          } catch {
-            analysis = { additional_details: content };
-          }
-          console.log("✅ Análise de comentários concluída");
+        let content = aiData.choices?.[0]?.message?.content || "{}";
+        content = String(content).replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
+        try {
+          analysis = JSON.parse(content);
+        } catch {
+          analysis = { additional_details: content };
         }
+        console.log("✅ Análise de comentários concluída");
       } catch (aiErr) {
         console.error("AI analysis error:", aiErr);
       }
     }
+
 
     return new Response(
       JSON.stringify({ success: true, comments, analysis, total: comments.length }),
