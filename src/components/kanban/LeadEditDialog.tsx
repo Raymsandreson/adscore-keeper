@@ -681,6 +681,28 @@ export function LeadEditDialog({
       }
     }
 
+    // Fallback final: para grupos ainda sem nome, busca na UazAPI /group/info
+    // (a edge function persiste em lead_whatsapp_groups.group_name → próxima vez é instantâneo)
+    const stillMissing = mappedGroups.filter((g) => !g.group_name && g.group_jid?.includes('@g.us'));
+    if (stillMissing.length > 0) {
+      await Promise.all(
+        stillMissing.map(async (g) => {
+          try {
+            const { data: infoData } = await cloudFunctions.invoke<any>('get-whatsapp-group-info', {
+              body: { group_jid: g.group_jid, lead_id: leadId },
+            });
+            if (infoData?.success && infoData.name) {
+              mappedGroups = mappedGroups.map((m) =>
+                m.group_jid === g.group_jid ? { ...m, group_name: infoData.name } : m
+              );
+            }
+          } catch (e) {
+            console.warn('Falha ao buscar nome do grupo na UazAPI:', e);
+          }
+        })
+      );
+    }
+
     leadGroupsCache.set(leadId, mappedGroups);
     setWhatsappGroups(mappedGroups);
   };
@@ -1155,6 +1177,22 @@ ${scrapeData.content || ''}
           }
         } else if (rawLink.includes('@g.us')) {
           resolvedGroups[i] = { ...g, group_jid: rawLink, group_link: '' };
+        }
+
+        // Se ainda não temos o nome do grupo, busca via UazAPI /group/info
+        // (uma vez só — depois fica salvo em lead_whatsapp_groups.group_name)
+        const cur = resolvedGroups[i];
+        if (cur.group_jid?.includes('@g.us') && !cur.group_name) {
+          try {
+            const { data: infoData } = await cloudFunctions.invoke<any>('get-whatsapp-group-info', {
+              body: { group_jid: cur.group_jid },
+            });
+            if (infoData?.success && infoData.name) {
+              resolvedGroups[i] = { ...cur, group_name: infoData.name };
+            }
+          } catch (e) {
+            console.warn('Falha ao buscar nome do grupo na UazAPI:', e);
+          }
         }
       }
       

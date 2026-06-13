@@ -33,6 +33,7 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
   'manage-uazapi-label': 'railway',
   'sync-agent-labels': 'railway',
   'sync-result-labels': 'railway',
+  'get-whatsapp-group-info': 'railway',
 
   // --- Todas as demais ficam no Cloud por padrão ---
 };

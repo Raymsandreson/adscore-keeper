@@ -35,6 +35,7 @@ import { handler as metaCallQueueProcessor } from './functions/meta-call-queue-p
 import { handler as sheetLeadIngest } from './functions/sheet-lead-ingest';
 import { handler as gmailInssSync } from './functions/gmail-inss-sync';
 import { handler as notifyInssUpdate } from './functions/notify-inss-update';
+import { handler as getWhatsappGroupInfo } from './functions/get-whatsapp-group-info';
 
 
 const functionHandlers: Record<string, express.RequestHandler> = {
@@ -63,6 +64,7 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'meta-call-queue-processor': metaCallQueueProcessor,
   'gmail-inss-sync': gmailInssSync,
   'notify-inss-update': notifyInssUpdate,
+  'get-whatsapp-group-info': getWhatsappGroupInfo,
 };
 
 const app = express();
