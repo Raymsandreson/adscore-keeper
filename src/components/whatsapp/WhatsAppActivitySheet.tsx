@@ -157,8 +157,18 @@ export function WhatsAppActivitySheet({
 
       if (error) throw error;
 
+      if (data?.success === false) {
+        const backendMessage = String(data?.error || 'Falha ao processar com IA');
+        const isCreditError = /payment_required|not enough credits|cr[eé]ditos?/i.test(backendMessage);
+        throw new Error(
+          isCreditError
+            ? 'Créditos de IA insuficientes. A chamada foi recusada antes de gerar os campos.'
+            : backendMessage
+        );
+      }
+
       const fields = data?.fields;
-      if (!fields) throw new Error('Sem resposta da IA');
+      if (!fields) throw new Error('A IA não retornou campos estruturados');
 
       // Fill form fields
       if (fields.title) setFormTitle(fields.title);
