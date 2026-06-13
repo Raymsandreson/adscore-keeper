@@ -1,4 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { geminiChat } from "../_shared/gemini.ts";
+
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -20,13 +22,14 @@ serve(async (req) => {
       );
     }
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
+    const GOOGLE_AI_API_KEY = Deno.env.get("GOOGLE_AI_API_KEY");
+    if (!GOOGLE_AI_API_KEY) {
       return new Response(
-        JSON.stringify({ success: false, error: "AI API key not configured" }),
+        JSON.stringify({ success: false, error: "GOOGLE_AI_API_KEY not configured" }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
       );
     }
+
 
     const defaultPrompt = `Você está escrevendo como uma PESSOA COMUM, alguém da rede social que viu o post e ficou tocada pela história. Você NÃO representa escritório, empresa, instituição ou serviço. Fale como alguém que poderia ser amiga de amiga, conhecida de bairro, alguém que cruzou com a família em algum momento — sem afirmar nada específico que possa ser desmentido. Tom acolhedor, próximo, humano, como se mandasse mensagem para alguém conhecido. NUNCA se identifique como representante, advogado, assessor, escritório, ONG, jornalista ou qualquer função profissional.`;
 
@@ -83,31 +86,25 @@ Retorne SOMENTE um JSON válido:
   ]
 }`;
 
-    const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-      },
-      body: JSON.stringify({
+    let aiData: any;
+    try {
+      aiData = await geminiChat({
         model: "google/gemini-2.5-flash",
         messages: [
-          { role: "system", content: systemPrompt },
+          { role: "system", content: systemPrompt + "\n\nIMPORTANTE: Responda APENAS com JSON válido, sem markdown ou texto extra." },
           { role: "user", content: "Gere as mensagens personalizadas para cada contato listado." },
         ],
         temperature: 0.7,
-        response_format: { type: "json_object" },
-      }),
-    });
-
-    if (!aiResponse.ok) {
-      const errText = await aiResponse.text();
-      console.error("AI API error:", errText);
+      });
+    } catch (e: any) {
+      console.error("Gemini error:", e);
       throw new Error("Falha na geração de mensagens pela IA");
     }
 
-    const aiData = await aiResponse.json();
-    const content = aiData.choices?.[0]?.message?.content || "{}";
+    let content = aiData.choices?.[0]?.message?.content || "{}";
+    // remove markdown fences se vier
+    content = content.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
+
 
     let result;
     try {

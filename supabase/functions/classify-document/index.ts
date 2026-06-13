@@ -8,7 +8,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY')!;
+import { geminiChat, GeminiError } from "../_shared/gemini.ts";
+
 const MODEL = 'google/gemini-2.5-flash';
 
 const SYSTEM_PROMPT = `Você analisa documentos pessoais/processuais brasileiros a partir de uma ou mais imagens (que podem ser páginas distintas do MESMO documento).
@@ -55,34 +56,28 @@ Deno.serve(async (req: Request) => {
       ...urls.map((u) => ({ type: 'image_url', image_url: { url: u.url } })),
     ];
 
-    const aiRes = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
+    let data: any;
+    try {
+      data = await geminiChat({
         model: MODEL,
         messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'system', content: SYSTEM_PROMPT + '\n\nIMPORTANTE: Responda APENAS com JSON válido, sem markdown.' },
           { role: 'user', content: userContent },
         ],
-        response_format: { type: 'json_object' },
-      }),
-    });
-
-    if (!aiRes.ok) {
-      const errText = await aiRes.text();
+      });
+    } catch (e: any) {
+      const status = e instanceof GeminiError ? e.status : 500;
       return new Response(
-        JSON.stringify({ success: false, error: `gateway ${aiRes.status}: ${errText.slice(0, 300)}` }),
+        JSON.stringify({ success: false, error: `gemini ${status}: ${String(e?.message || e).slice(0, 300)}` }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       );
     }
 
-    const data = await aiRes.json();
-    const content = data?.choices?.[0]?.message?.content ?? '{}';
+    let content = data?.choices?.[0]?.message?.content ?? '{}';
+    content = String(content).replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
     let parsed: any = {};
     try { parsed = JSON.parse(content); } catch { parsed = {}; }
+
 
     return new Response(
       JSON.stringify({

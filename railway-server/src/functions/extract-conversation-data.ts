@@ -8,9 +8,8 @@
 // Retorno: HTTP 200 { success, data?: {...}, error? }
 import type { RequestHandler } from 'express';
 import { supabase as ext } from '../lib/supabase';
+import { geminiChat } from '../lib/gemini';
 
-const LOVABLE_API_KEY = process.env.LOVABLE_API_KEY || '';
-const LOVABLE_AI_URL = 'https://ai.gateway.lovable.dev/v1/chat/completions';
 const MODEL = process.env.EXTRACT_AI_MODEL || 'google/gemini-2.5-flash';
 
 const LEAD_FIELDS = [
@@ -160,28 +159,20 @@ function buildTranscriptFromVisibleMessages(messages: VisibleMessage[]): string 
 }
 
 async function callAI(systemPrompt: string, userPrompt: string): Promise<Record<string, any>> {
-  if (!LOVABLE_API_KEY) throw new Error('LOVABLE_API_KEY ausente no Railway');
-  const r = await fetch(LOVABLE_AI_URL, {
-    method: 'POST',
-    headers: {
-      'Lovable-API-Key': LOVABLE_API_KEY,
-      'X-Lovable-AIG-SDK': 'railway-fetch',
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
+  if (!process.env.GOOGLE_AI_API_KEY) throw new Error('GOOGLE_AI_API_KEY ausente no Railway');
+  let parsed: any;
+  try {
+    parsed = await geminiChat({
       model: MODEL,
       messages: [
-        { role: 'system', content: systemPrompt },
+        { role: 'system', content: systemPrompt + '\n\nIMPORTANTE: Responda APENAS com JSON válido, sem markdown.' },
         { role: 'user', content: userPrompt },
       ],
-      response_format: { type: 'json_object' },
       temperature: 0.2,
-    }),
-  });
-  const text = await r.text();
-  if (!r.ok) throw new Error(`AI gateway ${r.status}: ${text.slice(0, 400)}`);
-  let parsed: any;
-  try { parsed = JSON.parse(text); } catch { throw new Error(`AI gateway resposta inválida: ${text.slice(0, 200)}`); }
+    });
+  } catch (e: any) {
+    throw new Error(`Gemini ${e?.status || ''}: ${String(e?.message || e).slice(0, 400)}`);
+  }
   const content = parsed?.choices?.[0]?.message?.content;
   if (!content) return {};
   try {
@@ -189,10 +180,11 @@ async function callAI(systemPrompt: string, userPrompt: string): Promise<Record<
     const obj = JSON.parse(cleaned);
     return (obj && typeof obj === 'object') ? obj : {};
   } catch (e) {
-    console.warn('[extract-conversation-data] não conseguiu parsear JSON da IA:', content.slice(0, 200));
+    console.warn('[extract-conversation-data] não conseguiu parsear JSON da IA:', String(content).slice(0, 200));
     return {};
   }
 }
+
 
 function whitelist(obj: Record<string, any>, allowed: string[]): Record<string, any> {
   const out: Record<string, any> = {};

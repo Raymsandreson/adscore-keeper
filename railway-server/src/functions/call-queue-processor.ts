@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { supabase } from '../lib/supabase';
+import { geminiChat } from '../lib/gemini';
 
-const LOVABLE_API_KEY = process.env.LOVABLE_API_KEY || '';
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY || '';
 
 /**
@@ -239,14 +239,10 @@ async function sendCallFollowupAudio(
 
     const firstName = contactName?.split(' ')[0] || 'cliente';
 
-    // Call Lovable AI Gateway directly (OpenAI-compatible API)
-    const aiResp = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
+    // Call Google AI direct via shared helper
+    let aiResult: any;
+    try {
+      aiResult = await geminiChat({
         model: 'google/gemini-2.5-flash',
         messages: [
           {
@@ -258,20 +254,18 @@ async function sendCallFollowupAudio(
             content: `Contexto da conversa recente:\n${contextLines || '(sem mensagens anteriores)'}\n\nGere uma mensagem curta e natural avisando que tentou ligar e pedindo pra retornar ou continuar pelo WhatsApp.`,
           },
         ],
-      }),
-    });
-
-    if (!aiResp.ok) {
-      console.error('[call-queue] AI gateway error:', aiResp.status, await aiResp.text());
+      });
+    } catch (e: any) {
+      console.error('[call-queue] Gemini error:', e?.status, e?.message);
       return;
     }
 
-    const aiResult: any = await aiResp.json();
     const followupText = aiResult.choices?.[0]?.message?.content?.trim();
     if (!followupText) {
       console.log('[call-queue] No AI text generated');
       return;
     }
+
 
     console.log(`[call-queue] Follow-up text for ${phone}: ${followupText.substring(0, 100)}`);
 

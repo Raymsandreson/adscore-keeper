@@ -5,13 +5,13 @@
 // - Define acolhedor = dono da instância (default_instance_id reverso, fallback owner_name)
 // - Faz upload do PDF assinado na pasta Drive do lead com nome descritivo
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { geminiChat } from "../_shared/gemini.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-request-id",
 };
 
-const AI_GATEWAY = "https://ai.gateway.lovable.dev/v1/chat/completions";
 const MODEL = "google/gemini-2.5-flash"; // suporta PDF/imagem inline
 
 interface Extracted {
@@ -42,13 +42,12 @@ async function downloadAsBase64(url: string): Promise<{ base64: string; mime: st
 }
 
 async function extractFromPdf(pdfUrl: string): Promise<Extracted> {
-  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-  if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY missing");
+  if (!Deno.env.get("GOOGLE_AI_API_KEY")) throw new Error("GOOGLE_AI_API_KEY missing");
 
   const { base64, mime } = await downloadAsBase64(pdfUrl);
   const dataUrl = `data:${mime};base64,${base64}`;
 
-  const body = {
+  const data = await geminiChat({
     model: MODEL,
     messages: [
       {
@@ -96,18 +95,8 @@ async function extractFromPdf(pdfUrl: string): Promise<Extracted> {
       },
     ],
     tool_choice: { type: "function", function: { name: "save_extracted_data" } },
-  };
-
-  const res = await fetch(AI_GATEWAY, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify(body),
   });
-  if (!res.ok) {
-    const t = await res.text();
-    throw new Error(`AI gateway [${res.status}]: ${t}`);
-  }
-  const data = await res.json();
+
   const args = data?.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments;
   if (!args) return {};
   try {
