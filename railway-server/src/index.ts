@@ -64,6 +64,7 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'meta-call-queue-processor': metaCallQueueProcessor,
   'gmail-inss-sync': gmailInssSync,
   'notify-inss-update': notifyInssUpdate,
+  'get-whatsapp-group-info': getWhatsappGroupInfo,
 };
 
 const app = express();
