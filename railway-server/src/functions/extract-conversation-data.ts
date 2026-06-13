@@ -8,9 +8,8 @@
 // Retorno: HTTP 200 { success, data?: {...}, error? }
 import type { RequestHandler } from 'express';
 import { supabase as ext } from '../lib/supabase';
+import { geminiChat } from '../lib/gemini';
 
-const LOVABLE_API_KEY = process.env.LOVABLE_API_KEY || '';
-const LOVABLE_AI_URL = 'https://ai.gateway.lovable.dev/v1/chat/completions';
 const MODEL = process.env.EXTRACT_AI_MODEL || 'google/gemini-2.5-flash';
 
 const LEAD_FIELDS = [
