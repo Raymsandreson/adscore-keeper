@@ -2311,9 +2311,10 @@ ${scrapeData.content || ''}
                           </p>
                         )}
                         {g.group_jid?.includes('@g.us') ? (
-                          <p className="text-xs text-green-600 flex items-center gap-1 mt-0.5">
-                            ✅ {g.group_name ? <span className="font-medium">{g.group_name}</span> : null}
-                            <span className="font-mono text-green-700 text-[10px]">{g.group_jid}</span>
+                          <p className="text-xs text-green-600 flex items-center gap-1 mt-0.5" title={g.group_jid}>
+                            ✅ <span className="font-medium truncate">
+                              {g.group_name || `Grupo ${g.group_jid.replace('@g.us', '').slice(-6)}`}
+                            </span>
                           </p>
                         ) : (
                           <p className="text-xs text-muted-foreground mt-0.5">
