@@ -256,7 +256,6 @@ export const handler = async (req: Request, res: Response) => {
                 .select('id')
                 .maybeSingle();
               if (cErr) {
-                // fallback sem `source` se a coluna não existir
                 if (/column.*source/i.test(cErr.message || '')) {
                   const retry = await supabase
                     .from('contacts')
@@ -277,50 +276,68 @@ export const handler = async (req: Request, res: Response) => {
             }
           }
 
-          if (!lead_id && signerName) {
+          // Resolve funil do template ANTES de decidir se cria lead novo.
+          const templateToken: string | null =
+            raw?.template_id || raw?.template?.token || raw?.template?.id ||
+            raw?.doc?.template_id || raw?.doc?.template?.token || raw?.doc?.template?.id ||
+            raw?.created_through_template || null;
+
+          let resolvedBoardId: string | null = null;
+          let resolvedStatus: string | null = null;
+          if (templateToken) {
+            const { data: fdef } = await supabase
+              .from('funnel_zapsign_defaults')
+              .select('board_id')
+              .eq('zapsign_template_token', String(templateToken))
+              .limit(1)
+              .maybeSingle();
+            resolvedBoardId = fdef?.board_id || null;
+            if (!resolvedBoardId) {
+              const { data: kb } = await supabase
+                .from('kanban_boards')
+                .select('id')
+                .eq('zapsign_template_id', String(templateToken))
+                .limit(1)
+                .maybeSingle();
+              resolvedBoardId = kb?.id || null;
+            }
+            if (resolvedBoardId) {
+              const { data: board } = await supabase
+                .from('kanban_boards')
+                .select('stages')
+                .eq('id', resolvedBoardId)
+                .maybeSingle();
+              const stages: any[] = Array.isArray(board?.stages) ? board!.stages : [];
+              const closed = stages.find((s: any) => {
+                const id = String(s?.id || '').toLowerCase();
+                return id === 'closed' || id === 'fechado' || id === 'fechados' || id === 'done' || id.startsWith('closed_') || id.startsWith('fechado_');
+              });
+              resolvedStatus = closed?.id || null;
+            }
+          }
+
+          // Decide se precisa criar lead novo:
+          // - Sem lead existente → cria (órfão ou no funil do template).
+          // - Lead existente MAS template aponta pra outro funil → cria NOVO no funil do template (opção C).
+          let shouldCreateLead = !lead_id && !!signerName;
+          if (lead_id && resolvedBoardId && signerName) {
+            const { data: existingLead } = await supabase
+              .from('leads')
+              .select('board_id')
+              .eq('id', lead_id)
+              .maybeSingle();
+            if (existingLead && existingLead.board_id !== resolvedBoardId) {
+              console.log('[zapsign-webhook] existing lead in different board → creating new', {
+                existing_lead_id: lead_id,
+                existing_board: existingLead.board_id,
+                template_board: resolvedBoardId,
+              });
+              shouldCreateLead = true;
+            }
+          }
+
+          if (shouldCreateLead) {
             try {
-              // Tenta mapear funil pelo template do ZapSign (manual ou via API).
-              // Procura primeiro em funnel_zapsign_defaults, depois em kanban_boards.zapsign_template_id.
-              const templateToken: string | null =
-                raw?.template_id || raw?.template?.token || raw?.template?.id ||
-                raw?.doc?.template_id || raw?.doc?.template?.token || raw?.doc?.template?.id ||
-                raw?.created_through_template || null;
-
-              let resolvedBoardId: string | null = null;
-              let resolvedStatus: string | null = null;
-              if (templateToken) {
-                const { data: fdef } = await supabase
-                  .from('funnel_zapsign_defaults')
-                  .select('board_id')
-                  .eq('zapsign_template_token', String(templateToken))
-                  .limit(1)
-                  .maybeSingle();
-                resolvedBoardId = fdef?.board_id || null;
-                if (!resolvedBoardId) {
-                  const { data: kb } = await supabase
-                    .from('kanban_boards')
-                    .select('id')
-                    .eq('zapsign_template_id', String(templateToken))
-                    .limit(1)
-                    .maybeSingle();
-                  resolvedBoardId = kb?.id || null;
-                }
-                // Acha etapa "fechado" do board pra colocar o lead no lugar certo
-                if (resolvedBoardId) {
-                  const { data: board } = await supabase
-                    .from('kanban_boards')
-                    .select('stages')
-                    .eq('id', resolvedBoardId)
-                    .maybeSingle();
-                  const stages: any[] = Array.isArray(board?.stages) ? board!.stages : [];
-                  const closed = stages.find((s: any) => {
-                    const id = String(s?.id || '').toLowerCase();
-                    return id === 'closed' || id === 'fechado' || id === 'fechados' || id === 'done' || id.startsWith('closed_') || id.startsWith('fechado_');
-                  });
-                  resolvedStatus = closed?.id || null;
-                }
-              }
-
               const isOrphan = !resolvedBoardId;
               const leadInsert: any = {
                 lead_name: signerName,
