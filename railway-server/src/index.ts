@@ -36,6 +36,7 @@ import { handler as sheetLeadIngest } from './functions/sheet-lead-ingest';
 import { handler as gmailInssSync } from './functions/gmail-inss-sync';
 import { handler as notifyInssUpdate } from './functions/notify-inss-update';
 import { handler as getWhatsappGroupInfo } from './functions/get-whatsapp-group-info';
+import { handler as scanDuplicateContacts } from './functions/scan-duplicate-contacts';
 
 
 const functionHandlers: Record<string, express.RequestHandler> = {
