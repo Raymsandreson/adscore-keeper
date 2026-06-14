@@ -385,7 +385,12 @@ export function LeadEditDialog({
   // realtime/refetch updates would overwrite fields the user just edited (ex: Acolhedor
   // gets deselected immediately after picking it).
   useEffect(() => {
-    if (!currentLead || !open) return;
+    if (!open) {
+      // Quando fechar, zera o ref pra que reabrir o mesmo lead rehidrate com dados frescos
+      prevLeadIdRef.current = null;
+      return;
+    }
+    if (!currentLead) return;
 
     const isNewLead = prevLeadIdRef.current !== currentLead.id;
     if (!isNewLead) return;
@@ -1544,8 +1549,9 @@ ${scrapeData.content || ''}
           });
           const d = res?.data || {};
           if (d.success) {
-            // Reflete o novo nome no objeto local pra UI/kanban não mostrar o antigo
+            // Reflete o novo nome no objeto local + estado do form pra UI/kanban não mostrar o antigo
             (currentLead as any).lead_name = d.lead_name || (currentLead as any).lead_name;
+            if (d.lead_name) setLeadName(d.lead_name);
             if (d.group_renamed) {
               toast.success(`Nome do lead e grupo atualizados: ${d.lead_name}`);
             } else {
