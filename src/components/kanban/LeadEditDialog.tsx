@@ -1541,12 +1541,21 @@ ${scrapeData.content || ''}
         cloudFunctions.invoke('regenerate-lead-name', {
           body: { lead_id: currentLead.id },
         }).then((res: any) => {
-          if (res?.data?.success && res?.data?.group_renamed) {
-            toast.success(`Grupo renomeado: ${res.data.group_name}`);
-          } else if (res?.data?.success === false) {
-            console.warn('[regenerate-lead-name] falhou:', res.data.error);
+          const d = res?.data || {};
+          if (d.success && d.group_renamed) {
+            toast.success(`Grupo renomeado: ${d.group_name}`);
+          } else if (d.success && d.lead_name_updated) {
+            toast.success(`Nome do lead atualizado: ${d.lead_name}`);
+          } else if (d.success === false) {
+            console.warn('[regenerate-lead-name] falhou:', d.error);
+            toast.error(`Não foi possível renomear o grupo: ${d.error || 'erro desconhecido'}`);
+          } else if (d.success && !d.group_renamed) {
+            toast.message('Funil alterado', { description: 'Sem grupo vinculado para renomear.' });
           }
-        }).catch((e: any) => console.warn('[regenerate-lead-name] erro:', e?.message || e));
+        }).catch((e: any) => {
+          console.warn('[regenerate-lead-name] erro:', e?.message || e);
+          toast.error(`Erro ao renomear grupo: ${e?.message || e}`);
+        });
       }
 
       toast.success('Lead atualizado com sucesso!');
