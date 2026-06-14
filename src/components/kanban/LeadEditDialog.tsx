@@ -1538,24 +1538,30 @@ ${scrapeData.content || ''}
       // (prefixo/sufixo/padrão fechado) do board atual e renomeia na UazAPI + leads.lead_name.
       const prevBoardId = (currentLead as any).board_id || null;
       if (selectedBoardId && selectedBoardId !== prevBoardId) {
-        cloudFunctions.invoke('regenerate-lead-name', {
-          body: { lead_id: currentLead.id },
-        }).then((res: any) => {
+        try {
+          const res: any = await cloudFunctions.invoke('regenerate-lead-name', {
+            body: { lead_id: currentLead.id },
+          });
           const d = res?.data || {};
-          if (d.success && d.group_renamed) {
-            toast.success(`Grupo renomeado: ${d.group_name}`);
-          } else if (d.success && d.lead_name_updated) {
-            toast.success(`Nome do lead atualizado: ${d.lead_name}`);
-          } else if (d.success === false) {
+          if (d.success) {
+            // Reflete o novo nome no objeto local pra UI/kanban não mostrar o antigo
+            (currentLead as any).lead_name = d.lead_name || (currentLead as any).lead_name;
+            if (d.group_renamed) {
+              toast.success(`Nome do lead e grupo atualizados: ${d.lead_name}`);
+            } else {
+              toast.success(`Nome do lead atualizado: ${d.lead_name}`);
+              if (d.missing_fields?.length) {
+                toast.message('Atenção', { description: `Campos faltando no template: ${d.missing_fields.join(', ')}` });
+              }
+            }
+          } else {
             console.warn('[regenerate-lead-name] falhou:', d.error);
-            toast.error(`Não foi possível renomear o grupo: ${d.error || 'erro desconhecido'}`);
-          } else if (d.success && !d.group_renamed) {
-            toast.message('Funil alterado', { description: 'Sem grupo vinculado para renomear.' });
+            toast.error(`Não foi possível renomear: ${d.error || 'erro desconhecido'}`);
           }
-        }).catch((e: any) => {
+        } catch (e: any) {
           console.warn('[regenerate-lead-name] erro:', e?.message || e);
-          toast.error(`Erro ao renomear grupo: ${e?.message || e}`);
-        });
+          toast.error(`Erro ao renomear: ${e?.message || e}`);
+        }
       }
 
       toast.success('Lead atualizado com sucesso!');
@@ -1743,6 +1749,44 @@ ${scrapeData.content || ''}
             <div className="flex items-center gap-2 px-3 py-2">
               <CheckSquare className="h-4 w-4 text-primary" />
               <span className="text-sm font-medium">Funil de Vendas</span>
+              {boards.length > 0 && (
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 ml-1"
+                      title="Trocar funil"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-72 p-2 z-[10000]" align="start" onClick={(e) => e.stopPropagation()}>
+                    <Label className="text-xs px-1">Trocar funil</Label>
+                    <Select
+                      value={selectedBoardId || '__none__'}
+                      onValueChange={(val) => {
+                        const newBoardId = val === '__none__' ? '' : val;
+                        setSelectedBoardId(newBoardId);
+                      }}
+                    >
+                      <SelectTrigger className="mt-1">
+                        <SelectValue placeholder="Selecione..." />
+                      </SelectTrigger>
+                      <SelectContent className="z-[10001]">
+                        <SelectItem value="__none__">Sem funil</SelectItem>
+                        {boards.map(b => (
+                          <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-[10px] text-muted-foreground mt-2 px-1">
+                      Ao salvar, o nome do lead e do grupo serão atualizados conforme a configuração do novo funil.
+                    </p>
+                  </PopoverContent>
+                </Popover>
+              )}
               <div className="ml-auto">
                 {funnelPanelOpen
                   ? <ChevronUp className="h-4 w-4 text-muted-foreground" />
@@ -1753,7 +1797,7 @@ ${scrapeData.content || ''}
               <Suspense fallback={<div className="flex items-center justify-center p-4"><Loader2 className="h-4 w-4 animate-spin" /></div>}>
                 <LeadFunnelOverview
                   leadId={lead.id}
-                  boardId={lead.board_id || null}
+                  boardId={selectedBoardId || lead.board_id || null}
                   currentStageId={lead.status || null}
                   boards={boards}
                   isClosed={leadOutcome === 'closed'}
