@@ -66,6 +66,7 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'gmail-inss-sync': gmailInssSync,
   'notify-inss-update': notifyInssUpdate,
   'get-whatsapp-group-info': getWhatsappGroupInfo,
+  'scan-duplicate-contacts': scanDuplicateContacts,
 };
 
 const app = express();
