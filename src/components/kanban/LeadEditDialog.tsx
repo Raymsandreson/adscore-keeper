@@ -1533,6 +1533,22 @@ ${scrapeData.content || ''}
          await externalSupabase.from('leads').update({ lead_status: 'no_response' } as any).eq('id', currentLead.id);
        }
 
+      // Se o funil mudou, renomeia o grupo conforme board_group_settings do novo funil.
+      // Fire-and-forget: não bloqueia o save. O regenerate-lead-name lê o template
+      // (prefixo/sufixo/padrão fechado) do board atual e renomeia na UazAPI + leads.lead_name.
+      const prevBoardId = (currentLead as any).board_id || null;
+      if (selectedBoardId && selectedBoardId !== prevBoardId) {
+        cloudFunctions.invoke('regenerate-lead-name', {
+          body: { lead_id: currentLead.id },
+        }).then((res: any) => {
+          if (res?.data?.success && res?.data?.group_renamed) {
+            toast.success(`Grupo renomeado: ${res.data.group_name}`);
+          } else if (res?.data?.success === false) {
+            console.warn('[regenerate-lead-name] falhou:', res.data.error);
+          }
+        }).catch((e: any) => console.warn('[regenerate-lead-name] erro:', e?.message || e));
+      }
+
       toast.success('Lead atualizado com sucesso!');
       onOpenChange(false);
     } catch (error) {
