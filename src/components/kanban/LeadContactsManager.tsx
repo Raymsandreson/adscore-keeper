@@ -58,6 +58,7 @@ import { logGroupAudit } from '@/lib/groupAuditLog';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
+import { DuplicateContactMergeDialog, type ExistingContact, type IncomingContact } from './DuplicateContactMergeDialog';
 
 interface LeadContactsManagerProps {
   lead: Lead | null;
@@ -71,6 +72,11 @@ export function LeadContactsManager({ lead, open, onOpenChange }: LeadContactsMa
   const [searchQuery, setSearchQuery] = useState('');
   const [unlinkedContacts, setUnlinkedContacts] = useState<LeadContact[]>([]);
   const [editingContact, setEditingContact] = useState<LeadContact | null>(null);
+
+  // Duplicate detection state
+  const [dupOpen, setDupOpen] = useState(false);
+  const [dupCandidates, setDupCandidates] = useState<ExistingContact[]>([]);
+  const [dupIncoming, setDupIncoming] = useState<IncomingContact | null>(null);
 
   // New contact form
   const [formName, setFormName] = useState('');
@@ -181,6 +187,72 @@ export function LeadContactsManager({ lead, open, onOpenChange }: LeadContactsMa
     }
   };
 
+  const buildIncoming = (): IncomingContact => ({
+    full_name: formName.trim(),
+    phone: formPhone || null,
+    email: formEmail || null,
+    instagram_username: formInstagram || null,
+    classification: formClassification || null,
+    notes: formNotes || null,
+    city: lead?.city || null,
+    state: lead?.state || null,
+    neighborhood: lead?.neighborhood || null,
+    profession: null,
+  });
+
+  const phoneVariants = (raw: string): string[] => {
+    const digits = raw.replace(/\D/g, '');
+    if (!digits) return [];
+    const variants = new Set<string>([digits]);
+    // Strip DDI 55
+    if (digits.startsWith('55') && digits.length >= 12) variants.add(digits.slice(2));
+    // Add DDI 55
+    if (!digits.startsWith('55')) variants.add('55' + digits);
+    // Mobile 9 toggling on last 8/9 digits
+    const all = Array.from(variants);
+    for (const v of all) {
+      // Try adding/removing the trailing 9 right after DDD
+      if (v.length === 10) variants.add(v.slice(0, 2) + '9' + v.slice(2));
+      if (v.length === 11) variants.add(v.slice(0, 2) + v.slice(3));
+      if (v.length === 12) variants.add(v.slice(0, 4) + '9' + v.slice(4));
+      if (v.length === 13) variants.add(v.slice(0, 4) + v.slice(5));
+    }
+    return Array.from(variants);
+  };
+
+  const findDuplicates = async (incoming: IncomingContact): Promise<ExistingContact[]> => {
+    const ors: string[] = [];
+    if (incoming.phone) {
+      const variants = phoneVariants(incoming.phone);
+      for (const v of variants) ors.push(`phone.ilike.%${v}%`);
+    }
+    if (incoming.full_name) {
+      const safe = incoming.full_name.replace(/[%,()]/g, ' ').trim();
+      if (safe.length >= 3) ors.push(`full_name.ilike.${safe}`);
+    }
+    if (ors.length === 0) return [];
+    try {
+      const { data, error } = await externalSupabase
+        .from('contacts')
+        .select('id, full_name, phone, email, instagram_username, classification, notes, city, state, neighborhood, street, cep, profession, created_at')
+        .is('deleted_at', null)
+        .or(ors.join(','))
+        .limit(5);
+      if (error) throw error;
+      // Exclude groups and contacts already linked to this lead
+      const linkedIds = new Set(contacts.map((c) => c.id));
+      return (data || []).filter((c: any) => {
+        if (!c.full_name) return false;
+        if (c.full_name.startsWith('Grupo -')) return false;
+        if (linkedIds.has(c.id)) return false;
+        return true;
+      }) as ExistingContact[];
+    } catch (e) {
+      console.warn('Duplicate check failed:', e);
+      return [];
+    }
+  };
+
   const handleAddContact = async () => {
     if (!formName.trim()) return;
 
@@ -194,26 +266,63 @@ export function LeadContactsManager({ lead, open, onOpenChange }: LeadContactsMa
       return;
     }
 
-    await addContactToLead({
-      full_name: formName,
-      phone: formPhone || null,
-      email: formEmail || null,
-      instagram_username: formInstagram || null,
-      classification: formClassification || null,
-      notes: formNotes || null,
-      // Inherit location and profession data from lead
-      city: lead?.city || null,
-      state: lead?.state || null,
-      neighborhood: lead?.neighborhood || null,
-      profession: null, // profession is on contact, not inherited from lead directly
-    });
+    const incoming = buildIncoming();
+    const dups = await findDuplicates(incoming);
+    if (dups.length > 0) {
+      setDupIncoming(incoming);
+      setDupCandidates(dups);
+      setDupOpen(true);
+      return;
+    }
 
+    await addContactToLead(incoming);
+    resetForm();
+    setActiveTab('contacts');
+  };
+
+  const handleMergeIntoExisting = async (targetId: string, merged: Partial<IncomingContact>) => {
+    try {
+      // Strip nulls so we don't overwrite real data with blanks
+      const cleanUpdates: Record<string, any> = {};
+      for (const [k, v] of Object.entries(merged)) {
+        if (v !== null && v !== undefined && String(v).trim() !== '') cleanUpdates[k] = v;
+      }
+      if (Object.keys(cleanUpdates).length > 0) {
+        const { error: upErr } = await externalSupabase
+          .from('contacts')
+          .update(cleanUpdates)
+          .eq('id', targetId);
+        if (upErr) throw upErr;
+      }
+      // Link to lead (if not already linked)
+      if (lead?.id) {
+        const { error: linkErr } = await supabase
+          .from('contact_leads' as any)
+          .insert({ contact_id: targetId, lead_id: lead.id });
+        if (linkErr && linkErr.code !== '23505') throw linkErr;
+      }
+      toast.success('Contato mesclado e vinculado ao lead');
+      resetForm();
+      setActiveTab('contacts');
+      // Refresh list
+      await new Promise((r) => setTimeout(r, 100));
+      window.dispatchEvent(new CustomEvent('contacts-refresh'));
+    } catch (e: any) {
+      console.error('Merge failed:', e);
+      toast.error('Erro ao mesclar contato: ' + (e?.message || ''));
+    }
+  };
+
+  const handleCreateNewFromDup = async () => {
+    if (!dupIncoming) return;
+    await addContactToLead(dupIncoming);
     resetForm();
     setActiveTab('contacts');
   };
 
   const handleUpdateContact = async () => {
     if (!editingContact || !formName.trim()) return;
+
 
     if (formPhone && isWhatsAppGroupId(formPhone)) {
       toast.error('Este número é um ID de grupo WhatsApp. Remova este contato e adicione o grupo na aba "Básico" → "Grupos WhatsApp".');
@@ -597,6 +706,16 @@ export function LeadContactsManager({ lead, open, onOpenChange }: LeadContactsMa
       </SheetContent>
     </Sheet>
     <ConfirmDeleteDialog />
+    {dupIncoming && (
+      <DuplicateContactMergeDialog
+        open={dupOpen}
+        onOpenChange={setDupOpen}
+        incoming={dupIncoming}
+        candidates={dupCandidates}
+        onMerge={handleMergeIntoExisting}
+        onCreateNew={handleCreateNewFromDup}
+      />
+    )}
     </>
   );
 }
