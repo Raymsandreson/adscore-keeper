@@ -244,6 +244,48 @@ async function mergeSafeGroup(g: Group): Promise<{ winner: string; merged: numbe
 export const handler: RequestHandler = async (req, res) => {
   const ok = (b: Record<string, unknown>) => res.status(200).json(b);
   try {
+    const body = req.body || {};
+    const mode = (body.mode as Mode | 'merge-selected') || 'dry-run';
+    const contacts = await fetchAllContacts();
+    const groups = buildGroups(contacts);
+
+    // Modo merge-selected: recebe array de keys e mescla só esses grupos
+    if (mode === 'merge-selected') {
+      const selectedKeys: string[] = Array.isArray(body.keys) ? body.keys : [];
+      const target = groups.filter((g) => selectedKeys.includes(g.key));
+      let merged_count = 0;
+      const merge_errors: string[] = [];
+      for (const g of target) {
+        const r = await mergeSafeGroup(g);
+        if (r.error) merge_errors.push(`${g.key}: ${r.error}`);
+        else merged_count += r.merged;
+      }
+      return ok({ success: true, merged_count, merge_errors, groups_processed: target.length });
+    }
+
+    // Modo dry-run (default): lista TODOS os grupos com classificação
+    const listed = groups.map((g) => ({
+      key: g.key,
+      reason: g.reason,
+      classification: classifyGroup(g),
+      contacts: g.contacts,
+    }));
+
+    return ok({
+      success: true,
+      total_contacts: contacts.length,
+      total_groups: groups.length,
+      safe_count: listed.filter((g) => g.classification === 'safe').length,
+      ambiguous_count: listed.filter((g) => g.classification === 'ambiguous').length,
+      groups: listed,
+    });
+  } catch (err: any) {
+    return ok({ success: false, error: err?.message || 'unknown' });
+  }
+};
+
+  const ok = (b: Record<string, unknown>) => res.status(200).json(b);
+  try {
     const mode = ((req.body || {}).mode as Mode) || 'dry-run';
     const contacts = await fetchAllContacts();
     const groups = buildGroups(contacts);
