@@ -706,6 +706,16 @@ export function LeadContactsManager({ lead, open, onOpenChange }: LeadContactsMa
       </SheetContent>
     </Sheet>
     <ConfirmDeleteDialog />
+    {dupIncoming && (
+      <DuplicateContactMergeDialog
+        open={dupOpen}
+        onOpenChange={setDupOpen}
+        incoming={dupIncoming}
+        candidates={dupCandidates}
+        onMerge={handleMergeIntoExisting}
+        onCreateNew={handleCreateNewFromDup}
+      />
+    )}
     </>
   );
 }
