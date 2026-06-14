@@ -100,7 +100,23 @@ async function extractFromPdf(pdfUrl: string): Promise<Extracted> {
   const args = data?.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments;
   if (!args) return {};
   try {
-    return JSON.parse(args) as Extracted;
+    const raw = JSON.parse(args) as Record<string, any>;
+    // Sanitiza: o Gemini frequentemente devolve a string literal "null", "N/A",
+    // "não informado", "-" etc. em vez de null real. Tudo isso vira null pra
+    // evitar gravar lixo no lead (caso Rosa Gomes 2026-06-13).
+    const BAD = new Set(["null", "none", "n/a", "na", "nao informado", "não informado", "-", "--", "indefinido", "desconhecido"]);
+    const clean: Record<string, any> = {};
+    for (const [k, v] of Object.entries(raw)) {
+      if (v === null || v === undefined) { clean[k] = null; continue; }
+      if (typeof v === "string") {
+        const norm = v.trim().toLowerCase();
+        if (norm === "" || BAD.has(norm)) { clean[k] = null; continue; }
+        clean[k] = v.trim();
+      } else {
+        clean[k] = v;
+      }
+    }
+    return clean as Extracted;
   } catch {
     return {};
   }
