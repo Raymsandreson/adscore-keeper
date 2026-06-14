@@ -36,6 +36,7 @@ export function ContactsListPage() {
   const [chatPreview, setChatPreview] = useState<{ phone: string; instance_name: string | null; contact_name: string | null } | null>(null);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [loadingLeadForGroup, setLoadingLeadForGroup] = useState<string | null>(null);
+  const [showDuplicatesScan, setShowDuplicatesScan] = useState(false);
   const openGroupChat = (jid: string) => {
     if (!jid) return;
     const g = groups.find(x => x.group_jid === jid);
