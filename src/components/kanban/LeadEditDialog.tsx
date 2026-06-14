@@ -385,7 +385,12 @@ export function LeadEditDialog({
   // realtime/refetch updates would overwrite fields the user just edited (ex: Acolhedor
   // gets deselected immediately after picking it).
   useEffect(() => {
-    if (!currentLead || !open) return;
+    if (!open) {
+      // Quando fechar, zera o ref pra que reabrir o mesmo lead rehidrate com dados frescos
+      prevLeadIdRef.current = null;
+      return;
+    }
+    if (!currentLead) return;
 
     const isNewLead = prevLeadIdRef.current !== currentLead.id;
     if (!isNewLead) return;
