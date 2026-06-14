@@ -302,13 +302,15 @@ export const handler: RequestHandler = async (req, res) => {
         .from('board_group_instances')
         .select('instance_id')
         .eq('board_id', lead.board_id);
+      // Nota: a tabela whatsapp_instances do Externo NÃO tem coluna connection_status.
+      // A conectividade real é validada pelo probe /group/info abaixo — quem
+      // responde 200 está online e enxerga o grupo.
       if (boardInstances?.length) {
         const { data: bInst } = await ext
           .from('whatsapp_instances')
           .select('id, instance_name, instance_token, base_url')
           .in('id', boardInstances.map((b: any) => b.instance_id))
-          .eq('is_active', true)
-          .eq('connection_status', 'connected');
+          .eq('is_active', true);
         if (bInst) candidates.push(...bInst);
       }
       {
@@ -316,8 +318,7 @@ export const handler: RequestHandler = async (req, res) => {
         let q = ext
           .from('whatsapp_instances')
           .select('id, instance_name, instance_token, base_url')
-          .eq('is_active', true)
-          .eq('connection_status', 'connected');
+          .eq('is_active', true);
         if (excludeIds.length) q = q.not('id', 'in', `(${excludeIds.join(',')})`);
         const { data: anyInst } = await q;
         if (anyInst) candidates.push(...anyInst);
@@ -393,6 +394,9 @@ export const handler: RequestHandler = async (req, res) => {
       missing_fields: missingFields,
       group_renamed: groupRenamed,
       group_name: groupName,
+      rename_errors: renameErrors,
+      sync_enabled: !!settings.sync_lead_name_with_group,
+      has_group_id: !!lead.whatsapp_group_id,
     });
   } catch (e: any) {
     console.error('[regenerate-lead-name] error:', e);
