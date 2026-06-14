@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Loader2, ScanSearch, Merge, AlertTriangle, CheckCircle2, Phone, User } from 'lucide-react';
-import { cloudFunctions } from '@/lib/functionRouter';
+import { db, ensureExternalSession } from '@/integrations/supabase';
 import { toast } from 'sonner';
 
 interface Props {
@@ -24,6 +24,7 @@ interface DupContact {
   city: string | null;
   state: string | null;
   created_at: string | null;
+  notes?: string | null;
 }
 
 interface DupGroup {
@@ -43,56 +44,211 @@ interface ScanResult {
 
 type Phase = 'idle' | 'scanning' | 'list' | 'merging' | 'done';
 
+// últimos 10 dígitos (ignora DDI 55 e nono dígito)
+function normalizePhone(p?: string | null): string | null {
+  if (!p) return null;
+  const digits = String(p).replace(/\D/g, '');
+  if (digits.length < 8) return null;
+  return digits.slice(-10).padStart(10, '0');
+}
+
+function normalizeName(n?: string | null): string | null {
+  if (!n) return null;
+  const v = n
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9 ]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return v.length >= 4 ? v : null;
+}
+
+function namesCompatible(a?: string | null, b?: string | null): boolean {
+  const na = normalizeName(a);
+  const nb = normalizeName(b);
+  if (!na || !nb) return true; // falta de nome não invalida
+  if (na === nb) return true;
+  const ta = new Set(na.split(' '));
+  const tb = new Set(nb.split(' '));
+  // se compartilham primeiro nome E pelo menos um sobrenome → compatível
+  const firstA = na.split(' ')[0];
+  const firstB = nb.split(' ')[0];
+  if (firstA !== firstB) return false;
+  const inter = [...ta].filter((x) => tb.has(x));
+  return inter.length >= 2;
+}
+
 export function DuplicateContactsScanDialog({ open, onOpenChange, onFinished }: Props) {
   const [phase, setPhase] = useState<Phase>('idle');
   const [scan, setScan] = useState<ScanResult | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [mergeResult, setMergeResult] = useState<{ merged: number; errors: string[] } | null>(null);
+  const [progress, setProgress] = useState<string>('');
 
   const runScan = async () => {
     setPhase('scanning');
+    setProgress('Carregando contatos…');
     try {
-      const { data, error } = await cloudFunctions.invoke('scan-duplicate-contacts', {
-        body: { mode: 'dry-run' },
-      });
-      if (error || !data?.success) {
-        toast.error(`Falha: ${error?.message || data?.error || 'erro'}`);
-        setPhase('idle');
-        return;
+      await ensureExternalSession();
+
+      // pagina pra evitar limite de 1000
+      const PAGE = 1000;
+      let from = 0;
+      const all: DupContact[] = [];
+      while (true) {
+        const { data, error } = await db
+          .from('contacts')
+          .select('id, full_name, phone, email, city, state, created_at')
+          .is('deleted_at', null)
+          .order('created_at', { ascending: true })
+          .range(from, from + PAGE - 1);
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        all.push(...(data as DupContact[]));
+        setProgress(`Carregados ${all.length} contatos…`);
+        if (data.length < PAGE) break;
+        from += PAGE;
       }
-      setScan(data as ScanResult);
-      // pré-seleciona os seguros
-      const safeKeys = new Set<string>(
-        (data.groups as DupGroup[]).filter((g) => g.classification === 'safe').map((g) => g.key)
-      );
-      setSelected(safeKeys);
+
+      setProgress('Analisando…');
+
+      // agrupa por telefone normalizado
+      const byPhone = new Map<string, DupContact[]>();
+      const byName = new Map<string, DupContact[]>();
+      for (const c of all) {
+        const p = normalizePhone(c.phone);
+        if (p) {
+          if (!byPhone.has(p)) byPhone.set(p, []);
+          byPhone.get(p)!.push(c);
+        }
+        const n = normalizeName(c.full_name);
+        if (n) {
+          if (!byName.has(n)) byName.set(n, []);
+          byName.get(n)!.push(c);
+        }
+      }
+
+      const groups: DupGroup[] = [];
+      const usedIds = new Set<string>();
+
+      // telefone primeiro
+      for (const [key, list] of byPhone.entries()) {
+        if (list.length < 2) continue;
+        const sorted = [...list].sort((a, b) =>
+          (a.created_at || '').localeCompare(b.created_at || '')
+        );
+        const winner = sorted[0];
+        const allCompatible = sorted.slice(1).every((c) => namesCompatible(winner.full_name, c.full_name));
+        groups.push({
+          key: `phone:${key}`,
+          reason: 'phone',
+          classification: allCompatible ? 'safe' : 'ambiguous',
+          contacts: sorted,
+        });
+        sorted.forEach((c) => usedIds.add(c.id));
+      }
+
+      // nome (só se nenhum dos contatos já caiu em grupo de telefone)
+      for (const [key, list] of byName.entries()) {
+        if (list.length < 2) continue;
+        const filtered = list.filter((c) => !usedIds.has(c.id));
+        if (filtered.length < 2) continue;
+        const sorted = [...filtered].sort((a, b) =>
+          (a.created_at || '').localeCompare(b.created_at || '')
+        );
+        groups.push({
+          key: `name:${key}`,
+          reason: 'name',
+          classification: 'ambiguous',
+          contacts: sorted,
+        });
+      }
+
+      const result: ScanResult = {
+        total_contacts: all.length,
+        total_groups: groups.length,
+        safe_count: groups.filter((g) => g.classification === 'safe').length,
+        ambiguous_count: groups.filter((g) => g.classification === 'ambiguous').length,
+        groups,
+      };
+
+      setScan(result);
+      setSelected(new Set(groups.filter((g) => g.classification === 'safe').map((g) => g.key)));
       setPhase('list');
     } catch (err: any) {
-      toast.error(`Erro: ${err.message}`);
+      console.error('[scan-duplicates]', err);
+      toast.error(`Erro ao varrer: ${err.message || err}`);
       setPhase('idle');
+    }
+  };
+
+  const mergeOneGroup = async (g: DupGroup): Promise<void> => {
+    const sorted = [...g.contacts].sort((a, b) =>
+      (a.created_at || '').localeCompare(b.created_at || '')
+    );
+    const winner = sorted[0];
+    const losers = sorted.slice(1);
+
+    // monta payload preenchendo campos vazios do winner com dados dos losers
+    const fields: (keyof DupContact)[] = ['full_name', 'phone', 'email', 'city', 'state'];
+    const patch: Record<string, any> = {};
+    for (const f of fields) {
+      if (!winner[f] || !String(winner[f]).trim()) {
+        const fill = losers.find((l) => l[f] && String(l[f]).trim());
+        if (fill) patch[f] = fill[f];
+      }
+    }
+    if (Object.keys(patch).length > 0) {
+      const { error } = await db.from('contacts').update(patch).eq('id', winner.id);
+      if (error) throw new Error(`update winner: ${error.message}`);
+    }
+
+    // re-vincula contact_leads
+    for (const l of losers) {
+      const { error: relErr } = await db
+        .from('contact_leads')
+        .update({ contact_id: winner.id })
+        .eq('contact_id', l.id);
+      if (relErr && !/duplicate|unique/i.test(relErr.message)) {
+        // se duplicar, ignora — vamos remover os duplicatas do lado original
+        throw new Error(`relink ${l.id}: ${relErr.message}`);
+      }
+    }
+
+    // soft-delete dos perdedores com snapshot
+    for (const l of losers) {
+      const snapshot = JSON.stringify({ merged_into: winner.id, contact: l, at: new Date().toISOString() });
+      const { error } = await db
+        .from('contacts')
+        .update({
+          deleted_at: new Date().toISOString(),
+          notes: `[merged_into:${winner.id}] ${snapshot}`,
+        })
+        .eq('id', l.id);
+      if (error) throw new Error(`soft-delete ${l.id}: ${error.message}`);
     }
   };
 
   const mergeSelected = async () => {
     if (!scan || selected.size === 0) return;
     setPhase('merging');
-    try {
-      const { data, error } = await cloudFunctions.invoke('scan-duplicate-contacts', {
-        body: { mode: 'merge-selected', keys: Array.from(selected) },
-      });
-      if (error || !data?.success) {
-        toast.error(`Falha: ${error?.message || data?.error || 'erro'}`);
-        setPhase('list');
-        return;
+    const errors: string[] = [];
+    let merged = 0;
+    const groups = scan.groups.filter((g) => selected.has(g.key));
+    for (let i = 0; i < groups.length; i++) {
+      setProgress(`Mesclando ${i + 1}/${groups.length}…`);
+      try {
+        await mergeOneGroup(groups[i]);
+        merged++;
+      } catch (err: any) {
+        errors.push(`${groups[i].key}: ${err.message || err}`);
       }
-      setMergeResult({ merged: data.merged_count || 0, errors: data.merge_errors || [] });
-      setPhase('done');
-      toast.success(`${data.merged_count} contato(s) mesclado(s)`);
-      onFinished?.();
-    } catch (err: any) {
-      toast.error(`Erro: ${err.message}`);
-      setPhase('list');
     }
+    setMergeResult({ merged, errors });
+    setPhase('done');
+    toast.success(`${merged} grupo(s) mesclado(s)`);
+    onFinished?.();
   };
 
   const toggle = (key: string) => {
@@ -112,7 +268,6 @@ export function DuplicateContactsScanDialog({ open, onOpenChange, onFinished }: 
   const groupedView = useMemo(() => {
     if (!scan) return [];
     return [...scan.groups].sort((a, b) => {
-      // seguros primeiro
       if (a.classification !== b.classification) return a.classification === 'safe' ? -1 : 1;
       return 0;
     });
@@ -123,6 +278,7 @@ export function DuplicateContactsScanDialog({ open, onOpenChange, onFinished }: 
     setScan(null);
     setSelected(new Set());
     setMergeResult(null);
+    setProgress('');
   };
 
   return (
@@ -134,8 +290,8 @@ export function DuplicateContactsScanDialog({ open, onOpenChange, onFinished }: 
             Contatos duplicados
           </DialogTitle>
           <DialogDescription>
-            Veja os grupos de duplicados, marque os que quer juntar e mescle em lote.
-            Cada grupo mantém o contato mais antigo e preenche campos vazios com dados dos outros.
+            Varre seus contatos, agrupa os parecidos (mesmo telefone ou nome), você marca quais juntar.
+            O contato mais antigo é mantido e campos vazios são preenchidos com dados dos outros.
           </DialogDescription>
         </DialogHeader>
 
@@ -151,7 +307,7 @@ export function DuplicateContactsScanDialog({ open, onOpenChange, onFinished }: 
         {(phase === 'scanning' || phase === 'merging') && (
           <div className="flex items-center gap-3 py-10 text-sm text-muted-foreground">
             <Loader2 className="h-5 w-5 animate-spin" />
-            {phase === 'scanning' ? 'Procurando…' : 'Mesclando…'}
+            {progress || (phase === 'scanning' ? 'Procurando…' : 'Mesclando…')}
           </div>
         )}
 
@@ -202,9 +358,9 @@ export function DuplicateContactsScanDialog({ open, onOpenChange, onFinished }: 
                         className="mt-1"
                       />
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1.5 text-xs text-muted-foreground">
+                        <div className="flex items-center gap-2 mb-1.5 text-xs text-muted-foreground flex-wrap">
                           {g.reason === 'phone' ? <Phone className="h-3 w-3" /> : <User className="h-3 w-3" />}
-                          <span>Mesmo {g.reason === 'phone' ? 'telefone' : 'nome'}: {g.key}</span>
+                          <span>Mesmo {g.reason === 'phone' ? 'telefone' : 'nome'}: {g.key.split(':')[1]}</span>
                           <Badge
                             variant="outline"
                             className={`ml-auto text-[10px] ${
@@ -254,13 +410,13 @@ export function DuplicateContactsScanDialog({ open, onOpenChange, onFinished }: 
           <div className="space-y-3 py-2">
             <p className="text-sm">
               <CheckCircle2 className="h-4 w-4 inline mr-1 text-emerald-600" />
-              <strong>{mergeResult.merged}</strong> contato(s) mesclado(s).
+              <strong>{mergeResult.merged}</strong> grupo(s) mesclado(s).
             </p>
             {mergeResult.errors.length > 0 && (
-              <ScrollArea className="h-24 border rounded p-2">
-                <p className="text-xs font-medium text-destructive mb-1">Erros:</p>
+              <ScrollArea className="h-32 border rounded p-2">
+                <p className="text-xs font-medium text-destructive mb-1">Erros ({mergeResult.errors.length}):</p>
                 {mergeResult.errors.map((e, i) => (
-                  <p key={i} className="text-xs text-muted-foreground">{e}</p>
+                  <p key={i} className="text-xs text-muted-foreground break-all">{e}</p>
                 ))}
               </ScrollArea>
             )}
