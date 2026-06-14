@@ -187,10 +187,6 @@ export function LeadContactsManager({ lead, open, onOpenChange }: LeadContactsMa
     }
   };
 
-  const handleAddContact = async () => {
-    if (!formName.trim()) return;
-
-    // If the phone looks like a WhatsApp GROUP id, save as group instead of contact
   const buildIncoming = (): IncomingContact => ({
     full_name: formName.trim(),
     phone: formPhone || null,
