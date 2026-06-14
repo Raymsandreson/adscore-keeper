@@ -2352,6 +2352,12 @@ export function ContactsListPage() {
         }}
       />
 
+      <DuplicateContactsScanDialog
+        open={showDuplicatesScan}
+        onOpenChange={setShowDuplicatesScan}
+        onFinished={() => fetchContacts()}
+      />
+
       <DashboardChatPreview
         open={!!chatPreview}
         onOpenChange={(open) => { if (!open) setChatPreview(null); }}
