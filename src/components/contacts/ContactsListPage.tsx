@@ -6,6 +6,7 @@ import type { Lead } from '@/hooks/useLeads';
 import { useContacts, Contact } from '@/hooks/useContacts';
 import { ContactDetailSheet } from './ContactDetailSheet';
 import { CreateContactDialog } from './CreateContactDialog';
+import { DuplicateContactsScanDialog } from './DuplicateContactsScanDialog';
 import { useBroadcastLists, BroadcastList, BroadcastListMember } from '@/hooks/useBroadcastLists';
 import { supabase } from '@/integrations/supabase/client';
 import { db, ensureExternalSession } from '@/integrations/supabase';
