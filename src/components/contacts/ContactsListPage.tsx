@@ -6,6 +6,7 @@ import type { Lead } from '@/hooks/useLeads';
 import { useContacts, Contact } from '@/hooks/useContacts';
 import { ContactDetailSheet } from './ContactDetailSheet';
 import { CreateContactDialog } from './CreateContactDialog';
+import { DuplicateContactsScanDialog } from './DuplicateContactsScanDialog';
 import { useBroadcastLists, BroadcastList, BroadcastListMember } from '@/hooks/useBroadcastLists';
 import { supabase } from '@/integrations/supabase/client';
 import { db, ensureExternalSession } from '@/integrations/supabase';
@@ -35,6 +36,7 @@ export function ContactsListPage() {
   const [chatPreview, setChatPreview] = useState<{ phone: string; instance_name: string | null; contact_name: string | null } | null>(null);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [loadingLeadForGroup, setLoadingLeadForGroup] = useState<string | null>(null);
+  const [showDuplicatesScan, setShowDuplicatesScan] = useState(false);
   const openGroupChat = (jid: string) => {
     if (!jid) return;
     const g = groups.find(x => x.group_jid === jid);
@@ -842,6 +844,10 @@ export function ContactsListPage() {
         <Button variant="outline" size="sm" onClick={handleClassifyClosedAsClients} disabled={classifyingClients} title="Classificar contatos em grupos fechados como Cliente">
           {classifyingClients ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Wand2 className="h-3.5 w-3.5 mr-1" />}
           Classificar Clientes
+        </Button>
+        <Button variant="outline" size="sm" onClick={() => setShowDuplicatesScan(true)} title="Buscar e mesclar contatos duplicados">
+          <Users className="h-3.5 w-3.5 mr-1" />
+          Resolver duplicados
         </Button>
         <Button size="sm" onClick={() => setShowCreateContact(true)}>
           <UserPlus className="h-3.5 w-3.5 mr-1" />
@@ -2344,6 +2350,12 @@ export function ContactsListPage() {
           setShowCreateContact(false);
           fetchContacts();
         }}
+      />
+
+      <DuplicateContactsScanDialog
+        open={showDuplicatesScan}
+        onOpenChange={setShowDuplicatesScan}
+        onFinished={() => fetchContacts()}
       />
 
       <DashboardChatPreview
