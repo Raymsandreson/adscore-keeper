@@ -1538,24 +1538,30 @@ ${scrapeData.content || ''}
       // (prefixo/sufixo/padrão fechado) do board atual e renomeia na UazAPI + leads.lead_name.
       const prevBoardId = (currentLead as any).board_id || null;
       if (selectedBoardId && selectedBoardId !== prevBoardId) {
-        cloudFunctions.invoke('regenerate-lead-name', {
-          body: { lead_id: currentLead.id },
-        }).then((res: any) => {
+        try {
+          const res: any = await cloudFunctions.invoke('regenerate-lead-name', {
+            body: { lead_id: currentLead.id },
+          });
           const d = res?.data || {};
-          if (d.success && d.group_renamed) {
-            toast.success(`Grupo renomeado: ${d.group_name}`);
-          } else if (d.success && d.lead_name_updated) {
-            toast.success(`Nome do lead atualizado: ${d.lead_name}`);
-          } else if (d.success === false) {
+          if (d.success) {
+            // Reflete o novo nome no objeto local pra UI/kanban não mostrar o antigo
+            (currentLead as any).lead_name = d.lead_name || (currentLead as any).lead_name;
+            if (d.group_renamed) {
+              toast.success(`Nome do lead e grupo atualizados: ${d.lead_name}`);
+            } else {
+              toast.success(`Nome do lead atualizado: ${d.lead_name}`);
+              if (d.missing_fields?.length) {
+                toast.message('Atenção', { description: `Campos faltando no template: ${d.missing_fields.join(', ')}` });
+              }
+            }
+          } else {
             console.warn('[regenerate-lead-name] falhou:', d.error);
-            toast.error(`Não foi possível renomear o grupo: ${d.error || 'erro desconhecido'}`);
-          } else if (d.success && !d.group_renamed) {
-            toast.message('Funil alterado', { description: 'Sem grupo vinculado para renomear.' });
+            toast.error(`Não foi possível renomear: ${d.error || 'erro desconhecido'}`);
           }
-        }).catch((e: any) => {
+        } catch (e: any) {
           console.warn('[regenerate-lead-name] erro:', e?.message || e);
-          toast.error(`Erro ao renomear grupo: ${e?.message || e}`);
-        });
+          toast.error(`Erro ao renomear: ${e?.message || e}`);
+        }
       }
 
       toast.success('Lead atualizado com sucesso!');
