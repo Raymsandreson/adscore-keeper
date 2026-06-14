@@ -1,19 +1,14 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Loader2, ScanSearch, Merge, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { Loader2, ScanSearch, Merge, AlertTriangle, CheckCircle2, Phone, User } from 'lucide-react';
 import { cloudFunctions } from '@/lib/functionRouter';
-import { externalSupabase } from '@/integrations/supabase/external-client';
 import { toast } from 'sonner';
-import {
-  DuplicateContactMergeDialog,
-  type IncomingContact,
-  type ExistingContact,
-} from '@/components/kanban/DuplicateContactMergeDialog';
 
 interface Props {
   open: boolean;
@@ -21,10 +16,21 @@ interface Props {
   onFinished?: () => void;
 }
 
-interface AmbiguousGroup {
+interface DupContact {
+  id: string;
+  full_name: string | null;
+  phone: string | null;
+  email: string | null;
+  city: string | null;
+  state: string | null;
+  created_at: string | null;
+}
+
+interface DupGroup {
   key: string;
   reason: 'phone' | 'name';
-  contacts: ExistingContact[];
+  classification: 'safe' | 'ambiguous';
+  contacts: DupContact[];
 }
 
 interface ScanResult {
@@ -32,237 +38,241 @@ interface ScanResult {
   total_groups: number;
   safe_count: number;
   ambiguous_count: number;
-  merged_count: number;
-  ambiguous: AmbiguousGroup[];
-  merge_errors?: string[];
+  groups: DupGroup[];
 }
 
-type Phase = 'idle' | 'scanning' | 'preview' | 'merging' | 'review' | 'done';
+type Phase = 'idle' | 'scanning' | 'list' | 'merging' | 'done';
 
 export function DuplicateContactsScanDialog({ open, onOpenChange, onFinished }: Props) {
   const [phase, setPhase] = useState<Phase>('idle');
   const [scan, setScan] = useState<ScanResult | null>(null);
-  const [reviewIdx, setReviewIdx] = useState(0);
-  const [reviewOpen, setReviewOpen] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [mergeResult, setMergeResult] = useState<{ merged: number; errors: string[] } | null>(null);
 
-  const runScan = async (mode: 'dry-run' | 'merge-safe') => {
-    setPhase(mode === 'dry-run' ? 'scanning' : 'merging');
+  const runScan = async () => {
+    setPhase('scanning');
     try {
       const { data, error } = await cloudFunctions.invoke('scan-duplicate-contacts', {
-        body: { mode },
+        body: { mode: 'dry-run' },
       });
       if (error || !data?.success) {
-        toast.error(`Falha na varredura: ${error?.message || data?.error || 'erro desconhecido'}`);
+        toast.error(`Falha: ${error?.message || data?.error || 'erro'}`);
         setPhase('idle');
         return;
       }
       setScan(data as ScanResult);
-      setPhase(mode === 'dry-run' ? 'preview' : (data.ambiguous_count > 0 ? 'review' : 'done'));
-      if (mode === 'merge-safe') {
-        toast.success(`Mesclados ${data.merged_count} contatos automaticamente`);
-        if (data.ambiguous_count > 0) {
-          setReviewIdx(0);
-          setReviewOpen(true);
-        }
-      }
+      // pré-seleciona os seguros
+      const safeKeys = new Set<string>(
+        (data.groups as DupGroup[]).filter((g) => g.classification === 'safe').map((g) => g.key)
+      );
+      setSelected(safeKeys);
+      setPhase('list');
     } catch (err: any) {
       toast.error(`Erro: ${err.message}`);
       setPhase('idle');
     }
   };
 
-  const currentGroup = scan?.ambiguous?.[reviewIdx];
-
-  const incomingFromWinner = (g: AmbiguousGroup): IncomingContact => {
-    // mostra o primeiro (mais antigo) como "novo" no diálogo; os demais como candidatos
-    const sorted = [...g.contacts].sort((a, b) =>
-      String(a.created_at || '').localeCompare(String(b.created_at || ''))
-    );
-    const first = sorted[0];
-    return {
-      full_name: first.full_name || '',
-      phone: first.phone,
-      email: first.email,
-      instagram_username: (first as any).instagram_username,
-      classification: first.classification,
-      notes: first.notes,
-      city: first.city,
-      state: first.state,
-      neighborhood: (first as any).neighborhood,
-      street: (first as any).street,
-      cep: (first as any).cep,
-      profession: (first as any).profession,
-    };
-  };
-
-  const candidatesFor = (g: AmbiguousGroup): ExistingContact[] => {
-    const sorted = [...g.contacts].sort((a, b) =>
-      String(a.created_at || '').localeCompare(String(b.created_at || ''))
-    );
-    return sorted.slice(1);
-  };
-
-  const handleMergeOne = async (targetId: string, merged: Partial<IncomingContact>) => {
-    if (!currentGroup) return;
+  const mergeSelected = async () => {
+    if (!scan || selected.size === 0) return;
+    setPhase('merging');
     try {
-      // 1. atualiza alvo com campos escolhidos
-      const payload: any = {};
-      for (const [k, v] of Object.entries(merged)) {
-        if (v !== undefined) payload[k] = v;
+      const { data, error } = await cloudFunctions.invoke('scan-duplicate-contacts', {
+        body: { mode: 'merge-selected', keys: Array.from(selected) },
+      });
+      if (error || !data?.success) {
+        toast.error(`Falha: ${error?.message || data?.error || 'erro'}`);
+        setPhase('list');
+        return;
       }
-      if (Object.keys(payload).length > 0) {
-        const { error } = await externalSupabase.from('contacts').update(payload).eq('id', targetId);
-        if (error) throw error;
-      }
-      // 2. re-aponta contact_leads dos demais → alvo
-      const losers = currentGroup.contacts.filter((c) => c.id !== targetId);
-      for (const l of losers) {
-        // copia vínculos
-        // @ts-ignore - contact_leads não tipada no externo
-        const { data: links } = await externalSupabase.from('contact_leads' as any).select('lead_id').eq('contact_id', l.id);
-        for (const link of (links || []) as any[]) {
-          // @ts-ignore
-          await externalSupabase.from('contact_leads' as any).insert({ contact_id: targetId, lead_id: link.lead_id }).then(() => {}, () => {});
-        }
-        // @ts-ignore
-        await externalSupabase.from('contact_leads' as any).delete().eq('contact_id', l.id);
-        // soft delete
-        await externalSupabase.from('contacts').update({
-          deleted_at: new Date().toISOString(),
-          notes: `[Mesclado manualmente em ${new Date().toISOString()} no contato ${targetId}]`,
-        } as any).eq('id', l.id);
-      }
-      toast.success('Contatos mesclados');
-      advanceReview();
+      setMergeResult({ merged: data.merged_count || 0, errors: data.merge_errors || [] });
+      setPhase('done');
+      toast.success(`${data.merged_count} contato(s) mesclado(s)`);
+      onFinished?.();
     } catch (err: any) {
-      toast.error(`Erro ao mesclar: ${err.message}`);
+      toast.error(`Erro: ${err.message}`);
+      setPhase('list');
     }
   };
 
-  const handleSkip = () => advanceReview();
-
-  const advanceReview = () => {
-    setReviewOpen(false);
-    setTimeout(() => {
-      const next = reviewIdx + 1;
-      if (!scan || next >= scan.ambiguous.length) {
-        setPhase('done');
-        onFinished?.();
-        return;
-      }
-      setReviewIdx(next);
-      setReviewOpen(true);
-    }, 150);
+  const toggle = (key: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
   };
+
+  const toggleAll = (checked: boolean) => {
+    if (!scan) return;
+    setSelected(checked ? new Set(scan.groups.map((g) => g.key)) : new Set());
+  };
+
+  const groupedView = useMemo(() => {
+    if (!scan) return [];
+    return [...scan.groups].sort((a, b) => {
+      // seguros primeiro
+      if (a.classification !== b.classification) return a.classification === 'safe' ? -1 : 1;
+      return 0;
+    });
+  }, [scan]);
 
   const reset = () => {
     setPhase('idle');
     setScan(null);
-    setReviewIdx(0);
-    setReviewOpen(false);
+    setSelected(new Set());
+    setMergeResult(null);
   };
 
   return (
-    <>
-      <Dialog open={open} onOpenChange={(v) => { if (!v) reset(); onOpenChange(v); }}>
-        <DialogContent className="sm:max-w-xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <ScanSearch className="h-5 w-5 text-primary" />
-              Resolver contatos duplicados
-            </DialogTitle>
-            <DialogDescription>
-              Vou varrer o cadastro, juntar automaticamente os casos óbvios (mesmo telefone + nome compatível)
-              e te mostrar um a um os ambíguos para você decidir.
-            </DialogDescription>
-          </DialogHeader>
+    <Dialog open={open} onOpenChange={(v) => { if (!v) reset(); onOpenChange(v); }}>
+      <DialogContent className="sm:max-w-3xl max-h-[90vh] flex flex-col">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <ScanSearch className="h-5 w-5 text-primary" />
+            Contatos duplicados
+          </DialogTitle>
+          <DialogDescription>
+            Veja os grupos de duplicados, marque os que quer juntar e mescle em lote.
+            Cada grupo mantém o contato mais antigo e preenche campos vazios com dados dos outros.
+          </DialogDescription>
+        </DialogHeader>
 
-          {phase === 'idle' && (
-            <div className="space-y-3 py-2">
-              <p className="text-sm text-muted-foreground">
-                Comece com uma <strong>simulação</strong> (não altera nada) para ver quantos contatos serão afetados.
-              </p>
-              <Button onClick={() => runScan('dry-run')}>
-                <ScanSearch className="h-4 w-4 mr-1" />
-                Simular varredura
-              </Button>
-            </div>
-          )}
+        {phase === 'idle' && (
+          <div className="py-4">
+            <Button onClick={runScan}>
+              <ScanSearch className="h-4 w-4 mr-1" />
+              Procurar duplicados
+            </Button>
+          </div>
+        )}
 
-          {(phase === 'scanning' || phase === 'merging') && (
-            <div className="flex items-center gap-3 py-6 text-sm text-muted-foreground">
-              <Loader2 className="h-5 w-5 animate-spin" />
-              {phase === 'scanning' ? 'Procurando duplicados…' : 'Mesclando casos seguros…'}
-            </div>
-          )}
+        {(phase === 'scanning' || phase === 'merging') && (
+          <div className="flex items-center gap-3 py-10 text-sm text-muted-foreground">
+            <Loader2 className="h-5 w-5 animate-spin" />
+            {phase === 'scanning' ? 'Procurando…' : 'Mesclando…'}
+          </div>
+        )}
 
-          {phase === 'preview' && scan && (
-            <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-2 text-sm">
-                <div className="border rounded p-2"><strong>{scan.total_contacts}</strong> contatos no banco</div>
-                <div className="border rounded p-2"><strong>{scan.total_groups}</strong> grupos com duplicidade</div>
-                <div className="border rounded p-2 bg-emerald-50 dark:bg-emerald-950/30">
-                  <CheckCircle2 className="h-4 w-4 inline mr-1 text-emerald-600" />
-                  <strong>{scan.safe_count}</strong> seguros (auto)
-                </div>
-                <div className="border rounded p-2 bg-amber-50 dark:bg-amber-950/30">
-                  <AlertTriangle className="h-4 w-4 inline mr-1 text-amber-600" />
-                  <strong>{scan.ambiguous_count}</strong> para revisar
-                </div>
+        {phase === 'list' && scan && (
+          <>
+            <div className="flex items-center justify-between text-sm border-b pb-2">
+              <div className="flex items-center gap-3">
+                <Checkbox
+                  checked={selected.size === scan.groups.length && scan.groups.length > 0}
+                  onCheckedChange={(c) => toggleAll(!!c)}
+                />
+                <span className="text-muted-foreground">
+                  {selected.size} de {scan.total_groups} selecionados
+                </span>
               </div>
-              <DialogFooter>
-                <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancelar</Button>
-                <Button onClick={() => runScan('merge-safe')}>
-                  <Merge className="h-4 w-4 mr-1" />
-                  Mesclar {scan.safe_count} seguros + revisar {scan.ambiguous_count}
-                </Button>
-              </DialogFooter>
+              <div className="flex gap-2">
+                <Badge variant="outline" className="bg-emerald-50 dark:bg-emerald-950/30">
+                  <CheckCircle2 className="h-3 w-3 mr-1 text-emerald-600" />
+                  {scan.safe_count} seguros
+                </Badge>
+                <Badge variant="outline" className="bg-amber-50 dark:bg-amber-950/30">
+                  <AlertTriangle className="h-3 w-3 mr-1 text-amber-600" />
+                  {scan.ambiguous_count} ambíguos
+                </Badge>
+              </div>
             </div>
-          )}
 
-          {phase === 'review' && scan && (
-            <div className="space-y-2">
-              <p className="text-sm">
-                Mesclamos <strong>{scan.merged_count}</strong> contatos automaticamente.
-              </p>
-              <p className="text-sm text-muted-foreground">
-                Agora vamos revisar {scan.ambiguous_count} caso(s) ambíguo(s)…
-              </p>
-            </div>
-          )}
+            <ScrollArea className="flex-1 min-h-[300px]">
+              <div className="space-y-2 pr-3">
+                {groupedView.length === 0 && (
+                  <p className="text-sm text-muted-foreground py-6 text-center">
+                    Nenhum duplicado encontrado 🎉
+                  </p>
+                )}
+                {groupedView.map((g) => (
+                  <div
+                    key={g.key}
+                    className={`border rounded p-3 ${
+                      g.classification === 'safe'
+                        ? 'border-emerald-200 dark:border-emerald-900'
+                        : 'border-amber-200 dark:border-amber-900'
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <Checkbox
+                        checked={selected.has(g.key)}
+                        onCheckedChange={() => toggle(g.key)}
+                        className="mt-1"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1.5 text-xs text-muted-foreground">
+                          {g.reason === 'phone' ? <Phone className="h-3 w-3" /> : <User className="h-3 w-3" />}
+                          <span>Mesmo {g.reason === 'phone' ? 'telefone' : 'nome'}: {g.key}</span>
+                          <Badge
+                            variant="outline"
+                            className={`ml-auto text-[10px] ${
+                              g.classification === 'safe'
+                                ? 'border-emerald-400 text-emerald-700 dark:text-emerald-400'
+                                : 'border-amber-400 text-amber-700 dark:text-amber-400'
+                            }`}
+                          >
+                            {g.classification === 'safe' ? 'Seguro' : 'Ambíguo'}
+                          </Badge>
+                        </div>
+                        <div className="space-y-1">
+                          {g.contacts.map((c, idx) => (
+                            <div key={c.id} className="text-sm flex items-center gap-2 flex-wrap">
+                              {idx === 0 && (
+                                <Badge variant="secondary" className="text-[10px]">vencedor</Badge>
+                              )}
+                              <span className="font-medium">{c.full_name || '(sem nome)'}</span>
+                              {c.phone && <span className="text-muted-foreground text-xs">{c.phone}</span>}
+                              {c.email && <span className="text-muted-foreground text-xs">{c.email}</span>}
+                              {(c.city || c.state) && (
+                                <span className="text-muted-foreground text-xs">
+                                  {[c.city, c.state].filter(Boolean).join('/')}
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </ScrollArea>
 
-          {phase === 'done' && scan && (
-            <div className="space-y-3">
-              <p className="text-sm">
-                <CheckCircle2 className="h-4 w-4 inline mr-1 text-emerald-600" />
-                Concluído. <strong>{scan.merged_count}</strong> mesclas automáticas + revisão dos ambíguos.
-              </p>
-              {scan.merge_errors && scan.merge_errors.length > 0 && (
-                <ScrollArea className="h-24 border rounded p-2">
-                  <p className="text-xs font-medium text-destructive mb-1">Erros:</p>
-                  {scan.merge_errors.map((e, i) => (
-                    <p key={i} className="text-xs text-muted-foreground">{e}</p>
-                  ))}
-                </ScrollArea>
-              )}
-              <DialogFooter>
-                <Button onClick={() => { reset(); onOpenChange(false); }}>Fechar</Button>
-              </DialogFooter>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+            <DialogFooter>
+              <Button variant="ghost" onClick={() => onOpenChange(false)}>Fechar</Button>
+              <Button onClick={mergeSelected} disabled={selected.size === 0}>
+                <Merge className="h-4 w-4 mr-1" />
+                Mesclar {selected.size} grupo(s)
+              </Button>
+            </DialogFooter>
+          </>
+        )}
 
-      {currentGroup && (
-        <DuplicateContactMergeDialog
-          open={reviewOpen}
-          onOpenChange={(v) => { if (!v) handleSkip(); setReviewOpen(v); }}
-          incoming={incomingFromWinner(currentGroup)}
-          candidates={candidatesFor(currentGroup)}
-          onMerge={handleMergeOne}
-          onCreateNew={handleSkip}
-        />
-      )}
-    </>
+        {phase === 'done' && mergeResult && (
+          <div className="space-y-3 py-2">
+            <p className="text-sm">
+              <CheckCircle2 className="h-4 w-4 inline mr-1 text-emerald-600" />
+              <strong>{mergeResult.merged}</strong> contato(s) mesclado(s).
+            </p>
+            {mergeResult.errors.length > 0 && (
+              <ScrollArea className="h-24 border rounded p-2">
+                <p className="text-xs font-medium text-destructive mb-1">Erros:</p>
+                {mergeResult.errors.map((e, i) => (
+                  <p key={i} className="text-xs text-muted-foreground">{e}</p>
+                ))}
+              </ScrollArea>
+            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => { reset(); runScan(); }}>
+                Procurar de novo
+              </Button>
+              <Button onClick={() => { reset(); onOpenChange(false); }}>Fechar</Button>
+            </DialogFooter>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
