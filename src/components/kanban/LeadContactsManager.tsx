@@ -58,6 +58,7 @@ import { logGroupAudit } from '@/lib/groupAuditLog';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
+import { DuplicateContactMergeDialog, type ExistingContact, type IncomingContact } from './DuplicateContactMergeDialog';
 
 interface LeadContactsManagerProps {
   lead: Lead | null;
