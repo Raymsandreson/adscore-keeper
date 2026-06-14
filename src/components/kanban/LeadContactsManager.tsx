@@ -323,7 +323,10 @@ export function LeadContactsManager({ lead, open, onOpenChange }: LeadContactsMa
     resetForm();
     setActiveTab('contacts');
   };
+
+  const handleUpdateContact = async () => {
     if (!editingContact || !formName.trim()) return;
+
 
     if (formPhone && isWhatsAppGroupId(formPhone)) {
       toast.error('Este número é um ID de grupo WhatsApp. Remova este contato e adicione o grupo na aba "Básico" → "Grupos WhatsApp".');
