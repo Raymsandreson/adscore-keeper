@@ -73,6 +73,11 @@ export function LeadContactsManager({ lead, open, onOpenChange }: LeadContactsMa
   const [unlinkedContacts, setUnlinkedContacts] = useState<LeadContact[]>([]);
   const [editingContact, setEditingContact] = useState<LeadContact | null>(null);
 
+  // Duplicate detection state
+  const [dupOpen, setDupOpen] = useState(false);
+  const [dupCandidates, setDupCandidates] = useState<ExistingContact[]>([]);
+  const [dupIncoming, setDupIncoming] = useState<IncomingContact | null>(null);
+
   // New contact form
   const [formName, setFormName] = useState('');
   const [formPhone, setFormPhone] = useState('');
