@@ -845,6 +845,10 @@ export function ContactsListPage() {
           {classifyingClients ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Wand2 className="h-3.5 w-3.5 mr-1" />}
           Classificar Clientes
         </Button>
+        <Button variant="outline" size="sm" onClick={() => setShowDuplicatesScan(true)} title="Buscar e mesclar contatos duplicados">
+          <Users className="h-3.5 w-3.5 mr-1" />
+          Resolver duplicados
+        </Button>
         <Button size="sm" onClick={() => setShowCreateContact(true)}>
           <UserPlus className="h-3.5 w-3.5 mr-1" />
           Novo Contato
