@@ -393,6 +393,9 @@ export const handler: RequestHandler = async (req, res) => {
       missing_fields: missingFields,
       group_renamed: groupRenamed,
       group_name: groupName,
+      rename_errors: renameErrors,
+      sync_enabled: !!settings.sync_lead_name_with_group,
+      has_group_id: !!lead.whatsapp_group_id,
     });
   } catch (e: any) {
     console.error('[regenerate-lead-name] error:', e);
