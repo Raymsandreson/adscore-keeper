@@ -315,28 +315,123 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 4b. Auto-criar contato a partir do telefone (se ainda não houver vínculo em contact_leads)
+    // 4b. Upsert de contato titular a partir do telefone + endereço extraído.
+    // Regras (anti-duplicação):
+    //  - Procura por variantes do telefone (com/sem 9, com/sem 55) E por nome aproximado.
+    //  - Se houver mais de um candidato, prioriza o já vinculado a este lead, depois
+    //    o que casa com o nome titular, depois o mais antigo.
+    //  - Em vez de criar novo, ATUALIZA o existente preenchendo só campos vazios
+    //    (não sobrescreve dados já registrados pelo usuário).
+    //  - Só cria contato novo quando não existe nenhum compatível.
     let contactResult: any = null;
     if (leadPhone) {
       const cleanedPhone = leadPhone.replace(/\D/g, "");
-      const { data: existing } = await ext
+      // Gera variantes BR do telefone (com/sem 9, com/sem DDI 55)
+      const phoneVariants = new Set<string>([cleanedPhone]);
+      const m = cleanedPhone.match(/^(55)?(\d{2})(\d+)$/);
+      if (m) {
+        const [, cc, ddd, rest] = m;
+        const cp = cc || "55";
+        if (rest.length === 9 && rest.startsWith("9")) {
+          phoneVariants.add(`${cp}${ddd}${rest.slice(1)}`);
+          phoneVariants.add(`${ddd}${rest.slice(1)}`);
+        } else if (rest.length === 8) {
+          phoneVariants.add(`${cp}${ddd}9${rest}`);
+          phoneVariants.add(`${ddd}9${rest}`);
+        }
+        phoneVariants.add(`${ddd}${rest}`);
+        phoneVariants.add(`${cp}${ddd}${rest}`);
+      }
+      const phoneList = Array.from(phoneVariants);
+      const titularName = (extracted.titular_name || leadName || "").trim();
+
+      // Busca todos os candidatos por telefone (sem maybeSingle, que falha com >1 linha)
+      const { data: byPhone } = await ext
         .from("contacts")
-        .select("id")
-        .eq("phone", cleanedPhone)
-        .maybeSingle();
-      let contactId = existing?.id || null;
+        .select("id, full_name, phone, lead_id, city, neighborhood, street, street_number, complement, cep, state, cpf, rg")
+        .in("phone", phoneList)
+        .is("deleted_at" as any, null)
+        .order("created_at", { ascending: true });
+
+      // Quais já estão vinculados a este lead via contact_leads?
+      let linkedIds = new Set<string>();
+      if (byPhone && byPhone.length > 0) {
+        const { data: links } = await ext
+          .from("contact_leads")
+          .select("contact_id")
+          .eq("lead_id", lead_id)
+          .in("contact_id", byPhone.map((c: any) => c.id));
+        linkedIds = new Set((links || []).map((l: any) => l.contact_id));
+      }
+
+      // Ignora contatos "Grupo - ..." (são representação de grupo WA, não pessoa)
+      const candidates = (byPhone || []).filter((c: any) => !/^grupo\s*-\s*/i.test(c.full_name || ""));
+
+      const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+      const titularNorm = norm(titularName);
+
+      // Prioridade: vinculado ao lead > nome bate com titular > legacy lead_id == lead_id > mais antigo
+      const ranked = candidates.slice().sort((a: any, b: any) => {
+        const score = (c: any) => {
+          let s = 0;
+          if (linkedIds.has(c.id)) s += 1000;
+          if (c.lead_id === lead_id) s += 500;
+          const nm = norm(c.full_name || "");
+          if (titularNorm && (nm === titularNorm || nm.includes(titularNorm) || titularNorm.includes(nm))) s += 100;
+          return s;
+        };
+        return score(b) - score(a);
+      });
+
+      let chosen = ranked[0] || null;
+      let createdNew = false;
+      let contactId: string | null = chosen?.id || null;
+
+      // Monta payload com campos vindos da procuração
+      const addrPayload: Record<string, any> = {};
+      const setIf2 = (k: string, v: any) => {
+        if (v !== undefined && v !== null && v !== "") addrPayload[k] = v;
+      };
+      setIf2("cep", cleanDigits(extracted.cep));
+      setIf2("city", extracted.city);
+      setIf2("state", extracted.state?.toUpperCase()?.slice(0, 2));
+      setIf2("neighborhood", extracted.neighborhood);
+      setIf2("street", extracted.street);
+      setIf2("street_number", extracted.street_number);
+      setIf2("complement", extracted.complement);
+      setIf2("cpf", cleanDigits(extracted.cpf));
+      setIf2("rg", extracted.rg);
+
       if (!contactId) {
         const { data: newContact, error: cErr } = await ext
           .from("contacts")
           .insert({
-            full_name: extracted.titular_name || leadName,
+            full_name: titularName || leadName,
             phone: cleanedPhone,
+            ...addrPayload,
           })
           .select("id")
           .maybeSingle();
         if (cErr) console.error("[zapsign-enrich-lead] contact insert error:", cErr);
-        else contactId = newContact?.id || null;
+        else {
+          contactId = newContact?.id || null;
+          createdNew = true;
+        }
+      } else {
+        // UPDATE só dos campos atualmente vazios no contato escolhido
+        const patch: Record<string, any> = {};
+        for (const [k, v] of Object.entries(addrPayload)) {
+          if (!(chosen as any)[k]) patch[k] = v;
+        }
+        // Se o nome do contato escolhido for diferente do titular extraído, NÃO renomeia
+        // (evita sobrescrever um nome que o usuário pode ter ajustado).
+        if (Object.keys(patch).length > 0) {
+          const { error: upErr } = await ext.from("contacts").update(patch).eq("id", contactId);
+          if (upErr) console.error("[zapsign-enrich-lead] contact update error:", upErr);
+          else console.log(`[zapsign-enrich-lead] contact ${contactId} updated with`, Object.keys(patch));
+        }
       }
+
       if (contactId) {
         // Vincula via contact_leads (idempotente)
         const { data: existingLink } = await ext
@@ -351,8 +446,9 @@ Deno.serve(async (req) => {
             .insert({ contact_id: contactId, lead_id, relationship_to_victim: "titular" });
           if (linkErr) console.error("[zapsign-enrich-lead] contact_leads insert error:", linkErr);
         }
-        contactResult = { id: contactId, created: !existing };
-        console.log(`[zapsign-enrich-lead] lead ${lead_id} linked to contact ${contactId}`);
+        const duplicates = candidates.filter((c: any) => c.id !== contactId).map((c: any) => c.id);
+        contactResult = { id: contactId, created: createdNew, reused_existing: !createdNew, duplicate_candidates: duplicates };
+        console.log(`[zapsign-enrich-lead] lead ${lead_id} linked to contact ${contactId} (createdNew=${createdNew}, ${duplicates.length} duplicates ignored)`);
       }
     }
 
