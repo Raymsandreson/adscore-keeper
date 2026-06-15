@@ -107,6 +107,21 @@ export function ContactsListPage() {
     return () => { cancelled = true; clearTimeout(timer); };
   }, [linkQuery, linkDialog]);
 
+  const handleDeleteGroup = async (jid: string, name: string | null) => {
+    if (!jid) return;
+    const ok = window.confirm(`Excluir o grupo "${name || jid}" da lista?\n\nIsso remove o cache do grupo e o vínculo com lead (se houver). A conversa no WhatsApp não é afetada.`);
+    if (!ok) return;
+    try {
+      await externalSupabase.from('lead_whatsapp_groups').delete().eq('group_jid', jid);
+      await externalSupabase.from('whatsapp_groups_cache').delete().eq('group_jid', jid);
+      setGroups(prev => prev.filter(g => g.group_jid !== jid));
+      toast.success('Grupo removido da lista');
+    } catch (err: any) {
+      console.error('handleDeleteGroup error:', err);
+      toast.error('Falha ao excluir: ' + (err?.message || 'erro'));
+    }
+  };
+
   const openGroupChat = (jid: string) => {
     if (!jid) return;
     const g = groups.find(x => x.group_jid === jid);
