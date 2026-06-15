@@ -280,6 +280,90 @@ async function processOneLead(
     return { lead_id: leadId, status: 'no_group', old_phone: oldPhone };
   }
 
+  // Atalho seguro: se esse mesmo grupo já está vinculado a outro lead com telefone real,
+  // usamos esse telefone antes de cair na lista bruta de participantes do grupo.
+  // É como olhar a ficha já preenchida antes de tentar adivinhar pela sala cheia.
+  const linkedCandidates = await findLinkedLeadPhoneCandidates(leadId, groupJid, instancePhones);
+  if (linkedCandidates.length === 1) {
+    const matched = linkedCandidates[0];
+    if (dryRun) {
+      return {
+        lead_id: leadId,
+        status: 'would_recover',
+        old_phone: oldPhone,
+        new_phone: matched.phone,
+        group_jid: groupJid,
+        candidates: [matched.phone],
+        source: 'linked_lead',
+        matched_lead_id: matched.lead_id,
+        matched_lead_name: matched.lead_name,
+        message: `Telefone encontrado em lead já vinculado ao mesmo grupo: ${matched.lead_name || matched.lead_id}`,
+      };
+    }
+
+    const { error: updErr } = await ext
+      .from('leads')
+      .update({
+        lead_phone: matched.phone,
+        details: {
+          recover_phone_55_snapshot: {
+            old_phone: oldPhone,
+            recovered_at: new Date().toISOString(),
+            source_group: groupJid,
+            source: 'linked_lead',
+            matched_lead_id: matched.lead_id,
+          },
+        } as any,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', leadId);
+
+    if (updErr) {
+      await logEnrichment(leadId, 'error', { error: updErr.message, group_jid: groupJid, source: 'linked_lead' });
+      return { lead_id: leadId, status: 'error', old_phone: oldPhone, message: updErr.message };
+    }
+
+    await logEnrichment(leadId, 'recovered', {
+      group_jid: groupJid,
+      old_phone: oldPhone,
+      new_phone: matched.phone,
+      source: 'linked_lead',
+      matched_lead_id: matched.lead_id,
+      matched_lead_name: matched.lead_name,
+    });
+
+    return {
+      lead_id: leadId,
+      status: 'recovered',
+      old_phone: oldPhone,
+      new_phone: matched.phone,
+      group_jid: groupJid,
+      candidates: [matched.phone],
+      source: 'linked_lead',
+      matched_lead_id: matched.lead_id,
+      matched_lead_name: matched.lead_name,
+    };
+  }
+
+  if (linkedCandidates.length > 1) {
+    await logEnrichment(leadId, 'ambiguous', {
+      group_jid: groupJid,
+      old_phone: oldPhone,
+      candidates: linkedCandidates,
+      source: 'linked_lead',
+    });
+    return {
+      lead_id: leadId,
+      status: 'ambiguous',
+      old_phone: oldPhone,
+      group_jid: groupJid,
+      candidates: linkedCandidates.map((c) => c.phone),
+      source: 'linked_lead',
+      message: `${linkedCandidates.length} telefones encontrados em leads já vinculados ao mesmo grupo — revisão manual`,
+      diagnostics: { linked_candidates: linkedCandidates },
+    };
+  }
+
   // Tenta cada instância ativa até alguma responder /group/info
   let participants: string[] = [];
   let usedInstance = '';
