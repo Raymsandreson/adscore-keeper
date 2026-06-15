@@ -112,6 +112,9 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
   // State for contact linking after lead creation
   const [pendingContactLink, setPendingContactLink] = useState<string | null>(null);
   const { linkLead } = useContactLeads(pendingContactLink || undefined);
+  // State for WhatsApp group linking after lead creation
+  const [pendingGroupLink, setPendingGroupLink] = useState<{ jid: string; name: string | null } | null>(null);
+
   
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
