@@ -49,7 +49,7 @@ Deno.serve(async (req) => {
 
   try {
     const body = await req.json().catch(() => ({}));
-    const { lead_id, group_jid: groupJidInput } = body || {};
+    const { lead_id, group_jid: groupJidInput, instance_name: instanceNameInput } = body || {};
     if (!lead_id && !groupJidInput) {
       return json({ success: false, error: "lead_id or group_jid is required" });
     }
@@ -99,8 +99,12 @@ Deno.serve(async (req) => {
       .select("id, instance_name, instance_token, base_url, owner_phone, is_active")
       .not("instance_token", "is", null);
 
+    const hintedInstance = String(instanceNameInput || "").trim().toLowerCase();
     const sortedInstances = (instances || []).sort((a: any, b: any) => {
-      const score = (i: any) => (i.is_active ? 0 : 1);
+      const score = (i: any) => {
+        if (hintedInstance && String(i.instance_name || "").toLowerCase() === hintedInstance) return -1;
+        return i.is_active ? 0 : 1;
+      };
       return score(a) - score(b);
     });
 
