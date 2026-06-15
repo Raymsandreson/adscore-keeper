@@ -2223,6 +2223,15 @@ export function ContactsListPage() {
                       <Badge variant={group.lead_status === 'closed' ? 'default' : 'outline'} className="text-[10px] shrink-0">
                         {group.lead_status || 'N/A'}
                       </Badge>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7 shrink-0 text-destructive hover:text-destructive"
+                        title="Excluir grupo da lista"
+                        onClick={(e) => { e.stopPropagation(); handleDeleteGroup(group.group_jid, group.group_name); }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
                   ))}
                   {truncatedNotice}
