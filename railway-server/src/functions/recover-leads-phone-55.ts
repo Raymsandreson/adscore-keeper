@@ -1,7 +1,8 @@
 // Recupera o telefone real de leads cujo lead_phone ficou como "55" (sem dígitos).
 // Estratégia: pega o grupo do lead (leads.whatsapp_group_id ou lead_whatsapp_groups),
-// busca participantes via UazAPI /group/info, remove os números das instâncias do
-// sistema (owner_phone de whatsapp_instances) e aplica a regra:
+// primeiro cruza com outros leads já vinculados ao mesmo grupo e telefone válido.
+// Se esse atalho não resolver, busca participantes via UazAPI /group/info, remove
+// os números das instâncias do sistema (owner_phone de whatsapp_instances) e aplica a regra:
 //   - 1 candidato sobrando -> atualiza lead_phone (a menos que dryRun)
 //   - 0 ou >1            -> apenas loga em lead_enrichment_log, não toca no lead
 //
@@ -40,7 +41,18 @@ interface LeadResult {
   group_jid?: string;
   candidates?: string[];
   message?: string;
+  source?: 'linked_lead' | 'group_participants';
+  matched_lead_id?: string;
+  matched_lead_name?: string | null;
   diagnostics?: Record<string, any>;
+}
+
+interface LinkedLeadPhoneCandidate {
+  lead_id: string;
+  lead_name: string | null;
+  phone: string;
+  source: 'leads.whatsapp_group_id' | 'lead_whatsapp_groups';
+  group_jid?: string | null;
 }
 
 interface GroupFetchAttempt {
