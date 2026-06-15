@@ -12,9 +12,10 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { lead_id } = await req.json();
-    if (!lead_id) {
-      return new Response(JSON.stringify({ error: "lead_id is required" }), {
+    const body = await req.json().catch(() => ({}));
+    const { lead_id, group_jid: groupJidInput } = body || {};
+    if (!lead_id && !groupJidInput) {
+      return new Response(JSON.stringify({ error: "lead_id or group_jid is required" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -26,24 +27,29 @@ Deno.serve(async (req) => {
     );
     const extClient = getExternalClient();
 
-    // Get group JID for this lead
-    const { data: groups } = await extClient
-      .from("lead_whatsapp_groups")
-      .select("group_jid, group_name")
-      .eq("lead_id", lead_id)
-      .order("created_at", { ascending: false })
-      .limit(1);
+    let groupJid: string | null = groupJidInput || null;
+    let groups: any[] | null = null;
 
-    let groupJid = groups?.[0]?.group_jid;
+    if (!groupJid && lead_id) {
+      // Get group JID for this lead
+      const { data } = await extClient
+        .from("lead_whatsapp_groups")
+        .select("group_jid, group_name")
+        .eq("lead_id", lead_id)
+        .order("created_at", { ascending: false })
+        .limit(1);
+      groups = data;
+      groupJid = data?.[0]?.group_jid ?? null;
 
-    if (!groupJid) {
-      // Fallback: check leads.whatsapp_group_id (External)
-      const { data: lead } = await extClient
-        .from("leads")
-        .select("whatsapp_group_id")
-        .eq("id", lead_id)
-        .maybeSingle();
-      groupJid = (lead as any)?.whatsapp_group_id;
+      if (!groupJid) {
+        // Fallback: check leads.whatsapp_group_id (External)
+        const { data: lead } = await extClient
+          .from("leads")
+          .select("whatsapp_group_id")
+          .eq("id", lead_id)
+          .maybeSingle();
+        groupJid = (lead as any)?.whatsapp_group_id ?? null;
+      }
     }
 
 
@@ -106,22 +112,42 @@ Deno.serve(async (req) => {
           data?.data?.creation || data?.data?.GroupCreated;
 
         if (creationTs) {
-          // Convert Unix timestamp (seconds) to ISO date
+          // Convert Unix timestamp (seconds) to ISO date/timestamp
           let creationDate: string;
+          let creationIso: string;
           if (typeof creationTs === "number") {
-            // Unix timestamp in seconds
             const d = new Date(creationTs * 1000);
-            creationDate = d.toISOString().split("T")[0];
+            creationIso = d.toISOString();
+            creationDate = creationIso.split("T")[0];
           } else {
             const d = new Date(creationTs);
-            creationDate = d.toISOString().split("T")[0];
+            creationIso = d.toISOString();
+            creationDate = creationIso.split("T")[0];
+          }
+
+          const subject = data?.subject || data?.name || groups?.[0]?.group_name || "";
+
+          // Persiste no snapshot pra próximas leituras não precisarem ir na UazAPI
+          try {
+            await extClient
+              .from("whatsapp_groups_uazapi_snapshot")
+              .upsert({
+                jid: groupJid,
+                group_name: subject || null,
+                group_created_at: creationIso,
+                last_synced_at: new Date().toISOString(),
+                raw_data: data ?? null,
+              }, { onConflict: "jid" });
+          } catch (persistErr) {
+            console.warn("snapshot upsert failed:", persistErr);
           }
 
           return new Response(
-            JSON.stringify({ 
-              success: true, 
+            JSON.stringify({
+              success: true,
               creation_date: creationDate,
-              group_name: data?.subject || data?.name || groups?.[0]?.group_name || "",
+              creation_iso: creationIso,
+              group_name: subject,
             }),
             { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );

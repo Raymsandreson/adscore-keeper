@@ -28,7 +28,7 @@ import { toast } from 'sonner';
 import {
   Search, Users, Send, Plus, Trash2, Radio, UserPlus,
   Phone, Loader2, X, ImagePlus, Bot, BotOff, Filter, UsersRound, Wand2, Info,
-  SlidersHorizontal, ArrowDownAZ, ArrowUpAZ, AlertTriangle, CheckCircle2, ClipboardCheck, MessageCircle, MapPin, Pencil, Link2
+  SlidersHorizontal, ArrowDownAZ, ArrowUpAZ, AlertTriangle, CheckCircle2, ClipboardCheck, MessageCircle, MapPin, Pencil, Link2, RefreshCw
 } from 'lucide-react';
 
 import { cloudFunctions } from '@/lib/functionRouter';
@@ -119,6 +119,34 @@ export function ContactsListPage() {
     } catch (err: any) {
       console.error('handleDeleteGroup error:', err);
       toast.error('Falha ao excluir: ' + (err?.message || 'erro'));
+    }
+  };
+
+  const [refreshingDateFor, setRefreshingDateFor] = useState<Set<string>>(new Set());
+  const handleRefreshCreationDate = async (jid: string) => {
+    if (!jid) return;
+    setRefreshingDateFor(prev => { const n = new Set(prev); n.add(jid); return n; });
+    try {
+      const { data, error } = await cloudFunctions.invoke<any>('fetch-group-creation-date', {
+        body: { group_jid: jid },
+      });
+      if (error) throw error;
+      if (!data?.success) {
+        toast.error(data?.error || 'Não foi possível buscar a data');
+        return;
+      }
+      const iso: string | null = data.creation_iso || data.creation_date || null;
+      if (!iso) {
+        toast.warning('Grupo encontrado, mas a UazAPI não retornou a data de criação');
+        return;
+      }
+      setGroups(prev => prev.map(g => g.group_jid === jid ? { ...g, created_at: iso } : g));
+      toast.success('Data atualizada');
+    } catch (err: any) {
+      console.error('handleRefreshCreationDate error:', err);
+      toast.error('Falha: ' + (err?.message || 'erro'));
+    } finally {
+      setRefreshingDateFor(prev => { const n = new Set(prev); n.delete(jid); return n; });
     }
   };
 
@@ -2045,12 +2073,26 @@ export function ContactsListPage() {
                               : (group.lead_id ? '(sem nome)' : '+ vincular lead')}
                           </span>
                           <span
-                            className={`text-[11px] tabular-nums ${group.created_at ? 'text-foreground' : 'text-muted-foreground italic'}`}
-                            title={group.created_at ? new Date(group.created_at).toLocaleString('pt-BR') : 'Data de criação do grupo desconhecida'}
+                            className={`text-[11px] tabular-nums flex items-center gap-1 ${group.created_at ? 'text-foreground' : 'text-muted-foreground italic'}`}
+                            title={group.created_at ? new Date(group.created_at).toLocaleString('pt-BR') : 'Data de criação do grupo desconhecida — clique no botão para buscar na UazAPI'}
                           >
-                            {group.created_at
-                              ? new Date(group.created_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })
-                              : '—'}
+                            <span>
+                              {group.created_at
+                                ? new Date(group.created_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })
+                                : '—'}
+                            </span>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-5 w-5 shrink-0 opacity-60 hover:opacity-100"
+                              title={group.created_at ? 'Atualizar data deste grupo (UazAPI)' : 'Buscar data de criação na UazAPI'}
+                              disabled={refreshingDateFor.has(group.group_jid)}
+                              onClick={(e) => { e.stopPropagation(); handleRefreshCreationDate(group.group_jid); }}
+                            >
+                              {refreshingDateFor.has(group.group_jid)
+                                ? <Loader2 className="h-3 w-3 animate-spin" />
+                                : <RefreshCw className="h-3 w-3" />}
+                            </Button>
                           </span>
                           <span
                             className={`text-[11px] truncate ${(group.owner_phone || group.creator_instance_name) ? 'text-foreground' : 'text-muted-foreground italic'}`}
