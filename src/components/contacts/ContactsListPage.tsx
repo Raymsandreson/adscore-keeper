@@ -1881,7 +1881,7 @@ export function ContactsListPage() {
                     <div className="grid gap-2 px-3 py-2 border-b items-start" style={{ gridTemplateColumns: gridTemplate }}>
                       <div className="relative"><span></span></div>
                       <HeaderCell col="leadN" label="Nº lead" title="Sequência do lead (LEAD-N(PFX))" />
-                      <HeaderCell col="caseN" label="Nº caso" title="Nº oficial do caso (legal_cases.case_number)" />
+                      <HeaderCell col="caseN" label="Nº caso" title="Sequência de leads fechados (leads.case_number) — ex: PREV 1448. Editável pelo lápis." />
                       <HeaderCell col="groupName" label="Nome do grupo" />
                       <HeaderCell col="leadName" label="Nome do lead" align="center" />
                       <HeaderCell col="createdAt" label="Criado em" title="Data e hora de criação do grupo no WhatsApp" />
