@@ -659,7 +659,7 @@ export function ContactsListPage() {
         const to = from + pageSize - 1;
         const { data: page, error } = await (externalSupabase as any)
           .from('whatsapp_groups_uazapi_snapshot')
-          .select('jid, group_created_at, owner_pn, seen_in_instances')
+          .select('jid, group_created_at, owner_pn, seen_in_instances, creator_instance_name')
           .order('jid', { ascending: true })
           .range(from, to);
         if (error) { console.error('fetchGroups snapshot page error:', error); break; }
@@ -677,6 +677,8 @@ export function ContactsListPage() {
       }
 
       // Segundo passe: aplica aos grupos usando o mapa global.
+      // Híbrido: 1) tenta resolver AO VIVO pelo mapa de instâncias atuais
+      //          2) cai no creator_instance_name gravado se o telefone não bater
       for (const s of snapshotRows) {
         const g = groupMap.get(s.jid);
         if (!g) continue;
