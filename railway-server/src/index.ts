@@ -35,6 +35,7 @@ import { handler as metaCallQueueProcessor } from './functions/meta-call-queue-p
 import { handler as sheetLeadIngest } from './functions/sheet-lead-ingest';
 import { handler as gmailInssSync } from './functions/gmail-inss-sync';
 import { handler as notifyInssUpdate } from './functions/notify-inss-update';
+import { handler as matchInssOrphans } from './functions/match-inss-orphans';
 import { handler as getWhatsappGroupInfo } from './functions/get-whatsapp-group-info';
 import { handler as scanDuplicateContacts } from './functions/scan-duplicate-contacts';
 import { handler as recoverLeadsPhone55 } from './functions/recover-leads-phone-55';
@@ -66,6 +67,7 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'meta-call-queue-processor': metaCallQueueProcessor,
   'gmail-inss-sync': gmailInssSync,
   'notify-inss-update': notifyInssUpdate,
+  'match-inss-orphans': matchInssOrphans,
   'get-whatsapp-group-info': getWhatsappGroupInfo,
   'scan-duplicate-contacts': scanDuplicateContacts,
   'recover-leads-phone-55': recoverLeadsPhone55,
