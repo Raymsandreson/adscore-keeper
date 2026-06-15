@@ -439,9 +439,10 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
         toast.error('Lead criado, mas falhou ao vincular ao grupo: ' + (error?.message || 'erro'));
       }
       setPendingGroupLink(null);
-
+    }
 
     setNewLead({
+
       lead_name: '',
       lead_phone: '',
       lead_email: '',
