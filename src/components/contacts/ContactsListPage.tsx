@@ -332,6 +332,11 @@ export function ContactsListPage() {
   const [groupsLoading, setGroupsLoading] = useState(false);
   const [groupsLastUpdatedAt, setGroupsLastUpdatedAt] = useState<Date | null>(null);
   const [groupsRefreshingSilently, setGroupsRefreshingSilently] = useState(false);
+  // Fallback lookups para nome do criador do grupo (cascata: lead → push_name)
+  // Chave de leadNameByPhoneTail = últimos 8 dígitos do telefone (cobre +55/0/sem DDI)
+  // Chave de pushNameByPhone = telefone completo (formato igual a whatsapp_messages.phone)
+  const [creatorLeadNameByPhoneTail, setCreatorLeadNameByPhoneTail] = useState<Map<string, string>>(new Map());
+  const [creatorPushNameByPhone, setCreatorPushNameByPhone] = useState<Map<string, string>>(new Map());
   const [groupSearch, setGroupSearch] = useState('');
   const deferredGroupSearch = useDeferredValue(groupSearch);
   const [groupSort, setGroupSort] = useState<'alpha' | 'number' | 'prefix' | 'date'>('date');
@@ -718,6 +723,71 @@ export function ContactsListPage() {
       // Espelha o mapa em ref pra que o lote/handler individual consigam resolver
       // creator_instance_name mesmo quando o backend não retornar.
       instancePhoneMapRef.current = instancePhoneToName;
+
+      // Cascata extra: para grupos cujo criador não é instância nossa,
+      // tenta achar nome em (a) leads.lead_phone, (b) whatsapp_messages.contact_name.
+      // Metáfora: se o crachá não existe, procuro o nome na lista do RH (leads)
+      // e, por último, no que o porteiro anotou na entrada (push_name das mensagens).
+      try {
+        const unresolved = new Set<string>();
+        for (const g of groupMap.values()) {
+          if (g.owner_phone && !g.creator_instance_name) unresolved.add(g.owner_phone as string);
+        }
+        const leadNameTailMap = new Map<string, string>();
+        const pushNameMap = new Map<string, string>();
+        if (unresolved.size > 0) {
+          const tails = new Set<string>();
+          for (const p of unresolved) tails.add(p.slice(-8));
+          // (a) leads paginado — match por últimos 8 dígitos
+          try {
+            for (let from = 0; ; from += pageSize) {
+              const to = from + pageSize - 1;
+              const { data: leadPage, error } = await externalSupabase
+                .from('leads')
+                .select('lead_name, lead_phone')
+                .not('lead_phone', 'is', null)
+                .range(from, to);
+              if (error) { console.warn('fetchGroups leads fallback page error:', error); break; }
+              const rows = (leadPage as any[]) || [];
+              for (const l of rows) {
+                const d = String(l.lead_phone || '').replace(/\D/g, '');
+                if (!d || !l.lead_name) continue;
+                const tail = d.slice(-8);
+                if (tails.has(tail) && !leadNameTailMap.has(tail)) {
+                  leadNameTailMap.set(tail, String(l.lead_name).trim());
+                }
+              }
+              if (rows.length < pageSize) break;
+            }
+          } catch (e) { console.warn('fetchGroups leads fallback failed:', e); }
+          // (b) whatsapp_messages.contact_name — chunked .in()
+          try {
+            const phones = Array.from(unresolved);
+            const chunkSize = 200;
+            for (let i = 0; i < phones.length; i += chunkSize) {
+              const slice = phones.slice(i, i + chunkSize);
+              const { data: msgs } = await externalSupabase
+                .from('whatsapp_messages')
+                .select('phone, contact_name, created_at')
+                .in('phone', slice)
+                .not('contact_name', 'is', null)
+                .order('created_at', { ascending: false })
+                .limit(slice.length * 3);
+              for (const m of (msgs as any[]) || []) {
+                const d = String(m.phone || '').replace(/\D/g, '');
+                if (d && m.contact_name && !pushNameMap.has(d)) {
+                  pushNameMap.set(d, String(m.contact_name).trim());
+                }
+              }
+            }
+          } catch (e) { console.warn('fetchGroups messages fallback failed:', e); }
+        }
+        setCreatorLeadNameByPhoneTail(leadNameTailMap);
+        setCreatorPushNameByPhone(pushNameMap);
+        console.log('[ContactsListPage] creator fallback maps:', { leads: leadNameTailMap.size, messages: pushNameMap.size, unresolved: unresolved.size });
+      } catch (e) {
+        console.warn('fetchGroups creator fallback failed:', e);
+      }
 
       setGroups(Array.from(groupMap.values()));
       setGroupsLastUpdatedAt(new Date());
@@ -1866,8 +1936,12 @@ export function ContactsListPage() {
               const creatorDisplay = (g: { owner_phone: string | null; creator_instance_name: string | null }): string => {
                 if (g.creator_instance_name) return `Instância ${g.creator_instance_name}`;
                 if (g.owner_phone) {
-                  const name = contactNameByPhone.get(g.owner_phone);
-                  if (name) return name;
+                  const direct = contactNameByPhone.get(g.owner_phone);
+                  if (direct) return direct;
+                  const leadName = creatorLeadNameByPhoneTail.get(g.owner_phone.slice(-8));
+                  if (leadName) return `${leadName} (lead)`;
+                  const pushName = creatorPushNameByPhone.get(g.owner_phone);
+                  if (pushName) return pushName;
                   return formatPhoneBR(g.owner_phone);
                 }
                 return '—';
@@ -1875,13 +1949,19 @@ export function ContactsListPage() {
               const creatorTooltip = (g: { owner_phone: string | null; creator_instance_name: string | null }): string => {
                 const parts: string[] = [];
                 if (g.creator_instance_name) parts.push(`Instância: ${g.creator_instance_name}`);
-                if (g.owner_phone) parts.push(`Telefone: ${formatPhoneBR(g.owner_phone)}`);
+                if (g.owner_phone) {
+                  parts.push(`Telefone: ${formatPhoneBR(g.owner_phone)}`);
+                  const leadName = creatorLeadNameByPhoneTail.get(g.owner_phone.slice(-8));
+                  if (leadName) parts.push(`Lead: ${leadName}`);
+                  const pushName = creatorPushNameByPhone.get(g.owner_phone);
+                  if (pushName && !contactNameByPhone.get(g.owner_phone)) parts.push(`WhatsApp: ${pushName}`);
+                }
                 return parts.length ? parts.join(' · ') : 'Criador do grupo desconhecido';
               };
               // Compat: usado em filtro e ordenação (texto único pesquisável)
               const creatorLabel = (g: { owner_phone: string | null; creator_instance_name: string | null }): string => {
                 const disp = creatorDisplay(g);
-                if (g.owner_phone && !g.creator_instance_name && contactNameByPhone.get(g.owner_phone)) {
+                if (g.owner_phone && !g.creator_instance_name && disp !== formatPhoneBR(g.owner_phone)) {
                   return `${disp} (${formatPhoneBR(g.owner_phone)})`;
                 }
                 return disp;
