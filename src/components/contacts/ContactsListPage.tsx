@@ -49,6 +49,64 @@ export function ContactsListPage() {
   const [linkResults, setLinkResults] = useState<Array<{ id: string; lead_name: string | null; case_number: string | null; lead_number: number | null; lead_status: string | null }>>([]);
   const [linking, setLinking] = useState<string | null>(null);
 
+  // Auto-busca de leads no diálogo de vínculo (com debounce + busca por telefone via contatos)
+  useEffect(() => {
+    if (!linkDialog) return;
+    const q = linkQuery.trim();
+    if (q.length < 2) { setLinkResults([]); return; }
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      setLinkSearching(true);
+      try {
+        const digits = q.replace(/\D/g, '');
+        const isNum = /^\d+$/.test(q);
+        const acc = new Map<string, any>();
+
+        // 1) Busca direta em leads (nome, nº lead, nº caso, telefone)
+        {
+          let query = externalSupabase
+            .from('leads')
+            .select('id, lead_name, case_number, lead_number, lead_status, lead_phone')
+            .limit(20);
+          if (isNum) {
+            query = query.or(`case_number.eq.${q},lead_number.eq.${q},lead_phone.ilike.%${q}%`);
+          } else if (digits.length >= 4) {
+            query = query.or(`lead_name.ilike.%${q}%,lead_phone.ilike.%${digits}%`);
+          } else {
+            query = query.ilike('lead_name', `%${q}%`);
+          }
+          const { data } = await query;
+          (data || []).forEach((l: any) => acc.set(l.id, l));
+        }
+
+        // 2) Se parece telefone, procura contatos por phone e puxa os leads vinculados
+        if (digits.length >= 4) {
+          const { data: cts } = await externalSupabase
+            .from('contacts')
+            .select('lead_id, phone, full_name')
+            .ilike('phone', `%${digits}%`)
+            .not('lead_id', 'is', null)
+            .limit(20);
+          const ids = Array.from(new Set((cts || []).map((c: any) => c.lead_id).filter(Boolean)));
+          if (ids.length) {
+            const { data: extra } = await externalSupabase
+              .from('leads')
+              .select('id, lead_name, case_number, lead_number, lead_status, lead_phone')
+              .in('id', ids);
+            (extra || []).forEach((l: any) => { if (!acc.has(l.id)) acc.set(l.id, l); });
+          }
+        }
+
+        if (!cancelled) setLinkResults(Array.from(acc.values()) as any);
+      } catch (err: any) {
+        if (!cancelled) toast.error('Erro na busca: ' + err.message);
+      } finally {
+        if (!cancelled) setLinkSearching(false);
+      }
+    }, 300);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [linkQuery, linkDialog]);
+
   const openGroupChat = (jid: string) => {
     if (!jid) return;
     const g = groups.find(x => x.group_jid === jid);
