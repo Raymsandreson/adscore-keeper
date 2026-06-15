@@ -659,7 +659,7 @@ export function ContactsListPage() {
         const to = from + pageSize - 1;
         const { data: page, error } = await (externalSupabase as any)
           .from('whatsapp_groups_uazapi_snapshot')
-          .select('jid, group_created_at, owner_pn, seen_in_instances')
+          .select('jid, group_created_at, owner_pn, seen_in_instances, creator_instance_name')
           .order('jid', { ascending: true })
           .range(from, to);
         if (error) { console.error('fetchGroups snapshot page error:', error); break; }
@@ -677,6 +677,8 @@ export function ContactsListPage() {
       }
 
       // Segundo passe: aplica aos grupos usando o mapa global.
+      // Híbrido: 1) tenta resolver AO VIVO pelo mapa de instâncias atuais
+      //          2) cai no creator_instance_name gravado se o telefone não bater
       for (const s of snapshotRows) {
         const g = groupMap.get(s.jid);
         if (!g) continue;
@@ -684,8 +686,23 @@ export function ContactsListPage() {
         const ownerPnRaw = String(s.owner_pn || '').split('@')[0].replace(/\D/g, '');
         if (ownerPnRaw) {
           g.owner_phone = ownerPnRaw;
-          const instName = instancePhoneToName.get(ownerPnRaw);
+          // 1) Resolução ao vivo (mapa atual de instâncias)
+          let instName = instancePhoneToName.get(ownerPnRaw);
+          // 1b) Fallback por últimos 8 dígitos
+          if (!instName) {
+            const tail = ownerPnRaw.slice(-8);
+            if (tail.length >= 8) {
+              for (const [ph, nm] of instancePhoneToName.entries()) {
+                if (ph.slice(-8) === tail) { instName = nm; break; }
+              }
+            }
+          }
+          // 2) Fallback no gravado (instância pode ter sido removida/renomeada)
+          if (!instName && s.creator_instance_name) instName = String(s.creator_instance_name);
           if (instName) g.creator_instance_name = instName;
+        } else if (s.creator_instance_name) {
+          // Sem owner_pn mas com instância gravada (raro) — usa direto.
+          g.creator_instance_name = String(s.creator_instance_name);
         }
       }
 
