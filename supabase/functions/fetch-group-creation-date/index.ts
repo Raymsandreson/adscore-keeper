@@ -112,22 +112,42 @@ Deno.serve(async (req) => {
           data?.data?.creation || data?.data?.GroupCreated;
 
         if (creationTs) {
-          // Convert Unix timestamp (seconds) to ISO date
+          // Convert Unix timestamp (seconds) to ISO date/timestamp
           let creationDate: string;
+          let creationIso: string;
           if (typeof creationTs === "number") {
-            // Unix timestamp in seconds
             const d = new Date(creationTs * 1000);
-            creationDate = d.toISOString().split("T")[0];
+            creationIso = d.toISOString();
+            creationDate = creationIso.split("T")[0];
           } else {
             const d = new Date(creationTs);
-            creationDate = d.toISOString().split("T")[0];
+            creationIso = d.toISOString();
+            creationDate = creationIso.split("T")[0];
+          }
+
+          const subject = data?.subject || data?.name || groups?.[0]?.group_name || "";
+
+          // Persiste no snapshot pra próximas leituras não precisarem ir na UazAPI
+          try {
+            await extClient
+              .from("whatsapp_groups_uazapi_snapshot")
+              .upsert({
+                jid: groupJid,
+                group_name: subject || null,
+                group_created_at: creationIso,
+                last_synced_at: new Date().toISOString(),
+                raw_data: data ?? null,
+              }, { onConflict: "jid" });
+          } catch (persistErr) {
+            console.warn("snapshot upsert failed:", persistErr);
           }
 
           return new Response(
-            JSON.stringify({ 
-              success: true, 
+            JSON.stringify({
+              success: true,
               creation_date: creationDate,
-              group_name: data?.subject || data?.name || groups?.[0]?.group_name || "",
+              creation_iso: creationIso,
+              group_name: subject,
             }),
             { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
