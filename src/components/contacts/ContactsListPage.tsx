@@ -107,6 +107,21 @@ export function ContactsListPage() {
     return () => { cancelled = true; clearTimeout(timer); };
   }, [linkQuery, linkDialog]);
 
+  const handleDeleteGroup = async (jid: string, name: string | null) => {
+    if (!jid) return;
+    const ok = window.confirm(`Excluir o grupo "${name || jid}" da lista?\n\nIsso remove o cache do grupo e o vínculo com lead (se houver). A conversa no WhatsApp não é afetada.`);
+    if (!ok) return;
+    try {
+      await externalSupabase.from('lead_whatsapp_groups').delete().eq('group_jid', jid);
+      await externalSupabase.from('whatsapp_groups_cache').delete().eq('group_jid', jid);
+      setGroups(prev => prev.filter(g => g.group_jid !== jid));
+      toast.success('Grupo removido da lista');
+    } catch (err: any) {
+      console.error('handleDeleteGroup error:', err);
+      toast.error('Falha ao excluir: ' + (err?.message || 'erro'));
+    }
+  };
+
   const openGroupChat = (jid: string) => {
     if (!jid) return;
     const g = groups.find(x => x.group_jid === jid);
@@ -2100,6 +2115,15 @@ export function ContactsListPage() {
                             <Button size="icon" variant="ghost" className="h-6 w-6" title="Ver contatos do grupo" onClick={(e) => { e.stopPropagation(); handleSelectGroup(group.group_jid); }}>
                               <Users className="h-3.5 w-3.5" />
                             </Button>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-6 w-6 text-destructive hover:text-destructive"
+                              title="Excluir grupo da lista"
+                              onClick={(e) => { e.stopPropagation(); handleDeleteGroup(group.group_jid, group.group_name); }}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
                           </div>
                         </div>
                       );
@@ -2199,6 +2223,15 @@ export function ContactsListPage() {
                       <Badge variant={group.lead_status === 'closed' ? 'default' : 'outline'} className="text-[10px] shrink-0">
                         {group.lead_status || 'N/A'}
                       </Badge>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7 shrink-0 text-destructive hover:text-destructive"
+                        title="Excluir grupo da lista"
+                        onClick={(e) => { e.stopPropagation(); handleDeleteGroup(group.group_jid, group.group_name); }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
                   ))}
                   {truncatedNotice}
