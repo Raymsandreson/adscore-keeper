@@ -42,6 +42,13 @@ export function ContactsListPage() {
   const [editCaseDialog, setEditCaseDialog] = useState<{ leadId: string; groupJid: string; currentNumber: string; currentName: string } | null>(null);
   const [editCaseValue, setEditCaseValue] = useState('');
   const [editCaseSaving, setEditCaseSaving] = useState(false);
+  // Vincular lead a um grupo "sem vínculo"
+  const [linkDialog, setLinkDialog] = useState<{ groupJid: string; groupName: string | null } | null>(null);
+  const [linkQuery, setLinkQuery] = useState('');
+  const [linkSearching, setLinkSearching] = useState(false);
+  const [linkResults, setLinkResults] = useState<Array<{ id: string; lead_name: string | null; case_number: string | null; lead_number: number | null; lead_status: string | null }>>([]);
+  const [linking, setLinking] = useState<string | null>(null);
+
   const openGroupChat = (jid: string) => {
     if (!jid) return;
     const g = groups.find(x => x.group_jid === jid);
