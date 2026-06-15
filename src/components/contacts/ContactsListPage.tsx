@@ -250,7 +250,7 @@ export function ContactsListPage() {
         const to = from + pageSize - 1;
         const { data: page, error } = await externalSupabase
           .from('lead_whatsapp_groups')
-          .select('group_jid, group_name, lead_id, leads!lead_whatsapp_groups_lead_id_fkey(lead_name, lead_status, created_at, board_id, lead_number, product_service_id)')
+          .select('group_jid, group_name, lead_id, leads!lead_whatsapp_groups_lead_id_fkey(lead_name, lead_status, created_at, board_id, lead_number, product_service_id, case_number)')
           .order('created_at', { ascending: false })
           .range(from, to);
         if (error) { console.error('fetchGroups lwg page error:', error); break; }
@@ -267,6 +267,7 @@ export function ContactsListPage() {
             if (!existing.board_id && lead?.board_id) existing.board_id = lead.board_id;
             if (existing.lead_number == null && lead?.lead_number != null) existing.lead_number = lead.lead_number;
             if (!existing.product_service_id && lead?.product_service_id) existing.product_service_id = lead.product_service_id;
+            if (!existing.case_number && lead?.case_number) existing.case_number = String(lead.case_number);
           } else {
             groupMap.set(g.group_jid, {
               group_jid: g.group_jid,
@@ -280,7 +281,7 @@ export function ContactsListPage() {
               lead_created_at: lead?.created_at || null,
               board_id: lead?.board_id || null,
               board_name: null,
-              case_number: null,
+              case_number: lead?.case_number ? String(lead.case_number) : null,
               lead_number: lead?.lead_number ?? null,
               product_case_prefix: null,
               product_service_id: lead?.product_service_id || null,
@@ -295,7 +296,7 @@ export function ContactsListPage() {
       // 2.b) Fallback: se o join veio sem lead_name (cache de FK falhando), buscar leads
       //      diretamente por IN(lead_id) para garantir que o nome aparece na auditoria.
       const leadIdsNeeded = Array.from(groupMap.values())
-        .filter(g => g.lead_id && (!g.lead_name || !g.board_id))
+        .filter(g => g.lead_id && (!g.lead_name || !g.board_id || !g.case_number))
         .map(g => g.lead_id as string);
       if (leadIdsNeeded.length > 0) {
         const uniq = Array.from(new Set(leadIdsNeeded));
@@ -304,7 +305,7 @@ export function ContactsListPage() {
           const chunk = uniq.slice(i, i + chunkSize);
           const { data: leadsData } = await externalSupabase
             .from('leads')
-            .select('id, lead_name, lead_status, created_at, board_id, lead_number, product_service_id')
+            .select('id, lead_name, lead_status, created_at, board_id, lead_number, product_service_id, case_number')
             .in('id', chunk);
           const leadMap = new Map<string, any>();
           (leadsData || []).forEach((l: any) => leadMap.set(l.id, l));
@@ -317,6 +318,7 @@ export function ContactsListPage() {
               if (!g.board_id && l.board_id) g.board_id = l.board_id;
               if (g.lead_number == null && l.lead_number != null) g.lead_number = l.lead_number;
               if (!g.product_service_id && l.product_service_id) g.product_service_id = l.product_service_id;
+              if (!g.case_number && l.case_number) g.case_number = String(l.case_number);
             }
           });
         }
@@ -342,32 +344,11 @@ export function ContactsListPage() {
         });
       }
 
-      // 2.c) Buscar nº do caso (legal_cases.case_number) para todos os lead_ids vinculados
-      const leadIdsForCase = Array.from(new Set(
-        Array.from(groupMap.values()).filter(g => g.lead_id).map(g => g.lead_id as string)
-      ));
-      if (leadIdsForCase.length > 0) {
-        const chunkSize = 200;
-        const caseByLead = new Map<string, string>();
-        for (let i = 0; i < leadIdsForCase.length; i += chunkSize) {
-          const chunk = leadIdsForCase.slice(i, i + chunkSize);
-          const { data: cases } = await externalSupabase
-            .from('legal_cases')
-            .select('lead_id, case_number, created_at')
-            .in('lead_id', chunk)
-            .order('created_at', { ascending: false });
-          (cases || []).forEach((c: any) => {
-            if (c.lead_id && c.case_number && !caseByLead.has(c.lead_id)) {
-              caseByLead.set(c.lead_id, String(c.case_number));
-            }
-          });
-        }
-        groupMap.forEach((g) => {
-          if (g.lead_id && caseByLead.has(g.lead_id)) {
-            g.case_number = caseByLead.get(g.lead_id) || null;
-          }
-        });
-      }
+      // 2.c) Nº do caso agora vem de leads.case_number (sequência do funil fechado),
+      //      preenchido nos blocos 2 e 2.b acima. legal_cases.case_number é outra
+      //      coisa (nº do processo jurídico) e não deve aparecer aqui.
+
+
 
       // 2.d) Resolver nome dos boards (no Cloud) para os board_ids encontrados
       const boardIds = Array.from(new Set(
@@ -1900,7 +1881,7 @@ export function ContactsListPage() {
                     <div className="grid gap-2 px-3 py-2 border-b items-start" style={{ gridTemplateColumns: gridTemplate }}>
                       <div className="relative"><span></span></div>
                       <HeaderCell col="leadN" label="Nº lead" title="Sequência do lead (LEAD-N(PFX))" />
-                      <HeaderCell col="caseN" label="Nº caso" title="Nº oficial do caso (legal_cases.case_number)" />
+                      <HeaderCell col="caseN" label="Nº caso" title="Sequência de leads fechados (leads.case_number) — ex: PREV 1448. Editável pelo lápis." />
                       <HeaderCell col="groupName" label="Nome do grupo" />
                       <HeaderCell col="leadName" label="Nome do lead" align="center" />
                       <HeaderCell col="createdAt" label="Criado em" title="Data e hora de criação do grupo no WhatsApp" />
@@ -1953,7 +1934,7 @@ export function ContactsListPage() {
                           </span>
                           <span
                             className={`text-xs font-mono tabular-nums ${caseNum ? 'text-foreground' : 'text-muted-foreground'}`}
-                            title={caseNum ? `Caso oficial: ${caseNum}` : 'Lead sem caso oficial vinculado'}
+                            title={caseNum ? `Nº de caso fechado: ${caseNum}` : 'Lead ainda sem nº de caso fechado (use o lápis para definir)'}
                           >
                             {caseNum || '—'}
                           </span>
