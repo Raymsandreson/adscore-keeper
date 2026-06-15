@@ -347,6 +347,9 @@ export const handler: RequestHandler = async (req, res) => {
             if (!caseId) {
               try {
                 const FIELD_ID = '111f9a38-98c3-4f83-9095-5c469106a7bf'; // Nº Requerimento INSS
+                let foundLeadId: string | null = null;
+                let foundSource: 'custom_field' | 'activity_title' | null = null;
+
                 const { data: cfv } = await supabase
                   .from('lead_custom_field_values')
                   .select('lead_id')
@@ -355,17 +358,46 @@ export const handler: RequestHandler = async (req, res) => {
                   .limit(1)
                   .maybeSingle();
                 if (cfv?.lead_id) {
+                  foundLeadId = cfv.lead_id;
+                  foundSource = 'custom_field';
+                }
+
+                // Fallback: título de atividade contém o nº do requerimento
+                if (!foundLeadId) {
+                  const { data: act } = await supabase
+                    .from('lead_activities')
+                    .select('lead_id')
+                    .ilike('title', `%${parsed.requerimento}%`)
+                    .not('lead_id', 'is', null)
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+                  if (act?.lead_id) {
+                    foundLeadId = act.lead_id;
+                    foundSource = 'activity_title';
+                  }
+                }
+
+                if (foundLeadId) {
+                  if (foundSource === 'activity_title') {
+                    await supabase
+                      .from('lead_custom_field_values')
+                      .upsert(
+                        { lead_id: foundLeadId, field_id: FIELD_ID, value_text: parsed.requerimento },
+                        { onConflict: 'lead_id,field_id' },
+                      );
+                  }
                   const { data: legalCase } = await supabase
                     .from('legal_cases')
                     .select('id')
-                    .eq('lead_id', cfv.lead_id)
+                    .eq('lead_id', foundLeadId)
                     .order('created_at', { ascending: false })
                     .limit(1)
                     .maybeSingle();
                   await supabase
                     .from('inss_admin_processes')
                     .update({
-                      lead_id: cfv.lead_id,
+                      lead_id: foundLeadId,
                       case_id: legalCase?.id || null,
                       linked_at: new Date().toISOString(),
                     })
