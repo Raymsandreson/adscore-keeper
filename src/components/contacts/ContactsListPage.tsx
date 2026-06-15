@@ -2512,6 +2512,128 @@ export function ContactsListPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={!!linkDialog} onOpenChange={(o) => { if (!o && !linking) { setLinkDialog(null); setLinkQuery(''); setLinkResults([]); } }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Vincular lead ao grupo</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <p className="text-xs text-muted-foreground">
+              Grupo: <span className="font-medium text-foreground">{linkDialog?.groupName || linkDialog?.groupJid}</span>
+            </p>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Buscar lead existente (nome, nº lead, nº caso)</Label>
+              <div className="flex gap-2">
+                <Input
+                  autoFocus
+                  value={linkQuery}
+                  onChange={(e) => setLinkQuery(e.target.value)}
+                  onKeyDown={async (e) => {
+                    if (e.key !== 'Enter') return;
+                    const q = linkQuery.trim();
+                    if (!q) return;
+                    setLinkSearching(true);
+                    try {
+                      const isNum = /^\d+$/.test(q);
+                      let query = externalSupabase
+                        .from('leads')
+                        .select('id, lead_name, case_number, lead_number, lead_status')
+                        .limit(20);
+                      if (isNum) {
+                        query = query.or(`case_number.eq.${q},lead_number.eq.${q},lead_name.ilike.%${q}%`);
+                      } else {
+                        query = query.ilike('lead_name', `%${q}%`);
+                      }
+                      const { data, error } = await query;
+                      if (error) throw error;
+                      setLinkResults((data || []) as any);
+                    } catch (err: any) {
+                      toast.error('Erro na busca: ' + err.message);
+                    } finally {
+                      setLinkSearching(false);
+                    }
+                  }}
+                  placeholder="Digite e tecle Enter…"
+                  disabled={linkSearching || !!linking}
+                />
+                {linkSearching && <Loader2 className="h-4 w-4 animate-spin self-center" />}
+              </div>
+            </div>
+            {linkResults.length > 0 && (
+              <ScrollArea className="max-h-64 border rounded-md">
+                <div className="divide-y">
+                  {linkResults.map((l) => (
+                    <button
+                      key={l.id}
+                      disabled={!!linking}
+                      onClick={async () => {
+                        if (!linkDialog) return;
+                        setLinking(l.id);
+                        try {
+                          const { error } = await externalSupabase
+                            .from('lead_whatsapp_groups')
+                            .insert({
+                              lead_id: l.id,
+                              group_jid: linkDialog.groupJid,
+                              group_name: linkDialog.groupName,
+                            } as any);
+                          if (error) throw error;
+                          toast.success('Lead vinculado ao grupo!');
+                          // Atualiza a linha localmente
+                          setGroups((prev) => prev.map((g) => g.group_jid === linkDialog.groupJid
+                            ? { ...g, lead_id: l.id, lead_name: l.lead_name, lead_status: l.lead_status, lead_number: l.lead_number, case_number: l.case_number } as any
+                            : g));
+                          // Regenera o nome do grupo no WhatsApp
+                          cloudFunctions.invoke('regenerate-lead-name', { body: { lead_id: l.id } }).catch(() => {});
+                          setLinkDialog(null);
+                          setLinkQuery('');
+                          setLinkResults([]);
+                        } catch (err: any) {
+                          toast.error('Falha ao vincular: ' + err.message);
+                        } finally {
+                          setLinking(null);
+                        }
+                      }}
+                      className="w-full text-left px-3 py-2 hover:bg-accent disabled:opacity-50 flex items-center justify-between gap-2"
+                    >
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium truncate">{l.lead_name || '(sem nome)'}</div>
+                        <div className="text-[11px] text-muted-foreground">
+                          {l.lead_number ? `LEAD-${l.lead_number}` : '—'} • Nº caso: {l.case_number || '—'} • {l.lead_status || 'N/A'}
+                        </div>
+                      </div>
+                      {linking === l.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4 text-emerald-600" />}
+                    </button>
+                  ))}
+                </div>
+              </ScrollArea>
+            )}
+            {linkQuery && !linkSearching && linkResults.length === 0 && (
+              <p className="text-xs text-muted-foreground italic">Nenhum resultado. Tecle Enter para buscar ou crie um lead novo abaixo.</p>
+            )}
+          </div>
+          <DialogFooter className="flex-col sm:flex-row sm:justify-between gap-2">
+            <Button
+              variant="outline"
+              disabled={!!linking}
+              onClick={() => {
+                if (!linkDialog) return;
+                const params = new URLSearchParams({
+                  newLead: 'true',
+                  linkGroupJid: linkDialog.groupJid,
+                  linkGroupName: linkDialog.groupName || '',
+                });
+                navigate(`/leads?${params.toString()}`);
+              }}
+            >
+              <Plus className="h-4 w-4 mr-1" /> Criar novo lead vinculado
+            </Button>
+            <Button variant="ghost" onClick={() => setLinkDialog(null)} disabled={!!linking}>Fechar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
+
   );
 }
