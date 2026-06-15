@@ -122,6 +122,34 @@ export function ContactsListPage() {
     }
   };
 
+  const [refreshingDateFor, setRefreshingDateFor] = useState<Set<string>>(new Set());
+  const handleRefreshCreationDate = async (jid: string) => {
+    if (!jid) return;
+    setRefreshingDateFor(prev => { const n = new Set(prev); n.add(jid); return n; });
+    try {
+      const { data, error } = await cloudFunctions.invoke<any>('fetch-group-creation-date', {
+        body: { group_jid: jid },
+      });
+      if (error) throw error;
+      if (!data?.success) {
+        toast.error(data?.error || 'Não foi possível buscar a data');
+        return;
+      }
+      const iso: string | null = data.creation_iso || data.creation_date || null;
+      if (!iso) {
+        toast.warning('Grupo encontrado, mas a UazAPI não retornou a data de criação');
+        return;
+      }
+      setGroups(prev => prev.map(g => g.group_jid === jid ? { ...g, created_at: iso } : g));
+      toast.success('Data atualizada');
+    } catch (err: any) {
+      console.error('handleRefreshCreationDate error:', err);
+      toast.error('Falha: ' + (err?.message || 'erro'));
+    } finally {
+      setRefreshingDateFor(prev => { const n = new Set(prev); n.delete(jid); return n; });
+    }
+  };
+
   const openGroupChat = (jid: string) => {
     if (!jid) return;
     const g = groups.find(x => x.group_jid === jid);
