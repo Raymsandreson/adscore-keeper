@@ -160,7 +160,7 @@ export const handler: RequestHandler = async (_req, res) => {
         if (!leadId && !caseId) continue;
 
         // Se veio via atividade, grava no custom field pra próxima vez casar direto
-        if ((source === 'activity_title' || source === 'process_number') && leadId) {
+        if (source && source !== 'custom_field' && leadId) {
           await supabase
             .from('lead_custom_field_values')
             .upsert(
