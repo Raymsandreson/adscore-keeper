@@ -175,7 +175,7 @@ export function ContactsListPage() {
         toast.warning('Grupo encontrado, mas a UazAPI não retornou data nem criador');
         return;
       }
-      fetchGroups();
+      fetchGroups({ silent: true });
       toast.success(ownerPhone ? 'Data/criador atualizados' : 'Data atualizada');
     } catch (err: any) {
       console.error('handleRefreshCreationDate error:', err);
@@ -224,7 +224,7 @@ export function ContactsListPage() {
     };
     await Promise.all(Array.from({ length: Math.min(CONCURRENCY, jids.length) }, worker));
     setBulkRefreshing(false);
-    fetchGroups();
+    fetchGroups({ silent: true });
     if (bulkCancelRef.current) toast.warning(`Cancelado: ${ok} atualizados, ${fail} falharam`);
     else {
       toast.success(`Concluído: ${ok} atualizados, ${fail} falharam`);
@@ -330,6 +330,8 @@ export function ContactsListPage() {
   // Groups data
   const [groups, setGroups] = useState<{ group_jid: string; group_name: string; lead_name: string; lead_status: string; lead_id: string | null; contact_count: number; instance_name: string | null; created_at: string | null; lead_created_at: string | null; board_id: string | null; board_name: string | null; case_number: string | null; lead_number: number | null; product_case_prefix: string | null; product_service_id: string | null; owner_phone: string | null; creator_instance_name: string | null }[]>([]);
   const [groupsLoading, setGroupsLoading] = useState(false);
+  const [groupsLastUpdatedAt, setGroupsLastUpdatedAt] = useState<Date | null>(null);
+  const [groupsRefreshingSilently, setGroupsRefreshingSilently] = useState(false);
   const [groupSearch, setGroupSearch] = useState('');
   const deferredGroupSearch = useDeferredValue(groupSearch);
   const [groupSort, setGroupSort] = useState<'alpha' | 'number' | 'prefix' | 'date'>('date');
@@ -368,34 +370,41 @@ export function ContactsListPage() {
   // Esta ref silencia o refetch do realtime durante a janela da sync.
   const syncingRef = useRef(false);
 
-  // Auto-sync silencioso ao abrir a aba "Grupos" (1x por sessão do navegador).
-  // Garante que grupos criados após a última sync diária apareçam na lista
-  // sem o usuário precisar lembrar de clicar no refresh manual.
+  // Auto-sync silencioso ao abrir a aba "Grupos".
+  // Antes era 1x por sessão (sessionStorage) — isso fazia perder grupos
+  // criados após o usuário já ter aberto a aba uma vez no dia. Agora usamos
+  // um throttle por tempo (90s) gravado em localStorage: se a última sync
+  // foi há mais de 90s, dispara de novo. Continua silencioso (sem spinner).
   useEffect(() => {
     if (activeTab !== 'groups') return;
-    const FLAG = 'wa_groups_auto_sync_done';
-    if (sessionStorage.getItem(FLAG)) return;
-    sessionStorage.setItem(FLAG, '1');
+    const FLAG = 'wa_groups_auto_sync_at';
+    const last = Number(localStorage.getItem(FLAG) || '0');
+    const THROTTLE_MS = 90_000;
+    if (Date.now() - last < THROTTLE_MS) return;
+    localStorage.setItem(FLAG, String(Date.now()));
     (async () => {
       syncingRef.current = true;
+      setGroupsRefreshingSilently(true);
       try {
         const { error } = await supabase.functions.invoke('sync-all-whatsapp-groups', { body: {} });
         if (error) { console.warn('auto sync-all-whatsapp-groups error:', error); return; }
       } catch (e) {
         console.warn('auto sync-all-whatsapp-groups failed:', e);
       } finally {
-        // Mantém silenciado por +3s pra absorver realtimes atrasados,
-        // então faz UM único refetch com o snapshot já estabilizado.
+        // Silencia +3s pra absorver realtimes atrasados, depois UM refetch
+        // silencioso (sem trocar a lista por spinner).
         setTimeout(() => {
           syncingRef.current = false;
-          fetchGroups();
+          fetchGroups({ silent: true }).finally(() => setGroupsRefreshingSilently(false));
         }, 3000);
       }
     })();
   }, [activeTab]);
 
-  const fetchGroups = async () => {
-    setGroupsLoading(true);
+  const fetchGroups = async (opts?: { silent?: boolean }) => {
+    const silent = !!opts?.silent;
+    if (!silent) setGroupsLoading(true);
+    else setGroupsRefreshingSilently(true);
     try {
       await ensureExternalSession();
       const pageSize = 1000;
@@ -711,10 +720,12 @@ export function ContactsListPage() {
       instancePhoneMapRef.current = instancePhoneToName;
 
       setGroups(Array.from(groupMap.values()));
+      setGroupsLastUpdatedAt(new Date());
     } catch (err) {
       console.error('Error fetching groups:', err);
     } finally {
-      setGroupsLoading(false);
+      if (!silent) setGroupsLoading(false);
+      setGroupsRefreshingSilently(false);
     }
   };
 
@@ -728,7 +739,9 @@ export function ContactsListPage() {
       if (syncingRef.current) return; // silencia durante sync em massa
       if (refreshTimer) clearTimeout(refreshTimer);
       refreshTimer = setTimeout(() => {
-        fetchGroups();
+        // Refresh em segundo plano — sem trocar a lista por spinner, evita o
+        // "piscar" que acontecia a cada upsert do snapshot.
+        fetchGroups({ silent: true });
       }, 2500);
     };
 
@@ -1306,6 +1319,23 @@ export function ContactsListPage() {
                 Cancelar
               </Button>
             )}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="shrink-0 gap-2"
+              onClick={() => fetchGroups({ silent: true })}
+              disabled={groupsRefreshingSilently}
+              title="Atualizar a lista agora (em segundo plano)"
+            >
+              {groupsRefreshingSilently
+                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                : <RefreshCw className="h-3.5 w-3.5" />}
+              <span className="text-xs text-muted-foreground">
+                {groupsLastUpdatedAt
+                  ? `Atualizado às ${groupsLastUpdatedAt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`
+                  : 'Atualizar'}
+              </span>
+            </Button>
             <Sheet open={showGroupFilters} onOpenChange={setShowGroupFilters}>
               <SheetTrigger asChild>
                 <Button variant="outline" size="sm" className="shrink-0 gap-2">
@@ -2715,7 +2745,7 @@ export function ContactsListPage() {
 
       <LeadEditDialog
         open={!!editingLead}
-        onOpenChange={(open) => { if (!open) { setEditingLead(null); fetchGroups(); } }}
+        onOpenChange={(open) => { if (!open) { setEditingLead(null); fetchGroups({ silent: true }); } }}
         lead={editingLead}
         onSave={async (leadId, updates) => {
           const { error } = await externalSupabase.from('leads').update(updates as any).eq('id', leadId);
