@@ -42,6 +42,8 @@ import {
   Settings
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
+
 import { logAudit } from '@/hooks/useAuditLog';
 import { toast } from 'sonner';
 import { useContactLeads } from '@/hooks/useContactLeads';
@@ -112,6 +114,9 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
   // State for contact linking after lead creation
   const [pendingContactLink, setPendingContactLink] = useState<string | null>(null);
   const { linkLead } = useContactLeads(pendingContactLink || undefined);
+  // State for WhatsApp group linking after lead creation
+  const [pendingGroupLink, setPendingGroupLink] = useState<{ jid: string; name: string | null } | null>(null);
+
   
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
@@ -148,6 +153,8 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
     const city = searchParams.get('city');
     const state = searchParams.get('state');
     const linkContact = searchParams.get('linkContact');
+    const linkGroupJid = searchParams.get('linkGroupJid');
+    const linkGroupName = searchParams.get('linkGroupName');
 
     if (newLeadParam === 'true') {
       // Pre-fill form with contact data
@@ -164,6 +171,11 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
       if (linkContact) {
         setPendingContactLink(linkContact);
       }
+
+      // Set pending WhatsApp group link if provided
+      if (linkGroupJid) {
+        setPendingGroupLink({ jid: linkGroupJid, name: linkGroupName || null });
+      }
       
       // Load cities if state is provided
       if (state) {
@@ -177,6 +189,7 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
       setSearchParams({}, { replace: true });
     }
   }, [searchParams, setSearchParams, fetchCities]);
+
 
   // Calculate leads by day of week
   const leadsByDayOfWeek = leads.reduce((acc, lead) => {
@@ -409,7 +422,27 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
       setPendingContactLink(null);
     }
 
+    // Link to WhatsApp group if pending
+    if (createdLead && pendingGroupLink?.jid) {
+      try {
+        const { error: linkErr } = await externalSupabase
+          .from('lead_whatsapp_groups')
+          .insert({
+            lead_id: createdLead.id,
+            group_jid: pendingGroupLink.jid,
+            group_name: pendingGroupLink.name,
+          } as any);
+        if (linkErr) throw linkErr;
+        toast.success('Lead criado e vinculado ao grupo do WhatsApp!');
+      } catch (error: any) {
+        console.error('Error linking lead to WhatsApp group:', error);
+        toast.error('Lead criado, mas falhou ao vincular ao grupo: ' + (error?.message || 'erro'));
+      }
+      setPendingGroupLink(null);
+    }
+
     setNewLead({
+
       lead_name: '',
       lead_phone: '',
       lead_email: '',
