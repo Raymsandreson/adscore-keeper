@@ -57,6 +57,20 @@ export async function runPostSignExtras(input: PostSignInput): Promise<void> {
     return;
   }
 
+  // Guarda: lead com telefone inválido (< 10 dígitos) é resultado de doc ZapSign
+  // sem signer_phone preenchido. Não dá pra rodar checkpoints (criar grupo,
+  // enviar boas-vindas) sem telefone real do cliente. Aborta e deixa pra
+  // tratamento manual.
+  const phoneDigits = (lead.lead_phone || '').replace(/\D/g, '');
+  if (phoneDigits.length < 10) {
+    console.warn(
+      '[post-sign-extras] ABORT — lead.lead_phone inválido para checkpoints:',
+      { lead_id: doc.lead_id, lead_phone: lead.lead_phone, doc_token },
+    );
+    return;
+  }
+
+
   // NOTA: este arquivo NÃO carimba became_client_date — só empilha checkpoints.
   // A data real de fechamento é decidida em onboarding-checkpoint-execute.ts
   // (handler setup_lead_close), que aplica a prioridade:

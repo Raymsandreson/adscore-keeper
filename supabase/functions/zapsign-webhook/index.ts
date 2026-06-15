@@ -812,9 +812,15 @@ Deno.serve(async (req) => {
       // Prefer signer_phone (real signatory identity) over whatsapp_phone (the forwarder's WA).
       const signerPhoneClean = (localDoc.signer_phone || '').replace(/\D/g, '')
       const waPhoneClean = (localDoc.whatsapp_phone || '').replace(/\D/g, '')
-      const cleanPhone = signerPhoneClean.length > 4 ? signerPhoneClean : waPhoneClean
+      // Só aceita telefone com pelo menos 10 dígitos (DDI 55 + DDD + 8 locais).
+      // Caso contrário, é lixo (ex: "55" sozinho quando a ZapSign não preencheu
+      // o telefone do signatário no painel) e NÃO devemos criar lead a partir disso.
+      const MIN_PHONE_DIGITS = 10
+      const signerOk = signerPhoneClean.length >= MIN_PHONE_DIGITS
+      const waOk = waPhoneClean.length >= MIN_PHONE_DIGITS
+      const cleanPhone = signerOk ? signerPhoneClean : (waOk ? waPhoneClean : '')
 
-      // Only proceed if no lead is linked yet
+      // Only proceed if no lead is linked yet AND we have a valid phone
       if (!localDoc.lead_id && cleanPhone) {
         try {
           console.log(`[zapsign-webhook] No lead linked, auto-creating contact+lead for phone: ${cleanPhone} (signer=${signerPhoneClean || 'none'}, wa=${waPhoneClean || 'none'})`)
