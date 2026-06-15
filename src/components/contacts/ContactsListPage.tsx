@@ -2653,7 +2653,7 @@ export function ContactsListPage() {
                       <div className="min-w-0">
                         <div className="text-sm font-medium truncate">{l.lead_name || '(sem nome)'}</div>
                         <div className="text-[11px] text-muted-foreground">
-                          {l.lead_number ? `LEAD-${l.lead_number}` : '—'} • Nº caso: {l.case_number || '—'} • {l.lead_status || 'N/A'}
+                          {l.lead_number ? `LEAD-${l.lead_number}` : '—'} • Nº caso: {l.case_number || '—'} • {l.lead_status || 'N/A'}{(l as any).lead_phone ? ` • 📞 ${(l as any).lead_phone}` : ''}
                         </div>
                       </div>
                       {linking === l.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4 text-emerald-600" />}
