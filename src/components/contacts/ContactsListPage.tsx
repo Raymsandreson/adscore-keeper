@@ -362,7 +362,7 @@ export function ContactsListPage() {
 
   useEffect(() => {
     fetchAgentsAndAssignments();
-    fetchGroups({ silent: true });
+    fetchGroups();
   }, []);
 
   // Enquanto a sync em massa estiver rodando, ela faz milhares de upserts nos
