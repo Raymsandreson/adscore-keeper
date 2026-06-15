@@ -175,7 +175,7 @@ export function ContactsListPage() {
         toast.warning('Grupo encontrado, mas a UazAPI não retornou data nem criador');
         return;
       }
-      fetchGroups();
+      fetchGroups({ silent: true });
       toast.success(ownerPhone ? 'Data/criador atualizados' : 'Data atualizada');
     } catch (err: any) {
       console.error('handleRefreshCreationDate error:', err);
@@ -224,7 +224,7 @@ export function ContactsListPage() {
     };
     await Promise.all(Array.from({ length: Math.min(CONCURRENCY, jids.length) }, worker));
     setBulkRefreshing(false);
-    fetchGroups();
+    fetchGroups({ silent: true });
     if (bulkCancelRef.current) toast.warning(`Cancelado: ${ok} atualizados, ${fail} falharam`);
     else {
       toast.success(`Concluído: ${ok} atualizados, ${fail} falharam`);
@@ -362,7 +362,7 @@ export function ContactsListPage() {
 
   useEffect(() => {
     fetchAgentsAndAssignments();
-    fetchGroups();
+    fetchGroups({ silent: true });
   }, []);
 
   // Enquanto a sync em massa estiver rodando, ela faz milhares de upserts nos
