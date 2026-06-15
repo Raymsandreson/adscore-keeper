@@ -720,10 +720,12 @@ export function ContactsListPage() {
       instancePhoneMapRef.current = instancePhoneToName;
 
       setGroups(Array.from(groupMap.values()));
+      setGroupsLastUpdatedAt(new Date());
     } catch (err) {
       console.error('Error fetching groups:', err);
     } finally {
-      setGroupsLoading(false);
+      if (!silent) setGroupsLoading(false);
+      setGroupsRefreshingSilently(false);
     }
   };
 
