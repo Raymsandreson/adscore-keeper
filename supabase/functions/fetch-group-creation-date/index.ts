@@ -1,9 +1,47 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 import { getExternalClient } from "../_shared/external-client.ts";
+const FUNCTION_VERSION = 3;
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-request-id",
+};
+
+const json = (body: Record<string, unknown>) => new Response(
+  JSON.stringify({ _functionVersion: FUNCTION_VERSION, ...body }),
+  { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+);
+
+const digitsOnly = (value: unknown) => String(value || "").split("@")[0].replace(/\D/g, "");
+
+const payloadOf = (data: any) => data?.data || data || {};
+
+const extractCreationTs = (data: any) => {
+  const p = payloadOf(data);
+  return p?.creation || p?.GroupCreated || p?.created_at || data?.creation || data?.GroupCreated || data?.created_at;
+};
+
+const extractOwnerPn = (data: any): string | null => {
+  const p = payloadOf(data);
+  const raw = p?.OwnerPN || p?.owner_pn || p?.ownerPN || p?.owner || p?.creator || data?.OwnerPN || data?.owner_pn || data?.owner || data?.creator || "";
+  const digits = digitsOnly(raw);
+  return digits ? digits : null;
+};
+
+const extractOwnerJid = (data: any): string | null => {
+  const p = payloadOf(data);
+  return p?.OwnerJID || p?.owner_jid || p?.GroupOwner || p?.owner || data?.OwnerJID || data?.owner_jid || data?.GroupOwner || null;
+};
+
+const extractSubject = (data: any, fallback = "") => {
+  const p = payloadOf(data);
+  return String(p?.subject || p?.name || p?.Name || data?.subject || data?.name || data?.Name || fallback || "").trim();
+};
+
+const toIso = (creationTs: unknown): string | null => {
+  if (!creationTs) return null;
+  const d = typeof creationTs === "number" ? new Date(creationTs * 1000) : new Date(String(creationTs));
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
 };
 
 Deno.serve(async (req) => {
