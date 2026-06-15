@@ -1,15 +1,12 @@
 import type { RequestHandler } from 'express';
 import { supabase } from '../lib/supabase';
+import { findInssOrphanMatch, applyInssMatch } from '../lib/inss-matcher';
 
 /**
- * Varre todos os inss_admin_processes órfãos (case_id null) e tenta vincular
- * a um lead que tenha o nº do requerimento salvo no custom field
- * "Nº Requerimento INSS" (field_id fixo).
- *
- * Retorna { success, matched, scanned, errors }
+ * Varre inss_admin_processes órfãos e tenta vincular usando o matcher
+ * compartilhado (mesma lógica do gmail-inss-sync). Roda manualmente ou
+ * via cron a cada 15min (ver src/index.ts).
  */
-
-const FIELD_ID = '111f9a38-98c3-4f83-9095-5c469106a7bf';
 
 export const handler: RequestHandler = async (_req, res) => {
   const errors: string[] = [];
@@ -32,187 +29,18 @@ export const handler: RequestHandler = async (_req, res) => {
 
     for (const o of orphans || []) {
       try {
-        const reqDigits = String(o.requerimento_number || '').replace(/\D/g, '');
-        const cpfDigits = String((o as any).cpf_segurado || '').replace(/\D/g, '');
-        const nome = String((o as any).nome_segurado || '').trim();
-        let leadId: string | null = null;
-        let caseId: string | null = null;
-        let source:
-          | 'process_number'
-          | 'custom_field'
-          | 'activity_title'
-          | 'cpf_lead'
-          | 'cpf_contact'
-          | 'name_lead'
-          | null = null;
+        const match = await findInssOrphanMatch({
+          requerimento: o.requerimento_number,
+          cpf: (o as any).cpf_segurado,
+          nome: (o as any).nome_segurado,
+        });
+        if (!match.leadId && !match.caseId) continue;
 
-        // Estratégia 0: processo/caso já cadastrado com o nº do requerimento
-        if (reqDigits) {
-          const { data: proc } = await supabase
-            .from('lead_processes')
-            .select('lead_id, case_id')
-            .or(`process_number.ilike.%${reqDigits}%,title.ilike.%${reqDigits}%`)
-            .not('case_id', 'is', null)
-            .order('updated_at', { ascending: false })
-            .limit(1)
-            .maybeSingle();
-          if (proc?.case_id || proc?.lead_id) {
-            leadId = proc.lead_id || null;
-            caseId = proc.case_id || null;
-            source = 'process_number';
-          }
-        }
-
-        // Estratégia 1: custom field "Nº Requerimento INSS"
-        const { data: cfv } = await supabase
-          .from('lead_custom_field_values')
-          .select('lead_id')
-          .eq('field_id', FIELD_ID)
-          .eq('value_text', o.requerimento_number)
-          .limit(1)
-          .maybeSingle();
-
-        if (!leadId && cfv?.lead_id) {
-          leadId = cfv.lead_id;
-          source = 'custom_field';
-        }
-
-        // Estratégia 2: título de atividade contém o nº do requerimento
-        // Quando a atividade não tem lead/case vinculados, extrai o prefixo do
-        // título (ex: "PREV 690") e busca lead com lead_name começando assim.
-        if (!leadId && !caseId && reqDigits) {
-          const { data: acts } = await supabase
-            .from('lead_activities')
-            .select('lead_id, case_id, title')
-            .ilike('title', `%${reqDigits}%`)
-            .order('created_at', { ascending: false })
-            .limit(5);
-          for (const act of acts || []) {
-            if (act?.lead_id || act?.case_id) {
-              leadId = act.lead_id || null;
-              caseId = act.case_id || null;
-              source = 'activity_title';
-              break;
-            }
-            // Sem vínculo direto: tenta extrair prefixo "PALAVRA NUMERO" do título
-            const m = String(act?.title || '').match(/([A-Za-zÀ-ÿ]{2,}\s*\d{1,6})/);
-            const prefix = m?.[1]?.trim();
-            if (!prefix) continue;
-            const { data: leadByPrefix } = await supabase
-              .from('leads')
-              .select('id')
-              .ilike('lead_name', `${prefix}%`)
-              .is('deleted_at', null)
-              .order('created_at', { ascending: false })
-              .limit(1)
-              .maybeSingle();
-            if (leadByPrefix?.id) {
-              leadId = leadByPrefix.id;
-              source = 'activity_title';
-              break;
-            }
-          }
-        }
-
-        // Estratégia 3: CPF do segurado bate com leads.cpf
-        if (!leadId && cpfDigits.length === 11) {
-          const { data: leadByCpf } = await supabase
-            .from('leads')
-            .select('id')
-            .eq('cpf', cpfDigits)
-            .is('deleted_at', null)
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .maybeSingle();
-          if (leadByCpf?.id) {
-            leadId = leadByCpf.id;
-            source = 'cpf_lead';
-          }
-        }
-
-        // Estratégia 4: CPF do segurado bate com um contato → pega lead vinculado
-        if (!leadId && cpfDigits.length === 11) {
-          const { data: contact } = await supabase
-            .from('contacts')
-            .select('id')
-            .eq('cpf', cpfDigits)
-            .limit(1)
-            .maybeSingle();
-          if (contact?.id) {
-            const { data: cl } = await supabase
-              .from('contact_leads')
-              .select('lead_id')
-              .eq('contact_id', contact.id)
-              .order('created_at', { ascending: false })
-              .limit(1)
-              .maybeSingle();
-            if (cl?.lead_id) {
-              leadId = cl.lead_id;
-              source = 'cpf_contact';
-            }
-          }
-        }
-
-        // Estratégia 5: nome do segurado bate com lead_name ou victim_name (ilike exato)
-        if (!leadId && nome.length >= 6) {
-          const { data: leadByName } = await supabase
-            .from('leads')
-            .select('id')
-            .or(`lead_name.ilike.${nome},victim_name.ilike.${nome}`)
-            .is('deleted_at', null)
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .maybeSingle();
-          if (leadByName?.id) {
-            leadId = leadByName.id;
-            source = 'name_lead';
-          }
-        }
-
-        if (!leadId && caseId) {
-          const { data: c } = await supabase
-            .from('legal_cases')
-            .select('lead_id')
-            .eq('id', caseId)
-            .maybeSingle();
-          leadId = c?.lead_id || null;
-        }
-
-        if (!leadId && !caseId) continue;
-
-        // Se veio via atividade, grava no custom field pra próxima vez casar direto
-        if (source && source !== 'custom_field' && leadId) {
-          await supabase
-            .from('lead_custom_field_values')
-            .upsert(
-              { lead_id: leadId, field_id: FIELD_ID, value_text: o.requerimento_number },
-              { onConflict: 'lead_id,field_id' },
-            );
-        }
-
-        if (!caseId && leadId) {
-          const { data: legalCase } = await supabase
-            .from('legal_cases')
-            .select('id')
-            .eq('lead_id', leadId)
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .maybeSingle();
-          caseId = legalCase?.id || null;
-        }
-
-        const { error: uErr } = await supabase
-          .from('inss_admin_processes')
-          .update({
-            lead_id: leadId,
-            case_id: caseId,
-            linked_at: new Date().toISOString(),
-          })
-          .eq('id', o.id);
-        if (uErr) {
-          errors.push(`${o.requerimento_number}: ${uErr.message}`);
-          continue;
-        }
+        const { caseId } = await applyInssMatch({
+          processId: o.id,
+          requerimento: o.requerimento_number,
+          match,
+        });
         matched++;
 
         if (caseId) {

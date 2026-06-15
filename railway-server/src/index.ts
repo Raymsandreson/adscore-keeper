@@ -237,3 +237,32 @@ app.listen(PORT, () => {
   console.log(`📋 Registered functions: ${Object.keys(functionHandlers).join(', ') || 'none yet'}`);
   console.log(`🔐 API Key protection on /functions/*: ${API_KEY ? 'enabled' : 'DISABLED'}`);
 });
+
+// ============================================================
+// CRON: rede de segurança — varre órfãos INSS a cada 15 min.
+// Metáfora: o detetive volta na sala de cartas-sem-dono toda
+// hora pra ver se chegou pista nova (lead novo cadastrado, etc.).
+// ============================================================
+const ORPHAN_SCAN_INTERVAL_MS = 15 * 60 * 1000;
+async function runOrphanScan() {
+  try {
+    const url = `http://127.0.0.1:${PORT}/functions/match-inss-orphans`;
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': API_KEY,
+      },
+      body: '{}',
+    });
+    const json: any = await resp.json().catch(() => ({}));
+    if (json?.scanned > 0 || json?.matched > 0) {
+      console.log(`[cron:match-inss-orphans] scanned=${json.scanned} matched=${json.matched} notify=${json.notify_fired}`);
+    }
+  } catch (err) {
+    console.warn('[cron:match-inss-orphans] failed:', err instanceof Error ? err.message : err);
+  }
+}
+// Primeira execução 60s após start, depois a cada 15 min
+setTimeout(runOrphanScan, 60_000);
+setInterval(runOrphanScan, ORPHAN_SCAN_INTERVAL_MS);
