@@ -71,10 +71,11 @@ async function fetchGroupInfo(
   const ctrl = new AbortController();
   const tid = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
   try {
-    const r = await fetch(`${baseUrl.replace(/\/$/, '')}/group/info`, {
+    const r = await fetch(`${baseUrl.replace(/\/$/, '')}/group/info?getParticipants=true`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', token },
-      body: JSON.stringify({ groupjid }),
+      // UazAPI espera `id`; mandamos também `groupjid` por compatibilidade.
+      body: JSON.stringify({ id: groupjid, groupjid, getParticipants: true }),
       signal: ctrl.signal,
     });
     if (!r.ok) return null;
