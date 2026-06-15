@@ -109,13 +109,23 @@ Deno.serve(async (req) => {
       return json({ success: false, error: "No instances with token available" });
     }
 
-    // Try to get group info from UazAPI
-    // Limita tentativas e usa timeout por chamada — sem isso, instâncias
-    // desconectadas penduram a função até o limite de 150s.
-    const MAX_TRIES = 8;
-    const PER_CALL_MS = 4000;
+    const { data: existingSnapshot } = await extClient
+      .from("whatsapp_groups_uazapi_snapshot")
+      .select("seen_in_instances, owner_pn, group_created_at, group_name")
+      .eq("jid", groupJid)
+      .maybeSingle();
+
+    let mergedSeen = Array.isArray((existingSnapshot as any)?.seen_in_instances)
+      ? [...(existingSnapshot as any).seen_in_instances]
+      : [];
+    let best: { data: any; inst: any; creationIso: string | null; ownerPn: string | null; ownerJid: string | null; subject: string } | null = null;
+    const tried: string[] = [];
+
+    const MAX_TRIES = 12;
+    const PER_CALL_MS = 4500;
     for (const inst of sortedInstances.slice(0, MAX_TRIES)) {
       const baseUrl = inst.base_url || "https://abraci.uazapi.com";
+      tried.push(inst.instance_name);
       try {
         const ctrl = new AbortController();
         const tid = setTimeout(() => ctrl.abort(), PER_CALL_MS);
@@ -127,113 +137,62 @@ Deno.serve(async (req) => {
         }).finally(() => clearTimeout(tid));
 
         if (!res.ok) continue;
-
         const data = await res.json();
+        const creationIso = toIso(extractCreationTs(data));
+        const ownerPn = extractOwnerPn(data);
+        const ownerJid = extractOwnerJid(data);
+        const subject = extractSubject(data, groups?.[0]?.group_name || (existingSnapshot as any)?.group_name || "");
+        const hasGroupData = !!(creationIso || ownerPn || subject || payloadOf(data)?.Participants || payloadOf(data)?.participants);
+        if (!hasGroupData) continue;
 
-        // UazAPI may return creation timestamp in different fields
-        const creationTs = data?.creation || data?.GroupCreated || data?.created_at ||
-          data?.data?.creation || data?.data?.GroupCreated;
-
-        // Extrai owner (criador) — UazAPI usa OwnerPN (CamelCase) ou owner_pn
-        const ownerRaw: string = String(
-          data?.OwnerPN || data?.owner_pn || data?.owner || data?.creator ||
-          data?.data?.OwnerPN || data?.data?.owner_pn || data?.data?.owner || data?.data?.creator || ""
+        const ownerPhoneOfInst = digitsOnly((inst as any).owner_phone);
+        const alreadyHas = mergedSeen.some((s: any) =>
+          String(s?.id || "") === String(inst.id) ||
+          (s?.name && String(s.name).toLowerCase() === String(inst.instance_name).toLowerCase())
         );
-        const ownerPn = ownerRaw || null;
+        if (!alreadyHas) mergedSeen.push({ id: inst.id, name: inst.instance_name, owner_phone: ownerPhoneOfInst });
 
-        if (creationTs) {
-          let creationDate: string;
-          let creationIso: string;
-          if (typeof creationTs === "number") {
-            const d = new Date(creationTs * 1000);
-            creationIso = d.toISOString();
-            creationDate = creationIso.split("T")[0];
-          } else {
-            const d = new Date(creationTs);
-            creationIso = d.toISOString();
-            creationDate = creationIso.split("T")[0];
-          }
-
-          const subject = data?.subject || data?.name || data?.Name || groups?.[0]?.group_name || "";
-
-          // Lê snapshot existente pra MERGE de seen_in_instances (não sobrescrever)
-          let mergedSeen: any[] = [];
-          try {
-            const { data: existing } = await extClient
-              .from("whatsapp_groups_uazapi_snapshot")
-              .select("seen_in_instances")
-              .eq("jid", groupJid)
-              .maybeSingle();
-            const prev = Array.isArray((existing as any)?.seen_in_instances)
-              ? (existing as any).seen_in_instances
-              : [];
-            mergedSeen = [...prev];
-          } catch {}
-
-          // Garante que a instância que respondeu está no seen_in_instances
-          const ownerPhoneOfInst = String((inst as any).owner_phone || "").replace(/\D/g, "");
-          const alreadyHas = mergedSeen.some((s: any) =>
-            String(s?.id || "") === String(inst.id) ||
-            (s?.name && String(s.name).toLowerCase() === String(inst.instance_name).toLowerCase())
-          );
-          if (!alreadyHas) {
-            mergedSeen.push({
-              id: inst.id,
-              name: inst.instance_name,
-              owner_phone: ownerPhoneOfInst,
-            });
-          }
-
-          try {
-            const upsertRow: any = {
-              jid: groupJid,
-              group_name: subject || null,
-              group_created_at: creationIso,
-              last_synced_at: new Date().toISOString(),
-              raw_data: data ?? null,
-              seen_in_instances: mergedSeen,
-            };
-            if (ownerPn) upsertRow.owner_pn = ownerPn;
-            await extClient
-              .from("whatsapp_groups_uazapi_snapshot")
-              .upsert(upsertRow, { onConflict: "jid" });
-          } catch (persistErr) {
-            console.warn("snapshot upsert failed:", persistErr);
-          }
-
-          return new Response(
-            JSON.stringify({
-              success: true,
-              creation_date: creationDate,
-              creation_iso: creationIso,
-              group_name: subject,
-              owner_pn: ownerPn,
-              instance_name: inst.instance_name,
-            }),
-            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-
-        // If no creation date in response but got group data, return null date
-        if (data?.subject || data?.participants) {
-          return new Response(
-            JSON.stringify({ success: true, creation_date: null, group_name: data?.subject || "" }),
-            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
+        const candidate = { data, inst, creationIso, ownerPn, ownerJid, subject };
+        if (!best || (!best.ownerPn && ownerPn) || (!best.creationIso && creationIso)) best = candidate;
+        if (ownerPn && creationIso) break;
       } catch (e) {
         console.warn(`Instance ${inst.instance_name} failed:`, e);
       }
     }
 
-    return new Response(
-      JSON.stringify({ success: false, error: "Could not fetch group info" }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    const finalCreationIso = best?.creationIso || (existingSnapshot as any)?.group_created_at || null;
+    const finalOwnerPn = best?.ownerPn || digitsOnly((existingSnapshot as any)?.owner_pn) || null;
+    if (best || finalCreationIso || finalOwnerPn) {
+      const creationDate = finalCreationIso ? String(finalCreationIso).split("T")[0] : null;
+      try {
+        const upsertRow: any = {
+          jid: groupJid,
+          group_name: best?.subject || (existingSnapshot as any)?.group_name || null,
+          last_synced_at: new Date().toISOString(),
+          raw_data: best?.data ?? null,
+          seen_in_instances: mergedSeen,
+        };
+        if (finalCreationIso) upsertRow.group_created_at = finalCreationIso;
+        if (finalOwnerPn) upsertRow.owner_pn = finalOwnerPn;
+        if (best?.ownerJid) upsertRow.owner_jid = best.ownerJid;
+        await extClient.from("whatsapp_groups_uazapi_snapshot").upsert(upsertRow, { onConflict: "jid" });
+      } catch (persistErr) {
+        console.warn("snapshot upsert failed:", persistErr);
+      }
+
+      return json({
+        success: true,
+        creation_date: creationDate,
+        creation_iso: finalCreationIso,
+        group_name: best?.subject || (existingSnapshot as any)?.group_name || "",
+        owner_pn: finalOwnerPn,
+        instance_name: best?.inst?.instance_name || null,
+        tried,
+      });
+    }
+
+    return json({ success: false, error: "Could not fetch group info", tried });
   } catch (e: any) {
-    return new Response(
-      JSON.stringify({ error: e.message }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return json({ success: false, error: e.message });
   }
 });
