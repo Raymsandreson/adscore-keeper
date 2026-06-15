@@ -1934,7 +1934,7 @@ export function ContactsListPage() {
                           </span>
                           <span
                             className={`text-xs font-mono tabular-nums ${caseNum ? 'text-foreground' : 'text-muted-foreground'}`}
-                            title={caseNum ? `Caso oficial: ${caseNum}` : 'Lead sem caso oficial vinculado'}
+                            title={caseNum ? `Nº de caso fechado: ${caseNum}` : 'Lead ainda sem nº de caso fechado (use o lápis para definir)'}
                           >
                             {caseNum || '—'}
                           </span>
