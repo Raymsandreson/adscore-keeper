@@ -2104,6 +2104,23 @@ export function ContactsListPage() {
                       <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0" title="Ver contatos do grupo" onClick={(e) => { e.stopPropagation(); handleSelectGroup(group.group_jid); }}>
                         <Users className="h-4 w-4" />
                       </Button>
+                      {!group.lead_id && (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7 shrink-0 text-emerald-600 hover:text-emerald-700"
+                          title="Vincular ou criar lead para este grupo"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setLinkDialog({ groupJid: group.group_jid, groupName: group.group_name || null });
+                            setLinkQuery('');
+                            setLinkResults([]);
+                          }}
+                        >
+                          <Link2 className="h-4 w-4" />
+                        </Button>
+                      )}
+
                       <Badge variant={group.lead_status === 'closed' ? 'default' : 'outline'} className="text-[10px] shrink-0">
                         {group.lead_status || 'N/A'}
                       </Badge>
