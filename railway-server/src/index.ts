@@ -68,6 +68,7 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'notify-inss-update': notifyInssUpdate,
   'get-whatsapp-group-info': getWhatsappGroupInfo,
   'scan-duplicate-contacts': scanDuplicateContacts,
+  'recover-leads-phone-55': recoverLeadsPhone55,
 };
 
 const app = express();
