@@ -139,12 +139,12 @@ export function ContactsListPage() {
     return { iso, ownerPhone };
   };
 
-  const handleRefreshCreationDate = async (jid: string) => {
+  const handleRefreshCreationDate = async (jid: string, instanceName?: string | null) => {
     if (!jid) return;
     setRefreshingDateFor(prev => { const n = new Set(prev); n.add(jid); return n; });
     try {
       const { data, error } = await cloudFunctions.invoke<any>('fetch-group-creation-date', {
-        body: { group_jid: jid },
+        body: { group_jid: jid, instance_name: instanceName || undefined },
       });
       if (error) throw error;
       if (!data?.success) {
@@ -183,7 +183,8 @@ export function ContactsListPage() {
         const jid = jids[my];
         setRefreshingDateFor(prev => { const n = new Set(prev); n.add(jid); return n; });
         try {
-          const { data, error } = await cloudFunctions.invoke<any>('fetch-group-creation-date', { body: { group_jid: jid } });
+          const group = groups.find(g => g.group_jid === jid);
+          const { data, error } = await cloudFunctions.invoke<any>('fetch-group-creation-date', { body: { group_jid: jid, instance_name: group?.instance_name || undefined } });
           if (error || !data?.success) { fail++; }
           else {
             const { iso, ownerPhone } = applyGroupCreationPayload(jid, data);
@@ -2170,7 +2171,7 @@ export function ContactsListPage() {
                               className="h-5 w-5 shrink-0 opacity-60 hover:opacity-100"
                               title={group.created_at ? 'Atualizar data deste grupo (UazAPI)' : 'Buscar data de criação na UazAPI'}
                               disabled={refreshingDateFor.has(group.group_jid)}
-                              onClick={(e) => { e.stopPropagation(); handleRefreshCreationDate(group.group_jid); }}
+                              onClick={(e) => { e.stopPropagation(); handleRefreshCreationDate(group.group_jid, group.instance_name); }}
                             >
                               {refreshingDateFor.has(group.group_jid)
                                 ? <Loader2 className="h-3 w-3 animate-spin" />
