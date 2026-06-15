@@ -40,6 +40,17 @@ interface LeadResult {
   group_jid?: string;
   candidates?: string[];
   message?: string;
+  diagnostics?: Record<string, any>;
+}
+
+interface GroupFetchAttempt {
+  instance_name: string;
+  base_url: string;
+  ok: boolean;
+  http_status?: number;
+  participant_count: number;
+  response_keys?: string[];
+  error?: string;
 }
 
 function normalize(p: any): string {
@@ -55,19 +66,31 @@ function normalizeGroupJid(group: any): string | null {
 }
 
 function extractParticipants(data: any): string[] {
-  // UazAPI retorna participantes em formatos variáveis entre versões.
+  // UazAPI v2 documenta `Participants` com P maiúsculo.
+  // Mantemos fallbacks porque algumas respostas antigas vinham minúsculas/aninhadas.
   const raw =
+    data?.Participants ||
     data?.participants ||
+    data?.data?.Participants ||
     data?.data?.participants ||
+    data?.Group?.Participants ||
     data?.group?.participants ||
     data?.groupMetadata?.participants ||
+    data?.GroupMetadata?.Participants ||
     data?.data?.groupMetadata?.participants ||
+    data?.data?.GroupMetadata?.Participants ||
     data?.members ||
     data?.data?.members ||
     [];
   const out = new Set<string>();
-  for (const p of Array.isArray(raw) ? raw : []) {
+  const list = Array.isArray(raw) ? raw : typeof raw === 'object' && raw ? Object.values(raw) : [];
+  for (const p of list) {
     const id =
+      (p as any)?.JID ||
+      (p as any)?.PhoneNumber ||
+      (p as any)?.Phone ||
+      (p as any)?.PN ||
+      (p as any)?.LID ||
       p?.id?._serialized ||
       p?.id?.user ||
       p?.id ||
@@ -86,21 +109,25 @@ async function fetchGroupInfo(
   baseUrl: string,
   token: string,
   groupjid: string
-): Promise<any | null> {
+): Promise<{ ok: boolean; status?: number; body?: any; error?: string }> {
   const ctrl = new AbortController();
   const tid = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
   try {
-    const r = await fetch(`${baseUrl.replace(/\/$/, '')}/group/info?getParticipants=true`, {
+    const r = await fetch(`${baseUrl.replace(/\/$/, '')}/group/info`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', token },
-      // UazAPI espera `id`; mandamos também `groupjid` por compatibilidade.
-      body: JSON.stringify({ id: groupjid, groupjid, getParticipants: true }),
+      body: JSON.stringify({
+        groupjid,
+        getInviteLink: false,
+        getRequestsParticipants: false,
+        force: true,
+      }),
       signal: ctrl.signal,
     });
-    if (!r.ok) return null;
-    return await r.json().catch(() => null);
-  } catch {
-    return null;
+    const body = await r.json().catch(async () => ({ raw: await r.text().catch(() => '') }));
+    return { ok: r.ok, status: r.status, body };
+  } catch (err: any) {
+    return { ok: false, error: err?.name === 'AbortError' ? 'timeout' : err?.message || 'fetch_failed' };
   } finally {
     clearTimeout(tid);
   }
