@@ -368,6 +368,7 @@ export function ContactsListPage() {
   const fetchGroups = async () => {
     setGroupsLoading(true);
     try {
+      await ensureExternalSession();
       const pageSize = 1000;
       const groupMap = new Map<string, any>();
 
@@ -639,7 +640,7 @@ export function ContactsListPage() {
           for (const inst of seen) {
             const ph = String(inst?.owner_phone || '').replace(/\D/g, '');
             const nm = inst?.name ? String(inst.name) : '';
-            if (ph && nm && !instancePhoneToName.has(ph)) instancePhoneToName.set(ph, nm);
+            if (ph && nm) instancePhoneToName.set(ph, nm);
           }
           snapshotRows.push(s);
         }
