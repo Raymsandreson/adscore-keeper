@@ -492,6 +492,7 @@ export const handler: RequestHandler = async (req, res) => {
                   reused = true;
                   reusedFrom = 'snapshot_uazapi';
                   await ext.from('leads').update({ whatsapp_group_id: groupJid }).eq('id', ckpt.lead_id);
+                  await mirrorLeadGroupLink(ext, ckpt.lead_id, groupJid, existingGroup.group_name || null, rid);
                   console.log(JSON.stringify({
                     fn: 'onboarding-checkpoint-execute',
                     event: 'create_group.reused_from_snapshot',
@@ -532,6 +533,7 @@ export const handler: RequestHandler = async (req, res) => {
               if (r.ok && r.data?.group_id) {
                 groupJid = r.data.group_id;
                 await ext.from('leads').update({ whatsapp_group_id: groupJid }).eq('id', ckpt.lead_id);
+                await mirrorLeadGroupLink(ext, ckpt.lead_id, groupJid, r.data?.group_name || null, rid);
               } else {
                 errMsg = r.data?.error || 'create-whatsapp-group falhou';
                 break;
