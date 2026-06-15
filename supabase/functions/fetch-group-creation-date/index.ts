@@ -1,5 +1,3 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
 import { getExternalClient } from "../_shared/external-client.ts";
 const FUNCTION_VERSION = 3;
 const corsHeaders = {
@@ -53,16 +51,9 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const { lead_id, group_jid: groupJidInput } = body || {};
     if (!lead_id && !groupJidInput) {
-      return new Response(JSON.stringify({ error: "lead_id or group_jid is required" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return json({ success: false, error: "lead_id or group_jid is required" });
     }
 
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
     const extClient = getExternalClient();
 
     let groupJid: string | null = groupJidInput || null;
@@ -92,10 +83,7 @@ Deno.serve(async (req) => {
 
 
     if (!groupJid) {
-      return new Response(
-        JSON.stringify({ success: false, error: "No group linked to this lead" }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return json({ success: false, error: "No group linked to this lead" });
     }
 
     if (!groupJid.includes("@")) {
@@ -108,7 +96,7 @@ Deno.serve(async (req) => {
     // whatsapp_instances vivem no Externo (não no Cloud).
     const { data: instances } = await extClient
       .from("whatsapp_instances")
-      .select("id, instance_name, instance_token, base_url, is_active")
+      .select("id, instance_name, instance_token, base_url, owner_phone, is_active")
       .not("instance_token", "is", null);
 
     const sortedInstances = (instances || []).sort((a: any, b: any) => {
@@ -118,10 +106,7 @@ Deno.serve(async (req) => {
 
 
     if (!sortedInstances.length) {
-      return new Response(
-        JSON.stringify({ success: false, error: "No instances with token available" }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return json({ success: false, error: "No instances with token available" });
     }
 
     // Try to get group info from UazAPI
