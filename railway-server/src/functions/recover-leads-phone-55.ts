@@ -210,22 +210,37 @@ async function processOneLead(
   // Tenta cada instância ativa até alguma responder /group/info
   let participants: string[] = [];
   let usedInstance = '';
+  const attempts: GroupFetchAttempt[] = [];
   for (const inst of instances) {
     const base = inst.base_url || DEFAULT_BASE;
     const info = await fetchGroupInfo(base, inst.instance_token, groupJid);
-    if (info) {
-      const ps = extractParticipants(info);
-      if (ps.length > 0) {
-        participants = ps;
-        usedInstance = inst.instance_name;
-        break;
-      }
+    const ps = info.body ? extractParticipants(info.body) : [];
+    attempts.push({
+      instance_name: inst.instance_name,
+      base_url: base.replace(/\/[^/]*$/, '/***'),
+      ok: info.ok,
+      http_status: info.status,
+      participant_count: ps.length,
+      response_keys: info.body && typeof info.body === 'object' ? Object.keys(info.body).slice(0, 12) : undefined,
+      error: info.error,
+    });
+    if (info.ok && ps.length > 0) {
+      participants = ps;
+      usedInstance = inst.instance_name;
+      break;
     }
   }
 
   if (participants.length === 0) {
-    await logEnrichment(leadId, 'group_fetch_failed', { group_jid: groupJid, old_phone: oldPhone });
-    return { lead_id: leadId, status: 'group_fetch_failed', old_phone: oldPhone, group_jid: groupJid };
+    await logEnrichment(leadId, 'group_fetch_failed', { group_jid: groupJid, old_phone: oldPhone, attempts });
+    return {
+      lead_id: leadId,
+      status: 'group_fetch_failed',
+      old_phone: oldPhone,
+      group_jid: groupJid,
+      message: 'Nenhuma instância retornou Participants para esse grupo.',
+      diagnostics: { attempts },
+    };
   }
 
   // Remove os números das instâncias do sistema
