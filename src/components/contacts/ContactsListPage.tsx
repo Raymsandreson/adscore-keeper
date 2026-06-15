@@ -28,8 +28,9 @@ import { toast } from 'sonner';
 import {
   Search, Users, Send, Plus, Trash2, Radio, UserPlus,
   Phone, Loader2, X, ImagePlus, Bot, BotOff, Filter, UsersRound, Wand2, Info,
-  SlidersHorizontal, ArrowDownAZ, ArrowUpAZ, AlertTriangle, CheckCircle2, ClipboardCheck, MessageCircle, MapPin
+  SlidersHorizontal, ArrowDownAZ, ArrowUpAZ, AlertTriangle, CheckCircle2, ClipboardCheck, MessageCircle, MapPin, Pencil
 } from 'lucide-react';
+import { cloudFunctions } from '@/lib/functionRouter';
 
 export function ContactsListPage() {
   const navigate = useNavigate();
@@ -37,6 +38,9 @@ export function ContactsListPage() {
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [loadingLeadForGroup, setLoadingLeadForGroup] = useState<string | null>(null);
   const [showDuplicatesScan, setShowDuplicatesScan] = useState(false);
+  const [editCaseDialog, setEditCaseDialog] = useState<{ leadId: string; groupJid: string; currentNumber: string; currentName: string } | null>(null);
+  const [editCaseValue, setEditCaseValue] = useState('');
+  const [editCaseSaving, setEditCaseSaving] = useState(false);
   const openGroupChat = (jid: string) => {
     if (!jid) return;
     const g = groups.find(x => x.group_jid === jid);
@@ -1751,7 +1755,11 @@ export function ContactsListPage() {
                 leadLinkFilter !== 'all' ||
                 leadStatusFilter.size > 0 ||
                 (auditMode && auditOnlyMismatch);
-              const RENDER_CAP = hasActiveFilter ? 2000 : 300;
+              // Performance: com busca textual ativa, limitar render a 150
+              // (renderizar 2000 linhas a cada tecla trava o mobile).
+              const RENDER_CAP = deferredGroupSearch.trim()
+                ? 150
+                : hasActiveFilter ? 800 : 300;
               const totalAll = visible.length;
               const capped = visible.slice(0, RENDER_CAP);
               const truncatedNotice = totalAll > RENDER_CAP ? (
@@ -1989,6 +1997,33 @@ export function ContactsListPage() {
                                 className="h-4 w-4 text-amber-500"
                                 aria-label={hasBoth ? 'Divergente' : 'Faltando dados'}
                               />
+                            )}
+                            {group.lead_id && (
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-6 w-6"
+                                title="Editar nº do funil (renomeia o grupo)"
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  // Busca o case_number atual do lead (funil)
+                                  const { data } = await externalSupabase
+                                    .from('leads')
+                                    .select('case_number, lead_name')
+                                    .eq('id', group.lead_id!)
+                                    .maybeSingle();
+                                  const current = (data as any)?.case_number || '';
+                                  setEditCaseValue(String(current));
+                                  setEditCaseDialog({
+                                    leadId: group.lead_id!,
+                                    groupJid: group.group_jid,
+                                    currentNumber: String(current),
+                                    currentName: (data as any)?.lead_name || group.lead_name || group.group_name || '',
+                                  });
+                                }}
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
                             )}
                             <Button size="icon" variant="ghost" className="h-6 w-6" title="Ver contatos do grupo" onClick={(e) => { e.stopPropagation(); handleSelectGroup(group.group_jid); }}>
                               <Users className="h-3.5 w-3.5" />
@@ -2380,6 +2415,80 @@ export function ContactsListPage() {
         }}
         mode="sheet"
       />
+
+      <Dialog open={!!editCaseDialog} onOpenChange={(o) => { if (!o && !editCaseSaving) setEditCaseDialog(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Editar nº do funil</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <p className="text-xs text-muted-foreground">
+              Lead: <span className="font-medium text-foreground">{editCaseDialog?.currentName}</span>
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Salva em <code>leads.case_number</code>, regenera o nome do lead e renomeia o grupo no WhatsApp.
+            </p>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Novo nº (ex: 1448)</Label>
+              <Input
+                autoFocus
+                value={editCaseValue}
+                onChange={(e) => setEditCaseValue(e.target.value)}
+                placeholder="1448"
+                disabled={editCaseSaving}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setEditCaseDialog(null)} disabled={editCaseSaving}>Cancelar</Button>
+            <Button
+              disabled={editCaseSaving || !editCaseValue.trim() || editCaseValue.trim() === editCaseDialog?.currentNumber}
+              onClick={async () => {
+                if (!editCaseDialog) return;
+                const newNumber = editCaseValue.trim();
+                setEditCaseSaving(true);
+                try {
+                  const { error: upErr } = await externalSupabase
+                    .from('leads')
+                    .update({ case_number: newNumber })
+                    .eq('id', editCaseDialog.leadId);
+                  if (upErr) {
+                    toast.error('Falha ao salvar: ' + upErr.message);
+                    return;
+                  }
+                  const { data, error } = await cloudFunctions.invoke<any>('regenerate-lead-name', {
+                    body: { lead_id: editCaseDialog.leadId },
+                  });
+                  if (error || data?.success === false) {
+                    toast.warning('Nº salvo, mas falhou ao renomear grupo: ' + (data?.error || error?.message || ''));
+                  } else {
+                    toast.success(
+                      `Atualizado para ${data?.lead_name || newNumber}` +
+                        (data?.group_renamed ? ' (grupo renomeado)' : ''),
+                    );
+                  }
+                  // Atualiza row localmente
+                  setGroups((prev) => prev.map((g) =>
+                    g.group_jid === editCaseDialog.groupJid
+                      ? {
+                          ...g,
+                          lead_name: data?.lead_name || g.lead_name,
+                          group_name: data?.group_renamed && data?.lead_name ? data.lead_name : g.group_name,
+                        }
+                      : g,
+                  ));
+                  setEditCaseDialog(null);
+                } finally {
+                  setEditCaseSaving(false);
+                }
+              }}
+            >
+              {editCaseSaving ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+              Salvar e renomear
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
