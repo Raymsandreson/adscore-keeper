@@ -1,8 +1,12 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
+import { cloudFunctions } from '@/lib/functionRouter';
 import { Badge } from '@/components/ui/badge';
-import { UsersRound, ExternalLink } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { UsersRound, ExternalLink, Pencil, Check, X, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface ContactGroup {
   group_jid: string;
@@ -11,6 +15,7 @@ interface ContactGroup {
   lead_id: string | null;
   lead_name: string | null;
   lead_status: string | null;
+  case_number: string | null;
 }
 
 interface ContactGroupsListProps {
@@ -21,6 +26,9 @@ interface ContactGroupsListProps {
 export function ContactGroupsList({ contactId, contactPhone }: ContactGroupsListProps) {
   const [groups, setGroups] = useState<ContactGroup[]>([]);
   const [loading, setLoading] = useState(true);
+  const [editingLeadId, setEditingLeadId] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState('');
+  const [savingLeadId, setSavingLeadId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!contactId) return;
@@ -28,7 +36,6 @@ export function ContactGroupsList({ contactId, contactPhone }: ContactGroupsList
     const fetchGroups = async () => {
       setLoading(true);
       try {
-        // 1) JIDs vinculados via whatsapp_group_id (próprio contato + telefones iguais)
         const { data: directGroups } = await supabase
           .from('contacts')
           .select('whatsapp_group_id')
@@ -63,10 +70,9 @@ export function ContactGroupsList({ contactId, contactPhone }: ContactGroupsList
 
         const jidArray = Array.from(groupJids);
 
-        // 2) Tenta enriquecer com lead_whatsapp_groups (nome, link, lead)
         const { data: leadGroups } = await externalSupabase
           .from('lead_whatsapp_groups')
-          .select('group_jid, group_name, group_link, lead_id, leads(lead_name, lead_status)')
+          .select('group_jid, group_name, group_link, lead_id, leads(lead_name, lead_status, case_number)')
           .in('group_jid', jidArray);
 
         const byJid = new Map<string, ContactGroup>();
@@ -78,10 +84,10 @@ export function ContactGroupsList({ contactId, contactPhone }: ContactGroupsList
             lead_id: lg.lead_id,
             lead_name: lg.leads?.lead_name || null,
             lead_status: lg.leads?.lead_status || null,
+            case_number: lg.leads?.case_number || null,
           });
         });
 
-        // Cria entradas vazias para JIDs ainda sem registro
         jidArray.forEach((jid) => {
           if (!byJid.has(jid)) {
             byJid.set(jid, {
@@ -91,11 +97,11 @@ export function ContactGroupsList({ contactId, contactPhone }: ContactGroupsList
               lead_id: null,
               lead_name: null,
               lead_status: null,
+              case_number: null,
             });
           }
         });
 
-        // 3) Fallback: para os que ainda estão sem nome, busca em whatsapp_messages.contact_name
         const needsName = Array.from(byJid.values())
           .filter((g) => !g.group_name)
           .map((g) => g.group_jid);
@@ -132,6 +138,65 @@ export function ContactGroupsList({ contactId, contactPhone }: ContactGroupsList
     fetchGroups();
   }, [contactId, contactPhone]);
 
+  const startEdit = (group: ContactGroup) => {
+    if (!group.lead_id) return;
+    setEditingLeadId(group.lead_id);
+    setEditValue(group.case_number || '');
+  };
+
+  const cancelEdit = () => {
+    setEditingLeadId(null);
+    setEditValue('');
+  };
+
+  const saveEdit = async (group: ContactGroup) => {
+    if (!group.lead_id) return;
+    const newNumber = editValue.trim();
+    if (!newNumber) {
+      toast.error('Informe um número');
+      return;
+    }
+    setSavingLeadId(group.lead_id);
+    try {
+      const { error: upErr } = await externalSupabase
+        .from('leads')
+        .update({ case_number: newNumber })
+        .eq('id', group.lead_id);
+      if (upErr) {
+        toast.error('Falha ao salvar: ' + upErr.message);
+        return;
+      }
+
+      const { data, error } = await cloudFunctions.invoke<any>('regenerate-lead-name', {
+        body: { lead_id: group.lead_id },
+      });
+      if (error || data?.success === false) {
+        toast.warning('Número salvo, mas falhou ao renomear grupo: ' + (data?.error || error?.message || ''));
+      } else {
+        toast.success(
+          `Atualizado para ${data?.lead_name || newNumber}` +
+            (data?.group_renamed ? ' (grupo renomeado)' : ''),
+        );
+      }
+
+      setGroups((prev) =>
+        prev.map((g) =>
+          g.lead_id === group.lead_id
+            ? {
+                ...g,
+                case_number: newNumber,
+                lead_name: data?.lead_name || g.lead_name,
+                group_name: data?.group_renamed && data?.lead_name ? data.lead_name : g.group_name,
+              }
+            : g,
+        ),
+      );
+      cancelEdit();
+    } finally {
+      setSavingLeadId(null);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-8">
@@ -160,6 +225,9 @@ export function ContactGroupsList({ contactId, contactPhone }: ContactGroupsList
       {groups.map((group) => {
         const displayName = group.group_name || `Grupo ${group.group_jid.slice(-6)}`;
         const hasLink = !!group.group_link;
+        const isClosed = group.lead_status === 'closed';
+        const isEditing = editingLeadId === group.lead_id;
+        const isSaving = savingLeadId === group.lead_id;
         return (
           <div
             key={group.group_jid}
@@ -187,6 +255,57 @@ export function ContactGroupsList({ contactId, contactPhone }: ContactGroupsList
                 <p className="text-xs text-muted-foreground truncate mt-0.5">
                   Lead: {group.lead_name}
                 </p>
+              )}
+              {isClosed && group.lead_id && (
+                <div className="flex items-center gap-1.5 mt-1">
+                  <span className="text-[10px] text-muted-foreground">Nº:</span>
+                  {isEditing ? (
+                    <>
+                      <Input
+                        autoFocus
+                        value={editValue}
+                        onChange={(e) => setEditValue(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') saveEdit(group);
+                          if (e.key === 'Escape') cancelEdit();
+                        }}
+                        disabled={isSaving}
+                        className="h-6 w-20 text-xs px-2"
+                      />
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-6 w-6"
+                        onClick={() => saveEdit(group)}
+                        disabled={isSaving}
+                      >
+                        {isSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-6 w-6"
+                        onClick={cancelEdit}
+                        disabled={isSaving}
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-xs font-mono">{group.case_number || '—'}</span>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-6 w-6"
+                        onClick={() => startEdit(group)}
+                        title="Editar número do caso"
+                      >
+                        <Pencil className="h-3 w-3" />
+                      </Button>
+                    </>
+                  )}
+                </div>
               )}
             </div>
             {group.lead_status && (
