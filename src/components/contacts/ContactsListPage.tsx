@@ -370,34 +370,41 @@ export function ContactsListPage() {
   // Esta ref silencia o refetch do realtime durante a janela da sync.
   const syncingRef = useRef(false);
 
-  // Auto-sync silencioso ao abrir a aba "Grupos" (1x por sessão do navegador).
-  // Garante que grupos criados após a última sync diária apareçam na lista
-  // sem o usuário precisar lembrar de clicar no refresh manual.
+  // Auto-sync silencioso ao abrir a aba "Grupos".
+  // Antes era 1x por sessão (sessionStorage) — isso fazia perder grupos
+  // criados após o usuário já ter aberto a aba uma vez no dia. Agora usamos
+  // um throttle por tempo (90s) gravado em localStorage: se a última sync
+  // foi há mais de 90s, dispara de novo. Continua silencioso (sem spinner).
   useEffect(() => {
     if (activeTab !== 'groups') return;
-    const FLAG = 'wa_groups_auto_sync_done';
-    if (sessionStorage.getItem(FLAG)) return;
-    sessionStorage.setItem(FLAG, '1');
+    const FLAG = 'wa_groups_auto_sync_at';
+    const last = Number(localStorage.getItem(FLAG) || '0');
+    const THROTTLE_MS = 90_000;
+    if (Date.now() - last < THROTTLE_MS) return;
+    localStorage.setItem(FLAG, String(Date.now()));
     (async () => {
       syncingRef.current = true;
+      setGroupsRefreshingSilently(true);
       try {
         const { error } = await supabase.functions.invoke('sync-all-whatsapp-groups', { body: {} });
         if (error) { console.warn('auto sync-all-whatsapp-groups error:', error); return; }
       } catch (e) {
         console.warn('auto sync-all-whatsapp-groups failed:', e);
       } finally {
-        // Mantém silenciado por +3s pra absorver realtimes atrasados,
-        // então faz UM único refetch com o snapshot já estabilizado.
+        // Silencia +3s pra absorver realtimes atrasados, depois UM refetch
+        // silencioso (sem trocar a lista por spinner).
         setTimeout(() => {
           syncingRef.current = false;
-          fetchGroups();
+          fetchGroups({ silent: true }).finally(() => setGroupsRefreshingSilently(false));
         }, 3000);
       }
     })();
   }, [activeTab]);
 
-  const fetchGroups = async () => {
-    setGroupsLoading(true);
+  const fetchGroups = async (opts?: { silent?: boolean }) => {
+    const silent = !!opts?.silent;
+    if (!silent) setGroupsLoading(true);
+    else setGroupsRefreshingSilently(true);
     try {
       await ensureExternalSession();
       const pageSize = 1000;
