@@ -1,83 +1,56 @@
-## O que vai ser feito
+## Objetivo
 
-Criar uma "secretária" que abre o Gmail conectado, lê só os e-mails do `noreply@inss.gov.br`, extrai **nº do protocolo, status, data do protocolo e beneficiário**, e preenche os processos em `lead_processes` na aba **INSS Administrativos** (`src/components/processes/InssAdminProcessesTab.tsx`).
+Fazer os e-mails do INSS **acharem o lead sozinhos**, em vez de cair como órfão.
 
-Roda de dois jeitos: botão "Sincronizar Gmail" na própria aba + cron de hora em hora.
+**Metáfora:** hoje a etiqueta do INSS chega só com um código de rastreio. Vou criar uma "etiqueta de identificação" nos leads (um campo onde você cola o nº do requerimento) — quando o e-mail novo chegar, o sistema confere os crachás dos leads e amarra automaticamente.
 
-## Arquitetura (em metáfora)
+---
 
-```text
-[Sua caixa Gmail] ──▶ [Ajudante no Railway] ──▶ [Tabela lead_processes no Externo]
-       ▲                       │
-       │                       ├── botão "Sincronizar" (aba INSS Adm)
-       │                       └── relógio (pg_cron de hora em hora chama o ajudante)
-       │
-   conector Google Mail
-   (já tá ligado, GOOGLE_MAIL_API_KEY)
-```
+## Plano
 
-## Passos
+### 1. Criar o campo "Nº Requerimento INSS" no lead
+- Inserir uma linha em `lead_custom_fields` (Externo), escopo amplo (board_id = NULL → aparece em todos os funis), tipo `text`.
+- Garante que já aparece dentro do form unificado de Lead (que renderiza custom fields automaticamente).
 
-### 1. Ajudante Railway: `sync-inss-emails`
-Arquivo `railway-server/src/functions/sync-inss-emails.ts` + registro em `index.ts` e `functionRouter.ts`.
+### 2. Auto-match no Railway (`gmail-inss-sync.ts`)
+Logo após criar/atualizar o `inss_admin_processes` com `case_id = NULL`:
+1. Buscar em `lead_custom_field_values` algum lead cujo valor bate com o `requerimento_number`.
+2. Se achar: atualizar o `inss_admin_processes` com `lead_id` + `case_id` correspondente, marcar `linked_at`, e disparar `notify-inss-update`.
+3. Se não achar: deixa órfão (comportamento atual).
 
-O que faz:
-1. Chama Gmail API via gateway Lovable (`connector-gateway.lovable.dev/google_mail/gmail/v1`) com query `from:noreply@inss.gov.br newer_than:30d` (configurável).
-2. Para cada mensagem, baixa o corpo e roda extração:
-   - **Regex primeiro** (padrões fixos: "Protocolo nº", "Beneficiário:", "Status:", "Data:"). Rápido e grátis.
-   - **Fallback IA** (Lovable AI Gateway, `google/gemini-2.5-flash`) só se regex falhar — passa o texto e pede JSON estruturado.
-3. Dedupe por `process_number` (chave natural do INSS).
-4. UPSERT em `lead_processes`:
-   - Se `process_number` já existe → atualiza `status`, `data_ultima_movimentacao`, `notes` (anexa snapshot do e-mail).
-   - Se não existe → cria com `process_type='inss_administrativo'`, tenta vincular ao `lead_id` por nome do beneficiário (match em `leads.lead_name` por similaridade, `pg_trgm` já está instalado).
-   - Se nenhum lead bater → cria com `lead_id=NULL` e aparece na aba como "órfão" pra você vincular manual.
-5. Loga cada sync em nova tabela `inss_email_sync_log` (id, started_at, finished_at, emails_processed, processes_upserted, errors jsonb, triggered_by).
-6. Retorna `{success: true, summary: {...}}` (regra do projeto: sempre HTTP 200).
+### 3. Retroativo — botão "Tentar vincular automaticamente"
+Na aba "INSS Administrativo", adicionar botão ao lado de "Sincronizar agora": varre os 10 órfãos atuais e tenta o match. Útil quando o operador for cadastrando o nº nos leads.
 
-### 2. Tabela de log + migration Externo
-Via `run-external-migration`:
-```sql
-CREATE TABLE inss_email_sync_log (...);
-GRANT SELECT, INSERT ON inss_email_sync_log TO authenticated;
-GRANT ALL TO service_role;
-ALTER TABLE ... ENABLE RLS;
-CREATE POLICY "auth pode ler" ...;
-```
+### 4. UX — facilitar o cadastro do nº no lead
+No botão **Vincular** que já existe em cada órfão, depois de vincular ao caso, **gravar automaticamente** o `requerimento_number` no campo customizado daquele lead. Assim, da próxima vez que chegar e-mail desse mesmo requerimento, já casa sozinho — sem o operador ter que digitar nada.
 
-### 3. pg_cron de hora em hora
-No Externo (única coisa que precisa rodar no Postgres):
-```sql
-SELECT cron.schedule('sync-inss-emails-hourly', '0 * * * *',
-  $$ SELECT net.http_post(url:='https://<railway>/sync-inss-emails',
-       body:='{"triggered_by":"cron"}'::jsonb) $$);
-```
+---
 
-### 4. UI na aba INSS Administrativos
-Editar `src/components/processes/InssAdminProcessesTab.tsx`:
-- Botão "🔄 Sincronizar Gmail" no topo (chama o ajudante via `cloudFunctions.invoke('sync-inss-emails')`).
-- Toast com resumo: "X e-mails lidos, Y processos atualizados, Z novos, W órfãos".
-- Linha pequena abaixo: "Última sync: há 12 min" (lê de `inss_email_sync_log`).
-- Filtro novo "Apenas órfãos (sem lead)" pra você vincular manual.
+## Detalhes técnicos
 
-### 5. Validação
-- Testar com curl no Railway: `curl -X POST https://<railway>/sync-inss-emails -d '{"limit":5}'` e ver se volta JSON com extração.
-- Conferir no banco: `SELECT * FROM inss_email_sync_log ORDER BY started_at DESC LIMIT 1;` e `SELECT process_number, status, polo_ativo FROM lead_processes WHERE process_type='inss_administrativo' ORDER BY updated_at DESC LIMIT 10;`.
-- Clicar o botão na UI e ver toast.
+**Arquivos tocados:**
+- SQL (1 INSERT em `lead_custom_fields` no Externo) — via `run-external-migration`
+- `railway-server/src/functions/gmail-inss-sync.ts` — bloco de auto-match após upsert do processo
+- `railway-server/src/functions/match-inss-orphans.ts` — nova função para o botão retroativo
+- `railway-server/src/server.ts` — rota da nova função
+- `src/components/processes/InssAdminProcessesTab.tsx` — botão "Vincular órfãos" + gravar nº no custom field ao clicar em Vincular
 
-## O que NÃO vai mudar
+**O que NÃO vou mexer:**
+- Parser do e-mail (não dá pra extrair mais do que já extrai — fonte limitada)
+- Lógica de notificação
+- Schema da `inss_admin_processes`
+- Forms de lead (o campo aparece sozinho por ser custom field)
 
-- Não cria caixa de Gmail visual (lista de e-mails, envio, etc.). Só extração focada em INSS.
-- Não mexe nas outras abas de Processos.
-- Não cria edge function no Cloud nem no Externo (só migration SQL no Externo). Lógica fica no Railway.
-- Não duplica conector Google: usa o `GOOGLE_MAIL_API_KEY` que já está ligado.
-- Não pede credenciais novas pro Google Cloud: o conector já tem o escopo `gmail.readonly`.
+**Risco/rollback:**
+- Custom field é só uma linha — remove com `DELETE` se der ruim
+- Mudança no Railway é aditiva (só executa se `case_id` ainda for NULL)
+- Deploy do Railway é por commit no GitHub → reversível com revert
 
-## Risco / rollback
+---
 
-- Se a extração regex pegar campo errado, o cron pode poluir `lead_processes`. Mitigação: primeiro PR sai **sem cron**, só botão manual. Você roda 2-3 vezes, vê se os dados batem, e só então eu ligo o cron numa segunda passada.
-- Rollback do cron: `SELECT cron.unschedule('sync-inss-emails-hourly');` — um comando.
-- Rollback total: deletar a função do Railway + drop da tabela `inss_email_sync_log`. `lead_processes` fica intacto, só não atualiza mais sozinho.
+## O que vai mudar pra você na prática
 
-## Pergunta antes de começar
-
-Confirma a estratégia "primeiro só botão, depois ligo o cron"? Se sim, eu começo agora pelo Railway + UI e deixo o cron pra depois que você validar.
+1. Abre qualquer lead INSS Administrativo → tem um campinho novo "Nº Requerimento INSS"
+2. Cola o número lá uma vez
+3. Daí em diante, todo e-mail do INSS desse processo já chega vinculado ao lead, com status atualizado
+4. Os 10 órfãos atuais: clica em "Vincular" uma vez → o sistema **memoriza** o nº no lead → próximos updates desse mesmo requerimento entram automáticos
