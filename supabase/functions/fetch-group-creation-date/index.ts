@@ -131,7 +131,7 @@ Deno.serve(async (req) => {
             creationDate = creationIso.split("T")[0];
           }
 
-          const subject = data?.subject || data?.name || groups?.[0]?.group_name || "";
+          const subject = data?.subject || data?.name || data?.Name || groups?.[0]?.group_name || "";
 
           // Lê snapshot existente pra MERGE de seen_in_instances (não sobrescrever)
           let mergedSeen: any[] = [];
