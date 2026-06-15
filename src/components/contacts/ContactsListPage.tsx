@@ -344,32 +344,11 @@ export function ContactsListPage() {
         });
       }
 
-      // 2.c) Buscar nº do caso (legal_cases.case_number) para todos os lead_ids vinculados
-      const leadIdsForCase = Array.from(new Set(
-        Array.from(groupMap.values()).filter(g => g.lead_id).map(g => g.lead_id as string)
-      ));
-      if (leadIdsForCase.length > 0) {
-        const chunkSize = 200;
-        const caseByLead = new Map<string, string>();
-        for (let i = 0; i < leadIdsForCase.length; i += chunkSize) {
-          const chunk = leadIdsForCase.slice(i, i + chunkSize);
-          const { data: cases } = await externalSupabase
-            .from('legal_cases')
-            .select('lead_id, case_number, created_at')
-            .in('lead_id', chunk)
-            .order('created_at', { ascending: false });
-          (cases || []).forEach((c: any) => {
-            if (c.lead_id && c.case_number && !caseByLead.has(c.lead_id)) {
-              caseByLead.set(c.lead_id, String(c.case_number));
-            }
-          });
-        }
-        groupMap.forEach((g) => {
-          if (g.lead_id && caseByLead.has(g.lead_id)) {
-            g.case_number = caseByLead.get(g.lead_id) || null;
-          }
-        });
-      }
+      // 2.c) Nº do caso agora vem de leads.case_number (sequência do funil fechado),
+      //      preenchido nos blocos 2 e 2.b acima. legal_cases.case_number é outra
+      //      coisa (nº do processo jurídico) e não deve aparecer aqui.
+
+
 
       // 2.d) Resolver nome dos boards (no Cloud) para os board_ids encontrados
       const boardIds = Array.from(new Set(
