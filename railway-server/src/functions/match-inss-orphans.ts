@@ -77,19 +77,40 @@ export const handler: RequestHandler = async (_req, res) => {
           source = 'custom_field';
         }
 
-        // Estratégia 2: fallback — título de atividade contém o nº do requerimento
+        // Estratégia 2: título de atividade contém o nº do requerimento
+        // Quando a atividade não tem lead/case vinculados, extrai o prefixo do
+        // título (ex: "PREV 690") e busca lead com lead_name começando assim.
         if (!leadId && !caseId && reqDigits) {
-          const { data: act } = await supabase
+          const { data: acts } = await supabase
             .from('lead_activities')
-            .select('lead_id, case_id')
+            .select('lead_id, case_id, title')
             .ilike('title', `%${reqDigits}%`)
             .order('created_at', { ascending: false })
-            .limit(1)
-            .maybeSingle();
-          if (act?.lead_id || act?.case_id) {
-            leadId = act.lead_id || null;
-            caseId = act.case_id || null;
-            source = 'activity_title';
+            .limit(5);
+          for (const act of acts || []) {
+            if (act?.lead_id || act?.case_id) {
+              leadId = act.lead_id || null;
+              caseId = act.case_id || null;
+              source = 'activity_title';
+              break;
+            }
+            // Sem vínculo direto: tenta extrair prefixo "PALAVRA NUMERO" do título
+            const m = String(act?.title || '').match(/([A-Za-zÀ-ÿ]{2,}\s*\d{1,6})/);
+            const prefix = m?.[1]?.trim();
+            if (!prefix) continue;
+            const { data: leadByPrefix } = await supabase
+              .from('leads')
+              .select('id')
+              .ilike('lead_name', `${prefix}%`)
+              .is('deleted_at', null)
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+            if (leadByPrefix?.id) {
+              leadId = leadByPrefix.id;
+              source = 'activity_title';
+              break;
+            }
           }
         }
 
