@@ -12,9 +12,10 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { lead_id } = await req.json();
-    if (!lead_id) {
-      return new Response(JSON.stringify({ error: "lead_id is required" }), {
+    const body = await req.json().catch(() => ({}));
+    const { lead_id, group_jid: groupJidInput } = body || {};
+    if (!lead_id && !groupJidInput) {
+      return new Response(JSON.stringify({ error: "lead_id or group_jid is required" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -26,24 +27,29 @@ Deno.serve(async (req) => {
     );
     const extClient = getExternalClient();
 
-    // Get group JID for this lead
-    const { data: groups } = await extClient
-      .from("lead_whatsapp_groups")
-      .select("group_jid, group_name")
-      .eq("lead_id", lead_id)
-      .order("created_at", { ascending: false })
-      .limit(1);
+    let groupJid: string | null = groupJidInput || null;
+    let groups: any[] | null = null;
 
-    let groupJid = groups?.[0]?.group_jid;
+    if (!groupJid && lead_id) {
+      // Get group JID for this lead
+      const { data } = await extClient
+        .from("lead_whatsapp_groups")
+        .select("group_jid, group_name")
+        .eq("lead_id", lead_id)
+        .order("created_at", { ascending: false })
+        .limit(1);
+      groups = data;
+      groupJid = data?.[0]?.group_jid ?? null;
 
-    if (!groupJid) {
-      // Fallback: check leads.whatsapp_group_id (External)
-      const { data: lead } = await extClient
-        .from("leads")
-        .select("whatsapp_group_id")
-        .eq("id", lead_id)
-        .maybeSingle();
-      groupJid = (lead as any)?.whatsapp_group_id;
+      if (!groupJid) {
+        // Fallback: check leads.whatsapp_group_id (External)
+        const { data: lead } = await extClient
+          .from("leads")
+          .select("whatsapp_group_id")
+          .eq("id", lead_id)
+          .maybeSingle();
+        groupJid = (lead as any)?.whatsapp_group_id ?? null;
+      }
     }
 
 
