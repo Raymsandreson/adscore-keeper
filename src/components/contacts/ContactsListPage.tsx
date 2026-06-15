@@ -2073,12 +2073,26 @@ export function ContactsListPage() {
                               : (group.lead_id ? '(sem nome)' : '+ vincular lead')}
                           </span>
                           <span
-                            className={`text-[11px] tabular-nums ${group.created_at ? 'text-foreground' : 'text-muted-foreground italic'}`}
-                            title={group.created_at ? new Date(group.created_at).toLocaleString('pt-BR') : 'Data de criação do grupo desconhecida'}
+                            className={`text-[11px] tabular-nums flex items-center gap-1 ${group.created_at ? 'text-foreground' : 'text-muted-foreground italic'}`}
+                            title={group.created_at ? new Date(group.created_at).toLocaleString('pt-BR') : 'Data de criação do grupo desconhecida — clique no botão para buscar na UazAPI'}
                           >
-                            {group.created_at
-                              ? new Date(group.created_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })
-                              : '—'}
+                            <span>
+                              {group.created_at
+                                ? new Date(group.created_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })
+                                : '—'}
+                            </span>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-5 w-5 shrink-0 opacity-60 hover:opacity-100"
+                              title={group.created_at ? 'Atualizar data deste grupo (UazAPI)' : 'Buscar data de criação na UazAPI'}
+                              disabled={refreshingDateFor.has(group.group_jid)}
+                              onClick={(e) => { e.stopPropagation(); handleRefreshCreationDate(group.group_jid); }}
+                            >
+                              {refreshingDateFor.has(group.group_jid)
+                                ? <Loader2 className="h-3 w-3 animate-spin" />
+                                : <RefreshCw className="h-3 w-3" />}
+                            </Button>
                           </span>
                           <span
                             className={`text-[11px] truncate ${(group.owner_phone || group.creator_instance_name) ? 'text-foreground' : 'text-muted-foreground italic'}`}
