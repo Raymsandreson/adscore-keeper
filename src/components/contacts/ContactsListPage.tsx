@@ -195,7 +195,7 @@ export function ContactsListPage() {
     setBulkRefreshing(true);
     setBulkProgress({ done: 0, total: jids.length, ok: 0, fail: 0 });
     const CONCURRENCY = 3;
-    let idx = 0; let ok = 0; let fail = 0;
+    let idx = 0; let ok = 0; let fail = 0; let missingInstance = 0;
     const worker = async () => {
       while (idx < jids.length && !bulkCancelRef.current) {
         const my = idx++;
@@ -206,8 +206,13 @@ export function ContactsListPage() {
           const { data, error } = await cloudFunctions.invoke<any>('fetch-group-creation-date', { body: { group_jid: jid, instance_name: group?.instance_name || undefined } });
           if (error || !data?.success) { fail++; }
           else {
-            const { iso, ownerPhone } = applyGroupCreationPayload(jid, data);
-            if (iso || ownerPhone) { ok++; }
+            const { iso, ownerPhone, creatorInstance } = applyGroupCreationPayload(jid, data);
+            if (iso || ownerPhone) {
+              ok++;
+              // Validação: criador identificado mas instância não foi resolvida
+              // (telefone fora do mapa atual de instâncias). Contabiliza pra avisar.
+              if (ownerPhone && !creatorInstance) missingInstance++;
+            }
             else { fail++; }
           }
         } catch { fail++; }
@@ -221,7 +226,12 @@ export function ContactsListPage() {
     setBulkRefreshing(false);
     fetchGroups();
     if (bulkCancelRef.current) toast.warning(`Cancelado: ${ok} atualizados, ${fail} falharam`);
-    else toast.success(`Concluído: ${ok} atualizados, ${fail} falharam`);
+    else {
+      toast.success(`Concluído: ${ok} atualizados, ${fail} falharam`);
+      if (missingInstance > 0) {
+        toast.warning(`${missingInstance} grupo(s) com criador fora do mapa de instâncias atuais (exibido só o telefone).`);
+      }
+    }
     setTimeout(() => setBulkProgress(null), 4000);
   };
 
