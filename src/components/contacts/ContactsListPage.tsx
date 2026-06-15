@@ -679,6 +679,9 @@ export function ContactsListPage() {
         }
       }
 
+      // Espelha o mapa em ref pra que o lote/handler individual consigam resolver
+      // creator_instance_name mesmo quando o backend não retornar.
+      instancePhoneMapRef.current = instancePhoneToName;
 
       setGroups(Array.from(groupMap.values()));
     } catch (err) {
