@@ -174,6 +174,7 @@ const ArchivedItemsPage = lazyRetry(() => import("./pages/ArchivedItemsPage"), "
 const HookDebugPage = lazyRetry(() => import("./pages/HookDebugPage"), "HookDebugPage");
 const GroupAuditLogPage = lazyRetry(() => import("./pages/GroupAuditLogPage"), "GroupAuditLogPage");
 const DbDriftPage = lazyRetry(() => import("./pages/DbDriftPage"), "DbDriftPage");
+const RecoverPhone55Page = lazyRetry(() => import("./pages/RecoverPhone55Page"), "RecoverPhone55Page");
 const DocumentReviewPage = lazyRetry(() => import("./pages/DocumentReviewPage"), "DocumentReviewPage");
 const LeadsMapPage = lazyRetry(() => import("./pages/LeadsMapPage"), "LeadsMapPage");
 
