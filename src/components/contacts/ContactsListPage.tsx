@@ -1998,6 +1998,33 @@ export function ContactsListPage() {
                                 aria-label={hasBoth ? 'Divergente' : 'Faltando dados'}
                               />
                             )}
+                            {group.lead_id && (
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-6 w-6"
+                                title="Editar nº do funil (renomeia o grupo)"
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  // Busca o case_number atual do lead (funil)
+                                  const { data } = await externalSupabase
+                                    .from('leads')
+                                    .select('case_number, lead_name')
+                                    .eq('id', group.lead_id!)
+                                    .maybeSingle();
+                                  const current = (data as any)?.case_number || '';
+                                  setEditCaseValue(String(current));
+                                  setEditCaseDialog({
+                                    leadId: group.lead_id!,
+                                    groupJid: group.group_jid,
+                                    currentNumber: String(current),
+                                    currentName: (data as any)?.lead_name || group.lead_name || group.group_name || '',
+                                  });
+                                }}
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
                             <Button size="icon" variant="ghost" className="h-6 w-6" title="Ver contatos do grupo" onClick={(e) => { e.stopPropagation(); handleSelectGroup(group.group_jid); }}>
                               <Users className="h-3.5 w-3.5" />
                             </Button>
