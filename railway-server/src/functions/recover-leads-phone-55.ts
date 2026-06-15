@@ -46,6 +46,14 @@ function normalize(p: any): string {
   return String(p || '').replace(/\D/g, '');
 }
 
+function normalizeGroupJid(group: any): string | null {
+  const value = String(group || '').trim();
+  if (!value || value.startsWith('PENDING:')) return null;
+  if (value.includes('@g.us')) return value;
+  const digits = normalize(value);
+  return digits.length >= 10 ? `${digits}@g.us` : null;
+}
+
 function extractParticipants(data: any): string[] {
   // UazAPI retorna participantes em formatos variáveis entre versões.
   const raw =
@@ -125,14 +133,14 @@ async function getLeadGroupJid(leadId: string): Promise<{ groupJid: string | nul
     .eq('id', leadId)
     .maybeSingle();
   if (!lead) return { groupJid: null, oldPhone: '' };
-  let groupJid = (lead as any).whatsapp_group_id || null;
+  let groupJid = normalizeGroupJid((lead as any).whatsapp_group_id);
   if (!groupJid) {
     const { data: linkRows } = await ext
       .from('lead_whatsapp_groups')
       .select('group_jid')
       .eq('lead_id', leadId)
       .limit(1);
-    groupJid = ((linkRows || [])[0] as any)?.group_jid || null;
+    groupJid = normalizeGroupJid(((linkRows || [])[0] as any)?.group_jid);
   }
   return { groupJid, oldPhone: (lead as any).lead_phone || '' };
 }
