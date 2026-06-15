@@ -1238,17 +1238,17 @@ export function ContactsListPage() {
               className="shrink-0 gap-2"
               disabled={bulkRefreshing}
               onClick={() => {
-                const missing = groups.filter(g => !g.created_at).map(g => g.group_jid);
+                const missing = groups.filter(g => !g.created_at || !g.owner_phone).map(g => g.group_jid);
                 handleBulkRefreshCreationDates(missing);
               }}
-              title="Buscar na UazAPI a data de criação de todos os grupos sem data"
+              title="Buscar na UazAPI a data de criação e o criador dos grupos incompletos"
             >
               {bulkRefreshing
                 ? <Loader2 className="h-4 w-4 animate-spin" />
                 : <RefreshCw className="h-4 w-4" />}
               {bulkRefreshing && bulkProgress
                 ? `Atualizando ${bulkProgress.done}/${bulkProgress.total}`
-                : `Atualizar datas em lote${groups.filter(g => !g.created_at).length ? ` (${groups.filter(g => !g.created_at).length})` : ''}`}
+                : `Atualizar dados em lote${groups.filter(g => !g.created_at || !g.owner_phone).length ? ` (${groups.filter(g => !g.created_at || !g.owner_phone).length})` : ''}`}
             </Button>
             {bulkRefreshing && (
               <Button variant="ghost" size="sm" className="shrink-0" onClick={() => { bulkCancelRef.current = true; }}>
