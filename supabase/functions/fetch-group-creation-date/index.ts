@@ -111,10 +111,10 @@ Deno.serve(async (req) => {
         const creationTs = data?.creation || data?.GroupCreated || data?.created_at ||
           data?.data?.creation || data?.data?.GroupCreated;
 
-        // Extrai owner (criador) — UazAPI varia entre owner/owner_pn/creator
+        // Extrai owner (criador) — UazAPI usa OwnerPN (CamelCase) ou owner_pn
         const ownerRaw: string = String(
-          data?.owner_pn || data?.owner || data?.creator ||
-          data?.data?.owner_pn || data?.data?.owner || data?.data?.creator || ""
+          data?.OwnerPN || data?.owner_pn || data?.owner || data?.creator ||
+          data?.data?.OwnerPN || data?.data?.owner_pn || data?.data?.owner || data?.data?.creator || ""
         );
         const ownerPn = ownerRaw || null;
 
