@@ -32,6 +32,7 @@ export const handler: RequestHandler = async (_req, res) => {
 
     for (const o of orphans || []) {
       try {
+        // Estratégia 1: custom field "Nº Requerimento INSS"
         const { data: cfv } = await supabase
           .from('lead_custom_field_values')
           .select('lead_id')
@@ -39,7 +40,37 @@ export const handler: RequestHandler = async (_req, res) => {
           .eq('value_text', o.requerimento_number)
           .limit(1)
           .maybeSingle();
-        if (!cfv?.lead_id) continue;
+
+        let leadId: string | null = cfv?.lead_id || null;
+        let source: 'custom_field' | 'activity_title' | null = leadId ? 'custom_field' : null;
+
+        // Estratégia 2: fallback — título de atividade contém o nº do requerimento
+        if (!leadId && o.requerimento_number) {
+          const { data: act } = await supabase
+            .from('lead_activities')
+            .select('lead_id')
+            .ilike('title', `%${o.requerimento_number}%`)
+            .not('lead_id', 'is', null)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (act?.lead_id) {
+            leadId = act.lead_id;
+            source = 'activity_title';
+          }
+        }
+
+        if (!leadId) continue;
+
+        // Se veio via atividade, grava no custom field pra próxima vez casar direto
+        if (source === 'activity_title') {
+          await supabase
+            .from('lead_custom_field_values')
+            .upsert(
+              { lead_id: leadId, field_id: FIELD_ID, value_text: o.requerimento_number },
+              { onConflict: 'lead_id,field_id' },
+            );
+        }
 
         const { data: legalCase } = await supabase
           .from('legal_cases')
