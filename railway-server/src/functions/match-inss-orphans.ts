@@ -75,7 +75,7 @@ export const handler: RequestHandler = async (_req, res) => {
         const { data: legalCase } = await supabase
           .from('legal_cases')
           .select('id')
-          .eq('lead_id', cfv.lead_id)
+          .eq('lead_id', leadId)
           .order('created_at', { ascending: false })
           .limit(1)
           .maybeSingle();
@@ -83,7 +83,7 @@ export const handler: RequestHandler = async (_req, res) => {
         const { error: uErr } = await supabase
           .from('inss_admin_processes')
           .update({
-            lead_id: cfv.lead_id,
+            lead_id: leadId,
             case_id: legalCase?.id || null,
             linked_at: new Date().toISOString(),
           })
