@@ -541,6 +541,7 @@ export function ContactsListPage() {
         const { data: page, error } = await (externalSupabase as any)
           .from('whatsapp_groups_uazapi_snapshot')
           .select('jid, group_created_at, owner_pn, seen_in_instances')
+          .order('jid', { ascending: true })
           .range(from, to);
         if (error) { console.error('fetchGroups snapshot page error:', error); break; }
         const rows = (page as any[]) || [];
