@@ -35,6 +35,60 @@ function consumeInternalNonce(token: string | undefined): boolean {
   return true;
 }
 
+// Espelha o vínculo lead↔grupo na "agenda" lead_whatsapp_groups.
+// A tela de Grupos lê dessa tabela; sem isso o grupo recém-criado fica órfão na UI.
+async function mirrorLeadGroupLink(
+  client: typeof ext,
+  leadId: string,
+  groupJid: string | null,
+  groupName: string | null,
+  rid: string,
+): Promise<void> {
+  if (!leadId || !groupJid) return;
+  try {
+    const { data: existing } = await client
+      .from('lead_whatsapp_groups')
+      .select('id, group_name')
+      .eq('lead_id', leadId)
+      .eq('group_jid', groupJid)
+      .maybeSingle();
+    if (existing?.id) {
+      if (groupName && !existing.group_name) {
+        await client
+          .from('lead_whatsapp_groups')
+          .update({ group_name: groupName })
+          .eq('id', existing.id);
+      }
+      return;
+    }
+    const { error } = await client.from('lead_whatsapp_groups').insert({
+      lead_id: leadId,
+      group_jid: groupJid,
+      group_name: groupName,
+      auto_linked: true,
+    } as any);
+    if (error) {
+      console.warn(JSON.stringify({
+        fn: 'onboarding-checkpoint-execute',
+        event: 'mirror_lead_group_link.error',
+        rid, lead_id: leadId, group_jid: groupJid, error: error.message,
+      }));
+    } else {
+      console.log(JSON.stringify({
+        fn: 'onboarding-checkpoint-execute',
+        event: 'mirror_lead_group_link.inserted',
+        rid, lead_id: leadId, group_jid: groupJid, group_name: groupName,
+      }));
+    }
+  } catch (e: any) {
+    console.warn(JSON.stringify({
+      fn: 'onboarding-checkpoint-execute',
+      event: 'mirror_lead_group_link.exception',
+      rid, lead_id: leadId, group_jid: groupJid, error: e?.message || String(e),
+    }));
+  }
+}
+
 function toDateOnly(value: unknown): string | null {
   if (typeof value !== 'string' || !value.trim()) return null;
   const d = new Date(value);
@@ -492,6 +546,7 @@ export const handler: RequestHandler = async (req, res) => {
                   reused = true;
                   reusedFrom = 'snapshot_uazapi';
                   await ext.from('leads').update({ whatsapp_group_id: groupJid }).eq('id', ckpt.lead_id);
+                  await mirrorLeadGroupLink(ext, ckpt.lead_id, groupJid, existingGroup.group_name || null, rid);
                   console.log(JSON.stringify({
                     fn: 'onboarding-checkpoint-execute',
                     event: 'create_group.reused_from_snapshot',
@@ -532,6 +587,7 @@ export const handler: RequestHandler = async (req, res) => {
               if (r.ok && r.data?.group_id) {
                 groupJid = r.data.group_id;
                 await ext.from('leads').update({ whatsapp_group_id: groupJid }).eq('id', ckpt.lead_id);
+                await mirrorLeadGroupLink(ext, ckpt.lead_id, groupJid, r.data?.group_name || null, rid);
               } else {
                 errMsg = r.data?.error || 'create-whatsapp-group falhou';
                 break;
