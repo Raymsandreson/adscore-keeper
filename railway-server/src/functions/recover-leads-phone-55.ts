@@ -47,16 +47,27 @@ function normalize(p: any): string {
 }
 
 function extractParticipants(data: any): string[] {
-  // UazAPI retorna participantes em diferentes formatos dependendo da versão.
+  // UazAPI retorna participantes em formatos variáveis entre versões.
   const raw =
     data?.participants ||
     data?.data?.participants ||
     data?.group?.participants ||
+    data?.groupMetadata?.participants ||
+    data?.data?.groupMetadata?.participants ||
     data?.members ||
+    data?.data?.members ||
     [];
   const out = new Set<string>();
   for (const p of Array.isArray(raw) ? raw : []) {
-    const id = p?.id || p?.jid || p?.participant || p?.phone || (typeof p === 'string' ? p : '');
+    const id =
+      p?.id?._serialized ||
+      p?.id?.user ||
+      p?.id ||
+      p?.jid ||
+      p?.participant ||
+      p?.phone ||
+      p?.number ||
+      (typeof p === 'string' ? p : '');
     const digits = normalize(id);
     if (digits.length >= 10) out.add(digits);
   }
@@ -71,10 +82,11 @@ async function fetchGroupInfo(
   const ctrl = new AbortController();
   const tid = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
   try {
-    const r = await fetch(`${baseUrl.replace(/\/$/, '')}/group/info`, {
+    const r = await fetch(`${baseUrl.replace(/\/$/, '')}/group/info?getParticipants=true`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', token },
-      body: JSON.stringify({ groupjid }),
+      // UazAPI espera `id`; mandamos também `groupjid` por compatibilidade.
+      body: JSON.stringify({ id: groupjid, groupjid, getParticipants: true }),
       signal: ctrl.signal,
     });
     if (!r.ok) return null;
