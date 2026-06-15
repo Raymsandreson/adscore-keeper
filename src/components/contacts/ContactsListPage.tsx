@@ -2728,7 +2728,7 @@ export function ContactsListPage() {
 
       <LeadEditDialog
         open={!!editingLead}
-        onOpenChange={(open) => { if (!open) { setEditingLead(null); fetchGroups(); } }}
+        onOpenChange={(open) => { if (!open) { setEditingLead(null); fetchGroups({ silent: true }); } }}
         lead={editingLead}
         onSave={async (leadId, updates) => {
           const { error } = await externalSupabase.from('leads').update(updates as any).eq('id', leadId);
