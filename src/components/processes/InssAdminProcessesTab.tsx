@@ -28,6 +28,7 @@ interface InssProcess {
   nome_segurado: string | null;
   case_id: string | null;
   lead_id: string | null;
+  lead_name?: string | null;
   protocol_date: string | null;
   last_email_at: string | null;
   last_email_subject: string | null;
@@ -102,11 +103,15 @@ export default function InssAdminProcessesTab() {
     setLoading(true);
     const { data, error } = await db
       .from("inss_admin_processes" as any)
-      .select("*")
+      .select("*, leads:lead_id(lead_name)")
       .is("deleted_at", null)
       .order("last_email_at", { ascending: false, nullsFirst: false });
     if (error) toast.error("Erro ao carregar: " + error.message);
-    setProcesses((data || []) as any);
+    const flat = (data || []).map((row: any) => ({
+      ...row,
+      lead_name: row.leads?.lead_name || null,
+    }));
+    setProcesses(flat as any);
     setLoading(false);
   };
 
@@ -483,7 +488,12 @@ export default function InssAdminProcessesTab() {
                         {p.protocol_date && (
                           <div>📅 Protocolo: {fmtDate(p.protocol_date)}</div>
                         )}
-                        {p.last_email_at && (
+                        {p.case_id && p.lead_name ? (
+                          <div className="flex items-center gap-1 font-medium text-foreground">
+                            <User className="h-3 w-3" />
+                            {p.lead_name} · Requerimento {p.requerimento_number}
+                          </div>
+                        ) : p.last_email_at && (
                           <div className="flex items-center gap-1">
                             <Clock className="h-3 w-3" />
                             Última atualização: {fmtDate(p.last_email_at, true)}
