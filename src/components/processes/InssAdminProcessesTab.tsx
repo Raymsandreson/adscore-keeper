@@ -296,6 +296,8 @@ export default function InssAdminProcessesTab() {
     return () => clearTimeout(t);
   }, [linkingProc, caseSearch]);
 
+  const INSS_FIELD_ID = "111f9a38-98c3-4f83-9095-5c469106a7bf";
+
   const linkToCase = async (caseOpt: CaseOption) => {
     if (!linkingProc) return;
     setLinkingBusy(true);
@@ -310,6 +312,21 @@ export default function InssAdminProcessesTab() {
         })
         .eq("id", linkingProc.id);
       if (error) throw error;
+
+      // Memoriza nº do requerimento no lead (auto-match futuro)
+      if (caseOpt.lead_id && linkingProc.requerimento_number) {
+        await db
+          .from("lead_custom_field_values" as any)
+          .upsert(
+            {
+              lead_id: caseOpt.lead_id,
+              field_id: INSS_FIELD_ID,
+              value_text: linkingProc.requerimento_number,
+            } as any,
+            { onConflict: "lead_id,field_id" } as any
+          );
+      }
+
       toast.success("Processo vinculado ao caso " + caseOpt.case_number);
 
       fetch(`${RAILWAY_BASE}/functions/notify-inss-update`, {
@@ -329,6 +346,30 @@ export default function InssAdminProcessesTab() {
       setLinkingBusy(false);
     }
   };
+
+  const runAutoMatch = async () => {
+    toast.info("Procurando órfãos que casam com leads...");
+    try {
+      const resp = await fetch(`${RAILWAY_BASE}/functions/match-inss-orphans`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": (import.meta as any).env?.VITE_RAILWAY_API_KEY || "",
+        },
+        body: "{}",
+      });
+      const j = await resp.json();
+      if (j.success) {
+        toast.success(`${j.matched}/${j.scanned} órfãos vinculados automaticamente.`);
+        loadProcesses();
+      } else {
+        toast.error("Erro: " + (j.error || "desconhecido"));
+      }
+    } catch (e: any) {
+      toast.error("Falha: " + e.message);
+    }
+  };
+
 
   const unlink = async (p: InssProcess) => {
     if (!confirm(`Desvincular requerimento ${p.requerimento_number} do caso?`)) return;
