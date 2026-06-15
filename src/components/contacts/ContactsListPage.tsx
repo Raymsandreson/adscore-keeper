@@ -250,7 +250,7 @@ export function ContactsListPage() {
         const to = from + pageSize - 1;
         const { data: page, error } = await externalSupabase
           .from('lead_whatsapp_groups')
-          .select('group_jid, group_name, lead_id, leads!lead_whatsapp_groups_lead_id_fkey(lead_name, lead_status, created_at, board_id, lead_number, product_service_id)')
+          .select('group_jid, group_name, lead_id, leads!lead_whatsapp_groups_lead_id_fkey(lead_name, lead_status, created_at, board_id, lead_number, product_service_id, case_number)')
           .order('created_at', { ascending: false })
           .range(from, to);
         if (error) { console.error('fetchGroups lwg page error:', error); break; }
@@ -267,6 +267,7 @@ export function ContactsListPage() {
             if (!existing.board_id && lead?.board_id) existing.board_id = lead.board_id;
             if (existing.lead_number == null && lead?.lead_number != null) existing.lead_number = lead.lead_number;
             if (!existing.product_service_id && lead?.product_service_id) existing.product_service_id = lead.product_service_id;
+            if (!existing.case_number && lead?.case_number) existing.case_number = String(lead.case_number);
           } else {
             groupMap.set(g.group_jid, {
               group_jid: g.group_jid,
@@ -280,7 +281,7 @@ export function ContactsListPage() {
               lead_created_at: lead?.created_at || null,
               board_id: lead?.board_id || null,
               board_name: null,
-              case_number: null,
+              case_number: lead?.case_number ? String(lead.case_number) : null,
               lead_number: lead?.lead_number ?? null,
               product_case_prefix: null,
               product_service_id: lead?.product_service_id || null,
