@@ -2014,6 +2014,23 @@ export function ContactsListPage() {
                                 <Pencil className="h-3.5 w-3.5" />
                               </Button>
                             )}
+                            {!group.lead_id && (
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-6 w-6 text-emerald-600 hover:text-emerald-700"
+                                title="Vincular ou criar lead para este grupo"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setLinkDialog({ groupJid: group.group_jid, groupName: group.group_name || null });
+                                  setLinkQuery('');
+                                  setLinkResults([]);
+                                }}
+                              >
+                                <Link2 className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
+
                             <Button size="icon" variant="ghost" className="h-6 w-6" title="Ver contatos do grupo" onClick={(e) => { e.stopPropagation(); handleSelectGroup(group.group_jid); }}>
                               <Users className="h-3.5 w-3.5" />
                             </Button>
