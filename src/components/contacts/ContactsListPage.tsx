@@ -1189,29 +1189,6 @@ export function ContactsListPage() {
                         )}
                       </p>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="shrink-0 gap-2"
-              disabled={bulkRefreshing}
-              onClick={() => {
-                const missing = groups.filter(g => !g.created_at).map(g => g.group_jid);
-                handleBulkRefreshCreationDates(missing);
-              }}
-              title="Buscar na UazAPI a data de criação de todos os grupos sem data"
-            >
-              {bulkRefreshing
-                ? <Loader2 className="h-4 w-4 animate-spin" />
-                : <RefreshCw className="h-4 w-4" />}
-              {bulkRefreshing && bulkProgress
-                ? `Atualizando ${bulkProgress.done}/${bulkProgress.total}`
-                : 'Atualizar datas em lote'}
-            </Button>
-            {bulkRefreshing && (
-              <Button variant="ghost" size="sm" className="shrink-0" onClick={() => { bulkCancelRef.current = true; }}>
-                Cancelar
-              </Button>
-            )}
                     {contact.classification && (
                       <Badge variant="outline" className="text-[10px] shrink-0">
                         {contact.classification}
