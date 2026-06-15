@@ -135,6 +135,7 @@ export function ContactsListPage() {
       ...g,
       ...(iso ? { created_at: iso } : {}),
       ...(ownerPhone ? { owner_phone: ownerPhone } : {}),
+      ...(data?.creator_instance_name ? { creator_instance_name: String(data.creator_instance_name) } : {}),
     } : g));
     return { iso, ownerPhone };
   };
