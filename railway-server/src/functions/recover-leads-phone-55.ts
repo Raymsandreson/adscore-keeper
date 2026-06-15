@@ -40,6 +40,17 @@ interface LeadResult {
   group_jid?: string;
   candidates?: string[];
   message?: string;
+  diagnostics?: Record<string, any>;
+}
+
+interface GroupFetchAttempt {
+  instance_name: string;
+  base_url: string;
+  ok: boolean;
+  http_status?: number;
+  participant_count: number;
+  response_keys?: string[];
+  error?: string;
 }
 
 function normalize(p: any): string {
@@ -54,27 +65,49 @@ function normalizeGroupJid(group: any): string | null {
   return digits.length >= 10 ? `${digits}@g.us` : null;
 }
 
+function safeBaseUrl(baseUrl: string): string {
+  try {
+    const url = new URL(baseUrl);
+    return `${url.protocol}//${url.hostname}`;
+  } catch {
+    return 'invalid_base_url';
+  }
+}
+
 function extractParticipants(data: any): string[] {
-  // UazAPI retorna participantes em formatos variáveis entre versões.
+  // UazAPI v2 documenta `Participants` com P maiúsculo.
+  // Mantemos fallbacks porque algumas respostas antigas vinham minúsculas/aninhadas.
   const raw =
+    data?.Participants ||
     data?.participants ||
+    data?.data?.Participants ||
     data?.data?.participants ||
+    data?.Group?.Participants ||
     data?.group?.participants ||
     data?.groupMetadata?.participants ||
+    data?.GroupMetadata?.Participants ||
     data?.data?.groupMetadata?.participants ||
+    data?.data?.GroupMetadata?.Participants ||
     data?.members ||
     data?.data?.members ||
     [];
   const out = new Set<string>();
-  for (const p of Array.isArray(raw) ? raw : []) {
+  const list = Array.isArray(raw) ? raw : typeof raw === 'object' && raw ? Object.values(raw) : [];
+  for (const p of list) {
+    const item = p as any;
     const id =
-      p?.id?._serialized ||
-      p?.id?.user ||
-      p?.id ||
-      p?.jid ||
-      p?.participant ||
-      p?.phone ||
-      p?.number ||
+      item?.JID ||
+      item?.PhoneNumber ||
+      item?.Phone ||
+      item?.PN ||
+      item?.LID ||
+      item?.id?._serialized ||
+      item?.id?.user ||
+      item?.id ||
+      item?.jid ||
+      item?.participant ||
+      item?.phone ||
+      item?.number ||
       (typeof p === 'string' ? p : '');
     const digits = normalize(id);
     if (digits.length >= 10) out.add(digits);
@@ -86,21 +119,25 @@ async function fetchGroupInfo(
   baseUrl: string,
   token: string,
   groupjid: string
-): Promise<any | null> {
+): Promise<{ ok: boolean; status?: number; body?: any; error?: string }> {
   const ctrl = new AbortController();
   const tid = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
   try {
-    const r = await fetch(`${baseUrl.replace(/\/$/, '')}/group/info?getParticipants=true`, {
+    const r = await fetch(`${baseUrl.replace(/\/$/, '')}/group/info`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', token },
-      // UazAPI espera `id`; mandamos também `groupjid` por compatibilidade.
-      body: JSON.stringify({ id: groupjid, groupjid, getParticipants: true }),
+      body: JSON.stringify({
+        groupjid,
+        getInviteLink: false,
+        getRequestsParticipants: false,
+        force: true,
+      }),
       signal: ctrl.signal,
     });
-    if (!r.ok) return null;
-    return await r.json().catch(() => null);
-  } catch {
-    return null;
+    const body = await r.json().catch(async () => ({ raw: await r.text().catch(() => '') }));
+    return { ok: r.ok, status: r.status, body };
+  } catch (err: any) {
+    return { ok: false, error: err?.name === 'AbortError' ? 'timeout' : err?.message || 'fetch_failed' };
   } finally {
     clearTimeout(tid);
   }
@@ -183,22 +220,37 @@ async function processOneLead(
   // Tenta cada instância ativa até alguma responder /group/info
   let participants: string[] = [];
   let usedInstance = '';
+  const attempts: GroupFetchAttempt[] = [];
   for (const inst of instances) {
     const base = inst.base_url || DEFAULT_BASE;
     const info = await fetchGroupInfo(base, inst.instance_token, groupJid);
-    if (info) {
-      const ps = extractParticipants(info);
-      if (ps.length > 0) {
-        participants = ps;
-        usedInstance = inst.instance_name;
-        break;
-      }
+    const ps = info.body ? extractParticipants(info.body) : [];
+    attempts.push({
+      instance_name: inst.instance_name,
+      base_url: safeBaseUrl(base),
+      ok: info.ok,
+      http_status: info.status,
+      participant_count: ps.length,
+      response_keys: info.body && typeof info.body === 'object' ? Object.keys(info.body).slice(0, 12) : undefined,
+      error: info.error,
+    });
+    if (info.ok && ps.length > 0) {
+      participants = ps;
+      usedInstance = inst.instance_name;
+      break;
     }
   }
 
   if (participants.length === 0) {
-    await logEnrichment(leadId, 'group_fetch_failed', { group_jid: groupJid, old_phone: oldPhone });
-    return { lead_id: leadId, status: 'group_fetch_failed', old_phone: oldPhone, group_jid: groupJid };
+    await logEnrichment(leadId, 'group_fetch_failed', { group_jid: groupJid, old_phone: oldPhone, attempts });
+    return {
+      lead_id: leadId,
+      status: 'group_fetch_failed',
+      old_phone: oldPhone,
+      group_jid: groupJid,
+      message: 'Nenhuma instância retornou Participants para esse grupo.',
+      diagnostics: { attempts },
+    };
   }
 
   // Remove os números das instâncias do sistema

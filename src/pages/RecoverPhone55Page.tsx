@@ -38,6 +38,17 @@ interface RecoverResult {
   group_jid?: string;
   candidates?: string[];
   message?: string;
+  diagnostics?: {
+    attempts?: Array<{
+      instance_name: string;
+      base_url: string;
+      ok: boolean;
+      http_status?: number;
+      participant_count: number;
+      response_keys?: string[];
+      error?: string;
+    }>;
+  };
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -203,6 +214,17 @@ export default function RecoverPhone55Page() {
                               </span>
                             )}
                             {r.message && <span className="text-xs text-muted-foreground">{r.message}</span>}
+                            {r.diagnostics?.attempts && r.diagnostics.attempts.length > 0 && (
+                              <div className="w-full rounded-md border bg-muted/30 p-2 text-xs text-muted-foreground font-mono space-y-1">
+                                {r.diagnostics.attempts.map((a) => (
+                                  <div key={`${a.instance_name}-${a.http_status || a.error || 'x'}`}>
+                                    {a.instance_name}: HTTP {a.http_status || '—'} · ok={String(a.ok)} · participantes={a.participant_count}
+                                    {a.response_keys?.length ? ` · chaves=${a.response_keys.join(',')}` : ''}
+                                    {a.error ? ` · erro=${a.error}` : ''}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
