@@ -422,6 +422,25 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
       setPendingContactLink(null);
     }
 
+    // Link to WhatsApp group if pending
+    if (createdLead && pendingGroupLink?.jid) {
+      try {
+        const { error: linkErr } = await externalSupabase
+          .from('lead_whatsapp_groups')
+          .insert({
+            lead_id: createdLead.id,
+            group_jid: pendingGroupLink.jid,
+            group_name: pendingGroupLink.name,
+          } as any);
+        if (linkErr) throw linkErr;
+        toast.success('Lead criado e vinculado ao grupo do WhatsApp!');
+      } catch (error: any) {
+        console.error('Error linking lead to WhatsApp group:', error);
+        toast.error('Lead criado, mas falhou ao vincular ao grupo: ' + (error?.message || 'erro'));
+      }
+      setPendingGroupLink(null);
+
+
     setNewLead({
       lead_name: '',
       lead_phone: '',
