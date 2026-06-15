@@ -150,6 +150,44 @@ export function ContactsListPage() {
     }
   };
 
+  const [bulkRefreshing, setBulkRefreshing] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number; ok: number; fail: number } | null>(null);
+  const bulkCancelRef = React.useRef(false);
+  const handleBulkRefreshCreationDates = async (jids: string[]) => {
+    if (!jids.length) { toast.info('Nenhum grupo sem data para atualizar'); return; }
+    if (!confirm(`Atualizar a data de criação de ${jids.length} grupo(s)? Pode levar alguns minutos.`)) return;
+    bulkCancelRef.current = false;
+    setBulkRefreshing(true);
+    setBulkProgress({ done: 0, total: jids.length, ok: 0, fail: 0 });
+    const CONCURRENCY = 3;
+    let idx = 0; let ok = 0; let fail = 0;
+    const worker = async () => {
+      while (idx < jids.length && !bulkCancelRef.current) {
+        const my = idx++;
+        const jid = jids[my];
+        setRefreshingDateFor(prev => { const n = new Set(prev); n.add(jid); return n; });
+        try {
+          const { data, error } = await cloudFunctions.invoke<any>('fetch-group-creation-date', { body: { group_jid: jid } });
+          if (error || !data?.success) { fail++; }
+          else {
+            const iso: string | null = data.creation_iso || data.creation_date || null;
+            if (iso) { setGroups(prev => prev.map(g => g.group_jid === jid ? { ...g, created_at: iso } : g)); ok++; }
+            else { fail++; }
+          }
+        } catch { fail++; }
+        finally {
+          setRefreshingDateFor(prev => { const n = new Set(prev); n.delete(jid); return n; });
+          setBulkProgress({ done: my + 1, total: jids.length, ok, fail });
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, jids.length) }, worker));
+    setBulkRefreshing(false);
+    if (bulkCancelRef.current) toast.warning(`Cancelado: ${ok} atualizados, ${fail} falharam`);
+    else toast.success(`Concluído: ${ok} atualizados, ${fail} falharam`);
+    setTimeout(() => setBulkProgress(null), 4000);
+  };
+
   const openGroupChat = (jid: string) => {
     if (!jid) return;
     const g = groups.find(x => x.group_jid === jid);
