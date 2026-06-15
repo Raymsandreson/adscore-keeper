@@ -202,6 +202,21 @@ export default function InssAdminProcessesTab() {
       }
     };
 
+    const reqDigits = (proc.requerimento_number || "").replace(/\D/g, "");
+    if (reqDigits) {
+      const { data: processesByNumber } = await db
+        .from("lead_processes" as any)
+        .select("lead_id, case_id, title, process_number")
+        .or(`process_number.ilike.%${reqDigits}%,title.ilike.%${reqDigits}%`)
+        .not("case_id", "is", null)
+        .order("updated_at", { ascending: false })
+        .limit(10);
+      for (const lp of (processesByNumber || []) as any[]) {
+        if (lp.case_id) await addCase(lp.case_id, `Nº do processo bate: ${lp.process_number || lp.title}`);
+        else if (lp.lead_id) await addLead(lp.lead_id, null, `Nº do processo bate: ${lp.process_number || lp.title}`);
+      }
+    }
+
     // 1) Match por CPF exato em contacts
     const cpf = normalizeCpf(proc.cpf_segurado);
     if (cpf) {

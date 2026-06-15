@@ -347,8 +347,26 @@ export const handler: RequestHandler = async (req, res) => {
             if (!caseId) {
               try {
                 const FIELD_ID = '111f9a38-98c3-4f83-9095-5c469106a7bf'; // Nº Requerimento INSS
+                const reqDigits = String(parsed.requerimento || '').replace(/\D/g, '');
                 let foundLeadId: string | null = null;
-                let foundSource: 'custom_field' | 'activity_title' | null = null;
+                let foundCaseId: string | null = null;
+                let foundSource: 'process_number' | 'custom_field' | 'activity_title' | null = null;
+
+                if (reqDigits) {
+                  const { data: proc } = await supabase
+                    .from('lead_processes')
+                    .select('lead_id, case_id')
+                    .or(`process_number.ilike.%${reqDigits}%,title.ilike.%${reqDigits}%`)
+                    .not('case_id', 'is', null)
+                    .order('updated_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+                  if (proc?.case_id || proc?.lead_id) {
+                    foundLeadId = proc.lead_id || null;
+                    foundCaseId = proc.case_id || null;
+                    foundSource = 'process_number';
+                  }
+                }
 
                 const { data: cfv } = await supabase
                   .from('lead_custom_field_values')
@@ -357,29 +375,38 @@ export const handler: RequestHandler = async (req, res) => {
                   .eq('value_text', parsed.requerimento)
                   .limit(1)
                   .maybeSingle();
-                if (cfv?.lead_id) {
+                if (!foundLeadId && cfv?.lead_id) {
                   foundLeadId = cfv.lead_id;
                   foundSource = 'custom_field';
                 }
 
                 // Fallback: título de atividade contém o nº do requerimento
-                if (!foundLeadId) {
+                if (!foundLeadId && !foundCaseId && reqDigits) {
                   const { data: act } = await supabase
                     .from('lead_activities')
-                    .select('lead_id')
-                    .ilike('title', `%${parsed.requerimento}%`)
-                    .not('lead_id', 'is', null)
+                    .select('lead_id, case_id')
+                    .ilike('title', `%${reqDigits}%`)
                     .order('created_at', { ascending: false })
                     .limit(1)
                     .maybeSingle();
-                  if (act?.lead_id) {
-                    foundLeadId = act.lead_id;
+                  if (act?.lead_id || act?.case_id) {
+                    foundLeadId = act.lead_id || null;
+                    foundCaseId = act.case_id || null;
                     foundSource = 'activity_title';
                   }
                 }
 
-                if (foundLeadId) {
-                  if (foundSource === 'activity_title') {
+                if (!foundLeadId && foundCaseId) {
+                  const { data: c } = await supabase
+                    .from('legal_cases')
+                    .select('lead_id')
+                    .eq('id', foundCaseId)
+                    .maybeSingle();
+                  foundLeadId = c?.lead_id || null;
+                }
+
+                if (foundLeadId || foundCaseId) {
+                  if ((foundSource === 'activity_title' || foundSource === 'process_number') && foundLeadId) {
                     await supabase
                       .from('lead_custom_field_values')
                       .upsert(
@@ -387,22 +414,25 @@ export const handler: RequestHandler = async (req, res) => {
                         { onConflict: 'lead_id,field_id' },
                       );
                   }
-                  const { data: legalCase } = await supabase
-                    .from('legal_cases')
-                    .select('id')
-                    .eq('lead_id', foundLeadId)
-                    .order('created_at', { ascending: false })
-                    .limit(1)
-                    .maybeSingle();
+                  if (!foundCaseId && foundLeadId) {
+                    const { data: legalCase } = await supabase
+                      .from('legal_cases')
+                      .select('id')
+                      .eq('lead_id', foundLeadId)
+                      .order('created_at', { ascending: false })
+                      .limit(1)
+                      .maybeSingle();
+                    foundCaseId = legalCase?.id || null;
+                  }
                   await supabase
                     .from('inss_admin_processes')
                     .update({
                       lead_id: foundLeadId,
-                      case_id: legalCase?.id || null,
+                      case_id: foundCaseId,
                       linked_at: new Date().toISOString(),
                     })
                     .eq('id', processId);
-                  caseId = legalCase?.id || null;
+                  caseId = foundCaseId || null;
                 }
               } catch (mErr) {
                 console.warn('[gmail-inss-sync] auto-match failed:', mErr);

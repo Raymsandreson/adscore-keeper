@@ -32,6 +32,28 @@ export const handler: RequestHandler = async (_req, res) => {
 
     for (const o of orphans || []) {
       try {
+        const reqDigits = String(o.requerimento_number || '').replace(/\D/g, '');
+        let leadId: string | null = null;
+        let caseId: string | null = null;
+        let source: 'process_number' | 'custom_field' | 'activity_title' | null = null;
+
+        // Estratégia 0: processo/caso já cadastrado com o nº do requerimento
+        if (reqDigits) {
+          const { data: proc } = await supabase
+            .from('lead_processes')
+            .select('lead_id, case_id')
+            .or(`process_number.ilike.%${reqDigits}%,title.ilike.%${reqDigits}%`)
+            .not('case_id', 'is', null)
+            .order('updated_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (proc?.case_id || proc?.lead_id) {
+            leadId = proc.lead_id || null;
+            caseId = proc.case_id || null;
+            source = 'process_number';
+          }
+        }
+
         // Estratégia 1: custom field "Nº Requerimento INSS"
         const { data: cfv } = await supabase
           .from('lead_custom_field_values')
@@ -41,29 +63,40 @@ export const handler: RequestHandler = async (_req, res) => {
           .limit(1)
           .maybeSingle();
 
-        let leadId: string | null = cfv?.lead_id || null;
-        let source: 'custom_field' | 'activity_title' | null = leadId ? 'custom_field' : null;
+        if (!leadId && cfv?.lead_id) {
+          leadId = cfv.lead_id;
+          source = 'custom_field';
+        }
 
         // Estratégia 2: fallback — título de atividade contém o nº do requerimento
-        if (!leadId && o.requerimento_number) {
+        if (!leadId && !caseId && reqDigits) {
           const { data: act } = await supabase
             .from('lead_activities')
-            .select('lead_id')
-            .ilike('title', `%${o.requerimento_number}%`)
-            .not('lead_id', 'is', null)
+            .select('lead_id, case_id')
+            .ilike('title', `%${reqDigits}%`)
             .order('created_at', { ascending: false })
             .limit(1)
             .maybeSingle();
-          if (act?.lead_id) {
-            leadId = act.lead_id;
+          if (act?.lead_id || act?.case_id) {
+            leadId = act.lead_id || null;
+            caseId = act.case_id || null;
             source = 'activity_title';
           }
         }
 
-        if (!leadId) continue;
+        if (!leadId && caseId) {
+          const { data: c } = await supabase
+            .from('legal_cases')
+            .select('lead_id')
+            .eq('id', caseId)
+            .maybeSingle();
+          leadId = c?.lead_id || null;
+        }
+
+        if (!leadId && !caseId) continue;
 
         // Se veio via atividade, grava no custom field pra próxima vez casar direto
-        if (source === 'activity_title') {
+        if ((source === 'activity_title' || source === 'process_number') && leadId) {
           await supabase
             .from('lead_custom_field_values')
             .upsert(
@@ -72,19 +105,22 @@ export const handler: RequestHandler = async (_req, res) => {
             );
         }
 
-        const { data: legalCase } = await supabase
-          .from('legal_cases')
-          .select('id')
-          .eq('lead_id', leadId)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
+        if (!caseId && leadId) {
+          const { data: legalCase } = await supabase
+            .from('legal_cases')
+            .select('id')
+            .eq('lead_id', leadId)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          caseId = legalCase?.id || null;
+        }
 
         const { error: uErr } = await supabase
           .from('inss_admin_processes')
           .update({
             lead_id: leadId,
-            case_id: legalCase?.id || null,
+            case_id: caseId,
             linked_at: new Date().toISOString(),
           })
           .eq('id', o.id);
@@ -94,7 +130,7 @@ export const handler: RequestHandler = async (_req, res) => {
         }
         matched++;
 
-        if (legalCase?.id) {
+        if (caseId) {
           const railwayUrl = process.env.RAILWAY_PUBLIC_URL || `http://localhost:${process.env.PORT || 3000}`;
           fetch(`${railwayUrl}/functions/notify-inss-update`, {
             method: 'POST',
