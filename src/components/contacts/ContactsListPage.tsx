@@ -2094,7 +2094,16 @@ export function ContactsListPage() {
                               )}
                             </span>
                           ) : (
-                            <span>—</span>
+                            <span
+                              className="cursor-pointer hover:underline text-emerald-600 italic font-medium"
+                              title="Clique para vincular ou criar um lead"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setLinkDialog({ groupJid: group.group_jid, groupName: group.group_name || null });
+                                setLinkQuery('');
+                                setLinkResults([]);
+                              }}
+                            >+ vincular lead</span>
                           )}{' '}
                           • {group.contact_count} contato(s)
                           {group.created_at && (
