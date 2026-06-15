@@ -366,7 +366,12 @@ export function ContactsListPage() {
         const rows = (page as any[]) || [];
         for (const g of rows) {
           const lead = g.leads as any;
-          const existing = groupMap.get(g.group_jid);
+          // Normaliza JID: lead_whatsapp_groups às vezes guarda sem o sufixo @g.us,
+          // enquanto whatsapp_groups_index/snapshot sempre usa com sufixo.
+          // Sem normalizar, o mesmo grupo aparecia duplicado na listagem.
+          const rawJid = String(g.group_jid || '');
+          const normJid = rawJid.includes('@') ? rawJid : `${rawJid}@g.us`;
+          const existing = groupMap.get(normJid);
           if (existing) {
             if (!existing.group_name && g.group_name) existing.group_name = g.group_name;
             if (!existing.lead_name && lead?.lead_name) existing.lead_name = lead.lead_name;
@@ -378,8 +383,8 @@ export function ContactsListPage() {
             if (!existing.product_service_id && lead?.product_service_id) existing.product_service_id = lead.product_service_id;
             if (!existing.case_number && lead?.case_number) existing.case_number = String(lead.case_number);
           } else {
-            groupMap.set(g.group_jid, {
-              group_jid: g.group_jid,
+            groupMap.set(normJid, {
+              group_jid: normJid,
               group_name: g.group_name || '',
               lead_name: lead?.lead_name || '',
               lead_status: lead?.lead_status || '',
