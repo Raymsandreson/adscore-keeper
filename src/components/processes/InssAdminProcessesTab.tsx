@@ -28,6 +28,7 @@ interface InssProcess {
   nome_segurado: string | null;
   case_id: string | null;
   lead_id: string | null;
+  lead_name?: string | null;
   protocol_date: string | null;
   last_email_at: string | null;
   last_email_subject: string | null;
