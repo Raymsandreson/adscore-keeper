@@ -190,6 +190,7 @@ Deno.serve(async (req) => {
         if (finalCreationIso) upsertRow.group_created_at = finalCreationIso;
         if (finalOwnerPn) upsertRow.owner_pn = finalOwnerPn;
         if (best?.ownerJid) upsertRow.owner_jid = best.ownerJid;
+        if (creatorInstance?.instance_name) upsertRow.creator_instance_name = creatorInstance.instance_name;
         await extClient.from("whatsapp_groups_uazapi_snapshot").upsert(upsertRow, { onConflict: "jid" });
       } catch (persistErr) {
         console.warn("snapshot upsert failed:", persistErr);
