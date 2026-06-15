@@ -152,7 +152,7 @@ export function ContactsListPage() {
 
   const [bulkRefreshing, setBulkRefreshing] = useState(false);
   const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number; ok: number; fail: number } | null>(null);
-  const bulkCancelRef = React.useRef(false);
+  const bulkCancelRef = useRef(false);
   const handleBulkRefreshCreationDates = async (jids: string[]) => {
     if (!jids.length) { toast.info('Nenhum grupo sem data para atualizar'); return; }
     if (!confirm(`Atualizar a data de criação de ${jids.length} grupo(s)? Pode levar alguns minutos.`)) return;
