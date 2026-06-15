@@ -151,6 +151,8 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
     const city = searchParams.get('city');
     const state = searchParams.get('state');
     const linkContact = searchParams.get('linkContact');
+    const linkGroupJid = searchParams.get('linkGroupJid');
+    const linkGroupName = searchParams.get('linkGroupName');
 
     if (newLeadParam === 'true') {
       // Pre-fill form with contact data
@@ -167,6 +169,11 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
       if (linkContact) {
         setPendingContactLink(linkContact);
       }
+
+      // Set pending WhatsApp group link if provided
+      if (linkGroupJid) {
+        setPendingGroupLink({ jid: linkGroupJid, name: linkGroupName || null });
+      }
       
       // Load cities if state is provided
       if (state) {
@@ -180,6 +187,7 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
       setSearchParams({}, { replace: true });
     }
   }, [searchParams, setSearchParams, fetchCities]);
+
 
   // Calculate leads by day of week
   const leadsByDayOfWeek = leads.reduce((acc, lead) => {
