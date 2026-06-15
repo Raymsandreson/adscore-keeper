@@ -1,7 +1,8 @@
 // Recupera o telefone real de leads cujo lead_phone ficou como "55" (sem dígitos).
 // Estratégia: pega o grupo do lead (leads.whatsapp_group_id ou lead_whatsapp_groups),
-// busca participantes via UazAPI /group/info, remove os números das instâncias do
-// sistema (owner_phone de whatsapp_instances) e aplica a regra:
+// primeiro cruza com outros leads já vinculados ao mesmo grupo e telefone válido.
+// Se esse atalho não resolver, busca participantes via UazAPI /group/info, remove
+// os números das instâncias do sistema (owner_phone de whatsapp_instances) e aplica a regra:
 //   - 1 candidato sobrando -> atualiza lead_phone (a menos que dryRun)
 //   - 0 ou >1            -> apenas loga em lead_enrichment_log, não toca no lead
 //
@@ -40,7 +41,18 @@ interface LeadResult {
   group_jid?: string;
   candidates?: string[];
   message?: string;
+  source?: 'linked_lead' | 'group_participants';
+  matched_lead_id?: string;
+  matched_lead_name?: string | null;
   diagnostics?: Record<string, any>;
+}
+
+interface LinkedLeadPhoneCandidate {
+  lead_id: string;
+  lead_name: string | null;
+  phone: string;
+  source: 'leads.whatsapp_group_id' | 'lead_whatsapp_groups';
+  group_jid?: string | null;
 }
 
 interface GroupFetchAttempt {
@@ -182,6 +194,57 @@ async function getLeadGroupJid(leadId: string): Promise<{ groupJid: string | nul
   return { groupJid, oldPhone: (lead as any).lead_phone || '' };
 }
 
+async function findLinkedLeadPhoneCandidates(
+  leadId: string,
+  groupJid: string,
+  instancePhones: Set<string>
+): Promise<LinkedLeadPhoneCandidate[]> {
+  const groupDigits = normalize(groupJid);
+  const groupVariants = Array.from(new Set([groupJid, groupDigits].filter(Boolean)));
+  const byPhone = new Map<string, LinkedLeadPhoneCandidate>();
+
+  const addLead = (row: any, source: LinkedLeadPhoneCandidate['source'], linkedGroupJid?: string | null) => {
+    if (!row || row.id === leadId) return;
+    const phone = normalize(row.lead_phone);
+    if (phone.length < 10 || instancePhones.has(phone) || byPhone.has(phone)) return;
+    byPhone.set(phone, {
+      lead_id: row.id,
+      lead_name: row.lead_name || null,
+      phone,
+      source,
+      group_jid: linkedGroupJid || row.whatsapp_group_id || null,
+    });
+  };
+
+  const { data: directRows } = await ext
+    .from('leads')
+    .select('id, lead_name, lead_phone, whatsapp_group_id')
+    .in('whatsapp_group_id', groupVariants)
+    .limit(20);
+  for (const row of directRows || []) addLead(row, 'leads.whatsapp_group_id');
+
+  const { data: linkRows } = await ext
+    .from('lead_whatsapp_groups')
+    .select('lead_id, group_jid')
+    .in('group_jid', groupVariants)
+    .neq('lead_id', leadId)
+    .limit(20);
+  const linkedIds = Array.from(new Set((linkRows || []).map((r: any) => r.lead_id).filter(Boolean)));
+
+  if (linkedIds.length > 0) {
+    const groupByLeadId = new Map((linkRows || []).map((r: any) => [r.lead_id, r.group_jid || null]));
+    const { data: linkedLeads } = await ext
+      .from('leads')
+      .select('id, lead_name, lead_phone, whatsapp_group_id')
+      .in('id', linkedIds);
+    for (const row of linkedLeads || []) {
+      addLead(row, 'lead_whatsapp_groups', groupByLeadId.get((row as any).id));
+    }
+  }
+
+  return Array.from(byPhone.values());
+}
+
 async function logEnrichment(
   leadId: string,
   status: string,
@@ -215,6 +278,90 @@ async function processOneLead(
   if (!groupJid || !groupJid.includes('@g.us')) {
     await logEnrichment(leadId, 'no_group', { old_phone: oldPhone });
     return { lead_id: leadId, status: 'no_group', old_phone: oldPhone };
+  }
+
+  // Atalho seguro: se esse mesmo grupo já está vinculado a outro lead com telefone real,
+  // usamos esse telefone antes de cair na lista bruta de participantes do grupo.
+  // É como olhar a ficha já preenchida antes de tentar adivinhar pela sala cheia.
+  const linkedCandidates = await findLinkedLeadPhoneCandidates(leadId, groupJid, instancePhones);
+  if (linkedCandidates.length === 1) {
+    const matched = linkedCandidates[0];
+    if (dryRun) {
+      return {
+        lead_id: leadId,
+        status: 'would_recover',
+        old_phone: oldPhone,
+        new_phone: matched.phone,
+        group_jid: groupJid,
+        candidates: [matched.phone],
+        source: 'linked_lead',
+        matched_lead_id: matched.lead_id,
+        matched_lead_name: matched.lead_name,
+        message: `Telefone encontrado em lead já vinculado ao mesmo grupo: ${matched.lead_name || matched.lead_id}`,
+      };
+    }
+
+    const { error: updErr } = await ext
+      .from('leads')
+      .update({
+        lead_phone: matched.phone,
+        details: {
+          recover_phone_55_snapshot: {
+            old_phone: oldPhone,
+            recovered_at: new Date().toISOString(),
+            source_group: groupJid,
+            source: 'linked_lead',
+            matched_lead_id: matched.lead_id,
+          },
+        } as any,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', leadId);
+
+    if (updErr) {
+      await logEnrichment(leadId, 'error', { error: updErr.message, group_jid: groupJid, source: 'linked_lead' });
+      return { lead_id: leadId, status: 'error', old_phone: oldPhone, message: updErr.message };
+    }
+
+    await logEnrichment(leadId, 'recovered', {
+      group_jid: groupJid,
+      old_phone: oldPhone,
+      new_phone: matched.phone,
+      source: 'linked_lead',
+      matched_lead_id: matched.lead_id,
+      matched_lead_name: matched.lead_name,
+    });
+
+    return {
+      lead_id: leadId,
+      status: 'recovered',
+      old_phone: oldPhone,
+      new_phone: matched.phone,
+      group_jid: groupJid,
+      candidates: [matched.phone],
+      source: 'linked_lead',
+      matched_lead_id: matched.lead_id,
+      matched_lead_name: matched.lead_name,
+    };
+  }
+
+  if (linkedCandidates.length > 1) {
+    await logEnrichment(leadId, 'ambiguous', {
+      group_jid: groupJid,
+      old_phone: oldPhone,
+      candidates: linkedCandidates,
+      source: 'linked_lead',
+    });
+    return {
+      lead_id: leadId,
+      status: 'ambiguous',
+      old_phone: oldPhone,
+      group_jid: groupJid,
+      candidates: linkedCandidates.map((c) => c.phone),
+      source: 'linked_lead',
+      message: `${linkedCandidates.length} telefones encontrados em leads já vinculados ao mesmo grupo — revisão manual`,
+      diagnostics: { linked_candidates: linkedCandidates },
+    };
   }
 
   // Tenta cada instância ativa até alguma responder /group/info

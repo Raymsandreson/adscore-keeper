@@ -38,7 +38,17 @@ interface RecoverResult {
   group_jid?: string;
   candidates?: string[];
   message?: string;
+  source?: 'linked_lead' | 'group_participants';
+  matched_lead_id?: string;
+  matched_lead_name?: string | null;
   diagnostics?: {
+    linked_candidates?: Array<{
+      lead_id: string;
+      lead_name: string | null;
+      phone: string;
+      source: string;
+      group_jid?: string | null;
+    }>;
     attempts?: Array<{
       instance_name: string;
       base_url: string;
@@ -208,12 +218,26 @@ export default function RecoverPhone55Page() {
                                 {r.old_phone || '—'} → <strong>{r.new_phone}</strong>
                               </span>
                             )}
+                            {r.source === 'linked_lead' && (
+                              <span className="text-xs text-green-700">
+                                cruzado pelo lead vinculado: {r.matched_lead_name || r.matched_lead_id || 'lead encontrado'}
+                              </span>
+                            )}
                             {r.candidates && r.candidates.length > 1 && (
                               <span className="text-xs text-muted-foreground">
                                 Candidatos: {r.candidates.join(', ')}
                               </span>
                             )}
                             {r.message && <span className="text-xs text-muted-foreground">{r.message}</span>}
+                            {r.diagnostics?.linked_candidates && r.diagnostics.linked_candidates.length > 0 && (
+                              <div className="w-full rounded-md border bg-muted/30 p-2 text-xs text-muted-foreground font-mono space-y-1">
+                                {r.diagnostics.linked_candidates.map((c) => (
+                                  <div key={`${c.lead_id}-${c.phone}`}>
+                                    lead vinculado: {c.lead_name || c.lead_id} · telefone={c.phone} · origem={c.source}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                             {r.diagnostics?.attempts && r.diagnostics.attempts.length > 0 && (
                               <div className="w-full rounded-md border bg-muted/30 p-2 text-xs text-muted-foreground font-mono space-y-1">
                                 {r.diagnostics.attempts.map((a) => (
