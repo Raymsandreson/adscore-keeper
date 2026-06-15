@@ -103,11 +103,15 @@ export default function InssAdminProcessesTab() {
     setLoading(true);
     const { data, error } = await db
       .from("inss_admin_processes" as any)
-      .select("*")
+      .select("*, leads:lead_id(lead_name)")
       .is("deleted_at", null)
       .order("last_email_at", { ascending: false, nullsFirst: false });
     if (error) toast.error("Erro ao carregar: " + error.message);
-    setProcesses((data || []) as any);
+    const flat = (data || []).map((row: any) => ({
+      ...row,
+      lead_name: row.leads?.lead_name || null,
+    }));
+    setProcesses(flat as any);
     setLoading(false);
   };
 
