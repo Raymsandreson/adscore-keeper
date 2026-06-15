@@ -488,7 +488,12 @@ export default function InssAdminProcessesTab() {
                         {p.protocol_date && (
                           <div>📅 Protocolo: {fmtDate(p.protocol_date)}</div>
                         )}
-                        {p.last_email_at && (
+                        {p.case_id && p.lead_name ? (
+                          <div className="flex items-center gap-1 font-medium text-foreground">
+                            <User className="h-3 w-3" />
+                            {p.lead_name} · Requerimento {p.requerimento_number}
+                          </div>
+                        ) : p.last_email_at && (
                           <div className="flex items-center gap-1">
                             <Clock className="h-3 w-3" />
                             Última atualização: {fmtDate(p.last_email_at, true)}
