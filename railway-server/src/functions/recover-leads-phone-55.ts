@@ -65,6 +65,15 @@ function normalizeGroupJid(group: any): string | null {
   return digits.length >= 10 ? `${digits}@g.us` : null;
 }
 
+function safeBaseUrl(baseUrl: string): string {
+  try {
+    const url = new URL(baseUrl);
+    return `${url.protocol}//${url.hostname}`;
+  } catch {
+    return 'invalid_base_url';
+  }
+}
+
 function extractParticipants(data: any): string[] {
   // UazAPI v2 documenta `Participants` com P maiúsculo.
   // Mantemos fallbacks porque algumas respostas antigas vinham minúsculas/aninhadas.
@@ -85,19 +94,20 @@ function extractParticipants(data: any): string[] {
   const out = new Set<string>();
   const list = Array.isArray(raw) ? raw : typeof raw === 'object' && raw ? Object.values(raw) : [];
   for (const p of list) {
+    const item = p as any;
     const id =
-      (p as any)?.JID ||
-      (p as any)?.PhoneNumber ||
-      (p as any)?.Phone ||
-      (p as any)?.PN ||
-      (p as any)?.LID ||
-      p?.id?._serialized ||
-      p?.id?.user ||
-      p?.id ||
-      p?.jid ||
-      p?.participant ||
-      p?.phone ||
-      p?.number ||
+      item?.JID ||
+      item?.PhoneNumber ||
+      item?.Phone ||
+      item?.PN ||
+      item?.LID ||
+      item?.id?._serialized ||
+      item?.id?.user ||
+      item?.id ||
+      item?.jid ||
+      item?.participant ||
+      item?.phone ||
+      item?.number ||
       (typeof p === 'string' ? p : '');
     const digits = normalize(id);
     if (digits.length >= 10) out.add(digits);
@@ -217,7 +227,7 @@ async function processOneLead(
     const ps = info.body ? extractParticipants(info.body) : [];
     attempts.push({
       instance_name: inst.instance_name,
-      base_url: base.replace(/\/[^/]*$/, '/***'),
+      base_url: safeBaseUrl(base),
       ok: info.ok,
       http_status: info.status,
       participant_count: ps.length,
