@@ -42,6 +42,11 @@ const toIso = (creationTs: unknown): string | null => {
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 };
 
+const findInstanceByPhone = (instances: any[], phone: string | null): any | null => {
+  if (!phone) return null;
+  return instances.find((i) => digitsOnly(i?.owner_phone) === phone) || null;
+};
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -166,6 +171,7 @@ Deno.serve(async (req) => {
 
     const finalCreationIso = best?.creationIso || (existingSnapshot as any)?.group_created_at || null;
     const finalOwnerPn = best?.ownerPn || digitsOnly((existingSnapshot as any)?.owner_pn) || null;
+    const creatorInstance = findInstanceByPhone(instances || [], finalOwnerPn);
     if (best || finalCreationIso || finalOwnerPn) {
       const creationDate = finalCreationIso ? String(finalCreationIso).split("T")[0] : null;
       try {
@@ -190,6 +196,7 @@ Deno.serve(async (req) => {
         creation_iso: finalCreationIso,
         group_name: best?.subject || (existingSnapshot as any)?.group_name || "",
         owner_pn: finalOwnerPn,
+        creator_instance_name: creatorInstance?.instance_name || null,
         instance_name: best?.inst?.instance_name || null,
         tried,
       });
