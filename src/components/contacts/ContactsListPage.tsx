@@ -2115,6 +2115,15 @@ export function ContactsListPage() {
                             <Button size="icon" variant="ghost" className="h-6 w-6" title="Ver contatos do grupo" onClick={(e) => { e.stopPropagation(); handleSelectGroup(group.group_jid); }}>
                               <Users className="h-3.5 w-3.5" />
                             </Button>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-6 w-6 text-destructive hover:text-destructive"
+                              title="Excluir grupo da lista"
+                              onClick={(e) => { e.stopPropagation(); handleDeleteGroup(group.group_jid, group.group_name); }}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
                           </div>
                         </div>
                       );
