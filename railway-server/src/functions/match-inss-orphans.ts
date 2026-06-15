@@ -20,7 +20,7 @@ export const handler: RequestHandler = async (_req, res) => {
   try {
     const { data: orphans, error: oErr } = await supabase
       .from('inss_admin_processes')
-      .select('id, requerimento_number')
+      .select('id, requerimento_number, cpf_segurado, nome_segurado')
       .is('case_id', null)
       .is('lead_id', null)
       .is('deleted_at', null);
@@ -33,9 +33,18 @@ export const handler: RequestHandler = async (_req, res) => {
     for (const o of orphans || []) {
       try {
         const reqDigits = String(o.requerimento_number || '').replace(/\D/g, '');
+        const cpfDigits = String((o as any).cpf_segurado || '').replace(/\D/g, '');
+        const nome = String((o as any).nome_segurado || '').trim();
         let leadId: string | null = null;
         let caseId: string | null = null;
-        let source: 'process_number' | 'custom_field' | 'activity_title' | null = null;
+        let source:
+          | 'process_number'
+          | 'custom_field'
+          | 'activity_title'
+          | 'cpf_lead'
+          | 'cpf_contact'
+          | 'name_lead'
+          | null = null;
 
         // Estratégia 0: processo/caso já cadastrado com o nº do requerimento
         if (reqDigits) {
@@ -81,6 +90,61 @@ export const handler: RequestHandler = async (_req, res) => {
             leadId = act.lead_id || null;
             caseId = act.case_id || null;
             source = 'activity_title';
+          }
+        }
+
+        // Estratégia 3: CPF do segurado bate com leads.cpf
+        if (!leadId && cpfDigits.length === 11) {
+          const { data: leadByCpf } = await supabase
+            .from('leads')
+            .select('id')
+            .eq('cpf', cpfDigits)
+            .is('deleted_at', null)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (leadByCpf?.id) {
+            leadId = leadByCpf.id;
+            source = 'cpf_lead';
+          }
+        }
+
+        // Estratégia 4: CPF do segurado bate com um contato → pega lead vinculado
+        if (!leadId && cpfDigits.length === 11) {
+          const { data: contact } = await supabase
+            .from('contacts')
+            .select('id')
+            .eq('cpf', cpfDigits)
+            .limit(1)
+            .maybeSingle();
+          if (contact?.id) {
+            const { data: cl } = await supabase
+              .from('contact_leads')
+              .select('lead_id')
+              .eq('contact_id', contact.id)
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+            if (cl?.lead_id) {
+              leadId = cl.lead_id;
+              source = 'cpf_contact';
+            }
+          }
+        }
+
+        // Estratégia 5: nome do segurado bate com lead_name ou victim_name (ilike exato)
+        if (!leadId && nome.length >= 6) {
+          const { data: leadByName } = await supabase
+            .from('leads')
+            .select('id')
+            .or(`lead_name.ilike.${nome},victim_name.ilike.${nome}`)
+            .is('deleted_at', null)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (leadByName?.id) {
+            leadId = leadByName.id;
+            source = 'name_lead';
           }
         }
 
