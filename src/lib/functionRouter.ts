@@ -35,6 +35,7 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
   'sync-result-labels': 'railway',
   'get-whatsapp-group-info': 'railway',
   'scan-duplicate-contacts': 'railway',
+  'recover-leads-phone-55': 'railway',
 
   // --- Todas as demais ficam no Cloud por padrão ---
 };
