@@ -350,7 +350,16 @@ export const handler: RequestHandler = async (req, res) => {
                 const reqDigits = String(parsed.requerimento || '').replace(/\D/g, '');
                 let foundLeadId: string | null = null;
                 let foundCaseId: string | null = null;
-                let foundSource: 'process_number' | 'custom_field' | 'activity_title' | null = null;
+                let foundSource:
+                  | 'process_number'
+                  | 'custom_field'
+                  | 'activity_title'
+                  | 'cpf_lead'
+                  | 'cpf_contact'
+                  | 'name_lead'
+                  | null = null;
+                const cpfDigits = String(parsed.cpf || '').replace(/\D/g, '');
+                const nome = String(parsed.nome || '').trim();
 
                 if (reqDigits) {
                   const { data: proc } = await supabase
@@ -396,6 +405,61 @@ export const handler: RequestHandler = async (req, res) => {
                   }
                 }
 
+                // CPF do segurado em leads
+                if (!foundLeadId && cpfDigits.length === 11) {
+                  const { data: leadByCpf } = await supabase
+                    .from('leads')
+                    .select('id')
+                    .eq('cpf', cpfDigits)
+                    .is('deleted_at', null)
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+                  if (leadByCpf?.id) {
+                    foundLeadId = leadByCpf.id;
+                    foundSource = 'cpf_lead';
+                  }
+                }
+
+                // CPF do segurado em contatos → lead vinculado
+                if (!foundLeadId && cpfDigits.length === 11) {
+                  const { data: contact } = await supabase
+                    .from('contacts')
+                    .select('id')
+                    .eq('cpf', cpfDigits)
+                    .limit(1)
+                    .maybeSingle();
+                  if (contact?.id) {
+                    const { data: cl } = await supabase
+                      .from('contact_leads')
+                      .select('lead_id')
+                      .eq('contact_id', contact.id)
+                      .order('created_at', { ascending: false })
+                      .limit(1)
+                      .maybeSingle();
+                    if (cl?.lead_id) {
+                      foundLeadId = cl.lead_id;
+                      foundSource = 'cpf_contact';
+                    }
+                  }
+                }
+
+                // Nome do segurado bate com lead_name/victim_name
+                if (!foundLeadId && nome.length >= 6) {
+                  const { data: leadByName } = await supabase
+                    .from('leads')
+                    .select('id')
+                    .or(`lead_name.ilike.${nome},victim_name.ilike.${nome}`)
+                    .is('deleted_at', null)
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+                  if (leadByName?.id) {
+                    foundLeadId = leadByName.id;
+                    foundSource = 'name_lead';
+                  }
+                }
+
                 if (!foundLeadId && foundCaseId) {
                   const { data: c } = await supabase
                     .from('legal_cases')
@@ -406,7 +470,7 @@ export const handler: RequestHandler = async (req, res) => {
                 }
 
                 if (foundLeadId || foundCaseId) {
-                  if ((foundSource === 'activity_title' || foundSource === 'process_number') && foundLeadId) {
+                  if (foundSource && foundSource !== 'custom_field' && foundLeadId) {
                     await supabase
                       .from('lead_custom_field_values')
                       .upsert(
