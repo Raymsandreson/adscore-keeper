@@ -1936,8 +1936,12 @@ export function ContactsListPage() {
               const creatorDisplay = (g: { owner_phone: string | null; creator_instance_name: string | null }): string => {
                 if (g.creator_instance_name) return `Instância ${g.creator_instance_name}`;
                 if (g.owner_phone) {
-                  const name = contactNameByPhone.get(g.owner_phone);
-                  if (name) return name;
+                  const direct = contactNameByPhone.get(g.owner_phone);
+                  if (direct) return direct;
+                  const leadName = creatorLeadNameByPhoneTail.get(g.owner_phone.slice(-8));
+                  if (leadName) return `${leadName} (lead)`;
+                  const pushName = creatorPushNameByPhone.get(g.owner_phone);
+                  if (pushName) return pushName;
                   return formatPhoneBR(g.owner_phone);
                 }
                 return '—';
@@ -1945,13 +1949,19 @@ export function ContactsListPage() {
               const creatorTooltip = (g: { owner_phone: string | null; creator_instance_name: string | null }): string => {
                 const parts: string[] = [];
                 if (g.creator_instance_name) parts.push(`Instância: ${g.creator_instance_name}`);
-                if (g.owner_phone) parts.push(`Telefone: ${formatPhoneBR(g.owner_phone)}`);
+                if (g.owner_phone) {
+                  parts.push(`Telefone: ${formatPhoneBR(g.owner_phone)}`);
+                  const leadName = creatorLeadNameByPhoneTail.get(g.owner_phone.slice(-8));
+                  if (leadName) parts.push(`Lead: ${leadName}`);
+                  const pushName = creatorPushNameByPhone.get(g.owner_phone);
+                  if (pushName && !contactNameByPhone.get(g.owner_phone)) parts.push(`WhatsApp: ${pushName}`);
+                }
                 return parts.length ? parts.join(' · ') : 'Criador do grupo desconhecido';
               };
               // Compat: usado em filtro e ordenação (texto único pesquisável)
               const creatorLabel = (g: { owner_phone: string | null; creator_instance_name: string | null }): string => {
                 const disp = creatorDisplay(g);
-                if (g.owner_phone && !g.creator_instance_name && contactNameByPhone.get(g.owner_phone)) {
+                if (g.owner_phone && !g.creator_instance_name && disp !== formatPhoneBR(g.owner_phone)) {
                   return `${disp} (${formatPhoneBR(g.owner_phone)})`;
                 }
                 return disp;
