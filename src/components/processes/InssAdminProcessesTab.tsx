@@ -410,6 +410,16 @@ export default function InssAdminProcessesTab() {
             <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
             {syncing ? "Sincronizando..." : "Sincronizar agora"}
           </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={runAutoMatch}
+            className="gap-2"
+            title="Tenta vincular órfãos a leads que tenham o nº do requerimento salvo"
+          >
+            <Sparkles className="h-4 w-4" />
+            Vincular órfãos
+          </Button>
         </div>
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
