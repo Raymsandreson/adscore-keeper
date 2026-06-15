@@ -49,6 +49,64 @@ export function ContactsListPage() {
   const [linkResults, setLinkResults] = useState<Array<{ id: string; lead_name: string | null; case_number: string | null; lead_number: number | null; lead_status: string | null }>>([]);
   const [linking, setLinking] = useState<string | null>(null);
 
+  // Auto-busca de leads no diálogo de vínculo (com debounce + busca por telefone via contatos)
+  useEffect(() => {
+    if (!linkDialog) return;
+    const q = linkQuery.trim();
+    if (q.length < 2) { setLinkResults([]); return; }
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      setLinkSearching(true);
+      try {
+        const digits = q.replace(/\D/g, '');
+        const isNum = /^\d+$/.test(q);
+        const acc = new Map<string, any>();
+
+        // 1) Busca direta em leads (nome, nº lead, nº caso, telefone)
+        {
+          let query = externalSupabase
+            .from('leads')
+            .select('id, lead_name, case_number, lead_number, lead_status, lead_phone')
+            .limit(20);
+          if (isNum) {
+            query = query.or(`case_number.eq.${q},lead_number.eq.${q},lead_phone.ilike.%${q}%`);
+          } else if (digits.length >= 4) {
+            query = query.or(`lead_name.ilike.%${q}%,lead_phone.ilike.%${digits}%`);
+          } else {
+            query = query.ilike('lead_name', `%${q}%`);
+          }
+          const { data } = await query;
+          (data || []).forEach((l: any) => acc.set(l.id, l));
+        }
+
+        // 2) Se parece telefone, procura contatos por phone e puxa os leads vinculados
+        if (digits.length >= 4) {
+          const { data: cts } = await externalSupabase
+            .from('contacts')
+            .select('lead_id, phone, full_name')
+            .ilike('phone', `%${digits}%`)
+            .not('lead_id', 'is', null)
+            .limit(20);
+          const ids = Array.from(new Set((cts || []).map((c: any) => c.lead_id).filter(Boolean)));
+          if (ids.length) {
+            const { data: extra } = await externalSupabase
+              .from('leads')
+              .select('id, lead_name, case_number, lead_number, lead_status, lead_phone')
+              .in('id', ids);
+            (extra || []).forEach((l: any) => { if (!acc.has(l.id)) acc.set(l.id, l); });
+          }
+        }
+
+        if (!cancelled) setLinkResults(Array.from(acc.values()) as any);
+      } catch (err: any) {
+        if (!cancelled) toast.error('Erro na busca: ' + err.message);
+      } finally {
+        if (!cancelled) setLinkSearching(false);
+      }
+    }, 300);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [linkQuery, linkDialog]);
+
   const openGroupChat = (jid: string) => {
     if (!jid) return;
     const g = groups.find(x => x.group_jid === jid);
@@ -1954,13 +2012,21 @@ export function ContactsListPage() {
                             {highlight(group.group_name, groupSearchScope === 'group')}
                           </span>
                           <span
-                            className={`relative text-sm truncate pl-3 text-center before:content-[''] before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-3/5 before:w-px before:bg-border/50 ${group.lead_id ? 'cursor-pointer hover:underline' : 'text-muted-foreground italic'}`}
-                            title={group.lead_id ? 'Abrir lead' : 'Sem lead vinculado'}
-                            onClick={() => group.lead_id && openGroupLead(group.group_jid)}
+                            className={`relative text-sm truncate pl-3 text-center before:content-[''] before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-3/5 before:w-px before:bg-border/50 cursor-pointer hover:underline ${group.lead_id ? '' : 'text-emerald-600 italic font-medium'}`}
+                            title={group.lead_id ? 'Abrir lead' : 'Clique para vincular ou criar um lead'}
+                            onClick={() => {
+                              if (group.lead_id) {
+                                openGroupLead(group.group_jid);
+                              } else {
+                                setLinkDialog({ groupJid: group.group_jid, groupName: group.group_name || null });
+                                setLinkQuery('');
+                                setLinkResults([]);
+                              }
+                            }}
                           >
                             {group.lead_name
                               ? highlight(group.lead_name, groupSearchScope === 'lead')
-                              : (group.lead_id ? '(sem nome)' : '— sem vínculo —')}
+                              : (group.lead_id ? '(sem nome)' : '+ vincular lead')}
                           </span>
                           <span
                             className={`text-[11px] tabular-nums ${group.created_at ? 'text-foreground' : 'text-muted-foreground italic'}`}
@@ -2086,7 +2152,16 @@ export function ContactsListPage() {
                               )}
                             </span>
                           ) : (
-                            <span>—</span>
+                            <span
+                              className="cursor-pointer hover:underline text-emerald-600 italic font-medium"
+                              title="Clique para vincular ou criar um lead"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setLinkDialog({ groupJid: group.group_jid, groupName: group.group_name || null });
+                                setLinkQuery('');
+                                setLinkResults([]);
+                              }}
+                            >+ vincular lead</span>
                           )}{' '}
                           • {group.contact_count} contato(s)
                           {group.created_at && (
@@ -2523,42 +2598,20 @@ export function ContactsListPage() {
               Grupo: <span className="font-medium text-foreground">{linkDialog?.groupName || linkDialog?.groupJid}</span>
             </p>
             <div className="space-y-1.5">
-              <Label className="text-xs">Buscar lead existente (nome, nº lead, nº caso)</Label>
+              <Label className="text-xs">Buscar lead existente (nome, telefone, nº lead, nº caso)</Label>
               <div className="flex gap-2">
                 <Input
                   autoFocus
                   value={linkQuery}
                   onChange={(e) => setLinkQuery(e.target.value)}
-                  onKeyDown={async (e) => {
-                    if (e.key !== 'Enter') return;
-                    const q = linkQuery.trim();
-                    if (!q) return;
-                    setLinkSearching(true);
-                    try {
-                      const isNum = /^\d+$/.test(q);
-                      let query = externalSupabase
-                        .from('leads')
-                        .select('id, lead_name, case_number, lead_number, lead_status')
-                        .limit(20);
-                      if (isNum) {
-                        query = query.or(`case_number.eq.${q},lead_number.eq.${q},lead_name.ilike.%${q}%`);
-                      } else {
-                        query = query.ilike('lead_name', `%${q}%`);
-                      }
-                      const { data, error } = await query;
-                      if (error) throw error;
-                      setLinkResults((data || []) as any);
-                    } catch (err: any) {
-                      toast.error('Erro na busca: ' + err.message);
-                    } finally {
-                      setLinkSearching(false);
-                    }
-                  }}
-                  placeholder="Digite e tecle Enter…"
-                  disabled={linkSearching || !!linking}
+                  placeholder="Digite nome ou telefone…"
+                  disabled={!!linking}
                 />
                 {linkSearching && <Loader2 className="h-4 w-4 animate-spin self-center" />}
               </div>
+              <p className="text-[10px] text-muted-foreground">
+                Busca automática — também procura pelo telefone dos contatos do grupo.
+              </p>
             </div>
             {linkResults.length > 0 && (
               <ScrollArea className="max-h-64 border rounded-md">
@@ -2600,7 +2653,7 @@ export function ContactsListPage() {
                       <div className="min-w-0">
                         <div className="text-sm font-medium truncate">{l.lead_name || '(sem nome)'}</div>
                         <div className="text-[11px] text-muted-foreground">
-                          {l.lead_number ? `LEAD-${l.lead_number}` : '—'} • Nº caso: {l.case_number || '—'} • {l.lead_status || 'N/A'}
+                          {l.lead_number ? `LEAD-${l.lead_number}` : '—'} • Nº caso: {l.case_number || '—'} • {l.lead_status || 'N/A'}{(l as any).lead_phone ? ` • 📞 ${(l as any).lead_phone}` : ''}
                         </div>
                       </div>
                       {linking === l.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4 text-emerald-600" />}
