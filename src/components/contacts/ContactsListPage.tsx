@@ -1954,13 +1954,21 @@ export function ContactsListPage() {
                             {highlight(group.group_name, groupSearchScope === 'group')}
                           </span>
                           <span
-                            className={`relative text-sm truncate pl-3 text-center before:content-[''] before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-3/5 before:w-px before:bg-border/50 ${group.lead_id ? 'cursor-pointer hover:underline' : 'text-muted-foreground italic'}`}
-                            title={group.lead_id ? 'Abrir lead' : 'Sem lead vinculado'}
-                            onClick={() => group.lead_id && openGroupLead(group.group_jid)}
+                            className={`relative text-sm truncate pl-3 text-center before:content-[''] before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-3/5 before:w-px before:bg-border/50 cursor-pointer hover:underline ${group.lead_id ? '' : 'text-emerald-600 italic font-medium'}`}
+                            title={group.lead_id ? 'Abrir lead' : 'Clique para vincular ou criar um lead'}
+                            onClick={() => {
+                              if (group.lead_id) {
+                                openGroupLead(group.group_jid);
+                              } else {
+                                setLinkDialog({ groupJid: group.group_jid, groupName: group.group_name || null });
+                                setLinkQuery('');
+                                setLinkResults([]);
+                              }
+                            }}
                           >
                             {group.lead_name
                               ? highlight(group.lead_name, groupSearchScope === 'lead')
-                              : (group.lead_id ? '(sem nome)' : '— sem vínculo —')}
+                              : (group.lead_id ? '(sem nome)' : '+ vincular lead')}
                           </span>
                           <span
                             className={`text-[11px] tabular-nums ${group.created_at ? 'text-foreground' : 'text-muted-foreground italic'}`}
