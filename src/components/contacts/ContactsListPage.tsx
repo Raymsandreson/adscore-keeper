@@ -123,25 +123,41 @@ export function ContactsListPage() {
   };
 
   const [refreshingDateFor, setRefreshingDateFor] = useState<Set<string>>(new Set());
-  const handleRefreshCreationDate = async (jid: string) => {
+  const normalizeOwnerPhone = (value: unknown): string | null => {
+    const digits = String(value || '').split('@')[0].replace(/\D/g, '');
+    return digits || null;
+  };
+
+  const applyGroupCreationPayload = (jid: string, data: any) => {
+    const iso: string | null = data?.creation_iso || data?.creation_date || null;
+    const ownerPhone = normalizeOwnerPhone(data?.owner_pn);
+    setGroups(prev => prev.map(g => g.group_jid === jid ? {
+      ...g,
+      ...(iso ? { created_at: iso } : {}),
+      ...(ownerPhone ? { owner_phone: ownerPhone } : {}),
+    } : g));
+    return { iso, ownerPhone };
+  };
+
+  const handleRefreshCreationDate = async (jid: string, instanceName?: string | null) => {
     if (!jid) return;
     setRefreshingDateFor(prev => { const n = new Set(prev); n.add(jid); return n; });
     try {
       const { data, error } = await cloudFunctions.invoke<any>('fetch-group-creation-date', {
-        body: { group_jid: jid },
+        body: { group_jid: jid, instance_name: instanceName || undefined },
       });
       if (error) throw error;
       if (!data?.success) {
         toast.error(data?.error || 'Não foi possível buscar a data');
         return;
       }
-      const iso: string | null = data.creation_iso || data.creation_date || null;
-      if (!iso) {
-        toast.warning('Grupo encontrado, mas a UazAPI não retornou a data de criação');
+      const { iso, ownerPhone } = applyGroupCreationPayload(jid, data);
+      if (!iso && !ownerPhone) {
+        toast.warning('Grupo encontrado, mas a UazAPI não retornou data nem criador');
         return;
       }
-      setGroups(prev => prev.map(g => g.group_jid === jid ? { ...g, created_at: iso } : g));
-      toast.success('Data atualizada');
+      fetchGroups();
+      toast.success(ownerPhone ? 'Data/criador atualizados' : 'Data atualizada');
     } catch (err: any) {
       console.error('handleRefreshCreationDate error:', err);
       toast.error('Falha: ' + (err?.message || 'erro'));
@@ -154,8 +170,8 @@ export function ContactsListPage() {
   const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number; ok: number; fail: number } | null>(null);
   const bulkCancelRef = useRef(false);
   const handleBulkRefreshCreationDates = async (jids: string[]) => {
-    if (!jids.length) { toast.info('Nenhum grupo sem data para atualizar'); return; }
-    if (!confirm(`Atualizar a data de criação de ${jids.length} grupo(s)? Pode levar alguns minutos.`)) return;
+    if (!jids.length) { toast.info('Nenhum grupo sem data ou criador para atualizar'); return; }
+    if (!confirm(`Atualizar data/criador de ${jids.length} grupo(s)? Pode levar alguns minutos.`)) return;
     bulkCancelRef.current = false;
     setBulkRefreshing(true);
     setBulkProgress({ done: 0, total: jids.length, ok: 0, fail: 0 });
@@ -167,11 +183,12 @@ export function ContactsListPage() {
         const jid = jids[my];
         setRefreshingDateFor(prev => { const n = new Set(prev); n.add(jid); return n; });
         try {
-          const { data, error } = await cloudFunctions.invoke<any>('fetch-group-creation-date', { body: { group_jid: jid } });
+          const group = groups.find(g => g.group_jid === jid);
+          const { data, error } = await cloudFunctions.invoke<any>('fetch-group-creation-date', { body: { group_jid: jid, instance_name: group?.instance_name || undefined } });
           if (error || !data?.success) { fail++; }
           else {
-            const iso: string | null = data.creation_iso || data.creation_date || null;
-            if (iso) { setGroups(prev => prev.map(g => g.group_jid === jid ? { ...g, created_at: iso } : g)); ok++; }
+            const { iso, ownerPhone } = applyGroupCreationPayload(jid, data);
+            if (iso || ownerPhone) { ok++; }
             else { fail++; }
           }
         } catch { fail++; }
@@ -183,6 +200,7 @@ export function ContactsListPage() {
     };
     await Promise.all(Array.from({ length: Math.min(CONCURRENCY, jids.length) }, worker));
     setBulkRefreshing(false);
+    fetchGroups();
     if (bulkCancelRef.current) toast.warning(`Cancelado: ${ok} atualizados, ${fail} falharam`);
     else toast.success(`Concluído: ${ok} atualizados, ${fail} falharam`);
     setTimeout(() => setBulkProgress(null), 4000);
@@ -1221,17 +1239,17 @@ export function ContactsListPage() {
               className="shrink-0 gap-2"
               disabled={bulkRefreshing}
               onClick={() => {
-                const missing = groups.filter(g => !g.created_at).map(g => g.group_jid);
+                const missing = groups.filter(g => !g.created_at || !g.owner_phone).map(g => g.group_jid);
                 handleBulkRefreshCreationDates(missing);
               }}
-              title="Buscar na UazAPI a data de criação de todos os grupos sem data"
+              title="Buscar na UazAPI a data de criação e o criador dos grupos incompletos"
             >
               {bulkRefreshing
                 ? <Loader2 className="h-4 w-4 animate-spin" />
                 : <RefreshCw className="h-4 w-4" />}
               {bulkRefreshing && bulkProgress
                 ? `Atualizando ${bulkProgress.done}/${bulkProgress.total}`
-                : `Atualizar datas em lote${groups.filter(g => !g.created_at).length ? ` (${groups.filter(g => !g.created_at).length})` : ''}`}
+                : `Atualizar dados em lote${groups.filter(g => !g.created_at || !g.owner_phone).length ? ` (${groups.filter(g => !g.created_at || !g.owner_phone).length})` : ''}`}
             </Button>
             {bulkRefreshing && (
               <Button variant="ghost" size="sm" className="shrink-0" onClick={() => { bulkCancelRef.current = true; }}>
@@ -2153,7 +2171,7 @@ export function ContactsListPage() {
                               className="h-5 w-5 shrink-0 opacity-60 hover:opacity-100"
                               title={group.created_at ? 'Atualizar data deste grupo (UazAPI)' : 'Buscar data de criação na UazAPI'}
                               disabled={refreshingDateFor.has(group.group_jid)}
-                              onClick={(e) => { e.stopPropagation(); handleRefreshCreationDate(group.group_jid); }}
+                              onClick={(e) => { e.stopPropagation(); handleRefreshCreationDate(group.group_jid, group.instance_name); }}
                             >
                               {refreshingDateFor.has(group.group_jid)
                                 ? <Loader2 className="h-3 w-3 animate-spin" />
