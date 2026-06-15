@@ -123,21 +123,39 @@ export function ContactsListPage() {
   };
 
   const [refreshingDateFor, setRefreshingDateFor] = useState<Set<string>>(new Set());
+  const instancePhoneMapRef = useRef<Map<string, string>>(new Map());
   const normalizeOwnerPhone = (value: unknown): string | null => {
     const digits = String(value || '').split('@')[0].replace(/\D/g, '');
     return digits || null;
   };
 
+  const resolveInstanceNameByPhone = (phone: string | null): string | null => {
+    if (!phone) return null;
+    const map = instancePhoneMapRef.current;
+    if (map.has(phone)) return map.get(phone) || null;
+    // Fallback por últimos 8 dígitos (DDI/9º dígito podem divergir entre fontes).
+    const tail = phone.slice(-8);
+    if (tail.length >= 8) {
+      for (const [ph, nm] of map.entries()) {
+        if (ph.slice(-8) === tail) return nm;
+      }
+    }
+    return null;
+  };
+
   const applyGroupCreationPayload = (jid: string, data: any) => {
     const iso: string | null = data?.creation_iso || data?.creation_date || null;
     const ownerPhone = normalizeOwnerPhone(data?.owner_pn);
+    const creatorInstance: string | null =
+      (data?.creator_instance_name ? String(data.creator_instance_name) : null)
+      || resolveInstanceNameByPhone(ownerPhone);
     setGroups(prev => prev.map(g => g.group_jid === jid ? {
       ...g,
       ...(iso ? { created_at: iso } : {}),
       ...(ownerPhone ? { owner_phone: ownerPhone } : {}),
-      ...(data?.creator_instance_name ? { creator_instance_name: String(data.creator_instance_name) } : {}),
+      ...(creatorInstance ? { creator_instance_name: creatorInstance } : {}),
     } : g));
-    return { iso, ownerPhone };
+    return { iso, ownerPhone, creatorInstance };
   };
 
   const handleRefreshCreationDate = async (jid: string, instanceName?: string | null) => {
