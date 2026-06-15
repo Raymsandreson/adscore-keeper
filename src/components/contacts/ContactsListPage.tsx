@@ -123,21 +123,39 @@ export function ContactsListPage() {
   };
 
   const [refreshingDateFor, setRefreshingDateFor] = useState<Set<string>>(new Set());
+  const instancePhoneMapRef = useRef<Map<string, string>>(new Map());
   const normalizeOwnerPhone = (value: unknown): string | null => {
     const digits = String(value || '').split('@')[0].replace(/\D/g, '');
     return digits || null;
   };
 
+  const resolveInstanceNameByPhone = (phone: string | null): string | null => {
+    if (!phone) return null;
+    const map = instancePhoneMapRef.current;
+    if (map.has(phone)) return map.get(phone) || null;
+    // Fallback por últimos 8 dígitos (DDI/9º dígito podem divergir entre fontes).
+    const tail = phone.slice(-8);
+    if (tail.length >= 8) {
+      for (const [ph, nm] of map.entries()) {
+        if (ph.slice(-8) === tail) return nm;
+      }
+    }
+    return null;
+  };
+
   const applyGroupCreationPayload = (jid: string, data: any) => {
     const iso: string | null = data?.creation_iso || data?.creation_date || null;
     const ownerPhone = normalizeOwnerPhone(data?.owner_pn);
+    const creatorInstance: string | null =
+      (data?.creator_instance_name ? String(data.creator_instance_name) : null)
+      || resolveInstanceNameByPhone(ownerPhone);
     setGroups(prev => prev.map(g => g.group_jid === jid ? {
       ...g,
       ...(iso ? { created_at: iso } : {}),
       ...(ownerPhone ? { owner_phone: ownerPhone } : {}),
-      ...(data?.creator_instance_name ? { creator_instance_name: String(data.creator_instance_name) } : {}),
+      ...(creatorInstance ? { creator_instance_name: creatorInstance } : {}),
     } : g));
-    return { iso, ownerPhone };
+    return { iso, ownerPhone, creatorInstance };
   };
 
   const handleRefreshCreationDate = async (jid: string, instanceName?: string | null) => {
@@ -177,7 +195,7 @@ export function ContactsListPage() {
     setBulkRefreshing(true);
     setBulkProgress({ done: 0, total: jids.length, ok: 0, fail: 0 });
     const CONCURRENCY = 3;
-    let idx = 0; let ok = 0; let fail = 0;
+    let idx = 0; let ok = 0; let fail = 0; let missingInstance = 0;
     const worker = async () => {
       while (idx < jids.length && !bulkCancelRef.current) {
         const my = idx++;
@@ -188,8 +206,13 @@ export function ContactsListPage() {
           const { data, error } = await cloudFunctions.invoke<any>('fetch-group-creation-date', { body: { group_jid: jid, instance_name: group?.instance_name || undefined } });
           if (error || !data?.success) { fail++; }
           else {
-            const { iso, ownerPhone } = applyGroupCreationPayload(jid, data);
-            if (iso || ownerPhone) { ok++; }
+            const { iso, ownerPhone, creatorInstance } = applyGroupCreationPayload(jid, data);
+            if (iso || ownerPhone) {
+              ok++;
+              // Validação: criador identificado mas instância não foi resolvida
+              // (telefone fora do mapa atual de instâncias). Contabiliza pra avisar.
+              if (ownerPhone && !creatorInstance) missingInstance++;
+            }
             else { fail++; }
           }
         } catch { fail++; }
@@ -203,7 +226,12 @@ export function ContactsListPage() {
     setBulkRefreshing(false);
     fetchGroups();
     if (bulkCancelRef.current) toast.warning(`Cancelado: ${ok} atualizados, ${fail} falharam`);
-    else toast.success(`Concluído: ${ok} atualizados, ${fail} falharam`);
+    else {
+      toast.success(`Concluído: ${ok} atualizados, ${fail} falharam`);
+      if (missingInstance > 0) {
+        toast.warning(`${missingInstance} grupo(s) com criador fora do mapa de instâncias atuais (exibido só o telefone).`);
+      }
+    }
     setTimeout(() => setBulkProgress(null), 4000);
   };
 
@@ -661,6 +689,9 @@ export function ContactsListPage() {
         }
       }
 
+      // Espelha o mapa em ref pra que o lote/handler individual consigam resolver
+      // creator_instance_name mesmo quando o backend não retornar.
+      instancePhoneMapRef.current = instancePhoneToName;
 
       setGroups(Array.from(groupMap.values()));
     } catch (err) {

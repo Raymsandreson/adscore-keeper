@@ -1,5 +1,5 @@
 import { getExternalClient } from "../_shared/external-client.ts";
-const FUNCTION_VERSION = 3;
+const FUNCTION_VERSION = 4;
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-request-id",
@@ -44,7 +44,12 @@ const toIso = (creationTs: unknown): string | null => {
 
 const findInstanceByPhone = (instances: any[], phone: string | null): any | null => {
   if (!phone) return null;
-  return instances.find((i) => digitsOnly(i?.owner_phone) === phone) || null;
+  const exact = instances.find((i) => digitsOnly(i?.owner_phone) === phone);
+  if (exact) return exact;
+  // Fallback por últimos 8 dígitos — variações de DDI/9º dígito.
+  const tail = phone.slice(-8);
+  if (tail.length < 8) return null;
+  return instances.find((i) => digitsOnly(i?.owner_phone).slice(-8) === tail) || null;
 };
 
 Deno.serve(async (req) => {
