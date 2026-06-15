@@ -298,6 +298,7 @@ function SidebarLayout() {
                 <Route path="/debug/hooks" element={<ProtectedRoute><HookDebugPage /></ProtectedRoute>} />
                 <Route path="/debug/group-audit" element={<ProtectedRoute><GroupAuditLogPage /></ProtectedRoute>} />
                 <Route path="/debug/db-drift" element={<ProtectedRoute><DbDriftPage /></ProtectedRoute>} />
+                <Route path="/debug/recover-phone-55" element={<ProtectedRoute><RecoverPhone55Page /></ProtectedRoute>} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </Suspense>
