@@ -739,7 +739,9 @@ export function ContactsListPage() {
       if (syncingRef.current) return; // silencia durante sync em massa
       if (refreshTimer) clearTimeout(refreshTimer);
       refreshTimer = setTimeout(() => {
-        fetchGroups();
+        // Refresh em segundo plano — sem trocar a lista por spinner, evita o
+        // "piscar" que acontecia a cada upsert do snapshot.
+        fetchGroups({ silent: true });
       }, 2500);
     };
 
