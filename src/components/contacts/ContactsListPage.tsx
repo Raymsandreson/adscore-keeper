@@ -332,6 +332,11 @@ export function ContactsListPage() {
   const [groupsLoading, setGroupsLoading] = useState(false);
   const [groupsLastUpdatedAt, setGroupsLastUpdatedAt] = useState<Date | null>(null);
   const [groupsRefreshingSilently, setGroupsRefreshingSilently] = useState(false);
+  // Fallback lookups para nome do criador do grupo (cascata: lead → push_name)
+  // Chave de leadNameByPhoneTail = últimos 8 dígitos do telefone (cobre +55/0/sem DDI)
+  // Chave de pushNameByPhone = telefone completo (formato igual a whatsapp_messages.phone)
+  const [creatorLeadNameByPhoneTail, setCreatorLeadNameByPhoneTail] = useState<Map<string, string>>(new Map());
+  const [creatorPushNameByPhone, setCreatorPushNameByPhone] = useState<Map<string, string>>(new Map());
   const [groupSearch, setGroupSearch] = useState('');
   const deferredGroupSearch = useDeferredValue(groupSearch);
   const [groupSort, setGroupSort] = useState<'alpha' | 'number' | 'prefix' | 'date'>('date');
