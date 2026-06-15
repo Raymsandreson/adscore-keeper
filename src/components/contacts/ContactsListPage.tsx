@@ -2415,6 +2415,80 @@ export function ContactsListPage() {
         }}
         mode="sheet"
       />
+
+      <Dialog open={!!editCaseDialog} onOpenChange={(o) => { if (!o && !editCaseSaving) setEditCaseDialog(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Editar nº do funil</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <p className="text-xs text-muted-foreground">
+              Lead: <span className="font-medium text-foreground">{editCaseDialog?.currentName}</span>
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Salva em <code>leads.case_number</code>, regenera o nome do lead e renomeia o grupo no WhatsApp.
+            </p>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Novo nº (ex: 1448)</Label>
+              <Input
+                autoFocus
+                value={editCaseValue}
+                onChange={(e) => setEditCaseValue(e.target.value)}
+                placeholder="1448"
+                disabled={editCaseSaving}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setEditCaseDialog(null)} disabled={editCaseSaving}>Cancelar</Button>
+            <Button
+              disabled={editCaseSaving || !editCaseValue.trim() || editCaseValue.trim() === editCaseDialog?.currentNumber}
+              onClick={async () => {
+                if (!editCaseDialog) return;
+                const newNumber = editCaseValue.trim();
+                setEditCaseSaving(true);
+                try {
+                  const { error: upErr } = await externalSupabase
+                    .from('leads')
+                    .update({ case_number: newNumber })
+                    .eq('id', editCaseDialog.leadId);
+                  if (upErr) {
+                    toast.error('Falha ao salvar: ' + upErr.message);
+                    return;
+                  }
+                  const { data, error } = await cloudFunctions.invoke<any>('regenerate-lead-name', {
+                    body: { lead_id: editCaseDialog.leadId },
+                  });
+                  if (error || data?.success === false) {
+                    toast.warning('Nº salvo, mas falhou ao renomear grupo: ' + (data?.error || error?.message || ''));
+                  } else {
+                    toast.success(
+                      `Atualizado para ${data?.lead_name || newNumber}` +
+                        (data?.group_renamed ? ' (grupo renomeado)' : ''),
+                    );
+                  }
+                  // Atualiza row localmente
+                  setGroups((prev) => prev.map((g) =>
+                    g.group_jid === editCaseDialog.groupJid
+                      ? {
+                          ...g,
+                          lead_name: data?.lead_name || g.lead_name,
+                          group_name: data?.group_renamed && data?.lead_name ? data.lead_name : g.group_name,
+                        }
+                      : g,
+                  ));
+                  setEditCaseDialog(null);
+                } finally {
+                  setEditCaseSaving(false);
+                }
+              }}
+            >
+              {editCaseSaving ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+              Salvar e renomear
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
