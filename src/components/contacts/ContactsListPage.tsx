@@ -296,7 +296,7 @@ export function ContactsListPage() {
       // 2.b) Fallback: se o join veio sem lead_name (cache de FK falhando), buscar leads
       //      diretamente por IN(lead_id) para garantir que o nome aparece na auditoria.
       const leadIdsNeeded = Array.from(groupMap.values())
-        .filter(g => g.lead_id && (!g.lead_name || !g.board_id))
+        .filter(g => g.lead_id && (!g.lead_name || !g.board_id || !g.case_number))
         .map(g => g.lead_id as string);
       if (leadIdsNeeded.length > 0) {
         const uniq = Array.from(new Set(leadIdsNeeded));
@@ -305,7 +305,7 @@ export function ContactsListPage() {
           const chunk = uniq.slice(i, i + chunkSize);
           const { data: leadsData } = await externalSupabase
             .from('leads')
-            .select('id, lead_name, lead_status, created_at, board_id, lead_number, product_service_id')
+            .select('id, lead_name, lead_status, created_at, board_id, lead_number, product_service_id, case_number')
             .in('id', chunk);
           const leadMap = new Map<string, any>();
           (leadsData || []).forEach((l: any) => leadMap.set(l.id, l));
@@ -318,6 +318,7 @@ export function ContactsListPage() {
               if (!g.board_id && l.board_id) g.board_id = l.board_id;
               if (g.lead_number == null && l.lead_number != null) g.lead_number = l.lead_number;
               if (!g.product_service_id && l.product_service_id) g.product_service_id = l.product_service_id;
+              if (!g.case_number && l.case_number) g.case_number = String(l.case_number);
             }
           });
         }
