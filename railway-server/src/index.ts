@@ -95,11 +95,15 @@ app.use('/functions', (req, res, next) => {
 
 // Health check
 app.get('/health', (_req, res) => {
+  const gmailKeys = Object.keys(process.env)
+    .filter((k) => k.startsWith('GOOGLE_MAIL_API_KEY'))
+    .map((k) => ({ name: k, hasValue: !!(process.env[k] && process.env[k]!.trim()) }));
   res.json({
     status: 'ok',
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
     functions: Object.keys(functionHandlers),
+    gmailKeys,
   });
 });
 
