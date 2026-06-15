@@ -106,13 +106,19 @@ Deno.serve(async (req) => {
         if (!res.ok) continue;
 
         const data = await res.json();
-        
+
         // UazAPI may return creation timestamp in different fields
-        const creationTs = data?.creation || data?.GroupCreated || data?.created_at || 
+        const creationTs = data?.creation || data?.GroupCreated || data?.created_at ||
           data?.data?.creation || data?.data?.GroupCreated;
 
+        // Extrai owner (criador) — UazAPI usa OwnerPN (CamelCase) ou owner_pn
+        const ownerRaw: string = String(
+          data?.OwnerPN || data?.owner_pn || data?.owner || data?.creator ||
+          data?.data?.OwnerPN || data?.data?.owner_pn || data?.data?.owner || data?.data?.creator || ""
+        );
+        const ownerPn = ownerRaw || null;
+
         if (creationTs) {
-          // Convert Unix timestamp (seconds) to ISO date/timestamp
           let creationDate: string;
           let creationIso: string;
           if (typeof creationTs === "number") {
@@ -125,19 +131,49 @@ Deno.serve(async (req) => {
             creationDate = creationIso.split("T")[0];
           }
 
-          const subject = data?.subject || data?.name || groups?.[0]?.group_name || "";
+          const subject = data?.subject || data?.name || data?.Name || groups?.[0]?.group_name || "";
 
-          // Persiste no snapshot pra próximas leituras não precisarem ir na UazAPI
+          // Lê snapshot existente pra MERGE de seen_in_instances (não sobrescrever)
+          let mergedSeen: any[] = [];
           try {
+            const { data: existing } = await extClient
+              .from("whatsapp_groups_uazapi_snapshot")
+              .select("seen_in_instances")
+              .eq("jid", groupJid)
+              .maybeSingle();
+            const prev = Array.isArray((existing as any)?.seen_in_instances)
+              ? (existing as any).seen_in_instances
+              : [];
+            mergedSeen = [...prev];
+          } catch {}
+
+          // Garante que a instância que respondeu está no seen_in_instances
+          const ownerPhoneOfInst = String((inst as any).owner_phone || "").replace(/\D/g, "");
+          const alreadyHas = mergedSeen.some((s: any) =>
+            String(s?.id || "") === String(inst.id) ||
+            (s?.name && String(s.name).toLowerCase() === String(inst.instance_name).toLowerCase())
+          );
+          if (!alreadyHas) {
+            mergedSeen.push({
+              id: inst.id,
+              name: inst.instance_name,
+              owner_phone: ownerPhoneOfInst,
+            });
+          }
+
+          try {
+            const upsertRow: any = {
+              jid: groupJid,
+              group_name: subject || null,
+              group_created_at: creationIso,
+              last_synced_at: new Date().toISOString(),
+              raw_data: data ?? null,
+              seen_in_instances: mergedSeen,
+            };
+            if (ownerPn) upsertRow.owner_pn = ownerPn;
             await extClient
               .from("whatsapp_groups_uazapi_snapshot")
-              .upsert({
-                jid: groupJid,
-                group_name: subject || null,
-                group_created_at: creationIso,
-                last_synced_at: new Date().toISOString(),
-                raw_data: data ?? null,
-              }, { onConflict: "jid" });
+              .upsert(upsertRow, { onConflict: "jid" });
           } catch (persistErr) {
             console.warn("snapshot upsert failed:", persistErr);
           }
@@ -148,6 +184,8 @@ Deno.serve(async (req) => {
               creation_date: creationDate,
               creation_iso: creationIso,
               group_name: subject,
+              owner_pn: ownerPn,
+              instance_name: inst.instance_name,
             }),
             { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
