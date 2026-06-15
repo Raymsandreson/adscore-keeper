@@ -1,5 +1,6 @@
 import type { RequestHandler } from 'express';
 import { supabase } from '../lib/supabase';
+import { findInssOrphanMatch, applyInssMatch } from '../lib/inss-matcher';
 
 /**
  * Carteiro robô do Gmail.
