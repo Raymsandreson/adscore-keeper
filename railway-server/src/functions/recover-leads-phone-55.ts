@@ -305,7 +305,14 @@ export const handler: RequestHandler = async (req, res) => {
       if (listErr) return res.json({ success: false, error: listErr.message });
 
       // Filtra novamente em memória pra remover qualquer phone >=10 dígitos que escapou
-      const leads = (rows || []).filter((l: any) => normalize(l.lead_phone).length < 10);
+      // e para alinhar o filtro visual com grupos realmente recuperáveis.
+      const leads = (rows || []).filter((l: any) => {
+        const hasValidGroup = !!normalizeGroupJid(l.whatsapp_group_id);
+        if (normalize(l.lead_phone).length >= 10) return false;
+        if (onlyWithGroup === true) return hasValidGroup;
+        if (onlyWithGroup === false) return !hasValidGroup;
+        return true;
+      });
 
       return res.json({
         success: true,
