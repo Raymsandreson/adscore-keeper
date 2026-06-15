@@ -1751,7 +1751,11 @@ export function ContactsListPage() {
                 leadLinkFilter !== 'all' ||
                 leadStatusFilter.size > 0 ||
                 (auditMode && auditOnlyMismatch);
-              const RENDER_CAP = hasActiveFilter ? 2000 : 300;
+              // Performance: com busca textual ativa, limitar render a 150
+              // (renderizar 2000 linhas a cada tecla trava o mobile).
+              const RENDER_CAP = deferredGroupSearch.trim()
+                ? 150
+                : hasActiveFilter ? 800 : 300;
               const totalAll = visible.length;
               const capped = visible.slice(0, RENDER_CAP);
               const truncatedNotice = totalAll > RENDER_CAP ? (
