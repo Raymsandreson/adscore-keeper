@@ -2540,42 +2540,20 @@ export function ContactsListPage() {
               Grupo: <span className="font-medium text-foreground">{linkDialog?.groupName || linkDialog?.groupJid}</span>
             </p>
             <div className="space-y-1.5">
-              <Label className="text-xs">Buscar lead existente (nome, nº lead, nº caso)</Label>
+              <Label className="text-xs">Buscar lead existente (nome, telefone, nº lead, nº caso)</Label>
               <div className="flex gap-2">
                 <Input
                   autoFocus
                   value={linkQuery}
                   onChange={(e) => setLinkQuery(e.target.value)}
-                  onKeyDown={async (e) => {
-                    if (e.key !== 'Enter') return;
-                    const q = linkQuery.trim();
-                    if (!q) return;
-                    setLinkSearching(true);
-                    try {
-                      const isNum = /^\d+$/.test(q);
-                      let query = externalSupabase
-                        .from('leads')
-                        .select('id, lead_name, case_number, lead_number, lead_status')
-                        .limit(20);
-                      if (isNum) {
-                        query = query.or(`case_number.eq.${q},lead_number.eq.${q},lead_name.ilike.%${q}%`);
-                      } else {
-                        query = query.ilike('lead_name', `%${q}%`);
-                      }
-                      const { data, error } = await query;
-                      if (error) throw error;
-                      setLinkResults((data || []) as any);
-                    } catch (err: any) {
-                      toast.error('Erro na busca: ' + err.message);
-                    } finally {
-                      setLinkSearching(false);
-                    }
-                  }}
-                  placeholder="Digite e tecle Enter…"
-                  disabled={linkSearching || !!linking}
+                  placeholder="Digite nome ou telefone…"
+                  disabled={!!linking}
                 />
                 {linkSearching && <Loader2 className="h-4 w-4 animate-spin self-center" />}
               </div>
+              <p className="text-[10px] text-muted-foreground">
+                Busca automática — também procura pelo telefone dos contatos do grupo.
+              </p>
             </div>
             {linkResults.length > 0 && (
               <ScrollArea className="max-h-64 border rounded-md">
