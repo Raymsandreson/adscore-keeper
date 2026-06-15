@@ -1,5 +1,5 @@
 import { getExternalClient } from "../_shared/external-client.ts";
-const FUNCTION_VERSION = 4;
+const FUNCTION_VERSION = 5;
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-request-id",
