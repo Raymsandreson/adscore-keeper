@@ -38,6 +38,9 @@ export function ContactsListPage() {
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [loadingLeadForGroup, setLoadingLeadForGroup] = useState<string | null>(null);
   const [showDuplicatesScan, setShowDuplicatesScan] = useState(false);
+  const [editCaseDialog, setEditCaseDialog] = useState<{ leadId: string; groupJid: string; currentNumber: string; currentName: string } | null>(null);
+  const [editCaseValue, setEditCaseValue] = useState('');
+  const [editCaseSaving, setEditCaseSaving] = useState(false);
   const openGroupChat = (jid: string) => {
     if (!jid) return;
     const g = groups.find(x => x.group_jid === jid);
