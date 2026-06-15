@@ -258,9 +258,54 @@ async function processOneLead(
 
 export const handler: RequestHandler = async (req, res) => {
   try {
-    const { leadId, batchSize, dryRun } = req.body || {};
+    const { mode, leadId, batchSize, dryRun, page, pageSize, onlyWithGroup } = req.body || {};
     const isDry = dryRun !== false; // padrão é dryRun=true
     const size = Math.min(Math.max(Number(batchSize) || 5, 1), 50);
+
+    // ===== Modo LIST: só lista leads candidatos com paginação, NÃO toca em nada =====
+    if (mode === 'list') {
+      const p = Math.max(Number(page) || 1, 1);
+      const ps = Math.min(Math.max(Number(pageSize) || 20, 1), 200);
+      const from = (p - 1) * ps;
+      const to = from + ps - 1;
+
+      let query = ext
+        .from('leads')
+        .select('id, lead_name, lead_phone, whatsapp_group_id, created_at, lead_status, board_id', { count: 'exact' })
+        .or('lead_phone.eq.55,lead_phone.is.null,lead_phone.eq.')
+        .order('created_at', { ascending: false });
+
+      if (onlyWithGroup === true) {
+        query = query.not('whatsapp_group_id', 'is', null);
+      } else if (onlyWithGroup === false) {
+        query = query.is('whatsapp_group_id', null);
+      }
+
+      const { data: rows, count, error: listErr } = await query.range(from, to);
+      if (listErr) return res.json({ success: false, error: listErr.message });
+
+      // Filtra novamente em memória pra remover qualquer phone >=10 dígitos que escapou
+      const leads = (rows || []).filter((l: any) => normalize(l.lead_phone).length < 10);
+
+      return res.json({
+        success: true,
+        mode: 'list',
+        page: p,
+        pageSize: ps,
+        total: count || 0,
+        totalPages: Math.ceil((count || 0) / ps),
+        returned: leads.length,
+        leads: leads.map((l: any) => ({
+          id: l.id,
+          lead_name: l.lead_name,
+          lead_phone: l.lead_phone,
+          has_group: !!l.whatsapp_group_id,
+          whatsapp_group_id: l.whatsapp_group_id,
+          lead_status: l.lead_status,
+          created_at: l.created_at,
+        })),
+      });
+    }
 
     const instances = await getActiveInstances();
     const instancePhones = await getInstancePhones();
@@ -268,6 +313,7 @@ export const handler: RequestHandler = async (req, res) => {
     if (instances.length === 0) {
       return res.json({ success: false, error: 'nenhuma instância ativa encontrada' });
     }
+
 
     // Modo single
     if (leadId && typeof leadId === 'string') {
