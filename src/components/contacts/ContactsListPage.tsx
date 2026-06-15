@@ -686,8 +686,23 @@ export function ContactsListPage() {
         const ownerPnRaw = String(s.owner_pn || '').split('@')[0].replace(/\D/g, '');
         if (ownerPnRaw) {
           g.owner_phone = ownerPnRaw;
-          const instName = instancePhoneToName.get(ownerPnRaw);
+          // 1) Resolução ao vivo (mapa atual de instâncias)
+          let instName = instancePhoneToName.get(ownerPnRaw);
+          // 1b) Fallback por últimos 8 dígitos
+          if (!instName) {
+            const tail = ownerPnRaw.slice(-8);
+            if (tail.length >= 8) {
+              for (const [ph, nm] of instancePhoneToName.entries()) {
+                if (ph.slice(-8) === tail) { instName = nm; break; }
+              }
+            }
+          }
+          // 2) Fallback no gravado (instância pode ter sido removida/renomeada)
+          if (!instName && s.creator_instance_name) instName = String(s.creator_instance_name);
           if (instName) g.creator_instance_name = instName;
+        } else if (s.creator_instance_name) {
+          // Sem owner_pn mas com instância gravada (raro) — usa direto.
+          g.creator_instance_name = String(s.creator_instance_name);
         }
       }
 
