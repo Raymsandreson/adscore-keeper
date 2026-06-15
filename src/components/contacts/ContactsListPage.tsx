@@ -1336,7 +1336,14 @@ export function ContactsListPage() {
                   : 'Atualizar'}
               </span>
             </Button>
-
+            <Sheet open={showGroupFilters} onOpenChange={setShowGroupFilters}>
+              <SheetTrigger asChild>
+                <Button variant="outline" size="sm" className="shrink-0 gap-2">
+                  <SlidersHorizontal className="h-4 w-4" />
+                  Filtrar e ordenar
+                  {(excludedGroups.size > 0 || groupSort !== 'date' || groupSortDir !== 'desc' || groupSearchScope !== 'group' || auditMode || leadStatusFilter.size > 0 || leadLinkFilter !== 'all' || boardFilter.size > 0 || dateFrom || dateTo) && (
+                    <Badge variant="secondary" className="h-5 px-1.5 text-[10px] rounded-full">
+                      {[
                         groupSearchScope !== 'group',
                         groupSort !== 'date',
                         groupSortDir !== 'desc',
