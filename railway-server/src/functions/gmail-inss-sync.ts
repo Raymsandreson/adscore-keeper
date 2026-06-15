@@ -343,6 +343,40 @@ export const handler: RequestHandler = async (req, res) => {
             inboxResult.created_history++;
             totalCreatedHistory++;
 
+            // === AUTO-MATCH: se órfão, tenta achar lead pelo nº requerimento ===
+            if (!caseId) {
+              try {
+                const FIELD_ID = '111f9a38-98c3-4f83-9095-5c469106a7bf'; // Nº Requerimento INSS
+                const { data: cfv } = await supabase
+                  .from('lead_custom_field_values')
+                  .select('lead_id')
+                  .eq('field_id', FIELD_ID)
+                  .eq('value_text', parsed.requerimento)
+                  .limit(1)
+                  .maybeSingle();
+                if (cfv?.lead_id) {
+                  const { data: legalCase } = await supabase
+                    .from('legal_cases')
+                    .select('id')
+                    .eq('lead_id', cfv.lead_id)
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+                  await supabase
+                    .from('inss_admin_processes')
+                    .update({
+                      lead_id: cfv.lead_id,
+                      case_id: legalCase?.id || null,
+                      linked_at: new Date().toISOString(),
+                    })
+                    .eq('id', processId);
+                  caseId = legalCase?.id || null;
+                }
+              } catch (mErr) {
+                console.warn('[gmail-inss-sync] auto-match failed:', mErr);
+              }
+            }
+
             if (caseId) {
               inboxResult.notify_triggers++;
               totalNotifyTriggers++;
