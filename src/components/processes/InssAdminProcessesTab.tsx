@@ -590,6 +590,12 @@ export default function InssAdminProcessesTab() {
                       role={p.lead_id ? "button" : undefined}
                       title={p.lead_id ? "Abrir lead vinculado" : undefined}
                     >
+                      {p.lead_id && p.lead_name && (
+                        <div className="flex items-center gap-1 text-sm font-medium text-primary">
+                          <User className="h-3.5 w-3.5" />
+                          {p.lead_name}
+                        </div>
+                      )}
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-mono font-semibold">{p.requerimento_number}</span>
                         <Badge className={statusVariant(p.current_status)}>
@@ -609,12 +615,7 @@ export default function InssAdminProcessesTab() {
                         {p.protocol_date && (
                           <div>📅 Protocolo: {fmtDate(p.protocol_date)}</div>
                         )}
-                        {p.case_id && p.lead_name ? (
-                          <div className="flex items-center gap-1 font-medium text-foreground">
-                            <User className="h-3 w-3" />
-                            {p.lead_name} · Requerimento {p.requerimento_number}
-                          </div>
-                        ) : p.last_email_at && (
+                        {p.last_email_at && (
                           <div className="flex items-center gap-1">
                             <Clock className="h-3 w-3" />
                             Última atualização: {fmtDate(p.last_email_at, true)}
