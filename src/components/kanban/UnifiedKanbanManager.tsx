@@ -52,8 +52,6 @@ import { ImportInstagramProspects } from '@/components/kanban/ImportInstagramPro
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { StageTimeMetrics } from '@/components/kanban/StageTimeMetrics';
 import { StageFunnelChart } from '@/components/kanban/StageFunnelChart';
-import { BoardComparisonMetrics } from '@/components/kanban/BoardComparisonMetrics';
-import { ConversionAlertSettings } from '@/components/kanban/ConversionAlertSettings';
 import { KanbanReportDialog } from '@/components/kanban/KanbanReportDialog';
 import { ChecklistFilter } from '@/components/kanban/ChecklistFilter';
 import { normalizeDateInput } from '@/utils/normalizeDateInput';
