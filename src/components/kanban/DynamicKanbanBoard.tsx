@@ -376,16 +376,36 @@ export function DynamicKanbanBoard({
   const handleDragOver = (e: React.DragEvent, stageId: string) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
-    setDragOverStage(stageId);
+    if (draggedStageId) {
+      setDragOverStageReorder(stageId);
+    } else {
+      setDragOverStage(stageId);
+    }
   };
 
   const handleDragLeave = () => {
     setDragOverStage(null);
+    setDragOverStageReorder(null);
   };
 
   const handleDrop = (e: React.DragEvent, newStageId: string) => {
     e.preventDefault();
     setDragOverStage(null);
+    setDragOverStageReorder(null);
+
+    // Stage reorder takes priority
+    if (draggedStageId && draggedStageId !== newStageId) {
+      const fromIdx = board.stages.findIndex(s => s.id === draggedStageId);
+      const toIdx = board.stages.findIndex(s => s.id === newStageId);
+      if (fromIdx >= 0 && toIdx >= 0) {
+        const next = [...board.stages];
+        const [moved] = next.splice(fromIdx, 1);
+        next.splice(toIdx, 0, moved);
+        reorderStages(board.id, next).catch(() => {});
+      }
+      setDraggedStageId(null);
+      return;
+    }
 
     if (draggedLead && draggedLead.status !== newStageId) {
       // Check if moving to a "closed" or "converted" stage
@@ -397,6 +417,27 @@ export function DynamicKanbanBoard({
       }
     }
     setDraggedLead(null);
+  };
+
+  const handleStageDragStart = (e: React.DragEvent, stageId: string) => {
+    setDraggedStageId(stageId);
+    e.dataTransfer.effectAllowed = 'move';
+    try { e.dataTransfer.setData('application/x-kanban-stage', stageId); } catch {}
+  };
+
+  const handleStageDragEnd = () => {
+    setDraggedStageId(null);
+    setDragOverStageReorder(null);
+  };
+
+  const commitStageRename = async (stageId: string) => {
+    const name = editingStageName.trim();
+    setEditingStageId(null);
+    const current = board.stages.find(s => s.id === stageId);
+    if (!name || !current || name === current.name) return;
+    try {
+      await updateStage(board.id, stageId, { name });
+    } catch {}
   };
 
   const handleConversionConfirm = () => {
