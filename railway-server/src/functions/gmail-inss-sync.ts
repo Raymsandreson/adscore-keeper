@@ -45,17 +45,41 @@ function decodeBase64Url(s: string): string {
   } catch { return ''; }
 }
 
+function htmlToText(html: string): string {
+  return html
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(parseInt(n, 10)))
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function extractPlainText(msg: GmailMessage): string {
-  const walk = (parts?: any[]): string => {
-    if (!parts) return '';
+  let plain = '';
+  let html = '';
+  const walk = (parts?: any[]): void => {
+    if (!parts) return;
     for (const p of parts) {
-      if (p.mimeType === 'text/plain' && p.body?.data) return decodeBase64Url(p.body.data);
-      if (p.parts) { const r = walk(p.parts); if (r) return r; }
+      if (p.mimeType === 'text/plain' && p.body?.data && !plain) plain = decodeBase64Url(p.body.data);
+      else if (p.mimeType === 'text/html' && p.body?.data && !html) html = decodeBase64Url(p.body.data);
+      if (p.parts) walk(p.parts);
     }
-    return '';
   };
-  if (msg.payload?.body?.data) return decodeBase64Url(msg.payload.body.data);
-  return walk(msg.payload?.parts);
+  if (msg.payload?.body?.data) {
+    const raw = decodeBase64Url(msg.payload.body.data);
+    if ((msg.payload.mimeType || '').includes('html')) html = raw;
+    else plain = raw;
+  }
+  walk(msg.payload?.parts);
+  if (plain && plain.trim()) return plain;
+  if (html) return htmlToText(html);
+  return '';
 }
 
 /**
