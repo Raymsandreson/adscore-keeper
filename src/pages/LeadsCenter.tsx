@@ -28,7 +28,7 @@ const LeadsCenter = () => {
   }, []);
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background p-4 sm:p-6">
       <UnifiedKanbanManager adAccountId={adAccountId || undefined} category={category} />
     </div>
   );
