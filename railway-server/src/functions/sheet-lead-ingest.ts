@@ -106,7 +106,8 @@ export const handler: RequestHandler = async (req, res) => {
           .from('leads')
           .insert({
             lead_name: name,
-            lead_phone: phone,
+            lead_phone: phone || null,
+
             board_id: board.id,
             status: initialStageId,
             source: `Planilha: ${board.name}`,
