@@ -94,7 +94,8 @@ export function DynamicKanbanBoard({
   onChangeLeadStatus,
 }: DynamicKanbanBoardProps) {
   const { confirmDelete, ConfirmDeleteDialog } = useConfirmDelete();
-  const { reorderStages, updateStage } = useKanbanBoards();
+  const { reorderStages, updateStage, deleteStage } = useKanbanBoards();
+  const { confirmDelete } = useConfirmDelete();
   const [draggedLead, setDraggedLead] = useState<Lead | null>(null);
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
   const [draggedStageId, setDraggedStageId] = useState<string | null>(null);
