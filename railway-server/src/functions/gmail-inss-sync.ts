@@ -162,7 +162,41 @@ function getInboxKeys(): Array<{ label: string; key: string }> {
   return inboxes;
 }
 
-interface SyncCursor { inbox: string | null; page_token: string | null }
+interface SyncCursor {
+  inbox: string | null;
+  /** Janela mensal (YYYY-MM) sendo varrida em backfill, oldest-first. */
+  month: string | null;
+  page_token: string | null;
+}
+
+/** Lista YYYY-MM crescente de `fromYm` até `toYm` (inclusive). */
+function monthsBetween(fromYm: string, toYm: string): string[] {
+  const out: string[] = [];
+  const [fy, fm] = fromYm.split('-').map(Number);
+  const [ty, tm] = toYm.split('-').map(Number);
+  let y = fy; let m = fm;
+  while (y < ty || (y === ty && m <= tm)) {
+    out.push(`${y}-${String(m).padStart(2, '0')}`);
+    m++; if (m > 12) { m = 1; y++; }
+  }
+  return out;
+}
+
+/** YYYY-MM → janela Gmail [after, before) em YYYY/MM/DD. */
+function monthWindow(ym: string): { after: string; before: string } {
+  const [y, m] = ym.split('-').map(Number);
+  const after = `${y}/${String(m).padStart(2, '0')}/01`;
+  const nextY = m === 12 ? y + 1 : y;
+  const nextM = m === 12 ? 1 : m + 1;
+  const before = `${nextY}/${String(nextM).padStart(2, '0')}/01`;
+  return { after, before };
+}
+
+/** YYYY/MM/DD → YYYY-MM (para normalizar o param `after`). */
+function ymFromAfter(after: string): string {
+  const m = after.match(/^(\d{4})[\/\-](\d{2})/);
+  return m ? `${m[1]}-${m[2]}` : '2022-01';
+}
 
 export const handler: RequestHandler = async (req, res) => {
   const body = (req.body || {}) as any;
