@@ -183,6 +183,8 @@ export const handler: RequestHandler = async (req, res) => {
   const inboxFilter: string | undefined = body.inbox ?? query.inbox; // ex: "inbox#1"
   const dryRun: boolean = Boolean(body.dry_run ?? query.dry_run);
   const inCursor: SyncCursor | null = body.cursor ?? null;
+  // Data inicial do backfill (Gmail aceita YYYY/MM/DD). Default: junho de 2024.
+  const backfillAfter: string = String(body.after ?? query.after ?? '2024/06/01');
 
   const allInboxes = getInboxKeys();
   const inboxes = inboxFilter
@@ -390,7 +392,7 @@ export const handler: RequestHandler = async (req, res) => {
 
       try {
         const gmailQuery = backfill
-          ? `from:noreply [INSS]`
+          ? `from:noreply [INSS] after:${backfillAfter}`
           : `from:noreply [INSS] newer_than:${lookbackHours}h`;
 
         // Token inicial: só usa o do cursor se ele for desta inbox.
@@ -468,6 +470,7 @@ export const handler: RequestHandler = async (req, res) => {
         lookback_days: Math.round((lookbackHours / 24) * 100) / 100,
         max_messages: maxMessages,
         page_size: pageSize,
+        backfill_after: backfill ? backfillAfter : null,
         inbox_filter: inboxFilter || null,
       },
       inboxes: inboxes.length,
