@@ -8,9 +8,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Search, FileText, ExternalLink, Calendar, Building2, Briefcase, Trash2, Mail } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import ListPagination from "@/components/processes/ListPagination";
 import { format } from "date-fns";
 import { toast } from "sonner";
 
+const PAGE_SIZE = 25;
 const ProcessDetailSheet = lazy(() => import("@/components/cases/ProcessDetailSheet"));
 const InssAdminProcessesTab = lazy(() => import("@/components/processes/InssAdminProcessesTab"));
 
@@ -39,6 +41,7 @@ export default function ProcessesPage() {
   const [processes, setProcesses] = useState<Process[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
   const [selectedProcess, setSelectedProcess] = useState<any>(null);
 
   useEffect(() => {
@@ -76,6 +79,12 @@ export default function ProcessesPage() {
       p.classe?.toLowerCase().includes(q)
     );
   });
+
+  // Paginação client-side (25/página)
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  useEffect(() => { setPage(1); }, [search]);
+  useEffect(() => { if (page > totalPages) setPage(totalPages); }, [page, totalPages]);
 
   const statusColor = (s: string) => {
     switch (s) {
@@ -144,7 +153,7 @@ export default function ProcessesPage() {
             </div>
           ) : (
             <div className="grid gap-3">
-              {filtered.map((p) => (
+              {paged.map((p) => (
                 <Card
                   key={p.id}
                   className="hover:shadow-md transition-shadow cursor-pointer"
@@ -236,7 +245,14 @@ export default function ProcessesPage() {
             </div>
           )}
 
-          <p className="text-xs text-muted-foreground text-right">{filtered.length} processo(s)</p>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <ListPagination page={page} totalPages={totalPages} onPageChange={setPage} />
+            <p className="text-xs text-muted-foreground sm:text-right">
+              {filtered.length === 0
+                ? "0 processos"
+                : `${(page - 1) * PAGE_SIZE + 1}–${Math.min(page * PAGE_SIZE, filtered.length)} de ${filtered.length} processo(s)`}
+            </p>
+          </div>
         </TabsContent>
 
         <TabsContent value="inss">

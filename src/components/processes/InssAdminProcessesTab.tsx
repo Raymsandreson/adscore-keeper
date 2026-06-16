@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
+import ListPagination from "@/components/processes/ListPagination";
 import { LeadEditDialog } from "@/components/kanban/LeadEditDialog";
 import { useLeads, type Lead } from "@/hooks/useLeads";
 import { useKanbanBoards } from "@/hooks/useKanbanBoards";
@@ -159,6 +160,17 @@ export default function InssAdminProcessesTab() {
     }
     return list;
   }, [processes, search, showOnlyOrphans]);
+
+  // Paginação client-side (25/página)
+  const PAGE_SIZE = 25;
+  const [page, setPage] = useState(1);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  useEffect(() => { setPage(1); }, [search, showOnlyOrphans]);
+  useEffect(() => { if (page > totalPages) setPage(totalPages); }, [page, totalPages]);
+  const paged = useMemo(
+    () => filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [filtered, page],
+  );
 
   const orphanCount = processes.filter((p) => !p.case_id).length;
 
@@ -567,7 +579,7 @@ export default function InssAdminProcessesTab() {
         </div>
       ) : (
         <div className="grid gap-2">
-          {filtered.map((p) => (
+          {paged.map((p) => (
             <Card key={p.id} className={!p.case_id ? "border-orange-300 dark:border-orange-700" : ""}>
               <CardContent className="p-3">
                 <Collapsible onOpenChange={(open) => open && loadHistory(p.id)}>
@@ -664,9 +676,15 @@ export default function InssAdminProcessesTab() {
         </div>
       )}
 
-      <p className="text-xs text-muted-foreground text-right">
-        {filtered.length} de {processes.length} processo(s) administrativo(s)
-      </p>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <ListPagination page={page} totalPages={totalPages} onPageChange={setPage} />
+        <p className="text-xs text-muted-foreground sm:text-right">
+          {filtered.length === 0
+            ? "0 processos"
+            : `${(page - 1) * PAGE_SIZE + 1}–${Math.min(page * PAGE_SIZE, filtered.length)} de ${filtered.length}`}
+          {filtered.length !== processes.length && ` (${processes.length} no total)`}
+        </p>
+      </div>
 
       {/* Dialog de vínculo */}
       <Dialog open={!!linkingProc} onOpenChange={(open) => !open && setLinkingProc(null)}>
