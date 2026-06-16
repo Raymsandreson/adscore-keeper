@@ -158,30 +158,12 @@ export const useConversionAlerts = (
     return alerts;
   }, [board, leadsPerStage, settings, getThresholdForStage]);
 
-  // Trigger toast and push notifications for new alerts
-  const triggerNotifications = useCallback((alerts: ReturnType<typeof checkConversionRates>) => {
-    alerts.forEach(alert => {
-      if (!notifiedRef.current.has(alert.key)) {
-        notifiedRef.current.add(alert.key);
-        
-        const title = alert.severity === 'critical' 
-          ? `🚨 Conversão Crítica` 
-          : `⚠️ Conversão Baixa`;
-        
-        const message = `${alert.fromStage} → ${alert.toStage}: ${alert.currentRate}% (mínimo: ${alert.threshold}%)`;
-        
-        // Toast notification
-        if (alert.severity === 'critical') {
-          toast.error(title, { description: message, duration: 10000 });
-        } else {
-          toast.warning(title, { description: message, duration: 8000 });
-        }
+  // Toast/push notifications desativadas a pedido do usuário.
+  // O painel visual (StageFunnelChart) continua exibindo os alertas inline.
+  const triggerNotifications = useCallback((_alerts: ReturnType<typeof checkConversionRates>) => {
+    // no-op
+  }, []);
 
-        // Push notification
-        sendPushNotification(title, message);
-      }
-    });
-  }, [sendPushNotification]);
 
   // Reset notifications when board changes
   const resetNotifications = useCallback(() => {
