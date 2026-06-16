@@ -514,7 +514,7 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
       <div className="flex flex-col sm:flex-row gap-4 justify-between">
         <div className="flex items-center gap-2">
           <KanbanBoardSelector
-            boards={boards.filter(b => b.board_type !== 'workflow')}
+            boards={visibleBoards.filter(b => b.board_type !== 'workflow')}
             selectedBoardId={selectedBoardId}
             onSelectBoard={setSelectedBoardId}
             onCreateBoard={createBoard}
