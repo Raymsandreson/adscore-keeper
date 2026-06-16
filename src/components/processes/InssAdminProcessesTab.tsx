@@ -477,7 +477,7 @@ export default function InssAdminProcessesTab() {
         toast.error("Lead não encontrado");
         return;
       }
-      setSelectedLead(data as Lead);
+      setSelectedLead(data as unknown as Lead);
       setLeadSheetOpen(true);
     } catch (e: any) {
       toast.error("Erro ao abrir lead: " + e.message);
