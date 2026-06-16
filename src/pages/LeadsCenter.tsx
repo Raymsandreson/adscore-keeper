@@ -1,8 +1,13 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { UnifiedKanbanManager } from "@/components/kanban/UnifiedKanbanManager";
 
 const LeadsCenter = () => {
   const [adAccountId, setAdAccountId] = useState<string | null>(null);
+  const [searchParams] = useSearchParams();
+  const catParam = searchParams.get("cat");
+  const category =
+    catParam === "trabalhista" || catParam === "previdenciario" ? catParam : undefined;
 
   useEffect(() => {
     const saved = localStorage.getItem("unified_meta_credentials");
@@ -24,7 +29,7 @@ const LeadsCenter = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <UnifiedKanbanManager adAccountId={adAccountId || undefined} />
+      <UnifiedKanbanManager adAccountId={adAccountId || undefined} category={category} />
     </div>
   );
 };

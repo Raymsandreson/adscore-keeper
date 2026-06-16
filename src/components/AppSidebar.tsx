@@ -84,7 +84,8 @@ export function AppSidebar() {
 
   const quickLinks: NavItem[] = [
     { id: "activities", label: "Atividades", icon: <ClipboardList className="h-4 w-4" />, path: "/", color: "text-emerald-600" },
-    { id: "leads", label: "Leads", icon: <Users className="h-4 w-4" />, path: "/leads" },
+    { id: "leads-trabalhista", label: "Leads Trabalhista", icon: <Users className="h-4 w-4" />, path: "/leads?cat=trabalhista" },
+    { id: "leads-previdenciario", label: "Leads Previdenciário", icon: <Users className="h-4 w-4" />, path: "/leads?cat=previdenciario" },
     { id: "calls", label: "Ligações", icon: <Phone className="h-4 w-4" />, path: "/calls", color: "text-blue-500" },
     { id: "auto-dialer", label: "Discadora", icon: <Phone className="h-4 w-4" />, path: "/discadora", color: "text-cyan-500" },
     { id: "whatsapp", label: "WhatsApp", icon: <MessageSquareIcon className="h-4 w-4" />, path: "/whatsapp", color: "text-green-500" },

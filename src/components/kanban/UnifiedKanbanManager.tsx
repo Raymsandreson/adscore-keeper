@@ -52,17 +52,16 @@ import { ImportInstagramProspects } from '@/components/kanban/ImportInstagramPro
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { StageTimeMetrics } from '@/components/kanban/StageTimeMetrics';
 import { StageFunnelChart } from '@/components/kanban/StageFunnelChart';
-import { BoardComparisonMetrics } from '@/components/kanban/BoardComparisonMetrics';
-import { ConversionAlertSettings } from '@/components/kanban/ConversionAlertSettings';
 import { KanbanReportDialog } from '@/components/kanban/KanbanReportDialog';
 import { ChecklistFilter } from '@/components/kanban/ChecklistFilter';
 import { normalizeDateInput } from '@/utils/normalizeDateInput';
 
 interface UnifiedKanbanManagerProps {
   adAccountId?: string;
+  category?: 'trabalhista' | 'previdenciario';
 }
 
-export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps) {
+export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanManagerProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = usePageState<string>('kanban_searchQuery', '');
   const teamProfiles = useProfilesList();
@@ -133,6 +132,26 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
     updateBoard,
     deleteBoard,
   } = useKanbanBoards(adAccountId);
+
+  // Filter boards by category (Trabalhista vs Previdenciário) based on board name
+  const categoryRegex = useMemo(() => {
+    if (category === 'trabalhista') return /trab|acidente|\bcat\b|cipa/i;
+    if (category === 'previdenciario') return /prev|inss|bpc|benef|aposent|auxi?lio|loas|pensão|pensao/i;
+    return null;
+  }, [category]);
+
+  const visibleBoards = useMemo(() => {
+    if (!categoryRegex) return boards;
+    return boards.filter(b => categoryRegex.test(b.name) || categoryRegex.test(b.description || ''));
+  }, [boards, categoryRegex]);
+
+  // Auto-select first visible board when category changes
+  useEffect(() => {
+    if (!categoryRegex || visibleBoards.length === 0) return;
+    if (!selectedBoardId || !visibleBoards.some(b => b.id === selectedBoardId)) {
+      setSelectedBoardId(visibleBoards[0].id);
+    }
+  }, [categoryRegex, visibleBoards, selectedBoardId, setSelectedBoardId]);
 
   // Leads hook
   const {
@@ -495,7 +514,7 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
       <div className="flex flex-col sm:flex-row gap-4 justify-between">
         <div className="flex items-center gap-2">
           <KanbanBoardSelector
-            boards={boards.filter(b => b.board_type !== 'workflow')}
+            boards={visibleBoards.filter(b => b.board_type !== 'workflow')}
             selectedBoardId={selectedBoardId}
             onSelectBoard={setSelectedBoardId}
             onCreateBoard={createBoard}
@@ -606,34 +625,6 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
         </Card>
       </div>
 
-      {/* Board Description */}
-      {selectedBoard?.description && (
-        <Card className="border-l-4" style={{ borderLeftColor: selectedBoard.color }}>
-          <CardContent className="pt-4">
-            <p className="text-sm text-muted-foreground">{selectedBoard.description}</p>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Board Comparison Metrics */}
-      {boards.length >= 2 && allLeads.length > 0 && (
-        <BoardComparisonMetrics
-          boards={boards}
-          allLeads={allLeads}
-        />
-      )}
-
-      {/* Conversion Alert Settings */}
-      {selectedBoard && (
-        <ConversionAlertSettings
-          board={selectedBoard}
-          settings={conversionSettings}
-          onSave={saveConversionSettings}
-          currentAlerts={currentConversionAlerts}
-          requestNotificationPermission={requestNotificationPermission}
-          hasNotificationPermission={hasNotificationPermission}
-        />
-      )}
 
       {/* Analytics: Funnel Chart and Stage Time Metrics - Collapsible */}
       {selectedBoard && boardLeads.length > 0 && (
