@@ -442,7 +442,7 @@ export const handler: RequestHandler = async (req, res) => {
 
       // Orçamento da chamada esgotado numa fronteira de inbox: retoma aqui na próxima.
       if (backfill && checkedThisCall >= maxMessages) {
-        outCursor = { inbox: inbox.label, page_token: null };
+        outCursor = { inbox: inbox.label, month: backfillMonths[0] ?? null, page_token: null };
         break;
       }
 
