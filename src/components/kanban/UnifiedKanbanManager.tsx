@@ -141,9 +141,12 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
   }, [category]);
 
   const visibleBoards = useMemo(() => {
+    if (category === 'trabalhista') {
+      return boards.filter(b => /acidente\s+de\s+trabalho/i.test(b.name));
+    }
     if (!categoryRegex) return boards;
     return boards.filter(b => categoryRegex.test(b.name) || categoryRegex.test(b.description || ''));
-  }, [boards, categoryRegex]);
+  }, [boards, categoryRegex, category]);
 
   // Auto-select first visible board when category changes
   useEffect(() => {
