@@ -133,6 +133,26 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
     deleteBoard,
   } = useKanbanBoards(adAccountId);
 
+  // Filter boards by category (Trabalhista vs Previdenciário) based on board name
+  const categoryRegex = useMemo(() => {
+    if (category === 'trabalhista') return /trab|acidente|\bcat\b|cipa/i;
+    if (category === 'previdenciario') return /prev|inss|bpc|benef|aposent|auxi?lio|loas|pensão|pensao/i;
+    return null;
+  }, [category]);
+
+  const visibleBoards = useMemo(() => {
+    if (!categoryRegex) return boards;
+    return boards.filter(b => categoryRegex.test(b.name) || categoryRegex.test(b.description || ''));
+  }, [boards, categoryRegex]);
+
+  // Auto-select first visible board when category changes
+  useEffect(() => {
+    if (!categoryRegex || visibleBoards.length === 0) return;
+    if (!selectedBoardId || !visibleBoards.some(b => b.id === selectedBoardId)) {
+      setSelectedBoardId(visibleBoards[0].id);
+    }
+  }, [categoryRegex, visibleBoards, selectedBoardId, setSelectedBoardId]);
+
   // Leads hook
   const {
     leads: allLeads,
