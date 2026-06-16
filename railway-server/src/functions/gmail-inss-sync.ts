@@ -447,60 +447,83 @@ export const handler: RequestHandler = async (req, res) => {
       }
 
       try {
-        const gmailQuery = backfill
-          ? `from:noreply [INSS] after:${backfillAfter}`
-          : `from:noreply [INSS] newer_than:${lookbackHours}h`;
+        // Em backfill: itera mês a mês oldest-first; sem backfill: 1 janela só.
+        const monthsToScan: Array<string | null> = backfill
+          ? (() => {
+              const startIdx = (inCursor && inCursor.inbox === inbox.label && inCursor.month)
+                ? Math.max(0, backfillMonths.indexOf(inCursor.month))
+                : 0;
+              return backfillMonths.slice(startIdx) as Array<string | null>;
+            })()
+          : [null];
 
-        // Token inicial: só usa o do cursor se ele for desta inbox.
-        let pageToken: string | undefined =
-          (inCursor && inCursor.inbox === inbox.label && inCursor.page_token)
-            ? inCursor.page_token
-            : undefined;
+        monthLoop:
+        for (const ym of monthsToScan) {
+          const gmailQuery = backfill && ym
+            ? (() => {
+                const { after, before } = monthWindow(ym);
+                return `from:noreply [INSS] after:${after} before:${before}`;
+              })()
+            : `from:noreply [INSS] newer_than:${lookbackHours}h`;
 
-        while (true) {
-          const params: Record<string, string> = { q: gmailQuery, maxResults: String(pageSize) };
-          if (pageToken) params.pageToken = pageToken;
-          const list = await gmailFetch('/users/me/messages', inbox.key, params);
-          const messageIds: GmailMessageListItem[] = list.messages || [];
-          const nextToken: string | undefined = list.nextPageToken || undefined;
+          // Token inicial: só usa se cursor for desta inbox E deste mês.
+          let pageToken: string | undefined =
+            (inCursor && inCursor.inbox === inbox.label && inCursor.month === ym && inCursor.page_token)
+              ? inCursor.page_token
+              : undefined;
 
-          inboxResult.checked += messageIds.length;
-          totalChecked += messageIds.length;
-          checkedThisCall += messageIds.length;
+          while (true) {
+            const params: Record<string, string> = { q: gmailQuery, maxResults: String(pageSize) };
+            if (pageToken) params.pageToken = pageToken;
+            const list = await gmailFetch('/users/me/messages', inbox.key, params);
+            const messageIds: GmailMessageListItem[] = list.messages || [];
+            const nextToken: string | undefined = list.nextPageToken || undefined;
 
-          if (messageIds.length > 0) {
-            const ids = messageIds.map((m) => m.id);
+            inboxResult.checked += messageIds.length;
+            totalChecked += messageIds.length;
+            checkedThisCall += messageIds.length;
 
-            // Em dry_run nós pulamos a checagem de "já visto" e listamos tudo
-            let toProcess: GmailMessageListItem[];
-            if (dryRun) {
-              toProcess = messageIds;
-            } else {
-              const { data: existing } = await supabase
-                .from('inss_status_history')
-                .select('gmail_message_id')
-                .in('gmail_message_id', ids);
-              const seenIds = new Set((existing || []).map((r: any) => r.gmail_message_id));
-              toProcess = messageIds.filter((m) => !seenIds.has(m.id));
+            if (messageIds.length > 0) {
+              const ids = messageIds.map((m) => m.id);
+              let toProcess: GmailMessageListItem[];
+              if (dryRun) {
+                toProcess = messageIds;
+              } else {
+                const { data: existing } = await supabase
+                  .from('inss_status_history')
+                  .select('gmail_message_id')
+                  .in('gmail_message_id', ids);
+                const seenIds = new Set((existing || []).map((r: any) => r.gmail_message_id));
+                toProcess = messageIds.filter((m) => !seenIds.has(m.id));
+              }
+              inboxResult.new += toProcess.length;
+              totalNew += toProcess.length;
+
+              // Dentro da página: oldest-first (Gmail devolve newest-first).
+              for (const item of [...toProcess].reverse()) {
+                await processItem(item, inbox, inboxResult);
+              }
             }
-            inboxResult.new += toProcess.length;
-            totalNew += toProcess.length;
 
-            for (const item of toProcess) {
-              await processItem(item, inbox, inboxResult);
+            if (!backfill) break;
+
+            pageToken = nextToken;
+            if (!pageToken) break; // fim deste mês -> próximo mês
+
+            if (checkedThisCall >= maxMessages) {
+              outCursor = { inbox: inbox.label, month: ym, page_token: pageToken };
+              break monthLoop;
             }
           }
 
-          // Sem backfill: comportamento antigo = uma única página.
-          if (!backfill) break;
-
-          pageToken = nextToken;
-          if (!pageToken) break; // acabou esta inbox -> próxima no for
-
-          // Orçamento desta chamada atingido: devolve cursor p/ a UI continuar.
-          if (checkedThisCall >= maxMessages) {
-            outCursor = { inbox: inbox.label, page_token: pageToken };
-            break;
+          // Mês terminou: se orçamento esgotou, retoma no próximo mês.
+          if (backfill && checkedThisCall >= maxMessages) {
+            const idx = backfillMonths.indexOf(ym as string);
+            const nextYm = idx >= 0 && idx + 1 < backfillMonths.length ? backfillMonths[idx + 1] : null;
+            outCursor = nextYm
+              ? { inbox: inbox.label, month: nextYm, page_token: null }
+              : null;
+            break monthLoop;
           }
         }
       } catch (err) {
