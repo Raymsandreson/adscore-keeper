@@ -203,17 +203,47 @@ export function AppSidebar() {
             <SidebarGroupLabel>Principal</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {quickLinks.map((item) => (
-                  <SidebarMenuItem key={item.id}>
-                    <SidebarMenuButton
-                      onClick={() => handleNavigate(item.path)}
-                      isActive={isActive(item.path)}
-                      tooltip={item.label}
-                    >
-                      <span className={cn(item.color)}>{item.icon}</span>
-                      <span>{item.label}</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
+                {quickLinks.map((item, idx) => (
+                  <>
+                    <SidebarMenuItem key={item.id}>
+                      <SidebarMenuButton
+                        onClick={() => handleNavigate(item.path)}
+                        isActive={isActive(item.path)}
+                        tooltip={item.label}
+                      >
+                        <span className={cn(item.color)}>{item.icon}</span>
+                        <span>{item.label}</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                    {item.id === "activities" && (
+                      <Collapsible key="leads-group" defaultOpen={leadsSubItems.some(i => isActive(i.path))}>
+                        <SidebarMenuItem>
+                          <CollapsibleTrigger asChild>
+                            <SidebarMenuButton tooltip="Leads">
+                              <Users className="h-4 w-4" />
+                              <span>Leads</span>
+                              {!collapsed && <ChevronRight className="ml-auto h-3.5 w-3.5 transition-transform group-data-[state=open]:rotate-90" />}
+                            </SidebarMenuButton>
+                          </CollapsibleTrigger>
+                        </SidebarMenuItem>
+                        <CollapsibleContent>
+                          {leadsSubItems.map(sub => (
+                            <SidebarMenuItem key={sub.id}>
+                              <SidebarMenuButton
+                                onClick={() => handleNavigate(sub.path)}
+                                isActive={isActive(sub.path)}
+                                tooltip={sub.label}
+                                className="pl-8"
+                              >
+                                <span>{sub.icon}</span>
+                                <span>{sub.label}</span>
+                              </SidebarMenuButton>
+                            </SidebarMenuItem>
+                          ))}
+                        </CollapsibleContent>
+                      </Collapsible>
+                    )}
+                  </>
                 ))}
               </SidebarMenu>
             </SidebarGroupContent>
