@@ -243,7 +243,7 @@ export function AppSidebar() {
                         </CollapsibleContent>
                       </Collapsible>
                     )}
-                  </>
+                  </React.Fragment>
                 ))}
               </SidebarMenu>
             </SidebarGroupContent>
