@@ -606,34 +606,6 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
         </Card>
       </div>
 
-      {/* Board Description */}
-      {selectedBoard?.description && (
-        <Card className="border-l-4" style={{ borderLeftColor: selectedBoard.color }}>
-          <CardContent className="pt-4">
-            <p className="text-sm text-muted-foreground">{selectedBoard.description}</p>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Board Comparison Metrics */}
-      {boards.length >= 2 && allLeads.length > 0 && (
-        <BoardComparisonMetrics
-          boards={boards}
-          allLeads={allLeads}
-        />
-      )}
-
-      {/* Conversion Alert Settings */}
-      {selectedBoard && (
-        <ConversionAlertSettings
-          board={selectedBoard}
-          settings={conversionSettings}
-          onSave={saveConversionSettings}
-          currentAlerts={currentConversionAlerts}
-          requestNotificationPermission={requestNotificationPermission}
-          hasNotificationPermission={hasNotificationPermission}
-        />
-      )}
 
       {/* Analytics: Funnel Chart and Stage Time Metrics - Collapsible */}
       {selectedBoard && boardLeads.length > 0 && (
