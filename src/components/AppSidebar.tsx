@@ -203,9 +203,9 @@ export function AppSidebar() {
             <SidebarGroupLabel>Principal</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {quickLinks.map((item, idx) => (
-                  <>
-                    <SidebarMenuItem key={item.id}>
+                {quickLinks.map((item) => (
+                  <React.Fragment key={item.id}>
+                    <SidebarMenuItem>
                       <SidebarMenuButton
                         onClick={() => handleNavigate(item.path)}
                         isActive={isActive(item.path)}
