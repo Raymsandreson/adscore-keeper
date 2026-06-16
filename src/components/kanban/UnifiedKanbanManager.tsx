@@ -513,15 +513,54 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
       {/* Header */}
       <div className="flex flex-col sm:flex-row gap-4 justify-between">
         <div className="flex items-center gap-2">
-          <KanbanBoardSelector
-            boards={visibleBoards.filter(b => b.board_type !== 'workflow')}
-            selectedBoardId={selectedBoardId}
-            onSelectBoard={setSelectedBoardId}
-            onCreateBoard={createBoard}
-            onUpdateBoard={updateBoard}
-            onDeleteBoard={deleteBoard}
-            leadsCountByBoard={leadsCountByBoard}
-          />
+          {category === 'trabalhista' ? (
+            <div className="flex flex-wrap items-center gap-2">
+              {visibleBoards
+                .filter(b => b.board_type !== 'workflow')
+                .map(b => {
+                  const isActive = b.id === selectedBoardId;
+                  return (
+                    <button
+                      key={b.id}
+                      type="button"
+                      onClick={() => setSelectedBoardId(b.id)}
+                      className={`flex items-center gap-2 px-3 py-1.5 rounded-md border text-sm transition-colors ${
+                        isActive
+                          ? 'bg-primary text-primary-foreground border-primary'
+                          : 'bg-background hover:bg-muted border-border'
+                      }`}
+                    >
+                      <Instagram className="h-3.5 w-3.5" />
+                      <span>{b.name}</span>
+                      {leadsCountByBoard[b.id] !== undefined && (
+                        <Badge variant="secondary" className="text-[10px] px-1.5">
+                          {leadsCountByBoard[b.id]}
+                        </Badge>
+                      )}
+                    </button>
+                  );
+                })}
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => createBoard({ name: 'Novo Quadro', board_type: 'funnel' } as any)}
+                title="Criar quadro"
+                className="h-8 w-8"
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
+            </div>
+          ) : (
+            <KanbanBoardSelector
+              boards={visibleBoards.filter(b => b.board_type !== 'workflow')}
+              selectedBoardId={selectedBoardId}
+              onSelectBoard={setSelectedBoardId}
+              onCreateBoard={createBoard}
+              onUpdateBoard={updateBoard}
+              onDeleteBoard={deleteBoard}
+              leadsCountByBoard={leadsCountByBoard}
+            />
+          )}
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
