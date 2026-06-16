@@ -376,18 +376,8 @@ export function ActivityEditSheet({ open, onOpenChange, activityId, onUpdated }:
         )}
 
         {/* Footer actions */}
-        <div className="shrink-0 border-t group">
-          {/* Barra indicadora fina no desktop */}
-          <div className={cn(
-            "flex items-center justify-center transition-all duration-200 overflow-hidden",
-            isMobile ? "hidden" : "h-5 group-hover:h-0 opacity-60 group-hover:opacity-0"
-          )}>
-            <span className="text-[10px] text-muted-foreground">Ações ▼</span>
-          </div>
-          <div className={cn(
-            "flex items-center justify-between transition-all duration-200",
-            isMobile ? "p-3 opacity-100" : "p-0 max-h-0 opacity-0 group-hover:p-3 group-hover:max-h-24 group-hover:opacity-100 overflow-hidden"
-          )}>
+        <div className="shrink-0 border-t">
+          <div className="flex items-center justify-between p-3">
             {activity?.status !== 'concluida' && (
               <Button variant="outline" size="sm" onClick={handleComplete} className="gap-1 text-xs">
                 <CheckCircle2 className="h-3 w-3" /> Concluir
@@ -402,6 +392,7 @@ export function ActivityEditSheet({ open, onOpenChange, activityId, onUpdated }:
             </div>
           </div>
         </div>
+
       </SheetContent>
     </Sheet>
   );
