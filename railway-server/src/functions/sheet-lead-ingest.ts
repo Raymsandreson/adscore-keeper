@@ -56,40 +56,41 @@ export const handler: RequestHandler = async (req, res) => {
       try {
         const rawPhone = pickByMapping(row, mapping, 'phone');
         const phone = normalizePhone(rawPhone);
-        if (!phone) {
-          results.push({ row_index: i, status: 'skipped', reason: 'phone missing/invalid' });
+        const name = pickByMapping(row, mapping, 'name') || (phone ? `Lead ${phone.slice(-4)}` : '');
+
+        if (!phone && !name) {
+          results.push({ row_index: i, status: 'skipped', reason: 'no phone and no name' });
           continue;
         }
-
-        const name = pickByMapping(row, mapping, 'name') || `Lead ${phone.slice(-4)}`;
         if (name.startsWith('<test lead')) {
           results.push({ row_index: i, status: 'skipped', reason: 'test lead' });
           continue;
         }
 
-        // Dedup: mesmo board + lead_phone nos últimos 30 dias
+        // Dedup: mesmo board, últimos 30 dias. Por telefone se houver, senão por nome.
         const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-        const { data: dup } = await ext
+        let dupQuery = ext
           .from('leads')
           .select('id, lead_name')
           .eq('board_id', board.id)
-          .eq('lead_phone', phone)
           .gte('created_at', thirtyDaysAgo)
           .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
+          .limit(1);
+        dupQuery = phone ? dupQuery.eq('lead_phone', phone) : dupQuery.eq('lead_name', name);
+        const { data: dup } = await dupQuery.maybeSingle();
 
         if (dup) {
           await ext.from('lead_activities').insert({
             lead_id: dup.id,
             title: 'Possível duplicata recebida via planilha',
-            description: `Nova submissão do formulário com o mesmo telefone (${phone}).\nDados: ${JSON.stringify(row).slice(0, 800)}`,
+            description: `Nova submissão da planilha com mesma identidade.\nDados: ${JSON.stringify(row).slice(0, 800)}`,
             activity_type: 'observacao',
             status: 'concluida',
           });
           results.push({ row_index: i, status: 'duplicate', lead_id: dup.id });
           continue;
         }
+
 
         // Coleta campos extras mapeados; serializa como nota
         const extras: Record<string, string> = {};
