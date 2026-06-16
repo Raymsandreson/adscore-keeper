@@ -557,35 +557,66 @@ export function DynamicKanbanBoard({
               : matchedStageLeads.slice(0, visibleCount);
             const hasMore = !stageFilter && matchedStageLeads.length > stageLeads.length;
             const isDropTarget = dragOverStage === stage.id;
+            const isReorderTarget = dragOverStageReorder === stage.id && draggedStageId && draggedStageId !== stage.id;
+            const isBeingDragged = draggedStageId === stage.id;
 
             return (
               <div
                 key={stage.id}
                 className={`flex-shrink-0 rounded-lg border transition-all ${
                   isDropTarget ? 'ring-2 ring-primary ring-offset-2' : ''
-                }`}
+                } ${isReorderTarget ? 'ring-2 ring-amber-400 ring-offset-2' : ''} ${isBeingDragged ? 'opacity-40' : ''}`}
                 style={{ width: `max(260px, calc((100vw - ${(board.stages.length + 2) * 4 + 16}px) / ${board.stages.length + 2}))` }}
                 onDragOver={(e) => handleDragOver(e, stage.id)}
                 onDragLeave={handleDragLeave}
                 onDrop={(e) => handleDrop(e, stage.id)}
               >
                 {/* Column Header */}
-                <div 
+                <div
                   className="p-3 rounded-t-lg border-b space-y-2"
-                  style={{ 
+                  style={{
                     backgroundColor: `${stage.color}15`,
                     borderColor: `${stage.color}30`,
                   }}
+                  draggable
+                  onDragStart={(e) => handleStageDragStart(e, stage.id)}
+                  onDragEnd={handleStageDragEnd}
                 >
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div 
-                        className="w-3 h-3 rounded-full" 
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <GripVertical className="h-3.5 w-3.5 text-muted-foreground cursor-grab shrink-0" />
+                      <div
+                        className="w-3 h-3 rounded-full shrink-0"
                         style={{ backgroundColor: stage.color }}
                       />
-                      <h3 className="font-medium text-sm" style={{ color: stage.color }}>
-                        {stage.name}
-                      </h3>
+                      {editingStageId === stage.id ? (
+                        <Input
+                          autoFocus
+                          value={editingStageName}
+                          onChange={(e) => setEditingStageName(e.target.value)}
+                          onBlur={() => commitStageRename(stage.id)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') { e.preventDefault(); commitStageRename(stage.id); }
+                            if (e.key === 'Escape') { e.preventDefault(); setEditingStageId(null); }
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                          onDragStart={(e) => e.preventDefault()}
+                          className="h-6 px-1 py-0 text-sm font-medium"
+                        />
+                      ) : (
+                        <h3
+                          className="font-medium text-sm truncate cursor-text"
+                          style={{ color: stage.color }}
+                          title="Duplo-clique para renomear"
+                          onDoubleClick={(e) => {
+                            e.stopPropagation();
+                            setEditingStageId(stage.id);
+                            setEditingStageName(stage.name);
+                          }}
+                        >
+                          {stage.name}
+                        </h3>
+                      )}
                       <Badge variant="secondary" className="text-xs">
                         {stageFilter && matchedStageLeads.length !== allStageLeads.length
                           ? <><AnimatedNumber value={matchedStageLeads.length} />/<AnimatedNumber value={allStageLeads.length} /></>
