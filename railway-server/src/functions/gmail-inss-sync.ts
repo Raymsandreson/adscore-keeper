@@ -217,8 +217,13 @@ export const handler: RequestHandler = async (req, res) => {
   const inboxFilter: string | undefined = body.inbox ?? query.inbox; // ex: "inbox#1"
   const dryRun: boolean = Boolean(body.dry_run ?? query.dry_run);
   const inCursor: SyncCursor | null = body.cursor ?? null;
-  // Data inicial do backfill (Gmail aceita YYYY/MM/DD). Default: junho de 2024.
-  const backfillAfter: string = String(body.after ?? query.after ?? '2024/06/01');
+  // Data inicial do backfill (Gmail aceita YYYY/MM/DD). Default: jan/2022.
+  const backfillAfter: string = String(body.after ?? query.after ?? '2022/01/01');
+  // Em backfill, varremos mês a mês em ordem CRONOLÓGICA (oldest-first).
+  const backfillStartYm = ymFromAfter(backfillAfter);
+  const now = new Date();
+  const todayYm = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
+  const backfillMonths = backfill ? monthsBetween(backfillStartYm, todayYm) : [];
 
   const allInboxes = getInboxKeys();
   const inboxes = inboxFilter
