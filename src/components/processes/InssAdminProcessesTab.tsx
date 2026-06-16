@@ -44,6 +44,8 @@ interface InssHistoryRow {
   from_status: string | null;
   to_status: string | null;
   email_subject: string | null;
+  email_snippet: string | null;
+  gmail_message_id: string | null;
   email_received_at: string | null;
   notified: boolean;
 }
@@ -92,6 +94,41 @@ export default function InssAdminProcessesTab() {
   const [historyByProc, setHistoryByProc] = useState<Record<string, InssHistoryRow[]>>({});
   const [linkingProc, setLinkingProc] = useState<InssProcess | null>(null);
 
+  // Visualizador de e-mail completo (busca sob demanda no Gmail)
+  const [emailView, setEmailView] = useState<{
+    open: boolean; loading: boolean; subject: string | null; body: string | null; error: string | null;
+  }>({ open: false, loading: false, subject: null, body: null, error: null });
+
+  const openFullEmail = async (row: InssHistoryRow) => {
+    if (!row.gmail_message_id) return;
+    setEmailView({ open: true, loading: true, subject: row.email_subject, body: null, error: null });
+    try {
+      const resp = await fetch(`${RAILWAY_BASE}/functions/gmail-message-body`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": (import.meta as any).env?.VITE_RAILWAY_API_KEY || "",
+        },
+        body: JSON.stringify({ gmail_message_id: row.gmail_message_id }),
+      });
+      const j = await resp.json();
+      if (!j.success) {
+        setEmailView((s) => ({ ...s, loading: false, error: j.error || "Não foi possível carregar o e-mail." }));
+        return;
+      }
+      // Prefere texto puro; se só houver HTML, remove as tags pra exibir como texto.
+      const text = j.body_text || (j.body_html ? String(j.body_html).replace(/<[^>]+>/g, " ").replace(/\s+\n/g, "\n").trim() : "");
+      setEmailView({
+        open: true, loading: false,
+        subject: j.subject || row.email_subject,
+        body: text || j.snippet || "(e-mail sem corpo de texto)",
+        error: null,
+      });
+    } catch (e: any) {
+      setEmailView((s) => ({ ...s, loading: false, error: e.message }));
+    }
+  };
+
   // Dialog state
   const [caseSearch, setCaseSearch] = useState("");
   const [caseOptions, setCaseOptions] = useState<CaseOption[]>([]);
@@ -139,7 +176,7 @@ export default function InssAdminProcessesTab() {
     if (historyByProc[procId]) return;
     const { data } = await db
       .from("inss_status_history" as any)
-      .select("id, from_status, to_status, email_subject, email_received_at, notified")
+      .select("id, from_status, to_status, email_subject, email_snippet, gmail_message_id, email_received_at, notified")
       .eq("process_id", procId)
       .order("email_received_at", { ascending: false });
     setHistoryByProc((prev) => ({ ...prev, [procId]: (data || []) as any }));
@@ -655,14 +692,32 @@ export default function InssAdminProcessesTab() {
                   <CollapsibleContent className="mt-3 pt-3 border-t">
                     <div className="space-y-1.5">
                       {(historyByProc[p.id] || []).map((h) => (
-                        <div key={h.id} className="text-xs flex items-center gap-2 flex-wrap">
-                          <span className="text-muted-foreground">
-                            {h.email_received_at ? format(new Date(h.email_received_at), "dd/MM HH:mm") : "—"}
-                          </span>
-                          <Badge variant="outline" className={statusVariant(h.to_status)}>
-                            {h.from_status || "?"} → {h.to_status || "?"}
-                          </Badge>
-                          {h.notified && <span className="text-green-600">✓ notificado</span>}
+                        <div key={h.id} className="text-xs space-y-1 border-b border-dashed last:border-0 pb-1.5 last:pb-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-muted-foreground">
+                              {h.email_received_at ? format(new Date(h.email_received_at), "dd/MM HH:mm") : "—"}
+                            </span>
+                            <Badge variant="outline" className={statusVariant(h.to_status)}>
+                              {h.from_status || "?"} → {h.to_status || "?"}
+                            </Badge>
+                            {h.notified && <span className="text-green-600">✓ notificado</span>}
+                            {h.gmail_message_id && (
+                              <button
+                                type="button"
+                                className="inline-flex items-center gap-1 text-primary hover:underline"
+                                onClick={() => openFullEmail(h)}
+                                title="Abrir o e-mail completo do Gmail"
+                              >
+                                <Mail className="h-3 w-3" /> Ver e-mail completo
+                              </button>
+                            )}
+                          </div>
+                          {h.email_subject && (
+                            <div className="text-muted-foreground font-medium">{h.email_subject}</div>
+                          )}
+                          {h.email_snippet && (
+                            <div className="text-muted-foreground/80 italic line-clamp-2">{h.email_snippet}</div>
+                          )}
                         </div>
                       ))}
                       {(historyByProc[p.id]?.length ?? 0) === 0 && (
@@ -781,6 +836,29 @@ export default function InssAdminProcessesTab() {
               Cancelar
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Visualizador do e-mail completo */}
+      <Dialog open={emailView.open} onOpenChange={(open) => !open && setEmailView((s) => ({ ...s, open: false }))}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <Mail className="h-4 w-4" />
+              {emailView.subject || "E-mail do INSS"}
+            </DialogTitle>
+          </DialogHeader>
+          {emailView.loading ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground py-8 justify-center">
+              <RefreshCw className="h-4 w-4 animate-spin" /> Carregando e-mail do Gmail…
+            </div>
+          ) : emailView.error ? (
+            <div className="text-sm text-destructive py-4">{emailView.error}</div>
+          ) : (
+            <pre className="text-sm whitespace-pre-wrap break-words max-h-[60vh] overflow-y-auto font-sans bg-muted/40 rounded-md p-3">
+              {emailView.body}
+            </pre>
+          )}
         </DialogContent>
       </Dialog>
 
