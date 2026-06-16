@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/collapsible";
 import {
   Search, Mail, Link2, Unlink, ChevronDown, RefreshCw, AlertCircle, Clock,
-  Sparkles, User,
+  Sparkles, User, DownloadCloud,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -77,6 +77,8 @@ export default function InssAdminProcessesTab() {
   const [processes, setProcesses] = useState<InssProcess[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [backfilling, setBackfilling] = useState(false);
+  const [backfillStatus, setBackfillStatus] = useState("");
   const [search, setSearch] = useState("");
   const [showOnlyOrphans, setShowOnlyOrphans] = useState(false);
   const [historyByProc, setHistoryByProc] = useState<Record<string, InssHistoryRow[]>>({});
@@ -177,6 +179,59 @@ export default function InssAdminProcessesTab() {
       toast.error("Erro: " + e.message);
     } finally {
       setSyncing(false);
+    }
+  };
+
+  // Backfill: varre TODO o histórico de e-mails [INSS] em lotes, seguindo o
+  // cursor de paginação devolvido pelo servidor até `done`.
+  const runBackfill = async () => {
+    if (
+      !confirm(
+        "Backfill completo: varre TODO o histórico de e-mails [INSS] do Gmail (sem limite de data) e cria os processos que faltam. Pode levar alguns minutos. Continuar?",
+      )
+    )
+      return;
+    setBackfilling(true);
+    let cursor: any = null;
+    let totalNew = 0;
+    let totalProc = 0;
+    let calls = 0;
+    try {
+      do {
+        const resp = await fetch(`${RAILWAY_BASE}/functions/gmail-inss-sync`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": (import.meta as any).env?.VITE_RAILWAY_API_KEY || "",
+          },
+          body: JSON.stringify({ backfill: true, max_messages: 150, cursor }),
+        });
+        const j = await resp.json();
+        if (!j.success) {
+          toast.error("Backfill falhou: " + (j.error || "erro desconhecido"));
+          break;
+        }
+        totalNew += j.new || 0;
+        totalProc += j.created_processes || 0;
+        calls++;
+        setBackfillStatus(
+          `Lote ${calls} · ${totalNew} e-mails novos, ${totalProc} processos`,
+        );
+        cursor = j.done ? null : j.cursor;
+        if (j.done) {
+          toast.success(
+            `Backfill concluído — ${totalNew} e-mails novos, ${totalProc} processos criados`,
+          );
+          break;
+        }
+      } while (cursor && calls < 500);
+      if (calls >= 500) toast.warning("Backfill interrompido no limite de segurança (500 lotes).");
+      loadProcesses();
+    } catch (e: any) {
+      toast.error("Erro: " + e.message);
+    } finally {
+      setBackfilling(false);
+      setBackfillStatus("");
     }
   };
 
@@ -439,6 +494,17 @@ export default function InssAdminProcessesTab() {
           >
             <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
             {syncing ? "Sincronizando..." : "Sincronizar agora"}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={runBackfill}
+            disabled={backfilling || syncing}
+            className="gap-2"
+            title="Varre todo o histórico de e-mails do INSS no Gmail"
+          >
+            <DownloadCloud className={`h-4 w-4 ${backfilling ? "animate-pulse" : ""}`} />
+            {backfilling ? (backfillStatus || "Importando histórico...") : "Backfill completo"}
           </Button>
           <Button
             variant="outline"

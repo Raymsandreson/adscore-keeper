@@ -162,6 +162,8 @@ function getInboxKeys(): Array<{ label: string; key: string }> {
   return inboxes;
 }
 
+interface SyncCursor { inbox: string | null; page_token: string | null }
+
 export const handler: RequestHandler = async (req, res) => {
   const body = (req.body || {}) as any;
   const query = (req.query || {}) as any;
@@ -170,9 +172,17 @@ export const handler: RequestHandler = async (req, res) => {
   const lookbackHours = lookbackDays > 0
     ? lookbackDays * 24
     : Number(body.lookback_hours ?? query.lookback_hours ?? 24);
-  const maxMessages = Number(body.max_messages ?? query.max_messages ?? 50);
+  // backfill: ignora a janela de data e varre TODO o histórico "from:noreply [INSS]",
+  // página por página (nextPageToken). A UI chama em loop usando o `cursor` retornado.
+  const backfill: boolean = Boolean(body.backfill ?? query.backfill);
+  // Em backfill, max_messages é o ORÇAMENTO de mensagens verificadas POR chamada
+  // (limita o tempo da request p/ não estourar timeout). Sem backfill, mantém o
+  // comportamento antigo: tamanho de uma página única.
+  const maxMessages = Number(body.max_messages ?? query.max_messages ?? (backfill ? 150 : 50));
+  const pageSize = backfill ? Math.min(maxMessages, 100) : maxMessages;
   const inboxFilter: string | undefined = body.inbox ?? query.inbox; // ex: "inbox#1"
   const dryRun: boolean = Boolean(body.dry_run ?? query.dry_run);
+  const inCursor: SyncCursor | null = body.cursor ?? null;
 
   const allInboxes = getInboxKeys();
   const inboxes = inboxFilter
@@ -194,12 +204,173 @@ export const handler: RequestHandler = async (req, res) => {
     let totalCreatedProcesses = 0;
     let totalCreatedHistory = 0;
     let totalNotifyTriggers = 0;
+    let checkedThisCall = 0;
     const allErrors: string[] = [];
     const perInbox: Record<string, any> = {};
     let globalOldest: string | null = null;
     let globalNewest: string | null = null;
+    let outCursor: SyncCursor | null = null;
 
-    for (const inbox of inboxes) {
+    // Durante backfill (histórico antigo) NÃO disparamos WhatsApp: seria notificar
+    // clientes sobre mudanças de status velhas. Notificação só no sync normal/cron.
+    // O auto-match (vínculo de órfãos) continua rodando — isso é desejável.
+    const allowNotify = !backfill;
+
+    // Processa 1 email: detalhe -> parse -> upsert do processo + histórico
+    // (+ auto-match de órfão + notify).
+    const processItem = async (
+      item: GmailMessageListItem,
+      inbox: { label: string; key: string },
+      inboxResult: any,
+    ): Promise<void> => {
+      try {
+        const msg: GmailMessage = await gmailFetch(`/users/me/messages/${item.id}`, inbox.key, {
+          format: 'full',
+        });
+        const subject = getHeader(msg, 'Subject') || '';
+        const body = extractPlainText(msg);
+        const receivedAt = msg.internalDate
+          ? new Date(Number(msg.internalDate)).toISOString()
+          : new Date().toISOString();
+
+        // Atualiza janela de datas (mín/máx) por inbox e global
+        if (!inboxResult.oldest_email_at || receivedAt < inboxResult.oldest_email_at) inboxResult.oldest_email_at = receivedAt;
+        if (!inboxResult.newest_email_at || receivedAt > inboxResult.newest_email_at) inboxResult.newest_email_at = receivedAt;
+        if (!globalOldest || receivedAt < globalOldest) globalOldest = receivedAt;
+        if (!globalNewest || receivedAt > globalNewest) globalNewest = receivedAt;
+
+        const parsed = parseInssSubject(subject, body);
+
+        // Em dry_run só conta, não grava nada
+        if (dryRun) return;
+
+        if (!parsed.requerimento) {
+          await supabase.from('inss_status_history').insert({
+            process_id: null as any,
+            gmail_message_id: item.id,
+            email_subject: subject,
+            email_snippet: msg.snippet?.slice(0, 500),
+            email_received_at: receivedAt,
+            to_status: 'PARSE_FAILED',
+          } as any).then(() => {}, () => {});
+          return;
+        }
+
+        const { data: existingProc } = await supabase
+          .from('inss_admin_processes')
+          .select('id, current_status, case_id, lead_id')
+          .eq('requerimento_number', parsed.requerimento)
+          .maybeSingle();
+
+        let processId: string;
+        let fromStatus: string | null = null;
+        let caseId: string | null = null;
+
+        if (existingProc) {
+          processId = existingProc.id;
+          fromStatus = existingProc.current_status || null;
+          caseId = existingProc.case_id || null;
+
+          await supabase
+            .from('inss_admin_processes')
+            .update({
+              current_status: parsed.status || fromStatus,
+              cpf_segurado: parsed.cpf || undefined,
+              nome_segurado: parsed.nome || undefined,
+              benefit_type: parsed.beneficio || undefined,
+              benefit_number: parsed.beneficio_num || undefined,
+              protocol_date: parsed.protocol_date || undefined,
+              last_email_at: receivedAt,
+              last_email_subject: subject,
+            })
+            .eq('id', processId);
+        } else {
+          const { data: created, error: createErr } = await supabase
+            .from('inss_admin_processes')
+            .insert({
+              requerimento_number: parsed.requerimento,
+              current_status: parsed.status || 'Desconhecido',
+              cpf_segurado: parsed.cpf,
+              nome_segurado: parsed.nome,
+              benefit_type: parsed.beneficio,
+              benefit_number: parsed.beneficio_num,
+              protocol_date: parsed.protocol_date,
+              last_email_at: receivedAt,
+              last_email_subject: subject,
+            })
+            .select('id')
+            .single();
+          if (createErr || !created) {
+            inboxResult.errors.push(`create process ${parsed.requerimento}: ${createErr?.message}`);
+            return;
+          }
+          processId = created.id;
+          inboxResult.created_processes++;
+          totalCreatedProcesses++;
+        }
+
+        await supabase.from('inss_status_history').insert({
+          process_id: processId,
+          from_status: fromStatus,
+          to_status: parsed.status || 'Desconhecido',
+          email_received_at: receivedAt,
+          email_subject: subject,
+          email_snippet: msg.snippet?.slice(0, 500),
+          gmail_message_id: item.id,
+          notified: false,
+        });
+        inboxResult.created_history++;
+        totalCreatedHistory++;
+
+        // === AUTO-MATCH: se órfão, tenta achar lead pelo nº requerimento ===
+        if (!caseId) {
+          try {
+            const match = await findInssOrphanMatch({
+              requerimento: parsed.requerimento,
+              cpf: parsed.cpf,
+              nome: parsed.nome,
+            });
+            if (match.leadId || match.caseId) {
+              const applied = await applyInssMatch({
+                processId,
+                requerimento: parsed.requerimento,
+                match,
+              });
+              caseId = applied.caseId || null;
+            }
+          } catch (mErr) {
+            console.warn('[gmail-inss-sync] auto-match failed:', mErr);
+          }
+        }
+
+        if (caseId && allowNotify) {
+          inboxResult.notify_triggers++;
+          totalNotifyTriggers++;
+          const railwayUrl = process.env.RAILWAY_PUBLIC_URL || `http://localhost:${process.env.PORT || 3000}`;
+          fetch(`${railwayUrl}/functions/notify-inss-update`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-api-key': process.env.RAILWAY_API_KEY || '',
+            },
+            body: JSON.stringify({ process_id: processId }),
+          }).catch((e) => console.error('[gmail-inss-sync] notify fire failed:', e));
+        }
+      } catch (err) {
+        inboxResult.errors.push(`${item.id}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    };
+
+    const cursorInboxIdx = inCursor?.inbox
+      ? inboxes.findIndex((i) => i.label === inCursor.inbox)
+      : -1;
+
+    for (let inboxIdx = 0; inboxIdx < inboxes.length; inboxIdx++) {
+      const inbox = inboxes[inboxIdx];
+
+      // Se o cursor aponta p/ uma inbox posterior, pula as anteriores.
+      if (cursorInboxIdx >= 0 && inboxIdx < cursorInboxIdx) continue;
+
       const inboxResult = {
         checked: 0,
         new: 0,
@@ -211,175 +382,67 @@ export const handler: RequestHandler = async (req, res) => {
         errors: [] as string[],
       };
 
+      // Orçamento da chamada esgotado numa fronteira de inbox: retoma aqui na próxima.
+      if (backfill && checkedThisCall >= maxMessages) {
+        outCursor = { inbox: inbox.label, page_token: null };
+        break;
+      }
+
       try {
-        const gmailQuery = `from:noreply [INSS] newer_than:${lookbackHours}h`;
-        const list = await gmailFetch('/users/me/messages', inbox.key, {
-          q: gmailQuery,
-          maxResults: String(maxMessages),
-        });
-        const messageIds: GmailMessageListItem[] = list.messages || [];
-        inboxResult.checked = messageIds.length;
-        totalChecked += messageIds.length;
+        const gmailQuery = backfill
+          ? `from:noreply [INSS]`
+          : `from:noreply [INSS] newer_than:${lookbackHours}h`;
 
-        if (messageIds.length === 0) {
-          perInbox[inbox.label] = inboxResult;
-          continue;
-        }
+        // Token inicial: só usa o do cursor se ele for desta inbox.
+        let pageToken: string | undefined =
+          (inCursor && inCursor.inbox === inbox.label && inCursor.page_token)
+            ? inCursor.page_token
+            : undefined;
 
-        const ids = messageIds.map((m) => m.id);
+        while (true) {
+          const params: Record<string, string> = { q: gmailQuery, maxResults: String(pageSize) };
+          if (pageToken) params.pageToken = pageToken;
+          const list = await gmailFetch('/users/me/messages', inbox.key, params);
+          const messageIds: GmailMessageListItem[] = list.messages || [];
+          const nextToken: string | undefined = list.nextPageToken || undefined;
 
-        // Em dry_run nós pulamos a checagem de "já visto" e listamos tudo
-        let toProcess: GmailMessageListItem[];
-        if (dryRun) {
-          toProcess = messageIds;
-        } else {
-          const { data: existing } = await supabase
-            .from('inss_status_history')
-            .select('gmail_message_id')
-            .in('gmail_message_id', ids);
-          const seenIds = new Set((existing || []).map((r: any) => r.gmail_message_id));
-          toProcess = messageIds.filter((m) => !seenIds.has(m.id));
-        }
-        inboxResult.new = toProcess.length;
-        totalNew += toProcess.length;
+          inboxResult.checked += messageIds.length;
+          totalChecked += messageIds.length;
+          checkedThisCall += messageIds.length;
 
-        for (const item of toProcess) {
-          try {
-            const msg: GmailMessage = await gmailFetch(`/users/me/messages/${item.id}`, inbox.key, {
-              format: 'full',
-            });
-            const subject = getHeader(msg, 'Subject') || '';
-            const body = extractPlainText(msg);
-            const receivedAt = msg.internalDate
-              ? new Date(Number(msg.internalDate)).toISOString()
-              : new Date().toISOString();
+          if (messageIds.length > 0) {
+            const ids = messageIds.map((m) => m.id);
 
-            // Atualiza janela de datas (mín/máx) por inbox e global
-            if (!inboxResult.oldest_email_at || receivedAt < inboxResult.oldest_email_at) inboxResult.oldest_email_at = receivedAt;
-            if (!inboxResult.newest_email_at || receivedAt > inboxResult.newest_email_at) inboxResult.newest_email_at = receivedAt;
-            if (!globalOldest || receivedAt < globalOldest) globalOldest = receivedAt;
-            if (!globalNewest || receivedAt > globalNewest) globalNewest = receivedAt;
-
-            const parsed = parseInssSubject(subject, body);
-
-            // Em dry_run só conta, não grava nada
-            if (dryRun) continue;
-
-            if (!parsed.requerimento) {
-              await supabase.from('inss_status_history').insert({
-                process_id: null as any,
-                gmail_message_id: item.id,
-                email_subject: subject,
-                email_snippet: msg.snippet?.slice(0, 500),
-                email_received_at: receivedAt,
-                to_status: 'PARSE_FAILED',
-              } as any).then(() => {}, () => {});
-              continue;
-            }
-
-
-            const { data: existingProc } = await supabase
-              .from('inss_admin_processes')
-              .select('id, current_status, case_id, lead_id')
-              .eq('requerimento_number', parsed.requerimento)
-              .maybeSingle();
-
-            let processId: string;
-            let fromStatus: string | null = null;
-            let caseId: string | null = null;
-
-            if (existingProc) {
-              processId = existingProc.id;
-              fromStatus = existingProc.current_status || null;
-              caseId = existingProc.case_id || null;
-
-              await supabase
-                .from('inss_admin_processes')
-                .update({
-                  current_status: parsed.status || fromStatus,
-                  cpf_segurado: parsed.cpf || undefined,
-                  nome_segurado: parsed.nome || undefined,
-                  benefit_type: parsed.beneficio || undefined,
-                  benefit_number: parsed.beneficio_num || undefined,
-                  protocol_date: parsed.protocol_date || undefined,
-                  last_email_at: receivedAt,
-                  last_email_subject: subject,
-                })
-                .eq('id', processId);
+            // Em dry_run nós pulamos a checagem de "já visto" e listamos tudo
+            let toProcess: GmailMessageListItem[];
+            if (dryRun) {
+              toProcess = messageIds;
             } else {
-              const { data: created, error: createErr } = await supabase
-                .from('inss_admin_processes')
-                .insert({
-                  requerimento_number: parsed.requerimento,
-                  current_status: parsed.status || 'Desconhecido',
-                  cpf_segurado: parsed.cpf,
-                  nome_segurado: parsed.nome,
-                  benefit_type: parsed.beneficio,
-                  benefit_number: parsed.beneficio_num,
-                  protocol_date: parsed.protocol_date,
-                  last_email_at: receivedAt,
-                  last_email_subject: subject,
-                })
-                .select('id')
-                .single();
-              if (createErr || !created) {
-                inboxResult.errors.push(`create process ${parsed.requerimento}: ${createErr?.message}`);
-                continue;
-              }
-              processId = created.id;
-              inboxResult.created_processes++;
-              totalCreatedProcesses++;
+              const { data: existing } = await supabase
+                .from('inss_status_history')
+                .select('gmail_message_id')
+                .in('gmail_message_id', ids);
+              const seenIds = new Set((existing || []).map((r: any) => r.gmail_message_id));
+              toProcess = messageIds.filter((m) => !seenIds.has(m.id));
             }
+            inboxResult.new += toProcess.length;
+            totalNew += toProcess.length;
 
-            await supabase.from('inss_status_history').insert({
-              process_id: processId,
-              from_status: fromStatus,
-              to_status: parsed.status || 'Desconhecido',
-              email_received_at: receivedAt,
-              email_subject: subject,
-              email_snippet: msg.snippet?.slice(0, 500),
-              gmail_message_id: item.id,
-              notified: false,
-            });
-            inboxResult.created_history++;
-            totalCreatedHistory++;
-
-            // === AUTO-MATCH: se órfão, tenta achar lead pelo nº requerimento ===
-            if (!caseId) {
-              try {
-                const match = await findInssOrphanMatch({
-                  requerimento: parsed.requerimento,
-                  cpf: parsed.cpf,
-                  nome: parsed.nome,
-                });
-                if (match.leadId || match.caseId) {
-                  const applied = await applyInssMatch({
-                    processId,
-                    requerimento: parsed.requerimento,
-                    match,
-                  });
-                  caseId = applied.caseId || null;
-                }
-              } catch (mErr) {
-                console.warn('[gmail-inss-sync] auto-match failed:', mErr);
-              }
+            for (const item of toProcess) {
+              await processItem(item, inbox, inboxResult);
             }
+          }
 
-            if (caseId) {
-              inboxResult.notify_triggers++;
-              totalNotifyTriggers++;
-              const railwayUrl = process.env.RAILWAY_PUBLIC_URL || `http://localhost:${process.env.PORT || 3000}`;
-              fetch(`${railwayUrl}/functions/notify-inss-update`, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'x-api-key': process.env.RAILWAY_API_KEY || '',
-                },
-                body: JSON.stringify({ process_id: processId }),
-              }).catch((e) => console.error('[gmail-inss-sync] notify fire failed:', e));
-            }
-          } catch (err) {
-            inboxResult.errors.push(`${item.id}: ${err instanceof Error ? err.message : String(err)}`);
+          // Sem backfill: comportamento antigo = uma única página.
+          if (!backfill) break;
+
+          pageToken = nextToken;
+          if (!pageToken) break; // acabou esta inbox -> próxima no for
+
+          // Orçamento desta chamada atingido: devolve cursor p/ a UI continuar.
+          if (checkedThisCall >= maxMessages) {
+            outCursor = { inbox: inbox.label, page_token: pageToken };
+            break;
           }
         }
       } catch (err) {
@@ -390,15 +453,21 @@ export const handler: RequestHandler = async (req, res) => {
 
       allErrors.push(...inboxResult.errors.map((e) => `${inbox.label}: ${e}`));
       perInbox[inbox.label] = inboxResult;
+
+      if (outCursor) break; // interrompido por orçamento; resto fica p/ a próxima chamada
     }
 
     const result = {
       success: true,
       dry_run: dryRun,
+      backfill,
+      done: !outCursor,
+      cursor: outCursor,
       params: {
         lookback_hours: lookbackHours,
         lookback_days: Math.round((lookbackHours / 24) * 100) / 100,
         max_messages: maxMessages,
+        page_size: pageSize,
         inbox_filter: inboxFilter || null,
       },
       inboxes: inboxes.length,
