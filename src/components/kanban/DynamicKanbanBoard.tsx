@@ -94,7 +94,7 @@ export function DynamicKanbanBoard({
   onChangeLeadStatus,
 }: DynamicKanbanBoardProps) {
   const { confirmDelete, ConfirmDeleteDialog } = useConfirmDelete();
-  const { reorderStages, updateStage } = useKanbanBoards();
+  const { reorderStages, updateStage, deleteStage } = useKanbanBoards();
   const [draggedLead, setDraggedLead] = useState<Lead | null>(null);
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
   const [draggedStageId, setDraggedStageId] = useState<string | null>(null);
@@ -623,6 +623,49 @@ export function DynamicKanbanBoard({
                           : <AnimatedNumber value={allStageLeads.length} />}
                       </Badge>
                     </div>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 shrink-0"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          onClick={() => {
+                            setEditingStageId(stage.id);
+                            setEditingStageName(stage.name);
+                          }}
+                        >
+                          <Edit2 className="h-4 w-4 mr-2" />
+                          Renomear etapa
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          className="text-destructive focus:text-destructive"
+                          onClick={() => {
+                            const count = allStageLeads.length;
+                            const msg = count > 0
+                              ? `Esta etapa possui ${count} lead(s). Mova-os antes de excluir.`
+                              : 'Tem certeza que deseja excluir esta etapa? Esta ação não pode ser desfeita.';
+                            if (count > 0) {
+                              toast.error(msg);
+                              return;
+                            }
+                            confirmDelete('Excluir etapa', msg, async () => {
+                              await deleteStage(board.id, stage.id);
+                            });
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Excluir etapa
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
                   {/* Search input per column */}
                   <div className="relative">
