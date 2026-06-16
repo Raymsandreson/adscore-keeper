@@ -94,8 +94,13 @@ export function DynamicKanbanBoard({
   onChangeLeadStatus,
 }: DynamicKanbanBoardProps) {
   const { confirmDelete, ConfirmDeleteDialog } = useConfirmDelete();
+  const { reorderStages, updateStage } = useKanbanBoards();
   const [draggedLead, setDraggedLead] = useState<Lead | null>(null);
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
+  const [draggedStageId, setDraggedStageId] = useState<string | null>(null);
+  const [dragOverStageReorder, setDragOverStageReorder] = useState<string | null>(null);
+  const [editingStageId, setEditingStageId] = useState<string | null>(null);
+  const [editingStageName, setEditingStageName] = useState('');
   const [conversionDialog, setConversionDialog] = useState<{ open: boolean; leadId: string | null; stageId: string | null }>({
     open: false,
     leadId: null,
