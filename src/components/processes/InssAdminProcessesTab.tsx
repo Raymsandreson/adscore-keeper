@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { db } from "@/integrations/supabase";
 import { authClient } from "@/integrations/supabase";
 import { Input } from "@/components/ui/input";
@@ -74,6 +75,7 @@ const fmtDate = (s?: string | null, withTime = false) => {
 };
 
 export default function InssAdminProcessesTab() {
+  const navigate = useNavigate();
   const [processes, setProcesses] = useState<InssProcess[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -456,6 +458,12 @@ export default function InssAdminProcessesTab() {
   };
 
 
+  // Clicar no processo abre o lead vinculado (aba kanban do /leads).
+  const goToLead = (p: InssProcess) => {
+    if (!p.lead_id) return;
+    navigate(`/leads?openLead=${p.lead_id}`);
+  };
+
   const unlink = async (p: InssProcess) => {
     if (!confirm(`Desvincular requerimento ${p.requerimento_number} do caso?`)) return;
     const { error } = await db
@@ -544,7 +552,12 @@ export default function InssAdminProcessesTab() {
               <CardContent className="p-3">
                 <Collapsible onOpenChange={(open) => open && loadHistory(p.id)}>
                   <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1 min-w-0 space-y-1">
+                    <div
+                      className={`flex-1 min-w-0 space-y-1 ${p.lead_id ? "cursor-pointer rounded-md -m-1 p-1 transition-colors hover:bg-muted/50" : ""}`}
+                      onClick={p.lead_id ? () => goToLead(p) : undefined}
+                      role={p.lead_id ? "button" : undefined}
+                      title={p.lead_id ? "Abrir lead vinculado" : undefined}
+                    >
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-mono font-semibold">{p.requerimento_number}</span>
                         <Badge className={statusVariant(p.current_status)}>
