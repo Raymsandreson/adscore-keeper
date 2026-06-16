@@ -58,9 +58,10 @@ import { normalizeDateInput } from '@/utils/normalizeDateInput';
 
 interface UnifiedKanbanManagerProps {
   adAccountId?: string;
+  category?: 'trabalhista' | 'previdenciario';
 }
 
-export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps) {
+export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanManagerProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = usePageState<string>('kanban_searchQuery', '');
   const teamProfiles = useProfilesList();
