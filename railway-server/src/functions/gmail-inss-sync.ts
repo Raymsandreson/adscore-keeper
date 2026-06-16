@@ -162,7 +162,41 @@ function getInboxKeys(): Array<{ label: string; key: string }> {
   return inboxes;
 }
 
-interface SyncCursor { inbox: string | null; page_token: string | null }
+interface SyncCursor {
+  inbox: string | null;
+  /** Janela mensal (YYYY-MM) sendo varrida em backfill, oldest-first. */
+  month: string | null;
+  page_token: string | null;
+}
+
+/** Lista YYYY-MM crescente de `fromYm` até `toYm` (inclusive). */
+function monthsBetween(fromYm: string, toYm: string): string[] {
+  const out: string[] = [];
+  const [fy, fm] = fromYm.split('-').map(Number);
+  const [ty, tm] = toYm.split('-').map(Number);
+  let y = fy; let m = fm;
+  while (y < ty || (y === ty && m <= tm)) {
+    out.push(`${y}-${String(m).padStart(2, '0')}`);
+    m++; if (m > 12) { m = 1; y++; }
+  }
+  return out;
+}
+
+/** YYYY-MM → janela Gmail [after, before) em YYYY/MM/DD. */
+function monthWindow(ym: string): { after: string; before: string } {
+  const [y, m] = ym.split('-').map(Number);
+  const after = `${y}/${String(m).padStart(2, '0')}/01`;
+  const nextY = m === 12 ? y + 1 : y;
+  const nextM = m === 12 ? 1 : m + 1;
+  const before = `${nextY}/${String(nextM).padStart(2, '0')}/01`;
+  return { after, before };
+}
+
+/** YYYY/MM/DD → YYYY-MM (para normalizar o param `after`). */
+function ymFromAfter(after: string): string {
+  const m = after.match(/^(\d{4})[\/\-](\d{2})/);
+  return m ? `${m[1]}-${m[2]}` : '2022-01';
+}
 
 export const handler: RequestHandler = async (req, res) => {
   const body = (req.body || {}) as any;
@@ -183,8 +217,13 @@ export const handler: RequestHandler = async (req, res) => {
   const inboxFilter: string | undefined = body.inbox ?? query.inbox; // ex: "inbox#1"
   const dryRun: boolean = Boolean(body.dry_run ?? query.dry_run);
   const inCursor: SyncCursor | null = body.cursor ?? null;
-  // Data inicial do backfill (Gmail aceita YYYY/MM/DD). Default: junho de 2024.
-  const backfillAfter: string = String(body.after ?? query.after ?? '2024/06/01');
+  // Data inicial do backfill (Gmail aceita YYYY/MM/DD). Default: jan/2022.
+  const backfillAfter: string = String(body.after ?? query.after ?? '2022/01/01');
+  // Em backfill, varremos mês a mês em ordem CRONOLÓGICA (oldest-first).
+  const backfillStartYm = ymFromAfter(backfillAfter);
+  const now = new Date();
+  const todayYm = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
+  const backfillMonths = backfill ? monthsBetween(backfillStartYm, todayYm) : [];
 
   const allInboxes = getInboxKeys();
   const inboxes = inboxFilter
@@ -403,65 +442,88 @@ export const handler: RequestHandler = async (req, res) => {
 
       // Orçamento da chamada esgotado numa fronteira de inbox: retoma aqui na próxima.
       if (backfill && checkedThisCall >= maxMessages) {
-        outCursor = { inbox: inbox.label, page_token: null };
+        outCursor = { inbox: inbox.label, month: backfillMonths[0] ?? null, page_token: null };
         break;
       }
 
       try {
-        const gmailQuery = backfill
-          ? `from:noreply [INSS] after:${backfillAfter}`
-          : `from:noreply [INSS] newer_than:${lookbackHours}h`;
+        // Em backfill: itera mês a mês oldest-first; sem backfill: 1 janela só.
+        const monthsToScan: Array<string | null> = backfill
+          ? (() => {
+              const startIdx = (inCursor && inCursor.inbox === inbox.label && inCursor.month)
+                ? Math.max(0, backfillMonths.indexOf(inCursor.month))
+                : 0;
+              return backfillMonths.slice(startIdx) as Array<string | null>;
+            })()
+          : [null];
 
-        // Token inicial: só usa o do cursor se ele for desta inbox.
-        let pageToken: string | undefined =
-          (inCursor && inCursor.inbox === inbox.label && inCursor.page_token)
-            ? inCursor.page_token
-            : undefined;
+        monthLoop:
+        for (const ym of monthsToScan) {
+          const gmailQuery = backfill && ym
+            ? (() => {
+                const { after, before } = monthWindow(ym);
+                return `from:noreply [INSS] after:${after} before:${before}`;
+              })()
+            : `from:noreply [INSS] newer_than:${lookbackHours}h`;
 
-        while (true) {
-          const params: Record<string, string> = { q: gmailQuery, maxResults: String(pageSize) };
-          if (pageToken) params.pageToken = pageToken;
-          const list = await gmailFetch('/users/me/messages', inbox.key, params);
-          const messageIds: GmailMessageListItem[] = list.messages || [];
-          const nextToken: string | undefined = list.nextPageToken || undefined;
+          // Token inicial: só usa se cursor for desta inbox E deste mês.
+          let pageToken: string | undefined =
+            (inCursor && inCursor.inbox === inbox.label && inCursor.month === ym && inCursor.page_token)
+              ? inCursor.page_token
+              : undefined;
 
-          inboxResult.checked += messageIds.length;
-          totalChecked += messageIds.length;
-          checkedThisCall += messageIds.length;
+          while (true) {
+            const params: Record<string, string> = { q: gmailQuery, maxResults: String(pageSize) };
+            if (pageToken) params.pageToken = pageToken;
+            const list = await gmailFetch('/users/me/messages', inbox.key, params);
+            const messageIds: GmailMessageListItem[] = list.messages || [];
+            const nextToken: string | undefined = list.nextPageToken || undefined;
 
-          if (messageIds.length > 0) {
-            const ids = messageIds.map((m) => m.id);
+            inboxResult.checked += messageIds.length;
+            totalChecked += messageIds.length;
+            checkedThisCall += messageIds.length;
 
-            // Em dry_run nós pulamos a checagem de "já visto" e listamos tudo
-            let toProcess: GmailMessageListItem[];
-            if (dryRun) {
-              toProcess = messageIds;
-            } else {
-              const { data: existing } = await supabase
-                .from('inss_status_history')
-                .select('gmail_message_id')
-                .in('gmail_message_id', ids);
-              const seenIds = new Set((existing || []).map((r: any) => r.gmail_message_id));
-              toProcess = messageIds.filter((m) => !seenIds.has(m.id));
+            if (messageIds.length > 0) {
+              const ids = messageIds.map((m) => m.id);
+              let toProcess: GmailMessageListItem[];
+              if (dryRun) {
+                toProcess = messageIds;
+              } else {
+                const { data: existing } = await supabase
+                  .from('inss_status_history')
+                  .select('gmail_message_id')
+                  .in('gmail_message_id', ids);
+                const seenIds = new Set((existing || []).map((r: any) => r.gmail_message_id));
+                toProcess = messageIds.filter((m) => !seenIds.has(m.id));
+              }
+              inboxResult.new += toProcess.length;
+              totalNew += toProcess.length;
+
+              // Dentro da página: oldest-first (Gmail devolve newest-first).
+              for (const item of [...toProcess].reverse()) {
+                await processItem(item, inbox, inboxResult);
+              }
             }
-            inboxResult.new += toProcess.length;
-            totalNew += toProcess.length;
 
-            for (const item of toProcess) {
-              await processItem(item, inbox, inboxResult);
+            if (!backfill) break;
+
+            pageToken = nextToken;
+            if (!pageToken) break; // fim deste mês -> próximo mês
+
+            if (checkedThisCall >= maxMessages) {
+              outCursor = { inbox: inbox.label, month: ym, page_token: pageToken };
+              break monthLoop;
             }
           }
 
-          // Sem backfill: comportamento antigo = uma única página.
-          if (!backfill) break;
-
-          pageToken = nextToken;
-          if (!pageToken) break; // acabou esta inbox -> próxima no for
-
-          // Orçamento desta chamada atingido: devolve cursor p/ a UI continuar.
-          if (checkedThisCall >= maxMessages) {
-            outCursor = { inbox: inbox.label, page_token: pageToken };
-            break;
+          // Mês terminou: se orçamento esgotou, retoma no próximo mês.
+          if (backfill && checkedThisCall >= maxMessages) {
+            const idx = backfillMonths.indexOf(ym as string);
+            const nextYm = idx >= 0 && idx + 1 < backfillMonths.length ? backfillMonths[idx + 1] : null;
+            outCursor = nextYm
+              ? { inbox: inbox.label, month: nextYm, page_token: null }
+              : null;
+            break monthLoop;
           }
         }
       } catch (err) {
