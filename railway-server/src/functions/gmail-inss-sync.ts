@@ -25,6 +25,7 @@ interface GmailMessage {
   internalDate?: string;
   snippet?: string;
   payload?: {
+    mimeType?: string;
     headers?: Array<{ name: string; value: string }>;
     parts?: any[];
     body?: { data?: string };
