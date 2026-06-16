@@ -116,40 +116,42 @@ export default function CasesPage() {
   const fetchCases = useCallback(async () => {
     setLoading(true);
     try {
-      let query = externalSupabase
-        .from('legal_cases')
-        .select('*, specialized_nuclei(name, prefix, color), leads(lead_name)')
-        .order('created_at', { ascending: false });
-
-      if (statusFilter !== 'all') {
-        query = query.eq('status', statusFilter);
-      }
-      if (nucleusFilter !== 'all') {
-        query = query.eq('nucleus_id', nucleusFilter);
-      }
+      const buildBase = () => {
+        let q = externalSupabase
+          .from('legal_cases')
+          .select('*, specialized_nuclei(name, prefix, color), leads(lead_name)')
+          .order('created_at', { ascending: false });
+        if (statusFilter !== 'all') q = q.eq('status', statusFilter);
+        if (nucleusFilter !== 'all') q = q.eq('nucleus_id', nucleusFilter);
+        return q;
+      };
 
       const q = search.trim();
-      if (q) {
-        // Server-side search across multiple columns to avoid the 1000-row
-        // default cap hiding older matches. Escape commas/parens for PostgREST.
-        const safe = q.replace(/[,()]/g, ' ');
-        query = query.or(
-          [
-            `title.ilike.%${safe}%`,
-            `case_number.ilike.%${safe}%`,
-            `description.ilike.%${safe}%`,
-          ].join(','),
-        );
-        // Higher cap when searching, in case many rows match
-        query = query.limit(2000);
-      } else {
-        query = query.limit(2000);
+
+      // Paginate in chunks of 1000 to bypass PostgREST db-max-rows cap on Externo.
+      const PAGE = 1000;
+      const HARD_CAP = 10000;
+      const aggregated: any[] = [];
+      for (let from = 0; from < HARD_CAP; from += PAGE) {
+        let query = buildBase().range(from, from + PAGE - 1);
+        if (q) {
+          const safe = q.replace(/[,()]/g, ' ');
+          query = query.or(
+            [
+              `title.ilike.%${safe}%`,
+              `case_number.ilike.%${safe}%`,
+              `description.ilike.%${safe}%`,
+            ].join(','),
+          );
+        }
+        const { data, error } = await query;
+        if (error) throw error;
+        const rows = data || [];
+        aggregated.push(...rows);
+        if (rows.length < PAGE) break;
       }
 
-      const { data, error } = await query;
-      if (error) throw error;
-
-      let mapped = (data || []).map((c: any) => ({
+      let mapped = aggregated.map((c: any) => ({
         ...c,
         nucleus_name: c.specialized_nuclei?.name,
         nucleus_prefix: c.specialized_nuclei?.prefix,
@@ -157,11 +159,8 @@ export default function CasesPage() {
         lead_name: c.leads?.lead_name || null,
       }));
 
-      // Also match lead_name client-side (PostgREST .or on embedded relation is tricky),
-      // then merge with a separate lead_name lookup for completeness.
       if (q) {
         const lower = q.toLowerCase();
-        // Fetch any cases whose related lead.lead_name matches, even if other columns didn't.
         const { data: leadMatches } = await externalSupabase
           .from('legal_cases')
           .select('*, specialized_nuclei(name, prefix, color), leads!inner(lead_name)')
@@ -176,7 +175,6 @@ export default function CasesPage() {
         }));
         const seen = new Set(mapped.map((c: any) => c.id));
         for (const c of extra) if (!seen.has(c.id)) { mapped.push(c); seen.add(c.id); }
-        // Final safety filter (no-op for server matches, ensures relevance)
         mapped = mapped.filter((c: any) =>
           c.title?.toLowerCase().includes(lower) ||
           c.case_number?.toLowerCase().includes(lower) ||
