@@ -55,7 +55,7 @@ import {
   Ban,
 } from 'lucide-react';
 import { CopyableText } from '@/components/ui/copyable-text';
-import { KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
+import { KanbanBoard, KanbanStage, useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { Lead } from '@/hooks/useLeads';
 import { differenceInDays, differenceInHours } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
