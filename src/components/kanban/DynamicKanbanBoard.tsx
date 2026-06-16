@@ -55,7 +55,7 @@ import {
   Ban,
 } from 'lucide-react';
 import { CopyableText } from '@/components/ui/copyable-text';
-import { KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
+import { KanbanBoard, KanbanStage, useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { Lead } from '@/hooks/useLeads';
 import { differenceInDays, differenceInHours } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
@@ -94,8 +94,13 @@ export function DynamicKanbanBoard({
   onChangeLeadStatus,
 }: DynamicKanbanBoardProps) {
   const { confirmDelete, ConfirmDeleteDialog } = useConfirmDelete();
+  const { reorderStages, updateStage } = useKanbanBoards();
   const [draggedLead, setDraggedLead] = useState<Lead | null>(null);
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
+  const [draggedStageId, setDraggedStageId] = useState<string | null>(null);
+  const [dragOverStageReorder, setDragOverStageReorder] = useState<string | null>(null);
+  const [editingStageId, setEditingStageId] = useState<string | null>(null);
+  const [editingStageName, setEditingStageName] = useState('');
   const [conversionDialog, setConversionDialog] = useState<{ open: boolean; leadId: string | null; stageId: string | null }>({
     open: false,
     leadId: null,
@@ -371,16 +376,36 @@ export function DynamicKanbanBoard({
   const handleDragOver = (e: React.DragEvent, stageId: string) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
-    setDragOverStage(stageId);
+    if (draggedStageId) {
+      setDragOverStageReorder(stageId);
+    } else {
+      setDragOverStage(stageId);
+    }
   };
 
   const handleDragLeave = () => {
     setDragOverStage(null);
+    setDragOverStageReorder(null);
   };
 
   const handleDrop = (e: React.DragEvent, newStageId: string) => {
     e.preventDefault();
     setDragOverStage(null);
+    setDragOverStageReorder(null);
+
+    // Stage reorder takes priority
+    if (draggedStageId && draggedStageId !== newStageId) {
+      const fromIdx = board.stages.findIndex(s => s.id === draggedStageId);
+      const toIdx = board.stages.findIndex(s => s.id === newStageId);
+      if (fromIdx >= 0 && toIdx >= 0) {
+        const next = [...board.stages];
+        const [moved] = next.splice(fromIdx, 1);
+        next.splice(toIdx, 0, moved);
+        reorderStages(board.id, next).catch(() => {});
+      }
+      setDraggedStageId(null);
+      return;
+    }
 
     if (draggedLead && draggedLead.status !== newStageId) {
       // Check if moving to a "closed" or "converted" stage
@@ -392,6 +417,27 @@ export function DynamicKanbanBoard({
       }
     }
     setDraggedLead(null);
+  };
+
+  const handleStageDragStart = (e: React.DragEvent, stageId: string) => {
+    setDraggedStageId(stageId);
+    e.dataTransfer.effectAllowed = 'move';
+    try { e.dataTransfer.setData('application/x-kanban-stage', stageId); } catch {}
+  };
+
+  const handleStageDragEnd = () => {
+    setDraggedStageId(null);
+    setDragOverStageReorder(null);
+  };
+
+  const commitStageRename = async (stageId: string) => {
+    const name = editingStageName.trim();
+    setEditingStageId(null);
+    const current = board.stages.find(s => s.id === stageId);
+    if (!name || !current || name === current.name) return;
+    try {
+      await updateStage(board.id, stageId, { name });
+    } catch {}
   };
 
   const handleConversionConfirm = () => {
@@ -511,35 +557,66 @@ export function DynamicKanbanBoard({
               : matchedStageLeads.slice(0, visibleCount);
             const hasMore = !stageFilter && matchedStageLeads.length > stageLeads.length;
             const isDropTarget = dragOverStage === stage.id;
+            const isReorderTarget = dragOverStageReorder === stage.id && draggedStageId && draggedStageId !== stage.id;
+            const isBeingDragged = draggedStageId === stage.id;
 
             return (
               <div
                 key={stage.id}
                 className={`flex-shrink-0 rounded-lg border transition-all ${
                   isDropTarget ? 'ring-2 ring-primary ring-offset-2' : ''
-                }`}
+                } ${isReorderTarget ? 'ring-2 ring-amber-400 ring-offset-2' : ''} ${isBeingDragged ? 'opacity-40' : ''}`}
                 style={{ width: `max(260px, calc((100vw - ${(board.stages.length + 2) * 4 + 16}px) / ${board.stages.length + 2}))` }}
                 onDragOver={(e) => handleDragOver(e, stage.id)}
                 onDragLeave={handleDragLeave}
                 onDrop={(e) => handleDrop(e, stage.id)}
               >
                 {/* Column Header */}
-                <div 
+                <div
                   className="p-3 rounded-t-lg border-b space-y-2"
-                  style={{ 
+                  style={{
                     backgroundColor: `${stage.color}15`,
                     borderColor: `${stage.color}30`,
                   }}
+                  draggable
+                  onDragStart={(e) => handleStageDragStart(e, stage.id)}
+                  onDragEnd={handleStageDragEnd}
                 >
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div 
-                        className="w-3 h-3 rounded-full" 
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <GripVertical className="h-3.5 w-3.5 text-muted-foreground cursor-grab shrink-0" />
+                      <div
+                        className="w-3 h-3 rounded-full shrink-0"
                         style={{ backgroundColor: stage.color }}
                       />
-                      <h3 className="font-medium text-sm" style={{ color: stage.color }}>
-                        {stage.name}
-                      </h3>
+                      {editingStageId === stage.id ? (
+                        <Input
+                          autoFocus
+                          value={editingStageName}
+                          onChange={(e) => setEditingStageName(e.target.value)}
+                          onBlur={() => commitStageRename(stage.id)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') { e.preventDefault(); commitStageRename(stage.id); }
+                            if (e.key === 'Escape') { e.preventDefault(); setEditingStageId(null); }
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                          onDragStart={(e) => e.preventDefault()}
+                          className="h-6 px-1 py-0 text-sm font-medium"
+                        />
+                      ) : (
+                        <h3
+                          className="font-medium text-sm truncate cursor-text"
+                          style={{ color: stage.color }}
+                          title="Duplo-clique para renomear"
+                          onDoubleClick={(e) => {
+                            e.stopPropagation();
+                            setEditingStageId(stage.id);
+                            setEditingStageName(stage.name);
+                          }}
+                        >
+                          {stage.name}
+                        </h3>
+                      )}
                       <Badge variant="secondary" className="text-xs">
                         {stageFilter && matchedStageLeads.length !== allStageLeads.length
                           ? <><AnimatedNumber value={matchedStageLeads.length} />/<AnimatedNumber value={allStageLeads.length} /></>
