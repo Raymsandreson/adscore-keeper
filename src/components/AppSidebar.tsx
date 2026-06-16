@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
   LayoutDashboard, Users, CalendarDays, TrendingUp, Trophy, UsersRound,
@@ -82,10 +82,13 @@ export function AppSidebar() {
     }
   };
 
+  const leadsSubItems: NavItem[] = [
+    { id: "leads-previdenciario", label: "Leads Previdenciário", icon: <Users className="h-3.5 w-3.5" />, path: "/leads?cat=previdenciario" },
+    { id: "leads-trabalhista", label: "Leads Trabalhista", icon: <Users className="h-3.5 w-3.5" />, path: "/leads?cat=trabalhista" },
+  ];
+
   const quickLinks: NavItem[] = [
     { id: "activities", label: "Atividades", icon: <ClipboardList className="h-4 w-4" />, path: "/", color: "text-emerald-600" },
-    { id: "leads-trabalhista", label: "Leads Trabalhista", icon: <Users className="h-4 w-4" />, path: "/leads?cat=trabalhista" },
-    { id: "leads-previdenciario", label: "Leads Previdenciário", icon: <Users className="h-4 w-4" />, path: "/leads?cat=previdenciario" },
     { id: "calls", label: "Ligações", icon: <Phone className="h-4 w-4" />, path: "/calls", color: "text-blue-500" },
     { id: "auto-dialer", label: "Discadora", icon: <Phone className="h-4 w-4" />, path: "/discadora", color: "text-cyan-500" },
     { id: "whatsapp", label: "WhatsApp", icon: <MessageSquareIcon className="h-4 w-4" />, path: "/whatsapp", color: "text-green-500" },
@@ -201,16 +204,46 @@ export function AppSidebar() {
             <SidebarGroupContent>
               <SidebarMenu>
                 {quickLinks.map((item) => (
-                  <SidebarMenuItem key={item.id}>
-                    <SidebarMenuButton
-                      onClick={() => handleNavigate(item.path)}
-                      isActive={isActive(item.path)}
-                      tooltip={item.label}
-                    >
-                      <span className={cn(item.color)}>{item.icon}</span>
-                      <span>{item.label}</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
+                  <React.Fragment key={item.id}>
+                    <SidebarMenuItem>
+                      <SidebarMenuButton
+                        onClick={() => handleNavigate(item.path)}
+                        isActive={isActive(item.path)}
+                        tooltip={item.label}
+                      >
+                        <span className={cn(item.color)}>{item.icon}</span>
+                        <span>{item.label}</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                    {item.id === "activities" && (
+                      <Collapsible key="leads-group" defaultOpen={leadsSubItems.some(i => isActive(i.path))}>
+                        <SidebarMenuItem>
+                          <CollapsibleTrigger asChild>
+                            <SidebarMenuButton tooltip="Leads">
+                              <Users className="h-4 w-4" />
+                              <span>Leads</span>
+                              {!collapsed && <ChevronRight className="ml-auto h-3.5 w-3.5 transition-transform group-data-[state=open]:rotate-90" />}
+                            </SidebarMenuButton>
+                          </CollapsibleTrigger>
+                        </SidebarMenuItem>
+                        <CollapsibleContent>
+                          {leadsSubItems.map(sub => (
+                            <SidebarMenuItem key={sub.id}>
+                              <SidebarMenuButton
+                                onClick={() => handleNavigate(sub.path)}
+                                isActive={isActive(sub.path)}
+                                tooltip={sub.label}
+                                className="pl-8"
+                              >
+                                <span>{sub.icon}</span>
+                                <span>{sub.label}</span>
+                              </SidebarMenuButton>
+                            </SidebarMenuItem>
+                          ))}
+                        </CollapsibleContent>
+                      </Collapsible>
+                    )}
+                  </React.Fragment>
                 ))}
               </SidebarMenu>
             </SidebarGroupContent>
