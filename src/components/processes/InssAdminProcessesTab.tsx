@@ -79,6 +79,37 @@ const fmtDate = (s?: string | null, withTime = false) => {
   catch { return null; }
 };
 
+// Faz parse do corpo do e-mail do INSS em pares "Rótulo: valor" para exibição
+// estruturada. Genérico: pega qualquer rótulo (Protocolo, Serviço, Data do
+// Protocolo, Unidade responsável, Status atual, Despacho, etc.), inclusive de
+// outros tipos de e-mail. Valores que quebram em mais de uma linha são juntados.
+function parseInssEmail(text: string): {
+  recipient: string | null;
+  fields: { label: string; value: string }[];
+} {
+  const recipient =
+    text.match(/Prezad[oa]\(a\)\s*Sr\(a\)\s*(.+?)\s*,/i)?.[1]?.trim() || null;
+  const lines = text.split(/\r?\n/);
+  const fields: { label: string; value: string }[] = [];
+  let current: { label: string; value: string } | null = null;
+  // Marcadores de rodapé/cabeçalho que encerram o campo corrente.
+  const stop = /^(É poss[íi]vel acompanhar|Atenciosamente|Instituto Nacional|https?:|#{2,}|\*{2,}|Prezad)/i;
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) continue;
+    if (stop.test(line)) { current = null; continue; }
+    // Rótulo = só letras/espaços (evita capturar horas tipo "07:00" ou URLs).
+    const m = line.match(/^([A-Za-zÀ-ú][A-Za-zÀ-ú\s]{2,40}?)\s*:\s*(.*)$/);
+    if (m) {
+      current = { label: m[1].replace(/\s+/g, " ").trim(), value: m[2].trim() };
+      fields.push(current);
+    } else if (current) {
+      current.value = `${current.value} ${line}`.trim();
+    }
+  }
+  return { recipient, fields: fields.filter((f) => f.value) };
+}
+
 export default function InssAdminProcessesTab() {
   const { updateLead } = useLeads();
   const { boards } = useKanbanBoards();
@@ -128,6 +159,11 @@ export default function InssAdminProcessesTab() {
       setEmailView((s) => ({ ...s, loading: false, error: e.message }));
     }
   };
+
+  const parsedEmail = useMemo(
+    () => (emailView.body ? parseInssEmail(emailView.body) : null),
+    [emailView.body],
+  );
 
   // Dialog state
   const [caseSearch, setCaseSearch] = useState("");
@@ -854,6 +890,44 @@ export default function InssAdminProcessesTab() {
             </div>
           ) : emailView.error ? (
             <div className="text-sm text-destructive py-4">{emailView.error}</div>
+          ) : parsedEmail && parsedEmail.fields.length > 0 ? (
+            <div className="space-y-4 max-h-[65vh] overflow-y-auto pr-1">
+              {parsedEmail.recipient && (
+                <div className="flex items-center gap-2 text-sm">
+                  <User className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-muted-foreground">Segurado:</span>
+                  <span className="font-medium">{parsedEmail.recipient}</span>
+                </div>
+              )}
+              <div className="grid gap-3 sm:grid-cols-2">
+                {parsedEmail.fields.map((f, i) => {
+                  const isStatus = /status/i.test(f.label);
+                  const isLong = f.value.length > 60 || /despacho/i.test(f.label);
+                  return (
+                    <div key={i} className={`rounded-md border bg-muted/30 p-2.5 ${isLong ? "sm:col-span-2" : ""}`}>
+                      <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{f.label}</div>
+                      {isStatus ? (
+                        <Badge className={`mt-1 ${statusVariant(f.value)}`}>{f.value}</Badge>
+                      ) : (
+                        <div className="text-sm font-medium break-words">{f.value}</div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              <Collapsible>
+                <CollapsibleTrigger asChild>
+                  <Button variant="ghost" size="sm" className="gap-1 h-7 px-2 text-xs">
+                    <ChevronDown className="h-3.5 w-3.5" /> Ver e-mail original
+                  </Button>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <pre className="mt-2 text-xs whitespace-pre-wrap break-words font-sans bg-muted/40 rounded-md p-3">
+                    {emailView.body}
+                  </pre>
+                </CollapsibleContent>
+              </Collapsible>
+            </div>
           ) : (
             <pre className="text-sm whitespace-pre-wrap break-words max-h-[60vh] overflow-y-auto font-sans bg-muted/40 rounded-md p-3">
               {emailView.body}
