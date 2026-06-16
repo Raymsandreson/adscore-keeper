@@ -247,14 +247,25 @@ export const handler: RequestHandler = async (req, res) => {
         if (dryRun) return;
 
         if (!parsed.requerimento) {
-          await supabase.from('inss_status_history').insert({
-            process_id: null as any,
-            gmail_message_id: item.id,
-            email_subject: subject,
-            email_snippet: msg.snippet?.slice(0, 500),
-            email_received_at: receivedAt,
-            to_status: 'PARSE_FAILED',
-          } as any).then(() => {}, () => {});
+          // Sem nº de requerimento: gravamos como PARSE_FAILED para NUNCA
+          // reprocessar este e-mail. process_id é nullable; gmail_message_id
+          // é UNIQUE então onConflict=ignore evita conflito em retries.
+          const { error: pfErr } = await supabase
+            .from('inss_status_history')
+            .upsert({
+              process_id: null,
+              gmail_message_id: item.id,
+              email_subject: subject,
+              email_snippet: msg.snippet?.slice(0, 500),
+              email_received_at: receivedAt,
+              to_status: 'PARSE_FAILED',
+            } as any, { onConflict: 'gmail_message_id', ignoreDuplicates: true });
+          if (pfErr) {
+            inboxResult.errors.push(`PARSE_FAILED insert ${item.id}: ${pfErr.message}`);
+          } else {
+            inboxResult.created_history++;
+            totalCreatedHistory++;
+          }
           return;
         }
 
@@ -311,16 +322,22 @@ export const handler: RequestHandler = async (req, res) => {
           totalCreatedProcesses++;
         }
 
-        await supabase.from('inss_status_history').insert({
-          process_id: processId,
-          from_status: fromStatus,
-          to_status: parsed.status || 'Desconhecido',
-          email_received_at: receivedAt,
-          email_subject: subject,
-          email_snippet: msg.snippet?.slice(0, 500),
-          gmail_message_id: item.id,
-          notified: false,
-        });
+        const { error: histErr } = await supabase
+          .from('inss_status_history')
+          .upsert({
+            process_id: processId,
+            from_status: fromStatus,
+            to_status: parsed.status || 'Desconhecido',
+            email_received_at: receivedAt,
+            email_subject: subject,
+            email_snippet: msg.snippet?.slice(0, 500),
+            gmail_message_id: item.id,
+            notified: false,
+          } as any, { onConflict: 'gmail_message_id', ignoreDuplicates: true });
+        if (histErr) {
+          inboxResult.errors.push(`history insert ${item.id}: ${histErr.message}`);
+          return;
+        }
         inboxResult.created_history++;
         totalCreatedHistory++;
 
