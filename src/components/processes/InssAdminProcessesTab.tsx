@@ -1,5 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { LeadEditDialog } from "@/components/kanban/LeadEditDialog";
+import { useLeads, type Lead } from "@/hooks/useLeads";
+import { useKanbanBoards } from "@/hooks/useKanbanBoards";
 import { db } from "@/integrations/supabase";
 import { authClient } from "@/integrations/supabase";
 import { Input } from "@/components/ui/input";
@@ -75,7 +77,10 @@ const fmtDate = (s?: string | null, withTime = false) => {
 };
 
 export default function InssAdminProcessesTab() {
-  const navigate = useNavigate();
+  const { updateLead } = useLeads();
+  const { boards } = useKanbanBoards();
+  const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+  const [leadSheetOpen, setLeadSheetOpen] = useState(false);
   const [processes, setProcesses] = useState<InssProcess[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -458,10 +463,25 @@ export default function InssAdminProcessesTab() {
   };
 
 
-  // Clicar no processo abre o lead vinculado (aba kanban do /leads).
-  const goToLead = (p: InssProcess) => {
+  // Clicar no processo abre o painel lateral do lead vinculado (Sheet "Editar Lead").
+  const goToLead = async (p: InssProcess) => {
     if (!p.lead_id) return;
-    navigate(`/leads?openLead=${p.lead_id}`);
+    try {
+      const { data, error } = await db
+        .from("leads" as any)
+        .select("*")
+        .eq("id", p.lead_id)
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) {
+        toast.error("Lead não encontrado");
+        return;
+      }
+      setSelectedLead(data as Lead);
+      setLeadSheetOpen(true);
+    } catch (e: any) {
+      toast.error("Erro ao abrir lead: " + e.message);
+    }
   };
 
   const unlink = async (p: InssProcess) => {
@@ -744,6 +764,23 @@ export default function InssAdminProcessesTab() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Painel lateral do lead vinculado */}
+      {selectedLead && (
+        <LeadEditDialog
+          open={leadSheetOpen}
+          onOpenChange={(v) => {
+            setLeadSheetOpen(v);
+            if (!v) setSelectedLead(null);
+          }}
+          lead={selectedLead}
+          onSave={async (id, updates) => {
+            await updateLead(id, updates);
+          }}
+          boards={boards}
+          mode="sheet"
+        />
+      )}
     </div>
   );
 }
