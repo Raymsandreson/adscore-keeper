@@ -248,7 +248,7 @@ export default function InssAdminProcessesTab() {
       .select("id, from_status, to_status, email_subject, email_snippet, gmail_message_id, email_received_at, notified")
       .eq("process_id", procId)
       .order("email_received_at", { ascending: false });
-    const rows = (data || []) as InssHistoryRow[];
+    const rows = ((data || []) as unknown) as InssHistoryRow[];
     setHistoryByProc((prev) => ({ ...prev, [procId]: rows }));
     const latest = rows[0];
     if (latest?.gmail_message_id) {
