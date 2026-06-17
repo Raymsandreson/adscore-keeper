@@ -37,6 +37,8 @@ import { handler as gmailInssSync } from './functions/gmail-inss-sync';
 import { handler as notifyInssUpdate } from './functions/notify-inss-update';
 import { handler as gmailMessageBody } from './functions/gmail-message-body';
 import { handler as matchInssOrphans } from './functions/match-inss-orphans';
+import { handler as autoLinkInssByName } from './functions/auto-link-inss-by-name';
+
 import { handler as getWhatsappGroupInfo } from './functions/get-whatsapp-group-info';
 import { handler as scanDuplicateContacts } from './functions/scan-duplicate-contacts';
 import { handler as recoverLeadsPhone55 } from './functions/recover-leads-phone-55';
