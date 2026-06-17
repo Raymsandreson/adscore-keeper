@@ -278,6 +278,22 @@ export default function InssAdminProcessesTab() {
     [filtered, page],
   );
 
+  // Auto-carrega histórico dos cartões visíveis (DB) e o corpo do último e-mail
+  // (Gmail) para conseguir mostrar o Despacho como preview no cartão.
+  useEffect(() => {
+    paged.forEach((p) => {
+      if (!historyByProc[p.id]) {
+        loadHistory(p.id);
+      } else {
+        const latest = historyByProc[p.id][0];
+        if (latest?.gmail_message_id && !emailBodyCache[latest.gmail_message_id]) {
+          fetchAndCacheBody(latest.gmail_message_id, latest.email_subject);
+        }
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paged, historyByProc]);
+
   const orphanCount = processes.filter((p) => !p.case_id).length;
 
   const triggerSync = async () => {
