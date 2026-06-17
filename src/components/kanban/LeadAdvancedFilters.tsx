@@ -266,6 +266,52 @@ export function LeadAdvancedFilters({
                 </Select>
               </div>
 
+              <div className="space-y-1 col-span-2 md:col-span-4">
+                <Label className="text-xs">Atalhos de data (criação)</Label>
+                <div className="flex flex-wrap gap-1">
+                  {(() => {
+                    const fmt = (d: Date) => d.toISOString().slice(0, 10);
+                    const today = new Date();
+                    const startOfWeek = new Date(today);
+                    startOfWeek.setDate(today.getDate() - today.getDay()); // domingo
+                    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+                    const presets: { label: string; from: string }[] = [
+                      { label: 'Hoje', from: fmt(today) },
+                      { label: 'Esta semana', from: fmt(startOfWeek) },
+                      { label: 'Este mês', from: fmt(startOfMonth) },
+                    ];
+                    const isActive = (from: string) => filters.createdFrom === from && !filters.createdTo;
+                    return (
+                      <>
+                        {presets.map(p => (
+                          <Button
+                            key={p.label}
+                            type="button"
+                            size="sm"
+                            variant={isActive(p.from) ? 'default' : 'outline'}
+                            className="h-7 text-xs"
+                            onClick={() => onChange({ ...filters, createdFrom: p.from, createdTo: '' })}
+                          >
+                            {p.label}
+                          </Button>
+                        ))}
+                        {(filters.createdFrom || filters.createdTo) && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 text-xs"
+                            onClick={() => onChange({ ...filters, createdFrom: '', createdTo: '' })}
+                          >
+                            Limpar
+                          </Button>
+                        )}
+                      </>
+                    );
+                  })()}
+                </div>
+              </div>
+
               <div className="space-y-1">
                 <Label className="text-xs">Criado de</Label>
                 <Input type="date" className="h-8 text-xs" value={filters.createdFrom} onChange={e => update('createdFrom', e.target.value)} />
@@ -285,6 +331,7 @@ export function LeadAdvancedFilters({
                 <Label className="text-xs">Atualizado até</Label>
                 <Input type="date" className="h-8 text-xs" value={filters.updatedTo} onChange={e => update('updatedTo', e.target.value)} />
               </div>
+
             </div>
           </div>
 
