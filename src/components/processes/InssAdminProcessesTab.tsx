@@ -333,7 +333,7 @@ export default function InssAdminProcessesTab() {
   const runBackfill = async () => {
     if (
       !confirm(
-        "Backfill: varre os e-mails [INSS] do Gmail desde junho/2024 e cria os processos que faltam. Pode levar alguns minutos. Continuar?",
+        "Backfill: varre os e-mails [INSS] do Gmail desde janeiro/2022 e cria os processos que faltam. Pode levar alguns minutos. Continuar?",
       )
     )
       return;
