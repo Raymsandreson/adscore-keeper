@@ -78,6 +78,18 @@ const fmtDate = (s?: string | null, withTime = false) => {
   try { return format(new Date(s), withTime ? "dd/MM/yyyy HH:mm" : "dd/MM/yyyy"); }
   catch { return null; }
 };
+// Remove acentos / cedilha / variações ("Souza"/"Sousa" continuam diferentes, mas
+// pelo menos "Cícero" e "Cicero" passam a casar). Mantém só letras+espaço, upper.
+const stripAccents = (s: string) =>
+  s.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+const tokenizeName = (s?: string | null): string[] => {
+  if (!s) return [];
+  return stripAccents(s)
+    .toUpperCase()
+    .replace(/[^A-Z\s]/g, " ")
+    .split(/\s+/)
+    .filter((t) => t.length >= 3 && !["DOS", "DAS", "DEL"].includes(t));
+};
 
 // Faz parse do corpo do e-mail do INSS em pares "Rótulo: valor" para exibição
 // estruturada. Genérico: pega qualquer rótulo (Protocolo, Serviço, Data do
