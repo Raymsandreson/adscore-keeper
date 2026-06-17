@@ -162,12 +162,12 @@ export function MetricDetailSheet({ open, onOpenChange, metricKey, targetUserId,
     if (!goalKey) { setDailyTarget(0); return; }
     try {
       const today = format(new Date(), 'yyyy-MM-dd');
-      const { data: userGoal } = await supabase.from('workflow_daily_goals')
+      const { data: userGoal } = await externalSupabase.from('workflow_daily_goals')
         .select('*').eq('user_id', user.id).eq('goal_date', today).maybeSingle();
       if (userGoal && (userGoal as any)[goalKey] != null) {
         setDailyTarget((userGoal as any)[goalKey]); return;
       }
-      const { data: defaults } = await supabase.from('workflow_default_goals')
+      const { data: defaults } = await externalSupabase.from('workflow_default_goals')
         .select('*').limit(1).maybeSingle();
       if (defaults && (defaults as any)[goalKey] != null) {
         setDailyTarget((defaults as any)[goalKey]);
