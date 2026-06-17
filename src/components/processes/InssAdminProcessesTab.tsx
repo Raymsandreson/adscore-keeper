@@ -1084,8 +1084,10 @@ export default function InssAdminProcessesTab() {
             const cachedBody = latest?.gmail_message_id
               ? emailBodyCache[latest.gmail_message_id]
               : undefined;
-            const despachoPreview =
-              cachedBody?.despacho || latest?.email_snippet || null;
+            const despachoPreview = decodeHtmlEntities(
+              cachedBody?.despacho || latest?.email_snippet || ""
+            ) || null;
+
 
             return (
             <Card key={p.id} className={!p.case_id ? "border-orange-300 dark:border-orange-700" : ""}>
