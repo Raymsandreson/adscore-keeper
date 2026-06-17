@@ -541,35 +541,183 @@ export default function InssAdminProcessesTab() {
     }
   }, [linkingProc, fetchSuggestions]);
 
-  // Busca manual de casos
+  // Busca manual: aceita nº/título de caso, nome de lead, nome de contato, telefone, CPF
   useEffect(() => {
     if (!linkingProc) return;
     const q = caseSearch.trim();
     if (!q) { setCaseOptions([]); return; }
     const run = async () => {
-      const { data } = await db
+      const results = new Map<string, CaseOption>();
+      const digitsOnly = q.replace(/\D/g, "");
+
+      // 1) Casos por número/título
+      const { data: casesByCaseFields } = await db
         .from("legal_cases" as any)
         .select("id, case_number, title, lead_id")
         .or(`case_number.ilike.%${q}%,title.ilike.%${q}%`)
         .order("created_at", { ascending: false })
+        .limit(10);
+      for (const c of (casesByCaseFields || []) as any[]) {
+        results.set(c.id, { ...c, matched_via: "Caso" });
+      }
+
+      // 2) Leads por nome / telefone / CPF
+      const leadOr: string[] = [`lead_name.ilike.%${q}%`];
+      if (digitsOnly.length >= 4) {
+        leadOr.push(`lead_phone.ilike.%${digitsOnly}%`);
+        leadOr.push(`cpf.ilike.%${digitsOnly}%`);
+      }
+      const { data: leadsRaw } = await db
+        .from("leads" as any)
+        .select("id, lead_name")
+        .or(leadOr.join(","))
         .limit(15);
-      setCaseOptions((data || []) as any);
+
+      // 3) Contatos por nome/telefone/CPF (Externo + Cloud)
+      const contactOr: string[] = [`full_name.ilike.%${q}%`];
+      if (digitsOnly.length >= 4) {
+        contactOr.push(`phone.ilike.%${digitsOnly}%`);
+        contactOr.push(`cpf.ilike.%${digitsOnly}%`);
+      }
+      const [ctExtR, ctCloudR] = await Promise.all([
+        db.from("contacts" as any).select("id, full_name, lead_id").or(contactOr.join(",")).is("deleted_at", null).limit(15),
+        authClient.from("contacts" as any).select("id, full_name, lead_id").or(contactOr.join(",")).is("deleted_at", null).limit(15),
+      ]);
+      const contacts = [...((ctExtR.data || []) as any[]), ...((ctCloudR.data || []) as any[])];
+
+      // Para cada lead candidato (direto ou via contato), busca casos vinculados
+      const candidateLeads = new Map<string, { lead_name: string | null; via: string }>();
+      for (const l of (leadsRaw || []) as any[]) {
+        candidateLeads.set(l.id, { lead_name: l.lead_name, via: "Lead" });
+      }
+      for (const ct of contacts) {
+        if (ct.lead_id && !candidateLeads.has(ct.lead_id)) {
+          candidateLeads.set(ct.lead_id, { lead_name: ct.full_name, via: `Contato "${ct.full_name}"` });
+        }
+        const { data: cl } = await db.from("contact_leads" as any).select("lead_id").eq("contact_id", ct.id);
+        for (const link of (cl || []) as any[]) {
+          if (!candidateLeads.has(link.lead_id)) {
+            candidateLeads.set(link.lead_id, { lead_name: ct.full_name, via: `Contato "${ct.full_name}"` });
+          }
+        }
+      }
+
+      for (const [leadId, info] of candidateLeads.entries()) {
+        const { data: cs } = await db
+          .from("legal_cases" as any)
+          .select("id, case_number, title, lead_id")
+          .eq("lead_id", leadId)
+          .limit(5);
+        if (cs && cs.length) {
+          for (const c of cs as any[]) {
+            if (!results.has(c.id)) results.set(c.id, { ...c, lead_name: info.lead_name, matched_via: info.via });
+          }
+        } else {
+          // lead sem caso ainda — oferece criar
+          const key = `lead:${leadId}`;
+          results.set(key, {
+            id: key,
+            case_number: "(criar caso)",
+            title: info.lead_name || "Lead sem caso ainda",
+            lead_id: leadId,
+            lead_name: info.lead_name,
+            matched_via: info.via + " — sem caso. Clique para criar e vincular.",
+            needs_case_creation: true,
+          });
+        }
+      }
+
+      setCaseOptions(Array.from(results.values()).slice(0, 20));
     };
-    const t = setTimeout(run, 250);
+    const t = setTimeout(run, 300);
     return () => clearTimeout(t);
   }, [linkingProc, caseSearch]);
 
   const INSS_FIELD_ID = "111f9a38-98c3-4f83-9095-5c469106a7bf";
 
+  // Cria (ou atualiza) lead_processes com todos os dados do INSS puxados do email
+  const upsertLeadProcess = async (caseId: string, leadId: string | null, proc: InssProcess) => {
+    if (!proc.requerimento_number) return;
+    // Pega o último despacho do histórico para popular description
+    const { data: lastHist } = await db
+      .from("inss_admin_processes_history" as any)
+      .select("email_snippet, email_subject, email_received_at, to_status")
+      .eq("process_id", proc.id)
+      .order("email_received_at", { ascending: false })
+      .limit(1);
+    const last = (lastHist || [])[0] as any;
+
+    const title = `INSS Administrativo — Req. ${proc.requerimento_number}${proc.benefit_type ? ` (${proc.benefit_type})` : ""}`;
+    const descLines = [
+      proc.nome_segurado ? `Segurado: ${proc.nome_segurado}` : null,
+      proc.cpf_segurado ? `CPF: ${proc.cpf_segurado}` : null,
+      proc.benefit_type ? `Benefício: ${proc.benefit_type}` : null,
+      proc.benefit_number ? `NB: ${proc.benefit_number}` : null,
+      proc.protocol_date ? `Protocolo: ${fmtDate(proc.protocol_date)}` : null,
+      proc.current_status ? `Status: ${proc.current_status}` : null,
+      last?.email_snippet ? `\nÚltimo despacho: ${last.email_snippet}` : null,
+    ].filter(Boolean);
+
+    // Já existe lead_processes para este requerimento? (procura por process_number ou case_id+tipo)
+    const { data: existing } = await db
+      .from("lead_processes" as any)
+      .select("id")
+      .eq("process_number", proc.requerimento_number)
+      .limit(1);
+
+    const payload: any = {
+      lead_id: leadId,
+      case_id: caseId,
+      process_type: "inss_admin",
+      process_number: proc.requerimento_number,
+      title,
+      description: descLines.join("\n"),
+      status: proc.current_status || "Em andamento",
+      started_at: proc.protocol_date || proc.created_at,
+      fonte_nome: "INSS",
+      fonte_tipo: "Administrativo",
+      data_ultima_verificacao: proc.last_email_at,
+    };
+
+    if (existing && existing[0]) {
+      await db.from("lead_processes" as any).update(payload).eq("id", (existing[0] as any).id);
+    } else {
+      await db.from("lead_processes" as any).insert({ ...payload, created_by: userId });
+    }
+  };
+
   const linkToCase = async (caseOpt: CaseOption) => {
     if (!linkingProc) return;
     setLinkingBusy(true);
     try {
+      let caseId = caseOpt.id;
+      let leadId = caseOpt.lead_id;
+      let caseNumberLabel = caseOpt.case_number;
+
+      // Se for um "lead sem caso", cria o caso primeiro
+      if (caseOpt.needs_case_creation && leadId) {
+        // gera número via RPC (usa specialized_nuclei se houver)
+        const { data: newCaseNum } = await db.rpc("generate_case_number" as any, { p_nucleus_id: null } as any);
+        const { data: newCase, error: caseErr } = await db
+          .from("legal_cases" as any)
+          .insert({
+            lead_id: leadId,
+            case_number: newCaseNum || `CASO-${Date.now()}`,
+            title: linkingProc.nome_segurado || caseOpt.lead_name || "Caso INSS",
+            status: "active",
+          } as any)
+          .select("id, case_number")
+          .single();
+        if (caseErr || !newCase) throw caseErr || new Error("Falha ao criar caso");
+        caseId = (newCase as any).id;
+        caseNumberLabel = (newCase as any).case_number;
+      }
+
       const { error } = await db
         .from("inss_admin_processes" as any)
         .update({
-          case_id: caseOpt.id,
-          lead_id: caseOpt.lead_id,
+          case_id: caseId,
+          lead_id: leadId,
           linked_at: new Date().toISOString(),
           linked_by: userId,
         })
@@ -577,12 +725,12 @@ export default function InssAdminProcessesTab() {
       if (error) throw error;
 
       // Memoriza nº do requerimento no lead (auto-match futuro)
-      if (caseOpt.lead_id && linkingProc.requerimento_number) {
+      if (leadId && linkingProc.requerimento_number) {
         await db
           .from("lead_custom_field_values" as any)
           .upsert(
             {
-              lead_id: caseOpt.lead_id,
+              lead_id: leadId,
               field_id: INSS_FIELD_ID,
               value_text: linkingProc.requerimento_number,
             } as any,
@@ -590,7 +738,15 @@ export default function InssAdminProcessesTab() {
           );
       }
 
-      toast.success("Processo vinculado ao caso " + caseOpt.case_number);
+      // Cria/atualiza o lead_processes completo
+      try {
+        await upsertLeadProcess(caseId, leadId, linkingProc);
+      } catch (e: any) {
+        console.warn("Falha ao popular lead_processes:", e?.message);
+        toast.warning("Vinculado, mas não consegui popular o processo no caso: " + (e?.message || ""));
+      }
+
+      toast.success("Processo vinculado ao caso " + caseNumberLabel);
 
       fetch(`${RAILWAY_BASE}/functions/notify-inss-update`, {
         method: "POST",
