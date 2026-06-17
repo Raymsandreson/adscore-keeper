@@ -127,12 +127,15 @@ function parseInssSubject(subject: string, body: string): {
   const cpfMatch = body.match(/cpf[:\s]*((?:\d{3}\.?){3}-?\d{2})/i);
   if (cpfMatch) out.cpf = cpfMatch[1].replace(/\D/g, '');
 
-  // Nome do segurado
+  // Nome do segurado. Os e-mails do INSS sempre começam com
+  // "Prezado(a) Sr(a) NOME COMPLETO," — esse é o sinal mais confiável.
   const nomeMatch =
+    body.match(/Prezad[oa]\(a\)\s*Sr\(a\)\s+([A-ZÀ-Ú][A-ZÀ-Ú\s]{4,80}?),/) ||
     body.match(/segurado[:\s]+([A-Z][A-ZÀ-Ú\s]{5,80})/i) ||
     body.match(/nome[:\s]+([A-Z][A-ZÀ-Ú\s]{5,80})/i) ||
     body.match(/requerente[:\s]+([A-Z][A-ZÀ-Ú\s]{5,80})/i);
   if (nomeMatch) out.nome = nomeMatch[1].trim().replace(/\s+/g, ' ');
+
 
   // Tipo de benefício
   const benMatch = body.match(/benef[íi]cio[:\s]+([^\n]{3,80})/i) ||
