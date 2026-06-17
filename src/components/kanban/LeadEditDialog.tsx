@@ -1970,29 +1970,10 @@ ${scrapeData.content || ''}
                   </div>
                 )}
 
-                <div>
-                  <Label className="flex items-center gap-1">
-                    <Phone className="h-3 w-3" />
-                    Telefone
-                  </Label>
-                  <Input
-                    value={leadPhone}
-                    onChange={(e) => setLeadPhone(e.target.value)}
-                    placeholder="(00) 00000-0000"
-                  />
-                </div>
+                {/* Telefone e Email removidos do form do Lead — são dados do Contato.
+                    Os valores continuam sendo persistidos via lead_phone/lead_email para
+                    não quebrar busca, vínculo de WhatsApp e CTWA. Edite via aba Contatos. */}
 
-                <div>
-                  <Label className="flex items-center gap-1">
-                    <Mail className="h-3 w-3" />
-                    Email
-                  </Label>
-                  <Input
-                    value={leadEmail}
-                    onChange={(e) => setLeadEmail(e.target.value)}
-                    placeholder="email@exemplo.com"
-                  />
-                </div>
 
                 {isFieldVisible('source') && (<div>
                   <div className="flex items-center justify-between">
@@ -2470,95 +2451,10 @@ ${scrapeData.content || ''}
                   </div>
                 </div>)}
 
-                <div>
-                  <Label className="flex items-center gap-1">
-                    <Instagram className="h-3 w-3" />
-                    Instagram
-                  </Label>
-                  <Input
-                    value={instagramUsername}
-                    onChange={(e) => setInstagramUsername(e.target.value)}
-                    placeholder="@usuario"
-                  />
-                </div>
+                {/* Instagram e Classificação removidos do form do Lead — são dados do Contato.
+                    Os valores continuam sendo persistidos (instagram_username / client_classification)
+                    para não quebrar integrações. Edite via aba Contatos. */}
 
-                {isFieldVisible('client_classification') && (<div className="space-y-2">
-                  <Label>Classificação</Label>
-                  {!isAddingClassification ? (
-                    <div className="flex gap-2">
-                      <Select 
-                        value={clientClassification || '__none__'} 
-                        onValueChange={(val) => setClientClassification(val === '__none__' ? '' : val)}
-                      >
-                        <SelectTrigger className="flex-1">
-                          <SelectValue placeholder="Selecione..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__none__">Sem classificação</SelectItem>
-                          {classifications.map((c) => (
-                            <SelectItem key={c.id} value={c.name}>
-                              <div className="flex items-center gap-2">
-                                <div className={`w-2 h-2 rounded-full ${c.color}`} />
-                                {classificationConfig[c.name]?.label || c.name.replace(/_/g, ' ')}
-                              </div>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Button 
-                        type="button" 
-                        variant="outline" 
-                        size="icon"
-                        onClick={() => setIsAddingClassification(true)}
-                        title="Nova classificação"
-                      >
-                        <Plus className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  ) : (
-                    <div className="space-y-2 p-3 border rounded-lg bg-muted/30">
-                      <Input
-                        placeholder="Nome da classificação..."
-                        value={newClassificationName}
-                        onChange={(e) => setNewClassificationName(e.target.value)}
-                        autoFocus
-                      />
-                      <div className="flex flex-wrap gap-1.5">
-                        {classificationColors.slice(0, 10).map((color) => (
-                          <button
-                            key={color.value}
-                            type="button"
-                            className={`w-5 h-5 rounded-full transition-all ${color.value} ${
-                              newClassificationColor === color.value ? 'ring-2 ring-offset-1 ring-primary' : ''
-                            }`}
-                            onClick={() => setNewClassificationColor(color.value)}
-                            title={color.label}
-                          />
-                        ))}
-                      </div>
-                      <div className="flex gap-2">
-                        <Button 
-                          size="sm" 
-                          onClick={handleAddClassification} 
-                          disabled={!newClassificationName.trim()}
-                        >
-                          Criar
-                        </Button>
-                        <Button 
-                          size="sm" 
-                          variant="ghost" 
-                          onClick={() => {
-                            setIsAddingClassification(false);
-                            setNewClassificationName('');
-                          }}
-                        >
-                          <X className="h-3 w-3 mr-1" />
-                          Cancelar
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-                </div>)}
 
                 {isFieldVisible('expected_birth_date') && clientClassification?.toLowerCase().includes('parto') && (
                   <div>
