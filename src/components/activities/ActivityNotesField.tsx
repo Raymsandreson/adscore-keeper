@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { RichTextEditor } from '@/components/ui/RichTextEditor';
-import { VoiceInputButton } from '@/components/ui/voice-input-button';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { supabase } from '@/integrations/supabase/client';
@@ -24,15 +23,6 @@ import {
 } from 'lucide-react';
 
 
-
-// Faz append da transcrição de voz como um novo parágrafo HTML válido (Lexical/RichTextEditor).
-// Escapa caracteres especiais para não quebrar o parse nem permitir injeção de HTML.
-function appendVoiceHtml(current: string, text: string): string {
-  const clean = text.trim();
-  if (!clean) return current;
-  const esc = clean.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  return current && current !== '<p></p>' ? `${current}<p>${esc}</p>` : `<p>${esc}</p>`;
-}
 
 export interface Attachment {
   id?: string;
@@ -373,10 +363,6 @@ export function ActivityNotesField({ value, onChange, activityId, placeholder, l
           <Link2 className="h-3.5 w-3.5" />
           Link
         </Button>
-        <VoiceInputButton
-          onResult={(t) => onChange(appendVoiceHtml(value, t))}
-          className="h-7 w-7"
-        />
       </div>
 
 

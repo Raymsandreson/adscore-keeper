@@ -57,6 +57,8 @@ import {
   Sparkles,
   Loader2,
   Strikethrough,
+  Mic,
+  MicOff,
 } from 'lucide-react';
 
 import {
@@ -151,6 +153,8 @@ function ToolbarPlugin({
   const [isStrikethrough, setIsStrikethrough] = useState(false);
   const [isLink, setIsLink] = useState(false);
   const [blockType, setBlockType] = useState('paragraph');
+  const [listening, setListening] = useState(false);
+  const recognitionRef = useRef<any>(null);
 
   const updateToolbar = useCallback(() => {
     const selection = $getSelection();
@@ -224,6 +228,59 @@ function ToolbarPlugin({
       );
     }
   }, [editor, blockType]);
+
+  // Ditado por voz (Web Speech API, pt-BR) — insere a transcrição no ponto do cursor.
+  const toggleVoice = useCallback(() => {
+    if (listening) {
+      recognitionRef.current?.stop();
+      setListening(false);
+      return;
+    }
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      toast.error('Seu navegador não suporta reconhecimento de voz');
+      return;
+    }
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'pt-BR';
+    recognition.continuous = true;
+    recognition.interimResults = false;
+
+    recognition.onresult = (event: any) => {
+      // Só processa os resultados novos (a partir de resultIndex) já finalizados,
+      // evitando reinserir o que já foi transcrito.
+      let chunk = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        if (event.results[i].isFinal) chunk += event.results[i][0].transcript;
+      }
+      chunk = chunk.trim();
+      if (!chunk) return;
+      editor.update(() => {
+        let selection = $getSelection();
+        if (!$isRangeSelection(selection)) {
+          $getRoot().selectEnd();
+          selection = $getSelection();
+        }
+        if ($isRangeSelection(selection)) {
+          selection.insertText(chunk + ' ');
+        }
+      }, { tag: 'voice-input' });
+    };
+
+    recognition.onerror = (event: any) => {
+      if (event.error !== 'aborted') toast.error('Erro no reconhecimento de voz');
+      setListening(false);
+    };
+    recognition.onend = () => setListening(false);
+
+    recognitionRef.current = recognition;
+    recognition.start();
+    setListening(true);
+    toast.info('Ouvindo... fale agora', { duration: 2000 });
+  }, [listening, editor]);
+
+  // Encerra a gravação se o editor for desmontado durante o ditado.
+  useEffect(() => () => { recognitionRef.current?.stop(); }, []);
 
   return (
     <div className="sticky top-0 z-20 hidden group-hover/rte:flex group-focus-within/rte:flex shrink-0 items-center gap-0.5 border-b bg-background/95 px-1.5 py-1 backdrop-blur supports-[backdrop-filter]:bg-background/85 flex-wrap">
@@ -328,6 +385,12 @@ function ToolbarPlugin({
 
       <ToolBtn active={isLink} onClick={insertLink} title={isLink ? 'Remover link' : 'Inserir link'}>
         {isLink ? <Unlink className="h-3.5 w-3.5" /> : <Link2 className="h-3.5 w-3.5" />}
+      </ToolBtn>
+
+      <div className="w-px h-4 bg-border mx-0.5" />
+
+      <ToolBtn active={listening} onClick={toggleVoice} title={listening ? 'Parar gravação' : 'Gravar voz'}>
+        {listening ? <MicOff className="h-3.5 w-3.5 text-destructive" /> : <Mic className="h-3.5 w-3.5" />}
       </ToolBtn>
 
       {onExpand && (
@@ -523,13 +586,19 @@ function RichTextEditorComponent({
   }, [flushEditorHtml]);
 
   const handleEditorChange = useCallback(
-    (_editorState: EditorState, editor: LexicalEditor) => {
+    (_editorState: EditorState, editor: LexicalEditor, tags: Set<string>) => {
       editorRef.current = editor;
       dirtyRef.current = true;
       // No debounced HTML generation during typing — just mark dirty.
       // HTML will be generated on blur or expand for performance.
+      // Exceção: ditado por voz não gera blur no editor (foco fica no botão do mic),
+      // então propagamos o HTML na hora para não perder o texto transcrito.
+      if (tags.has('voice-input')) {
+        dirtyRef.current = false;
+        flushEditorHtml(editor);
+      }
     },
-    [],
+    [flushEditorHtml],
   );
 
   const handleBlur = useCallback(() => {
