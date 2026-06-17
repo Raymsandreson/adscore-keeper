@@ -13,7 +13,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { Search, X, ChevronDown, Copy, Loader2, UserPlus, Building2, Briefcase, Send, Info, Settings2, FileText, Plus } from 'lucide-react';
+import { Search, X, ChevronDown, Copy, Loader2, UserPlus, Building2, Briefcase, Send, Info, Settings2, FileText, Plus, Check, Users } from 'lucide-react';
 import { ActivityTTSButton } from '@/components/voice/ActivityTTSButton';
 import { ActivityFieldSettingsDialog } from '@/components/activities/ActivityFieldSettingsDialog';
 import { ActivityMessageTemplateSettings } from '@/components/activities/ActivityMessageTemplateSettings';
@@ -65,6 +65,8 @@ interface ActivityFormCompactProps {
   setFormClientNameOverride?: (v: string) => void;
   formIsSystem?: boolean; setFormIsSystem?: (v: boolean) => void;
   formRepeatWeekDays: number[]; setFormRepeatWeekDays: (v: number[] | ((prev: number[]) => number[])) => void;
+  // Assessores adicionais: na criação, gera uma atividade própria (mesmo conteúdo) para cada um.
+  formExtraAssignees?: string[]; setFormExtraAssignees?: (v: string[]) => void;
   formWhatWasDone: string; setFormWhatWasDone: (v: string) => void;
   formCurrentStatus: string; setFormCurrentStatus: (v: string) => void;
   formNextSteps: string; setFormNextSteps: (v: string) => void;
@@ -364,6 +366,89 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
   );
 }
 
+// Seletor de assessores adicionais (apenas na criação). Cada assessor selecionado
+// recebe uma atividade própria com o mesmo conteúdo — evita recriar a mesma atv N vezes.
+function ExtraAssigneesField({ teamMembers, primaryId, selected, onChange }: {
+  teamMembers: TeamMember[];
+  primaryId: string;
+  selected: string[];
+  onChange: (v: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const available = teamMembers.filter(m => m.user_id !== primaryId);
+  const filtered = search
+    ? available.filter(m => (m.full_name || '').toLowerCase().includes(search.toLowerCase()))
+    : available;
+  const toggle = (id: string) =>
+    onChange(selected.includes(id) ? selected.filter(x => x !== id) : [...selected, id]);
+  // Mantém a seleção coerente: nunca lista o assessor primário como "extra".
+  const selectedMembers = teamMembers.filter(m => selected.includes(m.user_id) && m.user_id !== primaryId);
+  const total = 1 + selectedMembers.length;
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <span className="text-[10px] text-muted-foreground uppercase tracking-wider shrink-0">Também criar para</span>
+        <Popover open={open} onOpenChange={setOpen}>
+          <PopoverTrigger asChild>
+            <Button type="button" variant="outline" size="sm" className="h-6 px-2 text-[10px] gap-1">
+              <Users className="h-3 w-3" /> Adicionar assessor
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-64 p-0" align="start">
+            <div className="p-2 border-b">
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                <Input placeholder="Buscar assessor..." value={search} onChange={e => setSearch(e.target.value)} className="pl-8 h-8 text-xs" />
+              </div>
+            </div>
+            <ScrollArea className="max-h-56">
+              <div className="p-1">
+                {filtered.length === 0 && (
+                  <p className="text-xs text-muted-foreground text-center py-4">Nenhum assessor</p>
+                )}
+                {filtered.map(m => {
+                  const isSel = selected.includes(m.user_id);
+                  return (
+                    <button
+                      key={m.user_id}
+                      type="button"
+                      onClick={() => toggle(m.user_id)}
+                      className={cn('w-full text-left px-2 py-1.5 text-xs rounded-md hover:bg-accent flex items-center gap-2', isSel && 'bg-accent/60')}
+                    >
+                      <span className={cn('h-3.5 w-3.5 rounded border flex items-center justify-center shrink-0', isSel ? 'bg-primary border-primary text-primary-foreground' : 'border-muted-foreground/40')}>
+                        {isSel && <Check className="h-2.5 w-2.5" />}
+                      </span>
+                      {m.full_name || 'Sem nome'}
+                    </button>
+                  );
+                })}
+              </div>
+            </ScrollArea>
+          </PopoverContent>
+        </Popover>
+        {selectedMembers.map(m => (
+          <Badge key={m.user_id} variant="secondary" className="text-[10px] gap-1 pr-1">
+            {m.full_name || 'Sem nome'}
+            <button type="button" onClick={() => toggle(m.user_id)} className="hover:text-foreground">
+              <X className="h-2.5 w-2.5" />
+            </button>
+          </Badge>
+        ))}
+      </div>
+      {selectedMembers.length > 0 && (
+        <div className="flex items-start gap-1.5 px-2 py-1 rounded-md bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/50">
+          <Info className="h-3 w-3 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+          <span className="text-[10px] text-blue-700 dark:text-blue-300">
+            Será criada uma atividade separada para cada assessor — <strong>{total} no total</strong>. Cada um terá a sua própria cópia.
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ActivityFormCompact(props: ActivityFormCompactProps) {
   const [detailsOpen, setDetailsOpen] = useState(true);
   const [expandedFieldKey, setExpandedFieldKey] = useState<string | null>(null);
@@ -576,6 +661,16 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
           </Select>
         </div>
       </div>
+
+      {/* Assessores adicionais — só na criação. Gera uma atividade própria por assessor. */}
+      {props.setFormExtraAssignees && !props.selectedActivity && (
+        <ExtraAssigneesField
+          teamMembers={props.teamMembers}
+          primaryId={props.formAssignedTo}
+          selected={props.formExtraAssignees || []}
+          onChange={props.setFormExtraAssignees}
+        />
+      )}
 
       {/* Matriz Eisenhower e Nome do cliente removidos do form — cliente vive no cabeçalho */}
 

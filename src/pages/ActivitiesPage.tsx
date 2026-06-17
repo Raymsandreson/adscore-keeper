@@ -274,6 +274,8 @@ const ActivitiesPage = () => {
   const [formClientNameOverride, setFormClientNameOverride] = useState('');
   const [formAssignedTo, setFormAssignedTo] = useState('');
   const [formAssignedToName, setFormAssignedToName] = useState('');
+  // Assessores adicionais (só na criação): cada um recebe uma atividade própria com o mesmo conteúdo.
+  const [formExtraAssignees, setFormExtraAssignees] = useState<string[]>([]);
   const [formDeadline, setFormDeadline] = useState('');
   const [formNotificationDate, setFormNotificationDate] = useState('');
   const [formNotes, setFormNotes] = useState('');
@@ -553,6 +555,7 @@ const ActivitiesPage = () => {
     const currentUser = teamMembers.find(m => m.user_id === user?.id);
     setFormAssignedTo(user?.id || '');
     setFormAssignedToName(currentUser?.full_name || '');
+    setFormExtraAssignees([]);
     const todayStr = format(new Date(), 'yyyy-MM-dd');
     setFormDeadline(todayStr);
     setFormNotificationDate(todayStr);
@@ -608,12 +611,13 @@ const ActivitiesPage = () => {
 
   // Grava no banco externo os anexos/links que foram adicionados enquanto a
   // atividade ainda não tinha id (atividade nova ou criação da próxima etapa).
-  const flushPendingAttachments = async (activityId: string) => {
-    if (!activityId || pendingNoteAttachments.length === 0) return;
+  const flushPendingAttachments = async (activityId: string | string[]) => {
+    const ids = (Array.isArray(activityId) ? activityId : [activityId]).filter(Boolean);
+    if (ids.length === 0 || pendingNoteAttachments.length === 0) return;
     const { data: { user } } = await supabase.auth.getUser();
     const extUserId = await remapToExternal(user?.id || null);
-    const rows = pendingNoteAttachments.map((a) => ({
-      activity_id: activityId,
+    const rows = ids.flatMap((id) => pendingNoteAttachments.map((a) => ({
+      activity_id: id,
       file_url: a.file_url,
       file_name: a.file_name,
       file_type: a.file_type,
@@ -622,7 +626,7 @@ const ActivitiesPage = () => {
       link_url: a.link_url ?? null,
       link_title: a.link_title ?? null,
       created_by: extUserId,
-    }));
+    })));
     const { error } = await externalSupabase.from('activity_attachments').insert(rows);
     if (error) {
       toast.error('Atividade salva, mas falhou ao anexar os links');
@@ -696,46 +700,66 @@ const ActivitiesPage = () => {
       client_name_override: formClientNameOverride || null,
     };
 
+    // Lista de assessores: primário + adicionais (sem duplicar). Cada um ganha a sua própria
+    // atividade com o mesmo conteúdo — atalho para não recriar a mesma atv N vezes.
+    const assigneeIds = Array.from(new Set([formAssignedTo, ...formExtraAssignees].filter(Boolean)));
+
     let createdActivityId: string | null = null;
     let createdActivityFull: any = null;
-    if (formRepeatWeekDays.length > 0 && formDeadline) {
-      // Create one activity per selected day of the week, starting from the deadline week
-      const baseDate = parseISO(formDeadline);
-      const weekStart = startOfWeek(baseDate, { weekStartsOn: 1 }); // Monday
+    const createdIds: string[] = [];
 
-      for (const dayIdx of formRepeatWeekDays) {
-        const targetDate = addDays(weekStart, dayIdx);
-        const dateStr = format(targetDate, 'yyyy-MM-dd');
-        const result = await createActivity({
-          ...baseData,
-          deadline: dateStr,
-          notification_date: dateStr,
-        });
-        if (!createdActivityId && result?.id) {
-          createdActivityId = result.id;
-          createdActivityFull = result;
-        }
-      }
-      toast.success(`${formRepeatWeekDays.length} atividades criadas para a semana!`);
-    } else {
-      const result = await createActivity({
+    for (const assigneeId of assigneeIds) {
+      const member = teamMembers.find(m => m.user_id === assigneeId);
+      const assigneeData = {
         ...baseData,
-        deadline: formDeadline || null,
-        notification_date: formNotificationDate || null,
-      });
-      if (result?.id) {
-        createdActivityId = result.id;
-        createdActivityFull = result;
+        assigned_to: assigneeId,
+        assigned_to_name: member?.full_name || (assigneeId === formAssignedTo ? formAssignedToName : null),
+      };
+
+      if (formRepeatWeekDays.length > 0 && formDeadline) {
+        // Create one activity per selected day of the week, starting from the deadline week
+        const baseDate = parseISO(formDeadline);
+        const weekStart = startOfWeek(baseDate, { weekStartsOn: 1 }); // Monday
+
+        for (const dayIdx of formRepeatWeekDays) {
+          const targetDate = addDays(weekStart, dayIdx);
+          const dateStr = format(targetDate, 'yyyy-MM-dd');
+          const result = await createActivity({
+            ...assigneeData,
+            deadline: dateStr,
+            notification_date: dateStr,
+          });
+          if (result?.id) {
+            createdIds.push(result.id);
+            if (!createdActivityId) { createdActivityId = result.id; createdActivityFull = result; }
+          }
+        }
+      } else {
+        const result = await createActivity({
+          ...assigneeData,
+          deadline: formDeadline || null,
+          notification_date: formNotificationDate || null,
+        });
+        if (result?.id) {
+          createdIds.push(result.id);
+          if (!createdActivityId) { createdActivityId = result.id; createdActivityFull = result; }
+        }
       }
     }
 
+    if (createdIds.length > 1) {
+      toast.success(`${createdIds.length} atividades criadas!`);
+    } else if (formRepeatWeekDays.length > 0) {
+      toast.success(`${createdIds.length} atividades criadas para a semana!`);
+    }
 
-    // Persiste links/anexos adicionados antes da atividade existir
-    if (createdActivityId) await flushPendingAttachments(createdActivityId);
+    // Persiste links/anexos adicionados antes da atividade existir (em todas as criadas)
+    if (createdIds.length > 0) await flushPendingAttachments(createdIds);
 
-    // If created for another assignee, add them to the filter so the activities are visible
-    if (formAssignedTo && formAssignedTo !== user?.id && !filterAssignee.includes(formAssignedTo)) {
-      setFilterAssignee(prev => [...prev, formAssignedTo!]);
+    // If created for other assignees, add them to the filter so the activities are visible
+    const assigneesToShow = assigneeIds.filter(id => id !== user?.id && !filterAssignee.includes(id));
+    if (assigneesToShow.length > 0) {
+      setFilterAssignee(prev => Array.from(new Set([...prev, ...assigneesToShow])));
     }
 
     closeSheet();
@@ -1312,6 +1336,8 @@ const ActivitiesPage = () => {
     const member = teamMembers.find(m => m.user_id === userId);
     setFormAssignedTo(userId);
     setFormAssignedToName(member?.full_name || '');
+    // Evita duplicar: se o novo primário estava na lista de extras, remove de lá.
+    setFormExtraAssignees(prev => prev.filter(id => id !== userId));
   };
 
   const handleDeadlineChange = (value: string) => {
@@ -1744,6 +1770,7 @@ const ActivitiesPage = () => {
       setFormClientNameOverride={setFormClientNameOverride}
       formIsSystem={formIsSystem} setFormIsSystem={setFormIsSystem}
       formRepeatWeekDays={formRepeatWeekDays} setFormRepeatWeekDays={setFormRepeatWeekDays}
+      formExtraAssignees={formExtraAssignees} setFormExtraAssignees={setFormExtraAssignees}
       formWhatWasDone={formWhatWasDone} setFormWhatWasDone={setFormWhatWasDone}
       formCurrentStatus={formCurrentStatus} setFormCurrentStatus={setFormCurrentStatus}
       formNextSteps={formNextSteps} setFormNextSteps={setFormNextSteps}
