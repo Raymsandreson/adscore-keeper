@@ -326,17 +326,19 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
               .then(({ data, error }) => {
                 if (error || !(data as any)?.success) {
                   const msg = (data as any)?.error || error?.message || 'falha desconhecida';
-                  toast.error(`Etiqueta WhatsApp não sincronizada: ${msg}. Card revertido.`);
-                  updateLead(leadId, { status: (oldStage || 'new') as LeadStatus }).catch(() => {});
+                  // Não reverte a etapa — sincronização da etiqueta é best-effort
+                  if (!/sem lead_phone|lead_phone/i.test(String(msg))) {
+                    toast.warning(`Etiqueta WhatsApp não sincronizada: ${msg}`);
+                  }
                 } else {
                   const okCount = ((data as any).results || []).filter((r: any) => r?.added?.ok).length;
                   if (okCount > 0) toast.success(`Etiqueta aplicada em ${okCount} instância(s) do WhatsApp`);
                 }
               })
               .catch((e) => {
-                toast.error(`Etiqueta WhatsApp falhou: ${e?.message || 'erro'}. Card revertido.`);
-                updateLead(leadId, { status: (oldStage || 'new') as LeadStatus }).catch(() => {});
+                toast.warning(`Etiqueta WhatsApp falhou: ${e?.message || 'erro'}`);
               });
+
           });
         }
       }
