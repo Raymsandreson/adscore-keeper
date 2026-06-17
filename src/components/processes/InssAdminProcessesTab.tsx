@@ -585,6 +585,13 @@ export default function InssAdminProcessesTab() {
       ]);
       const contacts = [...((ctExtR.data || []) as any[]), ...((ctCloudR.data || []) as any[])];
 
+      // 4) Grupos de WhatsApp por nome → leads vinculados
+      const { data: groupsRaw } = await db
+        .from("lead_whatsapp_groups" as any)
+        .select("lead_id, group_name")
+        .ilike("group_name", `%${q}%`)
+        .limit(15);
+
       // Para cada lead candidato (direto ou via contato), busca casos vinculados
       const candidateLeads = new Map<string, { lead_name: string | null; via: string }>();
       for (const l of (leadsRaw || []) as any[]) {
@@ -599,6 +606,11 @@ export default function InssAdminProcessesTab() {
           if (!candidateLeads.has(link.lead_id)) {
             candidateLeads.set(link.lead_id, { lead_name: ct.full_name, via: `Contato "${ct.full_name}"` });
           }
+        }
+      }
+      for (const g of (groupsRaw || []) as any[]) {
+        if (g.lead_id && !candidateLeads.has(g.lead_id)) {
+          candidateLeads.set(g.lead_id, { lead_name: g.group_name, via: `Grupo WhatsApp "${g.group_name}"` });
         }
       }
 
