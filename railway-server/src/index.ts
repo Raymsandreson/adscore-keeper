@@ -72,6 +72,8 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'gmail-message-body': gmailMessageBody,
   'notify-inss-update': notifyInssUpdate,
   'match-inss-orphans': matchInssOrphans,
+  'auto-link-inss-by-name': autoLinkInssByName,
+
   'get-whatsapp-group-info': getWhatsappGroupInfo,
   'scan-duplicate-contacts': scanDuplicateContacts,
   'recover-leads-phone-55': recoverLeadsPhone55,
