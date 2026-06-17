@@ -125,14 +125,19 @@ export default function InssAdminProcessesTab() {
   const [historyByProc, setHistoryByProc] = useState<Record<string, InssHistoryRow[]>>({});
   const [linkingProc, setLinkingProc] = useState<InssProcess | null>(null);
 
+  // Cache de corpo+parse dos e-mails (por gmail_message_id) para evitar refetch.
+  const [emailBodyCache, setEmailBodyCache] = useState<
+    Record<string, { body: string; despacho: string | null; subject: string | null }>
+  >({});
+
   // Visualizador de e-mail completo (busca sob demanda no Gmail)
   const [emailView, setEmailView] = useState<{
     open: boolean; loading: boolean; subject: string | null; body: string | null; error: string | null;
   }>({ open: false, loading: false, subject: null, body: null, error: null });
 
-  const openFullEmail = async (row: InssHistoryRow) => {
-    if (!row.gmail_message_id) return;
-    setEmailView({ open: true, loading: true, subject: row.email_subject, body: null, error: null });
+  // Busca o corpo de um e-mail no Gmail e cacheia + extrai o Despacho.
+  const fetchAndCacheBody = useCallback(async (gmailId: string, fallbackSubject: string | null) => {
+    if (emailBodyCache[gmailId]) return emailBodyCache[gmailId];
     try {
       const resp = await fetch(`${RAILWAY_BASE}/functions/gmail-message-body`, {
         method: "POST",
@@ -140,24 +145,52 @@ export default function InssAdminProcessesTab() {
           "Content-Type": "application/json",
           "x-api-key": (import.meta as any).env?.VITE_RAILWAY_API_KEY || "",
         },
-        body: JSON.stringify({ gmail_message_id: row.gmail_message_id }),
+        body: JSON.stringify({ gmail_message_id: gmailId }),
       });
       const j = await resp.json();
-      if (!j.success) {
-        setEmailView((s) => ({ ...s, loading: false, error: j.error || "Não foi possível carregar o e-mail." }));
-        return;
-      }
-      // Prefere texto puro; se só houver HTML, remove as tags pra exibir como texto.
-      const text = j.body_text || (j.body_html ? String(j.body_html).replace(/<[^>]+>/g, " ").replace(/\s+\n/g, "\n").trim() : "");
+      if (!j.success) return null;
+      const text =
+        j.body_text ||
+        (j.body_html
+          ? String(j.body_html).replace(/<[^>]+>/g, " ").replace(/\s+\n/g, "\n").trim()
+          : "") ||
+        j.snippet ||
+        "";
+      const parsed = parseInssEmail(text);
+      const despacho =
+        parsed.fields.find((f) => /despacho/i.test(f.label))?.value || null;
+      const entry = { body: text, despacho, subject: j.subject || fallbackSubject };
+      setEmailBodyCache((prev) => ({ ...prev, [gmailId]: entry }));
+      return entry;
+    } catch {
+      return null;
+    }
+  }, [emailBodyCache]);
+
+  const openFullEmail = async (row: InssHistoryRow) => {
+    if (!row.gmail_message_id) return;
+    const cached = emailBodyCache[row.gmail_message_id];
+    if (cached) {
       setEmailView({
         open: true, loading: false,
-        subject: j.subject || row.email_subject,
-        body: text || j.snippet || "(e-mail sem corpo de texto)",
+        subject: cached.subject || row.email_subject,
+        body: cached.body || "(e-mail sem corpo de texto)",
         error: null,
       });
-    } catch (e: any) {
-      setEmailView((s) => ({ ...s, loading: false, error: e.message }));
+      return;
     }
+    setEmailView({ open: true, loading: true, subject: row.email_subject, body: null, error: null });
+    const entry = await fetchAndCacheBody(row.gmail_message_id, row.email_subject);
+    if (!entry) {
+      setEmailView((s) => ({ ...s, loading: false, error: "Não foi possível carregar o e-mail." }));
+      return;
+    }
+    setEmailView({
+      open: true, loading: false,
+      subject: entry.subject || row.email_subject,
+      body: entry.body || "(e-mail sem corpo de texto)",
+      error: null,
+    });
   };
 
   const parsedEmail = useMemo(
@@ -215,7 +248,12 @@ export default function InssAdminProcessesTab() {
       .select("id, from_status, to_status, email_subject, email_snippet, gmail_message_id, email_received_at, notified")
       .eq("process_id", procId)
       .order("email_received_at", { ascending: false });
-    setHistoryByProc((prev) => ({ ...prev, [procId]: (data || []) as any }));
+    const rows = ((data || []) as unknown) as InssHistoryRow[];
+    setHistoryByProc((prev) => ({ ...prev, [procId]: rows }));
+    const latest = rows[0];
+    if (latest?.gmail_message_id) {
+      fetchAndCacheBody(latest.gmail_message_id, latest.email_subject);
+    }
   };
 
   const filtered = useMemo(() => {
@@ -244,6 +282,22 @@ export default function InssAdminProcessesTab() {
     () => filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
     [filtered, page],
   );
+
+  // Auto-carrega histórico dos cartões visíveis (DB) e o corpo do último e-mail
+  // (Gmail) para conseguir mostrar o Despacho como preview no cartão.
+  useEffect(() => {
+    paged.forEach((p) => {
+      if (!historyByProc[p.id]) {
+        loadHistory(p.id);
+      } else {
+        const latest = historyByProc[p.id][0];
+        if (latest?.gmail_message_id && !emailBodyCache[latest.gmail_message_id]) {
+          fetchAndCacheBody(latest.gmail_message_id, latest.email_subject);
+        }
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paged, historyByProc]);
 
   const orphanCount = processes.filter((p) => !p.case_id).length;
 
@@ -652,7 +706,18 @@ export default function InssAdminProcessesTab() {
         </div>
       ) : (
         <div className="grid gap-2">
-          {paged.map((p) => (
+          {paged.map((p) => {
+            const history = historyByProc[p.id] || [];
+            const latest = history[0];
+            const olderHistory = history.slice(1);
+            const hasMultiple = history.length > 1;
+            const cachedBody = latest?.gmail_message_id
+              ? emailBodyCache[latest.gmail_message_id]
+              : undefined;
+            const despachoPreview =
+              cachedBody?.despacho || latest?.email_snippet || null;
+
+            return (
             <Card key={p.id} className={!p.case_id ? "border-orange-300 dark:border-orange-700" : ""}>
               <CardContent className="p-3">
                 <Collapsible onOpenChange={(open) => open && loadHistory(p.id)}>
@@ -717,54 +782,96 @@ export default function InssAdminProcessesTab() {
                           Vincular
                         </Button>
                       )}
-                      <CollapsibleTrigger asChild>
-                        <Button size="sm" variant="ghost" className="h-7 gap-1">
-                          <ChevronDown className="h-3.5 w-3.5" />
-                          Histórico
-                        </Button>
-                      </CollapsibleTrigger>
-                    </div>
-                  </div>
-                  <CollapsibleContent className="mt-3 pt-3 border-t">
-                    <div className="space-y-1.5">
-                      {(historyByProc[p.id] || []).map((h) => (
-                        <div key={h.id} className="text-xs space-y-1 border-b border-dashed last:border-0 pb-1.5 last:pb-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-muted-foreground">
-                              {h.email_received_at ? format(new Date(h.email_received_at), "dd/MM HH:mm") : "—"}
-                            </span>
-                            <Badge variant="outline" className={statusVariant(h.to_status)}>
-                              {h.from_status || "?"} → {h.to_status || "?"}
-                            </Badge>
-                            {h.notified && <span className="text-green-600">✓ notificado</span>}
-                            {h.gmail_message_id && (
-                              <button
-                                type="button"
-                                className="inline-flex items-center gap-1 text-primary hover:underline"
-                                onClick={() => openFullEmail(h)}
-                                title="Abrir o e-mail completo do Gmail"
-                              >
-                                <Mail className="h-3 w-3" /> Ver e-mail completo
-                              </button>
-                            )}
-                          </div>
-                          {h.email_subject && (
-                            <div className="text-muted-foreground font-medium">{h.email_subject}</div>
-                          )}
-                          {h.email_snippet && (
-                            <div className="text-muted-foreground/80 italic line-clamp-2">{h.email_snippet}</div>
-                          )}
-                        </div>
-                      ))}
-                      {(historyByProc[p.id]?.length ?? 0) === 0 && (
-                        <div className="text-xs text-muted-foreground">Sem histórico.</div>
+                      {hasMultiple && (
+                        <CollapsibleTrigger asChild>
+                          <Button size="sm" variant="ghost" className="h-7 gap-1">
+                            <ChevronDown className="h-3.5 w-3.5" />
+                            Histórico ({history.length})
+                          </Button>
+                        </CollapsibleTrigger>
                       )}
                     </div>
-                  </CollapsibleContent>
+                  </div>
+
+                  {/* Último e-mail SEMPRE aberto */}
+                  {latest && (
+                    <div className="mt-3 pt-3 border-t text-xs space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-muted-foreground">
+                          {latest.email_received_at
+                            ? format(new Date(latest.email_received_at), "dd/MM HH:mm")
+                            : "—"}
+                        </span>
+                        <Badge variant="outline" className={statusVariant(latest.to_status)}>
+                          {latest.from_status || "?"} → {latest.to_status || "?"}
+                        </Badge>
+                        {latest.notified && <span className="text-green-600">✓ notificado</span>}
+                        {latest.gmail_message_id && (
+                          <button
+                            type="button"
+                            className="inline-flex items-center gap-1 text-primary hover:underline"
+                            onClick={() => openFullEmail(latest)}
+                            title="Abrir o e-mail completo do Gmail"
+                          >
+                            <Mail className="h-3 w-3" /> Ver e-mail completo
+                          </button>
+                        )}
+                      </div>
+                      {despachoPreview ? (
+                        <div className="rounded-md bg-muted/40 p-2 mt-1">
+                          <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-0.5">
+                            Despacho
+                          </div>
+                          <div className="text-foreground/90 whitespace-pre-wrap line-clamp-4">
+                            {despachoPreview}
+                          </div>
+                        </div>
+                      ) : latest.gmail_message_id && !cachedBody ? (
+                        <div className="text-muted-foreground/70 italic">Carregando despacho…</div>
+                      ) : null}
+                    </div>
+                  )}
+
+                  {hasMultiple && (
+                    <CollapsibleContent className="mt-3 pt-3 border-t">
+                      <div className="space-y-1.5">
+                        {olderHistory.map((h) => (
+                          <div key={h.id} className="text-xs space-y-1 border-b border-dashed last:border-0 pb-1.5 last:pb-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-muted-foreground">
+                                {h.email_received_at ? format(new Date(h.email_received_at), "dd/MM HH:mm") : "—"}
+                              </span>
+                              <Badge variant="outline" className={statusVariant(h.to_status)}>
+                                {h.from_status || "?"} → {h.to_status || "?"}
+                              </Badge>
+                              {h.notified && <span className="text-green-600">✓ notificado</span>}
+                              {h.gmail_message_id && (
+                                <button
+                                  type="button"
+                                  className="inline-flex items-center gap-1 text-primary hover:underline"
+                                  onClick={() => openFullEmail(h)}
+                                  title="Abrir o e-mail completo do Gmail"
+                                >
+                                  <Mail className="h-3 w-3" /> Ver e-mail completo
+                                </button>
+                              )}
+                            </div>
+                            {h.email_subject && (
+                              <div className="text-muted-foreground font-medium">{h.email_subject}</div>
+                            )}
+                            {h.email_snippet && (
+                              <div className="text-muted-foreground/80 italic line-clamp-2">{h.email_snippet}</div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </CollapsibleContent>
+                  )}
                 </Collapsible>
               </CardContent>
             </Card>
-          ))}
+            );
+          })}
         </div>
       )}
 
