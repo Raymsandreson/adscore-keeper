@@ -271,13 +271,15 @@ export default function InssAdminProcessesTab() {
       });
       const j = await resp.json();
       if (!j.success) return null;
-      const text =
+      const text = decodeHtmlEntities(
         j.body_text ||
-        (j.body_html
-          ? String(j.body_html).replace(/<[^>]+>/g, " ").replace(/\s+\n/g, "\n").trim()
-          : "") ||
-        j.snippet ||
-        "";
+          (j.body_html
+            ? String(j.body_html).replace(/<[^>]+>/g, " ").replace(/\s+\n/g, "\n").trim()
+            : "") ||
+          j.snippet ||
+          ""
+      );
+
       const parsed = parseInssEmail(text);
       const despacho =
         parsed.fields.find((f) => /despacho/i.test(f.label))?.value || null;
