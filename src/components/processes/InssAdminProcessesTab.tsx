@@ -540,7 +540,7 @@ export default function InssAdminProcessesTab() {
       return score >= Math.min(2, tokens.length);
     };
     if (tokens.length) {
-      const searchTokens = [...tokens].sort((a, b) => b.length - a.length).slice(0, 4).map(safeIlikeToken).filter(Boolean);
+      const searchTokens = buildIlikeSearchTokens([...tokens].sort((a, b) => b.length - a.length).slice(0, 4));
       const nameOr = searchTokens.map((t) => `full_name.ilike.%${t}%`).join(",");
       // contacts no EXTERNO
       const { data: ctExt } = await db
@@ -628,7 +628,7 @@ export default function InssAdminProcessesTab() {
 
       const qTokens = uniqueTokens(tokenizeName(q));
       const textSearchTokens = qTokens.length
-        ? qTokens.sort((a, b) => b.length - a.length).slice(0, 5).map(safeIlikeToken).filter(Boolean)
+        ? buildIlikeSearchTokens(qTokens.sort((a, b) => b.length - a.length).slice(0, 5))
         : [safeIlikeToken(q)].filter(Boolean);
 
       // 2) Leads por nome / telefone / CPF — busca por pedaços, filtra sem acento/caixa
