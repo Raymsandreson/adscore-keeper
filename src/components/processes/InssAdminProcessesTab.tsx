@@ -97,6 +97,25 @@ const tokenizeName = (s?: string | null): string[] => {
 };
 const safeIlikeToken = (s: string) => s.replace(/[%,()]/g, " ").trim();
 const uniqueTokens = (tokens: string[]) => Array.from(new Set(tokens));
+const accentAlternates: Record<string, string[]> = {
+  A: ["Á", "À", "Â", "Ã"],
+  E: ["É", "Ê"],
+  I: ["Í"],
+  O: ["Ó", "Ô", "Õ"],
+  U: ["Ú"],
+  C: ["Ç"],
+};
+const ilikeAccentVariants = (token: string) => {
+  const base = safeIlikeToken(token).toUpperCase();
+  const variants = new Set<string>([base]);
+  for (let i = 0; i < base.length; i++) {
+    for (const alt of accentAlternates[base[i]] || []) {
+      variants.add(`${base.slice(0, i)}${alt}${base.slice(i + 1)}`);
+    }
+  }
+  return Array.from(variants).filter(Boolean);
+};
+const buildIlikeSearchTokens = (tokens: string[]) => uniqueTokens(tokens.flatMap(ilikeAccentVariants));
 const tokenLooksMatched = (queryToken: string, candidateToken: string) => {
   if (!queryToken || !candidateToken) return false;
   if (candidateToken.includes(queryToken) || queryToken.includes(candidateToken)) return true;
