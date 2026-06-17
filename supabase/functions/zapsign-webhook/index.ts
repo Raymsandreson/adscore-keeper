@@ -1020,50 +1020,75 @@ Deno.serve(async (req) => {
             stageId = await resolveFirstBoardStageId(supabase, boardId)
           }
 
-          // 5. Create lead
+          // 5. Create lead — mas primeiro tenta reabrir lead arquivado dos últimos 90 dias
           if (boardId) {
             const leadStatus = stageId || 'new'
             const leadName = extractedData.lead_name || extractedData.victim_name || localDoc.signer_name || cleanPhone
-            const { data: newLead, error: leadErr } = await supabase
-              .from('leads')
-              .insert({
-                lead_name: leadName,
-                lead_phone: cleanPhone,
-                lead_email: extractedData.lead_email || null,
-                board_id: boardId,
-                status: leadStatus,
-                lead_status: 'no_response',
-                source: 'zapsign',
-                city: extractedData.city || null,
-                state: extractedData.state || null,
-                neighborhood: extractedData.neighborhood || null,
-                main_company: extractedData.main_company || null,
-                contractor_company: extractedData.contractor_company || null,
-                accident_address: extractedData.accident_address || null,
-                accident_date: extractedData.accident_date || null,
-                damage_description: extractedData.damage_description || null,
-                case_number: extractedData.case_number || null,
-                case_type: extractedData.case_type || null,
-                notes: extractedData.notes || null,
-                sector: extractedData.sector || null,
-                liability_type: extractedData.liability_type || null,
-                news_link: extractedData.news_link || null,
-                campaign_id: campaignId || null,
-                campaign_name: campaignName || null,
-                created_by: extOwnerId,
-                action_source: 'system',
-                action_source_detail: campaignId 
-                  ? `Lead criado automaticamente ao assinar documento (ZapSign) - Campanha: ${campaignName || campaignId}`
-                  : 'Lead criado automaticamente ao assinar documento (ZapSign)',
+
+            // GUARDIÃO ANTI-DUPLICATA: reabrir lead arquivado em vez de criar novo
+            let reopenedId: string | null = null
+            try {
+              const { data: reopenData } = await supabase.rpc('find_or_reopen_lead_for_phone', {
+                p_phone: cleanPhone,
+                p_window_days: 90,
+                p_triggered_by: 'zapsign-webhook',
+                p_context: { document_id: localDoc.id, template_id: localDoc.template_id, signer_name: localDoc.signer_name },
               })
-              .select('id')
-              .single()
+              reopenedId = (reopenData as string | null) || null
+              if (reopenedId) {
+                console.log(`[zapsign-webhook] Lead reaberto (em vez de criar novo): ${reopenedId} para phone=${cleanPhone}`)
+              }
+            } catch (reopenErr) {
+              console.warn('[zapsign-webhook] find_or_reopen_lead_for_phone falhou, prosseguindo com criação:', reopenErr)
+            }
+
+            let newLead: { id: string } | null = reopenedId ? { id: reopenedId } : null
+            let leadErr: any = null
+
+            if (!newLead) {
+              const inserted = await supabase
+                .from('leads')
+                .insert({
+                  lead_name: leadName,
+                  lead_phone: cleanPhone,
+                  lead_email: extractedData.lead_email || null,
+                  board_id: boardId,
+                  status: leadStatus,
+                  lead_status: 'no_response',
+                  source: 'zapsign',
+                  city: extractedData.city || null,
+                  state: extractedData.state || null,
+                  neighborhood: extractedData.neighborhood || null,
+                  main_company: extractedData.main_company || null,
+                  contractor_company: extractedData.contractor_company || null,
+                  accident_address: extractedData.accident_address || null,
+                  accident_date: extractedData.accident_date || null,
+                  damage_description: extractedData.damage_description || null,
+                  case_number: extractedData.case_number || null,
+                  case_type: extractedData.case_type || null,
+                  notes: extractedData.notes || null,
+                  sector: extractedData.sector || null,
+                  liability_type: extractedData.liability_type || null,
+                  news_link: extractedData.news_link || null,
+                  campaign_id: campaignId || null,
+                  campaign_name: campaignName || null,
+                  created_by: extOwnerId,
+                  action_source: 'system',
+                  action_source_detail: campaignId
+                    ? `Lead criado automaticamente ao assinar documento (ZapSign) - Campanha: ${campaignName || campaignId}`
+                    : 'Lead criado automaticamente ao assinar documento (ZapSign)',
+                })
+                .select('id')
+                .single()
+              newLead = inserted.data as any
+              leadErr = inserted.error
+            }
 
             if (leadErr) {
               console.error('[zapsign-webhook] Error creating lead:', leadErr)
-            } else {
+            } else if (newLead) {
               localDoc.lead_id = newLead.id
-              console.log(`[zapsign-webhook] Lead created: ${newLead.id}`)
+              console.log(`[zapsign-webhook] Lead resolvido: ${newLead.id} ${reopenedId ? '(reaberto)' : '(novo)'}`)
 
               // Update zapsign_documents with the new lead_id
               await supabase
