@@ -2055,6 +2055,24 @@ Deno.serve(async (req) => {
               }
 
               if (!leadId) {
+                // GUARDIÃO ANTI-DUPLICATA: tenta reabrir lead arquivado (até 90 dias) antes de criar novo
+                try {
+                  const { data: reopenedId } = await supabase.rpc('find_or_reopen_lead_for_phone', {
+                    p_phone: phone,
+                    p_window_days: 90,
+                    p_triggered_by: 'whatsapp-webhook:ctwa',
+                    p_context: { instance: instanceName, campaign_id: detectedCampaignId },
+                  });
+                  if (reopenedId) {
+                    leadId = reopenedId as string;
+                    console.log('CTWA: lead reaberto em vez de criar novo:', leadId);
+                  }
+                } catch (reopenErr: any) {
+                  console.warn('CTWA reopen check falhou:', reopenErr?.message);
+                }
+              }
+
+              if (!leadId) {
                 // Resolve acolhedor: 1º) usuário escolhido no vínculo (assigned_user_id)
                 //                    2º) fallback dono da instância (owner_name)
                 let resolvedAcolhedor: string | null = null;
