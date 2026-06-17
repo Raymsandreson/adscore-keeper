@@ -601,6 +601,34 @@ export default function InssAdminProcessesTab() {
     }
   };
 
+  const runAutoLinkByName = async () => {
+    toast.info("Vinculando órfãos por nome (só candidatos únicos)...");
+    try {
+      const resp = await fetch(`${RAILWAY_BASE}/functions/auto-link-inss-by-name`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": (import.meta as any).env?.VITE_RAILWAY_API_KEY || "",
+        },
+        body: "{}",
+      });
+      const j = await resp.json();
+      if (j.success) {
+        const s = j.stats || {};
+        toast.success(
+          `${s.linked || 0} vinculados · ${s.ambiguous || 0} ambíguos (revisar manualmente) · ${s.no_match || 0} sem match`
+        );
+        loadProcesses();
+      } else {
+        toast.error("Erro: " + (j.error || "desconhecido"));
+      }
+    } catch (e: any) {
+      toast.error("Falha: " + e.message);
+    }
+  };
+
+
+
 
   // Clicar no processo abre o painel lateral do lead vinculado (Sheet "Editar Lead").
   const goToLead = async (p: InssProcess) => {
@@ -683,6 +711,17 @@ export default function InssAdminProcessesTab() {
             <Sparkles className="h-4 w-4" />
             Vincular órfãos
           </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={runAutoLinkByName}
+            className="gap-2"
+            title="Vincula órfãos por nome (apenas quando há um único lead/contato candidato)"
+          >
+            <User className="h-4 w-4" />
+            Vincular por nome
+          </Button>
+
         </div>
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
