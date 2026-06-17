@@ -546,12 +546,7 @@ export default function InssAdminProcessesTab() {
 
     // 3) Match por nome (tokens, tolerante a acento) em contacts (Externo + Cloud)
     const tokens = uniqueTokens(tokenizeName(proc.nome_segurado));
-    const matchTokens = (full?: string | null) => {
-      const lt = uniqueTokens(tokenizeName(full));
-      if (!tokens.length || !lt.length) return false;
-      const score = tokens.filter((t) => lt.some((x) => tokenLooksMatched(t, x))).length;
-      return score >= Math.min(2, tokens.length);
-    };
+    const matchTokens = (full?: string | null) => namesAreCompatible(proc.nome_segurado || "", full);
     if (tokens.length) {
       const searchTokens = buildIlikeSearchTokens([...tokens].sort((a, b) => b.length - a.length).slice(0, 4));
       const nameOr = searchTokens.map((t) => `full_name.ilike.%${t}%`).join(",");
