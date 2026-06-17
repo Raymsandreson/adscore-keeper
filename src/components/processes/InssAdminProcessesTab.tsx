@@ -125,10 +125,47 @@ export default function InssAdminProcessesTab() {
   const [historyByProc, setHistoryByProc] = useState<Record<string, InssHistoryRow[]>>({});
   const [linkingProc, setLinkingProc] = useState<InssProcess | null>(null);
 
+  // Cache de corpo+parse dos e-mails (por gmail_message_id) para evitar refetch.
+  const [emailBodyCache, setEmailBodyCache] = useState<
+    Record<string, { body: string; despacho: string | null; subject: string | null }>
+  >({});
+
   // Visualizador de e-mail completo (busca sob demanda no Gmail)
   const [emailView, setEmailView] = useState<{
     open: boolean; loading: boolean; subject: string | null; body: string | null; error: string | null;
   }>({ open: false, loading: false, subject: null, body: null, error: null });
+
+  // Busca o corpo de um e-mail no Gmail e cacheia + extrai o Despacho.
+  const fetchAndCacheBody = useCallback(async (gmailId: string, fallbackSubject: string | null) => {
+    if (emailBodyCache[gmailId]) return emailBodyCache[gmailId];
+    try {
+      const resp = await fetch(`${RAILWAY_BASE}/functions/gmail-message-body`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": (import.meta as any).env?.VITE_RAILWAY_API_KEY || "",
+        },
+        body: JSON.stringify({ gmail_message_id: gmailId }),
+      });
+      const j = await resp.json();
+      if (!j.success) return null;
+      const text =
+        j.body_text ||
+        (j.body_html
+          ? String(j.body_html).replace(/<[^>]+>/g, " ").replace(/\s+\n/g, "\n").trim()
+          : "") ||
+        j.snippet ||
+        "";
+      const parsed = parseInssEmail(text);
+      const despacho =
+        parsed.fields.find((f) => /despacho/i.test(f.label))?.value || null;
+      const entry = { body: text, despacho, subject: j.subject || fallbackSubject };
+      setEmailBodyCache((prev) => ({ ...prev, [gmailId]: entry }));
+      return entry;
+    } catch {
+      return null;
+    }
+  }, [emailBodyCache]);
 
   const openFullEmail = async (row: InssHistoryRow) => {
     if (!row.gmail_message_id) return;
