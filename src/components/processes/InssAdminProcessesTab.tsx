@@ -607,8 +607,13 @@ export default function InssAdminProcessesTab() {
         results.set(c.id, { ...c, matched_via: "Caso" });
       }
 
-      // 2) Leads por nome / telefone / CPF
-      const leadOr: string[] = [`lead_name.ilike.%${q}%`];
+      const qTokens = uniqueTokens(tokenizeName(q));
+      const textSearchTokens = qTokens.length
+        ? qTokens.sort((a, b) => b.length - a.length).slice(0, 5).map(safeIlikeToken).filter(Boolean)
+        : [safeIlikeToken(q)].filter(Boolean);
+
+      // 2) Leads por nome / telefone / CPF — busca por pedaços, filtra sem acento/caixa
+      const leadOr: string[] = textSearchTokens.map((t) => `lead_name.ilike.%${t}%`);
       if (digitsOnly.length >= 4) {
         leadOr.push(`lead_phone.ilike.%${digitsOnly}%`);
         leadOr.push(`cpf.ilike.%${digitsOnly}%`);
@@ -617,30 +622,36 @@ export default function InssAdminProcessesTab() {
         .from("leads" as any)
         .select("id, lead_name")
         .or(leadOr.join(","))
-        .limit(15);
+        .limit(80);
+      const leads = ((leadsRaw || []) as any[]).filter((l) =>
+        digitsOnly.length >= 4 || isLooseTokenMatch(q, l.lead_name)
+      );
 
       // 3) Contatos por nome/telefone/CPF (Externo + Cloud)
-      const contactOr: string[] = [`full_name.ilike.%${q}%`];
+      const contactOr: string[] = textSearchTokens.map((t) => `full_name.ilike.%${t}%`);
       if (digitsOnly.length >= 4) {
         contactOr.push(`phone.ilike.%${digitsOnly}%`);
         contactOr.push(`cpf.ilike.%${digitsOnly}%`);
       }
       const [ctExtR, ctCloudR] = await Promise.all([
-        db.from("contacts" as any).select("id, full_name, lead_id").or(contactOr.join(",")).is("deleted_at", null).limit(15),
-        authClient.from("contacts" as any).select("id, full_name, lead_id").or(contactOr.join(",")).is("deleted_at", null).limit(15),
+        db.from("contacts" as any).select("id, full_name, lead_id").or(contactOr.join(",")).is("deleted_at", null).limit(80),
+        authClient.from("contacts" as any).select("id, full_name, lead_id").or(contactOr.join(",")).is("deleted_at", null).limit(80),
       ]);
-      const contacts = [...((ctExtR.data || []) as any[]), ...((ctCloudR.data || []) as any[])];
+      const contacts = [...((ctExtR.data || []) as any[]), ...((ctCloudR.data || []) as any[])].filter((ct: any) =>
+        digitsOnly.length >= 4 || isLooseTokenMatch(q, ct.full_name)
+      );
 
       // 4) Grupos de WhatsApp por nome → leads vinculados
       const { data: groupsRaw } = await db
         .from("lead_whatsapp_groups" as any)
         .select("lead_id, group_name")
-        .ilike("group_name", `%${q}%`)
-        .limit(15);
+        .or(textSearchTokens.map((t) => `group_name.ilike.%${t}%`).join(","))
+        .limit(100);
+      const groups = ((groupsRaw || []) as any[]).filter((g) => isLooseTokenMatch(q, g.group_name));
 
       // Para cada lead candidato (direto ou via contato), busca casos vinculados
       const candidateLeads = new Map<string, { lead_name: string | null; via: string }>();
-      for (const l of (leadsRaw || []) as any[]) {
+      for (const l of leads as any[]) {
         candidateLeads.set(l.id, { lead_name: l.lead_name, via: "Lead" });
       }
       for (const ct of contacts) {
@@ -654,7 +665,7 @@ export default function InssAdminProcessesTab() {
           }
         }
       }
-      for (const g of (groupsRaw || []) as any[]) {
+      for (const g of groups as any[]) {
         if (g.lead_id && !candidateLeads.has(g.lead_id)) {
           candidateLeads.set(g.lead_id, { lead_name: g.group_name, via: `Grupo WhatsApp "${g.group_name}"` });
         }
