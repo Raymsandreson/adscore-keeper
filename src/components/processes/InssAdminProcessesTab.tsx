@@ -136,19 +136,34 @@ const tokenMatchScore = (query: string, candidate?: string | null) => {
   if (!qTokens.length || !cTokens.length) return 0;
   return qTokens.filter((qt) => cTokens.some((ct) => tokenLooksMatched(qt, ct))).length;
 };
-// Match exige que NÃO HAJA sobrenomes conflitantes.
-// Regra: se ambos os nomes têm 3+ tokens significativos, exige que o menor
-// dos dois tenha no máximo 1 token não-correspondente (ex: "Sousa/Souza").
-// Assim "Maria Eduarda Medeiros Moraes" NÃO casa com "Maria Eduarda Alves Maia"
-// (apenas 2 de 4 batem), mas "Maria Eduarda" casa com "Maria Eduarda Alves Maia".
+// Compatibilidade de nomes (assimétrica): query = nome no processo do INSS
+// (sempre completo), candidate = nome do lead/contato/grupo (pode ser curto).
+// Regras:
+//  - Se o processo tem 3+ partes (ex: "Francisco Cicero de Sousa"), exigir que
+//    o candidato bata em pelo menos 2 tokens E pelo menos um deles seja
+//    sobrenome (não só o primeiro nome). Assim "Francisco" sozinho NÃO casa
+//    com "Francisco Cicero de Sousa", mas "Francisco Sousa" casa.
+//  - Se ambos têm 3+ tokens, exigir margem de 1 (cobre Sousa/Souza), evitando
+//    que "Maria Eduarda Medeiros Moraes" case com "Maria Eduarda Alves Maia".
+//  - Se o processo tem 1-2 partes, basta que todos os tokens da query batam.
 const namesAreCompatible = (query: string, candidate?: string | null) => {
   const qTokens = uniqueTokens(tokenizeName(query));
   const cTokens = uniqueTokens(tokenizeName(candidate));
   if (!qTokens.length || !cTokens.length) return false;
-  const score = qTokens.filter((qt) => cTokens.some((ct) => tokenLooksMatched(qt, ct))).length;
-  const shorter = Math.min(qTokens.length, cTokens.length);
-  if (shorter <= 2) return score >= shorter;
-  return score >= shorter - 1;
+  const matched = qTokens.filter((qt) => cTokens.some((ct) => tokenLooksMatched(qt, ct)));
+  const score = matched.length;
+  if (qTokens.length >= 3) {
+    if (score < 2) return false;
+    const firstName = qTokens[0];
+    const hasSurnameMatch = matched.some((t) => t !== firstName);
+    if (!hasSurnameMatch) return false;
+    if (cTokens.length >= 3) {
+      const shorter = Math.min(qTokens.length, cTokens.length);
+      return score >= shorter - 1;
+    }
+    return true;
+  }
+  return score >= qTokens.length;
 };
 const isLooseTokenMatch = (query: string, candidate?: string | null) => {
   const qTokens = uniqueTokens(tokenizeName(query));
