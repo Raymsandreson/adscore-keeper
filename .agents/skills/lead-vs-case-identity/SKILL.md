@@ -1,11 +1,47 @@
 ---
 name: lead-vs-case-identity
-description: Regras invioláveis sobre identidade de Lead vs Caso no AdScore Keeper. Lê SEMPRE que alguém pedir mudança envolvendo numeração de lead/caso, nome de grupo WhatsApp de cliente, vinculação de processo (INSS/judicial/requerimento), renomeação de grupo, ou unificação de sequências. Use pra ADVERTIR o usuário quando o pedido contrair a lógica da organização.
+description: Regras invioláveis sobre a hierarquia organizacional do AdScore Keeper — Empresa→Núcleo→Produto→Funil de Vendas→(fechado)→Caso→Processos→Fluxo de Trabalho. Cobre identidade de Lead vs Caso, numeração separada, nome de grupo WhatsApp, vinculação de processo (INSS/judicial), e diferença entre Funil de Vendas (lead) e Fluxo de Trabalho (processo). Use pra ADVERTIR quando o pedido contrair essa lógica.
 ---
 
-# Lead vs Caso — Identidade Separada
+# Lead vs Caso vs Processo — Identidade e Hierarquia
 
-Metáfora central: **Lead é o namoro, Caso é o casamento.** Todo casamento veio de um namoro, mas nem todo namoro vira casamento. Cada um tem certidão própria, com numeração própria.
+Metáfora central: **Lead é o namoro, Caso é o casamento, Processos são os filhos.** Todo casamento veio de um namoro, mas nem todo namoro vira casamento. E todo filho nasce dentro de um casamento, nunca solto no namoro.
+
+## Hierarquia organizacional (fonte: aba Ecossistema em Finanças)
+
+```
+Empresa
+  └── Núcleo (área especializada do escritório)
+        └── Produto (o que a empresa vende)
+              └── Funil de Vendas (caminho do lead até virar cliente)
+                    └── Time (quem trabalha o funil)
+                          │
+                          ▼ (fechamento)
+                    Caso (cliente já fechou — 1 lead = 1 caso)
+                          └── Processos (vários por caso — 1 por produto contratado)
+                                └── Fluxo de Trabalho (esteira de execução do processo)
+```
+
+Regras de cardinalidade:
+- 1 Lead → no máximo 1 Caso (quando fecha).
+- 1 Caso → N Processos.
+- 1 Processo → 1 Produto → 1 Núcleo.
+- 1 Processo → 1 Fluxo de Trabalho próprio.
+
+### Funil de Vendas ≠ Fluxo de Trabalho
+
+| Aspecto | Funil de Vendas | Fluxo de Trabalho |
+|---|---|---|
+| Vinculado a | **Lead** | **Processo** (`lead_processes`) |
+| Objetivo | Levar lead até fechamento | Executar o processo contratado |
+| Quem usa | Time de vendas/captação | Time de execução (jurídico, etc.) |
+| Quantidade por entidade | 1 funil por lead | 1 fluxo por processo |
+| Tabela base | `kanban_boards` (board do lead) | `kanban_boards` (workflow do processo) |
+
+🚫 Confundir os dois é erro comum. Recusar:
+- "Coloca esses leads no fluxo de trabalho X" → NÃO. Lead vai em **funil**, não fluxo.
+- "Esse caso está em qual funil?" → Caso não tem funil. Caso tem processos, e cada processo tem fluxo.
+- "Move o processo pro funil de vendas" → NÃO. Processo só vive em fluxo de trabalho.
 
 ## Quando esta skill DEVE travar uma execução
 
