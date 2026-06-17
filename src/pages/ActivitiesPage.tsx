@@ -376,7 +376,7 @@ const ActivitiesPage = () => {
     setter(current.includes(value) ? current.filter(v => v !== value) : [...current, value]);
   };
 
-  // Fetch raw counts (lightweight) - only on mount, not on every activities change
+  // Fetch raw counts (lightweight) - only on mount, deferred so it doesn't block first paint
   const countsLoadedRef = useRef(false);
   useEffect(() => {
     const loadCounts = async () => {
@@ -384,7 +384,14 @@ const ActivitiesPage = () => {
       setAllActivitiesRaw(data || []);
       countsLoadedRef.current = true;
     };
-    loadCounts();
+    const idle = (cb: () => void) => {
+      if (typeof (window as any).requestIdleCallback === 'function') {
+        (window as any).requestIdleCallback(cb, { timeout: 1500 });
+      } else {
+        setTimeout(cb, 400);
+      }
+    };
+    idle(() => { loadCounts(); });
   }, []); // Load once on mount
   
   // Refresh counts only after mutations (create/update/delete) - not on every fetch
@@ -413,7 +420,9 @@ const ActivitiesPage = () => {
     loadSupport();
   }, []);
 
-  // Load workflow step activity types: for each lead, find the activityType from workflow checklist items
+  // Load workflow step activity types: for each lead, find the activityType from workflow checklist items.
+  // Runs ONCE on mount (deferred to idle time) — used to be re-running on every `activities` change,
+  // which refetched ALL leads + templates dozens of times per session.
   useEffect(() => {
     const loadWorkflowStepTypes = async () => {
       const { data: leadsData } = await externalSupabase.from('leads').select('id, status, board_id');
@@ -423,7 +432,6 @@ const ActivitiesPage = () => {
       const templateIds = [...new Set(linksData.map(l => l.checklist_template_id))];
       const { data: templatesData } = await externalSupabase.from('checklist_templates').select('id, items').in('id', templateIds);
       if (!templatesData) return;
-      // Build map: stage_id -> first activityType found in any step
       const stageTypeMap: Record<string, string> = {};
       linksData.forEach(link => {
         if (stageTypeMap[link.stage_id]) return;
@@ -433,7 +441,6 @@ const ActivitiesPage = () => {
         const stepWithType = items.find((item: any) => item.activityType);
         if (stepWithType?.activityType) stageTypeMap[link.stage_id] = stepWithType.activityType;
       });
-      // Build map: lead_id -> activityType
       const leadTypeMap: Record<string, string> = {};
       leadsData.forEach(lead => {
         if (!lead.status) return;
@@ -442,8 +449,15 @@ const ActivitiesPage = () => {
       });
       setLeadWorkflowActivityTypes(leadTypeMap);
     };
-    loadWorkflowStepTypes();
-  }, [activities]);
+    const idle = (cb: () => void) => {
+      if (typeof (window as any).requestIdleCallback === 'function') {
+        (window as any).requestIdleCallback(cb, { timeout: 2000 });
+      } else {
+        setTimeout(cb, 600);
+      }
+    };
+    idle(() => { loadWorkflowStepTypes(); });
+  }, []);
 
   const handleCloneActivity = async (activity: LeadActivity) => {
     const { id, created_at, updated_at, completed_at, completed_by, completed_by_name, ...cloneData } = activity;
