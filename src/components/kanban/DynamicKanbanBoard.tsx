@@ -1153,7 +1153,9 @@ export function DynamicKanbanBoard({
                         {statusCol.name}
                       </h3>
                       <Badge variant="secondary" className="text-xs">
-                        <AnimatedNumber value={filteredLeads.length} />
+                        {colFilter && matchedColLeads.length !== statusCol.leads.length
+                          ? <><AnimatedNumber value={matchedColLeads.length} />/<AnimatedNumber value={statusCol.leads.length} /></>
+                          : <AnimatedNumber value={statusCol.leads.length} />}
                       </Badge>
                     </div>
                   </div>
