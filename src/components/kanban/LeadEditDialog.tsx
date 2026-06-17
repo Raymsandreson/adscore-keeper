@@ -1759,13 +1759,14 @@ ${scrapeData.content || ''}
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 ml-1"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 ml-1 gap-1 px-2 text-xs"
                       title="Trocar funil"
                       onClick={(e) => e.stopPropagation()}
                     >
-                      <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+                      <Pencil className="h-3 w-3" />
+                      Trocar
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-72 p-2 z-[10000]" align="start" onClick={(e) => e.stopPropagation()}>
