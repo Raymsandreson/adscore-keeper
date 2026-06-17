@@ -79,17 +79,50 @@ const fmtDate = (s?: string | null, withTime = false) => {
   try { return format(new Date(s), withTime ? "dd/MM/yyyy HH:mm" : "dd/MM/yyyy"); }
   catch { return null; }
 };
-// Remove acentos / cedilha / variações ("Souza"/"Sousa" continuam diferentes, mas
-// pelo menos "Cícero" e "Cicero" passam a casar). Mantém só letras+espaço, upper.
+// Normaliza texto para busca: tira acento, ignora caixa e deixa só letras/números.
+// Metáfora: antes de comparar, todos os nomes vestem o mesmo uniforme.
 const stripAccents = (s: string) =>
   s.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+const normalizeSearchText = (s?: string | null) =>
+  stripAccents(String(s || ""))
+    .toUpperCase()
+    .replace(/[^A-Z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 const tokenizeName = (s?: string | null): string[] => {
   if (!s) return [];
-  return stripAccents(s)
-    .toUpperCase()
-    .replace(/[^A-Z\s]/g, " ")
+  return normalizeSearchText(s)
     .split(/\s+/)
-    .filter((t) => t.length >= 3 && !["DOS", "DAS", "DEL"].includes(t));
+    .filter((t) => t.length >= 3 && !["DOS", "DAS", "DEL", "DE", "DA", "DO", "E"].includes(t));
+};
+const safeIlikeToken = (s: string) => s.replace(/[%,()]/g, " ").trim();
+const uniqueTokens = (tokens: string[]) => Array.from(new Set(tokens));
+const tokenLooksMatched = (queryToken: string, candidateToken: string) => {
+  if (!queryToken || !candidateToken) return false;
+  if (candidateToken.includes(queryToken) || queryToken.includes(candidateToken)) return true;
+  const minPrefix = Math.min(5, queryToken.length, candidateToken.length);
+  if (minPrefix >= 4 && candidateToken.slice(0, minPrefix) === queryToken.slice(0, minPrefix)) return true;
+  // Pequena tolerância para Sousa/Souza e outros nomes com 1 letra diferente.
+  if (queryToken.length >= 5 && candidateToken.length >= 5 && Math.abs(queryToken.length - candidateToken.length) <= 1) {
+    let diff = Math.abs(queryToken.length - candidateToken.length);
+    const size = Math.min(queryToken.length, candidateToken.length);
+    for (let i = 0; i < size; i++) if (queryToken[i] !== candidateToken[i]) diff++;
+    return diff <= 1;
+  }
+  return false;
+};
+const tokenMatchScore = (query: string, candidate?: string | null) => {
+  const qTokens = uniqueTokens(tokenizeName(query));
+  const cTokens = uniqueTokens(tokenizeName(candidate));
+  if (!qTokens.length || !cTokens.length) return 0;
+  return qTokens.filter((qt) => cTokens.some((ct) => tokenLooksMatched(qt, ct))).length;
+};
+const isLooseTokenMatch = (query: string, candidate?: string | null) => {
+  const qTokens = uniqueTokens(tokenizeName(query));
+  const score = tokenMatchScore(query, candidate);
+  if (!qTokens.length) return false;
+  if (qTokens.some((t) => /^\d+$/.test(t))) return score >= 1;
+  return score >= Math.min(2, qTokens.length);
 };
 
 // Faz parse do corpo do e-mail do INSS em pares "Rótulo: valor" para exibição
