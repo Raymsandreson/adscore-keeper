@@ -608,6 +608,11 @@ export default function InssAdminProcessesTab() {
           }
         }
       }
+      for (const g of (groupsRaw || []) as any[]) {
+        if (g.lead_id && !candidateLeads.has(g.lead_id)) {
+          candidateLeads.set(g.lead_id, { lead_name: g.group_name, via: `Grupo WhatsApp "${g.group_name}"` });
+        }
+      }
 
       for (const [leadId, info] of candidateLeads.entries()) {
         const { data: cs } = await db
