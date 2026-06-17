@@ -234,30 +234,49 @@ Deno.serve(async (req) => {
     console.log(`After filtering: ${participantPhones.length} kept, ${blockedCount} blocked, ${participants.length} total`);
 
     // 5. Find existing contacts by EXACT match-key (no LIKE collisions)
+    // IMPORTANT: search BOTH External (source of truth) AND Cloud (legacy mirror)
+    // because contacts/leads were historically created in Cloud and not all rows
+    // were migrated. Without this, an existing Cloud-only contact appears as "new".
     const allKeys = participantPhones.map((p) => p.key);
     const contactsByKey = new Map<string, any>();
 
     if (allKeys.length > 0) {
-      // Pull contacts whose normalized phone ends with any of the keys.
-      // We do this by fetching candidates per key with eq on the right-trimmed value.
-      // Simpler: fetch all contacts whose phone digits end with one of the keys,
-      // then filter in memory using phoneMatchKey for exactness.
-      const orFilter = allKeys.map((k) => `phone.ilike.%${k}`).join(",");
-      const { data: candidates } = await dataClient
-        .from("contacts")
-        .select("id, phone, full_name, classification")
-        .or(orFilter)
-        .is("deleted_at", null);
+      // Use last 8 digits as SQL filter — catches both formats with and without
+      // the optional 9th mobile digit. We then re-check exactness in memory using
+      // phoneMatchKey.
+      const last8Set = new Set(allKeys.map((k) => k.slice(-8)));
+      const orFilter = Array.from(last8Set).map((k) => `phone.ilike.%${k}`).join(",");
 
-      for (const c of candidates || []) {
-        const ckey = phoneMatchKey(c.phone || "");
-        if (!ckey) continue;
-        // Only set if key matches one of the participants (avoids stray hits)
-        if (allKeys.includes(ckey) && !contactsByKey.has(ckey)) {
-          contactsByKey.set(ckey, c);
+      const sources: Array<{ name: string; client: any }> = [
+        { name: "external", client: dataClient },
+        { name: "cloud", client: internalClient },
+      ];
+
+      for (const src of sources) {
+        try {
+          const { data: candidates, error } = await src.client
+            .from("contacts")
+            .select("id, phone, full_name, classification")
+            .or(orFilter)
+            .is("deleted_at", null);
+          if (error) {
+            console.log(`contacts lookup error (${src.name}):`, error.message);
+            continue;
+          }
+          for (const c of candidates || []) {
+            const ckey = phoneMatchKey(c.phone || "");
+            if (!ckey) continue;
+            if (allKeys.includes(ckey) && !contactsByKey.has(ckey)) {
+              contactsByKey.set(ckey, { ...c, _source: src.name });
+            }
+          }
+        } catch (e: any) {
+          console.log(`contacts lookup exception (${src.name}):`, e?.message);
         }
       }
+      console.log(`Resolved ${contactsByKey.size}/${allKeys.length} participants to existing contacts`);
     }
+
 
     // 6. Existing links for this lead
     const { data: existingLinks } = await dataClient
