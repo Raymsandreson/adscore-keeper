@@ -513,28 +513,30 @@ export default function InssAdminProcessesTab() {
     }
 
     // 3) Match por nome (tokens, tolerante a acento) em contacts (Externo + Cloud)
-    const tokens = tokenizeName(proc.nome_segurado);
+    const tokens = uniqueTokens(tokenizeName(proc.nome_segurado));
     const matchTokens = (full?: string | null) => {
-      const lt = tokenizeName(full);
+      const lt = uniqueTokens(tokenizeName(full));
       if (!tokens.length || !lt.length) return false;
-      return tokens.every((t) => lt.some((x) => x.startsWith(t.slice(0, 4)) || t.startsWith(x.slice(0, 4))));
+      const score = tokens.filter((t) => lt.some((x) => tokenLooksMatched(t, x))).length;
+      return score >= Math.min(2, tokens.length);
     };
     if (tokens.length) {
-      const seed = [...tokens].sort((a, b) => b.length - a.length)[0];
+      const searchTokens = [...tokens].sort((a, b) => b.length - a.length).slice(0, 4).map(safeIlikeToken).filter(Boolean);
+      const nameOr = searchTokens.map((t) => `full_name.ilike.%${t}%`).join(",");
       // contacts no EXTERNO
       const { data: ctExt } = await db
         .from("contacts" as any)
         .select("id, full_name, lead_id")
-        .ilike("full_name", `%${seed}%`)
+        .or(nameOr)
         .is("deleted_at", null)
-        .limit(50);
+        .limit(100);
       // contacts no CLOUD (alguns só existem lá)
       const { data: ctCloud } = await authClient
         .from("contacts" as any)
         .select("id, full_name, lead_id")
-        .ilike("full_name", `%${seed}%`)
+        .or(nameOr)
         .is("deleted_at", null)
-        .limit(50);
+        .limit(100);
       const allContacts = [...(ctExt || []), ...(ctCloud || [])].filter((ct: any) => matchTokens(ct.full_name));
       const seenContact = new Set<string>();
       for (const ct of allContacts as any[]) {
@@ -550,15 +552,26 @@ export default function InssAdminProcessesTab() {
         }
       }
 
-      // 4) Nome em leads (Externo) — busca grosseira + filtro por tokens
+      // 4) Nome em leads (Externo) — busca por tokens + filtro normalizado
       const { data: leadsRaw } = await db
         .from("leads" as any)
         .select("id, lead_name")
-        .ilike("lead_name", `%${seed}%`)
+        .or(searchTokens.map((t) => `lead_name.ilike.%${t}%`).join(","))
         .limit(100);
       const leadsFiltered = (leadsRaw || []).filter((l: any) => matchTokens(l.lead_name));
       for (const l of leadsFiltered as any[]) {
         await addLead(l.id, l.lead_name, "Nome bate com o lead");
+      }
+
+      // 5) Nome em grupos WhatsApp vinculados — caso o grupo tenha o nome certo
+      const { data: groupsByName } = await db
+        .from("lead_whatsapp_groups" as any)
+        .select("lead_id, group_name")
+        .or(searchTokens.map((t) => `group_name.ilike.%${t}%`).join(","))
+        .limit(100);
+      const groupsFiltered = (groupsByName || []).filter((g: any) => matchTokens(g.group_name));
+      for (const g of groupsFiltered as any[]) {
+        if (g.lead_id) await addLead(g.lead_id, g.group_name, `Nome bate com grupo WhatsApp "${g.group_name}"`);
       }
     }
 
