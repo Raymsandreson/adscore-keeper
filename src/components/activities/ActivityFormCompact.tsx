@@ -15,6 +15,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Label } from '@/components/ui/label';
 import { Search, X, ChevronDown, Copy, Loader2, UserPlus, Building2, Briefcase, Send, Info, Settings2, FileText, Plus } from 'lucide-react';
 import { ActivityTTSButton } from '@/components/voice/ActivityTTSButton';
+import { VoiceInputButton } from '@/components/ui/voice-input-button';
 import { ActivityFieldSettingsDialog } from '@/components/activities/ActivityFieldSettingsDialog';
 import { ActivityMessageTemplateSettings } from '@/components/activities/ActivityMessageTemplateSettings';
 import { ActivityNotesField, type Attachment } from '@/components/activities/ActivityNotesField';
@@ -34,6 +35,15 @@ import { useLeads } from '@/hooks/useLeads';
 import { useLegalCases } from '@/hooks/useLegalCases';
 import { useSpecializedNuclei } from '@/hooks/useSpecializedNuclei';
 import { toast } from 'sonner';
+
+// Faz append da transcrição de voz como um novo parágrafo HTML válido (Lexical/RichTextEditor).
+// Escapa caracteres especiais para não quebrar o parse nem permitir injeção de HTML.
+function appendVoiceHtml(current: string, text: string): string {
+  const clean = text.trim();
+  if (!clean) return current;
+  const esc = clean.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return current && current !== '<p></p>' ? `${current}<p>${esc}</p>` : `<p>${esc}</p>`;
+}
 
 function copyField(text: string | null | undefined) {
   if (!text) return;
@@ -742,7 +752,10 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
               }
               return (
                 <div key={field.field_key} className="min-w-0 flex flex-col">
-                  <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{field.label}</span>
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{field.label}</span>
+                    <VoiceInputButton onResult={(t) => setter(appendVoiceHtml(value, t))} className="h-6 w-6" />
+                  </div>
                   <StepTemplatesHub {...hubProps} />
                   <div className={cn('flex-1 min-h-0', expandedFieldKey === field.field_key ? 'hidden' : '')}>
                     <RichTextEditor
@@ -764,7 +777,10 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
               const [value, setter] = valueMap[key];
               return (
                 <div key={key} className="min-w-0 flex flex-col">
-                  <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{labelMap[key]}</span>
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{labelMap[key]}</span>
+                    <VoiceInputButton onResult={(t) => setter(appendVoiceHtml(value, t))} className="h-6 w-6" />
+                  </div>
                   <div className="flex-1 min-h-0">
                     <RichTextEditor
                       value={value}
