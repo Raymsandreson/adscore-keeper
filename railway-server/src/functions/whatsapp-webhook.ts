@@ -1458,7 +1458,20 @@ export const handler: RequestHandler = async (req, res) => {
         const dispatchResults: any[] = [];
         for (const t of matched) {
           // 1) Se o gatilho tem agente vinculado, ativa-o na conversa (igual auto_swap_agent_on_stage_change)
+          //    POLÍTICA: só ativa o bot quando a etiqueta é a etapa "Documentos p/ Protocolo".
+          //    Qualquer outra etiqueta de etapa NÃO deve ligar o agente automaticamente.
           if ((t as any).agent_id) {
+            const labelNameNorm = String((t as any).label_name || '')
+              .toLowerCase()
+              .normalize('NFD')
+              .replace(/[\u0300-\u036f]/g, '');
+            const isProtocoloStage =
+              labelNameNorm.includes('documentos p/ protocolo') ||
+              labelNameNorm.includes('documentos para protocolo') ||
+              labelNameNorm.includes('documentos p protocolo');
+            if (!isProtocoloStage) {
+              console.log('[label-trigger] agent activation skipped — etiqueta não é "Documentos p/ Protocolo"', { label: (t as any).label_name });
+            } else {
             try {
               const last8 = phoneDigits.slice(-8);
               const { error: agentErr } = await supabase
@@ -1491,7 +1504,9 @@ export const handler: RequestHandler = async (req, res) => {
             } catch (e: any) {
               console.warn('[label-trigger] agent activation failed:', e?.message);
             }
+            }
           }
+
 
           // 2) Se tem template ZapSign, dispara o preparo da procuração (comportamento antigo)
           if (!t.zapsign_template_id) {
