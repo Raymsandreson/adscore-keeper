@@ -1306,6 +1306,69 @@ export const handler: RequestHandler = async (req, res) => {
           console.warn('[label-trigger][result] block failed:', e?.message);
         }
 
+        // === NOVO: etiquetas de ETAPA de KANBAN (WA → CRM)
+        // Quando o operador aplica a etiqueta de uma etapa no WA, move o card
+        // automaticamente para a coluna correspondente. Lookup em stage_instance_labels.
+        try {
+          const { data: stageMappings } = await supabase
+            .from('stage_instance_labels')
+            .select('board_id, stage_id, label_id, label_name, instance_name')
+            .ilike('instance_name', webhookInstanceName)
+            .is('deleted_at', null);
+
+          const matchedStageLabels = (stageMappings || []).filter((m: any) => {
+            const lid = String(m.label_id).split(':').pop() || String(m.label_id);
+            return normalizedWaLabels.includes(lid);
+          });
+
+          if (matchedStageLabels.length > 0) {
+            // Resolve lead via telefone + board
+            const last8 = phoneDigits.slice(-8);
+            // Pega o ÚLTIMO match (operador pode ter colocado várias etiquetas; a aplicada por último prevalece)
+            const lastStageMatch: any = matchedStageLabels[matchedStageLabels.length - 1];
+
+            const { data: leadRow } = await supabase
+              .from('leads')
+              .select('id, status, board_id')
+              .like('lead_phone', `%${last8}`)
+              .eq('board_id', lastStageMatch.board_id)
+              .is('deleted_at', null)
+              .order('updated_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+
+            if (leadRow && (leadRow as any).status !== lastStageMatch.stage_id) {
+              const leadId = (leadRow as any).id;
+              const oldStage = (leadRow as any).status;
+              await supabase
+                .from('leads')
+                .update({ status: lastStageMatch.stage_id, updated_at: new Date().toISOString() } as any)
+                .eq('id', leadId);
+              console.log('[label-trigger][stage] lead moved by WA label', { leadId, from: oldStage, to: lastStageMatch.stage_id, via: lastStageMatch.label_name });
+              // Registra histórico
+              try {
+                await supabase.from('lead_stage_history').insert({
+                  lead_id: leadId,
+                  from_stage: oldStage,
+                  to_stage: lastStageMatch.stage_id,
+                  board_id: lastStageMatch.board_id,
+                  changed_by: null,
+                  source: 'whatsapp_label',
+                } as any);
+              } catch (e: any) {
+                console.warn('[label-trigger][stage] history insert failed:', e?.message);
+              }
+            } else if (leadRow) {
+              console.log('[label-trigger][stage] lead já está no stage correto, skipping', { leadId: (leadRow as any).id, stage: lastStageMatch.stage_id });
+            } else {
+              console.log('[label-trigger][stage] no lead matched for stage label', { phone: phoneDigits, board: lastStageMatch.board_id, label: lastStageMatch.label_name });
+            }
+          }
+        } catch (e: any) {
+          console.warn('[label-trigger][stage] block failed:', e?.message);
+        }
+
+
         if (!triggers || triggers.length === 0) {
           if (matchedAgentLabels.length > 0) {
             return res.json({ success: true, type: 'agent_activated_via_label_sync', count: matchedAgentLabels.length, labels: matchedAgentLabels.map((m: any) => m.label_name) });

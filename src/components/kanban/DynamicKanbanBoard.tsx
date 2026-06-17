@@ -65,6 +65,11 @@ import { LeadCardChecklists } from './LeadCardChecklists';
 import { ProfessionBadgePopover } from '@/components/instagram/ProfessionBadgePopover';
 import { toast } from 'sonner';
 import { findClosedStageId, findRefusedStageId, isClosedStage, isRefusedStage } from '@/utils/kanbanStageTypes';
+import { StageLabelSelect } from './StageLabelSelect';
+import { StageLabelSetupPanel } from './StageLabelSetupPanel';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
+import { Tag } from 'lucide-react';
+
 
 interface DynamicKanbanBoardProps {
   board: KanbanBoard;
@@ -530,6 +535,25 @@ export function DynamicKanbanBoard({
           </div>
         )}
 
+        {/* Toolbar do board */}
+        <div className="flex items-center justify-end gap-2 pb-2">
+          <Sheet>
+            <SheetTrigger asChild>
+              <Button size="sm" variant="outline">
+                <Tag className="h-3.5 w-3.5 mr-1.5" /> Etiquetas WhatsApp
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="right" className="w-full sm:max-w-2xl overflow-y-auto">
+              <SheetHeader>
+                <SheetTitle>Configuração de etiquetas — {board.name}</SheetTitle>
+              </SheetHeader>
+              <div className="mt-4">
+                <StageLabelSetupPanel boardId={board.id} boardName={board.name} />
+              </div>
+            </SheetContent>
+          </Sheet>
+        </div>
+
         {/* Top scrollbar */}
         <div
           ref={topScrollRef}
@@ -539,6 +563,7 @@ export function DynamicKanbanBoard({
         >
           <div style={{ width: `calc(${board.stages.length + 2} * max(260px, calc((100vw - ${(board.stages.length + 2) * 4 + 16}px) / ${board.stages.length + 2})) + ${(board.stages.length + 1) * 4}px)`, height: '1px' }} />
         </div>
+
 
         <div ref={bottomScrollRef} onScroll={handleBottomScroll} className="flex gap-1 overflow-x-auto pb-4">
           {board.stages.map((stage) => {
@@ -734,6 +759,14 @@ export function DynamicKanbanBoard({
                                   <span onClick={e => e.stopPropagation()} draggable={false} onDragStart={e => e.preventDefault()}>
                                     <ShareMenu entityType="lead" entityId={lead.id} entityName={lead.lead_name || 'Sem nome'} size="icon" variant="ghost" className="h-6 w-6" />
                                   </span>
+                                  <span onClick={e => e.stopPropagation()} draggable={false} onDragStart={e => e.preventDefault()}>
+                                    <StageLabelSelect
+                                      leadId={lead.id}
+                                      boardId={board.id}
+                                      currentStageId={lead.status}
+                                      variant="card"
+                                    />
+                                  </span>
                                   <Tooltip>
                                     <TooltipTrigger asChild>
                                       <Button 
@@ -752,6 +785,7 @@ export function DynamicKanbanBoard({
                                       <p>Ver detalhes</p>
                                     </TooltipContent>
                                   </Tooltip>
+
                                       
                                       <DropdownMenu>
                                         <DropdownMenuTrigger asChild>

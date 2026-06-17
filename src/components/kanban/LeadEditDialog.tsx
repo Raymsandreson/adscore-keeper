@@ -133,6 +133,7 @@ import { GroupContactSyncDialog } from '@/components/kanban/GroupContactSyncDial
 import { LeadGroupSearchDialog } from '@/components/kanban/LeadGroupSearchDialog';
 import { normalizeDateInput } from '@/utils/normalizeDateInput';
 import { useChecklists } from '@/hooks/useChecklists';
+import { StageLabelSelect } from '@/components/kanban/StageLabelSelect';
 
 const leadGroupsCache = new Map<string, Array<{ id?: string; group_link: string; group_jid: string; group_name: string; label: string }>>();
 const leadFieldValuesCache = new Map<string, Record<string, CustomFieldValue>>();
@@ -1800,7 +1801,7 @@ ${scrapeData.content || ''}
                   : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
               </div>
             </div>
-            <div className="px-3 pb-3">
+            <div className="px-3 pb-3 space-y-3">
               <Suspense fallback={<div className="flex items-center justify-center p-4"><Loader2 className="h-4 w-4 animate-spin" /></div>}>
                 <LeadFunnelOverview
                   leadId={lead.id}
@@ -1813,9 +1814,18 @@ ${scrapeData.content || ''}
                   onHeaderClick={() => setFunnelPanelOpen(o => !o)}
                 />
               </Suspense>
+              {(selectedBoardId || lead.board_id) && (
+                <StageLabelSelect
+                  leadId={lead.id}
+                  boardId={selectedBoardId || lead.board_id!}
+                  currentStageId={lead.status || null}
+                  variant="dialog"
+                />
+              )}
             </div>
           </div>
         )}
+
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 min-h-0 flex flex-col">
           <div className="w-full flex-shrink-0">

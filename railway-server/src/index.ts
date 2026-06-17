@@ -29,6 +29,10 @@ import { handler as getPendingReview } from './functions/get-pending-review';
 import { handler as submitDocumentReview } from './functions/submit-document-review';
 import { handler as syncAgentLabels } from './functions/sync-agent-labels';
 import { handler as syncResultLabels } from './functions/sync-result-labels';
+import { handler as syncStageLabels } from './functions/sync-stage-labels';
+import { handler as applyStageLabel } from './functions/apply-stage-label';
+import { handler as listStageLabelMappings } from './functions/list-stage-label-mappings';
+import { handler as setStageResultKey } from './functions/set-stage-result-key';
 import { handler as sendWhatsappCloud } from './functions/send-whatsapp-cloud';
 import { handler as checkWhatsappCloudToken } from './functions/check-whatsapp-cloud-token';
 import { handler as metaCallQueueProcessor } from './functions/meta-call-queue-processor';
@@ -65,6 +69,10 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'submit-document-review': submitDocumentReview,
   'sync-agent-labels': syncAgentLabels,
   'sync-result-labels': syncResultLabels,
+  'sync-stage-labels': syncStageLabels,
+  'apply-stage-label': applyStageLabel,
+  'list-stage-label-mappings': listStageLabelMappings,
+  'set-stage-result-key': setStageResultKey,
   'send-whatsapp-cloud': sendWhatsappCloud,
   'check-whatsapp-cloud-token': checkWhatsappCloudToken,
   'meta-call-queue-processor': metaCallQueueProcessor,
