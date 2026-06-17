@@ -46,17 +46,29 @@ function decodeBase64Url(s: string): string {
   } catch { return ''; }
 }
 
-function htmlToText(html: string): string {
-  return html
-    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<[^>]+>/g, ' ')
+function decodeEntities(s: string): string {
+  return s
     .replace(/&nbsp;/gi, ' ')
     .replace(/&amp;/gi, '&')
     .replace(/&lt;/gi, '<')
     .replace(/&gt;/gi, '>')
     .replace(/&quot;/gi, '"')
-    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(parseInt(n, 10)))
+    .replace(/&apos;/gi, "'")
+    .replace(/&#(\d+);/g, (_, n) => {
+      try { return String.fromCodePoint(parseInt(n, 10)); } catch { return _; }
+    })
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, n) => {
+      try { return String.fromCodePoint(parseInt(n, 16)); } catch { return _; }
+    });
+}
+
+function htmlToText(html: string): string {
+  return decodeEntities(
+    html
+      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<[^>]+>/g, ' ')
+  )
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -78,10 +90,11 @@ function extractPlainText(msg: GmailMessage): string {
     else plain = raw;
   }
   walk(msg.payload?.parts);
-  if (plain && plain.trim()) return plain;
+  if (plain && plain.trim()) return decodeEntities(plain);
   if (html) return htmlToText(html);
   return '';
 }
+
 
 /**
  * Parser dos emails do INSS observados no print:
@@ -323,7 +336,7 @@ export const handler: RequestHandler = async (req, res) => {
               process_id: null,
               gmail_message_id: item.id,
               email_subject: subject,
-              email_snippet: msg.snippet?.slice(0, 500),
+              email_snippet: msg.snippet ? decodeEntities(msg.snippet).slice(0, 500) : undefined,
               email_received_at: receivedAt,
               to_status: 'PARSE_FAILED',
             } as any, { onConflict: 'gmail_message_id', ignoreDuplicates: true });
@@ -397,7 +410,7 @@ export const handler: RequestHandler = async (req, res) => {
             to_status: parsed.status || 'Desconhecido',
             email_received_at: receivedAt,
             email_subject: subject,
-            email_snippet: msg.snippet?.slice(0, 500),
+            email_snippet: msg.snippet ? decodeEntities(msg.snippet).slice(0, 500) : undefined,
             gmail_message_id: item.id,
             notified: false,
           } as any, { onConflict: 'gmail_message_id', ignoreDuplicates: true });
