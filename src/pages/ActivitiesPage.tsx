@@ -13,6 +13,7 @@ import { useActivityStepContext } from '@/hooks/useActivityStepContext';
 import { ActivityFieldSettingsDialog } from '@/components/activities/ActivityFieldSettingsDialog';
 import { ActivityTTSButton } from '@/components/voice/ActivityTTSButton';
 import { ActivityFormCompact, SendToGroupSection } from '@/components/activities/ActivityFormCompact';
+import { ActivityCallRecorder, callFieldTextToHtml, stripHtmlToText } from '@/components/activities/ActivityCallRecorder';
 import { CompleteAndNotifyDialog } from '@/components/activities/CompleteAndNotifyDialog';
 import { DashboardChatPreview } from '@/components/whatsapp/DashboardChatPreview';
 import { LeadGroupSearchDialog } from '@/components/kanban/LeadGroupSearchDialog';
@@ -54,7 +55,7 @@ import { useActivityTypes } from '@/hooks/useActivityTypes';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu';
 import { cn } from '@/lib/utils';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameMonth, addMonths, subMonths, isToday, parseISO, startOfWeek, addDays } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameMonth, addMonths, subMonths, isToday, parseISO, startOfWeek, addDays, startOfDay, differenceInCalendarDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
@@ -70,6 +71,7 @@ const ACTIVITY_TYPES = [
 const STATUS_OPTIONS = [
   { value: 'all', label: 'Todos' },
   { value: 'pendente', label: 'Pendente' },
+  { value: 'atrasada', label: 'Atrasada' },
   { value: 'em_andamento', label: 'Em Andamento' },
   { value: 'concluida', label: 'Concluída' },
 ];
@@ -90,11 +92,39 @@ const statusColors: Record<string, string> = {
   concluida: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
 };
 
-const priorityColors: Record<string, string> = {
-  baixa: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
-  normal: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-  alta: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
-  urgente: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+// Situação temporal derivada (não vem do banco): atrasada = prazo já passou e não concluída.
+type TemporalStatus = 'atrasada' | 'hoje' | 'pendente' | 'concluida';
+
+const getTemporalStatus = (activity: { status?: string | null; deadline?: string | null }): TemporalStatus => {
+  if (activity.status === 'concluida') return 'concluida';
+  if (activity.deadline) {
+    try {
+      const d = startOfDay(parseISO(activity.deadline));
+      const today = startOfDay(new Date());
+      const diff = differenceInCalendarDays(d, today);
+      if (diff < 0) return 'atrasada';
+      if (diff === 0) return 'hoje';
+    } catch { /* deadline inválido: trata como pendente */ }
+  }
+  return 'pendente';
+};
+
+// Rótulo da fita do topo. Para atrasada/hoje sobrescreve o status cru; senão usa o label do STATUS_OPTIONS.
+const getTemporalRibbon = (
+  activity: { status?: string | null; deadline?: string | null },
+): { className: string; label: string } => {
+  const ts = getTemporalStatus(activity);
+  if (ts === 'atrasada') {
+    const dias = activity.deadline
+      ? Math.abs(differenceInCalendarDays(startOfDay(parseISO(activity.deadline)), startOfDay(new Date())))
+      : 0;
+    const sufixo = dias === 1 ? 'venceu há 1 dia' : dias > 1 ? `venceu há ${dias} dias` : 'venceu';
+    return { className: 'bg-red-600 text-white', label: `Atrasada · ${sufixo}` };
+  }
+  if (ts === 'hoje') return { className: 'bg-amber-500 text-white', label: 'Vence hoje' };
+  if (ts === 'concluida') return { className: 'bg-emerald-600 text-white', label: 'Concluída' };
+  const rawLabel = STATUS_OPTIONS.find(s => s.value === activity.status)?.label || 'Pendente';
+  return { className: 'bg-muted text-muted-foreground border-b border-border/50', label: rawLabel };
 };
 
 interface LeadOption {
@@ -332,7 +362,11 @@ const ActivitiesPage = () => {
   } | null>(null);
 
   const getFilterParams = () => ({
-    status: filterStatus.length > 0 ? filterStatus : 'all',
+    // 'atrasada' é situação derivada (prazo vencido), não um status do banco.
+    // Quando está selecionada, busca tudo no backend e filtra no client (displayedActivities).
+    status: filterStatus.includes('atrasada')
+      ? 'all'
+      : (filterStatus.length > 0 ? filterStatus : 'all'),
     activity_type: filterType.length > 0 ? filterType : 'all',
     assigned_to: filterAssignee.length > 0 ? filterAssignee : 'all',
     lead_id: filterLead.length > 0 ? filterLead : 'all',
@@ -477,8 +511,12 @@ const ActivitiesPage = () => {
         filtered = filtered.filter(a => a.assigned_to && filterAssignee.includes(a.assigned_to));
       if (excludeField !== 'activity_type' && filterType.length > 0)
         filtered = filtered.filter(a => filterType.includes(a.activity_type));
-      if (excludeField !== 'status' && filterStatus.length > 0)
-        filtered = filtered.filter(a => filterStatus.includes(a.status));
+      if (excludeField !== 'status' && filterStatus.length > 0) {
+        // 'atrasada' é derivado e o raw não traz deadline — ignora na contagem.
+        const realStatuses = filterStatus.filter(s => s !== 'atrasada');
+        if (realStatuses.length > 0)
+          filtered = filtered.filter(a => realStatuses.includes(a.status));
+      }
       if (excludeField !== 'lead_id' && filterLead.length > 0)
         filtered = filtered.filter(a => a.lead_id && filterLead.includes(a.lead_id));
       if (excludeField !== 'contact_id' && filterContact.length > 0)
@@ -1332,6 +1370,14 @@ const ActivitiesPage = () => {
 
   const displayedActivities = useMemo(() => {
     let list = activities;
+    // 'atrasada' é filtrada no client (não existe como status no banco). Quando selecionada,
+    // o backend trouxe 'all', então aplicamos o filtro de status aqui mantendo o OR do multi-select.
+    if (filterStatus.includes('atrasada')) {
+      const realStatuses = filterStatus.filter(s => s !== 'atrasada');
+      list = list.filter(a =>
+        getTemporalStatus(a) === 'atrasada' || realStatuses.includes(a.status as string)
+      );
+    }
     if (filterCase.length > 0) {
       list = list.filter(a => (a as any).case_id && filterCase.includes((a as any).case_id));
     }
@@ -1340,8 +1386,9 @@ const ActivitiesPage = () => {
         const dateKey = a.deadline || a.notification_date;
         return dateKey ? selectedCalDays.includes(dateKey) : false;
       });
-    } else if (viewMode === 'list') {
+    } else if (viewMode === 'list' && !filterStatus.includes('atrasada')) {
       // Sem dia selecionado: a lista acompanha o mês exibido no calendário.
+      // Exceção: com o filtro 'Atrasada' ativo, mostramos vencidas de qualquer mês.
       // Atividades sem nenhuma data continuam visíveis (não têm lugar no calendário).
       const monthPrefix = format(calendarMonth, 'yyyy-MM');
       list = list.filter(a => {
@@ -1356,7 +1403,7 @@ const ActivitiesPage = () => {
       const rb = priorityRank[b.priority || 'normal'] ?? 2;
       return ra - rb;
     });
-  }, [activities, selectedCalDays, filterCase, viewMode, calendarMonth]);
+  }, [activities, selectedCalDays, filterCase, viewMode, calendarMonth, filterStatus]);
 
   const resolveUserName = (userId: string | null) => {
     if (!userId) return null;
@@ -1643,6 +1690,11 @@ const ActivitiesPage = () => {
         result = lines.join('\n');
       }
 
+      // Auto-injeta o link da atividade no final quando houver e o template não o referenciar
+      if (activityLink && !template.includes('link_atividade') && !result.includes('openActivity=')) {
+        result = `${result.trim()}\n\n${activityLink}`;
+      }
+
       return result
         .replace(/\n{3,}/g, '\n\n')
         .trim();
@@ -1656,7 +1708,7 @@ const ActivitiesPage = () => {
     const greetingLine = clientFirstName
       ? `*${saudacaoFb} Sr(a). ${clientFirstName}*`
       : `*${saudacaoFb}*`;
-    return `${greetingLine}${processInfo ? `\n\n${processInfo}` : ''}\n\n*Assunto da atividade:* ${formTitle.toUpperCase()}\n\n${fieldLines}\n\n${buildReturnDateLine(responsavelDrFb)}\n${tempoStr}\n\nEstamos à disposição para quaisquer dúvidas.\n\n🚀Avante!\n\nTem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se tudo está claro, digite 2.`;
+    return `${greetingLine}${processInfo ? `\n\n${processInfo}` : ''}\n\n*Assunto da atividade:* ${formTitle.toUpperCase()}\n\n${fieldLines}\n\n${buildReturnDateLine(responsavelDrFb)}\n${tempoStr}\n\nEstamos à disposição para quaisquer dúvidas.\n\n🚀Avante!\n\nTem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se tudo está claro, digite 2.${activityLink ? `\n\n${activityLink}` : ''}`;
   };
 
   // Active step context — process workflow > lead's funnel board.
@@ -2154,10 +2206,12 @@ const ActivitiesPage = () => {
                       <CommandItem key={s.value} value={s.label} onSelect={() => toggleFilter(setFilterStatus, filterStatus, s.value)}>
                         <Check className={cn("mr-2 h-3.5 w-3.5", isSelected ? "opacity-100" : "opacity-0")} />
                         <span className="flex-1">{s.label}</span>
-                        <span className="ml-2 flex gap-1 text-[10px]">
-                          <Badge variant="outline" className="px-1 py-0 text-[10px]">{c.open}⏳</Badge>
-                          <Badge variant="secondary" className="px-1 py-0 text-[10px]">{c.done}✓</Badge>
-                        </span>
+                        {s.value !== 'atrasada' && (
+                          <span className="ml-2 flex gap-1 text-[10px]">
+                            <Badge variant="outline" className="px-1 py-0 text-[10px]">{c.open}⏳</Badge>
+                            <Badge variant="secondary" className="px-1 py-0 text-[10px]">{c.done}✓</Badge>
+                          </span>
+                        )}
                       </CommandItem>
                     );
                   })}
@@ -3000,37 +3054,43 @@ const ActivitiesPage = () => {
                   <div
                     className={cn(
                       "bg-card rounded-lg shadow-sm border border-border/50 cursor-pointer transition-all hover:shadow-md active:scale-[0.99] overflow-hidden",
-                      selectedActivity?.id === activity.id && "ring-2 ring-primary border-primary/30"
+                      selectedActivity?.id === activity.id && "ring-2 ring-primary border-primary/30",
+                      activity.status === 'concluida' && "opacity-60"
                     )}
                     onClick={() => handleOpenEdit(activity)}
                   >
-                    {/* Priority header bar */}
-                    <div
-                      className={cn(
-                        "px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-white",
-                        activity.priority === 'urgente' && "bg-red-600",
-                        activity.priority === 'alta' && "bg-orange-500",
-                        activity.priority === 'baixa' && "bg-slate-500",
-                        (!activity.priority || activity.priority === 'normal') && "bg-emerald-600",
-                      )}
-                    >
-                      {PRIORITY_OPTIONS.find(p => p.value === (activity.priority || 'normal'))?.label || 'Normal'}
-                    </div>
+                    {/* Situation ribbon (top) — codifica a situação temporal, não a prioridade */}
+                    {(() => {
+                      const ribbon = getTemporalRibbon(activity);
+                      return (
+                        <div className={cn("px-3 py-1 text-[10px] font-semibold tracking-wide", ribbon.className)}>
+                          {ribbon.label}
+                        </div>
+                      );
+                    })()}
                     <div className="p-3">
 
                     {/* Top row: badges + actions */}
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex items-center gap-1.5 flex-wrap flex-1">
-                        <Badge className={cn("text-[10px] px-1.5 py-0", statusColors[activity.status] || 'bg-muted')}>
-                          {STATUS_OPTIONS.find(s => s.value === activity.status)?.label || activity.status}
-                        </Badge>
                         <Badge variant="outline" className="text-[10px] px-1.5 py-0">
                           {ACTIVITY_TYPES.find(t => t.value === activity.activity_type)?.label}
                         </Badge>
                         {activity.priority && activity.priority !== 'normal' && (
-                          <Badge className={cn("text-[10px] px-1.5 py-0", priorityColors[activity.priority] || '')}>
+                          <span className={cn(
+                            "flex items-center gap-1 text-[10px] font-medium",
+                            activity.priority === 'urgente' && "text-red-600 dark:text-red-400",
+                            activity.priority === 'alta' && "text-orange-600 dark:text-orange-400",
+                            activity.priority === 'baixa' && "text-muted-foreground",
+                          )}>
+                            <span className={cn(
+                              "h-1.5 w-1.5 rounded-full shrink-0",
+                              activity.priority === 'urgente' && "bg-red-600",
+                              activity.priority === 'alta' && "bg-orange-500",
+                              activity.priority === 'baixa' && "bg-slate-400",
+                            )} />
                             {PRIORITY_OPTIONS.find(p => p.value === activity.priority)?.label}
-                          </Badge>
+                          </span>
                         )}
                       </div>
                       <div className="flex items-center gap-0.5 shrink-0">
@@ -3052,7 +3112,7 @@ const ActivitiesPage = () => {
                     </div>
 
                     {/* Title */}
-                    <h3 className="font-medium text-sm mt-1.5 leading-snug">{activity.title}</h3>
+                    <h3 className={cn("font-medium text-sm mt-1.5 leading-snug", activity.status === 'concluida' && "line-through")}>{activity.title}</h3>
 
                     {/* Context info */}
                     <div className="flex items-center gap-3 mt-1.5 text-[11px] text-muted-foreground flex-wrap">
@@ -3068,7 +3128,7 @@ const ActivitiesPage = () => {
                     <div className="flex items-center justify-between mt-2 text-[10px] text-muted-foreground">
                       <div className="flex items-center gap-2">
                         {activity.deadline && (
-                          <span className="flex items-center gap-0.5">
+                          <span className={cn("flex items-center gap-0.5", getTemporalStatus(activity) === 'atrasada' && "text-red-600 dark:text-red-400 font-semibold")}>
                             <Calendar className="h-3 w-3" />
                             {format(parseISO(activity.deadline), 'dd/MM/yyyy')}
                           </span>
@@ -3297,6 +3357,29 @@ const ActivitiesPage = () => {
                       Vincular Contato
                     </Button>
                   )}
+                  <ActivityCallRecorder
+                    context={{
+                      title: formTitle,
+                      type: formType,
+                      lead_name: formLeadName,
+                      contact_name: formContactName,
+                      process_title: formProcessTitle,
+                      current_status: stripHtmlToText(formCurrentStatus),
+                      what_was_done: stripHtmlToText(formWhatWasDone),
+                      next_steps: stripHtmlToText(formNextSteps),
+                      solicitacao: stripHtmlToText(formSolicitacao),
+                      resposta_juizo: stripHtmlToText(formRespostaJuizo),
+                      notes: stripHtmlToText(formNotes),
+                    }}
+                    onFields={(f) => {
+                      if (f.what_was_done) setFormWhatWasDone(callFieldTextToHtml(f.what_was_done));
+                      if (f.current_status) setFormCurrentStatus(callFieldTextToHtml(f.current_status));
+                      if (f.next_steps) setFormNextSteps(callFieldTextToHtml(f.next_steps));
+                      if (f.solicitacao) setFormSolicitacao(callFieldTextToHtml(f.solicitacao));
+                      if (f.resposta_juizo) setFormRespostaJuizo(callFieldTextToHtml(f.resposta_juizo));
+                      if (f.notes) setFormNotes(callFieldTextToHtml(f.notes));
+                    }}
+                  />
                   {/* Chat Equipe moved to bottom action bar to reduce top clutter */}
                   {formLeadId && (
                     <Button

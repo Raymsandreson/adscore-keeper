@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { geminiChat } from "../_shared/gemini.ts";
+import { transcribeFromUrl } from "../_shared/stt.ts";
 
 import { resolveSupabaseUrl, resolveServiceRoleKey } from "../_shared/supabase-url-resolver.ts";
 
@@ -286,6 +287,100 @@ Responda em português do Brasil.`;
       }
 
       return new Response(JSON.stringify({ success: true, transcript, summary, next_steps: nextSteps, suggestions_count: fieldSuggestions.length }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // ==========================================
+    // Mode: transcribe_and_fill_activity
+    // Transcreve a gravação de uma ligação e preenche os campos da atividade,
+    // de forma FIEL ao que foi dito (sem inventar). Retorna { transcript, fields }.
+    // ==========================================
+    if (action === "transcribe_and_fill_activity") {
+      const { audio_url, activity_context } = body;
+      if (!audio_url) {
+        return new Response(JSON.stringify({ success: false, error: "audio_url required" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      if (!LOVABLE_API_KEY) {
+        return new Response(JSON.stringify({ success: false, error: "LOVABLE_API_KEY not configured" }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // 1) Transcrição fiel (ElevenLabs Scribe v2 → fallback Gemini)
+      const transcript = await transcribeFromUrl(audio_url);
+      if (!transcript || transcript === "[áudio inaudível]") {
+        return new Response(JSON.stringify({ success: false, error: "Não foi possível transcrever o áudio (inaudível ou vazio).", transcript: transcript || "" }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // 2) Monta o contexto da atividade para a IA complementar os campos
+      const ctx = activity_context || {};
+      const ctxText = `Contexto da atividade:
+- Título: ${ctx.title || "—"}
+- Tipo: ${ctx.type || "—"}
+- Cliente/Lead: ${ctx.lead_name || "—"}
+- Contato: ${ctx.contact_name || "—"}
+- Processo: ${ctx.process_title || "—"}
+
+Conteúdo atual dos campos (apenas referência — atualize/complemente conforme a ligação):
+- Como está: ${ctx.current_status || "(vazio)"}
+- O que foi feito: ${ctx.what_was_done || "(vazio)"}
+- Próximo passo: ${ctx.next_steps || "(vazio)"}
+- Solicitação: ${ctx.solicitacao || "(vazio)"}
+- Resposta do juízo: ${ctx.resposta_juizo || "(vazio)"}
+- Observações: ${ctx.notes || "(vazio)"}`;
+
+      const fillSystem = `Você é um assistente jurídico de um escritório de advocacia. Foi realizada uma LIGAÇÃO TELEFÔNICA (por exemplo, um assessor ligando para a vara, cartório, órgão ou cliente) e você recebeu a TRANSCRIÇÃO fiel dessa ligação.
+
+Sua tarefa: preencher os campos da atividade com base EXCLUSIVAMENTE no que foi realmente dito na ligação. Seja fiel e objetivo. NÃO invente fatos, nomes, datas ou prazos que não estão na transcrição. Se um campo não tiver informação na ligação, retorne string vazia para ele. Escreva em português do Brasil, em tom profissional e direto, em primeira pessoa quando fizer sentido (ex.: "Liguei para a vara e falei com...").`;
+
+      const fillData = await geminiChat({
+        model: "google/gemini-2.5-flash",
+        messages: [
+          { role: "system", content: fillSystem },
+          { role: "user", content: `${ctxText}\n\nTRANSCRIÇÃO DA LIGAÇÃO:\n${transcript}` },
+        ],
+        tools: [{
+          type: "function",
+          function: {
+            name: "fill_activity_fields_from_call",
+            description: "Preenche os campos da atividade com base na transcrição da ligação.",
+            parameters: {
+              type: "object",
+              properties: {
+                what_was_done: { type: "string", description: "O que foi feito/realizado nesta ligação (ex.: com quem falou e o que tratou)." },
+                current_status: { type: "string", description: "Como está a situação agora, após a ligação." },
+                next_steps: { type: "string", description: "Próximo passo a ser tomado, incluindo prazos/datas se mencionados na ligação." },
+                solicitacao: { type: "string", description: "O que foi solicitado/pedido durante a ligação, se houver." },
+                resposta_juizo: { type: "string", description: "Resposta ou posição da vara/cartório/juízo/órgão (o que o servidor respondeu), se houver." },
+                notes: { type: "string", description: "Observações adicionais relevantes mencionadas na ligação." },
+              },
+              required: ["what_was_done", "current_status", "next_steps", "solicitacao", "resposta_juizo", "notes"],
+              additionalProperties: false,
+            },
+          },
+        }],
+        tool_choice: { type: "function", function: { name: "fill_activity_fields_from_call" } },
+      });
+
+      let fields: Record<string, string> = {
+        what_was_done: "", current_status: "", next_steps: "", solicitacao: "", resposta_juizo: "", notes: "",
+      };
+      const fillToolCall = fillData.choices?.[0]?.message?.tool_calls?.[0];
+      if (fillToolCall?.function?.arguments) {
+        try {
+          const parsed = JSON.parse(fillToolCall.function.arguments);
+          fields = { ...fields, ...parsed };
+        } catch (e) {
+          console.error("Failed to parse fill_activity_fields_from_call:", e);
+        }
+      }
+
+      return new Response(JSON.stringify({ success: true, transcript, fields }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
