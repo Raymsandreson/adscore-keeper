@@ -630,6 +630,7 @@ export default function InssAdminProcessesTab() {
       const textSearchTokens = qTokens.length
         ? buildIlikeSearchTokens(qTokens.sort((a, b) => b.length - a.length).slice(0, 5))
         : [safeIlikeToken(q)].filter(Boolean);
+      if (!textSearchTokens.length) { setCaseOptions([]); return; }
 
       // 2) Leads por nome / telefone / CPF — busca por pedaços, filtra sem acento/caixa
       const leadOr: string[] = textSearchTokens.map((t) => `lead_name.ilike.%${t}%`);
