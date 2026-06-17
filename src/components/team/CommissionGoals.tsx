@@ -222,7 +222,7 @@ export function CommissionGoals() {
 
   // Fetch default daily goals
   useEffect(() => {
-    supabase.from('workflow_default_goals').select('*').then(({ data }) => {
+    externalSupabase.from('workflow_default_goals').select('*').then(({ data }) => {
       if (data && data.length > 0) {
         const map: Record<string, typeof emptyGoalValues> = {};
         data.forEach((d: any) => {
@@ -247,7 +247,7 @@ export function CommissionGoals() {
 
   // Fetch per-user daily goals
   useEffect(() => {
-    supabase.from('user_daily_goal_defaults').select('*').then(({ data }) => {
+    externalSupabase.from('user_daily_goal_defaults').select('*').then(({ data }) => {
       if (data && data.length > 0) {
         const map: Record<string, typeof emptyGoalValues & { target_days?: number[]; target_closed_by_board?: Record<string, { target: number; period: string; custom_start?: string; custom_end?: string }>; target_refused_by_board?: Record<string, { target: number; period: string; custom_start?: string; custom_end?: string }> }> = {};
         data.forEach((d: any) => {
@@ -276,7 +276,7 @@ export function CommissionGoals() {
   useEffect(() => {
     const monthStart = format(startOfMonth(now), 'yyyy-MM-dd');
     const monthEnd = format(endOfMonth(now), 'yyyy-MM-dd');
-    supabase.from('daily_goal_snapshots')
+    externalSupabase.from('daily_goal_snapshots')
       .select('user_id, snapshot_date, achieved')
       .gte('snapshot_date', monthStart)
       .lte('snapshot_date', monthEnd)
@@ -305,7 +305,7 @@ export function CommissionGoals() {
     try {
       const boardId = selectedDefaultBoard === 'global' ? null : selectedDefaultBoard;
       const payload = { ...defaultGoals, board_id: boardId, updated_at: new Date().toISOString() };
-      let query = supabase.from('workflow_default_goals').select('id');
+      let query = externalSupabase.from('workflow_default_goals').select('id');
       if (boardId) {
         query = query.eq('board_id', boardId);
       } else {
@@ -314,9 +314,9 @@ export function CommissionGoals() {
       const { data: existing } = await query.maybeSingle();
       
       if (existing) {
-        await supabase.from('workflow_default_goals').update(payload as any).eq('id', existing.id);
+        await externalSupabase.from('workflow_default_goals').update(payload as any).eq('id', existing.id);
       } else {
-        await supabase.from('workflow_default_goals').insert(payload as any);
+        await externalSupabase.from('workflow_default_goals').insert(payload as any);
       }
       toast.success('Metas padrão salvas!');
     } catch (err) {
@@ -358,16 +358,16 @@ export function CommissionGoals() {
     setSavingUserGoals(true);
     try {
       const payload = { ...editingUserGoals, user_id: selectedUserForGoals, target_days: editingTargetDays, target_closed_by_board: editingClosedByBoard, target_refused_by_board: editingRefusedByBoard } as any;
-      const { data: existing } = await supabase
+      const { data: existing } = await externalSupabase
         .from('user_daily_goal_defaults')
         .select('id')
         .eq('user_id', selectedUserForGoals)
         .maybeSingle();
       
       if (existing) {
-        await supabase.from('user_daily_goal_defaults').update(payload).eq('id', existing.id);
+        await externalSupabase.from('user_daily_goal_defaults').update(payload).eq('id', existing.id);
       } else {
-        await supabase.from('user_daily_goal_defaults').insert(payload);
+        await externalSupabase.from('user_daily_goal_defaults').insert(payload);
       }
       
       setUserDailyGoals(prev => ({ ...prev, [selectedUserForGoals]: { ...editingUserGoals, target_days: editingTargetDays, target_closed_by_board: editingClosedByBoard, target_refused_by_board: editingRefusedByBoard } as any }));
@@ -482,7 +482,7 @@ export function CommissionGoals() {
           break;
         }
         case 'daily_goal_achievement': {
-          const { data } = await supabase.from('daily_goal_snapshots')
+          const { data } = await externalSupabase.from('daily_goal_snapshots')
             .select('id, snapshot_date, progress_percent, achieved')
             .eq('user_id', userId)
             .gte('snapshot_date', startDate.split('T')[0])

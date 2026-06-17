@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { db as supabase } from '@/integrations/supabase';
 import { useAuthContext } from '@/contexts/AuthContext';
 
 export interface RoutineProcessGoal {
