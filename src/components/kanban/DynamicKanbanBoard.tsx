@@ -65,6 +65,11 @@ import { LeadCardChecklists } from './LeadCardChecklists';
 import { ProfessionBadgePopover } from '@/components/instagram/ProfessionBadgePopover';
 import { toast } from 'sonner';
 import { findClosedStageId, findRefusedStageId, isClosedStage, isRefusedStage } from '@/utils/kanbanStageTypes';
+import { StageLabelSelect } from './StageLabelSelect';
+import { StageLabelSetupPanel } from './StageLabelSetupPanel';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
+import { Tag } from 'lucide-react';
+
 
 interface DynamicKanbanBoardProps {
   board: KanbanBoard;
