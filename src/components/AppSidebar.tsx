@@ -5,7 +5,7 @@ import {
   MessageCircle, CreditCard, Filter, Bot, Target, Heart, Megaphone,
   Zap, Search, ClipboardList, Phone, Scale, Briefcase, AtSign, RefreshCw, FileText,
   LogOut, MessagesSquare, Settings, ChevronRight, User, Chrome, Archive, MapPin,
-  MessageSquare as MessageSquareIcon,
+  MessageSquare as MessageSquareIcon, ExternalLink,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -34,6 +34,12 @@ import { useChangelogAcknowledgments } from "@/hooks/useChangelogAcknowledgments
 import { onUpdateAvailable, applyUpdate, checkForUpdates } from "@/lib/pwaUpdater";
 import { UpdateNotesDialog } from "@/components/updates/UpdateNotesDialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 
 interface NavItem {
   id: string;
@@ -48,6 +54,25 @@ interface NavSection {
   label: string;
   icon: React.ReactNode;
   items: NavItem[];
+}
+
+function openInNewTab(path: string) {
+  window.open(path, "_blank", "noopener,noreferrer");
+}
+
+/** Envolve um item da sidebar adicionando "Abrir em nova aba" no clique direito. */
+function NavContextMenu({ path, children }: { path: string; children: React.ReactNode }) {
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
+      <ContextMenuContent>
+        <ContextMenuItem onClick={() => openInNewTab(path)}>
+          <ExternalLink className="mr-2 h-4 w-4" />
+          Abrir em nova aba
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
+  );
 }
 
 export function AppSidebar() {
@@ -205,16 +230,18 @@ export function AppSidebar() {
               <SidebarMenu>
                 {quickLinks.map((item) => (
                   <React.Fragment key={item.id}>
-                    <SidebarMenuItem>
-                      <SidebarMenuButton
-                        onClick={() => handleNavigate(item.path)}
-                        isActive={isActive(item.path)}
-                        tooltip={item.label}
-                      >
-                        <span className={cn(item.color)}>{item.icon}</span>
-                        <span>{item.label}</span>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
+                    <NavContextMenu path={item.path}>
+                      <SidebarMenuItem>
+                        <SidebarMenuButton
+                          onClick={() => handleNavigate(item.path)}
+                          isActive={isActive(item.path)}
+                          tooltip={item.label}
+                        >
+                          <span className={cn(item.color)}>{item.icon}</span>
+                          <span>{item.label}</span>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    </NavContextMenu>
                     {item.id === "activities" && (
                       <Collapsible key="leads-group" defaultOpen={leadsSubItems.some(i => isActive(i.path))}>
                         <SidebarMenuItem>
@@ -228,17 +255,19 @@ export function AppSidebar() {
                         </SidebarMenuItem>
                         <CollapsibleContent>
                           {leadsSubItems.map(sub => (
-                            <SidebarMenuItem key={sub.id}>
-                              <SidebarMenuButton
-                                onClick={() => handleNavigate(sub.path)}
-                                isActive={isActive(sub.path)}
-                                tooltip={sub.label}
-                                className="pl-8"
-                              >
-                                <span>{sub.icon}</span>
-                                <span>{sub.label}</span>
-                              </SidebarMenuButton>
-                            </SidebarMenuItem>
+                            <NavContextMenu key={sub.id} path={sub.path}>
+                              <SidebarMenuItem>
+                                <SidebarMenuButton
+                                  onClick={() => handleNavigate(sub.path)}
+                                  isActive={isActive(sub.path)}
+                                  tooltip={sub.label}
+                                  className="pl-8"
+                                >
+                                  <span>{sub.icon}</span>
+                                  <span>{sub.label}</span>
+                                </SidebarMenuButton>
+                              </SidebarMenuItem>
+                            </NavContextMenu>
                           ))}
                         </CollapsibleContent>
                       </Collapsible>
@@ -268,16 +297,18 @@ export function AppSidebar() {
                   <SidebarGroupContent>
                     <SidebarMenu>
                       {section.items.map((item) => (
-                        <SidebarMenuItem key={item.id}>
-                          <SidebarMenuButton
-                            onClick={() => handleNavigate(item.path)}
-                            isActive={isActive(item.path)}
-                            tooltip={item.label}
-                          >
-                            <span className={cn(item.color)}>{item.icon}</span>
-                            <span>{item.label}</span>
-                          </SidebarMenuButton>
-                        </SidebarMenuItem>
+                        <NavContextMenu key={item.id} path={item.path}>
+                          <SidebarMenuItem>
+                            <SidebarMenuButton
+                              onClick={() => handleNavigate(item.path)}
+                              isActive={isActive(item.path)}
+                              tooltip={item.label}
+                            >
+                              <span className={cn(item.color)}>{item.icon}</span>
+                              <span>{item.label}</span>
+                            </SidebarMenuButton>
+                          </SidebarMenuItem>
+                        </NavContextMenu>
                       ))}
                     </SidebarMenu>
                   </SidebarGroupContent>
