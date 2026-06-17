@@ -79,17 +79,69 @@ const fmtDate = (s?: string | null, withTime = false) => {
   try { return format(new Date(s), withTime ? "dd/MM/yyyy HH:mm" : "dd/MM/yyyy"); }
   catch { return null; }
 };
-// Remove acentos / cedilha / variações ("Souza"/"Sousa" continuam diferentes, mas
-// pelo menos "Cícero" e "Cicero" passam a casar). Mantém só letras+espaço, upper.
+// Normaliza texto para busca: tira acento, ignora caixa e deixa só letras/números.
+// Metáfora: antes de comparar, todos os nomes vestem o mesmo uniforme.
 const stripAccents = (s: string) =>
   s.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+const normalizeSearchText = (s?: string | null) =>
+  stripAccents(String(s || ""))
+    .toUpperCase()
+    .replace(/[^A-Z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 const tokenizeName = (s?: string | null): string[] => {
   if (!s) return [];
-  return stripAccents(s)
-    .toUpperCase()
-    .replace(/[^A-Z\s]/g, " ")
+  return normalizeSearchText(s)
     .split(/\s+/)
-    .filter((t) => t.length >= 3 && !["DOS", "DAS", "DEL"].includes(t));
+    .filter((t) => t.length >= 3 && !["DOS", "DAS", "DEL", "DE", "DA", "DO", "E"].includes(t));
+};
+const safeIlikeToken = (s: string) => s.replace(/[%,()]/g, " ").trim();
+const uniqueTokens = (tokens: string[]) => Array.from(new Set(tokens));
+const accentAlternates: Record<string, string[]> = {
+  A: ["Á", "À", "Â", "Ã"],
+  E: ["É", "Ê"],
+  I: ["Í"],
+  O: ["Ó", "Ô", "Õ"],
+  U: ["Ú"],
+  C: ["Ç"],
+};
+const ilikeAccentVariants = (token: string) => {
+  const base = safeIlikeToken(token).toUpperCase();
+  const variants = new Set<string>([base]);
+  for (let i = 0; i < base.length; i++) {
+    for (const alt of accentAlternates[base[i]] || []) {
+      variants.add(`${base.slice(0, i)}${alt}${base.slice(i + 1)}`);
+    }
+  }
+  return Array.from(variants).filter(Boolean);
+};
+const buildIlikeSearchTokens = (tokens: string[]) => uniqueTokens(tokens.flatMap(ilikeAccentVariants));
+const tokenLooksMatched = (queryToken: string, candidateToken: string) => {
+  if (!queryToken || !candidateToken) return false;
+  if (candidateToken.includes(queryToken) || queryToken.includes(candidateToken)) return true;
+  const minPrefix = Math.min(5, queryToken.length, candidateToken.length);
+  if (minPrefix >= 4 && candidateToken.slice(0, minPrefix) === queryToken.slice(0, minPrefix)) return true;
+  // Pequena tolerância para Sousa/Souza e outros nomes com 1 letra diferente.
+  if (queryToken.length >= 5 && candidateToken.length >= 5 && Math.abs(queryToken.length - candidateToken.length) <= 1) {
+    let diff = Math.abs(queryToken.length - candidateToken.length);
+    const size = Math.min(queryToken.length, candidateToken.length);
+    for (let i = 0; i < size; i++) if (queryToken[i] !== candidateToken[i]) diff++;
+    return diff <= 1;
+  }
+  return false;
+};
+const tokenMatchScore = (query: string, candidate?: string | null) => {
+  const qTokens = uniqueTokens(tokenizeName(query));
+  const cTokens = uniqueTokens(tokenizeName(candidate));
+  if (!qTokens.length || !cTokens.length) return 0;
+  return qTokens.filter((qt) => cTokens.some((ct) => tokenLooksMatched(qt, ct))).length;
+};
+const isLooseTokenMatch = (query: string, candidate?: string | null) => {
+  const qTokens = uniqueTokens(tokenizeName(query));
+  const score = tokenMatchScore(query, candidate);
+  if (!qTokens.length) return false;
+  if (qTokens.some((t) => /^\d+$/.test(t))) return score >= 1;
+  return score >= Math.min(2, qTokens.length);
 };
 
 // Faz parse do corpo do e-mail do INSS em pares "Rótulo: valor" para exibição
@@ -480,28 +532,30 @@ export default function InssAdminProcessesTab() {
     }
 
     // 3) Match por nome (tokens, tolerante a acento) em contacts (Externo + Cloud)
-    const tokens = tokenizeName(proc.nome_segurado);
+    const tokens = uniqueTokens(tokenizeName(proc.nome_segurado));
     const matchTokens = (full?: string | null) => {
-      const lt = tokenizeName(full);
+      const lt = uniqueTokens(tokenizeName(full));
       if (!tokens.length || !lt.length) return false;
-      return tokens.every((t) => lt.some((x) => x.startsWith(t.slice(0, 4)) || t.startsWith(x.slice(0, 4))));
+      const score = tokens.filter((t) => lt.some((x) => tokenLooksMatched(t, x))).length;
+      return score >= Math.min(2, tokens.length);
     };
     if (tokens.length) {
-      const seed = [...tokens].sort((a, b) => b.length - a.length)[0];
+      const searchTokens = buildIlikeSearchTokens([...tokens].sort((a, b) => b.length - a.length).slice(0, 4));
+      const nameOr = searchTokens.map((t) => `full_name.ilike.%${t}%`).join(",");
       // contacts no EXTERNO
       const { data: ctExt } = await db
         .from("contacts" as any)
         .select("id, full_name, lead_id")
-        .ilike("full_name", `%${seed}%`)
+        .or(nameOr)
         .is("deleted_at", null)
-        .limit(50);
+        .limit(100);
       // contacts no CLOUD (alguns só existem lá)
       const { data: ctCloud } = await authClient
         .from("contacts" as any)
         .select("id, full_name, lead_id")
-        .ilike("full_name", `%${seed}%`)
+        .or(nameOr)
         .is("deleted_at", null)
-        .limit(50);
+        .limit(100);
       const allContacts = [...(ctExt || []), ...(ctCloud || [])].filter((ct: any) => matchTokens(ct.full_name));
       const seenContact = new Set<string>();
       for (const ct of allContacts as any[]) {
@@ -517,15 +571,26 @@ export default function InssAdminProcessesTab() {
         }
       }
 
-      // 4) Nome em leads (Externo) — busca grosseira + filtro por tokens
+      // 4) Nome em leads (Externo) — busca por tokens + filtro normalizado
       const { data: leadsRaw } = await db
         .from("leads" as any)
         .select("id, lead_name")
-        .ilike("lead_name", `%${seed}%`)
+        .or(searchTokens.map((t) => `lead_name.ilike.%${t}%`).join(","))
         .limit(100);
       const leadsFiltered = (leadsRaw || []).filter((l: any) => matchTokens(l.lead_name));
       for (const l of leadsFiltered as any[]) {
         await addLead(l.id, l.lead_name, "Nome bate com o lead");
+      }
+
+      // 5) Nome em grupos WhatsApp vinculados — caso o grupo tenha o nome certo
+      const { data: groupsByName } = await db
+        .from("lead_whatsapp_groups" as any)
+        .select("lead_id, group_name")
+        .or(searchTokens.map((t) => `group_name.ilike.%${t}%`).join(","))
+        .limit(100);
+      const groupsFiltered = (groupsByName || []).filter((g: any) => matchTokens(g.group_name));
+      for (const g of groupsFiltered as any[]) {
+        if (g.lead_id) await addLead(g.lead_id, g.group_name, `Nome bate com grupo WhatsApp "${g.group_name}"`);
       }
     }
 
@@ -561,8 +626,14 @@ export default function InssAdminProcessesTab() {
         results.set(c.id, { ...c, matched_via: "Caso" });
       }
 
-      // 2) Leads por nome / telefone / CPF
-      const leadOr: string[] = [`lead_name.ilike.%${q}%`];
+      const qTokens = uniqueTokens(tokenizeName(q));
+      const textSearchTokens = qTokens.length
+        ? buildIlikeSearchTokens(qTokens.sort((a, b) => b.length - a.length).slice(0, 5))
+        : [safeIlikeToken(q)].filter(Boolean);
+      if (!textSearchTokens.length) { setCaseOptions([]); return; }
+
+      // 2) Leads por nome / telefone / CPF — busca por pedaços, filtra sem acento/caixa
+      const leadOr: string[] = textSearchTokens.map((t) => `lead_name.ilike.%${t}%`);
       if (digitsOnly.length >= 4) {
         leadOr.push(`lead_phone.ilike.%${digitsOnly}%`);
         leadOr.push(`cpf.ilike.%${digitsOnly}%`);
@@ -571,30 +642,36 @@ export default function InssAdminProcessesTab() {
         .from("leads" as any)
         .select("id, lead_name")
         .or(leadOr.join(","))
-        .limit(15);
+        .limit(80);
+      const leads = ((leadsRaw || []) as any[]).filter((l) =>
+        digitsOnly.length >= 4 || isLooseTokenMatch(q, l.lead_name)
+      );
 
       // 3) Contatos por nome/telefone/CPF (Externo + Cloud)
-      const contactOr: string[] = [`full_name.ilike.%${q}%`];
+      const contactOr: string[] = textSearchTokens.map((t) => `full_name.ilike.%${t}%`);
       if (digitsOnly.length >= 4) {
         contactOr.push(`phone.ilike.%${digitsOnly}%`);
         contactOr.push(`cpf.ilike.%${digitsOnly}%`);
       }
       const [ctExtR, ctCloudR] = await Promise.all([
-        db.from("contacts" as any).select("id, full_name, lead_id").or(contactOr.join(",")).is("deleted_at", null).limit(15),
-        authClient.from("contacts" as any).select("id, full_name, lead_id").or(contactOr.join(",")).is("deleted_at", null).limit(15),
+        db.from("contacts" as any).select("id, full_name, lead_id").or(contactOr.join(",")).is("deleted_at", null).limit(80),
+        authClient.from("contacts" as any).select("id, full_name, lead_id").or(contactOr.join(",")).is("deleted_at", null).limit(80),
       ]);
-      const contacts = [...((ctExtR.data || []) as any[]), ...((ctCloudR.data || []) as any[])];
+      const contacts = [...((ctExtR.data || []) as any[]), ...((ctCloudR.data || []) as any[])].filter((ct: any) =>
+        digitsOnly.length >= 4 || isLooseTokenMatch(q, ct.full_name)
+      );
 
       // 4) Grupos de WhatsApp por nome → leads vinculados
       const { data: groupsRaw } = await db
         .from("lead_whatsapp_groups" as any)
         .select("lead_id, group_name")
-        .ilike("group_name", `%${q}%`)
-        .limit(15);
+        .or(textSearchTokens.map((t) => `group_name.ilike.%${t}%`).join(","))
+        .limit(100);
+      const groups = ((groupsRaw || []) as any[]).filter((g) => isLooseTokenMatch(q, g.group_name));
 
       // Para cada lead candidato (direto ou via contato), busca casos vinculados
       const candidateLeads = new Map<string, { lead_name: string | null; via: string }>();
-      for (const l of (leadsRaw || []) as any[]) {
+      for (const l of leads as any[]) {
         candidateLeads.set(l.id, { lead_name: l.lead_name, via: "Lead" });
       }
       for (const ct of contacts) {
@@ -608,7 +685,7 @@ export default function InssAdminProcessesTab() {
           }
         }
       }
-      for (const g of (groupsRaw || []) as any[]) {
+      for (const g of groups as any[]) {
         if (g.lead_id && !candidateLeads.has(g.lead_id)) {
           candidateLeads.set(g.lead_id, { lead_name: g.group_name, via: `Grupo WhatsApp "${g.group_name}"` });
         }
