@@ -711,6 +711,17 @@ export default function InssAdminProcessesTab() {
             <Sparkles className="h-4 w-4" />
             Vincular órfãos
           </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={runAutoLinkByName}
+            className="gap-2"
+            title="Vincula órfãos por nome (apenas quando há um único lead/contato candidato)"
+          >
+            <User className="h-4 w-4" />
+            Vincular por nome
+          </Button>
+
         </div>
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
