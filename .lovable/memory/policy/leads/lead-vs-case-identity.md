@@ -1,12 +1,26 @@
 ---
-name: Lead vs Case Identity
-description: Lead e Caso são entidades distintas com numeração própria. Nome do grupo WhatsApp espelha o NOME DO CASO. Número do processo vincula no CASO, nunca no lead.
+name: Lead vs Case vs Process Identity
+description: Hierarquia Empresa→Núcleo→Produto→Funil de Vendas→Caso→Processos→Fluxo de Trabalho. Lead≠Caso≠Processo. Funil de Vendas (lead) ≠ Fluxo de Trabalho (processo). Numeração separada, grupo WA = nome do caso, processo INSS vincula no caso.
 type: feature
 ---
 
-# Lead ≠ Caso
+# Lead vs Caso vs Processo
 
-Metáfora: **Lead é o namoro, Caso é o casamento.** Todo casamento começou num namoro, mas nem todo namoro vira casamento. Cada um tem certidão própria.
+Metáfora: **Lead = namoro, Caso = casamento, Processos = filhos.** Cada filho (processo) corresponde a um produto contratado, vinculado a um núcleo, executado num fluxo de trabalho próprio.
+
+## Hierarquia (aba Ecossistema em Finanças)
+
+`Empresa → Núcleo → Produto → Funil de Vendas → Time → [fechado] → Caso → Processos → Fluxo de Trabalho`
+
+- 1 Lead → no máximo 1 Caso.
+- 1 Caso → N Processos (1 por produto contratado).
+- 1 Processo → 1 Produto → 1 Núcleo → 1 Fluxo de Trabalho.
+
+## Funil de Vendas ≠ Fluxo de Trabalho
+
+- **Funil de Vendas** = trilho do **lead** (vendas/captação).
+- **Fluxo de Trabalho** = trilho do **processo** (execução).
+- Caso não tem funil. Caso tem processos, cada um com seu fluxo.
 
 ## As 3 regras invioláveis
 
