@@ -1553,6 +1553,13 @@ Deno.serve(async (req) => {
       if (leadData.lead_email) summaryParts.push(`• *Email:* ${leadData.lead_email}`)
       if (leadData.source) summaryParts.push(`• *Origem:* ${leadData.source}`)
       if (leadData.notes) summaryParts.push(`• *Obs:* ${leadData.notes}`)
+      if (leadData.id) {
+        const leadLink = board_id
+          ? `https://adscore-keeper.lovable.app/leads?board=${board_id}&openLead=${leadData.id}`
+          : `https://adscore-keeper.lovable.app/leads?openLead=${leadData.id}`
+        summaryParts.push(``)
+        summaryParts.push(`🔗 *Abrir lead no sistema:* ${leadLink}`)
+      }
       if (leadData.news_link) {
         summaryParts.push(``)
         summaryParts.push(`🔗 *Link da notícia:* ${leadData.news_link}`)
