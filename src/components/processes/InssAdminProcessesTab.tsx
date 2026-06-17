@@ -136,12 +136,25 @@ const tokenMatchScore = (query: string, candidate?: string | null) => {
   if (!qTokens.length || !cTokens.length) return 0;
   return qTokens.filter((qt) => cTokens.some((ct) => tokenLooksMatched(qt, ct))).length;
 };
+// Match exige que NÃO HAJA sobrenomes conflitantes.
+// Regra: se ambos os nomes têm 3+ tokens significativos, exige que o menor
+// dos dois tenha no máximo 1 token não-correspondente (ex: "Sousa/Souza").
+// Assim "Maria Eduarda Medeiros Moraes" NÃO casa com "Maria Eduarda Alves Maia"
+// (apenas 2 de 4 batem), mas "Maria Eduarda" casa com "Maria Eduarda Alves Maia".
+const namesAreCompatible = (query: string, candidate?: string | null) => {
+  const qTokens = uniqueTokens(tokenizeName(query));
+  const cTokens = uniqueTokens(tokenizeName(candidate));
+  if (!qTokens.length || !cTokens.length) return false;
+  const score = qTokens.filter((qt) => cTokens.some((ct) => tokenLooksMatched(qt, ct))).length;
+  const shorter = Math.min(qTokens.length, cTokens.length);
+  if (shorter <= 2) return score >= shorter;
+  return score >= shorter - 1;
+};
 const isLooseTokenMatch = (query: string, candidate?: string | null) => {
   const qTokens = uniqueTokens(tokenizeName(query));
-  const score = tokenMatchScore(query, candidate);
   if (!qTokens.length) return false;
-  if (qTokens.some((t) => /^\d+$/.test(t))) return score >= 1;
-  return score >= Math.min(2, qTokens.length);
+  if (qTokens.some((t) => /^\d+$/.test(t))) return tokenMatchScore(query, candidate) >= 1;
+  return namesAreCompatible(query, candidate);
 };
 
 // Faz parse do corpo do e-mail do INSS em pares "Rótulo: valor" para exibição
@@ -533,12 +546,7 @@ export default function InssAdminProcessesTab() {
 
     // 3) Match por nome (tokens, tolerante a acento) em contacts (Externo + Cloud)
     const tokens = uniqueTokens(tokenizeName(proc.nome_segurado));
-    const matchTokens = (full?: string | null) => {
-      const lt = uniqueTokens(tokenizeName(full));
-      if (!tokens.length || !lt.length) return false;
-      const score = tokens.filter((t) => lt.some((x) => tokenLooksMatched(t, x))).length;
-      return score >= Math.min(2, tokens.length);
-    };
+    const matchTokens = (full?: string | null) => namesAreCompatible(proc.nome_segurado || "", full);
     if (tokens.length) {
       const searchTokens = buildIlikeSearchTokens([...tokens].sort((a, b) => b.length - a.length).slice(0, 4));
       const nameOr = searchTokens.map((t) => `full_name.ilike.%${t}%`).join(",");
