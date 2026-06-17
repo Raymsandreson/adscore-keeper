@@ -169,32 +169,28 @@ export default function InssAdminProcessesTab() {
 
   const openFullEmail = async (row: InssHistoryRow) => {
     if (!row.gmail_message_id) return;
-    setEmailView({ open: true, loading: true, subject: row.email_subject, body: null, error: null });
-    try {
-      const resp = await fetch(`${RAILWAY_BASE}/functions/gmail-message-body`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": (import.meta as any).env?.VITE_RAILWAY_API_KEY || "",
-        },
-        body: JSON.stringify({ gmail_message_id: row.gmail_message_id }),
-      });
-      const j = await resp.json();
-      if (!j.success) {
-        setEmailView((s) => ({ ...s, loading: false, error: j.error || "Não foi possível carregar o e-mail." }));
-        return;
-      }
-      // Prefere texto puro; se só houver HTML, remove as tags pra exibir como texto.
-      const text = j.body_text || (j.body_html ? String(j.body_html).replace(/<[^>]+>/g, " ").replace(/\s+\n/g, "\n").trim() : "");
+    const cached = emailBodyCache[row.gmail_message_id];
+    if (cached) {
       setEmailView({
         open: true, loading: false,
-        subject: j.subject || row.email_subject,
-        body: text || j.snippet || "(e-mail sem corpo de texto)",
+        subject: cached.subject || row.email_subject,
+        body: cached.body || "(e-mail sem corpo de texto)",
         error: null,
       });
-    } catch (e: any) {
-      setEmailView((s) => ({ ...s, loading: false, error: e.message }));
+      return;
     }
+    setEmailView({ open: true, loading: true, subject: row.email_subject, body: null, error: null });
+    const entry = await fetchAndCacheBody(row.gmail_message_id, row.email_subject);
+    if (!entry) {
+      setEmailView((s) => ({ ...s, loading: false, error: "Não foi possível carregar o e-mail." }));
+      return;
+    }
+    setEmailView({
+      open: true, loading: false,
+      subject: entry.subject || row.email_subject,
+      body: entry.body || "(e-mail sem corpo de texto)",
+      error: null,
+    });
   };
 
   const parsedEmail = useMemo(
