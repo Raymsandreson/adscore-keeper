@@ -51,12 +51,13 @@ interface InssHistoryRow {
 }
 
 interface CaseOption {
-  id: string;
+  id: string; // case_id real OU "lead:<lead_id>" quando lead ainda não tem caso
   case_number: string;
   title: string;
   lead_id: string | null;
   lead_name?: string | null;
-  matched_via?: string; // "nome do contato Y", "CPF do lead", etc
+  matched_via?: string;
+  needs_case_creation?: boolean; // true quando id é "lead:..."
 }
 
 const RAILWAY_BASE =
