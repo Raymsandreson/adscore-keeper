@@ -759,6 +759,14 @@ export function DynamicKanbanBoard({
                                   <span onClick={e => e.stopPropagation()} draggable={false} onDragStart={e => e.preventDefault()}>
                                     <ShareMenu entityType="lead" entityId={lead.id} entityName={lead.lead_name || 'Sem nome'} size="icon" variant="ghost" className="h-6 w-6" />
                                   </span>
+                                  <span onClick={e => e.stopPropagation()} draggable={false} onDragStart={e => e.preventDefault()}>
+                                    <StageLabelSelect
+                                      leadId={lead.id}
+                                      boardId={board.id}
+                                      currentStageId={lead.status}
+                                      variant="card"
+                                    />
+                                  </span>
                                   <Tooltip>
                                     <TooltipTrigger asChild>
                                       <Button 
@@ -777,6 +785,7 @@ export function DynamicKanbanBoard({
                                       <p>Ver detalhes</p>
                                     </TooltipContent>
                                   </Tooltip>
+
                                       
                                       <DropdownMenu>
                                         <DropdownMenuTrigger asChild>
