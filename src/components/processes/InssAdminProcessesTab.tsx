@@ -640,7 +640,7 @@ export default function InssAdminProcessesTab() {
     if (!proc.requerimento_number) return;
     // Pega o último despacho do histórico para popular description
     const { data: lastHist } = await db
-      .from("inss_admin_processes_history" as any)
+      .from("inss_status_history" as any)
       .select("email_snippet, email_subject, email_received_at, to_status")
       .eq("process_id", proc.id)
       .order("email_received_at", { ascending: false })
