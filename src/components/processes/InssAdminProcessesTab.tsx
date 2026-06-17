@@ -1175,7 +1175,7 @@ export default function InssAdminProcessesTab() {
             <div>
               <div className="text-sm font-medium mb-2">Busca manual</div>
               <Input
-                placeholder="Número do caso ou título..."
+                placeholder="Caso, lead, contato, telefone ou CPF..."
                 value={caseSearch}
                 onChange={(e) => setCaseSearch(e.target.value)}
               />
@@ -1184,21 +1184,34 @@ export default function InssAdminProcessesTab() {
                   <button
                     key={c.id}
                     type="button"
-                    className="w-full text-left p-2 rounded hover:bg-muted text-sm border"
+                    className={`w-full text-left p-2 rounded hover:bg-muted text-sm border ${c.needs_case_creation ? "border-blue-300 bg-blue-50/40 dark:bg-blue-950/10" : ""}`}
                     disabled={linkingBusy}
                     onClick={() => linkToCase(c)}
                   >
-                    <div className="font-medium">{c.case_number}</div>
+                    <div className="font-medium flex items-center gap-2">
+                      {c.case_number}
+                      {c.lead_name && (
+                        <span className="text-xs text-muted-foreground flex items-center gap-1">
+                          <User className="h-3 w-3" /> {c.lead_name}
+                        </span>
+                      )}
+                    </div>
                     <div className="text-xs text-muted-foreground">{c.title}</div>
+                    {c.matched_via && (
+                      <div className={`text-[11px] mt-0.5 ${c.needs_case_creation ? "text-blue-700 dark:text-blue-400" : "text-muted-foreground"}`}>
+                        ↳ {c.matched_via}
+                      </div>
+                    )}
                   </button>
                 ))}
                 {caseSearch && caseOptions.length === 0 && (
                   <div className="text-xs text-muted-foreground text-center py-2">
-                    Nenhum caso encontrado.
+                    Nenhum caso, lead ou contato encontrado.
                   </div>
                 )}
               </div>
             </div>
+
           </div>
 
           <DialogFooter>
