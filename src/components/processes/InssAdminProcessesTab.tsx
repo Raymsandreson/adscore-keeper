@@ -601,6 +601,34 @@ export default function InssAdminProcessesTab() {
     }
   };
 
+  const runAutoLinkByName = async () => {
+    toast.info("Vinculando órfãos por nome (só candidatos únicos)...");
+    try {
+      const resp = await fetch(`${RAILWAY_BASE}/functions/auto-link-inss-by-name`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": (import.meta as any).env?.VITE_RAILWAY_API_KEY || "",
+        },
+        body: "{}",
+      });
+      const j = await resp.json();
+      if (j.success) {
+        const s = j.stats || {};
+        toast.success(
+          `${s.linked || 0} vinculados · ${s.ambiguous || 0} ambíguos (revisar manualmente) · ${s.no_match || 0} sem match`
+        );
+        loadProcesses();
+      } else {
+        toast.error("Erro: " + (j.error || "desconhecido"));
+      }
+    } catch (e: any) {
+      toast.error("Falha: " + e.message);
+    }
+  };
+
+
+
 
   // Clicar no processo abre o painel lateral do lead vinculado (Sheet "Editar Lead").
   const goToLead = async (p: InssProcess) => {
