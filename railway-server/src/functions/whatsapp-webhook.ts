@@ -1361,7 +1361,70 @@ export const handler: RequestHandler = async (req, res) => {
             } else if (leadRow) {
               console.log('[label-trigger][stage] lead já está no stage correto, skipping', { leadId: (leadRow as any).id, stage: lastStageMatch.stage_id });
             } else {
-              console.log('[label-trigger][stage] no lead matched for stage label', { phone: phoneDigits, board: lastStageMatch.board_id, label: lastStageMatch.label_name });
+              // === NOVO: nenhum lead nesse board com esse telefone → cria automaticamente
+              console.log('[label-trigger][stage] no lead matched, auto-creating', { phone: phoneDigits, board: lastStageMatch.board_id, label: lastStageMatch.label_name });
+              try {
+                // Tenta puxar nome do contato (qualquer instância) pra batizar o lead
+                let leadName: string | null = null;
+                try {
+                  const { data: contact } = await supabase
+                    .from('contacts')
+                    .select('full_name, push_name')
+                    .like('phone', `%${last8}`)
+                    .limit(1)
+                    .maybeSingle();
+                  leadName = ((contact as any)?.full_name || (contact as any)?.push_name || '').trim() || null;
+                } catch {}
+                if (!leadName) {
+                  // Fallback: nome da última mensagem dessa conversa
+                  try {
+                    const { data: msg } = await supabase
+                      .from('whatsapp_messages')
+                      .select('contact_name')
+                      .ilike('instance_name', webhookInstanceName)
+                      .like('phone', `%${last8}`)
+                      .not('contact_name', 'is', null)
+                      .order('created_at', { ascending: false })
+                      .limit(1)
+                      .maybeSingle();
+                    leadName = ((msg as any)?.contact_name || '').trim() || null;
+                  } catch {}
+                }
+                if (!leadName) leadName = `Lead WhatsApp +${phoneDigits}`;
+
+                const { data: newLead, error: createErr } = await supabase
+                  .from('leads')
+                  .insert({
+                    lead_name: leadName,
+                    lead_phone: phoneDigits,
+                    board_id: lastStageMatch.board_id,
+                    status: lastStageMatch.stage_id,
+                    source: `WhatsApp · etiqueta "${lastStageMatch.label_name}"`,
+                  } as any)
+                  .select('id')
+                  .single();
+
+                if (createErr) {
+                  console.warn('[label-trigger][stage] auto-create failed:', createErr.message);
+                } else {
+                  const newLeadId = (newLead as any).id;
+                  console.log('[label-trigger][stage] lead auto-created via WA label', { leadId: newLeadId, board: lastStageMatch.board_id, stage: lastStageMatch.stage_id, label: lastStageMatch.label_name });
+                  try {
+                    await supabase.from('lead_stage_history').insert({
+                      lead_id: newLeadId,
+                      from_stage: null,
+                      to_stage: lastStageMatch.stage_id,
+                      board_id: lastStageMatch.board_id,
+                      changed_by: null,
+                      source: 'whatsapp_label_autocreate',
+                    } as any);
+                  } catch (e: any) {
+                    console.warn('[label-trigger][stage] history insert (autocreate) failed:', e?.message);
+                  }
+                }
+              } catch (e: any) {
+                console.warn('[label-trigger][stage] auto-create block failed:', e?.message);
+              }
             }
           }
         } catch (e: any) {
