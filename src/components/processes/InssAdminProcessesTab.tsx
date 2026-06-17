@@ -478,16 +478,34 @@ export default function InssAdminProcessesTab() {
       }
     }
 
-    // 3) Match por nome (similaridade) em contacts
-    const nome = (proc.nome_segurado || "").trim();
-    if (nome.length >= 4) {
-      const { data: contactsByName } = await db
+    // 3) Match por nome (tokens, tolerante a acento) em contacts (Externo + Cloud)
+    const tokens = tokenizeName(proc.nome_segurado);
+    const matchTokens = (full?: string | null) => {
+      const lt = tokenizeName(full);
+      if (!tokens.length || !lt.length) return false;
+      return tokens.every((t) => lt.some((x) => x.startsWith(t.slice(0, 4)) || t.startsWith(x.slice(0, 4))));
+    };
+    if (tokens.length) {
+      const seed = [...tokens].sort((a, b) => b.length - a.length)[0];
+      // contacts no EXTERNO
+      const { data: ctExt } = await db
         .from("contacts" as any)
         .select("id, full_name, lead_id")
-        .ilike("full_name", `%${nome}%`)
+        .ilike("full_name", `%${seed}%`)
         .is("deleted_at", null)
-        .limit(10);
-      for (const ct of (contactsByName || []) as any[]) {
+        .limit(50);
+      // contacts no CLOUD (alguns só existem lá)
+      const { data: ctCloud } = await authClient
+        .from("contacts" as any)
+        .select("id, full_name, lead_id")
+        .ilike("full_name", `%${seed}%`)
+        .is("deleted_at", null)
+        .limit(50);
+      const allContacts = [...(ctExt || []), ...(ctCloud || [])].filter((ct: any) => matchTokens(ct.full_name));
+      const seenContact = new Set<string>();
+      for (const ct of allContacts as any[]) {
+        if (seenContact.has(ct.id)) continue;
+        seenContact.add(ct.id);
         if (ct.lead_id) await addLead(ct.lead_id, ct.full_name, `Nome bate com contato "${ct.full_name}"`);
         const { data: cl } = await db
           .from("contact_leads" as any)
@@ -498,13 +516,14 @@ export default function InssAdminProcessesTab() {
         }
       }
 
-      // 4) Nome em leads
-      const { data: leadsByName } = await db
+      // 4) Nome em leads (Externo) — busca grosseira + filtro por tokens
+      const { data: leadsRaw } = await db
         .from("leads" as any)
         .select("id, lead_name")
-        .ilike("lead_name", `%${nome}%`)
-        .limit(10);
-      for (const l of (leadsByName || []) as any[]) {
+        .ilike("lead_name", `%${seed}%`)
+        .limit(100);
+      const leadsFiltered = (leadsRaw || []).filter((l: any) => matchTokens(l.lead_name));
+      for (const l of leadsFiltered as any[]) {
         await addLead(l.id, l.lead_name, "Nome bate com o lead");
       }
     }
