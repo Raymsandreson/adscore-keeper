@@ -133,6 +133,7 @@ import { GroupContactSyncDialog } from '@/components/kanban/GroupContactSyncDial
 import { LeadGroupSearchDialog } from '@/components/kanban/LeadGroupSearchDialog';
 import { normalizeDateInput } from '@/utils/normalizeDateInput';
 import { useChecklists } from '@/hooks/useChecklists';
+import { StageLabelSelect } from '@/components/kanban/StageLabelSelect';
 
 const leadGroupsCache = new Map<string, Array<{ id?: string; group_link: string; group_jid: string; group_name: string; label: string }>>();
 const leadFieldValuesCache = new Map<string, Record<string, CustomFieldValue>>();
