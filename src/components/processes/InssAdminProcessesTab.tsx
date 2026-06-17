@@ -172,10 +172,39 @@ const isLooseTokenMatch = (query: string, candidate?: string | null) => {
   return namesAreCompatible(query, candidate);
 };
 
+// Decodifica entidades HTML comuns (&nbsp;, &amp;, &#39;, &#x27;, etc.) que vêm
+// no corpo dos e-mails do INSS já em texto plano mas com as entidades preservadas.
+function decodeHtmlEntities(input: string | null | undefined): string {
+  if (!input) return "";
+  let s = String(input);
+  // Numéricas decimais e hex
+  s = s.replace(/&#(\d+);/g, (_, n) => {
+    try { return String.fromCodePoint(parseInt(n, 10)); } catch { return _; }
+  });
+  s = s.replace(/&#x([0-9a-fA-F]+);/g, (_, n) => {
+    try { return String.fromCodePoint(parseInt(n, 16)); } catch { return _; }
+  });
+  // Nomeadas mais comuns
+  const named: Record<string, string> = {
+    nbsp: "\u00a0", amp: "&", lt: "<", gt: ">", quot: '"', apos: "'",
+    ndash: "–", mdash: "—", hellip: "…", laquo: "«", raquo: "»",
+    aacute: "á", eacute: "é", iacute: "í", oacute: "ó", uacute: "ú",
+    Aacute: "Á", Eacute: "É", Iacute: "Í", Oacute: "Ó", Uacute: "Ú",
+    atilde: "ã", otilde: "õ", Atilde: "Ã", Otilde: "Õ",
+    acirc: "â", ecirc: "ê", ocirc: "ô", Acirc: "Â", Ecirc: "Ê", Ocirc: "Ô",
+    ccedil: "ç", Ccedil: "Ç", agrave: "à", Agrave: "À",
+  };
+  s = s.replace(/&([a-zA-Z]+);/g, (m, name) => (named[name] ?? m));
+  // Colapsa NBSPs em espaço normal pra leitura
+  s = s.replace(/\u00a0/g, " ").replace(/[ \t]{2,}/g, " ");
+  return s;
+}
+
 // Faz parse do corpo do e-mail do INSS em pares "Rótulo: valor" para exibição
 // estruturada. Genérico: pega qualquer rótulo (Protocolo, Serviço, Data do
 // Protocolo, Unidade responsável, Status atual, Despacho, etc.), inclusive de
 // outros tipos de e-mail. Valores que quebram em mais de uma linha são juntados.
+
 function parseInssEmail(text: string): {
   recipient: string | null;
   fields: { label: string; value: string }[];
@@ -242,13 +271,15 @@ export default function InssAdminProcessesTab() {
       });
       const j = await resp.json();
       if (!j.success) return null;
-      const text =
+      const text = decodeHtmlEntities(
         j.body_text ||
-        (j.body_html
-          ? String(j.body_html).replace(/<[^>]+>/g, " ").replace(/\s+\n/g, "\n").trim()
-          : "") ||
-        j.snippet ||
-        "";
+          (j.body_html
+            ? String(j.body_html).replace(/<[^>]+>/g, " ").replace(/\s+\n/g, "\n").trim()
+            : "") ||
+          j.snippet ||
+          ""
+      );
+
       const parsed = parseInssEmail(text);
       const despacho =
         parsed.fields.find((f) => /despacho/i.test(f.label))?.value || null;
@@ -1053,8 +1084,10 @@ export default function InssAdminProcessesTab() {
             const cachedBody = latest?.gmail_message_id
               ? emailBodyCache[latest.gmail_message_id]
               : undefined;
-            const despachoPreview =
-              cachedBody?.despacho || latest?.email_snippet || null;
+            const despachoPreview = decodeHtmlEntities(
+              cachedBody?.despacho || latest?.email_snippet || ""
+            ) || null;
+
 
             return (
             <Card key={p.id} className={!p.case_id ? "border-orange-300 dark:border-orange-700" : ""}>
