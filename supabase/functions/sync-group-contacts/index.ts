@@ -301,6 +301,23 @@ Deno.serve(async (req) => {
           results.already_linked++;
           continue;
         }
+
+        // If the contact lives only in Cloud (legacy), mirror it into External
+        // first so the FK on contact_leads holds.
+        if (existing._source === "cloud") {
+          const { error: upsertErr } = await dataClient
+            .from("contacts")
+            .upsert({
+              id: existing.id,
+              full_name: existing.full_name,
+              phone: existing.phone,
+              classification: existing.classification || null,
+            }, { onConflict: "id" });
+          if (upsertErr) {
+            console.log(`Cloud→External mirror failed for ${existing.id}:`, upsertErr.message);
+          }
+        }
+
         const { error } = await dataClient
           .from("contact_leads")
           .insert({ contact_id: existing.id, lead_id });
@@ -314,6 +331,7 @@ Deno.serve(async (req) => {
         results.needs_creation.push({ phone: pp.full, jid: `${pp.full}@s.whatsapp.net` });
       }
     }
+
 
     // 8. Build name suggestions for needs_creation by looking at recent messages
     const contactSuggestions = [];
