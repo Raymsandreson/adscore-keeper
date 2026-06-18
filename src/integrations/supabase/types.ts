@@ -1906,6 +1906,7 @@ export type Database = {
       case_process_tracking: {
         Row: {
           acolhedor: string | null
+          acolhedor_user_id: string | null
           atividade_criada: string | null
           case_id: string | null
           caso: string | null
@@ -1937,6 +1938,7 @@ export type Database = {
         }
         Insert: {
           acolhedor?: string | null
+          acolhedor_user_id?: string | null
           atividade_criada?: string | null
           case_id?: string | null
           caso?: string | null
@@ -1968,6 +1970,7 @@ export type Database = {
         }
         Update: {
           acolhedor?: string | null
+          acolhedor_user_id?: string | null
           atividade_criada?: string | null
           case_id?: string | null
           caso?: string | null
@@ -10120,6 +10123,25 @@ export type Database = {
       cleanup_old_whatsapp_messages: { Args: never; Returns: undefined }
       ensure_team_general_conversation: { Args: never; Returns: string }
       generate_case_number: { Args: { p_nucleus_id: string }; Returns: string }
+      get_booking_by_token: {
+        Args: { _token: string }
+        Returns: {
+          config_id: string
+          end_time: string
+          id: string
+          slot_id: string
+          start_time: string
+          status: string
+        }[]
+      }
+      get_booking_occupancy: {
+        Args: { _config_id: string }
+        Returns: {
+          end_time: string
+          slot_id: string
+          start_time: string
+        }[]
+      }
       get_conversation_summaries: {
         Args: { p_instance_names: string[] }
         Returns: {
