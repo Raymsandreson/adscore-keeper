@@ -121,8 +121,8 @@ export function ActivityCallRecorder({ context, onFields }: Props) {
       const { data: urlData } = supabase.storage.from('activity-chat').getPublicUrl(path);
       const audio_url = urlData.publicUrl;
 
-      const { data, error: fnErr } = await cloudFunctions.invoke('analyze-activity-chat', {
-        body: { action: 'transcribe_and_fill_activity', audio_url, activity_context: context },
+      const { data, error: fnErr } = await cloudFunctions.invoke('transcribe-activity-call', {
+        body: { audio_url, activity_context: context },
       });
       if (fnErr) throw fnErr;
       if (!data?.success) throw new Error(data?.error || 'Falha ao processar a ligação');

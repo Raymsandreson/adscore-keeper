@@ -47,6 +47,7 @@ import { handler as gmailProcessualSync } from './functions/gmail-processual-syn
 import { handler as getWhatsappGroupInfo } from './functions/get-whatsapp-group-info';
 import { handler as scanDuplicateContacts } from './functions/scan-duplicate-contacts';
 import { handler as recoverLeadsPhone55 } from './functions/recover-leads-phone-55';
+import { handler as transcribeActivityCall } from './functions/transcribe-activity-call';
 
 
 const functionHandlers: Record<string, express.RequestHandler> = {
@@ -87,6 +88,7 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'get-whatsapp-group-info': getWhatsappGroupInfo,
   'scan-duplicate-contacts': scanDuplicateContacts,
   'recover-leads-phone-55': recoverLeadsPhone55,
+  'transcribe-activity-call': transcribeActivityCall,
 };
 
 const app = express();
