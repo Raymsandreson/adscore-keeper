@@ -140,10 +140,22 @@ export default function ProcessualEmailsTab() {
             className="pl-9"
           />
         </div>
-        <Button onClick={triggerSync} disabled={syncing} variant="outline" size="sm" className="gap-2">
-          <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
-          {syncing ? "Sincronizando..." : "Sincronizar agora"}
-        </Button>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <Switch
+              id="push-only"
+              checked={pushOnly}
+              onCheckedChange={setPushOnly}
+            />
+            <label htmlFor="push-only" className="text-sm cursor-pointer select-none">
+              Apenas PUSH
+            </label>
+          </div>
+          <Button onClick={triggerSync} disabled={syncing} variant="outline" size="sm" className="gap-2">
+            <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
+            {syncing ? "Sincronizando..." : "Sincronizar agora"}
+          </Button>
+        </div>
       </div>
 
       {loading ? (
