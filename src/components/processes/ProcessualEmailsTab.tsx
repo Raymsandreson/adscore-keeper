@@ -55,12 +55,6 @@ export default function ProcessualEmailsTab() {
   }, []);
 
   const hasAutoSynced = useRef(false);
-  useEffect(() => {
-    if (!hasAutoSynced.current) {
-      hasAutoSynced.current = true;
-      triggerSync();
-    }
-  }, [triggerSync]);
 
   const triggerSync = useCallback(async () => {
     setSyncing(true);
