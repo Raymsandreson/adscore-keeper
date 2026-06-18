@@ -168,7 +168,7 @@ export const handler: RequestHandler = async (req, res) => {
             const subject = getHeader(msg, 'Subject') || '';
             const fromAddr = getHeader(msg, 'From') || '';
             const text = extractPlainText(msg);
-            if (!hasMovimentacaoProcessual(subject, text)) { ir.skipped++; totalSkipped++; continue; }
+            if (!hasPushKeyword(subject, text)) { ir.skipped++; totalSkipped++; continue; }
             if (dryRun) { ir.inserted++; totalInserted++; continue; }
             const receivedAt = msg.internalDate ? new Date(Number(msg.internalDate)).toISOString() : new Date().toISOString();
             const { error } = await ext.from('processual_emails').upsert({
