@@ -56,7 +56,7 @@ export default function ProcessualEmailsTab() {
 
   useEffect(() => { load(); }, [load]);
 
-  const triggerSync = async () => {
+  const triggerSync = useCallback(async () => {
     setSyncing(true);
     try {
       const r = await fetch(`${RAILWAY_BASE}/functions/gmail-processual-sync`, {
