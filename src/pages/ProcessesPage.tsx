@@ -15,6 +15,7 @@ import { toast } from "sonner";
 const PAGE_SIZE = 25;
 const ProcessDetailSheet = lazy(() => import("@/components/cases/ProcessDetailSheet"));
 const InssAdminProcessesTab = lazy(() => import("@/components/processes/InssAdminProcessesTab"));
+const ProcessualEmailsTab = lazy(() => import("@/components/processes/ProcessualEmailsTab"));
 
 interface Process {
   id: string;
