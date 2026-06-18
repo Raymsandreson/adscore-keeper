@@ -97,7 +97,7 @@ function extractProcessNumber(text: string): string | null {
   return m ? m[0] : null;
 }
 
-async function gmailFetch(path: string, key: string, params?: Record<string, string>) {
+async function gmailFetch<T = any>(path: string, key: string, params?: Record<string, string>): Promise<T> {
   const url = new URL(`${GATEWAY_BASE}${path}`);
   if (params) Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
   const lovable = process.env.LOVABLE_API_KEY;
@@ -106,7 +106,7 @@ async function gmailFetch(path: string, key: string, params?: Record<string, str
     headers: { Authorization: `Bearer ${lovable}`, 'X-Connection-Api-Key': key },
   });
   if (!r.ok) throw new Error(`Gmail gateway ${r.status}: ${(await r.text()).slice(0, 300)}`);
-  return r.json();
+  return r.json() as Promise<T>;
 }
 
 function getInboxKeys(): Array<{ label: string; key: string }> {
@@ -154,7 +154,7 @@ export const handler: RequestHandler = async (req, res) => {
       const ir: any = { checked: 0, inserted: 0, skipped: 0, errors: [] as string[] };
       perInbox[inbox.label] = ir;
       try {
-        const list = await gmailFetch('/users/me/messages', inbox.key, {
+        const list = await gmailFetch<{ messages?: GmailListItem[] }>('/users/me/messages', inbox.key, {
           q,
           maxResults: String(Math.min(maxMessages, 100)),
         });
@@ -164,7 +164,7 @@ export const handler: RequestHandler = async (req, res) => {
           ir.checked++;
           totalChecked++;
           try {
-            const msg: GmailMessage = await gmailFetch(`/users/me/messages/${it.id}`, inbox.key, { format: 'full' });
+            const msg = await gmailFetch<GmailMessage>(`/users/me/messages/${it.id}`, inbox.key, { format: 'full' });
             const subject = getHeader(msg, 'Subject') || '';
             const fromAddr = getHeader(msg, 'From') || '';
             const text = extractPlainText(msg);
