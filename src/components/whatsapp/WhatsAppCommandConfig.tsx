@@ -663,24 +663,9 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
     toast.success(editingId ? 'Agente atualizado!' : 'Agente criado!');
     logAudit({ action: editingId ? 'update' : 'create', entityType: 'agent', entityId: editingId || undefined, entityName: form.shortcut_name });
 
-    // 🏷️ Sincroniza etiqueta-crachá em todas as instâncias UazAPI (cor verde se ativo, cinza se não).
-    // Não bloqueia o save: roda em background; se falhar, o usuário pode re-sincronizar manualmente depois.
-    if (savedAgentId) {
-      cloudFunctions
-        .invoke('sync-agent-labels', { body: { agent_id: savedAgentId, operation: 'upsert' } })
-        .then((res: any) => {
-          const results = res?.data?.results || [];
-          const failed = results.filter((r: any) => !r.ok);
-          const ok = results.filter((r: any) => r.ok);
-          if (results.length === 0 && res?.data?.note) {
-            // Sem instâncias atribuídas — silencioso (não é erro)
-            console.info('[sync-agent-labels]', res.data.note);
-          } else if (failed.length > 0) {
-            toast.warning(`Etiqueta sincronizada em ${ok.length}/${results.length} instância(s). ${failed.length} falharam.`);
-          }
-        })
-        .catch((e: any) => console.warn('sync-agent-labels failed:', e?.message));
-    }
+    // Etiqueta-crachá 🤖 desativada: ativação por etapa é feita via
+    // agent_stage_assignments (trigger auto_swap_agent_on_stage_change).
+    // Use a aba "Etapas" do agente pra vincular às etapas existentes.
 
     resetForm();
     onReload();
