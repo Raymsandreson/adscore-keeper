@@ -133,6 +133,9 @@ export default function ProcessesPage() {
           <TabsTrigger value="inss" className="gap-2">
             <Mail className="h-4 w-4" /> INSS Administrativo
           </TabsTrigger>
+          <TabsTrigger value="processual" className="gap-2">
+            <Mail className="h-4 w-4" /> Processual
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="judiciais" className="space-y-4">
