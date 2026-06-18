@@ -504,12 +504,15 @@ export const handler: RequestHandler = async (req, res) => {
 
         monthLoop:
         for (const ym of monthsToScan) {
+          // Filtro relaxado: só o marcador "[INSS]" no subject. Removemos
+          // `from:noreply` porque o gov.br passou a enviar de remetentes variados
+          // (ex.: `naoresponder@`, `meuinss@`) e estávamos perdendo emails novos.
           const gmailQuery = backfill && ym
             ? (() => {
                 const { after, before } = monthWindow(ym);
-                return `from:noreply [INSS] after:${after} before:${before}`;
+                return `subject:"[INSS]" after:${after} before:${before}`;
               })()
-            : `from:noreply [INSS] newer_than:${lookbackHours}h`;
+            : `subject:"[INSS]" newer_than:${lookbackHours}h`;
 
           // Token inicial: só usa se cursor for desta inbox E deste mês.
           let pageToken: string | undefined =
