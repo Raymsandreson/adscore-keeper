@@ -669,9 +669,14 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
       cloudFunctions
         .invoke('sync-agent-labels', { body: { agent_id: savedAgentId, operation: 'upsert' } })
         .then((res: any) => {
-          const failed = (res?.data?.results || []).filter((r: any) => !r.ok);
-          if (failed.length > 0) {
-            toast.warning(`Etiqueta sincronizada em parte das instâncias. ${failed.length} falharam — veja painel.`);
+          const results = res?.data?.results || [];
+          const failed = results.filter((r: any) => !r.ok);
+          const ok = results.filter((r: any) => r.ok);
+          if (results.length === 0 && res?.data?.note) {
+            // Sem instâncias atribuídas — silencioso (não é erro)
+            console.info('[sync-agent-labels]', res.data.note);
+          } else if (failed.length > 0) {
+            toast.warning(`Etiqueta sincronizada em ${ok.length}/${results.length} instância(s). ${failed.length} falharam.`);
           }
         })
         .catch((e: any) => console.warn('sync-agent-labels failed:', e?.message));
