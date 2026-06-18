@@ -822,6 +822,13 @@ Seja conciso mas completo. Use linguagem profissional. Se algum campo não tiver
 
 IMPORTANTE: Retorne APENAS o JSON, sem markdown, sem código, sem explicações.`;
 
+    if (!Array.isArray(messages) || messages.length === 0) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Nenhuma mensagem para analisar" }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const contentParts: any[] = [];
     let textSummary = "Analise estas mensagens de chat e extraia as informações:\n\n";
     let mediaCount = 0;
