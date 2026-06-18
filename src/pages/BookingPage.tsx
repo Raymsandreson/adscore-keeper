@@ -68,41 +68,28 @@ export default function BookingPage() {
       if (profile) setHostName(profile.full_name || '');
     }
 
-    // Fetch existing bookings to block taken slots
-    const { data: bookings } = await (supabase as any)
-      .from('onboarding_meeting_bookings')
-      .select('slot_id, config_id, created_at')
-      .eq('config_id', data.id)
-      .in('status', ['pending', 'confirmed']);
+    // Fetch existing bookings to block taken slots (no PII via RPC)
+    const { data: occ } = await (supabase as any)
+      .rpc('get_booking_occupancy', { _config_id: data.id });
 
-    // Get slot times for bookings
-    if (bookings && bookings.length > 0) {
-      const slotIds = bookings.map((b: any) => b.slot_id).filter(Boolean);
-      if (slotIds.length > 0) {
-        const { data: slots } = await (supabase as any)
-          .from('onboarding_meeting_slots')
-          .select('id, start_time, end_time')
-          .in('id', slotIds);
-        setExistingBookings(
-          (slots || []).map((s: any) => ({ slot_id: s.id, start_time: s.start_time, end_time: s.end_time }))
-        );
-      }
+    if (occ && occ.length > 0) {
+      setExistingBookings(
+        occ.map((s: any) => ({ slot_id: s.slot_id, start_time: s.start_time, end_time: s.end_time }))
+      );
     }
 
     // Check if this token already has a booking
     if (token) {
-      const { data: existingBooking } = await (supabase as any)
-        .from('onboarding_meeting_bookings')
-        .select('*, onboarding_meeting_slots(start_time, end_time)')
-        .eq('booking_token', token)
-        .in('status', ['pending', 'confirmed'])
-        .maybeSingle();
+      const { data: existingRows } = await (supabase as any)
+        .rpc('get_booking_by_token', { _token: token });
+      const existingBooking = Array.isArray(existingRows) ? existingRows[0] : existingRows;
 
-      if (existingBooking?.onboarding_meeting_slots?.start_time) {
+      if (existingBooking?.start_time) {
         setConfirmed(true);
-        setConfirmedTime(new Date(existingBooking.onboarding_meeting_slots.start_time));
+        setConfirmedTime(new Date(existingBooking.start_time));
       }
     }
+
 
     setLoading(false);
   };
