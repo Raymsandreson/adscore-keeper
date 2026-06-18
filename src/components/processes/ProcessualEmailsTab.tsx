@@ -35,7 +35,7 @@ export default function ProcessualEmailsTab() {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [search, setSearch] = useState("");
-  const [pushOnly, setPushOnly] = useState(false);
+  const [pushOnly, setPushOnly] = useState(true);
   const [page, setPage] = useState(1);
   const [emailView, setEmailView] = useState<{
     open: boolean; loading: boolean; subject: string | null; body: string | null; error: string | null;
