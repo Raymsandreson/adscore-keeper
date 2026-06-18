@@ -74,7 +74,7 @@ export function AgentAutomationRules({ agentId }: Props) {
 
   const fetchAll = async () => {
     setLoading(true);
-    const rulesRes = await (authClient as any).from('agent_automation_rules').select('*').eq('agent_id', agentId);
+    const rulesRes = await (db as any).from('agent_automation_rules').select('*').eq('agent_id', agentId);
     const boardsRes = await (db as any).from('kanban_boards').select('id, name, stages').order('display_order');
     const nucleiRes = await (db as any).from('specialized_nuclei').select('id, name, prefix').eq('is_active', true).order('name');
 
