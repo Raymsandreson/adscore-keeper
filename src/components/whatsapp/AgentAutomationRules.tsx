@@ -170,7 +170,7 @@ export function AgentAutomationRules({ agentId }: Props) {
         };
 
         if (rule.id) {
-          const { error } = await (authClient as any)
+          const { error } = await (db as any)
             .from('agent_automation_rules')
             .update({ actions: payload.actions, is_active: rule.is_active } as any)
             .eq('id', rule.id);
@@ -179,7 +179,7 @@ export function AgentAutomationRules({ agentId }: Props) {
             throw error;
           }
         } else if (rule.actions.length > 0 || rule.is_active) {
-          const { data, error } = await (authClient as any)
+          const { data, error } = await (db as any)
             .from('agent_automation_rules')
             .insert(payload as any)
             .select()
