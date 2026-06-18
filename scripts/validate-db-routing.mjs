@@ -20,12 +20,16 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
 const SRC = join(ROOT, "src");
 
+// Mantenha sincronizado com src/integrations/supabase/db-routing.ts
 const BUSINESS_TABLES = [
   "leads",
   "lead_activities",
   "lead_processes",
   "lead_followups",
   "lead_custom_fields",
+  "lead_custom_field_values",
+  "lead_field_layouts",
+  "lead_tab_layouts",
   "lead_stage_history",
   "lead_sources",
   "lead_whatsapp_groups",
@@ -39,6 +43,9 @@ const BUSINESS_TABLES = [
   "contact_relationships",
   "zapsign_documents",
   "kanban_boards",
+  "checklist_templates",
+  "checklist_stage_links",
+  "lead_checklist_instances",
   "whatsapp_messages",
   "whatsapp_instances",
   "whatsapp_conversation_agents",
@@ -58,8 +65,11 @@ const SKIP_FILES = new Set([
   "integrations/supabase/types.ts",
 ]);
 
+// Detecta os clients Cloud (`supabase` e seu alias `authClient`) acessando
+// tabela de negócio. `\s*` cobre o estilo multi-linha (`supabase\n  .from(...)`).
+// `externalSupabase`/`db` NÃO casam (boundary + 'supabase' minúsculo).
 const pattern = new RegExp(
-  `(^|[^a-zA-Z0-9_])supabase\\.from\\(\\s*['"\`](${BUSINESS_TABLES.join("|")})['"\`]`,
+  `(^|[^a-zA-Z0-9_])(supabase|authClient)\\s*\\.from\\(\\s*['"\`](${BUSINESS_TABLES.join("|")})['"\`]`,
   "g",
 );
 
@@ -85,7 +95,7 @@ for (const file of walk(SRC)) {
   while ((m = pattern.exec(content)) !== null) {
     const upTo = content.slice(0, m.index);
     const line = upTo.split("\n").length;
-    violations.push({ file: rel, line, table: m[2] });
+    violations.push({ file: rel, line, client: m[2], table: m[3] });
   }
 }
 
@@ -95,10 +105,10 @@ if (violations.length === 0) {
 }
 
 console.log(
-  `\n[db-routing] ${violations.length} ocorrência(s) de \`supabase.from('<tabela_de_negocio>')\` no client Cloud:\n`,
+  `\n[db-routing] ${violations.length} ocorrência(s) de client Cloud (\`supabase\`/\`authClient\`) em tabela de negócio:\n`,
 );
 for (const v of violations) {
-  console.log(`  src/${v.file}:${v.line}  →  ${v.table}`);
+  console.log(`  src/${v.file}:${v.line}  →  ${v.client}.from('${v.table}')`);
 }
 console.log(
   `\nUse \`externalSupabase\` para essas tabelas. Lista em src/integrations/supabase/db-routing.ts.`,

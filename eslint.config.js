@@ -12,6 +12,9 @@ const BUSINESS_TABLES = [
   "lead_processes",
   "lead_followups",
   "lead_custom_fields",
+  "lead_custom_field_values",
+  "lead_field_layouts",
+  "lead_tab_layouts",
   "lead_stage_history",
   "lead_sources",
   "lead_whatsapp_groups",
@@ -25,6 +28,9 @@ const BUSINESS_TABLES = [
   "contact_relationships",
   "zapsign_documents",
   "kanban_boards",
+  "checklist_templates",
+  "checklist_stage_links",
+  "lead_checklist_instances",
   "whatsapp_messages",
   "whatsapp_instances",
   "whatsapp_conversation_agents",
@@ -62,7 +68,7 @@ export default tseslint.config(
       "no-restricted-syntax": [
         "warn",
         {
-          selector: `CallExpression[callee.object.name='supabase'][callee.property.name='from'][arguments.0.type='Literal'][arguments.0.value=/${businessTablesPattern}/]`,
+          selector: `CallExpression[callee.object.name=/^(supabase|authClient)$/][callee.property.name='from'][arguments.0.type='Literal'][arguments.0.value=/${businessTablesPattern}/]`,
           message:
             "Tabela de negócio: use externalSupabase (Supabase Externo), não o client Cloud. Lista em src/integrations/supabase/db-routing.ts.",
         },
