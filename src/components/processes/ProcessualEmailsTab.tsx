@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import ListPagination from "@/components/processes/ListPagination";
 import { db } from "@/integrations/supabase";
 import { Input } from "@/components/ui/input";
@@ -7,7 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Search, Mail, RefreshCw } from "lucide-react";
+import { Search, Mail } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 
@@ -54,9 +54,9 @@ export default function ProcessualEmailsTab() {
     setLoading(false);
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  const hasAutoSynced = useRef(false);
 
-  const triggerSync = async () => {
+  const triggerSync = useCallback(async () => {
     setSyncing(true);
     try {
       const r = await fetch(`${RAILWAY_BASE}/functions/gmail-processual-sync`, {
@@ -76,7 +76,14 @@ export default function ProcessualEmailsTab() {
     } finally {
       setSyncing(false);
     }
-  };
+  }, [load]);
+
+  useEffect(() => {
+    if (!hasAutoSynced.current) {
+      hasAutoSynced.current = true;
+      triggerSync();
+    }
+  }, [triggerSync]);
 
   const openFullEmail = async (row: ProcessualEmail) => {
     if (row.body_text) {
@@ -151,10 +158,6 @@ export default function ProcessualEmailsTab() {
               Apenas PUSH
             </label>
           </div>
-          <Button onClick={triggerSync} disabled={syncing} variant="outline" size="sm" className="gap-2">
-            <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
-            {syncing ? "Sincronizando..." : "Sincronizar agora"}
-          </Button>
         </div>
       </div>
 
@@ -162,7 +165,7 @@ export default function ProcessualEmailsTab() {
         <div className="text-center py-12 text-muted-foreground">Carregando e-mails...</div>
       ) : filtered.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">
-          {search ? "Nenhum e-mail encontrado." : "Nenhum e-mail processual ainda. Use \"Sincronizar agora\"."}
+          {search ? "Nenhum e-mail encontrado." : "Nenhum e-mail processual encontrado."}
         </div>
       ) : (
         <div className="grid gap-2">
