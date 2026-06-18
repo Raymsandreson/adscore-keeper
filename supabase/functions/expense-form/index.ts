@@ -104,17 +104,18 @@ serve(async (req) => {
         .eq("card_last_digits", tokenData.card_last_digits)
         .maybeSingle();
 
-      // Get leads for linking
-      const { data: leads } = await supabase
-        .from("leads")
-        .select("id, lead_name, lead_email, instagram_username, city, state")
-        .order("lead_name");
-
-      // Get contacts for linking
-      const { data: contacts } = await supabase
-        .from("contacts")
-        .select("id, full_name, instagram_username, phone, city, state")
-        .order("full_name");
+      // SECURITY: Do NOT return full CRM lists to a token holder.
+      // Only return leads/contacts already linked via existing overrides
+      // (the minimum needed to show current assignments in the form).
+      const linkedLeadIds = Array.from(new Set((overrides || []).map((o: any) => o.lead_id).filter(Boolean)));
+      let leads: any[] = [];
+      if (linkedLeadIds.length > 0) {
+        const { data: leadRows } = await supabase
+          .from("leads")
+          .select("id, lead_name")
+          .in("id", linkedLeadIds);
+        leads = leadRows || [];
+      }
 
       return new Response(JSON.stringify({
         token: tokenData,
@@ -122,8 +123,8 @@ serve(async (req) => {
         overrides: overrides || [],
         categories: categories || [],
         cardAssignment,
-        leads: leads || [],
-        contacts: contacts || [],
+        leads,
+        contacts: [],
         respondedTransactionIds: Array.from(respondedTxIds),
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
