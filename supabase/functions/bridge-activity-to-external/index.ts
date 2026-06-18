@@ -64,6 +64,16 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
+    // Shared-secret check: pg_net trigger MUST send `x-bridge-secret` header.
+    const BRIDGE_SECRET = Deno.env.get("BRIDGE_SECRET") || "";
+    const got = req.headers.get("x-bridge-secret") || "";
+    if (!BRIDGE_SECRET || got !== BRIDGE_SECRET) {
+      return new Response(JSON.stringify({ success: false, error: "unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const body = await req.json().catch(() => ({}));
     const { op, table, row, old_row } = body || {};
 
