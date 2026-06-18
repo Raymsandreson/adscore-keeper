@@ -2064,8 +2064,8 @@ const ActivitiesPage = () => {
         </div>
       </div>
 
-      {/* Filters strip - compact horizontal */}
-      <div className={cn("bg-muted/30 border-b px-3 py-1.5 flex items-center gap-2 overflow-x-auto shrink-0 scrollbar-none", isEditing && "hidden md:flex")}>
+      {/* Filters strip - wraps into 2 rows when tight */}
+      <div className={cn("bg-muted/30 border-b px-3 py-1.5 flex flex-wrap items-center gap-2 shrink-0", isEditing && "hidden md:flex")}>
         {/* Assessor */}
         <Popover open={openFilterKey === 'assignee'} onOpenChange={o => setOpenFilterKey(o ? 'assignee' : null)}>
           <PopoverTrigger asChild>
