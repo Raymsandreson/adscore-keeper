@@ -6,7 +6,7 @@ import { createClient } from '@supabase/supabase-js';
  *
  * Lê e-mails da(s) caixa(s) marcadas como Processual e grava em
  * public.processual_emails (Externo) APENAS quando o assunto OU corpo
- * contém "movimentação processual" (case/acento-insensitive).
+ * contém "PUSH", "Push" ou "push" (case-insensitive).
  *
  * POST /functions/gmail-processual-sync
  *   { lookback_hours?: number=72, max_messages?: number=50, dry_run?: boolean }
