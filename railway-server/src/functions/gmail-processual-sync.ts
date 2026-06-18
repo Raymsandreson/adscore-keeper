@@ -6,7 +6,7 @@ import { createClient } from '@supabase/supabase-js';
  *
  * Lê e-mails da(s) caixa(s) marcadas como Processual e grava em
  * public.processual_emails (Externo) APENAS quando o assunto OU corpo
- * contém "movimentação processual" (case/acento-insensitive).
+ * contém "PUSH", "Push" ou "push" (case-insensitive).
  *
  * POST /functions/gmail-processual-sync
  *   { lookback_hours?: number=72, max_messages?: number=50, dry_run?: boolean }
@@ -85,10 +85,10 @@ function stripAccents(s: string) {
   return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
 
-/** Casa "movimentação processual" com/sem acento, espaços extras. */
-function hasMovimentacaoProcessual(...texts: string[]): boolean {
-  const blob = stripAccents(texts.filter(Boolean).join(' \n ').toLowerCase());
-  return /\bmovimentacao\s+processual\b/.test(blob);
+/** Verifica se algum dos textos contém "PUSH" (case-insensitive). */
+function hasPushKeyword(...texts: string[]): boolean {
+  const blob = texts.filter(Boolean).join(' \n ');
+  return /\bpush\b/i.test(blob);
 }
 
 function extractProcessNumber(text: string): string | null {
@@ -168,7 +168,7 @@ export const handler: RequestHandler = async (req, res) => {
             const subject = getHeader(msg, 'Subject') || '';
             const fromAddr = getHeader(msg, 'From') || '';
             const text = extractPlainText(msg);
-            if (!hasMovimentacaoProcessual(subject, text)) { ir.skipped++; totalSkipped++; continue; }
+            if (!hasPushKeyword(subject, text)) { ir.skipped++; totalSkipped++; continue; }
             if (dryRun) { ir.inserted++; totalInserted++; continue; }
             const receivedAt = msg.internalDate ? new Date(Number(msg.internalDate)).toISOString() : new Date().toISOString();
             const { error } = await ext.from('processual_emails').upsert({
