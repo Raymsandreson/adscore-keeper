@@ -85,10 +85,10 @@ function stripAccents(s: string) {
   return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
 
-/** Casa "movimentação processual" com/sem acento, espaços extras. */
-function hasMovimentacaoProcessual(...texts: string[]): boolean {
-  const blob = stripAccents(texts.filter(Boolean).join(' \n ').toLowerCase());
-  return /\bmovimentacao\s+processual\b/.test(blob);
+/** Verifica se algum dos textos contém "PUSH" (case-insensitive). */
+function hasPushKeyword(...texts: string[]): boolean {
+  const blob = texts.filter(Boolean).join(' \n ');
+  return /\bpush\b/i.test(blob);
 }
 
 function extractProcessNumber(text: string): string | null {
