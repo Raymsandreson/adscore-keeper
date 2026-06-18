@@ -3310,144 +3310,147 @@ const ActivitiesPage = () => {
                 </div>
                 <div className="flex flex-col items-end gap-1 min-w-0">
                   <div className="flex flex-wrap items-center justify-end gap-1">
-                  {!formLeadId && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-7 text-xs gap-1 border-primary/30 text-primary hover:bg-primary/10"
-                      onClick={() => window.dispatchEvent(new CustomEvent('activity-form:open-link-lead'))}
-                      title="Vincular um lead existente ou criar um novo"
-                    >
-                      <Plus className="h-3 w-3" />
-                      Vincular Lead
-                    </Button>
-                  )}
-                  {!formCaseId && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-7 text-xs gap-1"
-                      onClick={() => window.dispatchEvent(new CustomEvent('activity-form:open-link-case'))}
-                      title="Vincular um caso existente ou criar um novo"
-                    >
-                      <Briefcase className="h-3 w-3" />
-                      Vincular Caso
-                    </Button>
-                  )}
-                  {formCaseId && !formProcessId && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-7 text-xs gap-1"
-                      onClick={() => window.dispatchEvent(new CustomEvent('activity-form:open-link-process'))}
-                      title="Vincular um processo do caso"
-                    >
-                      <FileText className="h-3 w-3" />
-                      Vincular Processo
-                    </Button>
-                  )}
-                  {!formContactId && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-7 text-xs gap-1"
-                      onClick={() => window.dispatchEvent(new CustomEvent('activity-form:open-link-contact'))}
-                      title="Vincular um contato"
-                    >
-                      <UserPlus className="h-3 w-3" />
-                      Vincular Contato
-                    </Button>
-                  )}
-                  <ActivityCallRecorder
-                    context={{
-                      title: formTitle,
-                      type: formType,
-                      lead_name: formLeadName,
-                      contact_name: formContactName,
-                      process_title: formProcessTitle,
-                      current_status: stripHtmlToText(formCurrentStatus),
-                      what_was_done: stripHtmlToText(formWhatWasDone),
-                      next_steps: stripHtmlToText(formNextSteps),
-                      solicitacao: stripHtmlToText(formSolicitacao),
-                      resposta_juizo: stripHtmlToText(formRespostaJuizo),
-                      notes: stripHtmlToText(formNotes),
-                    }}
-                    onFields={(f) => {
-                      if (f.what_was_done) setFormWhatWasDone(callFieldTextToHtml(f.what_was_done));
-                      if (f.current_status) setFormCurrentStatus(callFieldTextToHtml(f.current_status));
-                      if (f.next_steps) setFormNextSteps(callFieldTextToHtml(f.next_steps));
-                      if (f.solicitacao) setFormSolicitacao(callFieldTextToHtml(f.solicitacao));
-                      if (f.resposta_juizo) setFormRespostaJuizo(callFieldTextToHtml(f.resposta_juizo));
-                      if (f.notes) setFormNotes(callFieldTextToHtml(f.notes));
-                    }}
-                  />
-                  {/* Chat Equipe moved to bottom action bar to reduce top clutter */}
-                  {formLeadId && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className={cn("h-7 text-xs gap-1")}
-                      onClick={() => setShowLeadSheet(true)}
-                      title="Abrir lead completo"
-                    >
-                      <ExternalLink className="h-3 w-3" />
-                      Lead
-                    </Button>
-                  )}
-                  {formLeadId && (() => {
-                    const hasGroup = !!leadPreview?.whatsapp_group_id;
-                    const hasPhone = !!leadPreview?.lead_phone;
-                    const hasAnyWa = hasGroup || hasPhone;
-                    return (
+                    {!formLeadId && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs gap-1 border-primary/30 text-primary hover:bg-primary/10"
+                        onClick={() => window.dispatchEvent(new CustomEvent('activity-form:open-link-lead'))}
+                        title="Vincular um lead existente ou criar um novo"
+                      >
+                        <Plus className="h-3 w-3" />
+                        Vincular Lead
+                      </Button>
+                    )}
+                    {!formCaseId && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs gap-1"
+                        onClick={() => window.dispatchEvent(new CustomEvent('activity-form:open-link-case'))}
+                        title="Vincular um caso existente ou criar um novo"
+                      >
+                        <Briefcase className="h-3 w-3" />
+                        Vincular Caso
+                      </Button>
+                    )}
+                    {formCaseId && !formProcessId && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs gap-1"
+                        onClick={() => window.dispatchEvent(new CustomEvent('activity-form:open-link-process'))}
+                        title="Vincular um processo do caso"
+                      >
+                        <FileText className="h-3 w-3" />
+                        Vincular Processo
+                      </Button>
+                    )}
+                    {!formContactId && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs gap-1"
+                        onClick={() => window.dispatchEvent(new CustomEvent('activity-form:open-link-contact'))}
+                        title="Vincular um contato"
+                      >
+                        <UserPlus className="h-3 w-3" />
+                        Vincular Contato
+                      </Button>
+                    )}
+                    {formProcessId && (
                       <Button
                         variant="ghost"
                         size="sm"
-                        className={`h-7 text-xs gap-1 ${
-                          hasAnyWa
-                            ? 'text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-950/30'
-                            : 'text-muted-foreground/60 hover:text-muted-foreground hover:bg-muted/50'
-                        }`}
-                        onClick={() => {
-                          if (hasAnyWa) {
-                            const target = leadPreview?.whatsapp_group_id || leadPreview?.lead_phone || '';
-                            if (!target) return;
-                            setWaChatPreview({
-                              phone: target,
-                              contact_name: formLeadName || null,
-                              instance_name: null,
-                            });
-                          } else {
-                            setGroupSearchOpen(true);
-                          }
-                        }}
-                        title={
-                          hasGroup
-                            ? 'Abrir grupo do WhatsApp vinculado'
-                            : hasPhone
-                              ? 'Abrir conversa do WhatsApp'
-                              : 'Vincular grupo do WhatsApp ao lead'
-                        }
+                        className="h-7 text-xs gap-1"
+                        onClick={() => setShowProcessSheetId(formProcessId)}
+                        title="Ver últimas movimentações do processo"
                       >
-                        <MessageCircle className="h-3 w-3" />
-                        {hasGroup ? 'Grupo WA' : hasPhone ? 'WhatsApp' : 'Vincular WA'}
+                        <FileText className="h-3 w-3" />
+                        Últimas movimentações
                       </Button>
-                    );
-                  })()}
-                  {formProcessId && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 text-xs gap-1"
-                      onClick={() => setShowProcessSheetId(formProcessId)}
-                      title="Ver últimas movimentações do processo"
-                    >
-                      <FileText className="h-3 w-3" />
-                      Últimas movimentações
+                    )}
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={closeSheet}>
+                      <X className="h-4 w-4" />
                     </Button>
-                  )}
-                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={closeSheet}>
-                    <X className="h-4 w-4" />
-                  </Button>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-end gap-1">
+                    <ActivityCallRecorder
+                      context={{
+                        title: formTitle,
+                        type: formType,
+                        lead_name: formLeadName,
+                        contact_name: formContactName,
+                        process_title: formProcessTitle,
+                        current_status: stripHtmlToText(formCurrentStatus),
+                        what_was_done: stripHtmlToText(formWhatWasDone),
+                        next_steps: stripHtmlToText(formNextSteps),
+                        solicitacao: stripHtmlToText(formSolicitacao),
+                        resposta_juizo: stripHtmlToText(formRespostaJuizo),
+                        notes: stripHtmlToText(formNotes),
+                      }}
+                      onFields={(f) => {
+                        if (f.what_was_done) setFormWhatWasDone(callFieldTextToHtml(f.what_was_done));
+                        if (f.current_status) setFormCurrentStatus(callFieldTextToHtml(f.current_status));
+                        if (f.next_steps) setFormNextSteps(callFieldTextToHtml(f.next_steps));
+                        if (f.solicitacao) setFormSolicitacao(callFieldTextToHtml(f.solicitacao));
+                        if (f.resposta_juizo) setFormRespostaJuizo(callFieldTextToHtml(f.resposta_juizo));
+                        if (f.notes) setFormNotes(callFieldTextToHtml(f.notes));
+                      }}
+                    />
+                    {/* Chat Equipe moved to bottom action bar to reduce top clutter */}
+                    {formLeadId && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className={cn("h-7 text-xs gap-1")}
+                        onClick={() => setShowLeadSheet(true)}
+                        title="Abrir lead completo"
+                      >
+                        <ExternalLink className="h-3 w-3" />
+                        Lead
+                      </Button>
+                    )}
+                    {formLeadId && (() => {
+                      const hasGroup = !!leadPreview?.whatsapp_group_id;
+                      const hasPhone = !!leadPreview?.lead_phone;
+                      const hasAnyWa = hasGroup || hasPhone;
+                      return (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className={`h-7 text-xs gap-1 ${
+                            hasAnyWa
+                              ? 'text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-950/30'
+                              : 'text-muted-foreground/60 hover:text-muted-foreground hover:bg-muted/50'
+                          }`}
+                          onClick={() => {
+                            if (hasAnyWa) {
+                              const target = leadPreview?.whatsapp_group_id || leadPreview?.lead_phone || '';
+                              if (!target) return;
+                              setWaChatPreview({
+                                phone: target,
+                                contact_name: formLeadName || null,
+                                instance_name: null,
+                              });
+                            } else {
+                              setGroupSearchOpen(true);
+                            }
+                          }}
+                          title={
+                            hasGroup
+                              ? 'Abrir grupo do WhatsApp vinculado'
+                              : hasPhone
+                                ? 'Abrir conversa do WhatsApp'
+                                : 'Vincular grupo do WhatsApp ao lead'
+                          }
+                        >
+                          <MessageCircle className="h-3 w-3" />
+                          {hasGroup ? 'Grupo WA' : hasPhone ? 'WhatsApp' : 'Vincular WA'}
+                        </Button>
+                      );
+                    })()}
+                  </div>
                 </div>
               </div>
               {/* Lead preview info */}
