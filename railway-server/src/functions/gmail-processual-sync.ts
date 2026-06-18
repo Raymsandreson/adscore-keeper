@@ -97,7 +97,7 @@ function extractProcessNumber(text: string): string | null {
   return m ? m[0] : null;
 }
 
-async function gmailFetch(path: string, key: string, params?: Record<string, string>) {
+async function gmailFetch<T = any>(path: string, key: string, params?: Record<string, string>): Promise<T> {
   const url = new URL(`${GATEWAY_BASE}${path}`);
   if (params) Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
   const lovable = process.env.LOVABLE_API_KEY;
@@ -106,7 +106,7 @@ async function gmailFetch(path: string, key: string, params?: Record<string, str
     headers: { Authorization: `Bearer ${lovable}`, 'X-Connection-Api-Key': key },
   });
   if (!r.ok) throw new Error(`Gmail gateway ${r.status}: ${(await r.text()).slice(0, 300)}`);
-  return r.json();
+  return r.json() as Promise<T>;
 }
 
 function getInboxKeys(): Array<{ label: string; key: string }> {
