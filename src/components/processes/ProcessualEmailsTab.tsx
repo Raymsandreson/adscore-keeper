@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import ListPagination from "@/components/processes/ListPagination";
 import { db } from "@/integrations/supabase";
 import { Input } from "@/components/ui/input";
