@@ -165,7 +165,7 @@ export default function ProcessualEmailsTab() {
         <div className="text-center py-12 text-muted-foreground">Carregando e-mails...</div>
       ) : filtered.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">
-          {search ? "Nenhum e-mail encontrado." : "Nenhum e-mail processual ainda. Use \"Sincronizar agora\"."}
+          {search ? "Nenhum e-mail encontrado." : "Nenhum e-mail processual encontrado."}
         </div>
       ) : (
         <div className="grid gap-2">
