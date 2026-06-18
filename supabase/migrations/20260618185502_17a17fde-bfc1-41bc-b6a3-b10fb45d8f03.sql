@@ -1,0 +1,1 @@
+UPDATE public.onboarding_meeting_configs SET auto_send_after_signature = false WHERE auto_send_after_signature = true;
