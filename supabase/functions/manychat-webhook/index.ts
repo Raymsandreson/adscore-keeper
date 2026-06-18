@@ -21,6 +21,17 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // Shared-secret check: ManyChat must send `x-webhook-secret` matching MANYCHAT_WEBHOOK_SECRET.
+  const MC_SECRET = Deno.env.get("MANYCHAT_WEBHOOK_SECRET") || "";
+  const got = req.headers.get("x-webhook-secret") || "";
+  if (!MC_SECRET || got !== MC_SECRET) {
+    return new Response(JSON.stringify({ success: false, error: "unauthorized" }), {
+      status: 401,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+
   try {
     const MANYCHAT_API_KEY = Deno.env.get("MANYCHAT_API_KEY");
     const GOOGLE_AI_API_KEY = Deno.env.get("GOOGLE_AI_API_KEY");

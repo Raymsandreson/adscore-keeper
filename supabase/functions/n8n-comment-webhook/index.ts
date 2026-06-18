@@ -20,6 +20,16 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // Shared-secret check: n8n must send `x-webhook-secret` matching N8N_WEBHOOK_SECRET.
+  const N8N_SECRET = Deno.env.get("N8N_WEBHOOK_SECRET") || "";
+  const got = req.headers.get("x-webhook-secret") || "";
+  if (!N8N_SECRET || got !== N8N_SECRET) {
+    return new Response(JSON.stringify({ success: false, error: "unauthorized" }), {
+      status: 401,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
   try {
     const supabaseUrl = RESOLVED_SUPABASE_URL;
     const supabaseKey = RESOLVED_SERVICE_ROLE_KEY;

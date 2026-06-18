@@ -40,6 +40,33 @@ Deno.serve(async (req) => {
     const { data: userData, error: userError } = await cloud.auth.getUser(token);
     if (userError || !userData.user) return json({ success: false, error: "Sessão inválida ou expirada" });
 
+    // Authorization: only admins may permanently delete leads
+    const { data: adminRow } = await cloud
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", userData.user.id)
+      .eq("role", "admin")
+      .maybeSingle();
+    if (!adminRow) {
+      const { data: extMap } = await cloud
+        .from("auth_uuid_mapping")
+        .select("ext_uuid")
+        .eq("cloud_uuid", userData.user.id)
+        .maybeSingle();
+      const extUid = extMap?.ext_uuid;
+      let isAdmin = false;
+      if (extUid) {
+        const { data: extAdminRow } = await ext
+          .from("user_roles")
+          .select("role")
+          .eq("user_id", extUid)
+          .eq("role", "admin")
+          .maybeSingle();
+        isAdmin = !!extAdminRow;
+      }
+      if (!isAdmin) return json({ success: false, error: "Apenas administradores podem excluir permanentemente" });
+    }
+
     const body = await req.json().catch(() => ({}));
     const leadId = String(body?.leadId || "").trim();
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(leadId)) {
