@@ -47,11 +47,36 @@ export const handler: RequestHandler = async (req, res) => {
     const color = isActive ? COLOR_ACTIVE : COLOR_INACTIVE;
     const effectiveOp = operation === 'delete' ? 'delete' : 'upsert';
 
-    const { data: instances, error: instErr } = await ext
+    // Resolve INSTÂNCIAS-ALVO desse agente:
+    //  1) Se houver linhas em agent_instance_settings → usar SÓ as habilitadas
+    //  2) Senão, fallback: instâncias com default_agent_id = este agente
+    //  3) Senão (vazio) → NÃO fanout pra todas. Devolve aviso explícito.
+    const { data: scoped, error: scopedErr } = await ext
+      .from('agent_instance_settings')
+      .select('instance_id, is_enabled')
+      .eq('agent_id', agent_id);
+    if (scopedErr) return res.json({ success: false, error: `agent_instance_settings: ${scopedErr.message}` });
+
+    let targetQuery = ext
       .from('whatsapp_instances')
-      .select('instance_name, instance_token, base_url')
+      .select('id, instance_name, instance_token, base_url')
       .not('instance_token', 'is', null);
+
+    const scopedEnabledIds = ((scoped || []) as any[]).filter((r) => r.is_enabled).map((r) => r.instance_id);
+    if ((scoped || []).length > 0) {
+      if (scopedEnabledIds.length === 0) {
+        return res.json({ success: true, agent_id, agent_name: agentName, operation: effectiveOp, results: [], note: 'Nenhuma instância habilitada em agent_instance_settings — nada a sincronizar.' });
+      }
+      targetQuery = targetQuery.in('id', scopedEnabledIds);
+    } else {
+      targetQuery = targetQuery.eq('default_agent_id', agent_id);
+    }
+
+    const { data: instances, error: instErr } = await targetQuery;
     if (instErr) return res.json({ success: false, error: `instances lookup: ${instErr.message}` });
+    if (!instances || instances.length === 0) {
+      return res.json({ success: true, agent_id, agent_name: agentName, operation: effectiveOp, results: [], note: 'Agente não tem instâncias atribuídas (agent_instance_settings ou default_agent_id). Sync ignorado.' });
+    }
 
     const { data: existingMappings } = await ext
       .from('agent_instance_labels')
