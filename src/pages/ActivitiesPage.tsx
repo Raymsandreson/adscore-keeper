@@ -3308,7 +3308,7 @@ const ActivitiesPage = () => {
                     )}
                   </div>
                 </div>
-                <div className="flex items-center gap-1 shrink-0">
+                <div className="flex flex-wrap items-center justify-end gap-1 min-w-0">
                   {!formLeadId && (
                     <Button
                       variant="outline"
