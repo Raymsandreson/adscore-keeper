@@ -76,7 +76,7 @@ export default function ProcessualEmailsTab() {
     } finally {
       setSyncing(false);
     }
-  };
+  }, [load]);
 
   const openFullEmail = async (row: ProcessualEmail) => {
     if (row.body_text) {
