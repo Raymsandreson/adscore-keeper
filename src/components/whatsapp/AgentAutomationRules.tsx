@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { db, authClient } from '@/integrations/supabase';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -74,9 +74,9 @@ export function AgentAutomationRules({ agentId }: Props) {
 
   const fetchAll = async () => {
     setLoading(true);
-    const rulesRes = await (supabase as any).from('agent_automation_rules').select('*').eq('agent_id', agentId);
-    const boardsRes = await (supabase as any).from('kanban_boards').select('id, name, stages').order('display_order');
-    const nucleiRes = await (supabase as any).from('specialized_nuclei').select('id, name, prefix').eq('is_active', true).order('name');
+    const rulesRes = await (authClient as any).from('agent_automation_rules').select('*').eq('agent_id', agentId);
+    const boardsRes = await (db as any).from('kanban_boards').select('id, name, stages').order('display_order');
+    const nucleiRes = await (db as any).from('specialized_nuclei').select('id, name, prefix').eq('is_active', true).order('name');
 
     const rulesMap: Record<string, any> = {};
     for (const trigger of Object.keys(TRIGGER_LABELS)) {
@@ -170,7 +170,7 @@ export function AgentAutomationRules({ agentId }: Props) {
         };
 
         if (rule.id) {
-          const { error } = await (supabase as any)
+          const { error } = await (authClient as any)
             .from('agent_automation_rules')
             .update({ actions: payload.actions, is_active: rule.is_active } as any)
             .eq('id', rule.id);
@@ -179,7 +179,7 @@ export function AgentAutomationRules({ agentId }: Props) {
             throw error;
           }
         } else if (rule.actions.length > 0 || rule.is_active) {
-          const { data, error } = await (supabase as any)
+          const { data, error } = await (authClient as any)
             .from('agent_automation_rules')
             .insert(payload as any)
             .select()
