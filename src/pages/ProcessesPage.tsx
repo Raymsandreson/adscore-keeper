@@ -264,6 +264,12 @@ export default function ProcessesPage() {
             <InssAdminProcessesTab />
           </Suspense>
         </TabsContent>
+
+        <TabsContent value="processual">
+          <Suspense fallback={<div className="text-center py-12 text-muted-foreground">Carregando...</div>}>
+            <ProcessualEmailsTab />
+          </Suspense>
+        </TabsContent>
       </Tabs>
 
 
