@@ -154,7 +154,7 @@ export const handler: RequestHandler = async (req, res) => {
       const ir: any = { checked: 0, inserted: 0, skipped: 0, errors: [] as string[] };
       perInbox[inbox.label] = ir;
       try {
-        const list = await gmailFetch('/users/me/messages', inbox.key, {
+        const list = await gmailFetch<{ messages?: GmailListItem[] }>('/users/me/messages', inbox.key, {
           q,
           maxResults: String(Math.min(maxMessages, 100)),
         });
@@ -164,7 +164,7 @@ export const handler: RequestHandler = async (req, res) => {
           ir.checked++;
           totalChecked++;
           try {
-            const msg: GmailMessage = await gmailFetch(`/users/me/messages/${it.id}`, inbox.key, { format: 'full' });
+            const msg = await gmailFetch<GmailMessage>(`/users/me/messages/${it.id}`, inbox.key, { format: 'full' });
             const subject = getHeader(msg, 'Subject') || '';
             const fromAddr = getHeader(msg, 'From') || '';
             const text = extractPlainText(msg);
