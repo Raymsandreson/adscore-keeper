@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Search, Mail, RefreshCw } from "lucide-react";
 import { format } from "date-fns";
@@ -34,6 +35,7 @@ export default function ProcessualEmailsTab() {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [search, setSearch] = useState("");
+  const [pushOnly, setPushOnly] = useState(false);
   const [page, setPage] = useState(1);
   const [emailView, setEmailView] = useState<{
     open: boolean; loading: boolean; subject: string | null; body: string | null; error: string | null;
@@ -104,17 +106,25 @@ export default function ProcessualEmailsTab() {
   };
 
   const filtered = useMemo(() => {
-    if (!search.trim()) return items;
+    let list = items;
+    if (pushOnly) {
+      list = list.filter((p) =>
+        (p.body_text && /PUSH/i.test(p.body_text)) ||
+        (p.snippet && /PUSH/i.test(p.snippet)) ||
+        (p.subject && /PUSH/i.test(p.subject))
+      );
+    }
+    if (!search.trim()) return list;
     const q = search.toLowerCase();
-    return items.filter((p) =>
+    return list.filter((p) =>
       p.subject?.toLowerCase().includes(q) ||
       p.from_addr?.toLowerCase().includes(q) ||
       p.snippet?.toLowerCase().includes(q) ||
       p.process_number?.toLowerCase().includes(q)
     );
-  }, [items, search]);
+  }, [items, search, pushOnly]);
 
-  useEffect(() => { setPage(1); }, [search]);
+  useEffect(() => { setPage(1); }, [search, pushOnly]);
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
@@ -130,10 +140,22 @@ export default function ProcessualEmailsTab() {
             className="pl-9"
           />
         </div>
-        <Button onClick={triggerSync} disabled={syncing} variant="outline" size="sm" className="gap-2">
-          <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
-          {syncing ? "Sincronizando..." : "Sincronizar agora"}
-        </Button>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <Switch
+              id="push-only"
+              checked={pushOnly}
+              onCheckedChange={setPushOnly}
+            />
+            <label htmlFor="push-only" className="text-sm cursor-pointer select-none">
+              Apenas PUSH
+            </label>
+          </div>
+          <Button onClick={triggerSync} disabled={syncing} variant="outline" size="sm" className="gap-2">
+            <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
+            {syncing ? "Sincronizando..." : "Sincronizar agora"}
+          </Button>
+        </div>
       </div>
 
       {loading ? (
