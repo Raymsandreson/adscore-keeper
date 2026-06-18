@@ -371,17 +371,7 @@ function ToolbarPlugin({
 
       <div className="w-px h-4 bg-border mx-0.5" />
 
-      <ToolBtn active={blockType === 'ul'} onClick={() => toggleList('ul')} title="Lista">
-        <List className="h-3.5 w-3.5" />
-      </ToolBtn>
-      <ToolBtn active={blockType === 'ol'} onClick={() => toggleList('ol')} title="Lista numerada">
-        <ListOrdered className="h-3.5 w-3.5" />
-      </ToolBtn>
-      <ToolBtn active={blockType === 'check'} onClick={() => toggleList('check')} title="Checklist">
-        <ListChecks className="h-3.5 w-3.5" />
-      </ToolBtn>
 
-      <div className="w-px h-4 bg-border mx-0.5" />
 
       <ToolBtn active={isLink} onClick={insertLink} title={isLink ? 'Remover link' : 'Inserir link'}>
         {isLink ? <Unlink className="h-3.5 w-3.5" /> : <Link2 className="h-3.5 w-3.5" />}
