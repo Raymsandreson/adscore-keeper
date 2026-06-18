@@ -283,7 +283,7 @@ function ToolbarPlugin({
   useEffect(() => () => { recognitionRef.current?.stop(); }, []);
 
   return (
-    <div className="sticky top-0 z-20 hidden group-hover/rte:flex group-focus-within/rte:flex shrink-0 items-center gap-0.5 border-b bg-background/95 px-1.5 py-1 backdrop-blur supports-[backdrop-filter]:bg-background/85 flex-wrap">
+    <div className="sticky top-0 z-20 flex shrink-0 items-center gap-0.5 border-b bg-background/95 px-1.5 py-1 backdrop-blur supports-[backdrop-filter]:bg-background/85 flex-nowrap overflow-x-auto scrollbar-none opacity-60 group-hover/rte:opacity-100 group-focus-within/rte:opacity-100 transition-opacity">
       {/* AI Edition */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
