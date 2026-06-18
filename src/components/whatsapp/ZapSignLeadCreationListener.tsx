@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
+import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -49,7 +49,7 @@ export function ZapSignLeadCreationListener() {
 
   // Load boards on demand
   const loadBoards = useCallback(async () => {
-    const { data } = await supabase
+    const { data } = await externalSupabase
       .from('kanban_boards')
       .select('id, name, stages')
       .order('display_order');
@@ -62,7 +62,7 @@ export function ZapSignLeadCreationListener() {
   useEffect(() => {
     if (!user?.id) return;
 
-    const channel = supabase
+    const channel = externalSupabase
       .channel('zapsign-signed-listener')
       .on(
         'postgres_changes',
@@ -98,7 +98,7 @@ export function ZapSignLeadCreationListener() {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      externalSupabase.removeChannel(channel);
     };
   }, [user?.id, dismissedDocs, loadBoards]);
 
@@ -108,7 +108,7 @@ export function ZapSignLeadCreationListener() {
     setCreating(true);
     try {
       // Re-fetch doc to avoid acting on stale realtime payload (other tab/another click already created)
-      const { data: freshDoc } = await supabase
+      const { data: freshDoc } = await externalSupabase
         .from('zapsign_documents')
         .select('id, lead_id, contact_id, status')
         .eq('id', pendingDoc.id)
@@ -130,12 +130,14 @@ export function ZapSignLeadCreationListener() {
 
       const phone = (pendingDoc.whatsapp_phone || pendingDoc.signer_phone || '').replace(/\D/g, '');
       const contactName = pendingDoc.signer_name || `Contato ${phone}`;
+      // Colunas de usuário no Externo usam UUID do auth Externo (remap obrigatório)
+      const extUserId = await remapToExternal(user.id);
 
       // 1. Find or create contact
       let contactId = freshDoc?.contact_id || pendingDoc.contact_id;
       if (!contactId && phone) {
         const last8 = phone.slice(-8);
-        const { data: existing } = await supabase
+        const { data: existing } = await externalSupabase
           .from('contacts')
           .select('id')
           .like('phone', `%${last8}`)
@@ -145,12 +147,12 @@ export function ZapSignLeadCreationListener() {
         if (existing) {
           contactId = existing.id;
         } else {
-          const { data: newContact, error: contactErr } = await supabase
+          const { data: newContact, error: contactErr } = await externalSupabase
             .from('contacts')
             .insert({
               full_name: contactName,
               phone,
-              created_by: user.id,
+              created_by: extUserId,
             })
             .select('id')
             .single();
@@ -161,7 +163,7 @@ export function ZapSignLeadCreationListener() {
       }
 
       // 2. Create lead as closed
-      const { data: newLead, error: leadErr } = await supabase
+      const { data: newLead, error: leadErr } = await externalSupabase
         .from('leads')
         .insert({
           lead_name: contactName,
@@ -170,7 +172,7 @@ export function ZapSignLeadCreationListener() {
           status: lastStage?.id || null,
           lead_status: 'closed',
           acolhedor: user.id,
-          created_by: user.id,
+          created_by: extUserId,
           action_source: 'manual',
         })
         .select('id')
@@ -187,14 +189,14 @@ export function ZapSignLeadCreationListener() {
             { onConflict: 'contact_id,lead_id', ignoreDuplicates: true }
           );
 
-        await supabase
+        await externalSupabase
           .from('contacts')
           .update({ lead_id: newLead.id })
           .eq('id', contactId);
       }
 
       // 4. Mark zapsign doc as processed (critical: blocks reopen)
-      await supabase
+      await externalSupabase
         .from('zapsign_documents')
         .update({ lead_id: newLead.id, contact_id: contactId })
         .eq('id', pendingDoc.id)
