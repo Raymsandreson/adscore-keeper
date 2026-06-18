@@ -177,6 +177,15 @@ export default function ProcessualEmailsTab() {
                     <div className="flex items-center gap-2 flex-wrap">
                       <Mail className="h-4 w-4 shrink-0 text-primary" />
                       <span className="font-medium truncate">{p.subject || "(sem assunto)"}</span>
+                      {(() => {
+                        const haystack = `${p.subject || ""} ${p.snippet || ""} ${p.body_text || ""}`;
+                        const hasDeadline = /\bprazo\b|intima(ç|c)(ã|a)o|intimad[oa]|ci(ê|e)ncia|dias?\s+(úteis|uteis|para)|fluir.{0,20}prazo/i.test(haystack);
+                        return hasDeadline ? (
+                          <Badge className="bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300 border-0 text-xs">
+                            Prazo
+                          </Badge>
+                        ) : null;
+                      })()}
                       {p.process_number && (
                         <Badge variant="outline" className="font-mono text-xs">{p.process_number}</Badge>
                       )}

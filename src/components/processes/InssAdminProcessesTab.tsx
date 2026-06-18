@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import ListPagination from "@/components/processes/ListPagination";
 import { LeadEditDialog } from "@/components/kanban/LeadEditDialog";
 import { useLeads, type Lead } from "@/hooks/useLeads";
@@ -331,12 +331,18 @@ export default function InssAdminProcessesTab() {
 
   const [userId, setUserId] = useState<string | null>(null);
 
+  const hasAutoSynced = useRef(false);
+
   useEffect(() => {
     (async () => {
       const { data } = await authClient.auth.getUser();
       setUserId(data.user?.id || null);
     })();
     loadProcesses();
+    if (!hasAutoSynced.current) {
+      hasAutoSynced.current = true;
+      triggerSync();
+    }
   }, []);
 
   const loadProcesses = async () => {
