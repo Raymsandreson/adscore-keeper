@@ -158,10 +158,6 @@ export default function ProcessualEmailsTab() {
               Apenas PUSH
             </label>
           </div>
-          <Button onClick={triggerSync} disabled={syncing} variant="outline" size="sm" className="gap-2">
-            <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
-            {syncing ? "Sincronizando..." : "Sincronizar agora"}
-          </Button>
         </div>
       </div>
 
