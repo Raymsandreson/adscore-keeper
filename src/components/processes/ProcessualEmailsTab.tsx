@@ -78,6 +78,13 @@ export default function ProcessualEmailsTab() {
     }
   }, [load]);
 
+  useEffect(() => {
+    if (!hasAutoSynced.current) {
+      hasAutoSynced.current = true;
+      triggerSync();
+    }
+  }, [triggerSync]);
+
   const openFullEmail = async (row: ProcessualEmail) => {
     if (row.body_text) {
       setEmailView({ open: true, loading: false, subject: row.subject, body: row.body_text, error: null });
