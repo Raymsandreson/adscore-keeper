@@ -1413,7 +1413,6 @@ Deno.serve(async (req) => {
           message_text: linkMessage,
           message_type: 'text',
           direction: 'outbound',
-          sender_name: 'Sistema',
           lead_id: leadData?.id || null,
           contact_id: leadData?.contact_id || null,
         } as any)
@@ -1587,7 +1586,6 @@ Deno.serve(async (req) => {
           message_text: summaryMessage,
           message_type: 'text',
           direction: 'outbound',
-          sender_name: 'Sistema',
           lead_id: leadData?.id || null,
         } as any)
       } else {
