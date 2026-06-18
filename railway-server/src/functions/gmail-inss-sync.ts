@@ -190,17 +190,21 @@ async function gmailFetch(path: string, gmailKey: string, params?: Record<string
   return resp.json();
 }
 
-/** Lê a lista de caixas Gmail configuradas (adm + processual etc.). */
+/** Lê a lista de caixas Gmail configuradas (adm + processual etc.).
+ * Se INSS_INBOXES estiver definido (ex: "inbox#1,inbox#2"), filtra só essas
+ * para o sync do INSS — evita que a caixa Processual seja varrida aqui.
+ */
 function getInboxKeys(): Array<{ label: string; key: string }> {
   const inboxes: Array<{ label: string; key: string }> = [];
   if (process.env.GOOGLE_MAIL_API_KEY) inboxes.push({ label: 'inbox#1', key: process.env.GOOGLE_MAIL_API_KEY });
   if (process.env.GOOGLE_MAIL_API_KEY_1) inboxes.push({ label: 'inbox#2', key: process.env.GOOGLE_MAIL_API_KEY_1 });
-  // Suporte futuro: GOOGLE_MAIL_API_KEY_2, _3 ...
   for (let i = 2; i <= 5; i++) {
     const k = process.env[`GOOGLE_MAIL_API_KEY_${i}`];
     if (k) inboxes.push({ label: `inbox#${i + 1}`, key: k });
   }
-  return inboxes;
+  const allow = (process.env.INSS_INBOXES || '').split(',').map((s) => s.trim()).filter(Boolean);
+  if (allow.length === 0) return inboxes;
+  return inboxes.filter((i) => allow.includes(i.label));
 }
 
 interface SyncCursor {

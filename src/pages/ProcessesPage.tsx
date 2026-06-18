@@ -15,6 +15,7 @@ import { toast } from "sonner";
 const PAGE_SIZE = 25;
 const ProcessDetailSheet = lazy(() => import("@/components/cases/ProcessDetailSheet"));
 const InssAdminProcessesTab = lazy(() => import("@/components/processes/InssAdminProcessesTab"));
+const ProcessualEmailsTab = lazy(() => import("@/components/processes/ProcessualEmailsTab"));
 
 interface Process {
   id: string;
@@ -131,6 +132,9 @@ export default function ProcessesPage() {
           </TabsTrigger>
           <TabsTrigger value="inss" className="gap-2">
             <Mail className="h-4 w-4" /> INSS Administrativo
+          </TabsTrigger>
+          <TabsTrigger value="processual" className="gap-2">
+            <Mail className="h-4 w-4" /> Processual
           </TabsTrigger>
         </TabsList>
 
@@ -258,6 +262,12 @@ export default function ProcessesPage() {
         <TabsContent value="inss">
           <Suspense fallback={<div className="text-center py-12 text-muted-foreground">Carregando...</div>}>
             <InssAdminProcessesTab />
+          </Suspense>
+        </TabsContent>
+
+        <TabsContent value="processual">
+          <Suspense fallback={<div className="text-center py-12 text-muted-foreground">Carregando...</div>}>
+            <ProcessualEmailsTab />
           </Suspense>
         </TabsContent>
       </Tabs>
