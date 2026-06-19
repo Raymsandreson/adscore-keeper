@@ -20,6 +20,7 @@ export const INSS_REQUERIMENTO_FIELD_ID = '111f9a38-98c3-4f83-9095-5c469106a7bf'
 
 export type MatchSource =
   | 'process_number'
+  | 'benefit_number'
   | 'custom_field'
   | 'activity_title'
   | 'cpf_lead'
@@ -30,6 +31,7 @@ export interface MatchInput {
   requerimento?: string | null;
   cpf?: string | null;
   nome?: string | null;
+  beneficio_num?: string | null;
 }
 
 export interface MatchResult {
@@ -43,6 +45,7 @@ export async function findInssOrphanMatch(input: MatchInput): Promise<MatchResul
   const reqDigits = requerimento.replace(/\D/g, '');
   const cpfDigits = String(input.cpf || '').replace(/\D/g, '');
   const nome = String(input.nome || '').trim();
+  const nbDigits = String(input.beneficio_num || '').replace(/\D/g, '');
 
   let leadId: string | null = null;
   let caseId: string | null = null;
@@ -64,6 +67,39 @@ export async function findInssOrphanMatch(input: MatchInput): Promise<MatchResul
       source = 'process_number';
     }
   }
+
+  // 0b) nº do BENEFÍCIO (NB) — bate em lead_processes.process_number/title,
+  // descrição ou em lead_custom_field_values. NB é tão único quanto requerimento
+  // e aparece em e-mails de cessação/revisão/etc onde o requerimento muda mas
+  // o benefício é o mesmo.
+  if (!leadId && nbDigits && nbDigits.length >= 6) {
+    const { data: procByNb } = await supabase
+      .from('lead_processes')
+      .select('lead_id, case_id')
+      .or(`process_number.ilike.%${nbDigits}%,title.ilike.%${nbDigits}%,description.ilike.%${nbDigits}%`)
+      .not('case_id', 'is', null)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (procByNb?.case_id || procByNb?.lead_id) {
+      leadId = (procByNb as any).lead_id || null;
+      caseId = (procByNb as any).case_id || null;
+      source = 'benefit_number';
+    }
+    if (!leadId) {
+      const { data: cfvNb } = await supabase
+        .from('lead_custom_field_values')
+        .select('lead_id')
+        .ilike('value_text', `%${nbDigits}%`)
+        .limit(1)
+        .maybeSingle();
+      if (cfvNb?.lead_id) {
+        leadId = cfvNb.lead_id;
+        source = 'benefit_number';
+      }
+    }
+  }
+
 
   // 1) custom field "Nº Requerimento INSS"
   if (!leadId && requerimento) {
