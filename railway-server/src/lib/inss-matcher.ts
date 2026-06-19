@@ -189,19 +189,53 @@ export async function findInssOrphanMatch(input: MatchInput): Promise<MatchResul
     }
   }
 
-  // 5) nome do segurado bate com lead_name/victim_name
+  // 5) nome do segurado — tokenizado: primeiro+último token significativo precisam
+  //    estar em victim_name OU em contacts.full_name (via contact_leads).
+  //    Não usa lead_name (apelido) como sinal primário pra evitar falsos positivos.
   if (!leadId && nome.length >= 6) {
-    const { data: leadByName } = await supabase
-      .from('leads')
-      .select('id')
-      .or(`lead_name.ilike.${nome},victim_name.ilike.${nome}`)
-      .is('deleted_at', null)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (leadByName?.id) {
-      leadId = leadByName.id;
-      source = 'name_lead';
+    const STOPWORDS = new Set(['DA','DE','DO','DAS','DOS','E','DI','DU','JR','JUNIOR','NETO','FILHO','FILHA']);
+    const normalize = (s: string) => String(s||'')
+      .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+      .toUpperCase().replace(/[^A-Z0-9\s]/g,' ').replace(/\s+/g,' ').trim();
+    const tokens = normalize(nome).split(' ').filter((t) => t.length >= 3 && !STOPWORDS.has(t));
+    if (tokens.length >= 2) {
+      const first = tokens[0];
+      const last = tokens[tokens.length - 1];
+      const containsBoth = (s: string) => {
+        const n = normalize(s);
+        return n.includes(first) && n.includes(last);
+      };
+      const candidates = new Set<string>();
+
+      const { data: byVictim } = await supabase
+        .from('leads')
+        .select('id, victim_name')
+        .ilike('victim_name', `%${last}%`)
+        .is('deleted_at', null)
+        .limit(30);
+      for (const l of (byVictim || []) as any[]) {
+        if (containsBoth(l.victim_name || '')) candidates.add(l.id);
+      }
+
+      const { data: byContact } = await supabase
+        .from('contacts')
+        .select('id, full_name, lead_id')
+        .ilike('full_name', `%${last}%`)
+        .limit(30);
+      for (const c of (byContact || []) as any[]) {
+        if (!containsBoth(c.full_name || '')) continue;
+        if (c.lead_id) candidates.add(c.lead_id);
+        const { data: cl } = await supabase
+          .from('contact_leads').select('lead_id').eq('contact_id', c.id);
+        for (const link of (cl || []) as any[]) {
+          if (link.lead_id) candidates.add(link.lead_id);
+        }
+      }
+
+      if (candidates.size === 1) {
+        leadId = Array.from(candidates)[0];
+        source = 'name_lead';
+      }
     }
   }
 
