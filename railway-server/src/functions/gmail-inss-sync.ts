@@ -170,6 +170,13 @@ function parseInssSubject(subject: string, body: string): {
   return out;
 }
 
+function isLikelyInssAdminEmail(subject: string, fromAddr: string, body: string): boolean {
+  const haystack = `${subject}\n${fromAddr}\n${body.slice(0, 2000)}`;
+  if (/\[INSS\]|Meu\s+INSS|Instituto\s+Nacional\s+do\s+Seguro\s+Social|inss\.gov\.br/i.test(haystack)) return true;
+  if (/requerimento\s+\d{6,12}/i.test(haystack) && /benef[íi]cio|segurado|Prezad[oa]\(a\)\s*Sr\(a\)/i.test(haystack)) return true;
+  return false;
+}
+
 async function gmailFetch(path: string, gmailKey: string, params?: Record<string, string>): Promise<any> {
   const url = new URL(`${GATEWAY_BASE}${path}`);
   if (params) Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
@@ -314,6 +321,7 @@ export const handler: RequestHandler = async (req, res) => {
           format: 'full',
         });
         const subject = getHeader(msg, 'Subject') || '';
+        const fromAddr = getHeader(msg, 'From') || '';
         const body = extractPlainText(msg);
         const receivedAt = msg.internalDate
           ? new Date(Number(msg.internalDate)).toISOString()
@@ -326,6 +334,14 @@ export const handler: RequestHandler = async (req, res) => {
         if (!globalNewest || receivedAt > globalNewest) globalNewest = receivedAt;
 
         const parsed = parseInssSubject(subject, body);
+
+        // Segurança contra filtros amplos do Gmail: se a mensagem não parece ser
+        // administrativa do INSS, ignora sem gravar PARSE_FAILED. Assim e-mails
+        // processuais/LinkedIn/billing não poluem o histórico nem bloqueiam a UI.
+        if (!isLikelyInssAdminEmail(subject, fromAddr, body)) {
+          inboxResult.skipped_non_inss = (inboxResult.skipped_non_inss || 0) + 1;
+          return;
+        }
 
         // Em dry_run só conta, não grava nada
         if (dryRun) return;
@@ -505,12 +521,10 @@ export const handler: RequestHandler = async (req, res) => {
 
         monthLoop:
         for (const ym of monthsToScan) {
-          // Filtro super-relaxado: pega qualquer e-mail que mencione INSS no
-          // assunto OU venha dos domínios oficiais do gov. O parser depois
-          // descarta o que não tiver requerimento (vira PARSE_FAILED, não cria
-          // processo). Antes só `[INSS]` perdia variantes como "INSS Digital",
-          // "Meu INSS" sem colchete, e e-mails de "meuinss@", "naoresponder@".
-          const baseFilter = '(subject:INSS OR from:inss.gov.br OR from:meuinss OR from:noreply OR from:naoresponder)';
+          // Filtro restrito: e-mails genéricos de noreply/naoresponder trazem
+          // Push processual, LinkedIn e billing. Esses itens viravam PARSE_FAILED
+          // e consumiam o orçamento/rate-limit antes dos e-mails administrativos.
+          const baseFilter = '(subject:INSS OR subject:"Meu INSS" OR from:inss.gov.br OR from:meu.inss.gov.br)';
           const gmailQuery = backfill && ym
             ? (() => {
                 const { after, before } = monthWindow(ym);
