@@ -170,7 +170,27 @@ function parseInssSubject(subject: string, body: string): {
   return out;
 }
 
+/**
+ * Detecta e-mail de Push de tribunal/processo judicial (PJe, TRT, TJ, Eproc).
+ * Esses e-mails citam "Instituto Nacional do Seguro Social" no corpo quando o
+ * INSS é parte da ação — o que enganava isLikelyInssAdminEmail e os fazia virar
+ * PARSE_FAILED no inss_status_history. NÃO são e-mails administrativos do INSS.
+ */
+function isProcessualOrCourtEmail(subject: string, body: string): boolean {
+  const subj = subject || '';
+  // Assuntos típicos do Push judicial.
+  if (/^\s*\[(?:push|trt\s*\d*|tj[a-z]{2}|pje|eproc)\]/i.test(subj)) return true;
+  if (/movimenta[çc][ãa]o\s+processual|atualiza[çc][õo]es\s+de\s+informa[çc][õo]es\s+processuais|novos\s+arquivos\s+encontrados\s+do\s+processo/i.test(subj)) return true;
+  // Corpo: assinatura inconfundível do serviço de acompanhamento dos tribunais.
+  const hay = `${subj}\n${(body || '').slice(0, 1500)}`;
+  if (/pje\s*push|servi[çc]o\s+de\s+acompanhamento\s+autom[áa]tico\s+de\s+processos|tribunal\s+(?:regional\s+do\s+trabalho|de\s+justi[çc]a|superior)/i.test(hay)) return true;
+  return false;
+}
+
 function isLikelyInssAdminEmail(subject: string, fromAddr: string, body: string): boolean {
+  // Precedência: Push de tribunal/processo NUNCA é e-mail administrativo do INSS,
+  // mesmo que o corpo mencione o INSS como parte da ação.
+  if (isProcessualOrCourtEmail(subject, body)) return false;
   const haystack = `${subject}\n${fromAddr}\n${body.slice(0, 2000)}`;
   if (/\[INSS\]|Meu\s+INSS|Instituto\s+Nacional\s+do\s+Seguro\s+Social|inss\.gov\.br/i.test(haystack)) return true;
   if (/requerimento\s+\d{6,12}/i.test(haystack) && /benef[íi]cio|segurado|Prezad[oa]\(a\)\s*Sr\(a\)/i.test(haystack)) return true;
