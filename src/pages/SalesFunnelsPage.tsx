@@ -12,6 +12,7 @@ import { StageFunnelChart } from "@/components/kanban/StageFunnelChart";
 import { BpcFunnelBars } from "@/components/kanban/BpcFunnelBars";
 import { BpcFormLeadsSheet } from "@/components/whatsapp/FocusDashboard/BpcFormLeadsSheet";
 import { useBpcFormLeads } from "@/hooks/useBpcFormLeads";
+import { useEnsureStageLabels } from "@/hooks/useEnsureStageLabels";
 import { cn } from "@/lib/utils";
 import { Progress } from "@/components/ui/progress";
 import { WorkflowBuilder } from "@/components/workflow/WorkflowBuilder";
