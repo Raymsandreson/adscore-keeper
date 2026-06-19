@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Search, FileText, ExternalLink, Calendar, Building2, Briefcase, Trash2, Mail } from "lucide-react";
+import { Search, FileText, ExternalLink, Calendar, Building2, Briefcase, Trash2, Mail, Gavel } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import ListPagination from "@/components/processes/ListPagination";
 import { format } from "date-fns";
@@ -16,6 +16,7 @@ const PAGE_SIZE = 25;
 const ProcessDetailSheet = lazy(() => import("@/components/cases/ProcessDetailSheet"));
 const InssAdminProcessesTab = lazy(() => import("@/components/processes/InssAdminProcessesTab"));
 const ProcessualEmailsTab = lazy(() => import("@/components/processes/ProcessualEmailsTab"));
+const HearingsModule = lazy(() => import("@/components/hearings/HearingsModule"));
 
 interface Process {
   id: string;
@@ -135,6 +136,9 @@ export default function ProcessesPage() {
           </TabsTrigger>
           <TabsTrigger value="processual" className="gap-2">
             <Mail className="h-4 w-4" /> Processual
+          </TabsTrigger>
+          <TabsTrigger value="audiencias" className="gap-2">
+            <Gavel className="h-4 w-4" /> Audiências
           </TabsTrigger>
         </TabsList>
 
@@ -268,6 +272,12 @@ export default function ProcessesPage() {
         <TabsContent value="processual">
           <Suspense fallback={<div className="text-center py-12 text-muted-foreground">Carregando...</div>}>
             <ProcessualEmailsTab />
+          </Suspense>
+        </TabsContent>
+
+        <TabsContent value="audiencias">
+          <Suspense fallback={<div className="text-center py-12 text-muted-foreground">Carregando...</div>}>
+            <HearingsModule />
           </Suspense>
         </TabsContent>
       </Tabs>

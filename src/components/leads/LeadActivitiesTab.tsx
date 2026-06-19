@@ -9,9 +9,9 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { toast } from 'sonner';
-import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
-import { Plus, CheckCircle2, Clock, AlertCircle, Loader2, ListTodo, Sparkles, ChevronDown, ChevronRight } from 'lucide-react';
+import { format, parseISO, startOfDay, differenceInCalendarDays } from 'date-fns';
+import { Plus, CheckCircle2, Calendar, Loader2, ListTodo, Sparkles, ChevronDown, ChevronRight } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { useActivityTypes } from '@/hooks/useActivityTypes';
 import { useProfilesList } from '@/hooks/useProfilesList';
 import { useTimeBlockSettings } from '@/hooks/useTimeBlockSettings';
@@ -76,6 +76,45 @@ const loadLeadActivities = async (leadId: string, force = false): Promise<LeadAc
 
 export const prefetchLeadActivities = async (leadId: string) => {
   await loadLeadActivities(leadId, true);
+};
+
+// Situação temporal derivada (mesma lógica da ActivitiesPage): a fita do topo
+// codifica a situação (atrasada/vence hoje/concluída/pendente), não a prioridade.
+type TemporalStatus = 'atrasada' | 'hoje' | 'pendente' | 'concluida';
+
+const getTemporalStatus = (a: { status?: string | null; deadline?: string | null }): TemporalStatus => {
+  if (a.status === 'concluida') return 'concluida';
+  if (a.deadline) {
+    try {
+      const diff = differenceInCalendarDays(startOfDay(parseISO(a.deadline)), startOfDay(new Date()));
+      if (diff < 0) return 'atrasada';
+      if (diff === 0) return 'hoje';
+    } catch { /* deadline inválido: trata como pendente */ }
+  }
+  return 'pendente';
+};
+
+const statusRibbonLabels: Record<string, string> = {
+  pendente: 'Pendente',
+  em_andamento: 'Em Andamento',
+  concluida: 'Concluída',
+};
+
+const getTemporalRibbon = (
+  a: { status?: string | null; deadline?: string | null },
+): { className: string; label: string } => {
+  const ts = getTemporalStatus(a);
+  if (ts === 'atrasada') {
+    const dias = a.deadline
+      ? Math.abs(differenceInCalendarDays(startOfDay(parseISO(a.deadline)), startOfDay(new Date())))
+      : 0;
+    const sufixo = dias === 1 ? 'venceu há 1 dia' : dias > 1 ? `venceu há ${dias} dias` : 'venceu';
+    return { className: 'bg-red-600 text-white', label: `Atrasada · ${sufixo}` };
+  }
+  if (ts === 'hoje') return { className: 'bg-amber-500 text-white', label: 'Vence hoje' };
+  if (ts === 'concluida') return { className: 'bg-emerald-600 text-white', label: 'Concluída' };
+  const rawLabel = statusRibbonLabels[a.status || ''] || 'Pendente';
+  return { className: 'bg-muted text-muted-foreground border-b border-border/50', label: rawLabel };
 };
 
 interface LeadActivitiesTabProps {
@@ -247,12 +286,6 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
     }
   };
 
-  const statusIcon = (status: string) => {
-    if (status === 'concluida') return <CheckCircle2 className="h-4 w-4 text-green-500" />;
-    if (status === 'em_andamento') return <Clock className="h-4 w-4 text-yellow-500" />;
-    return <AlertCircle className="h-4 w-4 text-red-500" />;
-  };
-
   const getTypeLabel = (key: string) => {
     const found = activityTypes.find(t => t.key === key);
     return found?.label || key;
@@ -323,51 +356,71 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
         ) : (
           <div className="space-y-2">
             {activities.map(a => {
+              const ribbon = getTemporalRibbon(a);
               const prio = priorityStyle(a.priority);
               return (
               <div
                 key={a.id}
-                className="border rounded-lg overflow-hidden hover:bg-muted/30 transition-colors cursor-pointer"
+                className={cn(
+                  "bg-card rounded-lg shadow-sm border border-border/50 cursor-pointer transition-all hover:shadow-md active:scale-[0.99] overflow-hidden",
+                  a.status === 'concluida' && "opacity-60"
+                )}
                 onClick={() => openEdit(a)}
               >
-                <div
-                  className="flex items-center justify-between px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-white"
-                  style={{ backgroundColor: prio.bg }}
-                >
-                  <span>{prio.label}</span>
-                  {a.deadline && (
-                    <span className="opacity-90 normal-case font-medium">
-                      {format(new Date(a.deadline), "dd/MM HH:mm", { locale: ptBR })}
-                    </span>
-                  )}
+                {/* Fita de situação (topo) — codifica a situação temporal, não a prioridade */}
+                <div className={cn("px-3 py-1 text-[10px] font-semibold tracking-wide", ribbon.className)}>
+                  {ribbon.label}
                 </div>
-                <div className="flex items-center gap-3 p-3">
-                  <button
-                    onClick={e => { e.stopPropagation(); if (a.status !== 'concluida') handleComplete(a.id); }}
-                    className="shrink-0"
-                  >
-                    {statusIcon(a.status)}
-                  </button>
-                  <div className="flex-1 min-w-0">
-                    <p className={`text-sm font-medium truncate ${a.status === 'concluida' ? 'line-through text-muted-foreground' : ''}`}>
-                      {a.title}
-                    </p>
-                    <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                <div className="p-3">
+                  {/* Linha de cima: badges + ação concluir */}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-1.5 flex-wrap flex-1">
                       <Badge variant="outline" className="text-[10px] px-1.5 py-0 gap-1" style={{ borderColor: getTypeColor(a.activity_type) }}>
                         <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: getTypeColor(a.activity_type) }} />
                         {getTypeLabel(a.activity_type)}
                       </Badge>
+                      {a.priority && a.priority !== 'normal' && (
+                        <span className="flex items-center gap-1 text-[10px] font-medium" style={{ color: prio.bg }}>
+                          <span className="h-1.5 w-1.5 rounded-full shrink-0" style={{ backgroundColor: prio.bg }} />
+                          {prio.label}
+                        </span>
+                      )}
                       {a.matrix_quadrant && quadrantLabels[a.matrix_quadrant] && (
                         <span className="text-[10px] text-muted-foreground">
                           {quadrantLabels[a.matrix_quadrant]}
                         </span>
                       )}
-                      {a.assigned_to_name && (
-                        <span className="text-[10px] text-muted-foreground truncate max-w-[80px]">
-                          {a.assigned_to_name}
+                    </div>
+                    {a.status !== 'concluida' && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 text-green-600 hover:text-green-700 hover:bg-green-50 shrink-0"
+                        onClick={e => { e.stopPropagation(); handleComplete(a.id); }}
+                        title="Concluir"
+                      >
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
+                  </div>
+
+                  {/* Título */}
+                  <h3 className={cn("font-medium text-sm mt-1.5 leading-snug", a.status === 'concluida' && "line-through text-muted-foreground")}>
+                    {a.title}
+                  </h3>
+
+                  {/* Rodapé: prazo + responsável + criação */}
+                  <div className="flex items-center justify-between mt-2 text-[10px] text-muted-foreground">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {a.deadline && (
+                        <span className={cn("flex items-center gap-0.5", getTemporalStatus(a) === 'atrasada' && "text-red-600 dark:text-red-400 font-semibold")}>
+                          <Calendar className="h-3 w-3" />
+                          {format(parseISO(a.deadline), 'dd/MM/yyyy')}
                         </span>
                       )}
+                      {a.assigned_to_name && <span>• {a.assigned_to_name}</span>}
                     </div>
+                    <span>{format(parseISO(a.created_at), "dd/MM 'às' HH:mm")}</span>
                   </div>
                 </div>
               </div>

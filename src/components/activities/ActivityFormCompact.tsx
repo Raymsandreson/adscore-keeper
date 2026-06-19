@@ -13,7 +13,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { Search, X, ChevronDown, Copy, Loader2, UserPlus, Building2, Briefcase, Send, Info, Settings2, FileText, Plus } from 'lucide-react';
+import { Search, X, ChevronDown, Copy, Loader2, UserPlus, Building2, Briefcase, Send, Info, Settings2, FileText, Plus, Mic } from 'lucide-react';
 import { ActivityTTSButton } from '@/components/voice/ActivityTTSButton';
 import { ActivityFieldSettingsDialog } from '@/components/activities/ActivityFieldSettingsDialog';
 import { ActivityMessageTemplateSettings } from '@/components/activities/ActivityMessageTemplateSettings';
@@ -135,7 +135,7 @@ const MATRIX_OPTIONS = [
   { value: 'eliminate', emoji: '🗑️', label: 'Retirar', color: 'border-muted bg-muted/50 text-muted-foreground', active: 'border-muted-foreground bg-muted-foreground text-background' },
 ];
 
-export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFieldSetting, reorderFields, formLeadIdForTTS, formContactIdForTTS, formAssignedTo }: {
+export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFieldSetting, reorderFields, formLeadIdForTTS, formContactIdForTTS, formAssignedTo, activityId }: {
   buildMsg: () => string;
   leadId: string;
   fieldSettings: any[];
@@ -144,12 +144,56 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
   formLeadIdForTTS?: string;
   formContactIdForTTS?: string;
   formAssignedTo?: string;
+  activityId?: string;
 }) {
   const [sending, setSending] = useState(false);
   const { user } = useAuthContext();
   const { isAdmin } = useUserRole();
   const [instances, setInstances] = useState<{ id: string; instance_name: string }[]>([]);
   const [selectedInstanceId, setSelectedInstanceId] = useState<string>('');
+  // Gravação de ligação anexada à atividade (para enviar junto, se o usuário quiser).
+  const [recordingUrl, setRecordingUrl] = useState<string | null>(null);
+  const [recordingMime, setRecordingMime] = useState<string>('audio/webm');
+  const [includeRecording, setIncludeRecording] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!activityId) { setRecordingUrl(null); setIncludeRecording(false); return; }
+      const { data } = await externalSupabase
+        .from('activity_attachments')
+        .select('file_url, file_type')
+        .eq('activity_id', activityId)
+        .eq('attachment_type', 'audio')
+        .order('created_at', { ascending: false })
+        .limit(1);
+      if (cancelled) return;
+      const rec = (data || [])[0] as { file_url?: string; file_type?: string } | undefined;
+      setRecordingUrl(rec?.file_url || null);
+      setRecordingMime(rec?.file_type || 'audio/webm');
+      if (!rec) setIncludeRecording(false);
+    })();
+    return () => { cancelled = true; };
+  }, [activityId]);
+
+  const sendRecording = async (phone: string, chatId?: string, instanceId?: string) => {
+    if (!recordingUrl) return;
+    const body: Record<string, any> = {
+      action: 'send_media',
+      phone,
+      chat_id: chatId || phone,
+      media_url: recordingUrl,
+      media_type: recordingMime || 'audio/webm',
+      lead_id: leadId || null,
+    };
+    if (instanceId) body.instance_id = instanceId;
+    try {
+      await cloudFunctions.invoke('send-whatsapp', { body });
+    } catch (e) {
+      console.error('Erro ao enviar gravação:', e);
+      toast.error('Texto enviado, mas falhou ao enviar a gravação.');
+    }
+  };
 
   // Lista as instâncias que o usuário pode usar para enviar (Externo = fonte da verdade).
   useEffect(() => {
@@ -223,6 +267,9 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
             }
           } else {
             toast.success(`Mensagem enviada para ${profile?.full_name || 'o assessor'} no WhatsApp!`);
+            if (includeRecording && recordingUrl) {
+              await sendRecording((profile!.phone as string).replace(/\D/g, ''), undefined, selectedInstanceId || (profile!.default_instance_id as string));
+            }
           }
         } else {
           // Fallback: send via internal Team Chat
@@ -325,6 +372,9 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
         }
       } else {
         toast.success('Mensagem enviada ao grupo!');
+        if (includeRecording && recordingUrl) {
+          await sendRecording(groupId, groupId, instanceId);
+        }
       }
     } catch (e: any) {
       toast.error(e.message || 'Erro ao enviar');
@@ -352,6 +402,20 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
             ))}
           </SelectContent>
         </Select>
+      )}
+      {recordingUrl && (
+        <label
+          className="flex items-center gap-1 h-8 px-2 rounded-md border text-xs cursor-pointer select-none"
+          title="Enviar também a gravação da ligação junto com a mensagem"
+        >
+          <input
+            type="checkbox"
+            checked={includeRecording}
+            onChange={(e) => setIncludeRecording(e.target.checked)}
+            className="h-3.5 w-3.5 accent-primary"
+          />
+          <Mic className="h-3.5 w-3.5 text-red-500" /> Gravação
+        </label>
       )}
       <Button type="button" variant="default" size="sm" className="gap-1 h-8 text-xs" onClick={handleSendToGroup} disabled={sending}>
         {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
