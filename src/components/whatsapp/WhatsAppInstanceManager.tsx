@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Plus, Pencil, Trash2, Smartphone, Wifi, WifiOff, Phone, Globe, Key, CheckCircle2, RefreshCw, Bot, Volume2, AlertTriangle, Loader2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, Smartphone, Wifi, WifiOff, Phone, Globe, Key, CheckCircle2, RefreshCw, Bot, Volume2, AlertTriangle, Loader2, Eraser } from 'lucide-react';
 import { toast } from 'sonner';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
@@ -529,6 +529,30 @@ export function WhatsAppInstanceManager() {
                         onCheckedChange={() => toggleActive(inst)}
                       />
                     </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-amber-600 hover:text-amber-700"
+                      title="Limpar etiquetas de agente (🤖) desta instância"
+                      onClick={async () => {
+                        if (!confirm(`Apagar TODAS as etiquetas de agente (🤖) da instância "${inst.instance_name}"?\n\nIsso remove os rótulos do WhatsApp Web/mobile e desativa o agente nesta instância pra não recriar.`)) return;
+                        const t = toast.loading(`Limpando etiquetas de "${inst.instance_name}"...`);
+                        try {
+                          const { data, error } = await cloudFunctions.invoke('wipe-instance-agent-labels', {
+                            body: { instance_name: inst.instance_name, also_disable_settings: true },
+                          });
+                          if (error || !data?.success) {
+                            toast.error(`Falhou: ${data?.error || error?.message || 'erro'}`, { id: t });
+                            return;
+                          }
+                          toast.success(`✅ ${data.deleted || 0} etiqueta(s) removida(s)${data.failed ? ` — ${data.failed} falhou` : ''}`, { id: t });
+                        } catch (e: any) {
+                          toast.error(`Erro: ${e?.message || 'desconhecido'}`, { id: t });
+                        }
+                      }}
+                    >
+                      <Eraser className="h-3.5 w-3.5" />
+                    </Button>
                     <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(inst)}>
                       <Pencil className="h-3.5 w-3.5" />
                     </Button>

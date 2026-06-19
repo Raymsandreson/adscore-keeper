@@ -23,13 +23,14 @@ const COLOR_INACTIVE = 9; // cinza
 
 export const handler: RequestHandler = async (req, res) => {
   try {
-    const { agent_id, operation } = (req.body || {}) as { agent_id?: string; operation?: 'upsert' | 'delete' };
+    const { agent_id, operation, only_instance_name } = (req.body || {}) as { agent_id?: string; operation?: 'upsert' | 'delete'; only_instance_name?: string };
     if (!agent_id || typeof agent_id !== 'string') {
       return res.json({ success: false, error: 'agent_id é obrigatório' });
     }
     if (operation !== 'upsert' && operation !== 'delete') {
       return res.json({ success: false, error: "operation deve ser 'upsert' ou 'delete'" });
     }
+    const onlyInstanceLower = only_instance_name ? String(only_instance_name).toLowerCase() : null;
 
     const { data: agent, error: agentErr } = await ext
       .from('wjia_command_shortcuts')
@@ -72,10 +73,13 @@ export const handler: RequestHandler = async (req, res) => {
       targetQuery = targetQuery.eq('default_agent_id', agent_id);
     }
 
-    const { data: instances, error: instErr } = await targetQuery;
+    const { data: instancesRaw, error: instErr } = await targetQuery;
     if (instErr) return res.json({ success: false, error: `instances lookup: ${instErr.message}` });
+    const instances = onlyInstanceLower
+      ? (instancesRaw || []).filter((i: any) => String(i.instance_name).toLowerCase() === onlyInstanceLower)
+      : (instancesRaw || []);
     if (!instances || instances.length === 0) {
-      return res.json({ success: true, agent_id, agent_name: agentName, operation: effectiveOp, results: [], note: 'Agente não tem instâncias atribuídas (agent_instance_settings ou default_agent_id). Sync ignorado.' });
+      return res.json({ success: true, agent_id, agent_name: agentName, operation: effectiveOp, results: [], note: onlyInstanceLower ? `Instância ${only_instance_name} não está nas instâncias alvo do agente.` : 'Agente não tem instâncias atribuídas (agent_instance_settings ou default_agent_id). Sync ignorado.' });
     }
 
     const { data: existingMappings } = await ext
