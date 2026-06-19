@@ -11,6 +11,7 @@ import { useBpcFormLeads } from "@/hooks/useBpcFormLeads";
 import { useProfileNames } from "@/hooks/useProfileNames";
 import { BpcFunnelBars } from "@/components/kanban/BpcFunnelBars";
 import { BpcFormLeadsSheet } from "@/components/whatsapp/FocusDashboard/BpcFormLeadsSheet";
+import { buildBpcAcolhedorFilter, leadMatchesFilter } from "@/lib/bpcPhoneMatch";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
