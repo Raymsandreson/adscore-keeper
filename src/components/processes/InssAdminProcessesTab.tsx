@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import ListPagination from "@/components/processes/ListPagination";
 import { LeadEditDialog } from "@/components/kanban/LeadEditDialog";
+import InssAdminPushEmailView from "@/components/processes/InssAdminPushEmailView";
 import { useLeads, type Lead } from "@/hooks/useLeads";
 import { useKanbanBoards } from "@/hooks/useKanbanBoards";
 import { db } from "@/integrations/supabase";
