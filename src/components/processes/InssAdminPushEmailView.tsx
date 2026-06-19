@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -6,7 +7,7 @@ import {
 import { Button } from "@/components/ui/button";
 import {
   User, FileText, Briefcase, Calendar, MapPin, Activity,
-  Gavel, ExternalLink, ChevronDown, Info,
+  Gavel, ExternalLink, ChevronDown, Info, Copy, Check,
 } from "lucide-react";
 
 interface ParsedInssEmail {
@@ -19,7 +20,6 @@ interface ParsedInssEmail {
   statusAtual?: string;
   despacho?: string;
   links?: string[];
-  rodape?: string;
 }
 
 const statusColor = (s?: string) => {
@@ -33,47 +33,58 @@ const statusColor = (s?: string) => {
   return "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300";
 };
 
-/** Extrai valor da linha `Label: valor` (label canônica). */
-function fieldLine(text: string, label: string): string | undefined {
-  const re = new RegExp(`^\\s*${label}\\s*:\\s*(.+?)\\s*$`, "im");
+/**
+ * Extrai o valor de `Label: valor` mesmo quando o texto está colapsado
+ * em uma única linha (caso típico após stripping de HTML).
+ * Para no próximo rótulo conhecido, em quebra de linha ou no fim do texto.
+ */
+function pickField(text: string, label: RegExp, stops: RegExp): string | undefined {
+  const re = new RegExp(
+    `${label.source}\\s*[:\\-]\\s*([\\s\\S]*?)(?=${stops.source}|\\n|$)`,
+    "i",
+  );
   const m = text.match(re);
-  return m?.[1]?.trim();
+  const v = m?.[1]?.trim().replace(/\s{2,}/g, " ");
+  return v && v.length ? v : undefined;
 }
 
+const LABEL_STOPS =
+  /Protocolo|Servi[çc]o|Data do Protocolo|Unidade respons[áa]vel|Status atual|Despacho|É\s+poss[íi]vel|Atenciosamente|Instituto Nacional/i;
+
 export function parseInssAdminEmail(raw: string): ParsedInssEmail {
-  const text = (raw || "").replace(/\r/g, "");
-  // Sinais de e-mail oficial do INSS (push/mensagem automática).
+  const text = (raw || "").replace(/\r/g, "").replace(/\u00a0/g, " ");
+
+  // Detecção mais tolerante: qualquer um dos sinais já basta.
   const isInss =
-    /Instituto Nacional do Seguro Social|noreply@inss\.gov\.br|meu\.inss\.gov\.br|mensagem autom[áa]tica/i.test(text)
-    && /Protocolo\s*:/i.test(text);
+    /Instituto Nacional do Seguro Social|noreply@inss\.gov\.br|meu\.inss\.gov\.br/i.test(text)
+    || /\bProtocolo\b[\s\S]{0,40}\bServi[çc]o\b/i.test(text);
 
   if (!isInss) return { isInss: false };
 
   const recipient =
-    text.match(/Prezad[oa]\(a\)\s*Sr\(a\)\s*(.+?)\s*,/i)?.[1]?.trim();
+    text.match(/Prezad[oa](?:\(a\))?\s*(?:Sr\(a\)|Senhor[a]?)?\s*([A-ZÁÀÂÃÉÊÍÓÔÕÚÇ][^,\n]{2,80}?)\s*[,\n]/)?.[1]?.trim();
 
-  const protocolo = fieldLine(text, "Protocolo");
-  const servico = fieldLine(text, "Servi[çc]o");
-  const dataProtocolo = fieldLine(text, "Data do Protocolo");
-  const unidade = fieldLine(text, "Unidade respons[áa]vel");
-  const statusAtual = fieldLine(text, "Status atual");
+  const protocolo     = pickField(text, /Protocolo/, LABEL_STOPS);
+  const servico       = pickField(text, /Servi[çc]o/, LABEL_STOPS);
+  const dataProtocolo = pickField(text, /Data do Protocolo/, LABEL_STOPS);
+  const unidade       = pickField(text, /Unidade respons[áa]vel/, LABEL_STOPS);
+  const statusAtual   = pickField(text, /Status atual/, LABEL_STOPS);
 
-  // Despacho: linhas após "Despacho:" até o bloco "É possível acompanhar" / "Atenciosamente" / link.
+  // Despacho pode estar inline (sem \n) ou em bloco.
   let despacho: string | undefined;
   const desMatch = text.match(
-    /Despacho\s*:\s*\n+([\s\S]*?)(?=\n\s*(?:É\s+poss[íi]vel acompanhar|Atenciosamente|https?:|Instituto Nacional do Seguro Social)\b)/i,
+    /Despacho\s*[:\-]\s*([\s\S]*?)(?=\s*(?:É\s+poss[íi]vel acompanhar|Atenciosamente|https?:\/\/|Instituto Nacional do Seguro Social)\b|$)/i,
   );
   if (desMatch) {
-    despacho = desMatch[1].trim().replace(/\n{2,}/g, "\n").replace(/[ \t]+/g, " ");
+    despacho = desMatch[1].trim().replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n");
+    if (despacho.length < 3) despacho = undefined;
   }
 
-  const links = Array.from(text.matchAll(/https?:\/\/\S+/g)).map((m) => m[0]);
+  // Limpa pontuação final colada nos links.
+  const links = Array.from(text.matchAll(/https?:\/\/[^\s<>"')]+/g))
+    .map((m) => m[0].replace(/[.,;:)\]]+$/, ""));
 
-  // Rodapé: do "Atenciosamente" em diante.
-  const rodMatch = text.match(/Atenciosamente,?[\s\S]*$/i);
-  const rodape = rodMatch?.[0]?.trim();
-
-  return { isInss: true, recipient, protocolo, servico, dataProtocolo, unidade, statusAtual, despacho, links, rodape };
+  return { isInss: true, recipient, protocolo, servico, dataProtocolo, unidade, statusAtual, despacho, links: Array.from(new Set(links)) };
 }
 
 function Field({
@@ -95,14 +106,65 @@ function Field({
   );
 }
 
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      className="h-7 px-2 text-xs gap-1"
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(text);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        } catch { /* noop */ }
+      }}
+    >
+      {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+      {copied ? "Copiado" : "Copiar"}
+    </Button>
+  );
+}
+
+function OriginalEmailToggle({ body }: { body: string }) {
+  return (
+    <Collapsible>
+      <div className="flex items-center justify-between">
+        <CollapsibleTrigger asChild>
+          <Button variant="ghost" size="sm" className="gap-1 h-7 px-2 text-xs">
+            <ChevronDown className="h-3.5 w-3.5" /> Ver e-mail original
+          </Button>
+        </CollapsibleTrigger>
+        <CopyButton text={body} />
+      </div>
+      <CollapsibleContent>
+        <Separator className="my-2" />
+        <pre className="mt-2 text-xs whitespace-pre-wrap break-words font-sans bg-muted/40 rounded-md p-3 max-h-[40vh] overflow-y-auto">
+          {body}
+        </pre>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
 export default function InssAdminPushEmailView({ body }: { body: string }) {
   const parsed = parseInssAdminEmail(body);
 
   if (!parsed.isInss) {
+    // Fallback: não reconhecido — ainda assim oferece "copiar" e mostra como original.
     return (
-      <pre className="text-sm whitespace-pre-wrap break-words max-h-[60vh] overflow-y-auto font-sans bg-muted/40 rounded-md p-3">
-        {body}
-      </pre>
+      <div className="space-y-2">
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <span className="inline-flex items-center gap-1">
+            <Info className="h-3.5 w-3.5" /> Formato não reconhecido — exibindo e-mail original
+          </span>
+          <CopyButton text={body} />
+        </div>
+        <pre className="text-sm whitespace-pre-wrap break-words max-h-[60vh] overflow-y-auto font-sans bg-muted/40 rounded-md p-3">
+          {body}
+        </pre>
+      </div>
     );
   }
 
@@ -115,7 +177,7 @@ export default function InssAdminPushEmailView({ body }: { body: string }) {
   })();
 
   return (
-    <div className="space-y-4 max-h-[65vh] overflow-y-auto pr-1">
+    <div className="space-y-4">
       {/* Cabeçalho institucional */}
       <div className="rounded-md bg-gradient-to-r from-blue-600 to-blue-700 text-white p-3">
         <div className="text-xs uppercase tracking-wider opacity-90">Requerimento</div>
@@ -140,12 +202,14 @@ export default function InssAdminPushEmailView({ body }: { body: string }) {
       </div>
 
       {/* Identificação do requerimento */}
-      <div className="rounded-md border bg-card p-3 grid gap-3 sm:grid-cols-2">
-        <Field icon={FileText} label="Protocolo" value={parsed.protocolo} />
-        <Field icon={Briefcase} label="Serviço" value={parsed.servico} />
-        <Field icon={Calendar} label="Data do Protocolo" value={parsed.dataProtocolo} />
-        <Field icon={MapPin} label="Unidade responsável" value={parsed.unidade} />
-      </div>
+      {(parsed.protocolo || parsed.servico || parsed.dataProtocolo || parsed.unidade) && (
+        <div className="rounded-md border bg-card p-3 grid gap-3 sm:grid-cols-2">
+          <Field icon={FileText} label="Protocolo" value={parsed.protocolo} />
+          <Field icon={Briefcase} label="Serviço" value={parsed.servico} />
+          <Field icon={Calendar} label="Data do Protocolo" value={parsed.dataProtocolo} />
+          <Field icon={MapPin} label="Unidade responsável" value={parsed.unidade} />
+        </div>
+      )}
 
       {/* Despacho */}
       {parsed.despacho && (
@@ -186,20 +250,8 @@ export default function InssAdminPushEmailView({ body }: { body: string }) {
         </div>
       )}
 
-      {/* Rodapé + e-mail original colapsável */}
-      <Collapsible>
-        <CollapsibleTrigger asChild>
-          <Button variant="ghost" size="sm" className="gap-1 h-7 px-2 text-xs">
-            <ChevronDown className="h-3.5 w-3.5" /> Ver e-mail original
-          </Button>
-        </CollapsibleTrigger>
-        <CollapsibleContent>
-          <Separator className="my-2" />
-          <pre className="mt-2 text-xs whitespace-pre-wrap break-words font-sans bg-muted/40 rounded-md p-3">
-            {body}
-          </pre>
-        </CollapsibleContent>
-      </Collapsible>
+      {/* E-mail original (sempre disponível) */}
+      <OriginalEmailToggle body={body} />
     </div>
   );
 }
