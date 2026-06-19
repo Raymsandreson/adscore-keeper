@@ -48,6 +48,8 @@ import { handler as getWhatsappGroupInfo } from './functions/get-whatsapp-group-
 import { handler as scanDuplicateContacts } from './functions/scan-duplicate-contacts';
 import { handler as recoverLeadsPhone55 } from './functions/recover-leads-phone-55';
 import { handler as transcribeActivityCall } from './functions/transcribe-activity-call';
+import { handler as wipeInstanceAgentLabels } from './functions/wipe-instance-agent-labels';
+
 
 
 const functionHandlers: Record<string, express.RequestHandler> = {
