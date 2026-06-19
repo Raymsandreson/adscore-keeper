@@ -95,12 +95,10 @@ export function FunnelBoardCard({
       }
       return { total: (data || []).length, byStage };
     },
-    enabled: !isBpc,
+    enabled: true,
   });
 
-  // BPC: na listagem NÃO carregamos a planilha (lenta). O detalhe vive na página dedicada.
-  const bpcMetrics = { total: 0, unviable: 0, toCallNow: 0, alreadyOnWhatsApp: 0 };
-  const bpcLoading = false;
+
 
 
 
@@ -151,7 +149,7 @@ export function FunnelBoardCard({
     enabled: expanded,
   });
 
-  const totalLeads = isBpc ? bpcMetrics.total : (counts?.total || 0);
+  const totalLeads = counts?.total || 0;
   const stageData = counts?.byStage || {};
 
   return (
