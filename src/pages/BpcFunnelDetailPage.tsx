@@ -125,6 +125,20 @@ const BpcFunnelDetailPage = () => {
     source: "unificada",
   });
 
+  // Filtra a lista detalhada (planilha) pelo acolhedor selecionado:
+  // cruza por telefone normalizado com os leads do board já filtrados por acolhedor.
+  const filteredBpcLeads = useMemo(() => {
+    if (acolhedorId === "all") return bpcLeads;
+    const phones = leadsData?.phones;
+    if (!phones || phones.size === 0) return [];
+    return bpcLeads.filter(l => {
+      const p = String(l.phone_normalized || l.phone_raw || "").replace(/\D/g, "");
+      if (!p) return false;
+      // tenta com e sem DDI 55
+      return phones.has(p) || phones.has(p.replace(/^55/, "")) || phones.has(`55${p}`);
+    });
+  }, [bpcLeads, leadsData?.phones, acolhedorId]);
+
   if (!board) {
     return (
       <div className="container mx-auto py-10 text-center text-muted-foreground">
