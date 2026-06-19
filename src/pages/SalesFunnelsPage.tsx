@@ -81,6 +81,11 @@ const SalesFunnelsPage = () => {
     [boards]
   );
 
+  // Garante que os boards-piloto (BPC - Autismo, Acidente de Trabalho) tenham
+  // suas etiquetas WhatsApp sincronizadas com as etapas do Kanban. Idempotente,
+  // dispara 1x por sessão por board. Filtro de allowlist mora em useEnsureStageLabels.
+  useEnsureStageLabels(salesFunnels);
+
   // Funil BPC - Autismo: dados vêm da planilha (BASE_UNIFICADA), não da tabela leads.
   // Busca uma vez no nível da página e compartilha entre as barras e a listagem.
   const hasBpc = useMemo(() => salesFunnels.some(b => isBpcFunnel(b.name)), [salesFunnels]);
