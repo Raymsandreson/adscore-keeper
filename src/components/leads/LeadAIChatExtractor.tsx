@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Loader2, Sparkles, MessageSquare, User } from 'lucide-react';
 import { toast } from 'sonner';
-import { externalSupabase } from '@/integrations/supabase/external-client';
+import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import type { ExtractedAccidentData } from '@/components/leads/AccidentDataExtractor';
 
@@ -64,6 +64,9 @@ ${messagesText}`;
 
   const fetchMessages = async (): Promise<string> => {
     const max = limit === 'all' ? 5000 : parseInt(limit, 10);
+    // Sem sessão, o RLS do Externo limita anon às últimas 168h (policy de realtime).
+    // A sessão anônima autenticada (auth.uid() não-nulo) libera o histórico completo.
+    try { await ensureExternalSession(); } catch { /* segue como anon — pega ao menos 7 dias */ }
 
     if (source === 'group') {
       const jid = groupJid;
