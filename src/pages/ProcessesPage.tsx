@@ -274,6 +274,12 @@ export default function ProcessesPage() {
             <ProcessualEmailsTab />
           </Suspense>
         </TabsContent>
+
+        <TabsContent value="audiencias">
+          <Suspense fallback={<div className="text-center py-12 text-muted-foreground">Carregando...</div>}>
+            <HearingsModule />
+          </Suspense>
+        </TabsContent>
       </Tabs>
 
 
