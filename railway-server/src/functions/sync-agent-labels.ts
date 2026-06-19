@@ -23,13 +23,14 @@ const COLOR_INACTIVE = 9; // cinza
 
 export const handler: RequestHandler = async (req, res) => {
   try {
-    const { agent_id, operation } = (req.body || {}) as { agent_id?: string; operation?: 'upsert' | 'delete' };
+    const { agent_id, operation, only_instance_name } = (req.body || {}) as { agent_id?: string; operation?: 'upsert' | 'delete'; only_instance_name?: string };
     if (!agent_id || typeof agent_id !== 'string') {
       return res.json({ success: false, error: 'agent_id é obrigatório' });
     }
     if (operation !== 'upsert' && operation !== 'delete') {
       return res.json({ success: false, error: "operation deve ser 'upsert' ou 'delete'" });
     }
+    const onlyInstanceLower = only_instance_name ? String(only_instance_name).toLowerCase() : null;
 
     const { data: agent, error: agentErr } = await ext
       .from('wjia_command_shortcuts')
