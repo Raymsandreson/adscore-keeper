@@ -130,18 +130,16 @@ const BpcFunnelDetailPage = () => {
     return { total, unviable, toCallNow, alreadyOnWhatsApp };
   }, [noFilter, bpcMetrics, filteredBpcLeads]);
 
-  // Per-stage counts (tabela leads) — cruza por telefone com a planilha filtrada
-  const filteredPhones = useMemo(() => {
-    const set = new Set<string>();
-    for (const l of filteredBpcLeads) {
-      const p = String(l.phone_normalized || l.phone_raw || "").replace(/\D/g, "");
-      if (!p) continue;
-      set.add(p);
-      set.add(p.replace(/^55/, ""));
-      set.add(`55${p}`);
+  // Per-stage counts (tabela leads) — cruza por chave canônica (últimos 8 dígitos)
+  const bpcFilter = useMemo(() => {
+    if (noFilter) {
+      return { phoneKeys: null as Set<string> | null, matchedLeadCount: 0, validPhoneCount: 0, droppedNoPhone: 0 };
     }
-    return Array.from(set);
-  }, [filteredBpcLeads]);
+    return buildBpcAcolhedorFilter({ selected: selectedAcolhedores, leads: filteredBpcLeads });
+  }, [noFilter, selectedAcolhedores, filteredBpcLeads]);
+
+  // Sinaliza estado em que o filtro tá ativo mas a planilha ainda não carregou
+  const filterPending = !noFilter && (!bpcLeads || bpcLeads.length === 0);
 
   const leadsQueryKey = ["bpc-detail-leads", boardId, dateField, fromDate?.toISOString() ?? "none", toDate?.toISOString() ?? "none"];
   const { data: rawLeadsData, isFetching: leadsLoading, refetch: refetchLeads } = useQuery({
@@ -160,19 +158,18 @@ const BpcFunnelDetailPage = () => {
     refetchOnWindowFocus: false,
   });
 
-  // Stage breakdown calculado client-side; refiltra sem refazer query ao trocar acolhedor
+  // Stage breakdown — refiltra client-side. Durante carregamento da planilha, mostra dados brutos
+  // pra não enganar com "0" enquanto o cruzamento ainda não tá pronto.
   const leadsData = useMemo(() => {
-    const phoneSet = noFilter ? null : new Set(filteredPhones);
     const byStage: Record<string, number> = {};
+    const skipFilter = filterPending || !bpcFilter.phoneKeys;
     for (const l of rawLeadsData || []) {
-      if (phoneSet) {
-        const p = String(l.lead_phone || "").replace(/\D/g, "");
-        if (!p || !phoneSet.has(p)) continue;
-      }
-      byStage[l.status] = (byStage[l.status] || 0) + 1;
+      if (!skipFilter && !leadMatchesFilter(l.lead_phone, bpcFilter)) continue;
+      const status = l.status || "—";
+      byStage[status] = (byStage[status] || 0) + 1;
     }
     return { byStage };
-  }, [rawLeadsData, noFilter, filteredPhones]);
+  }, [rawLeadsData, bpcFilter, filterPending]);
 
   const { fetchProfileNames, getDisplayName } = useProfileNames();
   useEffect(() => {
