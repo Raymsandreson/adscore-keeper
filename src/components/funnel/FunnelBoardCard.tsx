@@ -354,6 +354,16 @@ export function FunnelBoardCard({
                   </button>
                 </Badge>
               ))}
+              {filterPending && (
+                <span className="text-[10px] text-muted-foreground italic">
+                  Carregando planilha…
+                </span>
+              )}
+              {!noAcolhedorFilter && !filterPending && bpcFilter.phoneKeys && bpcFilter.validPhoneCount === 0 && (
+                <span className="text-[10px] text-amber-600">
+                  Nenhum telefone válido pra esses acolhedores
+                </span>
+              )}
             </div>
 
             <StageFunnelChart board={board} leadsPerStage={stageData} dateFilter={dateFilter} />
