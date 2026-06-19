@@ -1185,6 +1185,27 @@ export default function InssAdminProcessesTab() {
             <User className="h-4 w-4" />
             Vincular por nome
           </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={runBulkLinkByCpf}
+            className="gap-2"
+            title="Vincula em lote todos os órfãos cujo CPF bate com lead ou contato existente"
+          >
+            <Fingerprint className="h-4 w-4" />
+            Vincular por CPF
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={openAmbiguousReview}
+            disabled={ambiguousLoading}
+            className="gap-2"
+            title="Revisar órfãos com vários candidatos pelo mesmo nome"
+          >
+            <Users className={`h-4 w-4 ${ambiguousLoading ? "animate-pulse" : ""}`} />
+            Revisar ambíguos
+          </Button>
 
         </div>
         <div className="relative flex-1 max-w-sm">
