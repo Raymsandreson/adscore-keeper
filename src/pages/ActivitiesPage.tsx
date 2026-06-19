@@ -13,7 +13,9 @@ import { useActivityStepContext } from '@/hooks/useActivityStepContext';
 import { ActivityFieldSettingsDialog } from '@/components/activities/ActivityFieldSettingsDialog';
 import { ActivityTTSButton } from '@/components/voice/ActivityTTSButton';
 import { ActivityFormCompact, SendToGroupSection } from '@/components/activities/ActivityFormCompact';
+import { CobrarVaraSection } from '@/components/activities/CobrarVaraSection';
 import { ActivityCallRecorder, callFieldTextToHtml, stripHtmlToText } from '@/components/activities/ActivityCallRecorder';
+import { ActivityNextStepsAgent } from '@/components/activities/ActivityNextStepsAgent';
 import { CompleteAndNotifyDialog } from '@/components/activities/CompleteAndNotifyDialog';
 import { DashboardChatPreview } from '@/components/whatsapp/DashboardChatPreview';
 import { LeadGroupSearchDialog } from '@/components/kanban/LeadGroupSearchDialog';
@@ -944,8 +946,10 @@ const ActivitiesPage = () => {
         what_was_done: formWhatWasDone || null,
         current_status_notes: formCurrentStatus || null,
         next_steps: formNextSteps || null,
-        solicitacao: formSolicitacao || null,
-        resposta_juizo: formRespostaJuizo || null,
+        // Solicitação e Resposta do juízo são específicos da atividade concluída —
+        // a próxima etapa começa em branco nesses dois campos.
+        solicitacao: null,
+        resposta_juizo: null,
         activity_type: formType,
         priority: formPriority,
         lead_id: formLeadId || null,
@@ -3459,6 +3463,40 @@ const ActivitiesPage = () => {
                         if (f.notes) setFormNotes(callFieldTextToHtml(f.notes));
                       }}
                     />
+                    <ActivityNextStepsAgent
+                      activityId={selectedActivity?.id}
+                      leadId={formLeadId}
+                      caseId={formCaseId}
+                      processId={formProcessId}
+                      context={{
+                        step: stepContext ? {
+                          step_label: stepContext.stepLabel,
+                          phase_label: stepContext.phaseLabel || undefined,
+                          objective_label: stepContext.objectiveLabel || undefined,
+                          next_step: (() => {
+                            const steps = stepContext.allSteps || [];
+                            const idx = steps.findIndex((s) => s.stepId === stepContext.stepId);
+                            const after = idx >= 0 ? steps.slice(idx + 1) : steps;
+                            return (after.find((s) => !s.checked) || after[0])?.stepLabel;
+                          })(),
+                          checklist: (stepContext.docChecklist || []).map((c) => ({ label: c.label, checked: c.checked })),
+                        } : undefined,
+                        activity: {
+                          title: formTitle,
+                          type: formType,
+                          lead_name: formLeadName,
+                          process_title: formProcessTitle,
+                          current_status: stripHtmlToText(formCurrentStatus),
+                          what_was_done: stripHtmlToText(formWhatWasDone),
+                          next_steps: stripHtmlToText(formNextSteps),
+                          notes: stripHtmlToText(formNotes),
+                        },
+                      }}
+                      onApply={(text) => {
+                        const html = callFieldTextToHtml(text);
+                        setFormNextSteps((prev) => (prev && prev !== '<p></p>' ? `${prev}${html}` : html));
+                      }}
+                    />
                     {/* Chat Equipe moved to bottom action bar to reduce top clutter */}
                     {formLeadId && (
                       <Button
@@ -3653,6 +3691,9 @@ const ActivitiesPage = () => {
               )}>
               {buildMsg && (
                 <SendToGroupSection buildMsg={buildMsg} leadId={formLeadId} fieldSettings={fieldSettings} updateFieldSetting={updateFieldSetting} reorderFields={reorderFields} formLeadIdForTTS={formLeadId || undefined} formContactIdForTTS={formContactId || undefined} formAssignedTo={formAssignedTo || undefined} activityId={selectedActivity?.id} />
+              )}
+              {formProcessId && (
+                <CobrarVaraSection processId={formProcessId} activityId={selectedActivity?.id} leadId={formLeadId || null} />
               )}
               {sheetMode === 'edit' ? (
                 <div className="flex items-center justify-between gap-2 max-w-2xl flex-wrap">

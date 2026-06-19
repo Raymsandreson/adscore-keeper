@@ -50,7 +50,10 @@ import { handler as getWhatsappGroupInfo } from './functions/get-whatsapp-group-
 import { handler as scanDuplicateContacts } from './functions/scan-duplicate-contacts';
 import { handler as recoverLeadsPhone55 } from './functions/recover-leads-phone-55';
 import { handler as transcribeActivityCall } from './functions/transcribe-activity-call';
+import { handler as suggestStepActions } from './functions/suggest-step-actions';
 import { handler as wipeInstanceAgentLabels } from './functions/wipe-instance-agent-labels';
+import { handler as gerarCobrancaVara } from './functions/gerar-cobranca-vara';
+import { handler as sendEmail } from './functions/send-email';
 
 
 
@@ -95,7 +98,10 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'scan-duplicate-contacts': scanDuplicateContacts,
   'recover-leads-phone-55': recoverLeadsPhone55,
   'transcribe-activity-call': transcribeActivityCall,
+  'suggest-step-actions': suggestStepActions,
   'wipe-instance-agent-labels': wipeInstanceAgentLabels,
+  'gerar-cobranca-vara': gerarCobrancaVara,
+  'send-email': sendEmail,
 };
 
 const app = express();
