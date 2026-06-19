@@ -383,6 +383,8 @@ export const useLeads = (adAccountId?: string) => {
           }).catch(e => console.warn('[AutoGroup] Background error:', e));
         }
       }
+      // Tenta vincular processos INSS órfãos a este lead recém-criado (background)
+      fireOrphanMatchForLead(newLead.id);
 
       return newLead;
     } catch (error) {
