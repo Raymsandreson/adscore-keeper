@@ -227,7 +227,7 @@ export default function ProcessualEmailsTab() {
           ) : emailView.error ? (
             <div className="py-4 text-sm text-destructive">{emailView.error}</div>
           ) : (
-            <pre className="whitespace-pre-wrap text-sm font-sans">{emailView.body}</pre>
+            <PjePushEmailView body={emailView.body || ""} />
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setEmailView({ open: false, loading: false, subject: null, body: null, error: null })}>
