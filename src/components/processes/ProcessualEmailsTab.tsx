@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { PjePushEmailView } from "./PjePushEmailView";
 import { Search, Mail } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -226,7 +227,7 @@ export default function ProcessualEmailsTab() {
           ) : emailView.error ? (
             <div className="py-4 text-sm text-destructive">{emailView.error}</div>
           ) : (
-            <pre className="whitespace-pre-wrap text-sm font-sans">{emailView.body}</pre>
+            <PjePushEmailView body={emailView.body || ""} />
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setEmailView({ open: false, loading: false, subject: null, body: null, error: null })}>
