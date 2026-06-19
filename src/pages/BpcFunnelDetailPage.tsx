@@ -289,7 +289,7 @@ const BpcFunnelDetailPage = () => {
       {/* Funil */}
       <BpcFunnelBars
         board={board}
-        metrics={acolhedorId === "all" ? bpcMetrics : { ...bpcMetrics, total: leadsData?.total || 0 }}
+        metrics={filteredMetrics}
         loading={bpcLoading || leadsLoading}
         onOpenList={() => setSheetOpen(true)}
         leadsPerStage={leadsData?.byStage || {}}
@@ -300,7 +300,7 @@ const BpcFunnelDetailPage = () => {
         onOpenChange={setSheetOpen}
         source="unificada"
         externalLeads={filteredBpcLeads}
-        externalMetrics={acolhedorId === "all" ? bpcMetrics : { ...bpcMetrics, total: filteredBpcLeads.length }}
+        externalMetrics={filteredMetrics}
         externalLoading={bpcLoading}
         onRefresh={refetchBpc}
       />
