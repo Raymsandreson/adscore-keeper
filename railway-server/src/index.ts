@@ -98,8 +98,6 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'transcribe-activity-call': transcribeActivityCall,
   'suggest-step-actions': suggestStepActions,
   'wipe-instance-agent-labels': wipeInstanceAgentLabels,
-  'gerar-cobranca-vara': gerarCobrancaVara,
-  'send-email': sendEmail,
 };
 
 const app = express();
