@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/collapsible";
 import {
   Search, Mail, Link2, Unlink, ChevronDown, RefreshCw, AlertCircle, Clock,
-  Sparkles, User, DownloadCloud,
+  Sparkles, User, DownloadCloud, Fingerprint, Users,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
