@@ -8,6 +8,7 @@ import { useAuthContext } from '@/contexts/AuthContext';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { applyGeoRuleForLead } from '@/utils/applyGeoRuleForLead';
 import { remapToExternal } from '@/integrations/supabase/uuid-remap';
+import { fireOrphanMatchForLead } from '@/lib/fireOrphanMatchForLead';
 
 // Columns to fetch - avoids pulling unnecessary large text columns
 const LEAD_SELECT_COLUMNS = [
@@ -382,6 +383,8 @@ export const useLeads = (adAccountId?: string) => {
           }).catch(e => console.warn('[AutoGroup] Background error:', e));
         }
       }
+      // Tenta vincular processos INSS órfãos a este lead recém-criado (background)
+      fireOrphanMatchForLead(newLead.id);
 
       return newLead;
     } catch (error) {
@@ -455,6 +458,14 @@ export const useLeads = (adAccountId?: string) => {
             console.warn('CAPI: Failed to send purchase event', result.error);
           }
         });
+      }
+
+      // Roda matcher reverso quando o usuário edita campos-chave para vínculo INSS
+      const updatedKeys = Object.keys(updates);
+      if (
+        updatedKeys.some((k) => ['cpf', 'lead_name', 'victim_name'].includes(k))
+      ) {
+        fireOrphanMatchForLead(id);
       }
 
       toast.success('Lead atualizado com sucesso');
