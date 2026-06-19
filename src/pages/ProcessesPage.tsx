@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Search, FileText, ExternalLink, Calendar, Building2, Briefcase, Trash2, Mail } from "lucide-react";
+import { Search, FileText, ExternalLink, Calendar, Building2, Briefcase, Trash2, Mail, Gavel } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import ListPagination from "@/components/processes/ListPagination";
 import { format } from "date-fns";
