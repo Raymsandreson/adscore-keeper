@@ -55,8 +55,6 @@ interface FunnelBoardCardProps {
   onOpenTeam: () => void;
   onEdit: () => void;
   onOpenBpcSheet?: () => void;
-  onBpcMetricsChange?: (m: { total: number } | null) => void;
-  onTotalChange?: (total: number) => void;
 }
 
 export function FunnelBoardCard({
@@ -67,8 +65,6 @@ export function FunnelBoardCard({
   onOpenTeam,
   onEdit,
   onOpenBpcSheet,
-  onBpcMetricsChange,
-  onTotalChange,
 }: FunnelBoardCardProps) {
   const [dateField, setDateField] = useState<DateField>("created_at");
   const [rangePreset, setRangePreset] = useState<RangePreset>("all");
