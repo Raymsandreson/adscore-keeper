@@ -965,6 +965,132 @@ export default function InssAdminProcessesTab() {
     }
   };
 
+  const runBulkLinkByCpf = async () => {
+    if (!confirm("Vincular em lote todos os órfãos cujo CPF do segurado bate com um lead ou contato existente. Continuar?")) return;
+    toast.info("Vinculando órfãos por CPF…");
+    try {
+      const resp = await fetch(`${RAILWAY_BASE}/functions/bulk-link-inss-by-cpf`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": (import.meta as any).env?.VITE_RAILWAY_API_KEY || "",
+        },
+        body: "{}",
+      });
+      const j = await resp.json();
+      if (j.success) {
+        const s = j.stats || {};
+        toast.success(`${s.linked || 0} vinculados por CPF · ${s.no_match || 0} sem match · ${s.errors || 0} erros`);
+        loadProcesses();
+      } else {
+        toast.error("Erro: " + (j.error || "desconhecido"));
+      }
+    } catch (e: any) {
+      toast.error("Falha: " + e.message);
+    }
+  };
+
+  // ===== Ambíguos (vários candidatos pelo mesmo nome) =====
+  type AmbiguousRow = {
+    processId: string;
+    nome: string;
+    candidates: { leadId: string; leadName: string | null }[];
+  };
+  const [ambiguous, setAmbiguous] = useState<AmbiguousRow[] | null>(null);
+  const [ambiguousLoading, setAmbiguousLoading] = useState(false);
+  const [ambiguousBusy, setAmbiguousBusy] = useState<string | null>(null);
+
+  const openAmbiguousReview = async () => {
+    setAmbiguous([]);
+    setAmbiguousLoading(true);
+    try {
+      const resp = await fetch(`${RAILWAY_BASE}/functions/auto-link-inss-by-name`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": (import.meta as any).env?.VITE_RAILWAY_API_KEY || "",
+        },
+        body: JSON.stringify({ dry_run: true }),
+      });
+      const j = await resp.json();
+      if (!j.success) {
+        toast.error("Erro: " + (j.error || "desconhecido"));
+        setAmbiguous(null);
+        return;
+      }
+      const raw = (j.ambiguous || []) as Array<{ processId: string; nome: string; candidates: string[] }>;
+      if (raw.length === 0) {
+        toast.success("Nenhum órfão ambíguo no momento 🎉");
+        setAmbiguous(null);
+        return;
+      }
+      // Busca nomes dos candidatos pra exibir
+      const leadIds = Array.from(new Set(raw.flatMap((r) => r.candidates)));
+      const { data: leadsData } = await db.from("leads").select("id, lead_name").in("id", leadIds);
+      const nameById: Record<string, string | null> = {};
+      for (const l of (leadsData || []) as any[]) nameById[l.id] = l.lead_name;
+      setAmbiguous(
+        raw.map((r) => ({
+          processId: r.processId,
+          nome: r.nome,
+          candidates: r.candidates.map((id) => ({ leadId: id, leadName: nameById[id] ?? null })),
+        })),
+      );
+    } catch (e: any) {
+      toast.error("Falha: " + e.message);
+      setAmbiguous(null);
+    } finally {
+      setAmbiguousLoading(false);
+    }
+  };
+
+  const pickAmbiguousCandidate = async (processId: string, leadId: string) => {
+    setAmbiguousBusy(processId);
+    try {
+      // Reusa o caminho do link manual: abre o dialog com o processo certo
+      // não é necessário — basta aplicar via applyInssMatch invocando match-orphans-for-lead
+      const proc = processes.find((p) => p.id === processId);
+      // Atualiza direto via DB (mesma lógica do unlink/link)
+      const { data: cs } = await db
+        .from("legal_cases" as any)
+        .select("id")
+        .eq("lead_id", leadId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      let caseId = (cs as any)?.id || null;
+      if (!caseId) {
+        const { data: newCaseNum } = await db.rpc("generate_case_number" as any, { p_nucleus_id: null } as any);
+        const { data: newCase } = await db
+          .from("legal_cases" as any)
+          .insert({
+            lead_id: leadId,
+            case_number: newCaseNum || `CASO-${Date.now()}`,
+            title: proc?.nome_segurado || "Caso INSS",
+            status: "active",
+          } as any)
+          .select("id")
+          .single();
+        caseId = (newCase as any)?.id || null;
+      }
+      const { error } = await db
+        .from("inss_admin_processes" as any)
+        .update({ lead_id: leadId, case_id: caseId, linked_at: new Date().toISOString(), linked_by: userId })
+        .eq("id", processId);
+      if (error) throw error;
+      // Atualiza lead_processes pra refletir
+      if (proc && caseId) await upsertLeadProcess(caseId, leadId, proc);
+      toast.success("Vinculado");
+      setAmbiguous((prev) => (prev ? prev.filter((r) => r.processId !== processId) : prev));
+      loadProcesses();
+    } catch (e: any) {
+      toast.error("Erro: " + e.message);
+    } finally {
+      setAmbiguousBusy(null);
+    }
+  };
+
+
 
 
 
