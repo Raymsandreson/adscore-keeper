@@ -59,55 +59,7 @@ const BpcFunnelDetailPage = () => {
     [rangePreset, customRange.from?.getTime(), customRange.to?.getTime()]
   );
 
-  // Per-stage counts (tabela leads) — respeita filtros
-  const leadsQueryKey = ["bpc-detail-leads", boardId, dateField, fromDate?.toISOString(), toDate?.toISOString(), acolhedorId];
-  const { data: leadsData, isFetching: leadsLoading, refetch: refetchLeads } = useQuery({
-    queryKey: leadsQueryKey,
-    queryFn: async () => {
-      if (!boardId) return { byStage: {} as Record<string, number>, total: 0, acolhedores: [] as string[] };
-      let q = supabase.from("leads").select("status, acolhedor, lead_phone").eq("board_id", boardId);
-      if (fromDate) q = q.gte(dateField, fromDate.toISOString());
-      if (toDate) q = q.lte(dateField, toDate.toISOString());
-      if (acolhedorId !== "all") {
-        q = acolhedorId === "none" ? q.is("acolhedor", null) : q.eq("acolhedor", acolhedorId);
-      }
-      const { data, error } = await q;
-      if (error) throw error;
-      const byStage: Record<string, number> = {};
-      const acolhedoresSet = new Set<string>();
-      const phones = new Set<string>();
-      for (const l of data || []) {
-        byStage[l.status] = (byStage[l.status] || 0) + 1;
-        if (l.acolhedor) acolhedoresSet.add(l.acolhedor);
-        if (l.lead_phone) phones.add(String(l.lead_phone).replace(/\D/g, ""));
-      }
-      return { byStage, total: (data || []).length, acolhedores: Array.from(acolhedoresSet), phones };
-    },
-    enabled: !!boardId,
-  });
-
-  // Lista global de acolhedores (todos os já vinculados ao board, independente do filtro)
-  const { data: allAcolhedores } = useQuery({
-    queryKey: ["bpc-detail-acolhedores", boardId],
-    queryFn: async () => {
-      if (!boardId) return [] as string[];
-      const { data, error } = await supabase
-        .from("leads")
-        .select("acolhedor")
-        .eq("board_id", boardId)
-        .not("acolhedor", "is", null);
-      if (error) throw error;
-      return Array.from(new Set((data || []).map((r: any) => r.acolhedor).filter(Boolean)));
-    },
-    enabled: !!boardId,
-  });
-
-  const { profiles, fetchProfileNames, getDisplayName } = useProfileNames();
-  useEffect(() => {
-    if (allAcolhedores?.length) fetchProfileNames(allAcolhedores);
-  }, [allAcolhedores, fetchProfileNames]);
-
-  // BPC metrics da planilha (BASE_UNIFICADA)
+  // BPC metrics da planilha (BASE_UNIFICADA) — fonte primária do acolhedor
   const bpcRange = useMemo(() => ({
     from: fromDate ?? new Date("2020-01-01T00:00:00Z"),
     to: toDate ?? new Date(),
@@ -125,19 +77,70 @@ const BpcFunnelDetailPage = () => {
     source: "unificada",
   });
 
-  // Filtra a lista detalhada (planilha) pelo acolhedor selecionado:
-  // cruza por telefone normalizado com os leads do board já filtrados por acolhedor.
+  // Lista de acolhedores vinda da planilha (coluna operator)
+  const allAcolhedores = useMemo(() => {
+    const set = new Set<string>();
+    for (const l of bpcLeads) {
+      const op = (l.operator || "").trim();
+      if (op) set.add(op);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [bpcLeads]);
+
+  // Filtra leads da planilha pelo operador (acolhedor) selecionado
   const filteredBpcLeads = useMemo(() => {
     if (acolhedorId === "all") return bpcLeads;
-    const phones = leadsData?.phones;
-    if (!phones || phones.size === 0) return [];
-    return bpcLeads.filter(l => {
+    if (acolhedorId === "none") {
+      return bpcLeads.filter(l => !(l.operator || "").trim());
+    }
+    const target = acolhedorId.toLowerCase();
+    return bpcLeads.filter(l => (l.operator || "").trim().toLowerCase() === target);
+  }, [bpcLeads, acolhedorId]);
+
+  // Per-stage counts (tabela leads) — cruza por telefone com a planilha filtrada
+  const filteredPhones = useMemo(() => {
+    const set = new Set<string>();
+    for (const l of filteredBpcLeads) {
       const p = String(l.phone_normalized || l.phone_raw || "").replace(/\D/g, "");
-      if (!p) return false;
-      // tenta com e sem DDI 55
-      return phones.has(p) || phones.has(p.replace(/^55/, "")) || phones.has(`55${p}`);
-    });
-  }, [bpcLeads, leadsData?.phones, acolhedorId]);
+      if (!p) continue;
+      set.add(p);
+      set.add(p.replace(/^55/, ""));
+      set.add(`55${p}`);
+    }
+    return Array.from(set);
+  }, [filteredBpcLeads]);
+
+  const leadsQueryKey = ["bpc-detail-leads", boardId, dateField, fromDate?.toISOString(), toDate?.toISOString(), acolhedorId, filteredPhones.length];
+  const { data: leadsData, isFetching: leadsLoading, refetch: refetchLeads } = useQuery({
+    queryKey: leadsQueryKey,
+    queryFn: async () => {
+      if (!boardId) return { byStage: {} as Record<string, number>, total: 0 };
+      let q = supabase.from("leads").select("status, lead_phone").eq("board_id", boardId);
+      if (fromDate) q = q.gte(dateField, fromDate.toISOString());
+      if (toDate) q = q.lte(dateField, toDate.toISOString());
+      const { data, error } = await q;
+      if (error) throw error;
+      const phoneSet = acolhedorId === "all" ? null : new Set(filteredPhones);
+      const byStage: Record<string, number> = {};
+      let total = 0;
+      for (const l of data || []) {
+        if (phoneSet) {
+          const p = String(l.lead_phone || "").replace(/\D/g, "");
+          if (!p || !phoneSet.has(p)) continue;
+        }
+        byStage[l.status] = (byStage[l.status] || 0) + 1;
+        total++;
+      }
+      return { byStage, total };
+    },
+    enabled: !!boardId,
+  });
+
+  const { fetchProfileNames, getDisplayName } = useProfileNames();
+  useEffect(() => {
+    const uuids = allAcolhedores.filter(a => /^[0-9a-f-]{36}$/i.test(a));
+    if (uuids.length) fetchProfileNames(uuids);
+  }, [allAcolhedores, fetchProfileNames]);
 
   if (!board) {
     return (
@@ -251,7 +254,7 @@ const BpcFunnelDetailPage = () => {
               <SelectItem value="none">Sem acolhedor</SelectItem>
               {(allAcolhedores || []).map(id => (
                 <SelectItem key={id} value={id}>
-                  {getDisplayName(id) || id.slice(0, 8)}
+                  {getDisplayName(id) || id}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -259,7 +262,7 @@ const BpcFunnelDetailPage = () => {
 
           {acolhedorId !== "all" && (
             <Badge variant="secondary" className="text-xs">
-              Filtro: {acolhedorId === "none" ? "sem acolhedor" : getDisplayName(acolhedorId) || acolhedorId.slice(0, 8)}
+              Filtro: {acolhedorId === "none" ? "sem acolhedor" : (getDisplayName(acolhedorId) || acolhedorId)}
             </Badge>
           )}
         </CardContent>
