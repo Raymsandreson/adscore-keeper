@@ -432,6 +432,7 @@ export const handler: RequestHandler = async (req, res) => {
               requerimento: parsed.requerimento,
               cpf: parsed.cpf,
               nome: parsed.nome,
+              beneficio_num: parsed.beneficio_num,
             });
             if (match.leadId || match.caseId) {
               const applied = await applyInssMatch({
@@ -504,15 +505,18 @@ export const handler: RequestHandler = async (req, res) => {
 
         monthLoop:
         for (const ym of monthsToScan) {
-          // Filtro relaxado: só o marcador "[INSS]" no subject. Removemos
-          // `from:noreply` porque o gov.br passou a enviar de remetentes variados
-          // (ex.: `naoresponder@`, `meuinss@`) e estávamos perdendo emails novos.
+          // Filtro super-relaxado: pega qualquer e-mail que mencione INSS no
+          // assunto OU venha dos domínios oficiais do gov. O parser depois
+          // descarta o que não tiver requerimento (vira PARSE_FAILED, não cria
+          // processo). Antes só `[INSS]` perdia variantes como "INSS Digital",
+          // "Meu INSS" sem colchete, e e-mails de "meuinss@", "naoresponder@".
+          const baseFilter = '(subject:INSS OR from:inss.gov.br OR from:meuinss OR from:noreply OR from:naoresponder)';
           const gmailQuery = backfill && ym
             ? (() => {
                 const { after, before } = monthWindow(ym);
-                return `subject:"[INSS]" after:${after} before:${before}`;
+                return `${baseFilter} after:${after} before:${before}`;
               })()
-            : `subject:"[INSS]" newer_than:${lookbackHours}h`;
+            : `${baseFilter} newer_than:${lookbackHours}h`;
 
           // Token inicial: só usa se cursor for desta inbox E deste mês.
           let pageToken: string | undefined =

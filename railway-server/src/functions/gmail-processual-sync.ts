@@ -4,18 +4,19 @@ import { createClient } from '@supabase/supabase-js';
 /**
  * Carteiro robô do Gmail — caixa Processual.
  *
- * Lê e-mails da(s) caixa(s) marcadas como Processual e grava em
- * public.processual_emails (Externo) APENAS quando o assunto OU corpo
- * contém "PUSH", "Push" ou "push" (case-insensitive).
+ * Modos:
+ *  - Sync normal: lookback_hours + paginação até esgotar; novos e-mails da janela.
+ *  - Backfill: ignora data, varre TODO o histórico página por página usando
+ *    pageToken; retorna cursor pro client chamar de novo até `done=true`.
  *
  * POST /functions/gmail-processual-sync
- *   { lookback_hours?: number=72, max_messages?: number=50, dry_run?: boolean }
+ *   { lookback_hours?: number=168, max_messages?: number=100,
+ *     backfill?: boolean=false, cursor?: { inbox, page_token } | null,
+ *     after?: 'YYYY/MM/DD' (só backfill), dry_run?: boolean }
  *
- * Envs:
- *   - LOVABLE_API_KEY
- *   - GOOGLE_MAIL_API_KEY_3 (ou outra slot) — a caixa processual@
- *   - PROCESSUAL_INBOXES   = "inbox#4" (opcional; se vazio, NÃO roda)
- *   - EXTERNAL_SUPABASE_URL + EXTERNAL_SUPABASE_SERVICE_ROLE_KEY
+ * Envs: LOVABLE_API_KEY, GOOGLE_MAIL_API_KEY_3 (caixa processual),
+ *       PROCESSUAL_INBOXES (ex.: "inbox#4"),
+ *       EXTERNAL_SUPABASE_URL + EXTERNAL_SUPABASE_SERVICE_ROLE_KEY
  */
 
 const GATEWAY_BASE = 'https://connector-gateway.lovable.dev/google_mail/gmail/v1';
@@ -81,18 +82,7 @@ function extractPlainText(msg: GmailMessage): string {
   return '';
 }
 
-function stripAccents(s: string) {
-  return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-}
-
-/** Verifica se algum dos textos contém "PUSH" (case-insensitive). */
-function hasPushKeyword(...texts: string[]): boolean {
-  const blob = texts.filter(Boolean).join(' \n ');
-  return /\bpush\b/i.test(blob);
-}
-
 function extractProcessNumber(text: string): string | null {
-  // CNJ: 0000000-00.0000.0.00.0000
   const m = text.match(/\b\d{7}-?\d{2}\.?\d{4}\.?\d\.?\d{2}\.?\d{4}\b/);
   return m ? m[0] : null;
 }
@@ -122,12 +112,22 @@ function getInboxKeys(): Array<{ label: string; key: string }> {
   return all.filter((i) => allow.includes(i.label));
 }
 
+interface ProcessualCursor {
+  inbox: string | null;
+  page_token: string | null;
+}
+
 export const handler: RequestHandler = async (req, res) => {
   const body = (req.body || {}) as any;
   const query = (req.query || {}) as any;
-  const lookbackHours = Number(body.lookback_hours ?? query.lookback_hours ?? 72);
-  const maxMessages = Number(body.max_messages ?? query.max_messages ?? 50);
+  const backfill: boolean = Boolean(body.backfill ?? query.backfill);
+  const lookbackHours = Number(body.lookback_hours ?? query.lookback_hours ?? (backfill ? 0 : 168));
+  // Orçamento por chamada (limita o tempo de uma request pra não estourar timeout).
+  const maxMessages = Number(body.max_messages ?? query.max_messages ?? (backfill ? 150 : 100));
+  const pageSize = Math.min(maxMessages, 100); // Gmail max é 100/página
   const dryRun: boolean = Boolean(body.dry_run ?? query.dry_run);
+  const inCursor: ProcessualCursor | null = body.cursor ?? null;
+  const afterDate: string | null = backfill ? (body.after ?? query.after ?? null) : null;
 
   const inboxes = getInboxKeys();
   if (inboxes.length === 0) {
@@ -145,63 +145,147 @@ export const handler: RequestHandler = async (req, res) => {
   const ext = createClient(externalUrl, serviceKey, { auth: { persistSession: false } });
 
   try {
-    const afterTs = Math.floor((Date.now() - lookbackHours * 3600 * 1000) / 1000);
-    const q = `after:${afterTs}`;
-    const perInbox: Record<string, any> = {};
-    let totalChecked = 0, totalInserted = 0, totalSkipped = 0;
+    // Filtro Gmail
+    let q: string;
+    if (backfill) {
+      // Sem janela; opcionalmente after:YYYY/MM/DD
+      q = afterDate ? `after:${afterDate}` : '';
+    } else {
+      const afterTs = Math.floor((Date.now() - lookbackHours * 3600 * 1000) / 1000);
+      q = `after:${afterTs}`;
+    }
 
-    for (const inbox of inboxes) {
-      const ir: any = { checked: 0, inserted: 0, skipped: 0, errors: [] as string[] };
+    const perInbox: Record<string, any> = {};
+    let totalChecked = 0, totalInserted = 0, totalSkipped = 0, totalExisting = 0;
+    let checkedThisCall = 0;
+    let outCursor: ProcessualCursor | null = null;
+    let oldestSeen: string | null = null;
+    let newestSeen: string | null = null;
+
+    const cursorInboxIdx = inCursor?.inbox
+      ? inboxes.findIndex((i) => i.label === inCursor.inbox)
+      : -1;
+
+    inboxLoop:
+    for (let idx = 0; idx < inboxes.length; idx++) {
+      const inbox = inboxes[idx];
+      if (cursorInboxIdx >= 0 && idx < cursorInboxIdx) continue;
+
+      const ir: any = { checked: 0, inserted: 0, skipped: 0, existing: 0, errors: [] as string[] };
       perInbox[inbox.label] = ir;
+
+      // Token inicial: só usa se cursor for desta inbox
+      let pageToken: string | undefined = (inCursor && inCursor.inbox === inbox.label && inCursor.page_token)
+        ? inCursor.page_token
+        : undefined;
+
       try {
-        const list = await gmailFetch<{ messages?: GmailListItem[] }>('/users/me/messages', inbox.key, {
-          q,
-          maxResults: String(Math.min(maxMessages, 100)),
-        });
-        const items: GmailListItem[] = list.messages || [];
-        for (const it of items) {
-          if (ir.checked >= maxMessages) break;
-          ir.checked++;
-          totalChecked++;
-          try {
-            const msg = await gmailFetch<GmailMessage>(`/users/me/messages/${it.id}`, inbox.key, { format: 'full' });
-            const subject = getHeader(msg, 'Subject') || '';
-            const fromAddr = getHeader(msg, 'From') || '';
-            const text = extractPlainText(msg);
-            // Filtro removido temporariamente: lista QUALQUER email da inbox processual
-            // pra debug. Reativar `hasPushKeyword(subject, text)` quando confirmar formato.
-            const _hasPush = hasPushKeyword(subject, text);
-            if (dryRun) { ir.inserted++; totalInserted++; continue; }
-            const receivedAt = msg.internalDate ? new Date(Number(msg.internalDate)).toISOString() : new Date().toISOString();
-            const { error } = await ext.from('processual_emails').upsert({
-              gmail_message_id: it.id,
-              inbox_label: inbox.label,
-              subject,
-              from_addr: fromAddr,
-              snippet: msg.snippet ? decodeEntities(msg.snippet).slice(0, 500) : null,
-              body_text: text.slice(0, 50000),
-              received_at: receivedAt,
-              has_movimentacao: true,
-              process_number: extractProcessNumber(`${subject}\n${text}`),
-            } as any, { onConflict: 'gmail_message_id', ignoreDuplicates: true });
-            if (error) ir.errors.push(`upsert ${it.id}: ${error.message}`);
-            else { ir.inserted++; totalInserted++; }
-          } catch (e: any) {
-            ir.errors.push(`${it.id}: ${e?.message || String(e)}`);
+        while (true) {
+          if (checkedThisCall >= maxMessages) {
+            outCursor = { inbox: inbox.label, page_token: pageToken || null };
+            break inboxLoop;
+          }
+          const params: Record<string, string> = { maxResults: String(pageSize) };
+          if (q) params.q = q;
+          if (pageToken) params.pageToken = pageToken;
+          const list = await gmailFetch<{ messages?: GmailListItem[]; nextPageToken?: string }>(
+            '/users/me/messages', inbox.key, params,
+          );
+          const items: GmailListItem[] = list.messages || [];
+          const nextToken = list.nextPageToken;
+
+          if (items.length > 0) {
+            // Skip os que já temos (por gmail_message_id)
+            const ids = items.map((i) => i.id);
+            const { data: existing } = await ext
+              .from('processual_emails')
+              .select('gmail_message_id')
+              .in('gmail_message_id', ids);
+            const seen = new Set((existing || []).map((r: any) => r.gmail_message_id));
+            const toProcess = dryRun ? items : items.filter((i) => !seen.has(i.id));
+            const existingCount = items.length - toProcess.length;
+            ir.existing += existingCount;
+            totalExisting += existingCount;
+
+            ir.checked += items.length;
+            totalChecked += items.length;
+            checkedThisCall += items.length;
+
+            for (const it of toProcess) {
+              try {
+                const msg = await gmailFetch<GmailMessage>(
+                  `/users/me/messages/${it.id}`, inbox.key, { format: 'full' },
+                );
+                const subject = getHeader(msg, 'Subject') || '';
+                const fromAddr = getHeader(msg, 'From') || '';
+                const text = extractPlainText(msg);
+                const receivedAt = msg.internalDate
+                  ? new Date(Number(msg.internalDate)).toISOString()
+                  : new Date().toISOString();
+                if (!oldestSeen || receivedAt < oldestSeen) oldestSeen = receivedAt;
+                if (!newestSeen || receivedAt > newestSeen) newestSeen = receivedAt;
+                if (dryRun) { ir.inserted++; totalInserted++; continue; }
+                const { error } = await ext.from('processual_emails').upsert({
+                  gmail_message_id: it.id,
+                  inbox_label: inbox.label,
+                  subject,
+                  from_addr: fromAddr,
+                  snippet: msg.snippet ? decodeEntities(msg.snippet).slice(0, 500) : null,
+                  body_text: text.slice(0, 50000),
+                  received_at: receivedAt,
+                  has_movimentacao: true,
+                  process_number: extractProcessNumber(`${subject}\n${text}`),
+                } as any, { onConflict: 'gmail_message_id', ignoreDuplicates: true });
+                if (error) { ir.errors.push(`upsert ${it.id}: ${error.message}`); totalSkipped++; ir.skipped++; }
+                else { ir.inserted++; totalInserted++; }
+              } catch (e: any) {
+                ir.errors.push(`${it.id}: ${e?.message || String(e)}`);
+                totalSkipped++; ir.skipped++;
+              }
+            }
+          }
+
+          pageToken = nextToken;
+          if (!pageToken) break; // fim desta inbox
+          // Em sync normal (não backfill) sem cursor, paginar até esgotar a janela;
+          // em backfill, continua a paginar até esgotar orçamento.
+          if (!backfill && checkedThisCall >= maxMessages) {
+            outCursor = { inbox: inbox.label, page_token: pageToken };
+            break inboxLoop;
           }
         }
       } catch (e: any) {
         ir.errors.push(`list: ${e?.message || String(e)}`);
       }
+
+      // Inbox terminou. Se houver mais inbox, segue.
     }
 
-    return res.status(200).json({
+    const result = {
       success: true,
+      dry_run: dryRun,
+      backfill,
+      done: !outCursor,
+      cursor: outCursor,
       total_checked: totalChecked,
       total_inserted: totalInserted,
       total_skipped: totalSkipped,
+      total_existing: totalExisting,
+      oldest_email_at: oldestSeen,
+      newest_email_at: newestSeen,
       per_inbox: perInbox,
-    });
+    };
+
+    if (!dryRun) {
+      await ext.from('processual_sync_state').update({
+        last_run_at: new Date().toISOString(),
+        last_synced_at: new Date().toISOString(),
+        last_result: result,
+        cursor: outCursor,
+      }).eq('id', 1).then(() => {}, () => {});
+    }
+
+    return res.status(200).json(result);
   } catch (err: any) {
     return res.status(200).json({ success: false, error: err?.message || String(err) });
   }

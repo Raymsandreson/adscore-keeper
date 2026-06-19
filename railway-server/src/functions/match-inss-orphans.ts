@@ -17,7 +17,7 @@ export const handler: RequestHandler = async (_req, res) => {
   try {
     const { data: orphans, error: oErr } = await supabase
       .from('inss_admin_processes')
-      .select('id, requerimento_number, cpf_segurado, nome_segurado')
+      .select('id, requerimento_number, cpf_segurado, nome_segurado, benefit_number')
       .is('case_id', null)
       .is('lead_id', null)
       .is('deleted_at', null);
@@ -33,6 +33,7 @@ export const handler: RequestHandler = async (_req, res) => {
           requerimento: o.requerimento_number,
           cpf: (o as any).cpf_segurado,
           nome: (o as any).nome_segurado,
+          beneficio_num: (o as any).benefit_number,
         });
         if (!match.leadId && !match.caseId) continue;
 

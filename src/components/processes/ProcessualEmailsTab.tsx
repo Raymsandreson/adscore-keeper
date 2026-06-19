@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { PjePushEmailView } from "./PjePushEmailView";
-import { Search, Mail } from "lucide-react";
+import { Search, Mail, RefreshCw, DownloadCloud } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 
@@ -35,6 +35,8 @@ export default function ProcessualEmailsTab() {
   const [items, setItems] = useState<ProcessualEmail[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [backfilling, setBackfilling] = useState(false);
+  const [backfillStatus, setBackfillStatus] = useState("");
   const [search, setSearch] = useState("");
   const [pushOnly, setPushOnly] = useState(true);
   const [page, setPage] = useState(1);
@@ -49,7 +51,7 @@ export default function ProcessualEmailsTab() {
       .select("*")
       .is("deleted_at", null)
       .order("received_at", { ascending: false, nullsFirst: false })
-      .limit(500);
+      .limit(2000);
     if (error) toast.error("Erro ao carregar: " + error.message);
     setItems((data || []) as any);
     setLoading(false);
@@ -66,16 +68,57 @@ export default function ProcessualEmailsTab() {
           "Content-Type": "application/json",
           "x-api-key": (import.meta as any).env?.VITE_RAILWAY_API_KEY || "",
         },
-        body: JSON.stringify({ lookback_hours: 168, max_messages: 100 }),
+        body: JSON.stringify({ lookback_hours: 168, max_messages: 200 }),
       });
       const j = await r.json();
       if (!j.success) toast.error(j.error || "Falha no sync");
-      else toast.success(`Sync ok — ${j.total_inserted} novo(s), ${j.total_skipped} ignorado(s)`);
+      else toast.success(`Sync ok — ${j.total_inserted} novo(s), ${j.total_existing} já tinha`);
       await load();
     } catch (e: any) {
       toast.error(e?.message || String(e));
     } finally {
       setSyncing(false);
+    }
+  }, [load]);
+
+  // Backfill paginado: varre TODO o histórico em lotes, seguindo o cursor
+  // devolvido pelo servidor até `done`. Destrava o teto de 125 e-mails.
+  const runBackfill = useCallback(async () => {
+    if (!confirm("Buscar e-mails antigos: varre todo o histórico desta caixa página por página. Pode levar alguns minutos. Continuar?")) return;
+    setBackfilling(true);
+    let cursor: any = null;
+    let totalNew = 0;
+    let totalExisting = 0;
+    let calls = 0;
+    try {
+      do {
+        const r = await fetch(`${RAILWAY_BASE}/functions/gmail-processual-sync`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": (import.meta as any).env?.VITE_RAILWAY_API_KEY || "",
+          },
+          body: JSON.stringify({ backfill: true, max_messages: 150, cursor }),
+        });
+        const j = await r.json();
+        if (!j.success) { toast.error("Backfill falhou: " + (j.error || "erro")); break; }
+        totalNew += j.total_inserted || 0;
+        totalExisting += j.total_existing || 0;
+        calls++;
+        setBackfillStatus(`Lote ${calls} · ${totalNew} novos · ${totalExisting} já tinha`);
+        cursor = j.done ? null : j.cursor;
+        if (j.done) {
+          toast.success(`Backfill concluído — ${totalNew} novos e-mails, ${totalExisting} já existiam`);
+          break;
+        }
+      } while (cursor && calls < 500);
+      if (calls >= 500) toast.warning("Backfill interrompido no limite de 500 lotes.");
+      await load();
+    } catch (e: any) {
+      toast.error("Erro: " + e?.message);
+    } finally {
+      setBackfilling(false);
+      setBackfillStatus("");
     }
   }, [load]);
 
@@ -148,7 +191,7 @@ export default function ProcessualEmailsTab() {
             className="pl-9"
           />
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 flex-wrap">
           <div className="flex items-center gap-2">
             <Switch
               id="push-only"
@@ -159,6 +202,14 @@ export default function ProcessualEmailsTab() {
               Apenas PUSH
             </label>
           </div>
+          <Button variant="outline" size="sm" onClick={triggerSync} disabled={syncing || backfilling}>
+            <RefreshCw className={`h-4 w-4 mr-1 ${syncing ? "animate-spin" : ""}`} />
+            {syncing ? "Sincronizando..." : "Sincronizar"}
+          </Button>
+          <Button variant="outline" size="sm" onClick={runBackfill} disabled={syncing || backfilling}>
+            <DownloadCloud className={`h-4 w-4 mr-1 ${backfilling ? "animate-pulse" : ""}`} />
+            {backfilling ? (backfillStatus || "Buscando antigos...") : "Buscar mais antigos"}
+          </Button>
         </div>
       </div>
 
