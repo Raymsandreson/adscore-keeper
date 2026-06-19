@@ -97,6 +97,19 @@ const BpcFunnelDetailPage = () => {
     return bpcLeads.filter(l => (l.operator || "").trim().toLowerCase() === target);
   }, [bpcLeads, acolhedorId]);
 
+  // Métricas derivadas da planilha filtrada (sempre coerentes com a tabela detalhada)
+  const filteredMetrics = useMemo(() => {
+    if (acolhedorId === "all") return bpcMetrics;
+    let total = 0, unviable = 0, toCallNow = 0, alreadyOnWhatsApp = 0;
+    for (const l of filteredBpcLeads) {
+      total++;
+      if (l.is_unviable) unviable++;
+      else if (l.has_whatsapp === false) toCallNow++;
+      else alreadyOnWhatsApp++;
+    }
+    return { total, unviable, toCallNow, alreadyOnWhatsApp };
+  }, [acolhedorId, bpcMetrics, filteredBpcLeads]);
+
   // Per-stage counts (tabela leads) — cruza por telefone com a planilha filtrada
   const filteredPhones = useMemo(() => {
     const set = new Set<string>();
@@ -110,31 +123,36 @@ const BpcFunnelDetailPage = () => {
     return Array.from(set);
   }, [filteredBpcLeads]);
 
-  const leadsQueryKey = ["bpc-detail-leads", boardId, dateField, fromDate?.toISOString(), toDate?.toISOString(), acolhedorId, filteredPhones.length];
-  const { data: leadsData, isFetching: leadsLoading, refetch: refetchLeads } = useQuery({
+  const leadsQueryKey = ["bpc-detail-leads", boardId, dateField, fromDate?.toISOString() ?? "none", toDate?.toISOString() ?? "none"];
+  const { data: rawLeadsData, isFetching: leadsLoading, refetch: refetchLeads } = useQuery({
     queryKey: leadsQueryKey,
     queryFn: async () => {
-      if (!boardId) return { byStage: {} as Record<string, number>, total: 0 };
+      if (!boardId) return [] as Array<{ status: string; lead_phone: string | null }>;
       let q = supabase.from("leads").select("status, lead_phone").eq("board_id", boardId);
       if (fromDate) q = q.gte(dateField, fromDate.toISOString());
       if (toDate) q = q.lte(dateField, toDate.toISOString());
       const { data, error } = await q;
       if (error) throw error;
-      const phoneSet = acolhedorId === "all" ? null : new Set(filteredPhones);
-      const byStage: Record<string, number> = {};
-      let total = 0;
-      for (const l of data || []) {
-        if (phoneSet) {
-          const p = String(l.lead_phone || "").replace(/\D/g, "");
-          if (!p || !phoneSet.has(p)) continue;
-        }
-        byStage[l.status] = (byStage[l.status] || 0) + 1;
-        total++;
-      }
-      return { byStage, total };
+      return data || [];
     },
     enabled: !!boardId,
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
   });
+
+  // Stage breakdown calculado client-side; refiltra sem refazer query ao trocar acolhedor
+  const leadsData = useMemo(() => {
+    const phoneSet = acolhedorId === "all" ? null : new Set(filteredPhones);
+    const byStage: Record<string, number> = {};
+    for (const l of rawLeadsData || []) {
+      if (phoneSet) {
+        const p = String(l.lead_phone || "").replace(/\D/g, "");
+        if (!p || !phoneSet.has(p)) continue;
+      }
+      byStage[l.status] = (byStage[l.status] || 0) + 1;
+    }
+    return { byStage };
+  }, [rawLeadsData, acolhedorId, filteredPhones]);
 
   const { fetchProfileNames, getDisplayName } = useProfileNames();
   useEffect(() => {
@@ -271,7 +289,7 @@ const BpcFunnelDetailPage = () => {
       {/* Funil */}
       <BpcFunnelBars
         board={board}
-        metrics={acolhedorId === "all" ? bpcMetrics : { ...bpcMetrics, total: leadsData?.total || 0 }}
+        metrics={filteredMetrics}
         loading={bpcLoading || leadsLoading}
         onOpenList={() => setSheetOpen(true)}
         leadsPerStage={leadsData?.byStage || {}}
@@ -282,7 +300,7 @@ const BpcFunnelDetailPage = () => {
         onOpenChange={setSheetOpen}
         source="unificada"
         externalLeads={filteredBpcLeads}
-        externalMetrics={acolhedorId === "all" ? bpcMetrics : { ...bpcMetrics, total: filteredBpcLeads.length }}
+        externalMetrics={filteredMetrics}
         externalLoading={bpcLoading}
         onRefresh={refetchBpc}
       />
