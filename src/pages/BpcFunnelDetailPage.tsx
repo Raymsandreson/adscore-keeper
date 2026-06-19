@@ -11,6 +11,7 @@ import { useBpcFormLeads } from "@/hooks/useBpcFormLeads";
 import { useProfileNames } from "@/hooks/useProfileNames";
 import { BpcFunnelBars } from "@/components/kanban/BpcFunnelBars";
 import { BpcFormLeadsSheet } from "@/components/whatsapp/FocusDashboard/BpcFormLeadsSheet";
+import { BpcStageLeadsSheet } from "@/components/kanban/BpcStageLeadsSheet";
 import { buildBpcAcolhedorFilter, leadMatchesFilter } from "@/lib/bpcPhoneMatch";
 
 import { Button } from "@/components/ui/button";
@@ -57,6 +58,7 @@ const BpcFunnelDetailPage = () => {
   // Multi-select. Vazio = todos. "__none__" = sem acolhedor. Outros = nome (case-insensitive).
   const [selectedAcolhedores, setSelectedAcolhedores] = useState<string[]>([]);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [stageSheet, setStageSheet] = useState<{ id: string; name: string; color: string } | null>(null);
 
   // Acolhedoras que devem sempre aparecer na lista, mesmo sem dados na planilha
   const ALWAYS_SHOW = useMemo(() => ["Karolyne", "Edilan"], []);
@@ -367,6 +369,7 @@ const BpcFunnelDetailPage = () => {
         metrics={filteredMetrics}
         loading={bpcLoading || leadsLoading}
         onOpenList={() => setSheetOpen(true)}
+        onSelectStage={(s) => setStageSheet(s)}
         leadsPerStage={leadsData?.byStage || {}}
       />
 
@@ -378,6 +381,20 @@ const BpcFunnelDetailPage = () => {
         externalMetrics={filteredMetrics}
         externalLoading={bpcLoading}
         onRefresh={refetchBpc}
+      />
+
+      <BpcStageLeadsSheet
+        open={!!stageSheet}
+        onOpenChange={(v) => { if (!v) setStageSheet(null); }}
+        boardId={boardId}
+        stageId={stageSheet?.id}
+        stageName={stageSheet?.name}
+        stageColor={stageSheet?.color}
+        dateField={dateField}
+        fromDate={fromDate}
+        toDate={toDate}
+        bpcFilter={bpcFilter}
+        filterPending={filterPending}
       />
     </div>
   );
