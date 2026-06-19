@@ -268,16 +268,28 @@ export default function ProcessesPage() {
         </TabsContent>
 
         <TabsContent value="processual">
-          <Suspense fallback={<div className="text-center py-12 text-muted-foreground">Carregando...</div>}>
-            <ProcessualEmailsTab />
-          </Suspense>
+          <Tabs defaultValue="emails" className="space-y-4">
+            <TabsList>
+              <TabsTrigger value="emails" className="gap-2">
+                <Mail className="h-4 w-4" /> E-mails
+              </TabsTrigger>
+              <TabsTrigger value="audiencias" className="gap-2">
+                <Gavel className="h-4 w-4" /> Audiências
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="emails">
+              <Suspense fallback={<div className="text-center py-12 text-muted-foreground">Carregando...</div>}>
+                <ProcessualEmailsTab />
+              </Suspense>
+            </TabsContent>
+            <TabsContent value="audiencias">
+              <Suspense fallback={<div className="text-center py-12 text-muted-foreground">Carregando...</div>}>
+                <HearingsModule />
+              </Suspense>
+            </TabsContent>
+          </Tabs>
         </TabsContent>
 
-        <TabsContent value="audiencias">
-          <Suspense fallback={<div className="text-center py-12 text-muted-foreground">Carregando...</div>}>
-            <HearingsModule />
-          </Suspense>
-        </TabsContent>
       </Tabs>
 
 
