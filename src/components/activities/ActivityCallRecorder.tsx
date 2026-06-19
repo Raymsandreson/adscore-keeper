@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Phone, Mic, Square, Loader2, Sparkles, Info, RotateCcw } from 'lucide-react';
+import { Phone, Mic, Square, Loader2, Sparkles, Info, RotateCcw, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
@@ -49,6 +49,24 @@ const CALL_FIELD_KEYS: (keyof ActivityCallFields)[] = [
   'what_was_done', 'current_status', 'next_steps', 'solicitacao', 'resposta_juizo', 'notes',
 ];
 
+/** Força o download de um arquivo (cross-origin via blob; fallback abre em nova aba). */
+async function downloadRecording(url: string, filename = 'gravacao-ligacao.webm') {
+  try {
+    const resp = await fetch(url);
+    const blob = await resp.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = objectUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+  } catch {
+    window.open(url, '_blank');
+  }
+}
+
 /** Remove tags HTML para enviar texto limpo como contexto para a IA. */
 export function stripHtmlToText(html: string): string {
   return (html || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
@@ -75,6 +93,7 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
   const [transcript, setTranscript] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [silent, setSilent] = useState(false);
+  const [recordingUrl, setRecordingUrl] = useState<string | null>(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -208,6 +227,7 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
 
       const { data: urlData } = supabase.storage.from('activity-chat').getPublicUrl(path);
       const audio_url = urlData.publicUrl;
+      setRecordingUrl(audio_url);
 
       // Guarda a gravação como anexo de áudio da atividade (consulta/análise posterior).
       if (activityId) {
@@ -333,6 +353,7 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
     setError(null);
     setSilent(false);
     silentRef.current = false;
+    setRecordingUrl(null);
   }, [teardownAudio]);
 
   return (
@@ -420,6 +441,16 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
                   <p className="text-xs whitespace-pre-wrap">{transcript}</p>
                 </ScrollArea>
               </div>
+            )}
+            {recordingUrl && (
+              <Button
+                variant="outline"
+                className="w-full gap-2"
+                size="sm"
+                onClick={() => downloadRecording(recordingUrl, `gravacao-ligacao-${seconds}s.webm`)}
+              >
+                <Download className="h-4 w-4" /> Baixar gravação
+              </Button>
             )}
             <Button variant="outline" className="w-full gap-2" size="sm" onClick={reset}>
               <RotateCcw className="h-4 w-4" /> Gravar novamente

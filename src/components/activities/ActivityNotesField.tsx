@@ -21,7 +21,26 @@ import {
   Trash2,
   Loader2,
   Mic,
+  Download,
 } from 'lucide-react';
+
+/** Força o download de um arquivo (funciona cross-origin via blob; fallback abre em nova aba). */
+async function downloadAttachment(url: string, filename: string) {
+  try {
+    const resp = await fetch(url);
+    const blob = await resp.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = objectUrl;
+    a.download = filename || 'arquivo';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+  } catch {
+    window.open(url, '_blank');
+  }
+}
 
 
 
@@ -448,6 +467,16 @@ export function ActivityNotesField({ value, onChange, activityId, placeholder, l
                   <audio controls src={att.file_url} className="mt-1 h-8 w-full" />
                 )}
               </div>
+              {att.attachment_type !== 'link' && (
+                <button
+                  type="button"
+                  onClick={() => downloadAttachment(att.file_url, att.file_name)}
+                  className="flex-shrink-0"
+                  title="Baixar arquivo"
+                >
+                  <Download className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
+                </button>
+              )}
               <a
                 href={att.file_url}
                 target="_blank"
