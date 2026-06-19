@@ -12,26 +12,41 @@ interface BpcFunnelBarsProps {
   loading?: boolean;
   /** Abre a listagem completa (BpcFormLeadsSheet). */
   onOpenList: () => void;
+  /**
+   * Contagem real de leads (tabela `leads`) por etapa do board.
+   * Quando presente, sobrepõe a heurística antiga "tudo na primeira etapa"
+   * — assim toda movimentação no Kanban (ou via etiqueta WhatsApp) se reflete
+   * imediatamente nas barras. A primeira etapa ainda absorve o residual da
+   * planilha BASE_UNIFICADA que nunca foi importado pra `leads`.
+   */
+  leadsPerStage?: Record<string, number>;
 }
 
-// Funil BPC - Autismo: os leads vêm da planilha BASE_UNIFICADA e não têm
-// classificação de etapa (status_funil vazio), então TODOS entram na primeira
-// etapa ("Novo"). A movimentação entre etapas acontece depois, dentro do sistema.
-// Visual de barras espelha o StageFunnelChart pra ficar igual aos demais funis,
-// mas sem as queries na tabela `leads` (que está vazia pra este board).
-export function BpcFunnelBars({ board, metrics, loading, onOpenList }: BpcFunnelBarsProps) {
+// Funil BPC - Autismo: a barra base de leads vem da planilha BASE_UNIFICADA
+// (cat_leads), mas a partir do momento que cada lead é tocado no Kanban /
+// recebe etiqueta no WhatsApp ele passa a viver na tabela `leads`. Para refletir
+// isso, somamos: contagem real da `leads.status = stage.id` + residual da
+// planilha (apenas na primeira etapa, descontando o que já saiu pra `leads`).
+export function BpcFunnelBars({ board, metrics, loading, onOpenList, leadsPerStage }: BpcFunnelBarsProps) {
   const stages = useMemo(() => board.stages || [], [board.stages]);
 
   const funnelData = useMemo(() => {
     const firstId = stages.find((s) => s.id === 'new')?.id ?? stages[0]?.id;
-    return stages.map((stage, index) => ({
-      id: stage.id,
-      name: stage.name,
-      color: stage.color,
-      value: stage.id === firstId ? metrics.total : 0,
-      isFirst: index === 0,
-    }));
-  }, [stages, metrics.total]);
+    const counts = leadsPerStage || {};
+    const movedTotal = Object.values(counts).reduce((sum, n) => sum + (Number(n) || 0), 0);
+    const residualFirst = Math.max(0, metrics.total - movedTotal);
+    return stages.map((stage, index) => {
+      const realCount = Number(counts[stage.id] || 0);
+      const value = stage.id === firstId ? realCount + residualFirst : realCount;
+      return {
+        id: stage.id,
+        name: stage.name,
+        color: stage.color,
+        value,
+        isFirst: index === 0,
+      };
+    });
+  }, [stages, metrics.total, leadsPerStage]);
 
   const maxValue = useMemo(() => Math.max(...funnelData.map((s) => s.value), 1), [funnelData]);
 
