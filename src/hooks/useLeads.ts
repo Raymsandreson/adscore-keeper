@@ -8,6 +8,7 @@ import { useAuthContext } from '@/contexts/AuthContext';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { applyGeoRuleForLead } from '@/utils/applyGeoRuleForLead';
 import { remapToExternal } from '@/integrations/supabase/uuid-remap';
+import { fireOrphanMatchForLead } from '@/lib/fireOrphanMatchForLead';
 
 // Columns to fetch - avoids pulling unnecessary large text columns
 const LEAD_SELECT_COLUMNS = [
