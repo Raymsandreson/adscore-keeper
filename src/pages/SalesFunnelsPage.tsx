@@ -1,58 +1,19 @@
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useKanbanBoards } from "@/hooks/useKanbanBoards";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, LayoutGrid, Users, ArrowRight, Settings, Filter, Maximize2, Minimize2, Target, CheckCircle2, Plus, CalendarIcon } from "lucide-react";
+import { Search, Filter, Settings, Plus } from "lucide-react";
 import { db as supabase } from "@/integrations/supabase";
 import { useQuery } from "@tanstack/react-query";
-import { StageFunnelChart } from "@/components/kanban/StageFunnelChart";
-import { BpcFunnelBars } from "@/components/kanban/BpcFunnelBars";
 import { BpcFormLeadsSheet } from "@/components/whatsapp/FocusDashboard/BpcFormLeadsSheet";
 import { useBpcFormLeads } from "@/hooks/useBpcFormLeads";
 import { useEnsureStageLabels } from "@/hooks/useEnsureStageLabels";
-import { cn } from "@/lib/utils";
-import { Progress } from "@/components/ui/progress";
 import { WorkflowBuilder } from "@/components/workflow/WorkflowBuilder";
 import { FunnelTeamDialog } from "@/components/funnel/FunnelTeamDialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
-import { format } from "date-fns";
-import { ptBR } from "date-fns/locale";
+import { FunnelBoardCard } from "@/components/funnel/FunnelBoardCard";
 
-type DateField = "created_at" | "updated_at";
-type RangePreset = "today" | "7d" | "30d" | "all" | "custom";
-
-function computeRange(preset: RangePreset, custom?: { from?: Date; to?: Date }): { from: Date | null; to: Date | null } {
-  const now = new Date();
-  if (preset === "all") return { from: null, to: null };
-  if (preset === "today") {
-    const f = new Date(now); f.setHours(0, 0, 0, 0);
-    const t = new Date(now); t.setHours(23, 59, 59, 999);
-    return { from: f, to: t };
-  }
-  if (preset === "7d") {
-    const f = new Date(now); f.setDate(f.getDate() - 6); f.setHours(0, 0, 0, 0);
-    return { from: f, to: now };
-  }
-  if (preset === "30d") {
-    const f = new Date(now); f.setDate(f.getDate() - 29); f.setHours(0, 0, 0, 0);
-    return { from: f, to: now };
-  }
-  return { from: custom?.from ?? null, to: custom?.to ?? null };
-}
-
-interface ChecklistItem {
-  id: string;
-  label: string;
-  checked: boolean;
-}
-
-// O funil "BPC - Autismo" não tem leads na tabela `leads` — eles vêm da planilha
-// BPC-LOAS (aba BASE_UNIFICADA). Detectamos pelo nome para trocar a visualização.
 const isBpcFunnel = (name: string) => /bpc|autis/i.test(name);
 
 const SalesFunnelsPage = () => {
@@ -64,44 +25,26 @@ const SalesFunnelsPage = () => {
   const [editBoardId, setEditBoardId] = useState<string | null>(null);
   const [teamBoard, setTeamBoard] = useState<{ id: string; name: string } | null>(null);
   const [bpcSheetOpen, setBpcSheetOpen] = useState(false);
-  const [dateField, setDateField] = useState<DateField>("created_at");
-  const [rangePreset, setRangePreset] = useState<RangePreset>("all");
-  const [customRange, setCustomRange] = useState<{ from?: Date; to?: Date }>({});
-  const { from: fromDate, to: toDate } = useMemo(
-    () => computeRange(rangePreset, customRange),
-    [rangePreset, customRange.from?.getTime(), customRange.to?.getTime()]
-  );
-  const dateFilter = useMemo(
-    () => ({ field: dateField, from: fromDate?.toISOString() ?? null, to: toDate?.toISOString() ?? null }),
-    [dateField, fromDate, toDate]
-  );
 
   const salesFunnels = useMemo(
     () => boards.filter(b => b.board_type === 'funnel'),
     [boards]
   );
 
-  // Garante que os boards-piloto (BPC - Autismo, Acidente de Trabalho) tenham
-  // suas etiquetas WhatsApp sincronizadas com as etapas do Kanban. Idempotente,
-  // dispara 1x por sessão por board. Filtro de allowlist mora em useEnsureStageLabels.
   useEnsureStageLabels(salesFunnels);
 
-  // Funil BPC - Autismo: dados vêm da planilha (BASE_UNIFICADA), não da tabela leads.
-  // Busca uma vez no nível da página e compartilha entre as barras e a listagem.
   const hasBpc = useMemo(() => salesFunnels.some(b => isBpcFunnel(b.name)), [salesFunnels]);
-  const bpcRange = useMemo(() => ({
-    from: fromDate ?? new Date("2020-01-01T00:00:00Z"),
-    to: toDate ?? new Date(),
-  }), [fromDate, toDate]);
+
+  // Para o Sheet de listagem BPC (independente do filtro por card — usa janela ampla)
   const {
-    metrics: bpcMetrics,
     leads: bpcLeads,
-    loading: bpcLoading,
-    refetch: bpcRefetch,
+    metrics: bpcSheetMetrics,
+    loading: bpcSheetLoading,
+    refetch: bpcSheetRefetch,
   } = useBpcFormLeads({
-    from: bpcRange.from,
-    to: bpcRange.to,
-    enabled: hasBpc,
+    from: new Date("2020-01-01T00:00:00Z"),
+    to: new Date(),
+    enabled: hasBpc && bpcSheetOpen,
     source: "unificada",
   });
 
@@ -112,96 +55,32 @@ const SalesFunnelsPage = () => {
     [salesFunnels, search]
   );
 
-  // Fetch lead counts per board+stage
-  const { data: leadCounts } = useQuery({
-    queryKey: ['funnel-lead-counts', salesFunnels.map(b => b.id), dateFilter],
+  // Sumário no topo: contagem total por board, SEM filtro de data (filtros agora são por card)
+  const { data: totalsByBoard } = useQuery({
+    queryKey: ['funnel-totals-by-board', salesFunnels.map(b => b.id)],
     queryFn: async () => {
-      if (!salesFunnels.length) return {};
+      if (!salesFunnels.length) return {} as Record<string, number>;
       const boardIds = salesFunnels.map(b => b.id);
-      let q = supabase
+      const { data, error } = await supabase
         .from('leads')
-        .select('board_id, status')
+        .select('board_id')
         .in('board_id', boardIds);
-      if (dateFilter.from) q = q.gte(dateFilter.field, dateFilter.from);
-      if (dateFilter.to) q = q.lte(dateFilter.field, dateFilter.to);
-      const { data, error } = await q;
       if (error) throw error;
-
-      const counts: Record<string, { total: number; byStage: Record<string, number> }> = {};
-      for (const lead of data || []) {
-        if (!counts[lead.board_id]) counts[lead.board_id] = { total: 0, byStage: {} };
-        counts[lead.board_id].total++;
-        counts[lead.board_id].byStage[lead.status] = (counts[lead.board_id].byStage[lead.status] || 0) + 1;
-      }
-      return counts;
+      const out: Record<string, number> = {};
+      for (const l of data || []) out[l.board_id] = (out[l.board_id] || 0) + 1;
+      return out;
     },
     enabled: salesFunnels.length > 0,
   });
 
-  // Fetch objective (checklist) data for expanded board
-  const { data: objectiveData } = useQuery({
-    queryKey: ['funnel-objectives', expandedId],
-    queryFn: async () => {
-      if (!expandedId) return null;
-
-      // Get checklist stage links for this board
-      const { data: links } = await supabase
-        .from('checklist_stage_links')
-        .select('stage_id, checklist_template_id, display_order')
-        .eq('board_id', expandedId)
-        .order('display_order');
-
-      if (!links?.length) return null;
-
-      const templateIds = [...new Set(links.map(l => l.checklist_template_id))];
-
-      // Get template names
-      const { data: templates } = await supabase
-        .from('checklist_templates')
-        .select('id, name')
-        .in('id', templateIds);
-
-      // Get checklist instances for all leads in this board
-      const { data: instances } = await supabase
-        .from('lead_checklist_instances')
-        .select('checklist_template_id, stage_id, items, is_completed')
-        .eq('board_id', expandedId);
-
-      const templateMap = new Map(templates?.map(t => [t.id, t.name]) || []);
-
-      // Group by stage -> template
-      const result: Record<string, { templateId: string; templateName: string; totalItems: number; completedItems: number; totalInstances: number; completedInstances: number }[]> = {};
-
-      for (const link of links) {
-        if (!result[link.stage_id]) result[link.stage_id] = [];
-
-        const relatedInstances = instances?.filter(
-          i => i.checklist_template_id === link.checklist_template_id && i.stage_id === link.stage_id
-        ) || [];
-
-        let totalItems = 0;
-        let completedItems = 0;
-
-        for (const inst of relatedInstances) {
-          const items = (inst.items as unknown as ChecklistItem[]) || [];
-          totalItems += items.length;
-          completedItems += items.filter(item => item.checked).length;
-        }
-
-        result[link.stage_id].push({
-          templateId: link.checklist_template_id,
-          templateName: templateMap.get(link.checklist_template_id) || 'Objetivo',
-          totalItems,
-          completedItems,
-          totalInstances: relatedInstances.length,
-          completedInstances: relatedInstances.filter(i => i.is_completed).length,
-        });
-      }
-
-      return result;
-    },
-    enabled: !!expandedId,
-  });
+  const totalLeads = useMemo(
+    () => Object.values(totalsByBoard || {}).reduce((s, n) => s + n, 0),
+    [totalsByBoard]
+  );
+  const boardsWithLeads = useMemo(
+    () => salesFunnels.filter(b => (totalsByBoard?.[b.id] || 0) > 0).length,
+    [salesFunnels, totalsByBoard]
+  );
 
   const handleOpenKanban = (boardId: string) => {
     navigate(`/leads?board=${boardId}`);
@@ -232,7 +111,7 @@ const SalesFunnelsPage = () => {
         </div>
       </div>
 
-      {/* Search + Date filter */}
+      {/* Busca (filtro de data agora é por card) */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative flex-1 min-w-[200px] max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -243,60 +122,7 @@ const SalesFunnelsPage = () => {
             className="pl-9"
           />
         </div>
-        <Select value={dateField} onValueChange={(v) => setDateField(v as DateField)}>
-          <SelectTrigger className="w-[180px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="created_at">📥 Data de cadastro</SelectItem>
-            <SelectItem value="updated_at">🔄 Última atualização</SelectItem>
-          </SelectContent>
-        </Select>
-        <div className="flex items-center gap-1 rounded-md border bg-background p-0.5">
-          {([
-            { v: "today", l: "Hoje" },
-            { v: "7d", l: "7d" },
-            { v: "30d", l: "30d" },
-            { v: "all", l: "Tudo" },
-          ] as { v: RangePreset; l: string }[]).map(opt => (
-            <Button
-              key={opt.v}
-              size="sm"
-              variant={rangePreset === opt.v ? "default" : "ghost"}
-              className="h-7 px-2 text-xs"
-              onClick={() => setRangePreset(opt.v)}
-            >
-              {opt.l}
-            </Button>
-          ))}
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                size="sm"
-                variant={rangePreset === "custom" ? "default" : "ghost"}
-                className="h-7 px-2 text-xs gap-1"
-              >
-                <CalendarIcon className="h-3 w-3" />
-                {rangePreset === "custom" && customRange.from
-                  ? `${format(customRange.from, "dd/MM", { locale: ptBR })}${customRange.to ? ` - ${format(customRange.to, "dd/MM", { locale: ptBR })}` : ""}`
-                  : "Período"}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="end">
-              <Calendar
-                mode="range"
-                selected={{ from: customRange.from, to: customRange.to }}
-                onSelect={(r) => {
-                  setCustomRange({ from: r?.from, to: r?.to });
-                  setRangePreset("custom");
-                }}
-                locale={ptBR}
-              />
-            </PopoverContent>
-          </Popover>
-        </div>
       </div>
-
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -308,9 +134,7 @@ const SalesFunnelsPage = () => {
         </Card>
         <Card className="border-border/50">
           <CardContent className="pt-4 pb-3 text-center">
-            <div className="text-2xl font-bold text-foreground">
-              {Object.values(leadCounts || {}).reduce((sum, c) => sum + c.total, 0)}
-            </div>
+            <div className="text-2xl font-bold text-foreground">{totalLeads}</div>
             <div className="text-xs text-muted-foreground">Total de Leads</div>
           </CardContent>
         </Card>
@@ -324,9 +148,7 @@ const SalesFunnelsPage = () => {
         </Card>
         <Card className="border-border/50">
           <CardContent className="pt-4 pb-3 text-center">
-            <div className="text-2xl font-bold text-primary">
-              {salesFunnels.filter(b => (leadCounts?.[b.id]?.total || 0) > 0).length}
-            </div>
+            <div className="text-2xl font-bold text-primary">{boardsWithLeads}</div>
             <div className="text-xs text-muted-foreground">Com Leads</div>
           </CardContent>
         </Card>
@@ -345,174 +167,18 @@ const SalesFunnelsPage = () => {
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {filtered.map(board => {
-            const counts = leadCounts?.[board.id];
-            const totalLeads = counts?.total || 0;
-            const stageData = counts?.byStage || {};
-            const isBpc = isBpcFunnel(board.name);
-            const isExpanded = expandedId === board.id;
-            const boardObjectives = isExpanded ? objectiveData : null;
-
-            return (
-              <Card
-                key={board.id}
-                className={cn(
-                  "border-border/50 hover:shadow-md transition-all group",
-                  isExpanded && 'lg:col-span-2'
-                )}
-              >
-                <CardHeader className="pb-2">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-base font-semibold flex items-center gap-2">
-                      <LayoutGrid className="h-4 w-4 text-primary" />
-                      {board.name}
-                    </CardTitle>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="secondary" className="text-xs">
-                        <Users className="h-3 w-3 mr-1" />
-                        {isBpc ? bpcMetrics.total : totalLeads} leads
-                      </Badge>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7"
-                        onClick={() => setExpandedId(isExpanded ? null : board.id)}
-                        title={isExpanded ? "Reduzir" : "Expandir"}
-                      >
-                        {isExpanded ? (
-                          <Minimize2 className="h-4 w-4" />
-                        ) : (
-                          <Maximize2 className="h-4 w-4" />
-                        )}
-                      </Button>
-                    </div>
-                  </div>
-                  {board.description && (
-                    <CardDescription className="text-xs line-clamp-1">
-                      {board.description}
-                    </CardDescription>
-                  )}
-                </CardHeader>
-                <CardContent className="pt-0 space-y-3">
-                  {/* BPC - Autismo: barras alimentadas pela planilha; demais funis usam a tabela leads */}
-                  {isBpc ? (
-                    <BpcFunnelBars
-                      board={board}
-                      metrics={bpcMetrics}
-                      loading={bpcLoading}
-                      onOpenList={() => setBpcSheetOpen(true)}
-                      leadsPerStage={stageData}
-                    />
-                  ) : (
-                    /* Mini funnel visualization */
-                    <StageFunnelChart
-                      board={board}
-                      leadsPerStage={stageData}
-                      dateFilter={dateFilter}
-                    />
-                  )}
-
-
-                  {/* Objectives detail when expanded */}
-                  {isExpanded && boardObjectives && board.stages?.length > 0 && (
-                    <div className="border-t border-border/50 pt-3 space-y-3">
-                      <div className="flex items-center gap-2 text-sm font-medium">
-                        <Target className="h-4 w-4 text-primary" />
-                        Detalhamento por Objetivo
-                      </div>
-                      <div className="space-y-3">
-                        {board.stages.map(stage => {
-                          const stageObjectives = boardObjectives[stage.id];
-                          if (!stageObjectives?.length) return null;
-
-                          return (
-                            <div key={stage.id} className="space-y-1.5">
-                              <div className="flex items-center gap-2">
-                                <div
-                                  className="w-2.5 h-2.5 rounded-full shrink-0"
-                                  style={{ backgroundColor: stage.color }}
-                                />
-                                <span className="text-xs font-medium text-foreground">{stage.name}</span>
-                                <span className="text-[10px] text-muted-foreground">
-                                  ({stageData[stage.id] || 0} leads)
-                                </span>
-                              </div>
-                              <div className="ml-5 space-y-1.5">
-                                {stageObjectives.map(obj => {
-                                  const pct = obj.totalItems > 0
-                                    ? Math.round((obj.completedItems / obj.totalItems) * 100)
-                                    : 0;
-
-                                  return (
-                                    <div key={obj.templateId} className="flex items-center gap-3 p-2 rounded-md bg-muted/30">
-                                      <CheckCircle2 className={cn(
-                                        "h-3.5 w-3.5 shrink-0",
-                                        pct === 100 ? "text-primary" : "text-muted-foreground"
-                                      )} />
-                                      <div className="flex-1 min-w-0">
-                                        <div className="flex items-center justify-between mb-1">
-                                          <span className="text-[11px] font-medium truncate">{obj.templateName}</span>
-                                          <span className="text-[10px] text-muted-foreground shrink-0 ml-2">
-                                            {obj.completedItems}/{obj.totalItems} passos · {obj.completedInstances}/{obj.totalInstances} concluídos
-                                          </span>
-                                        </div>
-                                        <Progress value={pct} className="h-1.5" />
-                                      </div>
-                                      <Badge variant="outline" className="text-[10px] px-1.5 font-mono shrink-0">
-                                        {pct}%
-                                      </Badge>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {isExpanded && boardObjectives === null && (
-                    <div className="border-t border-border/50 pt-3 text-center text-xs text-muted-foreground py-4">
-                      Nenhum objetivo configurado para este funil
-                    </div>
-                  )}
-
-                  {/* Action buttons */}
-                  <div className="flex justify-end gap-2 pt-1">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="text-xs"
-                      onClick={() => setTeamBoard({ id: board.id, name: board.name })}
-                    >
-                      <Users className="h-3.5 w-3.5 mr-1.5" />
-                      Equipe
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="text-xs"
-                      onClick={() => { setEditBoardId(board.id); setShowBuilder(true); }}
-                    >
-                      <Settings className="h-3.5 w-3.5 mr-1.5" />
-                      Editar
-                    </Button>
-                    <Button
-                      variant="default"
-                      size="sm"
-                      className="text-xs"
-                      onClick={() => handleOpenKanban(board.id)}
-                    >
-                      <LayoutGrid className="h-3.5 w-3.5 mr-1.5" />
-                      Abrir Kanban
-                      <ArrowRight className="h-3 w-3 ml-1" />
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
+          {filtered.map(board => (
+            <FunnelBoardCard
+              key={board.id}
+              board={board}
+              expanded={expandedId === board.id}
+              onToggleExpand={() => setExpandedId(expandedId === board.id ? null : board.id)}
+              onOpenKanban={() => handleOpenKanban(board.id)}
+              onOpenTeam={() => setTeamBoard({ id: board.id, name: board.name })}
+              onEdit={() => { setEditBoardId(board.id); setShowBuilder(true); }}
+              onOpenBpcSheet={() => setBpcSheetOpen(true)}
+            />
+          ))}
         </div>
       )}
 
@@ -534,15 +200,14 @@ const SalesFunnelsPage = () => {
         />
       )}
 
-      {/* Listagem de leads do funil BPC - Autismo (mesma base das barras) */}
       <BpcFormLeadsSheet
         open={bpcSheetOpen}
         onOpenChange={setBpcSheetOpen}
         source="unificada"
         externalLeads={bpcLeads}
-        externalMetrics={bpcMetrics}
-        externalLoading={bpcLoading}
-        onRefresh={bpcRefetch}
+        externalMetrics={bpcSheetMetrics}
+        externalLoading={bpcSheetLoading}
+        onRefresh={bpcSheetRefetch}
       />
     </div>
   );
