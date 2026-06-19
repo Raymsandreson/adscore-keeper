@@ -239,29 +239,27 @@ export function FunnelBoardCard({
       </CardHeader>
       <CardContent className="pt-0 space-y-3">
         {isBpc ? (
-          <div className="rounded-lg border border-dashed border-primary/40 bg-primary/5 p-4 flex flex-col gap-3">
-            <div className="flex items-center justify-between gap-2">
+          <div className="space-y-3">
+            <StageFunnelChart board={board} leadsPerStage={stageData} dateFilter={dateFilter} />
+            <div className="rounded-lg border border-dashed border-primary/40 bg-primary/5 p-3 flex items-center justify-between gap-2">
               <div className="min-w-0">
-                <div className="text-sm font-semibold flex items-center gap-1.5">
-                  <LayoutGrid className="h-4 w-4 text-primary" />
+                <div className="text-xs font-semibold flex items-center gap-1.5">
+                  <LayoutGrid className="h-3.5 w-3.5 text-primary" />
                   Painel detalhado BPC
                 </div>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Métricas da planilha, filtros por período e por acolhedor em página dedicada (carregamento isolado).
+                <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-1">
+                  Métricas da planilha + filtros por acolhedor (multi).
                 </p>
               </div>
-              <Badge variant="secondary" className="text-xs shrink-0">
-                {totalLeads} leads no Kanban
-              </Badge>
+              <Button
+                size="sm"
+                className="shrink-0 h-8 text-xs"
+                onClick={() => navigate(`/sales-funnels/bpc/${board.id}`)}
+              >
+                <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
+                Abrir
+              </Button>
             </div>
-            <Button
-              size="sm"
-              className="self-end"
-              onClick={() => navigate(`/sales-funnels/bpc/${board.id}`)}
-            >
-              <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
-              Abrir painel detalhado
-            </Button>
           </div>
         ) : (
           <StageFunnelChart board={board} leadsPerStage={stageData} dateFilter={dateFilter} />
