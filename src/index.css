@@ -79,6 +79,18 @@ All colors MUST be HSL.
     --sidebar-border: 220 13% 91%;
 
     --sidebar-ring: 153 100% 33%;
+
+    /* Hearings categories */
+    --hearing-prev: 330 81% 60%;
+    --hearing-prev-bg: 330 90% 96%;
+    --hearing-civel: 210 90% 56%;
+    --hearing-civel-bg: 210 90% 96%;
+    --hearing-trabalhista: 38 92% 50%;
+    --hearing-trabalhista-bg: 45 95% 95%;
+    --hearing-criminal: 0 70% 55%;
+    --hearing-criminal-bg: 0 80% 96%;
+    --hearing-outro: 220 9% 46%;
+    --hearing-outro-bg: 220 14% 95%;
   }
 
   .dark {
