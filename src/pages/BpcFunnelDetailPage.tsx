@@ -53,8 +53,12 @@ const BpcFunnelDetailPage = () => {
   const [dateField, setDateField] = useState<DateField>("created_at");
   const [rangePreset, setRangePreset] = useState<RangePreset>("30d");
   const [customRange, setCustomRange] = useState<{ from?: Date; to?: Date }>({});
-  const [acolhedorId, setAcolhedorId] = useState<string>("all");
+  // Multi-select. Vazio = todos. "__none__" = sem acolhedor. Outros = nome (case-insensitive).
+  const [selectedAcolhedores, setSelectedAcolhedores] = useState<string[]>([]);
   const [sheetOpen, setSheetOpen] = useState(false);
+
+  // Acolhedoras que devem sempre aparecer na lista, mesmo sem dados na planilha
+  const ALWAYS_SHOW = useMemo(() => ["Karolyne", "Edilan"], []);
 
   const { from: fromDate, to: toDate } = useMemo(
     () => computeRange(rangePreset, customRange),
