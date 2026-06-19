@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -6,12 +7,10 @@ import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { LayoutGrid, Users, ArrowRight, Settings, Maximize2, Minimize2, Target, CheckCircle2, CalendarIcon } from "lucide-react";
+import { LayoutGrid, Users, ArrowRight, Settings, Maximize2, Minimize2, Target, CheckCircle2, CalendarIcon, ExternalLink } from "lucide-react";
 import { db as supabase } from "@/integrations/supabase";
 import { useQuery } from "@tanstack/react-query";
-import { useBpcFormLeads } from "@/hooks/useBpcFormLeads";
 import { StageFunnelChart } from "@/components/kanban/StageFunnelChart";
-import { BpcFunnelBars } from "@/components/kanban/BpcFunnelBars";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -64,8 +63,8 @@ export function FunnelBoardCard({
   onOpenKanban,
   onOpenTeam,
   onEdit,
-  onOpenBpcSheet,
 }: FunnelBoardCardProps) {
+  const navigate = useNavigate();
   const [dateField, setDateField] = useState<DateField>("created_at");
   const [rangePreset, setRangePreset] = useState<RangePreset>("all");
   const [customRange, setCustomRange] = useState<{ from?: Date; to?: Date }>({});
@@ -96,23 +95,10 @@ export function FunnelBoardCard({
       }
       return { total: (data || []).length, byStage };
     },
-    enabled: !isBpc,
+    enabled: true,
   });
 
-  // BPC: usa hook próprio com range deste card
-  const bpcRange = useMemo(() => ({
-    from: fromDate ?? new Date("2020-01-01T00:00:00Z"),
-    to: toDate ?? new Date(),
-  }), [fromDate, toDate]);
-  const {
-    metrics: bpcMetrics,
-    loading: bpcLoading,
-  } = useBpcFormLeads({
-    from: bpcRange.from,
-    to: bpcRange.to,
-    enabled: isBpc,
-    source: "unificada",
-  });
+
 
 
 
@@ -163,7 +149,7 @@ export function FunnelBoardCard({
     enabled: expanded,
   });
 
-  const totalLeads = isBpc ? bpcMetrics.total : (counts?.total || 0);
+  const totalLeads = counts?.total || 0;
   const stageData = counts?.byStage || {};
 
   return (
@@ -253,13 +239,30 @@ export function FunnelBoardCard({
       </CardHeader>
       <CardContent className="pt-0 space-y-3">
         {isBpc ? (
-          <BpcFunnelBars
-            board={board}
-            metrics={bpcMetrics}
-            loading={bpcLoading}
-            onOpenList={() => onOpenBpcSheet?.()}
-            leadsPerStage={stageData}
-          />
+          <div className="rounded-lg border border-dashed border-primary/40 bg-primary/5 p-4 flex flex-col gap-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <div className="text-sm font-semibold flex items-center gap-1.5">
+                  <LayoutGrid className="h-4 w-4 text-primary" />
+                  Painel detalhado BPC
+                </div>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Métricas da planilha, filtros por período e por acolhedor em página dedicada (carregamento isolado).
+                </p>
+              </div>
+              <Badge variant="secondary" className="text-xs shrink-0">
+                {totalLeads} leads no Kanban
+              </Badge>
+            </div>
+            <Button
+              size="sm"
+              className="self-end"
+              onClick={() => navigate(`/sales-funnels/bpc/${board.id}`)}
+            >
+              <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
+              Abrir painel detalhado
+            </Button>
+          </div>
         ) : (
           <StageFunnelChart board={board} leadsPerStage={stageData} dateFilter={dateFilter} />
         )}

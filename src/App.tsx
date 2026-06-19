@@ -136,6 +136,7 @@ const LeaderboardPage = lazyRetry(() => import("./pages/LeaderboardPage"), "Lead
 const TeamPage = lazyRetry(() => import("./pages/TeamPage"), "TeamPage");
 const WorkflowPage = lazyRetry(() => import("./pages/WorkflowPage"), "WorkflowPage");
 const SalesFunnelsPage = lazyRetry(() => import("./pages/SalesFunnelsPage"), "SalesFunnelsPage");
+const BpcFunnelDetailPage = lazyRetry(() => import("./pages/BpcFunnelDetailPage"), "BpcFunnelDetailPage");
 const WorkflowProgressPage = lazyRetry(() => import("./pages/WorkflowProgressPage"), "WorkflowProgressPage");
 const ProfilePage = lazyRetry(() => import("./pages/ProfilePage"), "ProfilePage");
 const FinancePage = lazyRetry(() => import("./pages/FinancePage"), "FinancePage");
@@ -267,6 +268,7 @@ function SidebarLayout() {
                 <Route path="/team" element={<ProtectedRoute><TeamPage /></ProtectedRoute>} />
                 <Route path="/workflow" element={<ProtectedRoute><WorkflowPage /></ProtectedRoute>} />
                 <Route path="/sales-funnels" element={<ProtectedRoute><SalesFunnelsPage /></ProtectedRoute>} />
+                <Route path="/sales-funnels/bpc/:boardId" element={<ProtectedRoute><BpcFunnelDetailPage /></ProtectedRoute>} />
                 <Route path="/workflow-progress" element={<ProtectedRoute><WorkflowProgressPage /></ProtectedRoute>} />
                 <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
                 <Route path="/finance" element={<ProtectedRoute><FinancePage /></ProtectedRoute>} />
