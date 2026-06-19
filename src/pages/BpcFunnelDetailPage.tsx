@@ -282,26 +282,71 @@ const BpcFunnelDetailPage = () => {
             </Popover>
           </div>
 
-          <Select value={acolhedorId} onValueChange={setAcolhedorId}>
-            <SelectTrigger className="h-8 w-[220px] text-xs">
-              <Users className="h-3.5 w-3.5 mr-1.5 text-muted-foreground" />
-              <SelectValue placeholder="Acolhedor" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos acolhedores</SelectItem>
-              <SelectItem value="none">Sem acolhedor</SelectItem>
-              {(allAcolhedores || []).map(id => (
-                <SelectItem key={id} value={id}>
-                  {getDisplayName(id) || id}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5 min-w-[220px] justify-start">
+                <Users className="h-3.5 w-3.5 text-muted-foreground" />
+                {noFilter
+                  ? "Todos acolhedores"
+                  : `${selectedAcolhedores.length} selecionado${selectedAcolhedores.length > 1 ? "s" : ""}`}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[260px] p-2" align="start">
+              <div className="flex items-center justify-between px-1 pb-2 mb-1 border-b">
+                <span className="text-xs font-medium">Acolhedores</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-2 text-[11px]"
+                  onClick={clearAcolhedores}
+                  disabled={noFilter}
+                >
+                  Limpar
+                </Button>
+              </div>
+              <div className="max-h-[280px] overflow-y-auto space-y-0.5">
+                <label className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted/60 cursor-pointer text-xs">
+                  <Checkbox
+                    checked={selectedAcolhedores.includes("__none__")}
+                    onCheckedChange={() => toggleAcolhedor("__none__")}
+                  />
+                  <span className="text-muted-foreground italic">Sem acolhedor</span>
+                </label>
+                {(allAcolhedores || []).map(id => {
+                  const checked = selectedAcolhedores.includes(id);
+                  return (
+                    <label
+                      key={id}
+                      className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted/60 cursor-pointer text-xs"
+                    >
+                      <Checkbox checked={checked} onCheckedChange={() => toggleAcolhedor(id)} />
+                      <span className="truncate">{getDisplayName(id) || id}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </PopoverContent>
+          </Popover>
 
-          {acolhedorId !== "all" && (
-            <Badge variant="secondary" className="text-xs">
-              Filtro: {acolhedorId === "none" ? "sem acolhedor" : (getDisplayName(acolhedorId) || acolhedorId)}
-            </Badge>
+          {!noFilter && (
+            <div className="flex items-center gap-1 flex-wrap">
+              {selectedAcolhedores.map(s => (
+                <Badge key={s} variant="secondary" className="text-xs gap-1 pr-1">
+                  {s === "__none__" ? "sem acolhedor" : (getDisplayName(s) || s)}
+                  <button
+                    type="button"
+                    onClick={() => toggleAcolhedor(s)}
+                    className="hover:bg-muted-foreground/20 rounded-sm p-0.5"
+                    aria-label={`Remover ${s}`}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              ))}
+              <Button variant="ghost" size="sm" className="h-6 px-2 text-[11px]" onClick={clearAcolhedores}>
+                Limpar filtro
+              </Button>
+            </div>
           )}
         </CardContent>
       </Card>
