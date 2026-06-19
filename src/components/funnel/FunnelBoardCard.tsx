@@ -114,12 +114,8 @@ export function FunnelBoardCard({
     source: "unificada",
   });
 
-  // Reporta total para sumário (pai)
-  useMemo(() => {
-    const t = isBpc ? bpcMetrics.total : (counts?.total ?? 0);
-    onTotalChange?.(t);
-    if (isBpc) onBpcMetricsChange?.(bpcMetrics);
-  }, [isBpc, counts?.total, bpcMetrics.total]); // eslint-disable-line react-hooks/exhaustive-deps
+
+
 
   // Objetivos (expandido)
   const { data: objectiveData } = useQuery({
