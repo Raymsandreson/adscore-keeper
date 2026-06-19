@@ -111,21 +111,16 @@ export function FunnelBoardCard({
     return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
   }, [bpcLeads, ALWAYS_SHOW_ACOLHEDORES]);
 
-  const filteredBpcPhones = useMemo(() => {
-    if (!isBpc || noAcolhedorFilter) return null;
-    const lower = new Set(selectedAcolhedores.filter(s => s !== "__none__").map(s => s.toLowerCase()));
-    const includeNone = selectedAcolhedores.includes("__none__");
-    const set = new Set<string>();
-    for (const l of bpcLeads) {
-      const op = (l.operator || "").trim();
-      const match = op ? lower.has(op.toLowerCase()) : includeNone;
-      if (!match) continue;
-      const p = String(l.phone_normalized || l.phone_raw || "").replace(/\D/g, "");
-      if (!p) continue;
-      set.add(p); set.add(p.replace(/^55/, "")); set.add(`55${p}`);
+  const bpcFilter = useMemo(() => {
+    if (!isBpc || noAcolhedorFilter) {
+      return { phoneKeys: null as Set<string> | null, matchedLeadCount: 0, validPhoneCount: 0, droppedNoPhone: 0 };
     }
-    return set;
+    return buildBpcAcolhedorFilter({ selected: selectedAcolhedores, leads: bpcLeads });
   }, [isBpc, noAcolhedorFilter, selectedAcolhedores, bpcLeads]);
+
+  // Aviso silencioso quando o filtro está ativo mas a planilha ainda não retornou
+  // (evita "0 leads" enganoso durante o carregamento)
+  const filterPending = isBpc && !noAcolhedorFilter && (!bpcLeads || bpcLeads.length === 0);
 
   // Per-board lead counts (refiltra client-side por acolhedor quando BPC)
   const { data: counts } = useQuery({
@@ -143,19 +138,18 @@ export function FunnelBoardCard({
 
   const filteredCounts = useMemo(() => {
     const rows = counts || [];
-    const useFilter = isBpc && filteredBpcPhones;
     const byStage: Record<string, number> = {};
     let total = 0;
+    // Filtro ativo mas planilha ainda carregando → não zera nada, devolve dados brutos
+    const skipFilter = filterPending || !bpcFilter.phoneKeys;
     for (const r of rows) {
-      if (useFilter) {
-        const p = String(r.lead_phone || "").replace(/\D/g, "");
-        if (!p || !filteredBpcPhones!.has(p)) continue;
-      }
-      byStage[r.status] = (byStage[r.status] || 0) + 1;
+      if (!skipFilter && !leadMatchesFilter(r.lead_phone, bpcFilter)) continue;
+      const status = r.status || "—";
+      byStage[status] = (byStage[status] || 0) + 1;
       total++;
     }
     return { total, byStage };
-  }, [counts, isBpc, filteredBpcPhones]);
+  }, [counts, bpcFilter, filterPending]);
 
 
 
