@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { leadMatchesFilter, type BpcAcolhedorFilter } from "@/lib/bpcPhoneMatch";
+import { leadMatchesFilter, type BpcFilterResult } from "@/lib/bpcPhoneMatch";
 
 interface Props {
   open: boolean;
@@ -22,7 +22,7 @@ interface Props {
   fromDate: Date | null;
   toDate: Date | null;
   /** Filtro de acolhedor já calculado pela página pai. Quando phoneKeys é null, sem filtro. */
-  bpcFilter: BpcAcolhedorFilter;
+  bpcFilter: Pick<BpcFilterResult, "phoneKeys">;
   filterPending: boolean;
 }
 
