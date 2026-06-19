@@ -12,6 +12,8 @@ interface BpcFunnelBarsProps {
   loading?: boolean;
   /** Abre a listagem completa (BpcFormLeadsSheet). */
   onOpenList: () => void;
+  /** Abre a listagem filtrada por etapa específica. */
+  onSelectStage?: (stage: { id: string; name: string; color: string }) => void;
   /**
    * Contagem real de leads (tabela `leads`) por etapa do board.
    * Quando presente, sobrepõe a heurística antiga "tudo na primeira etapa"
@@ -27,7 +29,7 @@ interface BpcFunnelBarsProps {
 // recebe etiqueta no WhatsApp ele passa a viver na tabela `leads`. Para refletir
 // isso, somamos: contagem real da `leads.status = stage.id` + residual da
 // planilha (apenas na primeira etapa, descontando o que já saiu pra `leads`).
-export function BpcFunnelBars({ board, metrics, loading, onOpenList, leadsPerStage }: BpcFunnelBarsProps) {
+export function BpcFunnelBars({ board, metrics, loading, onOpenList, onSelectStage, leadsPerStage }: BpcFunnelBarsProps) {
   const stages = useMemo(() => board.stages || [], [board.stages]);
 
   const funnelData = useMemo(() => {
@@ -76,6 +78,15 @@ export function BpcFunnelBars({ board, metrics, loading, onOpenList, leadsPerSta
             {funnelData.map((stage) => {
               const widthPercent = Math.max(12, (stage.value / maxValue) * 100);
               const clickable = stage.value > 0;
+              const handleClick = clickable
+                ? () => {
+                    if (onSelectStage) {
+                      onSelectStage({ id: stage.id, name: stage.name, color: stage.color });
+                    } else {
+                      onOpenList();
+                    }
+                  }
+                : undefined;
               return (
                 <div
                   key={stage.id}
@@ -83,7 +94,8 @@ export function BpcFunnelBars({ board, metrics, loading, onOpenList, leadsPerSta
                     "flex items-center gap-3 p-1.5 rounded-lg transition-colors",
                     clickable ? "cursor-pointer hover:bg-muted/30" : "opacity-50"
                   )}
-                  onClick={clickable ? onOpenList : undefined}
+                  onClick={handleClick}
+                  title={clickable ? `Ver leads em "${stage.name}"` : undefined}
                 >
                   <div className="flex-1 min-w-0">
                     <div
