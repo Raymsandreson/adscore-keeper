@@ -12,6 +12,7 @@ import { StageFunnelChart } from "@/components/kanban/StageFunnelChart";
 import { BpcFunnelBars } from "@/components/kanban/BpcFunnelBars";
 import { BpcFormLeadsSheet } from "@/components/whatsapp/FocusDashboard/BpcFormLeadsSheet";
 import { useBpcFormLeads } from "@/hooks/useBpcFormLeads";
+import { useEnsureStageLabels } from "@/hooks/useEnsureStageLabels";
 import { cn } from "@/lib/utils";
 import { Progress } from "@/components/ui/progress";
 import { WorkflowBuilder } from "@/components/workflow/WorkflowBuilder";
@@ -79,6 +80,11 @@ const SalesFunnelsPage = () => {
     () => boards.filter(b => b.board_type === 'funnel'),
     [boards]
   );
+
+  // Garante que os boards-piloto (BPC - Autismo, Acidente de Trabalho) tenham
+  // suas etiquetas WhatsApp sincronizadas com as etapas do Kanban. Idempotente,
+  // dispara 1x por sessão por board. Filtro de allowlist mora em useEnsureStageLabels.
+  useEnsureStageLabels(salesFunnels);
 
   // Funil BPC - Autismo: dados vêm da planilha (BASE_UNIFICADA), não da tabela leads.
   // Busca uma vez no nível da página e compartilha entre as barras e a listagem.
@@ -395,6 +401,7 @@ const SalesFunnelsPage = () => {
                       metrics={bpcMetrics}
                       loading={bpcLoading}
                       onOpenList={() => setBpcSheetOpen(true)}
+                      leadsPerStage={stageData}
                     />
                   ) : (
                     /* Mini funnel visualization */
