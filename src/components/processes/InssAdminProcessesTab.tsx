@@ -1542,6 +1542,64 @@ export default function InssAdminProcessesTab() {
         </DialogContent>
       </Dialog>
 
+      {/* Dialog de revisão de órfãos ambíguos */}
+      <Dialog open={ambiguous !== null} onOpenChange={(open) => !open && setAmbiguous(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Órfãos ambíguos · pelo nome</DialogTitle>
+            <p className="text-sm text-muted-foreground">
+              Cada um destes órfãos bateu em mais de um lead pelo nome. Escolha o correto para vincular.
+            </p>
+          </DialogHeader>
+          {ambiguousLoading ? (
+            <div className="py-6 text-center text-muted-foreground text-sm">Procurando ambíguos…</div>
+          ) : !ambiguous || ambiguous.length === 0 ? (
+            <div className="py-6 text-center text-muted-foreground text-sm">Nenhum ambíguo para revisar.</div>
+          ) : (
+            <div className="space-y-3 max-h-[60vh] overflow-y-auto">
+              {ambiguous.map((row) => {
+                const proc = processes.find((p) => p.id === row.processId);
+                return (
+                  <div key={row.processId} className="border rounded-md p-3 space-y-2">
+                    <div className="text-sm">
+                      <div className="font-medium">{row.nome}</div>
+                      {proc && (
+                        <div className="text-xs text-muted-foreground">
+                          Req. {proc.requerimento_number}
+                          {proc.cpf_segurado ? ` · CPF ${proc.cpf_segurado}` : ""}
+                          {proc.benefit_type ? ` · ${proc.benefit_type}` : ""}
+                        </div>
+                      )}
+                    </div>
+                    <div className="grid gap-1">
+                      {row.candidates.map((c) => (
+                        <button
+                          key={c.leadId}
+                          type="button"
+                          disabled={ambiguousBusy === row.processId}
+                          onClick={() => pickAmbiguousCandidate(row.processId, c.leadId)}
+                          className="w-full text-left p-2 rounded-md hover:bg-muted text-sm border disabled:opacity-50"
+                        >
+                          <div className="flex items-center gap-2">
+                            <User className="h-3.5 w-3.5 text-muted-foreground" />
+                            <span className="font-medium">{c.leadName || "(sem nome)"}</span>
+                            <span className="text-xs text-muted-foreground font-mono">{c.leadId.slice(0, 8)}</span>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="ghost" size="sm" onClick={() => setAmbiguous(null)}>Fechar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+
       {/* Painel lateral do lead vinculado */}
       {selectedLead && (
         <LeadEditDialog
