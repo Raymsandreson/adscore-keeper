@@ -46,34 +46,66 @@ function parseEventos(raw?: string): { data: string; descricao: string }[] {
   return out;
 }
 
+/** Decodifica entidades HTML comuns (numéricas e nomeadas). */
+function decodeHtmlEntities(input: string): string {
+  if (!input) return input;
+  let s = input
+    .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(Number(d)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, h) => String.fromCodePoint(parseInt(h, 16)));
+  const map: Record<string, string> = {
+    nbsp: " ", amp: "&", lt: "<", gt: ">", quot: '"', apos: "'",
+    aacute: "á", eacute: "é", iacute: "í", oacute: "ó", uacute: "ú",
+    Aacute: "Á", Eacute: "É", Iacute: "Í", Oacute: "Ó", Uacute: "Ú",
+    atilde: "ã", otilde: "õ", ntilde: "ñ", Atilde: "Ã", Otilde: "Õ", Ntilde: "Ñ",
+    acirc: "â", ecirc: "ê", icirc: "î", ocirc: "ô", ucirc: "û",
+    Acirc: "Â", Ecirc: "Ê", Icirc: "Î", Ocirc: "Ô", Ucirc: "Û",
+    agrave: "à", Agrave: "À", ccedil: "ç", Ccedil: "Ç",
+    ordf: "ª", ordm: "º", deg: "°", middot: "·", hellip: "…",
+    ndash: "–", mdash: "—", lsquo: "‘", rsquo: "’", ldquo: "“", rdquo: "”",
+    laquo: "«", raquo: "»", euro: "€", copy: "©", reg: "®", trade: "™",
+  };
+  s = s.replace(/&([a-zA-Z]+);/g, (m, name) => (map[name] ?? m));
+  return s;
+}
+
 export function parsePjeEmail(body: string): ParsedPjeEmail {
   if (!body) return { isPje: false };
-  const compact = body.replace(/\r\n/g, "\n").replace(/[ \t]+/g, " ").trim();
-  const isPje = /Número do Processo|Tribunal Regional|consultaprocessual|push/i.test(compact);
+  const decoded = decodeHtmlEntities(body);
+  const compact = decoded.replace(/\r\n/g, "\n").replace(/[ \t]+/g, " ").trim();
+  const isPje = /Número do Processo|Tribunal Regional|consultaprocessual|push|Polo Ativo|Polo Passivo/i.test(compact);
   if (!isPje) return { isPje: false };
 
   const labels = [
     "Número do Processo",
     "Classe Judicial",
     "Órgão Julgador",
+    "Órgão",
     "Data de Autuação",
+    "Assunto",
+    "Data - Movimento",
+    "Polo Ativo",
+    "Polo Passivo",
     "Autor",
     "Advogados do Autor",
     "Réu",
     "Advogados do Réu",
     "Eventos",
     "Para acessar",
+    "ATENÇÃO",
   ];
   // gera lista de "próximos labels" para cada chamada
   const next = (cur: string) => labels.filter((l) => l !== cur).map((l) => l.replace(/ /g, "\\s+"));
 
   const numero = between(compact, "Número do Processo", next("Número do Processo"));
   const classe = between(compact, "Classe Judicial", next("Classe Judicial"));
-  const orgao = between(compact, "Órgão Julgador", next("Órgão Julgador"));
+  const orgao = between(compact, "Órgão Julgador", next("Órgão Julgador"))
+    ?? between(compact, "Órgão", next("Órgão"));
   const dataAutuacao = between(compact, "Data de Autuação", next("Data de Autuação"));
-  const autor = between(compact, "Autor", next("Autor"));
+  const autor = between(compact, "Polo Ativo", next("Polo Ativo"))
+    ?? between(compact, "Autor", next("Autor"));
   const advAutorRaw = between(compact, "Advogados do Autor", next("Advogados do Autor"));
-  const reu = between(compact, "Réu", next("Réu"));
+  const reu = between(compact, "Polo Passivo", next("Polo Passivo"))
+    ?? between(compact, "Réu", next("Réu"));
   const advReuRaw = between(compact, "Advogados do Réu", next("Advogados do Réu"));
   const eventosRaw = between(compact, "Eventos", next("Eventos"));
 
