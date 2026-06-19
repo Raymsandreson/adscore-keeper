@@ -17,6 +17,9 @@ import {
   Collapsible, CollapsibleContent, CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   Search, Mail, Link2, Unlink, ChevronDown, RefreshCw, AlertCircle, Clock,
   Sparkles, User, DownloadCloud, Fingerprint, Users,
 } from "lucide-react";
@@ -1165,47 +1168,41 @@ export default function InssAdminProcessesTab() {
             <DownloadCloud className={`h-4 w-4 ${backfilling ? "animate-pulse" : ""}`} />
             {backfilling ? (backfillStatus || "Importando histórico...") : "Backfill completo"}
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={runAutoMatch}
-            className="gap-2"
-            title="Tenta vincular órfãos a leads que tenham o nº do requerimento salvo"
-          >
-            <Sparkles className="h-4 w-4" />
-            Vincular órfãos
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={runAutoLinkByName}
-            className="gap-2"
-            title="Reprocessa órfãos com matcher v2: tokeniza nome (primeiro+último), ignora acentos, busca em victim_name e contatos vinculados ao lead."
-          >
-            <User className="h-4 w-4" />
-            Vincular por nome (v2)
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={runBulkLinkByCpf}
-            className="gap-2"
-            title="Vincula em lote todos os órfãos cujo CPF bate com lead ou contato existente"
-          >
-            <Fingerprint className="h-4 w-4" />
-            Vincular por CPF
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={openAmbiguousReview}
-            disabled={ambiguousLoading}
-            className="gap-2"
-            title="Revisar órfãos com vários candidatos pelo mesmo nome"
-          >
-            <Users className={`h-4 w-4 ${ambiguousLoading ? "animate-pulse" : ""}`} />
-            Revisar ambíguos
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2"
+              >
+                <Link2 className="h-4 w-4" />
+                Vincular
+                <ChevronDown className="h-3 w-3" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuItem onClick={runAutoMatch} className="gap-2 cursor-pointer">
+                <Sparkles className="h-4 w-4" />
+                Vincular órfãos
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={runAutoLinkByName} className="gap-2 cursor-pointer">
+                <User className="h-4 w-4" />
+                Vincular por nome (v2)
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={runBulkLinkByCpf} className="gap-2 cursor-pointer">
+                <Fingerprint className="h-4 w-4" />
+                Vincular por CPF
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={openAmbiguousReview}
+                disabled={ambiguousLoading}
+                className="gap-2 cursor-pointer"
+              >
+                <Users className={`h-4 w-4 ${ambiguousLoading ? "animate-pulse" : ""}`} />
+                Revisar ambíguos
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
         </div>
         <div className="relative flex-1 max-w-sm">
