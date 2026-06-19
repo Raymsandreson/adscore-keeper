@@ -73,10 +73,13 @@ export const handler: RequestHandler = async (req, res) => {
       targetQuery = targetQuery.eq('default_agent_id', agent_id);
     }
 
-    const { data: instances, error: instErr } = await targetQuery;
+    const { data: instancesRaw, error: instErr } = await targetQuery;
     if (instErr) return res.json({ success: false, error: `instances lookup: ${instErr.message}` });
+    const instances = onlyInstanceLower
+      ? (instancesRaw || []).filter((i: any) => String(i.instance_name).toLowerCase() === onlyInstanceLower)
+      : (instancesRaw || []);
     if (!instances || instances.length === 0) {
-      return res.json({ success: true, agent_id, agent_name: agentName, operation: effectiveOp, results: [], note: 'Agente não tem instâncias atribuídas (agent_instance_settings ou default_agent_id). Sync ignorado.' });
+      return res.json({ success: true, agent_id, agent_name: agentName, operation: effectiveOp, results: [], note: onlyInstanceLower ? `Instância ${only_instance_name} não está nas instâncias alvo do agente.` : 'Agente não tem instâncias atribuídas (agent_instance_settings ou default_agent_id). Sync ignorado.' });
     }
 
     const { data: existingMappings } = await ext
