@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
-  LayoutDashboard, Users, CalendarDays, TrendingUp, Trophy, UsersRound,
+  LayoutDashboard, Users, CalendarDays, TrendingUp, Trophy, UsersRound, Gavel,
   MessageCircle, CreditCard, Filter, Bot, Target, Heart, Megaphone,
   Zap, Search, ClipboardList, Phone, Scale, Briefcase, AtSign, RefreshCw, FileText,
   LogOut, MessagesSquare, Settings, ChevronRight, User, Chrome, Archive, MapPin,
@@ -153,6 +153,7 @@ export function AppSidebar() {
         { id: "processes", label: "Processos", icon: <FileText className="h-3.5 w-3.5" />, path: "/processes", color: "text-blue-500" },
         { id: "process-tracking", label: "Controle Processual", icon: <ClipboardList className="h-3.5 w-3.5" />, path: "/process-tracking", color: "text-emerald-500" },
         { id: "nuclei", label: "Núcleos", icon: <Scale className="h-3.5 w-3.5" />, path: "/nuclei", color: "text-orange-500" },
+        { id: "hearings", label: "Audiências", icon: <Gavel className="h-3.5 w-3.5" />, path: "/hearings", color: "text-rose-500" },
         { id: "workflow-progress", label: "Fluxo de Trabalho", icon: <Zap className="h-3.5 w-3.5" />, path: "/workflow-progress", color: "text-purple-500" },
       ],
     },
