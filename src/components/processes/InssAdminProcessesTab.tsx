@@ -1180,10 +1180,10 @@ export default function InssAdminProcessesTab() {
             size="sm"
             onClick={runAutoLinkByName}
             className="gap-2"
-            title="Vincula órfãos por nome (apenas quando há um único lead/contato candidato)"
+            title="Reprocessa órfãos com matcher v2: tokeniza nome (primeiro+último), ignora acentos, busca em victim_name e contatos vinculados ao lead."
           >
             <User className="h-4 w-4" />
-            Vincular por nome
+            Vincular por nome (v2)
           </Button>
           <Button
             variant="outline"
