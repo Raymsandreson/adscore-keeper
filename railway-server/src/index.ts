@@ -87,6 +87,8 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'notify-inss-update': notifyInssUpdate,
   'match-inss-orphans': matchInssOrphans,
   'auto-link-inss-by-name': autoLinkInssByName,
+  'bulk-link-inss-by-cpf': bulkLinkInssByCpf,
+  'match-orphans-for-lead': matchOrphansForLead,
   'gmail-processual-sync': gmailProcessualSync,
 
   'get-whatsapp-group-info': getWhatsappGroupInfo,
