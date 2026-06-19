@@ -460,6 +460,14 @@ export const useLeads = (adAccountId?: string) => {
         });
       }
 
+      // Roda matcher reverso quando o usuário edita campos-chave para vínculo INSS
+      const updatedKeys = Object.keys(updates);
+      if (
+        updatedKeys.some((k) => ['cpf', 'lead_name', 'victim_name'].includes(k))
+      ) {
+        fireOrphanMatchForLead(id);
+      }
+
       toast.success('Lead atualizado com sucesso');
       return updatedLead;
     } catch (error) {
