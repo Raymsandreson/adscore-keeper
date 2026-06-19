@@ -4,13 +4,15 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { LayoutGrid, Users, ArrowRight, Settings, Maximize2, Minimize2, Target, CheckCircle2, CalendarIcon, ExternalLink } from "lucide-react";
+import { LayoutGrid, Users, ArrowRight, Settings, Maximize2, Minimize2, Target, CheckCircle2, CalendarIcon, ExternalLink, X } from "lucide-react";
 import { db as supabase } from "@/integrations/supabase";
 import { useQuery } from "@tanstack/react-query";
 import { StageFunnelChart } from "@/components/kanban/StageFunnelChart";
+import { useBpcFormLeads } from "@/hooks/useBpcFormLeads";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
