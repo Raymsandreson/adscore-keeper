@@ -35,6 +35,7 @@ import { cn } from '@/lib/utils';
 import { canonicalizeChatTarget } from '@/lib/whatsappPhone';
 import { supabase } from '@/integrations/supabase/client';
 import { db } from '@/integrations/supabase';
+import { SavedAudiosDialog } from './SavedAudiosDialog';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { toast } from 'sonner';
 import { useAuthContext } from '@/contexts/AuthContext';
@@ -78,7 +79,8 @@ interface Props {
   ) => Promise<boolean>;
   onSendMedia: (
     phone: string, mediaUrl: string, mediaType: string, caption?: string, fileName?: string,
-    contactId?: string, leadId?: string, conversationInstanceName?: string | null, chatId?: string
+    contactId?: string, leadId?: string, conversationInstanceName?: string | null, chatId?: string,
+    asPtt?: boolean
   ) => Promise<boolean>;
   onSendLocation: (
     phone: string, latitude: number, longitude: number, name?: string, address?: string,
@@ -163,6 +165,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [showLocationDialog, setShowLocationDialog] = useState(false);
+  const [showSavedAudios, setShowSavedAudios] = useState(false);
   const [locationName, setLocationName] = useState('');
   const [locationAddress, setLocationAddress] = useState('');
   const [locationLat, setLocationLat] = useState('');
@@ -3960,6 +3963,9 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                 <DropdownMenuItem onClick={() => { setShowLocationDialog(true); setShowAttachMenu(false); }} className="gap-2">
                   <MapPin className="h-4 w-4" /> Localização
                 </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => { setShowSavedAudios(true); setShowAttachMenu(false); }} className="gap-2">
+                  <Mic className="h-4 w-4" /> Áudios salvos
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => { setInputMode('note'); setMentionUserId(null); setMentionUserName(null); setShowMentionPicker(false); setShowAttachMenu(false); }} className="gap-2 text-amber-600 dark:text-amber-400">
                   <StickyNote className="h-4 w-4" /> Nota Interna
                 </DropdownMenuItem>
@@ -4060,6 +4066,15 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         instanceName={conversation.instance_name || undefined}
       />
       <MediaLightbox url={lightboxUrl} title="Documento" onClose={() => setLightboxUrl(null)} />
+      <SavedAudiosDialog
+        open={showSavedAudios}
+        onOpenChange={setShowSavedAudios}
+        onSend={(audio) => onSendMedia(
+          conversation.phone, audio.public_url, audio.mime_type, undefined, undefined,
+          conversation.contact_id || undefined, conversation.lead_id || undefined,
+          conversation.instance_name, conversationChatId, true,
+        )}
+      />
     </div>
   );
 }

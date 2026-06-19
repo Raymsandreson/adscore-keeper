@@ -373,7 +373,8 @@ Deno.serve(async (req)=>{
       };
       let mtype = 'image';
       if (mt.startsWith('audio')) {
-        sb.type = 'audio';
+        // as_ptt: enviar como nota de voz (bolha de áudio gravado) em vez de anexo com player.
+        sb.type = body.as_ptt ? 'ptt' : 'audio';
         mtype = 'audio';
       } else if (mt.startsWith('video')) {
         sb.type = 'video';

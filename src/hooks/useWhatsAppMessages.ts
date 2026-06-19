@@ -778,7 +778,8 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
     contactId?: string,
     leadId?: string,
     conversationInstanceName?: string | null,
-    chatId?: string
+    chatId?: string,
+    asPtt?: boolean
   ) => {
     try {
       let targetInstanceId = selectedInstanceId && selectedInstanceId !== 'all' ? selectedInstanceId : undefined;
@@ -806,6 +807,8 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
           instance_id: targetInstanceId,
           // Cloud API (Meta oficial) → proxy reroteia pra Railway send-whatsapp-cloud.
           channel: isCloud ? 'cloud' : undefined,
+          // Nota de voz (ptt) em vez de anexo de áudio com player.
+          as_ptt: asPtt || undefined,
         },
       });
       if (error) throw error;
