@@ -79,6 +79,18 @@ All colors MUST be HSL.
     --sidebar-border: 220 13% 91%;
 
     --sidebar-ring: 153 100% 33%;
+
+    /* Hearings categories */
+    --hearing-prev: 330 81% 60%;
+    --hearing-prev-bg: 330 90% 96%;
+    --hearing-civel: 210 90% 56%;
+    --hearing-civel-bg: 210 90% 96%;
+    --hearing-trabalhista: 38 92% 50%;
+    --hearing-trabalhista-bg: 45 95% 95%;
+    --hearing-criminal: 0 70% 55%;
+    --hearing-criminal-bg: 0 80% 96%;
+    --hearing-outro: 220 9% 46%;
+    --hearing-outro-bg: 220 14% 95%;
   }
 
   .dark {
@@ -119,6 +131,18 @@ All colors MUST be HSL.
     --sidebar-accent-foreground: 0 0% 95%;
     --sidebar-border: 0 0% 20%;
     --sidebar-ring: 153 100% 40%;
+
+    /* Hearings categories (dark) */
+    --hearing-prev: 330 75% 65%;
+    --hearing-prev-bg: 330 40% 18%;
+    --hearing-civel: 210 85% 65%;
+    --hearing-civel-bg: 210 40% 18%;
+    --hearing-trabalhista: 38 85% 60%;
+    --hearing-trabalhista-bg: 38 35% 16%;
+    --hearing-criminal: 0 75% 65%;
+    --hearing-criminal-bg: 0 35% 18%;
+    --hearing-outro: 220 9% 70%;
+    --hearing-outro-bg: 220 8% 18%;
   }
 }
 

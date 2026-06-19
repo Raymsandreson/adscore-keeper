@@ -1,79 +1,78 @@
+## Plano: Módulo de Audiências (dentro de Processual)
 
-## Diagnóstico
+### Onde encaixa
+Nova aba **"Audiências"** dentro de `src/pages/ProcessesPage.tsx`, ao lado de Judicial/INSS/Processual (segue regra de navegação: funcionalidade nova entra dentro do módulo pai, não solta no sidebar).
 
-### Por que sobram órfãos hoje
+### Banco (Supabase Externo, via `run-external-migration`)
 
-O matcher tem 6 caminhos (nº requerimento, custom field, atividade, CPF lead, CPF contato, nome). Ele roda em 3 momentos: (1) ao chegar e-mail novo no `gmail-inss-sync`; (2) cron de 15 min em `match-inss-orphans`; (3) botões manuais. Os gaps que produzem órfãos persistentes:
+Tabela `hearings`:
+- `id` uuid pk
+- `process_number` text — ex: `0801799-23.2025.8.14.0125`
+- `case_ref` text — ex: `CASO 295` (identificador interno livre)
+- `lead_id` uuid null — vínculo opcional ao lead/caso existente
+- `legal_case_id` uuid null — vínculo opcional a `legal_cases`
+- `hearing_type` text — UNA Virtual, UNA Presencial, Instrução, Conciliação, Encerramento de Instrução, Inicial Virtual, Perícia Médica, Outro
+- `category` text — `previdenciario` | `civel` | `trabalhista` | `criminal` | `outro` (drive da cor)
+- `hearing_date` date
+- `hearing_time` time
+- `timezone_label` text — "Horário de Manaus", "Horário de Cuiabá", "Padrão Brasília" (livre)
+- `status` text — `ativa` | `adiada` | `cancelada` | `concluida` (default `ativa`)
+- `location` text null — sala virtual / endereço
+- `notes` text null — observações; presença não-vazia → ícone de alerta no card
+- `created_by` uuid, `created_at`, `updated_at`, `deleted_at` (soft-delete padrão)
 
-- **CPF quase nunca vem no e-mail do INSS** → o caminho mais forte (CPF) cobre pouco.
-- **Direção única**: o sistema só procura "este órfão tem lead?". Nunca procura o oposto — "este lead novo tem órfão pendente?". Quem cria o lead **depois** do e-mail nunca dispara re-match.
-- **`benefit_number` (NB) está parseado mas não é usado no matcher.**
-- **`auto-link-inss-by-name` devolve `ambiguous` (>1 candidato) e ninguém olha** — não tem UI dedicada pra desempatar.
-- **Nº Requerimento INSS não é exigido nem sugerido no LeadForm** quando o produto/serviço é INSS, então o caminho mais determinístico (custom field) raramente é preenchido.
+Índices: `(hearing_date)`, `(status)`, `(category)`, `(process_number)`, `(case_ref)`.
 
-### Por que o backfill trava em ~509 / ~125
+RLS: leitura/escrita para `authenticated`. GRANTs para `authenticated` e `service_role`.
 
-- **Processual** (`gmail-processual-sync`): **não tem paginação**. Só lê a 1ª página (`maxResults` ≤ 100). Soma com o que já estava em base = teto fixo. Não importa quantas vezes você clicar "Sincronizar", nunca passa do que cabe em 1 página + delta recente.
-- **INSS** (`gmail-inss-sync`): backfill existe e é mês-a-mês, mas (a) usa filtro `subject:"[INSS]"` e o gov.br tem variações de assunto (`[INSS Digital]`, sem colchete, etc.) que ficam de fora; (b) o cursor está salvo em `inss_sync_state.last_result.cursor` mas a UI atual **não relê esse cursor** — cada clique em "Backfill" reinicia em jan/2022 e percorre lendo `existing` no DB pra pular, então parece "travado" porque cada lote desperdiça o orçamento revisitando os mesmos meses cheios.
+### Frontend
 
-## Plano de execução
+Novos arquivos:
+- `src/hooks/useHearings.ts` — CRUD via `db` (Externo). React Query, `staleTime 30s`.
+- `src/components/hearings/HearingsModule.tsx` — container com header (busca global, filtros, "Nova Audiência"), tabs de visualização (Mês | Semana | Dia | Lista).
+- `src/components/hearings/HearingWeekView.tsx` — agrupado por "Semana N do mês", grid seg-sex com cards.
+- `src/components/hearings/HearingMonthView.tsx` — calendário mensal (grid 7 colunas).
+- `src/components/hearings/HearingDayView.tsx` — lista vertical do dia selecionado.
+- `src/components/hearings/HearingListView.tsx` — tabela ordenável.
+- `src/components/hearings/HearingCard.tsx` — card colorido por `category`, status `cancelada`/`adiada` aplica `line-through opacity-60`, ícone `AlertTriangle` quando `notes` não vazio.
+- `src/components/hearings/HearingFormDialog.tsx` — modal único de criar/editar (regra de form unificado).
+- `src/components/hearings/HearingFiltersBar.tsx` — filtros: semana, tipo, status, busca por `process_number` ou `case_ref`.
 
-### Frente A — Reduzir órfãos / facilitar vínculo
+Integração:
+- `src/pages/ProcessesPage.tsx` ganha tab `"Audiências"` renderizando `<HearingsModule />`.
 
-**A1. Matcher reverso (lead → órfão)** — quando lead é criado/atualizado, dispara busca de órfãos compatíveis.
-- Nova função Railway `match-orphans-for-lead` que recebe `lead_id` e procura em `inss_admin_processes` órfãos com nome compatível (mesma lógica `namesAreCompatible`), CPF igual, ou requerimento já gravado no custom field.
-- Chamada disparada do front em 2 pontos: (a) toast/CTA depois de salvar lead; (b) ao preencher o custom field "Nº Requerimento INSS" no LeadForm.
+### Sistema de cores (tokens semânticos em `src/index.css`)
 
-**A2. Adicionar `benefit_number` (NB) ao matcher** — buscar em `lead_custom_field_values` por um novo field "NB INSS" e em `lead_processes.process_number`.
+Adicionar HSL tokens (não hardcodar):
+- `--hearing-prev` (rosa/magenta) — Previdenciário/Perícia Médica
+- `--hearing-civel` (azul claro)
+- `--hearing-trabalhista` (âmbar claro)
+- `--hearing-criminal` (vermelho suave)
+- `--hearing-outro` (cinza)
+- `--hearing-status-cancelada`, `--hearing-status-adiada`, `--hearing-status-concluida`
 
-**A3. UI "Órfãos ambíguos"** — nova seção colapsável na aba INSS:
-- Roda `auto-link-inss-by-name` em `dry_run`, lista os com `candidates.length > 1`.
-- Cada item mostra os 2-5 leads candidatos como botões; 1 clique vincula.
+Mapear em `tailwind.config.ts` (`hearing.prev`, `hearing.civel`, etc.).
 
-**A4. Vincular em lote por CPF** — botão "Vincular órfãos com CPF" que percorre todos os órfãos onde `cpf_segurado` casa com `leads.cpf` ou `contacts.cpf` e aplica match (caminho 100% determinístico, sem ambiguidade).
+### Funcionalidades
 
-**A5. Highlight do campo "Nº Requerimento INSS" no LeadForm** — quando o produto/serviço do lead for INSS/BPC/Previdenciário, o custom field aparece em destaque com placeholder e validação de formato. Mata o problema na origem.
+- **Visão semanal**: agrupa por número da semana do mês ("Semana 1"... "Semana 5"), 5 colunas seg-sex, cards empilhados por horário.
+- **Filtros**: por semana (dropdown), tipo (multi), status (chips), busca textual (debounced 300ms em `process_number` + `case_ref` + `notes`).
+- **Nova/Editar**: mesmo `HearingFormDialog`, props `mode: 'create' | 'edit'` + `hearing?`.
+- **Alertas**: card com `notes` mostra `AlertTriangle` amber no canto superior direito + tooltip com preview.
+- **Cancelada/Adiada**: `line-through` no título + `opacity-60`.
+- **Soft delete**: ação "Excluir" seta `deleted_at` com snapshot em `notes` (segue policy).
 
-**A6. No fechamento do funil (`CloseLeadDialog`/ZapSign defaults)** quando produto = INSS, exigir o Nº Requerimento antes de criar o caso.
+### Dados fictícios
+Inserir ~8 registros via `supabase--insert` após a migração: misto de PREV (perícias) e CASOs cíveis, datas na semana atual e próxima, alguns com `notes` e 1 cancelada para demonstrar visual.
 
-### Frente B — Backfill de e-mails antigos
+### Fora de escopo
+- Notificações/lembretes automáticos
+- Integração com Google Calendar
+- Vínculo automático com `lead_processes` (pode ser feito depois via `process_number`)
+- Mobile view dedicada (responsivo padrão Tailwind apenas)
 
-**B1. Paginação real no `gmail-processual-sync`** — adicionar loop com `pageToken`, parâmetro `backfill: true`, cursor `{ inbox, page_token }` salvo em nova tabela `processual_sync_state`, e UI com botão "Buscar mais antigos" + barra de progresso (mesmo padrão do INSS).
-
-**B2. INSS — relaxar filtro de assunto** — trocar `subject:"[INSS]"` por `(subject:INSS OR from:noreply@inss.gov.br OR from:naoresponder@inss.gov.br OR from:meuinss@)` para capturar variantes que hoje são perdidas.
-
-**B3. INSS — persistir e reutilizar o cursor** — UI lê `inss_sync_state.last_result.cursor` na montagem; botão "Continuar backfill de onde parou" usa esse cursor em vez de reiniciar em 2022. Botão separado "Recomeçar do zero" pra casos de troca de filtro.
-
-**B4. Painel de diagnóstico de sync** (pequeno bloco no topo das duas abas):
-- Total de e-mails na base · mais antigo · mais novo
-- Mês/cursor atual do backfill em andamento
-- Inbox usadas, última execução, contagem de erros
-
-### Itens técnicos
-
-```text
-Banco (Externo) — migrations:
-  + processual_sync_state(id=1, last_run_at, last_result jsonb, cursor jsonb)
-  + lead_custom_field "NB INSS" (UUID novo via seed)
-  + index gin trigram em inss_admin_processes.nome_segurado (já há?)
-  + index em inss_admin_processes (case_id NULL, lead_id NULL) — partial
-
-Railway (novas/editadas):
-  + match-orphans-for-lead.ts            (A1)
-  ~ inss-matcher.ts                      (A2 — adiciona caminho NB)
-  ~ gmail-processual-sync.ts             (B1 — paginação + backfill)
-  ~ gmail-inss-sync.ts                   (B2 — filtro relaxado)
-
-Frontend:
-  ~ InssAdminProcessesTab.tsx            (A3, A4, B3, B4)
-  ~ ProcessualEmailsTab.tsx              (B1 UI, B4)
-  ~ LeadForm / custom field config       (A5)
-  ~ CloseLeadDialog / ZapSign defaults   (A6)
-  + hook useOrphanMatchOnLeadSave        (A1 trigger)
-```
-
-## Perguntas antes de executar
-
-1. Quer tudo de A e B no mesmo passo, ou prefere **fazer Frente B primeiro** (destravar backfill) e só depois reduzir órfãos? Frente B sozinha já vai aumentar a quantidade de e-mails na base — vale subir Frente A junto pra não inflar a lista de órfãos.
-2. **A5 e A6** mexem em LeadForm e fechamento — confirmo que o produto/serviço a usar como gatilho é o que já está em `kanban_boards.product_service_id` filtrando por nome contendo "INSS"/"BPC"/"Previd"?
-3. **B2** (filtro INSS relaxado) pode trazer e-mails de *outras* origens que mencionam "INSS" no assunto e que serão parse-failed. Aceita o ruído controlado (vão pra `inss_status_history` como `PARSE_FAILED` sem virar processo) pra não perder e-mail legítimo?
+### Detalhes técnicos
+- Imports: `db` do barrel `@/integrations/supabase` para tudo de Externo.
+- Migration via edge function `run-external-migration` (não pedir SQL manual).
+- Componentes shadcn: Tabs, Dialog, Select, Input, Calendar, Badge, Card, Popover.
+- `date-fns` (já no projeto) para semana/mês.
