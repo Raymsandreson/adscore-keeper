@@ -191,7 +191,7 @@ export default function ProcessualEmailsTab() {
             className="pl-9"
           />
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 flex-wrap">
           <div className="flex items-center gap-2">
             <Switch
               id="push-only"
@@ -202,6 +202,14 @@ export default function ProcessualEmailsTab() {
               Apenas PUSH
             </label>
           </div>
+          <Button variant="outline" size="sm" onClick={triggerSync} disabled={syncing || backfilling}>
+            <RefreshCw className={`h-4 w-4 mr-1 ${syncing ? "animate-spin" : ""}`} />
+            {syncing ? "Sincronizando..." : "Sincronizar"}
+          </Button>
+          <Button variant="outline" size="sm" onClick={runBackfill} disabled={syncing || backfilling}>
+            <DownloadCloud className={`h-4 w-4 mr-1 ${backfilling ? "animate-pulse" : ""}`} />
+            {backfilling ? (backfillStatus || "Buscando antigos...") : "Buscar mais antigos"}
+          </Button>
         </div>
       </div>
 
