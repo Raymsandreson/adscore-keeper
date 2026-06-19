@@ -215,6 +215,51 @@ async function getNextGroupSequenceFromSnapshot(supabase: any, prefix: string): 
   return max > 0 ? max + 1 : null
 }
 
+/**
+ * Max real do prefixo lendo lead_whatsapp_groups (fonte gravada em tempo real
+ * pela própria create-whatsapp-group). Diferente do snapshot uazapi que só
+ * atualiza 1x/dia e congela o MAX entre syncs.
+ */
+async function getMaxSequenceFromLeadGroups(supabase: any, prefix: string): Promise<number> {
+  const p = cleanSequencePrefix(prefix)
+  if (!p) return 0
+  let max = 0
+  for (let from = 0; from < 20000; from += 1000) {
+    const { data, error } = await supabase
+      .from('lead_whatsapp_groups')
+      .select('group_name')
+      .ilike('group_name', `%${p}%`)
+      .range(from, from + 999)
+    if (error) break
+    for (const row of (data || [])) {
+      const seq = extractGroupSequence(row.group_name, p)
+      if (seq && seq > max) max = seq
+    }
+    if (!data || data.length < 1000) break
+  }
+  return max
+}
+
+/**
+ * Reserva atômica via RPC reserve_closed_sequence: faz UPDATE ... RETURNING
+ * incrementando o contador acima de GREATEST(snapshot, lead_whatsapp_groups).
+ * Garante que dois fechamentos simultâneos NUNCA colidam no mesmo número.
+ */
+async function reserveAtomicClosedSequence(
+  supabase: any,
+  boardId: string,
+  minFloor: number,
+): Promise<number | null> {
+  const { data, error } = await supabase
+    .rpc('reserve_closed_sequence', { p_board_id: boardId, p_min: minFloor })
+  if (error) {
+    console.error('[create-group] reserve_closed_sequence error:', error)
+    return null
+  }
+  const n = typeof data === 'number' ? data : Number(data)
+  return Number.isFinite(n) && n > 0 ? n : null
+}
+
 function isRateLimited(status: number, bodyText: string): boolean {
   return status === 429 || /rate[-_ ]?overlimit|too\s+many\s+requests|429/i.test(bodyText || '')
 }
