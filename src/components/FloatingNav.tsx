@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import {
-  LayoutDashboard, Users, CalendarDays, TrendingUp, Trophy, UsersRound,
+  LayoutDashboard, Users, CalendarDays, TrendingUp, Trophy, UsersRound, Gavel,
   MessageCircle, CreditCard, Filter, Bot, Target, Heart, Megaphone,
   Zap, Menu, X, Search, ClipboardList, ChevronRight, Phone, FileText,
   MessageSquare as MessageSquareIcon, Scale, Briefcase, AtSign, RefreshCw,

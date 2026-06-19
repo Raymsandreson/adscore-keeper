@@ -157,6 +157,7 @@ const NucleiPage = lazyRetry(() => import("./pages/NucleiPage"), "NucleiPage");
 const CostOrganizationPage = lazyRetry(() => import("./pages/CostOrganizationPage"), "CostOrganizationPage");
 const ProcessTrackingPage = lazyRetry(() => import("./pages/ProcessTrackingPage"), "ProcessTrackingPage");
 const ProcessesPage = lazyRetry(() => import("./pages/ProcessesPage"), "ProcessesPage");
+const HearingsPage = lazyRetry(() => import("./pages/HearingsPage"), "HearingsPage");
 const ResetPasswordPage = lazyRetry(() => import("./pages/ResetPasswordPage"), "ResetPasswordPage");
 const ContactsPage = lazyRetry(() => import("./pages/ContactsPage"), "ContactsPage");
 const InstagramPage = lazyRetry(() => import("./pages/InstagramPage"), "InstagramPage");
