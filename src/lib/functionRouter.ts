@@ -41,6 +41,7 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
   'scan-duplicate-contacts': 'railway',
   'recover-leads-phone-55': 'railway',
   'transcribe-activity-call': 'railway',
+  'wipe-instance-agent-labels': 'railway',
 
   // --- Todas as demais ficam no Cloud por padrão ---
 };
