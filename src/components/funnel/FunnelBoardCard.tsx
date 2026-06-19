@@ -208,8 +208,8 @@ export function FunnelBoardCard({
     enabled: expanded,
   });
 
-  const totalLeads = counts?.total || 0;
-  const stageData = counts?.byStage || {};
+  const totalLeads = filteredCounts.total;
+  const stageData = filteredCounts.byStage;
 
   return (
     <Card className={cn("border-border/50 hover:shadow-md transition-all group", expanded && "lg:col-span-2")}>
