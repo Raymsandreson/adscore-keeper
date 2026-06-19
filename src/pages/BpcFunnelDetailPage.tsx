@@ -254,7 +254,7 @@ const BpcFunnelDetailPage = () => {
               <SelectItem value="none">Sem acolhedor</SelectItem>
               {(allAcolhedores || []).map(id => (
                 <SelectItem key={id} value={id}>
-                  {getDisplayName(id) || id.slice(0, 8)}
+                  {getDisplayName(id) || id}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -262,7 +262,7 @@ const BpcFunnelDetailPage = () => {
 
           {acolhedorId !== "all" && (
             <Badge variant="secondary" className="text-xs">
-              Filtro: {acolhedorId === "none" ? "sem acolhedor" : getDisplayName(acolhedorId) || acolhedorId.slice(0, 8)}
+              Filtro: {acolhedorId === "none" ? "sem acolhedor" : (getDisplayName(acolhedorId) || acolhedorId)}
             </Badge>
           )}
         </CardContent>
