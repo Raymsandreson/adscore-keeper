@@ -91,6 +91,7 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'scan-duplicate-contacts': scanDuplicateContacts,
   'recover-leads-phone-55': recoverLeadsPhone55,
   'transcribe-activity-call': transcribeActivityCall,
+  'wipe-instance-agent-labels': wipeInstanceAgentLabels,
 };
 
 const app = express();
