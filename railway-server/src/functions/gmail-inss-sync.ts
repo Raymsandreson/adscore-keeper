@@ -432,6 +432,7 @@ export const handler: RequestHandler = async (req, res) => {
               requerimento: parsed.requerimento,
               cpf: parsed.cpf,
               nome: parsed.nome,
+              beneficio_num: parsed.beneficio_num,
             });
             if (match.leadId || match.caseId) {
               const applied = await applyInssMatch({
