@@ -147,12 +147,24 @@ const BpcFunnelDetailPage = () => {
     queryKey: leadsQueryKey,
     queryFn: async () => {
       if (!boardId) return [] as Array<{ status: string; lead_phone: string | null }>;
-      let q = supabase.from("leads").select("status, lead_phone").eq("board_id", boardId);
-      if (fromDate) q = q.gte(dateField, fromDate.toISOString());
-      if (toDate) q = q.lte(dateField, toDate.toISOString());
-      const { data, error } = await q;
-      if (error) throw error;
-      return data || [];
+      // Paginate to bypass PostgREST default 1000-row cap.
+      const PAGE = 1000;
+      const all: Array<{ status: string; lead_phone: string | null }> = [];
+      for (let from = 0; ; from += PAGE) {
+        let q = supabase
+          .from("leads")
+          .select("status, lead_phone")
+          .eq("board_id", boardId)
+          .range(from, from + PAGE - 1);
+        if (fromDate) q = q.gte(dateField, fromDate.toISOString());
+        if (toDate) q = q.lte(dateField, toDate.toISOString());
+        const { data, error } = await q;
+        if (error) throw error;
+        const batch = data || [];
+        all.push(...batch);
+        if (batch.length < PAGE) break;
+      }
+      return all;
     },
     enabled: !!boardId,
     staleTime: 30_000,
