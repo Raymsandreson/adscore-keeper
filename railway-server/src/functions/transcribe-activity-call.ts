@@ -12,6 +12,23 @@ import { geminiChat } from '../lib/gemini';
 
 const MODEL = process.env.EXTRACT_AI_MODEL || 'google/gemini-2.5-flash';
 
+interface PreviousActivity {
+  title?: string;
+  status?: string;
+  type?: string;
+  what_was_done?: string;
+  current_status?: string;
+  next_steps?: string;
+  date?: string;
+}
+
+interface ChatMessage {
+  sender?: string;
+  type?: string;
+  content?: string;
+  date?: string;
+}
+
 interface ActivityContext {
   title?: string;
   type?: string;
@@ -24,6 +41,49 @@ interface ActivityContext {
   solicitacao?: string;
   resposta_juizo?: string;
   notes?: string;
+  // Contexto extra para a IA COMBINAR (não só substituir):
+  workflow?: { step_label?: string; phase_label?: string; objective_label?: string; next_step?: string };
+  previous_activities?: PreviousActivity[];
+  chat_messages?: ChatMessage[];
+}
+
+function buildContextSections(ctx: ActivityContext): string {
+  const sections: string[] = [];
+
+  if (ctx.workflow && (ctx.workflow.step_label || ctx.workflow.phase_label || ctx.workflow.next_step)) {
+    const w = ctx.workflow;
+    sections.push(`Fluxo de trabalho do processo:
+- Fase: ${w.phase_label || '—'}
+- Passo atual: ${w.step_label || '—'}${w.objective_label ? ` (objetivo: ${w.objective_label})` : ''}
+- Próximo passo do fluxo: ${w.next_step || '—'}`);
+  }
+
+  if (Array.isArray(ctx.previous_activities) && ctx.previous_activities.length > 0) {
+    const lines = ctx.previous_activities.slice(0, 8).map((a) => {
+      const parts = [
+        a.date ? `[${a.date}]` : null,
+        a.title || '(sem título)',
+        a.status ? `(${a.status})` : null,
+        a.what_was_done ? `feito: ${a.what_was_done}` : null,
+        a.next_steps ? `próximo: ${a.next_steps}` : null,
+      ].filter(Boolean);
+      return `- ${parts.join(' · ')}`;
+    });
+    sections.push(`Histórico de atividades anteriores deste processo (mais recentes primeiro):\n${lines.join('\n')}`);
+  }
+
+  if (Array.isArray(ctx.chat_messages) && ctx.chat_messages.length > 0) {
+    const lines = ctx.chat_messages.slice(-30).map((m) => {
+      const who = m.sender || 'Usuário';
+      const content = (m.content || (m.type && m.type !== 'text' ? `[${m.type}]` : '')).toString().slice(0, 500);
+      return `- ${who}: ${content}`;
+    }).filter((l) => l.trim() !== '- ');
+    if (lines.length > 0) {
+      sections.push(`Mensagens registradas nesta atividade (chat interno):\n${lines.join('\n')}`);
+    }
+  }
+
+  return sections.length > 0 ? '\n\n' + sections.join('\n\n') : '';
 }
 
 const EMPTY_FIELDS = {
@@ -71,17 +131,22 @@ export const handler: RequestHandler = async (req, res) => {
 - Contato: ${ctx.contact_name || '—'}
 - Processo: ${ctx.process_title || '—'}
 
-Conteúdo atual dos campos (apenas referência — atualize/complemente conforme a ligação):
+Conteúdo ATUAL dos campos (preserve o que ainda for válido e complemente com a ligação):
 - Como está: ${ctx.current_status || '(vazio)'}
 - O que foi feito: ${ctx.what_was_done || '(vazio)'}
 - Próximo passo: ${ctx.next_steps || '(vazio)'}
 - Solicitação: ${ctx.solicitacao || '(vazio)'}
 - Resposta do juízo: ${ctx.resposta_juizo || '(vazio)'}
-- Observações: ${ctx.notes || '(vazio)'}`;
+- Observações: ${ctx.notes || '(vazio)'}${buildContextSections(ctx)}`;
 
-    const fillSystem = `Você é um assistente jurídico de um escritório de advocacia. Foi realizada uma LIGAÇÃO TELEFÔNICA (por exemplo, um assessor ligando para a vara, cartório, órgão ou cliente) e você recebeu a TRANSCRIÇÃO fiel dessa ligação.
+    const fillSystem = `Você é um assistente jurídico de um escritório de advocacia. Foi realizada uma LIGAÇÃO TELEFÔNICA (por exemplo, um assessor ligando para a vara, cartório, órgão ou cliente) e você recebeu a TRANSCRIÇÃO fiel dessa ligação, MAIS o contexto da atividade (campos atuais, fluxo de trabalho, atividades anteriores do processo e mensagens internas).
 
-Sua tarefa: preencher os campos da atividade com base EXCLUSIVAMENTE no que foi realmente dito na ligação. Seja fiel e objetivo. NÃO invente fatos, nomes, datas ou prazos que não estão na transcrição. Se um campo não tiver informação na ligação, retorne string vazia para ele. Escreva em português do Brasil, em tom profissional e direto, em primeira pessoa quando fizer sentido (ex.: "Liguei para a vara e falei com...").`;
+Sua tarefa: ATUALIZAR os campos da atividade COMBINANDO o contexto existente com o que foi dito na ligação. Regras:
+- NÃO descarte informação válida que já estava nos campos atuais — preserve e integre com o que a ligação acrescenta. Se a ligação contradiz/atualiza algo, prevaleça a informação mais nova da ligação.
+- Use o histórico de atividades anteriores e as mensagens internas apenas como contexto para escrever de forma coerente com o andamento do processo — NÃO copie esse histórico para dentro dos campos.
+- Para "Próximo passo", considere o próximo passo do fluxo de trabalho quando fizer sentido com o que foi dito na ligação.
+- Seja fiel e objetivo. NÃO invente fatos, nomes, datas ou prazos que não estejam na transcrição ou no contexto fornecido. Se um campo não tiver informação, retorne string vazia.
+- Escreva em português do Brasil, tom profissional e direto, em primeira pessoa quando fizer sentido (ex.: "Liguei para a vara e falei com...").`;
 
     let fields = { ...EMPTY_FIELDS };
     try {

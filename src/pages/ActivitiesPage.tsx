@@ -1323,18 +1323,26 @@ const ActivitiesPage = () => {
 
   // Fetch open activity counts for the assignee on the selected dates
   useEffect(() => {
-    const fetchDateCount = async (date: string, setter: (v: number | null) => void) => {
+    const fetchDateCount = async (
+      date: string,
+      column: 'deadline' | 'notification_date',
+      setter: (v: number | null) => void,
+    ) => {
       if (!date || !formAssignedTo) { setter(null); return; }
-      const { count, error } = await supabase
+      // lead_activities vive no Externo; assigned_to guarda UUID do Externo.
+      // formAssignedTo é UUID do Cloud — precisa remapear antes de filtrar.
+      const extAssignedTo = await remapToExternal(formAssignedTo);
+      if (!extAssignedTo) { setter(null); return; }
+      const { count, error } = await externalSupabase
         .from('lead_activities')
         .select('id', { count: 'exact', head: true })
-        .eq('assigned_to', formAssignedTo)
-        .eq('deadline', date)
+        .eq('assigned_to', extAssignedTo)
+        .eq(column, date)
         .neq('status', 'concluida');
       if (!error) setter(count ?? 0);
     };
-    fetchDateCount(formDeadline, setDeadlineDateCount);
-    fetchDateCount(formNotificationDate, setNotifDateCount);
+    fetchDateCount(formDeadline, 'deadline', setDeadlineDateCount);
+    fetchDateCount(formNotificationDate, 'notification_date', setNotifDateCount);
   }, [formDeadline, formNotificationDate, formAssignedTo]);
 
   // Calendar data
@@ -3376,6 +3384,10 @@ const ActivitiesPage = () => {
                   </div>
                   <div className="flex flex-wrap items-center justify-end gap-1">
                     <ActivityCallRecorder
+                      activityId={selectedActivity?.id}
+                      leadId={formLeadId}
+                      caseId={formCaseId}
+                      processId={formProcessId}
                       context={{
                         title: formTitle,
                         type: formType,
@@ -3388,6 +3400,17 @@ const ActivitiesPage = () => {
                         solicitacao: stripHtmlToText(formSolicitacao),
                         resposta_juizo: stripHtmlToText(formRespostaJuizo),
                         notes: stripHtmlToText(formNotes),
+                        workflow: stepContext ? {
+                          step_label: stepContext.stepLabel,
+                          phase_label: stepContext.phaseLabel || undefined,
+                          objective_label: stepContext.objectiveLabel || undefined,
+                          next_step: (() => {
+                            const steps = stepContext.allSteps || [];
+                            const idx = steps.findIndex((s) => s.stepId === stepContext.stepId);
+                            const after = idx >= 0 ? steps.slice(idx + 1) : steps;
+                            return (after.find((s) => !s.checked) || after[0])?.stepLabel;
+                          })(),
+                        } : undefined,
                       }}
                       onFields={(f) => {
                         if (f.what_was_done) setFormWhatWasDone(callFieldTextToHtml(f.what_was_done));

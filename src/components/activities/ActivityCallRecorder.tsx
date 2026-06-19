@@ -5,6 +5,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Phone, Mic, Square, Loader2, Sparkles, Info, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { cloudFunctions } from '@/lib/functionRouter';
 
 export interface ActivityCallContext {
@@ -19,6 +20,7 @@ export interface ActivityCallContext {
   solicitacao?: string;
   resposta_juizo?: string;
   notes?: string;
+  workflow?: { step_label?: string; phase_label?: string; objective_label?: string; next_step?: string };
 }
 
 export interface ActivityCallFields {
@@ -33,6 +35,11 @@ export interface ActivityCallFields {
 interface Props {
   context: ActivityCallContext;
   onFields: (fields: ActivityCallFields) => void;
+  /** IDs para a IA buscar contexto (histórico do processo + mensagens da atividade). */
+  activityId?: string | null;
+  leadId?: string | null;
+  caseId?: string | null;
+  processId?: string | null;
 }
 
 type Phase = 'idle' | 'recording' | 'processing' | 'done';
@@ -60,7 +67,7 @@ export function callFieldTextToHtml(text: string): string {
     .join('');
 }
 
-export function ActivityCallRecorder({ context, onFields }: Props) {
+export function ActivityCallRecorder({ context, onFields, activityId, leadId, caseId, processId }: Props) {
   const [open, setOpen] = useState(false);
   const [phase, setPhase] = useState<Phase>('idle');
   const [seconds, setSeconds] = useState(0);
@@ -201,8 +208,56 @@ export function ActivityCallRecorder({ context, onFields }: Props) {
       const { data: urlData } = supabase.storage.from('activity-chat').getPublicUrl(path);
       const audio_url = urlData.publicUrl;
 
+      // Busca contexto extra para a IA combinar (histórico do processo + mensagens da atividade).
+      let previousActivities: any[] = [];
+      let chatMessages: any[] = [];
+      try {
+        if (processId || caseId || leadId) {
+          let q = externalSupabase
+            .from('lead_activities')
+            .select('id, title, activity_type, status, what_was_done, current_status_notes, next_steps, deadline, created_at')
+            .order('created_at', { ascending: false })
+            .limit(8);
+          if (processId) q = q.eq('process_id', processId);
+          else if (caseId) q = q.eq('case_id', caseId);
+          else q = q.eq('lead_id', leadId as string);
+          if (activityId) q = q.neq('id', activityId);
+          const { data: acts } = await q;
+          previousActivities = (acts || []).map((a: any) => ({
+            title: a.title,
+            status: a.status,
+            type: a.activity_type,
+            what_was_done: stripHtmlToText(a.what_was_done || ''),
+            current_status: stripHtmlToText(a.current_status_notes || ''),
+            next_steps: stripHtmlToText(a.next_steps || ''),
+            date: a.created_at ? String(a.created_at).slice(0, 10) : undefined,
+          }));
+        }
+        if (activityId) {
+          const { data: msgs } = await externalSupabase
+            .from('activity_chat_messages')
+            .select('content, sender_name, message_type, created_at')
+            .eq('activity_id', activityId)
+            .is('deleted_at', null)
+            .order('created_at', { ascending: true })
+            .limit(40);
+          chatMessages = (msgs || [])
+            .filter((m: any) => m.message_type !== 'ai_suggestion')
+            .map((m: any) => ({
+              sender: m.sender_name,
+              type: m.message_type,
+              content: stripHtmlToText(m.content || ''),
+              date: m.created_at ? String(m.created_at).slice(0, 16).replace('T', ' ') : undefined,
+            }));
+        }
+      } catch (ctxErr) {
+        console.warn('[ActivityCallRecorder] contexto extra falhou (segue sem ele):', ctxErr);
+      }
+
+      const fullContext = { ...context, previous_activities: previousActivities, chat_messages: chatMessages };
+
       const { data, error: fnErr } = await cloudFunctions.invoke('transcribe-activity-call', {
-        body: { audio_url, activity_context: context },
+        body: { audio_url, activity_context: fullContext },
       });
       if (fnErr) throw fnErr;
       if (!data?.success) throw new Error(data?.error || 'Falha ao processar a ligação');
@@ -230,7 +285,7 @@ export function ActivityCallRecorder({ context, onFields }: Props) {
       setPhase('done');
       toast.error(e?.message || 'Erro ao processar a ligação');
     }
-  }, [context, onFields]);
+  }, [context, onFields, activityId, leadId, caseId, processId]);
 
   const stopRecording = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
