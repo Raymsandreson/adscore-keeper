@@ -58,9 +58,9 @@ Pular etapas só vale para mudanças triviais (typo, remover `console.log`, reno
 - Editar arquivos
 - `npm run build`, `npm run lint`, `npm test`
 - `git status`, `git diff`, `git log`
+- `git push` — autorização durável do usuário (jun/2026): empurrar direto sem perguntar. Ainda mostrar o diff resumido no resumo pós-push.
 
 ### Sempre pedir confirmação explícita:
-- `git push` — mostrar diff resumido antes
 - `git commit` incluindo arquivos que você não editou nesta sessão
 - SQL de escrita em produção (`INSERT`, `UPDATE`, `DELETE`, `DROP`, `ALTER`) — mostrar o SQL e quantas linhas serão afetadas
 - Deploy de edge function
