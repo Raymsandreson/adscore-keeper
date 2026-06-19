@@ -42,6 +42,8 @@ import { handler as notifyInssUpdate } from './functions/notify-inss-update';
 import { handler as gmailMessageBody } from './functions/gmail-message-body';
 import { handler as matchInssOrphans } from './functions/match-inss-orphans';
 import { handler as autoLinkInssByName } from './functions/auto-link-inss-by-name';
+import { handler as bulkLinkInssByCpf } from './functions/bulk-link-inss-by-cpf';
+import { handler as matchOrphansForLead } from './functions/match-orphans-for-lead';
 import { handler as gmailProcessualSync } from './functions/gmail-processual-sync';
 
 import { handler as getWhatsappGroupInfo } from './functions/get-whatsapp-group-info';
@@ -85,6 +87,8 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'notify-inss-update': notifyInssUpdate,
   'match-inss-orphans': matchInssOrphans,
   'auto-link-inss-by-name': autoLinkInssByName,
+  'bulk-link-inss-by-cpf': bulkLinkInssByCpf,
+  'match-orphans-for-lead': matchOrphansForLead,
   'gmail-processual-sync': gmailProcessualSync,
 
   'get-whatsapp-group-info': getWhatsappGroupInfo,
