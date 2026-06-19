@@ -43,8 +43,6 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
   'transcribe-activity-call': 'railway',
   'suggest-step-actions': 'railway',
   'wipe-instance-agent-labels': 'railway',
-  'gerar-cobranca-vara': 'railway',
-  'send-email': 'railway',
 
   // --- Todas as demais ficam no Cloud por padrão ---
 };
