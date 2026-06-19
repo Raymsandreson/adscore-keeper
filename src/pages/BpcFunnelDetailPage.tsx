@@ -65,7 +65,7 @@ const BpcFunnelDetailPage = () => {
     queryKey: leadsQueryKey,
     queryFn: async () => {
       if (!boardId) return { byStage: {} as Record<string, number>, total: 0, acolhedores: [] as string[] };
-      let q = supabase.from("leads").select("status, acolhedor").eq("board_id", boardId);
+      let q = supabase.from("leads").select("status, acolhedor, lead_phone").eq("board_id", boardId);
       if (fromDate) q = q.gte(dateField, fromDate.toISOString());
       if (toDate) q = q.lte(dateField, toDate.toISOString());
       if (acolhedorId !== "all") {
@@ -75,11 +75,13 @@ const BpcFunnelDetailPage = () => {
       if (error) throw error;
       const byStage: Record<string, number> = {};
       const acolhedoresSet = new Set<string>();
+      const phones = new Set<string>();
       for (const l of data || []) {
         byStage[l.status] = (byStage[l.status] || 0) + 1;
         if (l.acolhedor) acolhedoresSet.add(l.acolhedor);
+        if (l.lead_phone) phones.add(String(l.lead_phone).replace(/\D/g, ""));
       }
-      return { byStage, total: (data || []).length, acolhedores: Array.from(acolhedoresSet) };
+      return { byStage, total: (data || []).length, acolhedores: Array.from(acolhedoresSet), phones };
     },
     enabled: !!boardId,
   });
@@ -122,6 +124,20 @@ const BpcFunnelDetailPage = () => {
     enabled: !!board,
     source: "unificada",
   });
+
+  // Filtra a lista detalhada (planilha) pelo acolhedor selecionado:
+  // cruza por telefone normalizado com os leads do board já filtrados por acolhedor.
+  const filteredBpcLeads = useMemo(() => {
+    if (acolhedorId === "all") return bpcLeads;
+    const phones = leadsData?.phones;
+    if (!phones || phones.size === 0) return [];
+    return bpcLeads.filter(l => {
+      const p = String(l.phone_normalized || l.phone_raw || "").replace(/\D/g, "");
+      if (!p) return false;
+      // tenta com e sem DDI 55
+      return phones.has(p) || phones.has(p.replace(/^55/, "")) || phones.has(`55${p}`);
+    });
+  }, [bpcLeads, leadsData?.phones, acolhedorId]);
 
   if (!board) {
     return (
@@ -262,8 +278,8 @@ const BpcFunnelDetailPage = () => {
         open={sheetOpen}
         onOpenChange={setSheetOpen}
         source="unificada"
-        externalLeads={bpcLeads}
-        externalMetrics={bpcMetrics}
+        externalLeads={filteredBpcLeads}
+        externalMetrics={acolhedorId === "all" ? bpcMetrics : { ...bpcMetrics, total: filteredBpcLeads.length }}
         externalLoading={bpcLoading}
         onRefresh={refetchBpc}
       />
