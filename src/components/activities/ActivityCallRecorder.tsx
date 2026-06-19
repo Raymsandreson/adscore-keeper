@@ -66,19 +66,35 @@ export function ActivityCallRecorder({ context, onFields }: Props) {
   const [seconds, setSeconds] = useState(0);
   const [transcript, setTranscript] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [silent, setSilent] = useState(false);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Visualizador de áudio (Web Audio API) — mostra a "frequência da voz" ao gravar.
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const lastSoundRef = useRef(0);
+  const silentRef = useRef(false);
+
+  const teardownAudio = useCallback(() => {
+    if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+    analyserRef.current = null;
+    try { audioCtxRef.current?.close(); } catch { /* noop */ }
+    audioCtxRef.current = null;
+  }, []);
 
   useEffect(() => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
       streamRef.current?.getTracks().forEach((t) => t.stop());
       try { mediaRecorderRef.current?.stop(); } catch { /* noop */ }
+      teardownAudio();
     };
-  }, []);
+  }, [teardownAudio]);
 
   const fmt = (s: number) =>
     `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
@@ -89,6 +105,22 @@ export function ActivityCallRecorder({ context, onFields }: Props) {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
+
+      // Medidor de nível de áudio (opcional — só feedback visual).
+      try {
+        const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
+        const audioCtx = new AudioCtx();
+        const source = audioCtx.createMediaStreamSource(stream);
+        const analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 256;
+        source.connect(analyser);
+        audioCtxRef.current = audioCtx;
+        analyserRef.current = analyser;
+        setSilent(false);
+        silentRef.current = false;
+        lastSoundRef.current = performance.now();
+      } catch { /* visualizador é opcional */ }
+
       const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
         ? 'audio/webm;codecs=opus'
         : MediaRecorder.isTypeSupported('audio/webm')
@@ -107,6 +139,54 @@ export function ActivityCallRecorder({ context, onFields }: Props) {
       toast.error('Não foi possível acessar o microfone. Verifique a permissão do navegador.');
     }
   }, []);
+
+  // Desenha as barras de frequência enquanto grava e detecta ausência de som.
+  useEffect(() => {
+    if (phase !== 'recording') return;
+    const analyser = analyserRef.current;
+    const canvas = canvasRef.current;
+    if (!analyser || !canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const bufferLength = analyser.frequencyBinCount;
+    const data = new Uint8Array(bufferLength);
+    const bars = 32;
+    const step = Math.max(1, Math.floor(bufferLength / bars));
+
+    const draw = () => {
+      rafRef.current = requestAnimationFrame(draw);
+      analyser.getByteFrequencyData(data);
+
+      const w = canvas.width;
+      const h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+      const barWidth = w / bars;
+      let sum = 0;
+      for (let i = 0; i < bars; i++) {
+        const value = data[i * step] / 255;
+        sum += data[i * step];
+        const barHeight = Math.max(2, value * h);
+        ctx.fillStyle = `rgb(${Math.round(34 + value * 200)}, ${Math.round(197 - value * 70)}, 94)`;
+        ctx.fillRect(i * barWidth, h - barHeight, barWidth - 1, barHeight);
+      }
+
+      // Detecta silêncio: se a média ficar baixa por >4s, avisa que não há captação.
+      const avg = sum / bars;
+      const now = performance.now();
+      if (avg > 6) lastSoundRef.current = now;
+      const isSilent = now - lastSoundRef.current > 4000;
+      if (isSilent !== silentRef.current) {
+        silentRef.current = isSilent;
+        setSilent(isSilent);
+      }
+    };
+    draw();
+
+    return () => {
+      if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+    };
+  }, [phase]);
 
   const processAudio = useCallback(async (blob: Blob, mime: string) => {
     setPhase('processing');
@@ -155,10 +235,11 @@ export function ActivityCallRecorder({ context, onFields }: Props) {
   const stopRecording = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
     const recorder = mediaRecorderRef.current;
-    if (!recorder || recorder.state === 'inactive') { setPhase('idle'); return; }
+    if (!recorder || recorder.state === 'inactive') { teardownAudio(); setPhase('idle'); return; }
     const mime = recorder.mimeType;
     recorder.onstop = () => {
       streamRef.current?.getTracks().forEach((t) => t.stop());
+      teardownAudio();
       const blob = new Blob(chunksRef.current, { type: mime });
       if (blob.size < 1000) {
         toast.error('Gravação muito curta.');
@@ -168,14 +249,17 @@ export function ActivityCallRecorder({ context, onFields }: Props) {
       processAudio(blob, mime);
     };
     try { recorder.stop(); } catch { /* noop */ }
-  }, [processAudio]);
+  }, [processAudio, teardownAudio]);
 
   const reset = useCallback(() => {
+    teardownAudio();
     setPhase('idle');
     setSeconds(0);
     setTranscript('');
     setError(null);
-  }, []);
+    setSilent(false);
+    silentRef.current = false;
+  }, [teardownAudio]);
 
   return (
     <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o && phase === 'done') reset(); }}>
@@ -216,6 +300,23 @@ export function ActivityCallRecorder({ context, onFields }: Props) {
               <span className="h-2.5 w-2.5 rounded-full bg-red-500 animate-pulse" />
               <span className="font-mono text-lg">{fmt(seconds)}</span>
             </div>
+            {/* Visualizador da frequência da voz — confirma que o microfone está captando. */}
+            <canvas
+              ref={canvasRef}
+              width={288}
+              height={44}
+              className="w-full h-11 rounded bg-muted/40 border"
+            />
+            {silent ? (
+              <div className="flex items-start gap-1.5 rounded-md bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/50 p-2">
+                <Info className="h-3.5 w-3.5 text-red-600 shrink-0 mt-0.5" />
+                <span className="text-[11px] text-red-700 dark:text-red-300">
+                  Nenhum som detectado. Aproxime o microfone, aumente o volume do viva-voz ou fale mais alto.
+                </span>
+              </div>
+            ) : (
+              <p className="text-[11px] text-center text-muted-foreground">🎤 Captando áudio… fale normalmente</p>
+            )}
             <Button variant="destructive" className="w-full gap-2" size="sm" onClick={stopRecording}>
               <Square className="h-4 w-4" /> Parar e processar
             </Button>
