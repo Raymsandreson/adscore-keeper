@@ -26,7 +26,18 @@ export function LeadAIChatExtractor({ leadId, leadPhone, whatsappGroups, onDataE
   const [limit, setLimit] = useState<LimitOpt>('200');
   const [loading, setLoading] = useState(false);
 
-  const hasGroup = Array.isArray(whatsappGroups) && whatsappGroups.length > 0;
+  // Grupos em whatsapp_messages.phone são gravados BARE (ex: 120363...), não com @g.us.
+  // Normaliza tirando o sufixo para casar com a tabela.
+  const normalizeJid = (v?: string | null) => (v || '').replace(/@g\.us$/i, '').trim();
+  // Id de grupo tem ~17-18 dígitos; telefone pessoal tem <=13. >=15 distingue com folga.
+  const looksLikeGroupId = (v: string) => /^\d{15,}$/.test(v);
+
+  // Fonte do jid do grupo, em ordem: (1) entrada com group_jid preenchido (com ou sem
+  // @g.us); (2) lead_phone quando ele é o próprio número do grupo (lead = grupo).
+  const groupJid =
+    normalizeJid(whatsappGroups?.find((g) => normalizeJid(g?.group_jid))?.group_jid) ||
+    (looksLikeGroupId(normalizeJid(leadPhone)) ? normalizeJid(leadPhone) : '');
+  const hasGroup = !!groupJid;
   const hasPhone = !!leadPhone?.trim();
 
   const buildPrompt = (messagesText: string) => `Analise a conversa de WhatsApp abaixo e extraia dados estruturados sobre um possível caso jurídico.
@@ -55,12 +66,13 @@ ${messagesText}`;
     const max = limit === 'all' ? 5000 : parseInt(limit, 10);
 
     if (source === 'group') {
-      const jid = whatsappGroups?.[0]?.group_jid;
-      if (!jid) throw new Error('Lead não tem grupo de WhatsApp vinculado');
+      const jid = groupJid;
+      if (!jid) throw new Error('Lead não tem grupo de WhatsApp identificável (sem JID e sem número de grupo)');
+      // Cobre os dois formatos em que o grupo pode estar gravado.
       const { data, error } = await externalSupabase
         .from('whatsapp_messages')
         .select('created_at, direction, contact_name, message_text')
-        .eq('phone', jid)
+        .in('phone', [jid, `${jid}@g.us`])
         .order('created_at', { ascending: false })
         .limit(max);
       if (error) throw error;
