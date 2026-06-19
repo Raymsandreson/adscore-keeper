@@ -13,6 +13,7 @@ import { db as supabase } from "@/integrations/supabase";
 import { useQuery } from "@tanstack/react-query";
 import { StageFunnelChart } from "@/components/kanban/StageFunnelChart";
 import { useBpcFormLeads } from "@/hooks/useBpcFormLeads";
+import { buildBpcAcolhedorFilter, leadMatchesFilter } from "@/lib/bpcPhoneMatch";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
