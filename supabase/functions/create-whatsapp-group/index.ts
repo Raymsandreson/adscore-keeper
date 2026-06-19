@@ -756,10 +756,26 @@ Deno.serve(async (req) => {
         nextSeq = existingLeadSequence
         shouldPersistSequence = false
       } else if (useClosed) {
+        // PRIORIDADE 1: se este lead já tem grupo com nº atribuído, reusa esse nº
+        // (não consome novo da sequência — é o caso de renomear/reprocessar).
         const existingGroupSeq = await getExistingGroupSequence(supabase, leadData?.whatsapp_group_id || explicitExistingGroupJid, sequencePrefix)
-        const nextSnapshotSeq = existingGroupSeq || await getNextGroupSequenceFromSnapshot(supabase, sequencePrefix)
-        nextSeq = nextSnapshotSeq || Math.max((settings.closed_current_sequence || 0) + 1, 1)
-        shouldPersistClosedSequence = false
+        if (existingGroupSeq) {
+          nextSeq = existingGroupSeq
+          shouldPersistClosedSequence = false
+        } else {
+          // PRIORIDADE 2: reserva atômica baseada no MAX REAL combinado de
+          // snapshot uazapi (1x/dia, defasado) + lead_whatsapp_groups (tempo real).
+          // Sem isso, leads que fecham entre 2 syncs do snapshot colidem no mesmo nº.
+          const snapMax = (await getNextGroupSequenceFromSnapshot(supabase, sequencePrefix)) || 0
+          const lwgMax = await getMaxSequenceFromLeadGroups(supabase, sequencePrefix)
+          const settingsMax = (settings.closed_current_sequence || 0)
+          const floor = Math.max(snapMax > 0 ? snapMax - 1 : 0, lwgMax, settingsMax)
+          const reserved = board_id
+            ? await reserveAtomicClosedSequence(supabase, board_id, floor)
+            : null
+          nextSeq = reserved || Math.max(floor + 1, 1)
+          shouldPersistClosedSequence = false // RPC já persistiu atomicamente
+        }
       } else {
         nextSeq = Math.max(activeCurrentSeq + 1, activeSeqStart)
         shouldPersistSequence = true
