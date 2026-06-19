@@ -65,8 +65,8 @@ export function FunnelBoardCard({
   onOpenKanban,
   onOpenTeam,
   onEdit,
-  onOpenBpcSheet,
 }: FunnelBoardCardProps) {
+  const navigate = useNavigate();
   const [dateField, setDateField] = useState<DateField>("created_at");
   const [rangePreset, setRangePreset] = useState<RangePreset>("all");
   const [customRange, setCustomRange] = useState<{ from?: Date; to?: Date }>({});
@@ -100,20 +100,9 @@ export function FunnelBoardCard({
     enabled: !isBpc,
   });
 
-  // BPC: usa hook próprio com range deste card
-  const bpcRange = useMemo(() => ({
-    from: fromDate ?? new Date("2020-01-01T00:00:00Z"),
-    to: toDate ?? new Date(),
-  }), [fromDate, toDate]);
-  const {
-    metrics: bpcMetrics,
-    loading: bpcLoading,
-  } = useBpcFormLeads({
-    from: bpcRange.from,
-    to: bpcRange.to,
-    enabled: isBpc,
-    source: "unificada",
-  });
+  // BPC: na listagem NÃO carregamos a planilha (lenta). O detalhe vive na página dedicada.
+  const bpcMetrics = { total: 0, unviable: 0, toCallNow: 0, alreadyOnWhatsApp: 0 };
+  const bpcLoading = false;
 
 
 
