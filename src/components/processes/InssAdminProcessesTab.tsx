@@ -1388,48 +1388,8 @@ export default function InssAdminProcessesTab() {
             </div>
           ) : emailView.error ? (
             <div className="text-sm text-destructive py-4">{emailView.error}</div>
-          ) : parsedEmail && parsedEmail.fields.length > 0 ? (
-            <div className="space-y-4 max-h-[65vh] overflow-y-auto pr-1">
-              {parsedEmail.recipient && (
-                <div className="flex items-center gap-2 text-sm">
-                  <User className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-muted-foreground">Segurado:</span>
-                  <span className="font-medium">{parsedEmail.recipient}</span>
-                </div>
-              )}
-              <div className="grid gap-3 sm:grid-cols-2">
-                {parsedEmail.fields.map((f, i) => {
-                  const isStatus = /status/i.test(f.label);
-                  const isLong = f.value.length > 60 || /despacho/i.test(f.label);
-                  return (
-                    <div key={i} className={`rounded-md border bg-muted/30 p-2.5 ${isLong ? "sm:col-span-2" : ""}`}>
-                      <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{f.label}</div>
-                      {isStatus ? (
-                        <Badge className={`mt-1 ${statusVariant(f.value)}`}>{f.value}</Badge>
-                      ) : (
-                        <div className="text-sm font-medium break-words">{f.value}</div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-              <Collapsible>
-                <CollapsibleTrigger asChild>
-                  <Button variant="ghost" size="sm" className="gap-1 h-7 px-2 text-xs">
-                    <ChevronDown className="h-3.5 w-3.5" /> Ver e-mail original
-                  </Button>
-                </CollapsibleTrigger>
-                <CollapsibleContent>
-                  <pre className="mt-2 text-xs whitespace-pre-wrap break-words font-sans bg-muted/40 rounded-md p-3">
-                    {emailView.body}
-                  </pre>
-                </CollapsibleContent>
-              </Collapsible>
-            </div>
           ) : (
-            <pre className="text-sm whitespace-pre-wrap break-words max-h-[60vh] overflow-y-auto font-sans bg-muted/40 rounded-md p-3">
-              {emailView.body}
-            </pre>
+            <InssAdminPushEmailView body={emailView.body || ""} />
           )}
         </DialogContent>
       </Dialog>
