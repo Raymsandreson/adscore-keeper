@@ -82,23 +82,80 @@ export function FunnelBoardCard({
 
   const isBpc = isBpcFunnel(board.name);
 
-  // Non-BPC: per-board lead counts
+  // Acolhedores (multi-select) — só pra prévia BPC
+  const ALWAYS_SHOW_ACOLHEDORES = useMemo(() => ["Karolyne", "Edilan"], []);
+  const [selectedAcolhedores, setSelectedAcolhedores] = useState<string[]>([]);
+  const noAcolhedorFilter = selectedAcolhedores.length === 0;
+  const toggleAcolhedor = (n: string) =>
+    setSelectedAcolhedores(prev => prev.includes(n) ? prev.filter(x => x !== n) : [...prev, n]);
+
+  // Planilha BPC (só carrega no card BPC)
+  const bpcRange = useMemo(() => ({
+    from: fromDate ?? new Date("2020-01-01T00:00:00Z"),
+    to: toDate ?? new Date(),
+  }), [fromDate, toDate]);
+  const { leads: bpcLeads } = useBpcFormLeads({
+    from: bpcRange.from,
+    to: bpcRange.to,
+    enabled: isBpc,
+    source: "unificada",
+  });
+
+  const allAcolhedores = useMemo(() => {
+    const set = new Set<string>();
+    for (const l of bpcLeads) {
+      const op = (l.operator || "").trim();
+      if (op) set.add(op);
+    }
+    for (const a of ALWAYS_SHOW_ACOLHEDORES) set.add(a);
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [bpcLeads, ALWAYS_SHOW_ACOLHEDORES]);
+
+  const filteredBpcPhones = useMemo(() => {
+    if (!isBpc || noAcolhedorFilter) return null;
+    const lower = new Set(selectedAcolhedores.filter(s => s !== "__none__").map(s => s.toLowerCase()));
+    const includeNone = selectedAcolhedores.includes("__none__");
+    const set = new Set<string>();
+    for (const l of bpcLeads) {
+      const op = (l.operator || "").trim();
+      const match = op ? lower.has(op.toLowerCase()) : includeNone;
+      if (!match) continue;
+      const p = String(l.phone_normalized || l.phone_raw || "").replace(/\D/g, "");
+      if (!p) continue;
+      set.add(p); set.add(p.replace(/^55/, "")); set.add(`55${p}`);
+    }
+    return set;
+  }, [isBpc, noAcolhedorFilter, selectedAcolhedores, bpcLeads]);
+
+  // Per-board lead counts (refiltra client-side por acolhedor quando BPC)
   const { data: counts } = useQuery({
     queryKey: ["funnel-board-counts", board.id, dateFilter],
     queryFn: async () => {
-      let q = supabase.from("leads").select("status").eq("board_id", board.id);
+      let q = supabase.from("leads").select("status, lead_phone").eq("board_id", board.id);
       if (dateFilter.from) q = q.gte(dateFilter.field, dateFilter.from);
       if (dateFilter.to) q = q.lte(dateFilter.field, dateFilter.to);
       const { data, error } = await q;
       if (error) throw error;
-      const byStage: Record<string, number> = {};
-      for (const lead of data || []) {
-        byStage[lead.status] = (byStage[lead.status] || 0) + 1;
-      }
-      return { total: (data || []).length, byStage };
+      return (data || []) as Array<{ status: string; lead_phone: string | null }>;
     },
     enabled: true,
   });
+
+  const filteredCounts = useMemo(() => {
+    const rows = counts || [];
+    const useFilter = isBpc && filteredBpcPhones;
+    const byStage: Record<string, number> = {};
+    let total = 0;
+    for (const r of rows) {
+      if (useFilter) {
+        const p = String(r.lead_phone || "").replace(/\D/g, "");
+        if (!p || !filteredBpcPhones!.has(p)) continue;
+      }
+      byStage[r.status] = (byStage[r.status] || 0) + 1;
+      total++;
+    }
+    return { total, byStage };
+  }, [counts, isBpc, filteredBpcPhones]);
 
 
 
