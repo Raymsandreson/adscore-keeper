@@ -299,7 +299,70 @@ export function FunnelBoardCard({
       <CardContent className="pt-0 space-y-3">
         {isBpc ? (
           <div className="space-y-3">
+            {/* Filtro de acolhedor (multi-select) */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-7 text-[11px] gap-1.5">
+                    <Users className="h-3 w-3 text-muted-foreground" />
+                    {noAcolhedorFilter
+                      ? "Todos acolhedores"
+                      : `${selectedAcolhedores.length} selecionado${selectedAcolhedores.length > 1 ? "s" : ""}`}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[240px] p-2" align="start">
+                  <div className="flex items-center justify-between px-1 pb-1.5 mb-1 border-b">
+                    <span className="text-[11px] font-medium">Acolhedores</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-5 px-1.5 text-[10px]"
+                      onClick={() => setSelectedAcolhedores([])}
+                      disabled={noAcolhedorFilter}
+                    >
+                      Limpar
+                    </Button>
+                  </div>
+                  <div className="max-h-[240px] overflow-y-auto space-y-0.5">
+                    <label className="flex items-center gap-2 px-1.5 py-1 rounded hover:bg-muted/60 cursor-pointer text-[11px]">
+                      <Checkbox
+                        checked={selectedAcolhedores.includes("__none__")}
+                        onCheckedChange={() => toggleAcolhedor("__none__")}
+                      />
+                      <span className="text-muted-foreground italic">Sem acolhedor</span>
+                    </label>
+                    {allAcolhedores.map(name => (
+                      <label
+                        key={name}
+                        className="flex items-center gap-2 px-1.5 py-1 rounded hover:bg-muted/60 cursor-pointer text-[11px]"
+                      >
+                        <Checkbox
+                          checked={selectedAcolhedores.includes(name)}
+                          onCheckedChange={() => toggleAcolhedor(name)}
+                        />
+                        <span className="truncate">{name}</span>
+                      </label>
+                    ))}
+                  </div>
+                </PopoverContent>
+              </Popover>
+              {!noAcolhedorFilter && selectedAcolhedores.map(s => (
+                <Badge key={s} variant="secondary" className="text-[10px] gap-1 pr-1 h-6">
+                  {s === "__none__" ? "sem acolhedor" : s}
+                  <button
+                    type="button"
+                    onClick={() => toggleAcolhedor(s)}
+                    className="hover:bg-muted-foreground/20 rounded-sm p-0.5"
+                    aria-label={`Remover ${s}`}
+                  >
+                    <X className="h-2.5 w-2.5" />
+                  </button>
+                </Badge>
+              ))}
+            </div>
+
             <StageFunnelChart board={board} leadsPerStage={stageData} dateFilter={dateFilter} />
+
             <div className="rounded-lg border border-dashed border-primary/40 bg-primary/5 p-3 flex items-center justify-between gap-2">
               <div className="min-w-0">
                 <div className="text-xs font-semibold flex items-center gap-1.5">
@@ -307,7 +370,7 @@ export function FunnelBoardCard({
                   Painel detalhado BPC
                 </div>
                 <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-1">
-                  Métricas da planilha + filtros por acolhedor (multi).
+                  Tabela completa + métricas da planilha.
                 </p>
               </div>
               <Button
@@ -320,6 +383,7 @@ export function FunnelBoardCard({
               </Button>
             </div>
           </div>
+
         ) : (
           <StageFunnelChart board={board} leadsPerStage={stageData} dateFilter={dateFilter} />
         )}
