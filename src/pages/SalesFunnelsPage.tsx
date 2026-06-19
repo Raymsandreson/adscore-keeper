@@ -395,6 +395,7 @@ const SalesFunnelsPage = () => {
                       metrics={bpcMetrics}
                       loading={bpcLoading}
                       onOpenList={() => setBpcSheetOpen(true)}
+                      leadsPerStage={stageData}
                     />
                   ) : (
                     /* Mini funnel visualization */
