@@ -137,10 +137,8 @@ export default function ProcessesPage() {
           <TabsTrigger value="processual" className="gap-2">
             <Mail className="h-4 w-4" /> Processual
           </TabsTrigger>
-          <TabsTrigger value="audiencias" className="gap-2">
-            <Gavel className="h-4 w-4" /> Audiências
-          </TabsTrigger>
         </TabsList>
+
 
         <TabsContent value="judiciais" className="space-y-4">
           <div className="relative max-w-md">
