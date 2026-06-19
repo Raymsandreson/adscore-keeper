@@ -127,12 +127,24 @@ export function FunnelBoardCard({
   const { data: counts } = useQuery({
     queryKey: ["funnel-board-counts", board.id, dateFilter],
     queryFn: async () => {
-      let q = supabase.from("leads").select("status, lead_phone").eq("board_id", board.id);
-      if (dateFilter.from) q = q.gte(dateFilter.field, dateFilter.from);
-      if (dateFilter.to) q = q.lte(dateFilter.field, dateFilter.to);
-      const { data, error } = await q;
-      if (error) throw error;
-      return (data || []) as Array<{ status: string; lead_phone: string | null }>;
+      // Paginação para evitar o cap de 1000 linhas do PostgREST em funis grandes
+      const PAGE = 1000;
+      const all: Array<{ status: string; lead_phone: string | null }> = [];
+      for (let from = 0; ; from += PAGE) {
+        let q = supabase
+          .from("leads")
+          .select("status, lead_phone")
+          .eq("board_id", board.id)
+          .range(from, from + PAGE - 1);
+        if (dateFilter.from) q = q.gte(dateFilter.field, dateFilter.from);
+        if (dateFilter.to) q = q.lte(dateFilter.field, dateFilter.to);
+        const { data, error } = await q;
+        if (error) throw error;
+        const rows = (data || []) as Array<{ status: string; lead_phone: string | null }>;
+        all.push(...rows);
+        if (rows.length < PAGE) break;
+      }
+      return all;
     },
     enabled: true,
   });
