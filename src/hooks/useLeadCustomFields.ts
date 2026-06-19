@@ -215,6 +215,14 @@ export function useLeadCustomFields(adAccountId?: string, boardId?: string) {
           });
         if (error) throw error;
       }
+
+      // Quando o campo é "Nº Requerimento INSS", dispara matcher reverso de órfãos
+      if (fieldId === '111f9a38-98c3-4f83-9095-5c469106a7bf') {
+        try {
+          const { fireOrphanMatchForLead } = await import('@/lib/fireOrphanMatchForLead');
+          fireOrphanMatchForLead(leadId);
+        } catch {}
+      }
     } catch (error) {
       console.error('Error saving field value:', error);
       throw error;
