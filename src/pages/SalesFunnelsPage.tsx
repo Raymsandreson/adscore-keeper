@@ -61,14 +61,18 @@ const SalesFunnelsPage = () => {
     queryFn: async () => {
       if (!salesFunnels.length) return {} as Record<string, number>;
       const boardIds = salesFunnels.map(b => b.id);
-      const { data, error } = await supabase
-        .from('leads')
-        .select('board_id')
-        .in('board_id', boardIds);
-      if (error) throw error;
-      const out: Record<string, number> = {};
-      for (const l of data || []) out[l.board_id] = (out[l.board_id] || 0) + 1;
-      return out;
+      // Conta exata por board via head+count (evita o cap de 1000 linhas do PostgREST).
+      const entries = await Promise.all(
+        boardIds.map(async (id) => {
+          const { count, error } = await supabase
+            .from('leads')
+            .select('board_id', { count: 'exact', head: true })
+            .eq('board_id', id);
+          if (error) throw error;
+          return [id, count || 0] as const;
+        })
+      );
+      return Object.fromEntries(entries) as Record<string, number>;
     },
     enabled: salesFunnels.length > 0,
   });
