@@ -6,6 +6,7 @@ import { Phone, Mic, Square, Loader2, Sparkles, Info, RotateCcw } from 'lucide-r
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
+import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { cloudFunctions } from '@/lib/functionRouter';
 
 export interface ActivityCallContext {
@@ -207,6 +208,24 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
 
       const { data: urlData } = supabase.storage.from('activity-chat').getPublicUrl(path);
       const audio_url = urlData.publicUrl;
+
+      // Guarda a gravação como anexo de áudio da atividade (consulta/análise posterior).
+      if (activityId) {
+        try {
+          const { data: { user } } = await supabase.auth.getUser();
+          const extUserId = await remapToExternal(user?.id || null);
+          await externalSupabase.from('activity_attachments').insert({
+            activity_id: activityId,
+            file_url: audio_url,
+            file_name: `Gravação da ligação.${ext}`,
+            file_type: mime,
+            attachment_type: 'audio',
+            created_by: extUserId,
+          });
+        } catch (attErr) {
+          console.warn('[ActivityCallRecorder] não foi possível anexar a gravação:', attErr);
+        }
+      }
 
       // Busca contexto extra para a IA combinar (histórico do processo + mensagens da atividade).
       let previousActivities: any[] = [];

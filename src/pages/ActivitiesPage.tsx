@@ -1615,9 +1615,24 @@ const ActivitiesPage = () => {
     };
 
     // Linked process info — "Referente ao processo n° "X" de "Y""
+    // Cai para formProcessTitle quando caseProcesses ainda não carregou (atividade sem case_id).
     const linkedProcessForMsg = formProcessId ? caseProcesses.find(p => p.id === formProcessId) : null;
-    const processInfo = linkedProcessForMsg && (linkedProcessForMsg.process_number || linkedProcessForMsg.title)
-      ? `Referente ao processo n° "${linkedProcessForMsg.process_number || '—'}" de "${linkedProcessForMsg.title || '—'}"`
+    const procNumberForMsg = linkedProcessForMsg?.process_number || '';
+    const procTitleForMsg = linkedProcessForMsg?.title || formProcessTitle || '';
+    const processInfo = (procNumberForMsg || procTitleForMsg)
+      ? `Referente ao processo n° "${procNumberForMsg || '—'}" de "${procTitleForMsg || '—'}"`
+      : '';
+
+    // Workflow do processo (etapa / objetivo / passo atual) — vem do checklist do lead (stepContext).
+    const wfPhase = stepContext?.phaseLabel || '';
+    const wfObjective = stepContext?.objectiveLabel || '';
+    const wfStep = stepContext?.stepLabel || '';
+    const workflowInfo = (wfPhase || wfObjective || wfStep)
+      ? [
+          wfPhase && `*Etapa:* ${wfPhase}`,
+          wfObjective && `*Objetivo:* ${wfObjective}`,
+          wfStep && `*Passo atual:* ${wfStep}`,
+        ].filter(Boolean).join('\n')
       : '';
 
     // Try to use a saved template for this board/workflow
@@ -1652,8 +1667,12 @@ const ActivitiesPage = () => {
         next_steps: valueMap.next_steps || '—',
         notes: valueMap.notes || '—',
         case_number: formCaseTitle || '—',
-        process_number: formProcessTitle || '—',
+        process_number: procNumberForMsg || formProcessTitle || '—',
         process_info: processInfo,
+        etapa: wfPhase || '—',
+        objetivo: wfObjective || '—',
+        passo_atual: wfStep || '—',
+        workflow_info: workflowInfo,
       };
 
       // Replace simple {{var}} first
@@ -1688,6 +1707,25 @@ const ActivitiesPage = () => {
         result = lines.join('\n');
       }
 
+      // Auto-inject workflow (etapa/objetivo/passo atual) se o template não o referenciar.
+      const tplRefsWorkflow = template.includes('workflow_info') || template.includes('passo_atual')
+        || template.includes('etapa') || template.includes('objetivo');
+      if (workflowInfo && !tplRefsWorkflow && !result.includes('Passo atual:')) {
+        const lines = result.split('\n');
+        // Insere logo após a linha do processo, se houver; senão após a saudação.
+        let insertAt = 0;
+        const refIdx = lines.findIndex(l => l.includes('Referente ao processo'));
+        if (refIdx >= 0) {
+          insertAt = refIdx + 1;
+        } else {
+          for (let i = 0; i < lines.length; i++) {
+            if (lines[i].trim()) { insertAt = i + 1; break; }
+          }
+        }
+        lines.splice(insertAt, 0, '', workflowInfo);
+        result = lines.join('\n');
+      }
+
       // Templates antigos escondiam a data quando o responsável estava vazio.
       // Se o modelo tentou usar data_retorno, garante que o cliente veja a data.
       if (returnDateLine && template.includes('data_retorno') && !result.includes(notifDate)) {
@@ -1716,7 +1754,7 @@ const ActivitiesPage = () => {
     const greetingLine = clientFirstName
       ? `*${saudacaoFb} Sr(a). ${clientFirstName}*`
       : `*${saudacaoFb}*`;
-    return `${greetingLine}${processInfo ? `\n\n${processInfo}` : ''}\n\n*Assunto da atividade:* ${formTitle.toUpperCase()}\n\n${fieldLines}\n\n${buildReturnDateLine(responsavelDrFb)}\n${tempoStr}\n\nEstamos à disposição para quaisquer dúvidas.\n\n🚀Avante!\n\nTem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se tudo está claro, digite 2.${activityLink ? `\n\n${activityLink}` : ''}`;
+    return `${greetingLine}${processInfo ? `\n\n${processInfo}` : ''}${workflowInfo ? `\n\n${workflowInfo}` : ''}\n\n*Assunto da atividade:* ${formTitle.toUpperCase()}\n\n${fieldLines}\n\n${buildReturnDateLine(responsavelDrFb)}\n${tempoStr}\n\nEstamos à disposição para quaisquer dúvidas.\n\n🚀Avante!\n\nTem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se tudo está claro, digite 2.${activityLink ? `\n\n${activityLink}` : ''}`;
   };
 
   // Active step context — process workflow > lead's funnel board.
@@ -3614,7 +3652,7 @@ const ActivitiesPage = () => {
                 !actionsPinned && "absolute bottom-1.5 left-0 right-0 z-30 shadow-2xl max-h-0 opacity-0 pointer-events-none group-hover/actions:max-h-[400px] group-hover/actions:opacity-100 group-hover/actions:pointer-events-auto"
               )}>
               {buildMsg && (
-                <SendToGroupSection buildMsg={buildMsg} leadId={formLeadId} fieldSettings={fieldSettings} updateFieldSetting={updateFieldSetting} reorderFields={reorderFields} formLeadIdForTTS={formLeadId || undefined} formContactIdForTTS={formContactId || undefined} formAssignedTo={formAssignedTo || undefined} />
+                <SendToGroupSection buildMsg={buildMsg} leadId={formLeadId} fieldSettings={fieldSettings} updateFieldSetting={updateFieldSetting} reorderFields={reorderFields} formLeadIdForTTS={formLeadId || undefined} formContactIdForTTS={formContactId || undefined} formAssignedTo={formAssignedTo || undefined} activityId={selectedActivity?.id} />
               )}
               {sheetMode === 'edit' ? (
                 <div className="flex items-center justify-between gap-2 max-w-2xl flex-wrap">

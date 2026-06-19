@@ -20,6 +20,7 @@ import {
   ExternalLink,
   Trash2,
   Loader2,
+  Mic,
 } from 'lucide-react';
 
 
@@ -261,6 +262,7 @@ export function ActivityNotesField({ value, onChange, activityId, placeholder, l
     switch (type) {
       case 'image': return <ImageIcon className="h-3.5 w-3.5 text-green-500" />;
       case 'video': return <Video className="h-3.5 w-3.5 text-purple-500" />;
+      case 'audio': return <Mic className="h-3.5 w-3.5 text-red-500" />;
       case 'link': return <Link2 className="h-3.5 w-3.5 text-blue-500" />;
       default: return <FileText className="h-3.5 w-3.5 text-orange-500" />;
     }
@@ -442,6 +444,9 @@ export function ActivityNotesField({ value, onChange, activityId, placeholder, l
                 <p className="text-[10px] text-muted-foreground">
                   {att.attachment_type === 'link' ? att.link_url : formatFileSize(att.file_size as number)}
                 </p>
+                {att.attachment_type === 'audio' && (
+                  <audio controls src={att.file_url} className="mt-1 h-8 w-full" />
+                )}
               </div>
               <a
                 href={att.file_url}
