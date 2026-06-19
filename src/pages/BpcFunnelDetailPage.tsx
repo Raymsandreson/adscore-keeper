@@ -83,29 +83,43 @@ const BpcFunnelDetailPage = () => {
     source: "unificada",
   });
 
-  // Lista de acolhedores vinda da planilha (coluna operator)
+  // Lista de acolhedores vinda da planilha (coluna operator) + sempre-presentes
   const allAcolhedores = useMemo(() => {
     const set = new Set<string>();
     for (const l of bpcLeads) {
       const op = (l.operator || "").trim();
       if (op) set.add(op);
     }
+    for (const a of ALWAYS_SHOW) set.add(a);
     return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
-  }, [bpcLeads]);
+  }, [bpcLeads, ALWAYS_SHOW]);
 
-  // Filtra leads da planilha pelo operador (acolhedor) selecionado
+  const noFilter = selectedAcolhedores.length === 0;
+
+  const toggleAcolhedor = (name: string) => {
+    setSelectedAcolhedores(prev =>
+      prev.includes(name) ? prev.filter(n => n !== name) : [...prev, name]
+    );
+  };
+  const clearAcolhedores = () => setSelectedAcolhedores([]);
+
+  // Filtra leads da planilha pelos operadores (acolhedores) selecionados (multi)
   const filteredBpcLeads = useMemo(() => {
-    if (acolhedorId === "all") return bpcLeads;
-    if (acolhedorId === "none") {
-      return bpcLeads.filter(l => !(l.operator || "").trim());
-    }
-    const target = acolhedorId.toLowerCase();
-    return bpcLeads.filter(l => (l.operator || "").trim().toLowerCase() === target);
-  }, [bpcLeads, acolhedorId]);
+    if (noFilter) return bpcLeads;
+    const targetsLower = new Set(
+      selectedAcolhedores.filter(s => s !== "__none__").map(s => s.toLowerCase())
+    );
+    const includeNone = selectedAcolhedores.includes("__none__");
+    return bpcLeads.filter(l => {
+      const op = (l.operator || "").trim();
+      if (!op) return includeNone;
+      return targetsLower.has(op.toLowerCase());
+    });
+  }, [bpcLeads, selectedAcolhedores, noFilter]);
 
   // Métricas derivadas da planilha filtrada (sempre coerentes com a tabela detalhada)
   const filteredMetrics = useMemo(() => {
-    if (acolhedorId === "all") return bpcMetrics;
+    if (noFilter) return bpcMetrics;
     let total = 0, unviable = 0, toCallNow = 0, alreadyOnWhatsApp = 0;
     for (const l of filteredBpcLeads) {
       total++;
@@ -114,7 +128,7 @@ const BpcFunnelDetailPage = () => {
       else alreadyOnWhatsApp++;
     }
     return { total, unviable, toCallNow, alreadyOnWhatsApp };
-  }, [acolhedorId, bpcMetrics, filteredBpcLeads]);
+  }, [noFilter, bpcMetrics, filteredBpcLeads]);
 
   // Per-stage counts (tabela leads) — cruza por telefone com a planilha filtrada
   const filteredPhones = useMemo(() => {
@@ -148,7 +162,7 @@ const BpcFunnelDetailPage = () => {
 
   // Stage breakdown calculado client-side; refiltra sem refazer query ao trocar acolhedor
   const leadsData = useMemo(() => {
-    const phoneSet = acolhedorId === "all" ? null : new Set(filteredPhones);
+    const phoneSet = noFilter ? null : new Set(filteredPhones);
     const byStage: Record<string, number> = {};
     for (const l of rawLeadsData || []) {
       if (phoneSet) {
@@ -158,7 +172,7 @@ const BpcFunnelDetailPage = () => {
       byStage[l.status] = (byStage[l.status] || 0) + 1;
     }
     return { byStage };
-  }, [rawLeadsData, acolhedorId, filteredPhones]);
+  }, [rawLeadsData, noFilter, filteredPhones]);
 
   const { fetchProfileNames, getDisplayName } = useProfileNames();
   useEffect(() => {
