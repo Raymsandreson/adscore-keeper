@@ -1711,24 +1711,8 @@ const ActivitiesPage = () => {
         result = lines.join('\n');
       }
 
-      // Auto-inject workflow (etapa/objetivo/passo atual) se o template não o referenciar.
-      const tplRefsWorkflow = template.includes('workflow_info') || template.includes('passo_atual')
-        || template.includes('etapa') || template.includes('objetivo');
-      if (workflowInfo && !tplRefsWorkflow && !result.includes('Passo atual:')) {
-        const lines = result.split('\n');
-        // Insere logo após a linha do processo, se houver; senão após a saudação.
-        let insertAt = 0;
-        const refIdx = lines.findIndex(l => l.includes('Referente ao processo'));
-        if (refIdx >= 0) {
-          insertAt = refIdx + 1;
-        } else {
-          for (let i = 0; i < lines.length; i++) {
-            if (lines[i].trim()) { insertAt = i + 1; break; }
-          }
-        }
-        lines.splice(insertAt, 0, '', workflowInfo);
-        result = lines.join('\n');
-      }
+      // Workflow (etapa/objetivo/passo atual) e link da atividade só entram
+      // se o template referenciá-los explicitamente — sem auto-injeção.
 
       // Templates antigos escondiam a data quando o responsável estava vazio.
       // Se o modelo tentou usar data_retorno, garante que o cliente veja a data.
@@ -1738,11 +1722,6 @@ const ActivitiesPage = () => {
         if (beforeSupportLine >= 0) lines.splice(beforeSupportLine, 0, '', returnDateLine);
         else lines.push('', returnDateLine);
         result = lines.join('\n');
-      }
-
-      // Auto-injeta o link da atividade no final quando houver e o template não o referenciar
-      if (activityLink && !template.includes('link_atividade') && !result.includes('openActivity=')) {
-        result = `${result.trim()}\n\n${activityLink}`;
       }
 
       return result
@@ -1758,7 +1737,7 @@ const ActivitiesPage = () => {
     const greetingLine = clientFirstName
       ? `*${saudacaoFb} Sr(a). ${clientFirstName}*`
       : `*${saudacaoFb}*`;
-    return `${greetingLine}${processInfo ? `\n\n${processInfo}` : ''}${workflowInfo ? `\n\n${workflowInfo}` : ''}\n\n*Assunto da atividade:* ${formTitle.toUpperCase()}\n\n${fieldLines}\n\n${buildReturnDateLine(responsavelDrFb)}\n${tempoStr}\n\nEstamos à disposição para quaisquer dúvidas.\n\n🚀Avante!\n\nTem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se tudo está claro, digite 2.${activityLink ? `\n\n${activityLink}` : ''}`;
+    return `${greetingLine}${processInfo ? `\n\n${processInfo}` : ''}\n\n*Assunto da atividade:* ${formTitle.toUpperCase()}\n\n${fieldLines}\n\n${buildReturnDateLine(responsavelDrFb)}\n${tempoStr}\n\nEstamos à disposição para quaisquer dúvidas.\n\n🚀Avante!\n\nTem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se tudo está claro, digite 2.`;
   };
 
   // Active step context — process workflow > lead's funnel board.
