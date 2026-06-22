@@ -87,6 +87,31 @@ export interface InstanceStats {
 const normalizeInstanceName = (instanceName?: string | null) =>
   (instanceName || '').trim().toLowerCase();
 
+function pushLabelIds(out: string[], value: any) {
+  if (!value) return;
+  if (Array.isArray(value)) {
+    value.forEach((item) => pushLabelIds(out, item));
+    return;
+  }
+  if (typeof value === 'object') {
+    pushLabelIds(out, value.id ?? value.labelid ?? value.labelId ?? value.label_id ?? value.value);
+    return;
+  }
+  const text = String(value).trim();
+  if (text) out.push(text.includes(':') ? text.split(':').pop() || text : text);
+}
+
+function extractLabelIdsFromMetadata(metadata: any): string[] | null {
+  const data = metadata?.data && typeof metadata.data === 'object' ? metadata.data : {};
+  const chat = metadata?.chat || data?.chat || {};
+  const labels: string[] = [];
+  pushLabelIds(labels, chat?.wa_label ?? chat?.wa_labels ?? data?.wa_label ?? data?.wa_labels);
+  pushLabelIds(labels, chat?.labels ?? data?.labels ?? metadata?.labels);
+  pushLabelIds(labels, metadata?.labelids ?? metadata?.labelIds ?? data?.labelids ?? data?.labelIds);
+  const unique = Array.from(new Set(labels.filter(Boolean)));
+  return unique.length ? unique : null;
+}
+
 // Conversation identity = phone + instance_name. Normalize instance_name case-insensitively
 // to avoid creating phantom duplicates when the webhook saves "Cris" but the RPC returns "cris".
 const getConversationKey = (phone: string, instanceName?: string | null) =>
