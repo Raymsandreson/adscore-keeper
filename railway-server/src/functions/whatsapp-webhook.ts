@@ -1361,6 +1361,13 @@ export const handler: RequestHandler = async (req, res) => {
             } else if (leadRow) {
               console.log('[label-trigger][stage] lead já está no stage correto, skipping', { leadId: (leadRow as any).id, stage: lastStageMatch.stage_id });
             } else {
+              // Guard: chats de GRUPO não devem auto-criar leads. O `phoneDigits`
+              // de um grupo é o LID (ex.: 120363xxxxxxxx), não um telefone real.
+              // Quem manda mensagem em grupo é um participante individual.
+              const isGroupChat = String(chatId || '').includes('@g.us') || phoneDigits.length >= 17;
+              if (isGroupChat) {
+                console.log('[label-trigger][stage] auto-create skipped (group chat)', { chatId, phoneDigits, board: lastStageMatch.board_id, label: lastStageMatch.label_name });
+              } else {
               // === NOVO: nenhum lead nesse board com esse telefone → cria automaticamente
               console.log('[label-trigger][stage] no lead matched, auto-creating', { phone: phoneDigits, board: lastStageMatch.board_id, label: lastStageMatch.label_name });
               try {
@@ -1493,6 +1500,7 @@ export const handler: RequestHandler = async (req, res) => {
               } catch (e: any) {
                 console.warn('[label-trigger][stage] auto-create block failed:', e?.message);
               }
+              } // end else (não-grupo)
             }
           }
         } catch (e: any) {
