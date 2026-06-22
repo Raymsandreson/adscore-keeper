@@ -154,6 +154,11 @@ export function HearingFormDialog({ open, onOpenChange, hearing, defaultDate }: 
           </div>
 
           <div className="col-span-2">
+            <Label>Pessoa associada</Label>
+            <HearingLeadPicker value={form.lead_id} onChange={(id) => set('lead_id', id)} />
+          </div>
+
+          <div className="col-span-2">
             <Label>Local (sala virtual, endereço)</Label>
             <Input value={form.location} onChange={(e) => set('location', e.target.value)} />
           </div>
