@@ -28,6 +28,7 @@ const empty = (defaultDate?: string) => ({
   status: 'ativa' as HearingStatus,
   location: '',
   notes: '',
+  lead_id: null as string | null,
 });
 
 export function HearingFormDialog({ open, onOpenChange, hearing, defaultDate }: Props) {
