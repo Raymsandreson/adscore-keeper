@@ -129,6 +129,7 @@ import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { logGroupAudit } from '@/lib/groupAuditLog';
 import { useLegalCases } from '@/hooks/useLegalCases';
 import LeadDocumentsTab from '@/components/leads/LeadDocumentsTab';
+import { OpenWhatsAppLeadButton } from '@/components/leads/OpenWhatsAppLeadButton';
 import { GroupContactSyncDialog } from '@/components/kanban/GroupContactSyncDialog';
 import { LeadGroupSearchDialog } from '@/components/kanban/LeadGroupSearchDialog';
 import { normalizeDateInput } from '@/utils/normalizeDateInput';
