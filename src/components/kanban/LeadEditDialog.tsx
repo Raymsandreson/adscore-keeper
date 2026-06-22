@@ -1666,6 +1666,7 @@ ${scrapeData.content || ''}
                   <Wand2 className="h-3 w-3" />
                   Personalizar
                 </Button>
+                <OpenWhatsAppLeadButton leadPhone={(currentLead as any).lead_phone} />
                 <ShareMenu entityType="lead" entityId={currentLead.id} entityName={currentLead.lead_name || 'Lead'} />
               </div>
             )}
