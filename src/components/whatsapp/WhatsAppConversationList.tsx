@@ -900,6 +900,10 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
     const stage = board?.stages.find(s => s.id === info?.current_stage);
     const isSelected = selectedPhone === conv.phone && getConversationKey(conv.phone, conv.instance_name) === getConversationKey(selectedPhone || '', selectedInstanceName);
     const isLocked = privatePhones?.has(getConversationKey(conv.phone, conv.instance_name)) || false;
+    const labelLookup = labelInfoByInstance.get((conv.instance_name || '').trim().toLowerCase());
+    const conversationLabels = (conv.label_ids || [])
+      .map((id) => labelLookup?.get(normalizeLabelId(id)))
+      .filter(Boolean) as ConversationLabelInfo[];
 
     return (
       <div key={getConversationKey(conv.phone, conv.instance_name)} className="flex items-center min-w-0 overflow-hidden">
@@ -975,8 +979,25 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
               </div>
             </div>
 
-            {(board || stage || (conv.instance_name || '').toLowerCase() === 'cloud_gerencia') && (
+            {(conversationLabels.length > 0 || board || stage || (conv.instance_name || '').toLowerCase() === 'cloud_gerencia') && (
               <div className="flex items-center gap-1 mt-1 flex-wrap">
+                {conversationLabels.slice(0, 2).map((label) => (
+                  <span
+                    key={`${label.source}-${label.id}`}
+                    className={cn(
+                      "text-[10px] px-1.5 py-0.5 rounded font-medium inline-flex items-center gap-1 max-w-[150px]",
+                      isSelected ? "bg-primary-foreground/20 text-primary-foreground" : ""
+                    )}
+                    style={!isSelected
+                      ? { background: `${label.colorHex}22`, color: label.colorHex }
+                      : undefined
+                    }
+                    title={label.name}
+                  >
+                    <span className="h-1.5 w-1.5 rounded-full flex-shrink-0" style={{ background: isSelected ? 'currentColor' : label.colorHex }} />
+                    <span className="truncate">{label.name}</span>
+                  </span>
+                ))}
                 {(conv.instance_name || '').toLowerCase() === 'cloud_gerencia' && (
                   <span className={cn(
                     "text-[10px] px-1.5 py-0.5 rounded font-medium",
