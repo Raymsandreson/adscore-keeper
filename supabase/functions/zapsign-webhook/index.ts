@@ -893,7 +893,19 @@ Deno.serve(async (req) => {
             contactId = existingContact.id
             console.log(`[zapsign-webhook] Contact already exists: ${contactId}`)
           } else {
-            const contactName = extractedData.lead_name || extractedData.victim_name || localDoc.signer_name || cleanPhone
+            const isJunkName = (s: string | null | undefined): boolean => {
+              const v = (s || '').trim();
+              if (!v || v.length < 3) return true;
+              if (/^\.+$/.test(v)) return true;
+              if (/^prev\s/i.test(v)) return true;
+              if (/^lead\s+whatsapp/i.test(v)) return true;
+              if (/acd-/i.test(v) && /prev/i.test(v)) return true;
+              if (!/[a-zà-ú]/i.test(v)) return true;
+              return false;
+            };
+            const contactNameCandidates = [extractedData.lead_name, extractedData.victim_name, localDoc.signer_name]
+              .map(x => (x || '').toString().trim()).filter(Boolean);
+            const contactName = contactNameCandidates.find(n => !isJunkName(n)) || localDoc.signer_name || cleanPhone
             const { data: newContact, error: contactErr } = await supabase
               .from('contacts')
               .insert({
@@ -1023,7 +1035,23 @@ Deno.serve(async (req) => {
           // 5. Create lead — mas primeiro tenta reabrir lead arquivado dos últimos 90 dias
           if (boardId) {
             const leadStatus = stageId || 'new'
-            const leadName = extractedData.lead_name || extractedData.victim_name || localDoc.signer_name || cleanPhone
+            // Rejeita títulos internos ("PREV 1585 ...", "....", "Lead WhatsApp +55...") e prioriza nome real do signatário/vítima.
+            const isJunkLeadName = (s: string | null | undefined): boolean => {
+              const v = (s || '').trim();
+              if (!v || v.length < 3) return true;
+              if (/^\.+$/.test(v)) return true;
+              if (/^prev\s/i.test(v)) return true;
+              if (/^lead\s+whatsapp/i.test(v)) return true;
+              if (/acd-/i.test(v) && /prev/i.test(v)) return true;
+              if (!/[a-zà-ú]/i.test(v)) return true;
+              return false;
+            };
+            const leadNameCandidates = [
+              extractedData.lead_name,
+              extractedData.victim_name,
+              localDoc.signer_name,
+            ].map(x => (x || '').toString().trim()).filter(Boolean);
+            const leadName = leadNameCandidates.find(n => !isJunkLeadName(n)) || localDoc.signer_name || cleanPhone
 
             // GUARDIÃO ANTI-DUPLICATA: reabrir lead arquivado em vez de criar novo
             let reopenedId: string | null = null
