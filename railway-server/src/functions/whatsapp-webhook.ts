@@ -1443,11 +1443,12 @@ export const handler: RequestHandler = async (req, res) => {
                   }
                 }
                 if (!leadName) {
-                  // Sem nome real disponível: aborta criação automática.
+                  // Sem nome real disponível: aborta criação automática deste lead,
+                  // mas mantém o restante do webhook funcionando.
                   // O lead será criado quando o contato for registrado ou quando
                   // chegar mensagem com contact_name preenchido.
                   console.warn('[label-trigger][stage] auto-create abortado: nome do cliente não disponível', { phone: phoneDigits, instance: webhookInstanceName });
-                  return;
+                  throw new Error('skip_autocreate_no_name');
                 }
 
                 const { data: newLead, error: createErr } = await supabase
