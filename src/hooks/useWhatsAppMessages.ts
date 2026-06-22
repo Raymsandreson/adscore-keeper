@@ -117,6 +117,32 @@ function extractLabelIdsFromMetadata(metadata: any): string[] | null {
 const getConversationKey = (phone: string, instanceName?: string | null) =>
   `${normalizeWhatsAppConversationPhone(phone)}__${normalizeInstanceName(instanceName)}`;
 
+async function fetchLatestConversationLabelIds(instanceNames: string[]) {
+  const variants = Array.from(new Set(instanceNames.flatMap((name) => [name, name.toUpperCase(), name.toLowerCase()])));
+  const labelByConversation = new Map<string, string[] | null>();
+  if (variants.length === 0) return labelByConversation;
+
+  const { data, error } = await (externalSupabase as any)
+    .from('whatsapp_messages')
+    .select('phone, instance_name, metadata, created_at')
+    .in('instance_name', variants)
+    .not('metadata', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(2000);
+
+  if (error) {
+    console.warn('[fetchLatestConversationLabelIds] failed:', error.message);
+    return labelByConversation;
+  }
+
+  for (const row of data || []) {
+    const key = getConversationKey(row.phone, row.instance_name);
+    if (labelByConversation.has(key)) continue;
+    labelByConversation.set(key, extractLabelIdsFromMetadata(row.metadata));
+  }
+  return labelByConversation;
+}
+
 // ---------------------------------------------------------------------------
 // Module-level cache (sobrevive a unmount/remount do WhatsAppInbox).
 // Mantém a última lista de conversas por filtro de instância, para que ao
