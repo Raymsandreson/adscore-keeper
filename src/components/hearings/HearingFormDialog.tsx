@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useHearings, type Hearing, type HearingCategory, type HearingStatus } from '@/hooks/useHearings';
 import { CATEGORY_LABELS, HEARING_TYPES, STATUS_LABELS, TIMEZONE_OPTIONS } from './hearingStyles';
+import { HearingLeadPicker } from './HearingLeadPicker';
 import { Trash2 } from 'lucide-react';
 
 interface Props {
