@@ -87,10 +87,19 @@ export const handler: RequestHandler = async (req, res) => {
       try {
         const rawPhone = pickByMapping(row, mapping, 'phone');
         const phone = normalizePhone(rawPhone);
-        const name = pickByMapping(row, mapping, 'name') || (phone ? `Lead ${phone.slice(-4)}` : '');
 
-        if (!phone && !name) {
-          results.push({ row_index: i, status: 'skipped', reason: 'no phone and no name' });
+        // Resolução de nome: priorizar nome real do cliente da planilha.
+        // 1) coluna mapeada como 'name'; se vier lixo (PREV, ...., etc), descarta.
+        // 2) procura colunas candidatas (nome_completo, nome_do_cliente, etc).
+        // 3) sem nome real → SKIP (não cria lead com "Lead WhatsApp +55...").
+        let name = (pickByMapping(row, mapping, 'name') || '').trim();
+        if (isJunkName(name)) name = '';
+        if (!name) {
+          const fallback = findClientNameInRow(row);
+          if (fallback && !isJunkName(fallback)) name = fallback.trim();
+        }
+        if (!name) {
+          results.push({ row_index: i, status: 'skipped', reason: 'no real client name in row (need nome_completo)' });
           continue;
         }
         if (name.startsWith('<test lead')) {
