@@ -1366,31 +1366,90 @@ export const handler: RequestHandler = async (req, res) => {
               try {
                 // Tenta puxar nome do contato (qualquer instância) pra batizar o lead
                 let leadName: string | null = null;
+                const cleanName = (s: any) => {
+                  const v = (s == null ? '' : String(s)).trim();
+                  if (!v) return null;
+                  // Rejeita nomes que são só dígitos/telefone
+                  const digits = v.replace(/\D/g, '');
+                  if (digits.length >= 8 && digits.length >= v.replace(/\s/g, '').length - 3) return null;
+                  return v;
+                };
                 try {
-                  const { data: contact } = await supabase
+                  const { data: contacts } = await supabase
                     .from('contacts')
-                    .select('full_name, push_name')
+                    .select('full_name, push_name, updated_at')
                     .like('phone', `%${last8}`)
-                    .limit(1)
-                    .maybeSingle();
-                  leadName = ((contact as any)?.full_name || (contact as any)?.push_name || '').trim() || null;
+                    .order('updated_at', { ascending: false })
+                    .limit(5);
+                  for (const c of (contacts as any[] | null) || []) {
+                    leadName = cleanName(c?.full_name) || cleanName(c?.push_name);
+                    if (leadName) break;
+                  }
                 } catch {}
                 if (!leadName) {
-                  // Fallback: nome da última mensagem dessa conversa
+                  // Fallback: nome da última mensagem com contact_name (qualquer instância)
                   try {
-                    const { data: msg } = await supabase
+                    const { data: msgs } = await supabase
                       .from('whatsapp_messages')
                       .select('contact_name')
-                      .ilike('instance_name', webhookInstanceName)
                       .like('phone', `%${last8}`)
                       .not('contact_name', 'is', null)
                       .order('created_at', { ascending: false })
-                      .limit(1)
-                      .maybeSingle();
-                    leadName = ((msg as any)?.contact_name || '').trim() || null;
+                      .limit(10);
+                    for (const m of (msgs as any[] | null) || []) {
+                      leadName = cleanName(m?.contact_name);
+                      if (leadName) break;
+                    }
                   } catch {}
                 }
-                if (!leadName) leadName = `Lead WhatsApp +${phoneDigits}`;
+                if (!leadName) {
+                  // Fallback final: consulta UazAPI /chat/details pra puxar nome direto do WhatsApp
+                  try {
+                    const { data: inst } = await supabase
+                      .from('whatsapp_instances')
+                      .select('instance_token, base_url')
+                      .ilike('instance_name', webhookInstanceName)
+                      .limit(1)
+                      .maybeSingle();
+                    const token = (inst as any)?.instance_token;
+                    const baseUrl = (inst as any)?.base_url || 'https://abraci.uazapi.com';
+                    if (token) {
+                      const ctrl = new AbortController();
+                      const timer = setTimeout(() => ctrl.abort(), 5000);
+                      try {
+                        const r = await fetch(`${String(baseUrl).replace(/\/$/, '')}/chat/details`, {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json', token },
+                          body: JSON.stringify({ number: phoneDigits, preview: false }),
+                          signal: ctrl.signal,
+                        });
+                        if (r.ok) {
+                          const data: any = await r.json().catch(() => null);
+                          const chat = data?.chat || data || {};
+                          leadName =
+                            cleanName(chat?.wa_contactName) ||
+                            cleanName(chat?.wa_name) ||
+                            cleanName(chat?.name) ||
+                            cleanName(chat?.lead_name) ||
+                            cleanName(chat?.pushName) ||
+                            cleanName(chat?.wa_chatName);
+                        }
+                      } finally {
+                        clearTimeout(timer);
+                      }
+                    }
+                  } catch (e: any) {
+                    console.warn('[label-trigger][stage] UazAPI /chat/details falhou:', e?.message);
+                  }
+                }
+                if (!leadName) {
+                  // Sem nome real disponível: aborta criação automática deste lead,
+                  // mas mantém o restante do webhook funcionando.
+                  // O lead será criado quando o contato for registrado ou quando
+                  // chegar mensagem com contact_name preenchido.
+                  console.warn('[label-trigger][stage] auto-create abortado: nome do cliente não disponível', { phone: phoneDigits, instance: webhookInstanceName });
+                  throw new Error('skip_autocreate_no_name');
+                }
 
                 const { data: newLead, error: createErr } = await supabase
                   .from('leads')
