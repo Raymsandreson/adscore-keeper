@@ -24,6 +24,37 @@ function pickByMapping(row: Record<string, unknown>, mapping: Record<string, str
   return String(v);
 }
 
+// Procura o nome REAL do cliente na linha bruta, independente do mapping.
+// Aceita variações comuns (case-insensitive, com/sem acento, espaço/underline).
+function findClientNameInRow(row: Record<string, unknown>): string | null {
+  const norm = (s: string) =>
+    s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
+  const targets = new Set([
+    'nomecompleto', 'nomedocliente', 'nomecliente', 'nomedobeneficiario',
+    'nomedavitima', 'nomedoautor', 'beneficiario', 'cliente', 'nome',
+  ]);
+  for (const [key, val] of Object.entries(row)) {
+    if (val === undefined || val === null || val === '') continue;
+    if (targets.has(norm(String(key)))) {
+      const s = String(val).trim();
+      if (s) return s;
+    }
+  }
+  return null;
+}
+
+// Rejeita "nomes" lixo: títulos PREV, placeholders "....", "Lead WhatsApp +55...", etc.
+function isJunkName(name: string): boolean {
+  const s = (name || '').trim();
+  if (!s || s.length < 3) return true;
+  if (/^\.+$/.test(s)) return true;
+  if (/^prev\s/i.test(s)) return true;
+  if (/^lead\s+whatsapp/i.test(s)) return true;
+  if (/^lead\s+\d{3,}$/i.test(s)) return true;
+  if (!/[a-zà-ú]/i.test(s)) return true;
+  return false;
+}
+
 export const handler: RequestHandler = async (req, res) => {
   const ok = (b: Record<string, unknown>) => res.status(200).json(b);
 
