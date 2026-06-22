@@ -1500,6 +1500,7 @@ export const handler: RequestHandler = async (req, res) => {
               } catch (e: any) {
                 console.warn('[label-trigger][stage] auto-create block failed:', e?.message);
               }
+              } // end else (não-grupo)
             }
           }
         } catch (e: any) {
