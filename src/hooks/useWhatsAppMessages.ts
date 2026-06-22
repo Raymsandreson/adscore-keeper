@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { db, authClient } from '@/integrations/supabase';
-import { ensureExternalSession, externalSupabase } from '@/integrations/supabase/external-client';
+import { ensureExternalSession } from '@/integrations/supabase/external-client';
 import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { getMyAllowedInstanceIds } from '@/integrations/supabase/permissions';
 import {
@@ -122,7 +122,7 @@ async function fetchLatestConversationLabelIds(instanceNames: string[]) {
   const labelByConversation = new Map<string, string[] | null>();
   if (variants.length === 0) return labelByConversation;
 
-  const { data, error } = await (externalSupabase as any)
+  const { data, error } = await (db as any)
     .from('whatsapp_messages')
     .select('phone, instance_name, metadata, created_at')
     .in('instance_name', variants)
