@@ -254,10 +254,13 @@ async function reserveAtomicClosedSequence(
     .rpc('reserve_closed_sequence', { p_board_id: boardId, p_min: minFloor })
   if (error) {
     console.error('[create-group] reserve_closed_sequence error:', error)
+    console.log(`[create-group] reserve_closed_sequence board=${boardId} min=${minFloor} -> data=${JSON.stringify(data)} reserved=null (error)`)
     return null
   }
   const n = typeof data === 'number' ? data : Number(data)
-  return Number.isFinite(n) && n > 0 ? n : null
+  const reserved = Number.isFinite(n) && n > 0 ? n : null
+  console.log(`[create-group] reserve_closed_sequence board=${boardId} min=${minFloor} -> data=${JSON.stringify(data)} reserved=${reserved}`)
+  return reserved
 }
 
 function isRateLimited(status: number, bodyText: string): boolean {
@@ -432,6 +435,7 @@ Deno.serve(async (req) => {
     const supabaseUrl = RESOLVED_SUPABASE_URL
     const supabaseKey = RESOLVED_SERVICE_ROLE_KEY
     const supabase = createClient(supabaseUrl, supabaseKey)
+    const extClient = getExternalClient()
 
     const body = await req.json()
     const { phone, lead_name, board_id, contact_phone, creator_instance_id, lead_id } = body
@@ -1716,7 +1720,6 @@ Deno.serve(async (req) => {
           const deadline = new Date()
           deadline.setDate(deadline.getDate() + (act.deadline_days || 1))
           
-          const extClient = getExternalClient();
           const assignedExtId = act.assigned_to ? await remapToExternal(extClient, act.assigned_to) : null;
 
           await extClient.from('lead_activities').insert({
