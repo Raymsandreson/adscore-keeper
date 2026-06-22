@@ -29,6 +29,8 @@ interface Props {
 function fmtPhone(p?: string | null) {
   if (!p) return "—";
   const d = p.replace(/\D/g, "");
+  // JID de grupo WhatsApp (`120363…`, 17+ dígitos) não é telefone.
+  if (d.length >= 17) return "Grupo WhatsApp";
   if (d.length === 13 && d.startsWith("55")) {
     return `+55 (${d.slice(2, 4)}) ${d.slice(4, 9)}-${d.slice(9)}`;
   }
