@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { db, authClient } from '@/integrations/supabase';
-import { ensureExternalSession } from '@/integrations/supabase/external-client';
+import { ensureExternalSession, externalSupabase } from '@/integrations/supabase/external-client';
 import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { getMyAllowedInstanceIds } from '@/integrations/supabase/permissions';
 import {
