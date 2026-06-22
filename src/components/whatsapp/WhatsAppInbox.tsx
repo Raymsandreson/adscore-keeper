@@ -965,9 +965,12 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
         extractConversationData('contact'),
       ]);
 
+      const isGroupChat = isWhatsAppGroupId(selectedConversation.phone);
       const insertData: Record<string, any> = {
         lead_name: extracted.lead_name || contactExtracted.full_name || selectedConversation.contact_name || 'Novo Lead - WhatsApp',
-        lead_phone: selectedConversation.phone || null,
+        // JID de grupo NÃO entra em lead_phone (não é telefone).
+        lead_phone: isGroupChat ? null : (selectedConversation.phone || null),
+        whatsapp_group_id: isGroupChat ? selectedConversation.phone : null,
         lead_email: extracted.lead_email || contactExtracted.email || null,
         source: 'whatsapp',
         created_by: extCreatedBy,
