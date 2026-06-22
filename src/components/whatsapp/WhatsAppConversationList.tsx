@@ -28,6 +28,43 @@ interface LeadInfo {
   lead_status?: string | null;
 }
 
+interface ConversationLabelInfo {
+  id: string;
+  name: string;
+  color: number | null;
+  colorHex: string;
+  source: 'stage' | 'result' | 'agent';
+}
+
+const WHATSAPP_LABEL_COLOR_HEX: Record<number, string> = {
+  1: '#786F78',
+  3: '#4D96F5',
+  4: '#8FB33F',
+  5: '#23D36B',
+  6: '#8A8189',
+  7: '#D7B545',
+  8: '#72D7B2',
+  9: '#FF7E88',
+  12: '#8B1E46',
+  13: '#D7A8DA',
+};
+
+const normalizeLabelId = (value?: string | null) =>
+  String(value || '').split(':').pop() || String(value || '');
+
+const labelColorHex = (name: string, color: number | null) => {
+  const normalized = name.toLowerCase();
+  if (normalized.includes('fechado')) return '#23D36B';
+  if (normalized.includes('recusado')) return '#D7A8DA';
+  if (normalized.includes('inviável') || normalized.includes('inviavel')) return '#FF7E88';
+  if (normalized.includes('andamento')) return '#8A8189';
+  if (normalized.includes('follow')) return '#D7B545';
+  if (normalized.includes('viável') || normalized.includes('viavel')) return '#4D96F5';
+  if (normalized.includes('documenta')) return '#72D7B2';
+  if (typeof color === 'number') return WHATSAPP_LABEL_COLOR_HEX[color] || '#8A8189';
+  return '#8A8189';
+};
+
 interface Props {
   conversations: WhatsAppConversation[];
   loading: boolean;
