@@ -28,6 +28,43 @@ interface LeadInfo {
   lead_status?: string | null;
 }
 
+interface ConversationLabelInfo {
+  id: string;
+  name: string;
+  color: number | null;
+  colorHex: string;
+  source: 'stage' | 'result' | 'agent';
+}
+
+const WHATSAPP_LABEL_COLOR_HEX: Record<number, string> = {
+  1: '#786F78',
+  3: '#4D96F5',
+  4: '#8FB33F',
+  5: '#23D36B',
+  6: '#8A8189',
+  7: '#D7B545',
+  8: '#72D7B2',
+  9: '#FF7E88',
+  12: '#8B1E46',
+  13: '#D7A8DA',
+};
+
+const normalizeLabelId = (value?: string | null) =>
+  String(value || '').split(':').pop() || String(value || '');
+
+const labelColorHex = (name: string, color: number | null) => {
+  const normalized = name.toLowerCase();
+  if (normalized.includes('fechado')) return '#23D36B';
+  if (normalized.includes('recusado')) return '#D7A8DA';
+  if (normalized.includes('inviável') || normalized.includes('inviavel')) return '#FF7E88';
+  if (normalized.includes('andamento')) return '#8A8189';
+  if (normalized.includes('follow')) return '#D7B545';
+  if (normalized.includes('viável') || normalized.includes('viavel')) return '#4D96F5';
+  if (normalized.includes('documenta')) return '#72D7B2';
+  if (typeof color === 'number') return WHATSAPP_LABEL_COLOR_HEX[color] || '#8A8189';
+  return '#8A8189';
+};
+
 interface Props {
   conversations: WhatsAppConversation[];
   loading: boolean;
@@ -120,9 +157,55 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
   const [checklistTemplates, setChecklistTemplates] = useState<{ id: string; name: string; items: { id: string; label: string }[] }[]>([]);
   // lead_id -> 'signed' | 'unsigned' (has doc but not signed) | undefined (no doc)
   const [leadDocStatus, setLeadDocStatus] = useState<Map<string, 'signed' | 'unsigned'>>(new Map());
+  const [labelInfoByInstance, setLabelInfoByInstance] = useState<Map<string, Map<string, ConversationLabelInfo>>>(new Map());
 
   const getConversationKey = (phone: string, instanceName?: string | null) =>
     `${normalizeWhatsAppConversationPhone(phone)}__${(instanceName || '').trim().toLowerCase()}`;
+
+  useEffect(() => {
+    const instanceNames = Array.from(new Set(conversations.map(c => (c.instance_name || '').trim()).filter(Boolean)));
+    if (instanceNames.length === 0) {
+      setLabelInfoByInstance(new Map());
+      return;
+    }
+
+    let alive = true;
+    const fetchLabels = async () => {
+      const ext = externalSupabase as any;
+      const instanceVariants = Array.from(new Set(instanceNames.flatMap((name) => [name, name.toUpperCase(), name.toLowerCase()])));
+      const [stageRes, resultRes, agentRes] = await Promise.all([
+        ext.from('stage_instance_labels').select('instance_name, label_id, label_name, color').in('instance_name', instanceVariants).is('deleted_at', null),
+        ext.from('result_instance_labels').select('instance_name, label_id, label_name, color').in('instance_name', instanceVariants).is('deleted_at', null),
+        ext.from('agent_instance_labels').select('instance_name, label_id, label_name, color').in('instance_name', instanceVariants).is('deleted_at', null),
+      ]);
+
+      if (!alive) return;
+      const next = new Map<string, Map<string, ConversationLabelInfo>>();
+      const addRows = (rows: any[] | null | undefined, source: ConversationLabelInfo['source']) => {
+        for (const row of rows || []) {
+          const instKey = String(row.instance_name || '').toLowerCase();
+          const labelId = normalizeLabelId(row.label_id);
+          if (!instKey || !labelId) continue;
+          const byLabel = next.get(instKey) || new Map<string, ConversationLabelInfo>();
+          byLabel.set(labelId, {
+            id: labelId,
+            name: row.label_name,
+            color: typeof row.color === 'number' ? row.color : null,
+            colorHex: labelColorHex(row.label_name || '', typeof row.color === 'number' ? row.color : null),
+            source,
+          });
+          next.set(instKey, byLabel);
+        }
+      };
+      addRows(stageRes.data as any[], 'stage');
+      addRows(resultRes.data as any[], 'result');
+      addRows(agentRes.data as any[], 'agent');
+      setLabelInfoByInstance(next);
+    };
+
+    fetchLabels().catch((error) => console.warn('[WhatsAppConversationList] labels lookup failed:', error?.message));
+    return () => { alive = false; };
+  }, [conversations.map(c => c.instance_name).filter(Boolean).sort().join('|')]);
 
   const isOpenLeadStatus = (status?: string | null) =>
     !status || ['no_response', 'in_progress', 'active', 'novo', 'new', 'open'].includes(status);
@@ -818,6 +901,10 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
     const stage = board?.stages.find(s => s.id === info?.current_stage);
     const isSelected = selectedPhone === conv.phone && getConversationKey(conv.phone, conv.instance_name) === getConversationKey(selectedPhone || '', selectedInstanceName);
     const isLocked = privatePhones?.has(getConversationKey(conv.phone, conv.instance_name)) || false;
+    const labelLookup = labelInfoByInstance.get((conv.instance_name || '').trim().toLowerCase());
+    const conversationLabels = (conv.label_ids || [])
+      .map((id) => labelLookup?.get(normalizeLabelId(id)))
+      .filter(Boolean) as ConversationLabelInfo[];
 
     return (
       <div key={getConversationKey(conv.phone, conv.instance_name)} className="flex items-center min-w-0 overflow-hidden">
@@ -893,8 +980,25 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
               </div>
             </div>
 
-            {(board || stage || (conv.instance_name || '').toLowerCase() === 'cloud_gerencia') && (
+            {(conversationLabels.length > 0 || board || stage || (conv.instance_name || '').toLowerCase() === 'cloud_gerencia') && (
               <div className="flex items-center gap-1 mt-1 flex-wrap">
+                {conversationLabels.slice(0, 2).map((label) => (
+                  <span
+                    key={`${label.source}-${label.id}`}
+                    className={cn(
+                      "text-[10px] px-1.5 py-0.5 rounded font-medium inline-flex items-center gap-1 max-w-[150px]",
+                      isSelected ? "bg-primary-foreground/20 text-primary-foreground" : ""
+                    )}
+                    style={!isSelected
+                      ? { background: `${label.colorHex}22`, color: label.colorHex }
+                      : undefined
+                    }
+                    title={label.name}
+                  >
+                    <span className="h-1.5 w-1.5 rounded-full flex-shrink-0" style={{ background: isSelected ? 'currentColor' : label.colorHex }} />
+                    <span className="truncate">{label.name}</span>
+                  </span>
+                ))}
                 {(conv.instance_name || '').toLowerCase() === 'cloud_gerencia' && (
                   <span className={cn(
                     "text-[10px] px-1.5 py-0.5 rounded font-medium",

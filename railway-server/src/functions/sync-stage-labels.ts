@@ -19,7 +19,30 @@ import {
 } from '../lib/uazapi-labels';
 
 const STAGE_LABEL_PREFIX = '📋';
-const STAGE_LABEL_COLOR = 3; // azul claro (padrão para etapas do funil)
+
+// Cores baseadas na paleta visual do WhatsApp Business do print enviado.
+// A UazAPI recebe inteiro (0..19), então mantemos um mapeamento por nome de etapa
+// para evitar que todas as etiquetas caiam no azul padrão.
+const STAGE_LABEL_COLOR = 3;
+const STAGE_LABEL_COLOR_BY_NAME: Array<[RegExp, number]> = [
+  [/nova\s*lead|recep[cç][aã]o|primeiro\s*contato/i, 4],
+  [/em\s*andamento|andamento|onboarding|acompanhamento/i, 6],
+  [/follow[-\s]*up|falar\s*depois/i, 5],
+  [/vi[aá]vel|viabilidade|cadastrados\s*vi[aá]veis/i, 3],
+  [/aguar\.?\s*documenta[cç][aã]o|aguardando\s*documentos|coleta\s*de\s*documentos|documentos\s*p\/\s*protocolo/i, 8],
+  [/aguar\.?\s*assinatura|procura[cç][aã]o\s*enviada|procura[cç][aã]o\s*assinada/i, 12],
+  [/fechado|deferimento/i, 4],
+  [/recusado|desqualificado|indeferimento/i, 13],
+  [/invi[aá]vel/i, 9],
+  [/judicializa[cç][aã]o/i, 8],
+];
+
+function getStageLabelColor(stage: any): number {
+  if (typeof stage?.label_color === 'number') return stage.label_color;
+  const name = String(stage?.name || '');
+  const match = STAGE_LABEL_COLOR_BY_NAME.find(([pattern]) => pattern.test(name));
+  return match?.[1] ?? STAGE_LABEL_COLOR;
+}
 
 export const handler: RequestHandler = async (req, res) => {
   try {
@@ -80,7 +103,7 @@ export const handler: RequestHandler = async (req, res) => {
         const stageName: string = String(stage.name || stageId);
         const resultKey: string | null = stage.result_key || null;
         const desiredName = `${STAGE_LABEL_PREFIX} ${stageName}`;
-        const desiredColor = typeof stage.label_color === 'number' ? stage.label_color : STAGE_LABEL_COLOR;
+        const desiredColor = getStageLabelColor(stage);
 
         const mapKey = `${instKey}::${stageId}`;
         const mapping = mapByKey.get(mapKey);

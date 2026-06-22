@@ -62,6 +62,7 @@ export interface WhatsAppConversation {
   unread_count: number;
   messages: WhatsAppMessage[];
   instance_name: string | null;
+  label_ids?: string[] | null;
 }
 
 export interface WhatsAppInstance {
@@ -86,10 +87,61 @@ export interface InstanceStats {
 const normalizeInstanceName = (instanceName?: string | null) =>
   (instanceName || '').trim().toLowerCase();
 
+function pushLabelIds(out: string[], value: any) {
+  if (!value) return;
+  if (Array.isArray(value)) {
+    value.forEach((item) => pushLabelIds(out, item));
+    return;
+  }
+  if (typeof value === 'object') {
+    pushLabelIds(out, value.id ?? value.labelid ?? value.labelId ?? value.label_id ?? value.value);
+    return;
+  }
+  const text = String(value).trim();
+  if (text) out.push(text.includes(':') ? text.split(':').pop() || text : text);
+}
+
+function extractLabelIdsFromMetadata(metadata: any): string[] | null {
+  const data = metadata?.data && typeof metadata.data === 'object' ? metadata.data : {};
+  const chat = metadata?.chat || data?.chat || {};
+  const labels: string[] = [];
+  pushLabelIds(labels, chat?.wa_label ?? chat?.wa_labels ?? data?.wa_label ?? data?.wa_labels);
+  pushLabelIds(labels, chat?.labels ?? data?.labels ?? metadata?.labels);
+  pushLabelIds(labels, metadata?.labelids ?? metadata?.labelIds ?? data?.labelids ?? data?.labelIds);
+  const unique = Array.from(new Set(labels.filter(Boolean)));
+  return unique.length ? unique : null;
+}
+
 // Conversation identity = phone + instance_name. Normalize instance_name case-insensitively
 // to avoid creating phantom duplicates when the webhook saves "Cris" but the RPC returns "cris".
 const getConversationKey = (phone: string, instanceName?: string | null) =>
   `${normalizeWhatsAppConversationPhone(phone)}__${normalizeInstanceName(instanceName)}`;
+
+async function fetchLatestConversationLabelIds(instanceNames: string[]) {
+  const variants = Array.from(new Set(instanceNames.flatMap((name) => [name, name.toUpperCase(), name.toLowerCase()])));
+  const labelByConversation = new Map<string, string[] | null>();
+  if (variants.length === 0) return labelByConversation;
+
+  const { data, error } = await (db as any)
+    .from('whatsapp_messages')
+    .select('phone, instance_name, metadata, created_at')
+    .in('instance_name', variants)
+    .not('metadata', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(2000);
+
+  if (error) {
+    console.warn('[fetchLatestConversationLabelIds] failed:', error.message);
+    return labelByConversation;
+  }
+
+  for (const row of data || []) {
+    const key = getConversationKey(row.phone, row.instance_name);
+    if (labelByConversation.has(key)) continue;
+    labelByConversation.set(key, extractLabelIdsFromMetadata(row.metadata));
+  }
+  return labelByConversation;
+}
 
 // ---------------------------------------------------------------------------
 // Module-level cache (sobrevive a unmount/remount do WhatsAppInbox).
@@ -284,6 +336,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
           unread_count: !msg.read_at && msg.direction === 'inbound' ? 1 : 0,
           messages: [msg],
           instance_name: msg.instance_name,
+          label_ids: extractLabelIdsFromMetadata(msg.metadata),
         });
       } else {
         const msgId = msg.external_message_id?.split(':').pop();
@@ -298,6 +351,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
         if (!existing.contact_name && msg.contact_name) existing.contact_name = msg.contact_name;
         if (!existing.contact_id && msg.contact_id) existing.contact_id = msg.contact_id;
         if (!existing.lead_id && msg.lead_id) existing.lead_id = msg.lead_id;
+        if (!existing.label_ids?.length) existing.label_ids = extractLabelIdsFromMetadata(msg.metadata);
       }
     }
 
@@ -404,7 +458,10 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
         console.error('External session failed:', sessionError);
       }
       console.log('Calling getConversationSummaries with:', instanceNames);
-      const summaries = await getConversationSummaries(instanceNames);
+      const [summaries, latestLabelIds] = await Promise.all([
+        getConversationSummaries(instanceNames),
+        fetchLatestConversationLabelIds(instanceNames),
+      ]);
 
       const canonicalInstanceNames = new Map(
         targetInstances.map((instance) => [normalizeInstanceName(instance.instance_name), instance.instance_name])
@@ -453,6 +510,9 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
             unread_count: Number(summary.unread_count) || 0,
             messages: [summaryMessage],
             instance_name: canonicalInstanceName,
+            label_ids: Array.isArray((summary as any).label_ids)
+              ? (summary as any).label_ids
+              : latestLabelIds.get(conversationKey) || null,
           });
           continue;
         }
@@ -515,6 +575,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
           contact_id: conversation.contact_id || previous.contact_id,
           lead_id: conversation.lead_id || previous.lead_id,
           messages: previous.messages.length > conversation.messages.length ? previous.messages : conversation.messages,
+          label_ids: conversation.label_ids?.length ? conversation.label_ids : previous.label_ids,
         };
       });
 
@@ -523,7 +584,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
       // no polling de 15s). Hash leve por chave + última msg + contador de unread.
       const prevHash = (conversationsRef as any)._listHash || '';
       const nextHash = mergedConvList
-        .map((c) => `${getConversationKey(c.phone, c.instance_name)}|${c.last_message_at}|${c.unread_count}|${c.last_message ?? ''}`)
+        .map((c) => `${getConversationKey(c.phone, c.instance_name)}|${c.last_message_at}|${c.unread_count}|${c.last_message ?? ''}|${(c.label_ids || []).join(',')}`)
         .join('§');
       if (nextHash !== prevHash) {
         (conversationsRef as any)._listHash = nextHash;

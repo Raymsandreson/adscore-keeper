@@ -17,12 +17,12 @@ import {
   uazapiFindLabelByName,
 } from '../lib/uazapi-labels';
 
-// Paleta UazAPI (0..19, padrão Meta). Aposta inicial — ajustar se sair errado no WA.
-//  5=verde, 6=amarelo, 7=vermelho, 9=cinza claro, 1=cinza escuro
+// Paleta UazAPI (0..19, padrão Meta), alinhada ao print do WhatsApp Business.
+// Em andamento=cinza, Fechado=verde, Recusado=lilás, Inviável=rosa/coral.
 export const RESULT_LABELS = [
   { key: 'in_progress', name: '🕐 Em andamento', color: 6 },
   { key: 'closed',      name: '✅ Fechado',      color: 5 },
-  { key: 'refused',     name: '❌ Recusado',     color: 7 },
+  { key: 'refused',     name: '❌ Recusado',     color: 13 },
   { key: 'inviavel',    name: '⚠️ Inviável',     color: 9 },
   { key: 'cancelled',   name: '🚫 Cancelado',    color: 1 },
 ] as const;
