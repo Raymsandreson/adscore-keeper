@@ -1369,11 +1369,20 @@ export const handler: RequestHandler = async (req, res) => {
                 const cleanName = (s: any) => {
                   const v = (s == null ? '' : String(s)).trim();
                   if (!v) return null;
+                  if (v.length < 3) return null;
                   // Rejeita nomes que são só dígitos/telefone
                   const digits = v.replace(/\D/g, '');
                   if (digits.length >= 8 && digits.length >= v.replace(/\s/g, '').length - 3) return null;
+                  // Rejeita títulos internos/placeholders ("PREV 1585 ...", "....", "Lead WhatsApp +55...")
+                  if (/^\.+$/.test(v)) return null;
+                  if (/^prev\s/i.test(v)) return null;
+                  if (/^lead\s+whatsapp/i.test(v)) return null;
+                  if (/acd-/i.test(v) && /prev/i.test(v)) return null;
+                  // Sem nenhuma letra
+                  if (!/[a-zà-ú]/i.test(v)) return null;
                   return v;
                 };
+
                 try {
                   const { data: contacts } = await supabase
                     .from('contacts')
