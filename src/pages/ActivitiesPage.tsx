@@ -1737,7 +1737,7 @@ const ActivitiesPage = () => {
     const greetingLine = clientFirstName
       ? `*${saudacaoFb} Sr(a). ${clientFirstName}*`
       : `*${saudacaoFb}*`;
-    return `${greetingLine}${processInfo ? `\n\n${processInfo}` : ''}${workflowInfo ? `\n\n${workflowInfo}` : ''}\n\n*Assunto da atividade:* ${formTitle.toUpperCase()}\n\n${fieldLines}\n\n${buildReturnDateLine(responsavelDrFb)}\n${tempoStr}\n\nEstamos à disposição para quaisquer dúvidas.\n\n🚀Avante!\n\nTem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se tudo está claro, digite 2.${activityLink ? `\n\n${activityLink}` : ''}`;
+    return `${greetingLine}${processInfo ? `\n\n${processInfo}` : ''}\n\n*Assunto da atividade:* ${formTitle.toUpperCase()}\n\n${fieldLines}\n\n${buildReturnDateLine(responsavelDrFb)}\n${tempoStr}\n\nEstamos à disposição para quaisquer dúvidas.\n\n🚀Avante!\n\nTem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se tudo está claro, digite 2.`;
   };
 
   // Active step context — process workflow > lead's funnel board.
