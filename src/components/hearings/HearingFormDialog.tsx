@@ -154,8 +154,8 @@ export function HearingFormDialog({ open, onOpenChange, hearing, defaultDate }: 
           </div>
 
           <div className="col-span-2">
-            <Label>Pessoa associada</Label>
-            <HearingLeadPicker value={form.lead_id} onChange={(id) => set('lead_id', id)} />
+            <Label>Membro responsável</Label>
+            <HearingMemberPicker value={form.assigned_user_id} onChange={(id) => set('assigned_user_id', id)} />
           </div>
 
           <div className="col-span-2">
