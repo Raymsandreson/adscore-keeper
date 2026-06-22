@@ -458,7 +458,10 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
         console.error('External session failed:', sessionError);
       }
       console.log('Calling getConversationSummaries with:', instanceNames);
-      const summaries = await getConversationSummaries(instanceNames);
+      const [summaries, latestLabelIds] = await Promise.all([
+        getConversationSummaries(instanceNames),
+        fetchLatestConversationLabelIds(instanceNames),
+      ]);
 
       const canonicalInstanceNames = new Map(
         targetInstances.map((instance) => [normalizeInstanceName(instance.instance_name), instance.instance_name])
@@ -507,7 +510,9 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
             unread_count: Number(summary.unread_count) || 0,
             messages: [summaryMessage],
             instance_name: canonicalInstanceName,
-            label_ids: Array.isArray((summary as any).label_ids) ? (summary as any).label_ids : null,
+            label_ids: Array.isArray((summary as any).label_ids)
+              ? (summary as any).label_ids
+              : latestLabelIds.get(conversationKey) || null,
           });
           continue;
         }
@@ -579,7 +584,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
       // no polling de 15s). Hash leve por chave + última msg + contador de unread.
       const prevHash = (conversationsRef as any)._listHash || '';
       const nextHash = mergedConvList
-        .map((c) => `${getConversationKey(c.phone, c.instance_name)}|${c.last_message_at}|${c.unread_count}|${c.last_message ?? ''}`)
+        .map((c) => `${getConversationKey(c.phone, c.instance_name)}|${c.last_message_at}|${c.unread_count}|${c.last_message ?? ''}|${(c.label_ids || []).join(',')}`)
         .join('§');
       if (nextHash !== prevHash) {
         (conversationsRef as any)._listHash = nextHash;
