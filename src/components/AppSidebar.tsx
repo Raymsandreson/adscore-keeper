@@ -120,7 +120,6 @@ export function AppSidebar() {
     { id: "whatsapp-api", label: "WhatsApp API", icon: <MessageSquareIcon className="h-4 w-4" />, path: "/whatsapp-api", color: "text-emerald-600" },
     { id: "agent-monitor", label: "Monitor IA", icon: <Bot className="h-4 w-4" />, path: "/agent-monitor", color: "text-purple-500" },
     { id: "contacts", label: "Contatos", icon: <Users className="h-4 w-4" />, path: "/contacts", color: "text-primary" },
-    { id: "referrals", label: "Indicações", icon: <Search className="h-4 w-4" />, path: "/referrals", color: "text-amber-500" },
     { id: "dashboard", label: "Visão Geral", icon: <LayoutDashboard className="h-4 w-4" />, path: "/dashboard" },
   ];
 
