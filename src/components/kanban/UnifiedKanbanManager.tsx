@@ -199,12 +199,18 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
       });
     }
     
-    // Apply search filter — busca apenas pelo nome do lead
+    // Apply search filter — busca por nome, telefone ou número do caso
     if (searchQuery) {
       const query = searchQuery.toLowerCase().trim();
-      result = result.filter(lead =>
-        (lead.lead_name || '').toLowerCase().includes(query)
-      );
+      const queryDigits = query.replace(/\D/g, '');
+      result = result.filter(lead => {
+        const nameMatch = (lead.lead_name || '').toLowerCase().includes(query);
+        const phoneMatch = queryDigits.length >= 3
+          ? (lead.lead_phone || '').replace(/\D/g, '').includes(queryDigits)
+          : false;
+        const caseMatch = (lead.case_number || '').toLowerCase().includes(query);
+        return nameMatch || phoneMatch || caseMatch;
+      });
     }
 
     // Apply advanced filters
