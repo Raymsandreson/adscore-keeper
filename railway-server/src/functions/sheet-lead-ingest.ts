@@ -92,26 +92,23 @@ export const handler: RequestHandler = async (req, res) => {
         }
 
 
-        // Coleta campos extras mapeados; serializa como nota
+        // Coleta campos extras mapeados (qualquer leadField != phone/name)
         const extras: Record<string, string> = {};
         for (const [leadField, sheetCol] of Object.entries(mapping)) {
           if (leadField === 'phone' || leadField === 'name') continue;
           const v = row[sheetCol];
           if (v !== undefined && v !== null && v !== '') extras[leadField] = String(v);
         }
-        const notes = `Importado via planilha: ${board.name}\n` +
-          Object.entries(extras).map(([k, v]) => `- ${k}: ${v}`).join('\n');
 
         const { data: created, error: insErr } = await ext
           .from('leads')
           .insert({
             lead_name: name,
             lead_phone: phone || null,
-
             board_id: board.id,
             status: initialStageId,
             source: `Planilha: ${board.name}`,
-            notes: notes.slice(0, 4000),
+            notes: `Importado via planilha: ${board.name}`,
           })
           .select('id')
           .single();
@@ -119,6 +116,49 @@ export const handler: RequestHandler = async (req, res) => {
         if (insErr) {
           results.push({ row_index: i, status: 'error', reason: insErr.message });
           continue;
+        }
+
+        // Persistir cada extra como custom field do board.
+        // Garante o lead_custom_fields (auto-cria por board) e grava em lead_custom_field_values.
+        for (const [fieldKey, valueText] of Object.entries(extras)) {
+          try {
+            const fieldName = fieldKey
+              .replace(/_/g, ' ')
+              .replace(/\b\w/g, (c) => c.toUpperCase());
+
+            // 1) Garante a definição do campo no board
+            let { data: fieldDef } = await ext
+              .from('lead_custom_fields')
+              .select('id')
+              .eq('board_id', board.id)
+              .eq('field_name', fieldName)
+              .maybeSingle();
+
+            if (!fieldDef) {
+              const ins = await ext
+                .from('lead_custom_fields')
+                .insert({
+                  board_id: board.id,
+                  field_name: fieldName,
+                  field_type: 'text',
+                  tab: 'info',
+                })
+                .select('id')
+                .single();
+              fieldDef = ins.data as any;
+            }
+
+            // 2) Grava valor
+            if (fieldDef?.id) {
+              await ext.from('lead_custom_field_values').insert({
+                lead_id: created.id,
+                field_id: fieldDef.id,
+                value_text: valueText.slice(0, 2000),
+              });
+            }
+          } catch (cfErr) {
+            console.warn('[sheet-lead-ingest] custom field skipped', fieldKey, cfErr);
+          }
         }
 
         results.push({ row_index: i, status: 'created', lead_id: created.id });
