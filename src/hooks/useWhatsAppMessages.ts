@@ -62,6 +62,7 @@ export interface WhatsAppConversation {
   unread_count: number;
   messages: WhatsAppMessage[];
   instance_name: string | null;
+  label_ids?: string[] | null;
 }
 
 export interface WhatsAppInstance {
@@ -284,6 +285,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
           unread_count: !msg.read_at && msg.direction === 'inbound' ? 1 : 0,
           messages: [msg],
           instance_name: msg.instance_name,
+          label_ids: extractLabelIdsFromMetadata(msg.metadata),
         });
       } else {
         const msgId = msg.external_message_id?.split(':').pop();
@@ -298,6 +300,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
         if (!existing.contact_name && msg.contact_name) existing.contact_name = msg.contact_name;
         if (!existing.contact_id && msg.contact_id) existing.contact_id = msg.contact_id;
         if (!existing.lead_id && msg.lead_id) existing.lead_id = msg.lead_id;
+        if (!existing.label_ids?.length) existing.label_ids = extractLabelIdsFromMetadata(msg.metadata);
       }
     }
 
@@ -453,6 +456,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
             unread_count: Number(summary.unread_count) || 0,
             messages: [summaryMessage],
             instance_name: canonicalInstanceName,
+            label_ids: Array.isArray((summary as any).label_ids) ? (summary as any).label_ids : null,
           });
           continue;
         }
@@ -515,6 +519,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
           contact_id: conversation.contact_id || previous.contact_id,
           lead_id: conversation.lead_id || previous.lead_id,
           messages: previous.messages.length > conversation.messages.length ? previous.messages : conversation.messages,
+          label_ids: conversation.label_ids?.length ? conversation.label_ids : previous.label_ids,
         };
       });
 
