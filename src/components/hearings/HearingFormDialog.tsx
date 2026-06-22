@@ -48,7 +48,7 @@ export function HearingFormDialog({ open, onOpenChange, hearing, defaultDate }: 
         status: hearing.status,
         location: hearing.location || '',
         notes: hearing.notes || '',
-        lead_id: hearing.lead_id || null,
+        assigned_user_id: hearing.assigned_user_id || null,
       });
     } else {
       setForm(empty(defaultDate));
