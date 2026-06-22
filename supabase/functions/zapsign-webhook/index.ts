@@ -893,7 +893,19 @@ Deno.serve(async (req) => {
             contactId = existingContact.id
             console.log(`[zapsign-webhook] Contact already exists: ${contactId}`)
           } else {
-            const contactName = extractedData.lead_name || extractedData.victim_name || localDoc.signer_name || cleanPhone
+            const isJunkName = (s: string | null | undefined): boolean => {
+              const v = (s || '').trim();
+              if (!v || v.length < 3) return true;
+              if (/^\.+$/.test(v)) return true;
+              if (/^prev\s/i.test(v)) return true;
+              if (/^lead\s+whatsapp/i.test(v)) return true;
+              if (/acd-/i.test(v) && /prev/i.test(v)) return true;
+              if (!/[a-zà-ú]/i.test(v)) return true;
+              return false;
+            };
+            const contactNameCandidates = [extractedData.lead_name, extractedData.victim_name, localDoc.signer_name]
+              .map(x => (x || '').toString().trim()).filter(Boolean);
+            const contactName = contactNameCandidates.find(n => !isJunkName(n)) || localDoc.signer_name || cleanPhone
             const { data: newContact, error: contactErr } = await supabase
               .from('contacts')
               .insert({
