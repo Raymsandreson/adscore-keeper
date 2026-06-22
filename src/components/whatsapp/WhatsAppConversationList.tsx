@@ -172,10 +172,11 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
     let alive = true;
     const fetchLabels = async () => {
       const ext = externalSupabase as any;
+      const instanceVariants = Array.from(new Set(instanceNames.flatMap((name) => [name, name.toUpperCase(), name.toLowerCase()])));
       const [stageRes, resultRes, agentRes] = await Promise.all([
-        ext.from('stage_instance_labels').select('instance_name, label_id, label_name, color').in('instance_name', instanceNames).is('deleted_at', null),
-        ext.from('result_instance_labels').select('instance_name, label_id, label_name, color').in('instance_name', instanceNames).is('deleted_at', null),
-        ext.from('agent_instance_labels').select('instance_name, label_id, label_name, color').in('instance_name', instanceNames).is('deleted_at', null),
+        ext.from('stage_instance_labels').select('instance_name, label_id, label_name, color').in('instance_name', instanceVariants).is('deleted_at', null),
+        ext.from('result_instance_labels').select('instance_name, label_id, label_name, color').in('instance_name', instanceVariants).is('deleted_at', null),
+        ext.from('agent_instance_labels').select('instance_name, label_id, label_name, color').in('instance_name', instanceVariants).is('deleted_at', null),
       ]);
 
       if (!alive) return;
