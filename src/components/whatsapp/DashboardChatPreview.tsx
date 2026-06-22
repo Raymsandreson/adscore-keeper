@@ -763,9 +763,12 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
         return;
       }
 
+      const isGroupChat = isWhatsAppGroupId(phone);
       const insertData: Record<string, any> = {
         lead_name: leadExtracted.lead_name || contactExtracted.full_name || contactName || 'Novo Lead - WhatsApp',
-        lead_phone: phone,
+        // JID de grupo NÃO entra em lead_phone (não é telefone).
+        lead_phone: isGroupChat ? null : phone,
+        whatsapp_group_id: isGroupChat ? phone : null,
         lead_email: leadExtracted.lead_email || contactExtracted.email || null,
         source: 'whatsapp',
         created_by: extCreatedBy,
