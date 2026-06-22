@@ -1717,7 +1717,6 @@ Deno.serve(async (req) => {
           const deadline = new Date()
           deadline.setDate(deadline.getDate() + (act.deadline_days || 1))
           
-          const extClient = getExternalClient();
           const assignedExtId = act.assigned_to ? await remapToExternal(extClient, act.assigned_to) : null;
 
           await extClient.from('lead_activities').insert({
