@@ -12,6 +12,7 @@ export interface ConversationSummary {
   instance_name: string;
   unread_count: number;
   message_count: number;
+  label_ids?: string[] | null;
 }
 
 export interface WhatsAppMessage {
