@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useHearings, type Hearing, type HearingCategory, type HearingStatus } from '@/hooks/useHearings';
 import { CATEGORY_LABELS, HEARING_TYPES, STATUS_LABELS, TIMEZONE_OPTIONS } from './hearingStyles';
+import { HearingLeadPicker } from './HearingLeadPicker';
 import { Trash2 } from 'lucide-react';
 
 interface Props {
@@ -27,6 +28,7 @@ const empty = (defaultDate?: string) => ({
   status: 'ativa' as HearingStatus,
   location: '',
   notes: '',
+  lead_id: null as string | null,
 });
 
 export function HearingFormDialog({ open, onOpenChange, hearing, defaultDate }: Props) {
@@ -46,6 +48,7 @@ export function HearingFormDialog({ open, onOpenChange, hearing, defaultDate }: 
         status: hearing.status,
         location: hearing.location || '',
         notes: hearing.notes || '',
+        lead_id: hearing.lead_id || null,
       });
     } else {
       setForm(empty(defaultDate));
@@ -66,6 +69,7 @@ export function HearingFormDialog({ open, onOpenChange, hearing, defaultDate }: 
       status: form.status,
       location: form.location || null,
       notes: form.notes || null,
+      lead_id: form.lead_id || null,
     };
     if (hearing) await update.mutateAsync({ id: hearing.id, patch: payload });
     else await create.mutateAsync(payload);
@@ -147,6 +151,11 @@ export function HearingFormDialog({ open, onOpenChange, hearing, defaultDate }: 
                 {Object.entries(STATUS_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
               </SelectContent>
             </Select>
+          </div>
+
+          <div className="col-span-2">
+            <Label>Pessoa associada</Label>
+            <HearingLeadPicker value={form.lead_id} onChange={(id) => set('lead_id', id)} />
           </div>
 
           <div className="col-span-2">
