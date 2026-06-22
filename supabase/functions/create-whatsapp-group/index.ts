@@ -254,10 +254,13 @@ async function reserveAtomicClosedSequence(
     .rpc('reserve_closed_sequence', { p_board_id: boardId, p_min: minFloor })
   if (error) {
     console.error('[create-group] reserve_closed_sequence error:', error)
+    console.log(`[create-group] reserve_closed_sequence board=${boardId} min=${minFloor} -> data=${JSON.stringify(data)} reserved=null (error)`)
     return null
   }
   const n = typeof data === 'number' ? data : Number(data)
-  return Number.isFinite(n) && n > 0 ? n : null
+  const reserved = Number.isFinite(n) && n > 0 ? n : null
+  console.log(`[create-group] reserve_closed_sequence board=${boardId} min=${minFloor} -> data=${JSON.stringify(data)} reserved=${reserved}`)
+  return reserved
 }
 
 function isRateLimited(status: number, bodyText: string): boolean {
