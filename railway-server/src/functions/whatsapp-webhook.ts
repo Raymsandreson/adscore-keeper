@@ -1363,13 +1363,11 @@ export const handler: RequestHandler = async (req, res) => {
             } else {
               // Guard: chats de GRUPO não devem auto-criar leads. O `phoneDigits`
               // de um grupo é o LID (ex.: 120363xxxxxxxx), não um telefone real.
-              // Quem manda mensagem em grupo é um participante individual, e o
-              // lead correto é criado a partir do participante (não do grupo).
+              // Quem manda mensagem em grupo é um participante individual.
               const isGroupChat = String(chatId || '').includes('@g.us') || phoneDigits.length >= 17;
               if (isGroupChat) {
                 console.log('[label-trigger][stage] auto-create skipped (group chat)', { chatId, phoneDigits, board: lastStageMatch.board_id, label: lastStageMatch.label_name });
-                continue;
-              }
+              } else {
               // === NOVO: nenhum lead nesse board com esse telefone → cria automaticamente
               console.log('[label-trigger][stage] no lead matched, auto-creating', { phone: phoneDigits, board: lastStageMatch.board_id, label: lastStageMatch.label_name });
               try {
