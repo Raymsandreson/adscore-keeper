@@ -1711,24 +1711,8 @@ const ActivitiesPage = () => {
         result = lines.join('\n');
       }
 
-      // Auto-inject workflow (etapa/objetivo/passo atual) se o template não o referenciar.
-      const tplRefsWorkflow = template.includes('workflow_info') || template.includes('passo_atual')
-        || template.includes('etapa') || template.includes('objetivo');
-      if (workflowInfo && !tplRefsWorkflow && !result.includes('Passo atual:')) {
-        const lines = result.split('\n');
-        // Insere logo após a linha do processo, se houver; senão após a saudação.
-        let insertAt = 0;
-        const refIdx = lines.findIndex(l => l.includes('Referente ao processo'));
-        if (refIdx >= 0) {
-          insertAt = refIdx + 1;
-        } else {
-          for (let i = 0; i < lines.length; i++) {
-            if (lines[i].trim()) { insertAt = i + 1; break; }
-          }
-        }
-        lines.splice(insertAt, 0, '', workflowInfo);
-        result = lines.join('\n');
-      }
+      // Workflow (etapa/objetivo/passo atual) e link da atividade só entram
+      // se o template referenciá-los explicitamente — sem auto-injeção.
 
       // Templates antigos escondiam a data quando o responsável estava vazio.
       // Se o modelo tentou usar data_retorno, garante que o cliente veja a data.
@@ -1738,11 +1722,6 @@ const ActivitiesPage = () => {
         if (beforeSupportLine >= 0) lines.splice(beforeSupportLine, 0, '', returnDateLine);
         else lines.push('', returnDateLine);
         result = lines.join('\n');
-      }
-
-      // Auto-injeta o link da atividade no final quando houver e o template não o referenciar
-      if (activityLink && !template.includes('link_atividade') && !result.includes('openActivity=')) {
-        result = `${result.trim()}\n\n${activityLink}`;
       }
 
       return result
