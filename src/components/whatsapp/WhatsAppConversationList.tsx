@@ -157,9 +157,53 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
   const [checklistTemplates, setChecklistTemplates] = useState<{ id: string; name: string; items: { id: string; label: string }[] }[]>([]);
   // lead_id -> 'signed' | 'unsigned' (has doc but not signed) | undefined (no doc)
   const [leadDocStatus, setLeadDocStatus] = useState<Map<string, 'signed' | 'unsigned'>>(new Map());
+  const [labelInfoByInstance, setLabelInfoByInstance] = useState<Map<string, Map<string, ConversationLabelInfo>>>(new Map());
 
   const getConversationKey = (phone: string, instanceName?: string | null) =>
     `${normalizeWhatsAppConversationPhone(phone)}__${(instanceName || '').trim().toLowerCase()}`;
+
+  useEffect(() => {
+    const instanceNames = Array.from(new Set(conversations.map(c => (c.instance_name || '').trim()).filter(Boolean)));
+    if (instanceNames.length === 0) {
+      setLabelInfoByInstance(new Map());
+      return;
+    }
+
+    let alive = true;
+    const fetchLabels = async () => {
+      const [stageRes, resultRes, agentRes] = await Promise.all([
+        externalSupabase.from('stage_instance_labels').select('instance_name, label_id, label_name, color').in('instance_name', instanceNames).is('deleted_at', null),
+        externalSupabase.from('result_instance_labels').select('instance_name, label_id, label_name, color').in('instance_name', instanceNames).is('deleted_at', null),
+        externalSupabase.from('agent_instance_labels').select('instance_name, label_id, label_name, color').in('instance_name', instanceNames).is('deleted_at', null),
+      ]);
+
+      if (!alive) return;
+      const next = new Map<string, Map<string, ConversationLabelInfo>>();
+      const addRows = (rows: any[] | null | undefined, source: ConversationLabelInfo['source']) => {
+        for (const row of rows || []) {
+          const instKey = String(row.instance_name || '').toLowerCase();
+          const labelId = normalizeLabelId(row.label_id);
+          if (!instKey || !labelId) continue;
+          const byLabel = next.get(instKey) || new Map<string, ConversationLabelInfo>();
+          byLabel.set(labelId, {
+            id: labelId,
+            name: row.label_name,
+            color: typeof row.color === 'number' ? row.color : null,
+            colorHex: labelColorHex(row.label_name || '', typeof row.color === 'number' ? row.color : null),
+            source,
+          });
+          next.set(instKey, byLabel);
+        }
+      };
+      addRows(stageRes.data as any[], 'stage');
+      addRows(resultRes.data as any[], 'result');
+      addRows(agentRes.data as any[], 'agent');
+      setLabelInfoByInstance(next);
+    };
+
+    fetchLabels().catch((error) => console.warn('[WhatsAppConversationList] labels lookup failed:', error?.message));
+    return () => { alive = false; };
+  }, [conversations.map(c => c.instance_name).filter(Boolean).sort().join('|')]);
 
   const isOpenLeadStatus = (status?: string | null) =>
     !status || ['no_response', 'in_progress', 'active', 'novo', 'new', 'open'].includes(status);
