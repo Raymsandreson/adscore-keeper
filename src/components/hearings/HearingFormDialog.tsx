@@ -69,6 +69,7 @@ export function HearingFormDialog({ open, onOpenChange, hearing, defaultDate }: 
       status: form.status,
       location: form.location || null,
       notes: form.notes || null,
+      lead_id: form.lead_id || null,
     };
     if (hearing) await update.mutateAsync({ id: hearing.id, patch: payload });
     else await create.mutateAsync(payload);
