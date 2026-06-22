@@ -28,6 +28,7 @@ import { GroupMembersDialog } from '@/components/whatsapp/GroupMembersDialog';
 import { MediaLightbox } from '@/components/whatsapp/MediaLightbox';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { Lead } from '@/hooks/useLeads';
+import { isWhatsAppGroupId } from '@/lib/whatsappPhone';
 import type { Contact } from '@/hooks/useContacts';
 import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 
