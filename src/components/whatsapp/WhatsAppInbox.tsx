@@ -54,7 +54,7 @@ import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { useModulePermissions } from '@/hooks/useModulePermissions';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
-import { normalizeWhatsAppConversationPhone } from '@/lib/whatsappPhone';
+import { normalizeWhatsAppConversationPhone, isWhatsAppGroupId } from '@/lib/whatsappPhone';
 import { LEAD_FIELD_REGISTRY } from '@/components/leads/leadFormFields';
 import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 
