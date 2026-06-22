@@ -11,6 +11,7 @@ export interface Hearing {
   case_ref: string | null;
   lead_id: string | null;
   legal_case_id: string | null;
+  assigned_user_id: string | null;
   hearing_type: string | null;
   category: HearingCategory;
   hearing_date: string; // YYYY-MM-DD
