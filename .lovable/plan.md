@@ -1,78 +1,73 @@
-## Plano: Módulo de Audiências (dentro de Processual)
+## O que vou construir
 
-### Onde encaixa
-Nova aba **"Audiências"** dentro de `src/pages/ProcessesPage.tsx`, ao lado de Judicial/INSS/Processual (segue regra de navegação: funcionalidade nova entra dentro do módulo pai, não solta no sidebar).
+Um "ajudante" no Railway que, de 5 em 5 minutos, lê a planilha do Google que você mandou e cria/atualiza leads no funil BPC. Linha nova na planilha = card novo na primeira etapa do funil. Sem duplicar.
 
-### Banco (Supabase Externo, via `run-external-migration`)
+Metáfora: hoje a planilha é só o **placar** do painel (KPIs). Vou transformá-la também na **esteira de chegada** — cada nome que cai lá vira automaticamente um card no kanban.
 
-Tabela `hearings`:
-- `id` uuid pk
-- `process_number` text — ex: `0801799-23.2025.8.14.0125`
-- `case_ref` text — ex: `CASO 295` (identificador interno livre)
-- `lead_id` uuid null — vínculo opcional ao lead/caso existente
-- `legal_case_id` uuid null — vínculo opcional a `legal_cases`
-- `hearing_type` text — UNA Virtual, UNA Presencial, Instrução, Conciliação, Encerramento de Instrução, Inicial Virtual, Perícia Médica, Outro
-- `category` text — `previdenciario` | `civel` | `trabalhista` | `criminal` | `outro` (drive da cor)
-- `hearing_date` date
-- `hearing_time` time
-- `timezone_label` text — "Horário de Manaus", "Horário de Cuiabá", "Padrão Brasília" (livre)
-- `status` text — `ativa` | `adiada` | `cancelada` | `concluida` (default `ativa`)
-- `location` text null — sala virtual / endereço
-- `notes` text null — observações; presença não-vazia → ícone de alerta no card
-- `created_by` uuid, `created_at`, `updated_at`, `deleted_at` (soft-delete padrão)
+## Decisões que tomei por você (você skipou as perguntas)
 
-Índices: `(hearing_date)`, `(status)`, `(category)`, `(process_number)`, `(case_ref)`.
+| Pergunta | Decisão |
+|---|---|
+| Qual aba? | `BASE_UNIFICADA` (mesma que já alimenta os KPIs hoje, pra manter coerência) |
+| O que fazer com linha nova? | Criar lead novo na primeira etapa do board BPC. Não mexo no status depois — quem move o card é a equipe |
+| Frequência | A cada 5 minutos (equilíbrio entre "rápido" e "não estourar quota do Google") |
+| Chave única (anti-duplicado) | `form_lead_id` (coluna A, `l:...`) — é o ID do Meta, único de verdade |
 
-RLS: leitura/escrita para `authenticated`. GRANTs para `authenticated` e `service_role`.
+Se alguma dessas decisões não bate com o que você queria, é só me dizer depois que ajusto.
 
-### Frontend
+## Como vai funcionar (passo a passo do "ajudante")
 
-Novos arquivos:
-- `src/hooks/useHearings.ts` — CRUD via `db` (Externo). React Query, `staleTime 30s`.
-- `src/components/hearings/HearingsModule.tsx` — container com header (busca global, filtros, "Nova Audiência"), tabs de visualização (Mês | Semana | Dia | Lista).
-- `src/components/hearings/HearingWeekView.tsx` — agrupado por "Semana N do mês", grid seg-sex com cards.
-- `src/components/hearings/HearingMonthView.tsx` — calendário mensal (grid 7 colunas).
-- `src/components/hearings/HearingDayView.tsx` — lista vertical do dia selecionado.
-- `src/components/hearings/HearingListView.tsx` — tabela ordenável.
-- `src/components/hearings/HearingCard.tsx` — card colorido por `category`, status `cancelada`/`adiada` aplica `line-through opacity-60`, ícone `AlertTriangle` quando `notes` não vazio.
-- `src/components/hearings/HearingFormDialog.tsx` — modal único de criar/editar (regra de form unificado).
-- `src/components/hearings/HearingFiltersBar.tsx` — filtros: semana, tipo, status, busca por `process_number` ou `case_ref`.
+```text
+A cada 5 min:
+  1. Lê planilha BASE_UNIFICADA (Google Sheets API via conector)
+  2. Pra cada linha:
+     a. Já existe lead com esse form_lead_id no Externo? → pula
+     b. Não existe? → cria lead com:
+        - nome, telefone (normalizado)
+        - acolhedor (coluna origem_vendedor)
+        - board_id = BPC, status = primeira etapa
+        - source = 'planilha_trafego'
+        - external_form_lead_id = l:... (chave anti-duplicado)
+  3. Grava log de quantos criou / pulou / falharam
+```
 
-Integração:
-- `src/pages/ProcessesPage.tsx` ganha tab `"Audiências"` renderizando `<HearingsModule />`.
+## Onde mexo
 
-### Sistema de cores (tokens semânticos em `src/index.css`)
+**Backend (Railway — onde fica o ajudante novo):**
+- Cria `railway-server/src/functions/bpc-sheet-sync.ts` — o ajudante em si
+- Registra rota em `railway-server/src/index.ts`
+- Adiciona `'bpc-sheet-sync': 'railway'` em `src/lib/functionRouter.ts`
+- Variáveis novas no Railway: `BPC_SHEET_ID` (o ID da sua planilha) e `BPC_BOARD_ID` (o board do BPC)
 
-Adicionar HSL tokens (não hardcodar):
-- `--hearing-prev` (rosa/magenta) — Previdenciário/Perícia Médica
-- `--hearing-civel` (azul claro)
-- `--hearing-trabalhista` (âmbar claro)
-- `--hearing-criminal` (vermelho suave)
-- `--hearing-outro` (cinza)
-- `--hearing-status-cancelada`, `--hearing-status-adiada`, `--hearing-status-concluida`
+**Banco Externo (almoxarifado):**
+- Adiciona coluna `external_form_lead_id text unique` em `leads` (anti-duplicado)
+- Roda via `run-external-migration`, sem você precisar abrir painel
 
-Mapear em `tailwind.config.ts` (`hearing.prev`, `hearing.civel`, etc.).
+**Agendador (quem cutuca o ajudante a cada 5min):**
+- pg_cron no Externo chamando o endpoint do Railway
 
-### Funcionalidades
+**Frontend:**
+- Botão "Sincronizar agora" no painel detalhado BPC, pra forçar a checagem sem esperar os 5min
+- Indicador "Última sincronização: há X min"
 
-- **Visão semanal**: agrupa por número da semana do mês ("Semana 1"... "Semana 5"), 5 colunas seg-sex, cards empilhados por horário.
-- **Filtros**: por semana (dropdown), tipo (multi), status (chips), busca textual (debounced 300ms em `process_number` + `case_ref` + `notes`).
-- **Nova/Editar**: mesmo `HearingFormDialog`, props `mode: 'create' | 'edit'` + `hearing?`.
-- **Alertas**: card com `notes` mostra `AlertTriangle` amber no canto superior direito + tooltip com preview.
-- **Cancelada/Adiada**: `line-through` no título + `opacity-60`.
-- **Soft delete**: ação "Excluir" seta `deleted_at` com snapshot em `notes` (segue policy).
+## O que NÃO vou mexer
 
-### Dados fictícios
-Inserir ~8 registros via `supabase--insert` após a migração: misto de PREV (perícias) e CASOs cíveis, datas na semana atual e próxima, alguns com `notes` e 1 cancelada para demonstrar visual.
+- KPIs atuais (continuam lendo da planilha como hoje)
+- Lógica do funil, etapas, permissões
+- Lead que já existe — não mexo em status, nome, nada. Só crio o que falta
+- Outras planilhas / outros funis (só BPC)
 
-### Fora de escopo
-- Notificações/lembretes automáticos
-- Integração com Google Calendar
-- Vínculo automático com `lead_processes` (pode ser feito depois via `process_number`)
-- Mobile view dedicada (responsivo padrão Tailwind apenas)
+## Pré-requisito
 
-### Detalhes técnicos
-- Imports: `db` do barrel `@/integrations/supabase` para tudo de Externo.
-- Migration via edge function `run-external-migration` (não pedir SQL manual).
-- Componentes shadcn: Tabs, Dialog, Select, Input, Calendar, Badge, Card, Popover.
-- `date-fns` (já no projeto) para semana/mês.
+Preciso que você confirme: a conta Google que tá conectada no Lovable (conector Google Sheets) **tem acesso de leitura** nessa planilha? Se não tiver, o ajudante vai bater na porta e ninguém abre. Se quiser, eu testo a leitura primeiro antes de construir o resto — me responde "testa primeiro" e eu faço só essa parte pra confirmar acesso.
+
+## Detalhes técnicos (pode pular)
+
+- Idempotência via `ON CONFLICT (external_form_lead_id) DO NOTHING`
+- Normalização de telefone: últimos 8 dígitos como `phoneKey` (mesmo padrão do resto do projeto)
+- Batch insert de 100 em 100 pra não travar
+- Retry com backoff em 429/5xx do Google
+- Resposta sempre HTTP 200 `{ success, created, skipped, errors }`
+- Cron via pg_cron no Externo (não no Cloud)
+
+Posso seguir?

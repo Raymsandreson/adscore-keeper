@@ -13,6 +13,7 @@ import { BpcFunnelBars } from "@/components/kanban/BpcFunnelBars";
 import { BpcFormLeadsSheet } from "@/components/whatsapp/FocusDashboard/BpcFormLeadsSheet";
 import { BpcStageLeadsSheet } from "@/components/kanban/BpcStageLeadsSheet";
 import { BpcKpisPanel } from "@/components/kanban/BpcKpisPanel";
+import { BpcSheetSyncButton } from "@/components/kanban/BpcSheetSyncButton";
 import { buildBpcAcolhedorFilter, leadMatchesFilter } from "@/lib/bpcPhoneMatch";
 
 import { Button } from "@/components/ui/button";
@@ -220,6 +221,7 @@ const BpcFunnelDetailPage = () => {
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          <BpcSheetSyncButton boardId={board.id} onCreated={handleRefresh} />
           <Button variant="outline" size="sm" onClick={handleRefresh} disabled={leadsLoading || bpcLoading}>
             <RefreshCw className={cn("h-3.5 w-3.5 mr-1.5", (leadsLoading || bpcLoading) && "animate-spin")} />
             Atualizar
