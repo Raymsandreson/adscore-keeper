@@ -203,11 +203,11 @@ export function BpcKpisPanel({ board, fromDate, toDate, dateField, bpcFilter, fi
     queryFn: async () => {
       if (!b1Stages.length || filterPending) return [] as any[];
       const PAGE = 1000;
-      const leads: Array<{ id: string; lead_name: string | null; lead_phone: string | null; status: string }> = [];
+      const leads: Array<{ id: string; lead_name: string | null; lead_phone: string | null; status: string; updated_at: string | null; created_at: string | null }> = [];
       for (let off = 0; ; off += PAGE) {
         const { data, error } = await supabase
           .from("leads")
-          .select("id, lead_name, lead_phone, status")
+          .select("id, lead_name, lead_phone, status, updated_at, created_at")
           .eq("board_id", boardId)
           .in("status", b1Stages)
           .range(off, off + PAGE - 1);
@@ -243,8 +243,12 @@ export function BpcKpisPanel({ board, fromDate, toDate, dateField, bpcFilter, fi
       }
       const now = new Date();
       return filtered.map((l) => {
-        const entered = lastEntry.get(`${l.id}::${l.status}`);
-        const days = entered ? daysBetween(now, new Date(entered)) : null;
+        // Prioridade: 1) registro no histórico da etapa atual
+        //             2) updated_at do lead (última mudança — boa proxy de entrada na etapa)
+        //             3) created_at do lead (lead foi criado direto nessa etapa e nunca mudou)
+        const enteredRaw =
+          lastEntry.get(`${l.id}::${l.status}`) || l.updated_at || l.created_at;
+        const days = enteredRaw ? Math.max(0, daysBetween(now, new Date(enteredRaw))) : null;
         return {
           id: l.id,
           name: l.lead_name || "(sem nome)",
