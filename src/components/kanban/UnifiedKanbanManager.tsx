@@ -299,6 +299,51 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
       const oldStage = currentLead?.status || null;
       
       await updateLead(leadId, { status: stageId as LeadStatus });
+
+      // Política (jun/2026): mover para a etapa 'closed' (✅ Fechado) é o único
+      // momento em que o lead vira closed de verdade. Aqui disparamos os efeitos
+      // colaterais: lead_status, became_client_date e criação do legal_case.
+      if (stageId === 'closed' && (currentLead as any)?.lead_status !== 'closed') {
+        try {
+          const today = new Date().toISOString().slice(0, 10);
+          await externalSupabase
+            .from('leads')
+            .update({ lead_status: 'closed', became_client_date: today } as any)
+            .eq('id', leadId);
+
+          const { data: existingCases } = await externalSupabase
+            .from('legal_cases')
+            .select('id')
+            .eq('lead_id', leadId)
+            .limit(1);
+
+          if (!existingCases || existingCases.length === 0) {
+            const { data: leadProdRow } = await externalSupabase
+              .from('leads')
+              .select('product_service_id')
+              .eq('id', leadId)
+              .maybeSingle();
+            const productId = (leadProdRow as any)?.product_service_id || null;
+            const { data: caseNumber } = await externalSupabase
+              .rpc('generate_case_number', { p_product_id: productId } as any);
+            const { data: { user } } = await supabase.auth.getUser();
+            await externalSupabase.from('legal_cases').insert({
+              lead_id: leadId,
+              case_number: caseNumber || 'CASO-0001',
+              title: `Caso - ${currentLead?.lead_name || 'Novo'}`,
+              status: 'em_andamento',
+              created_by: user?.id || null,
+            } as any);
+            toast.success(`Lead fechado! Caso ${caseNumber || ''} criado.`);
+          } else {
+            toast.success('Lead movido para Fechado');
+          }
+        } catch (closeErr) {
+          console.error('Erro ao fechar lead:', closeErr);
+          toast.error('Card movido, mas falhou ao registrar fechamento');
+        }
+      }
+
       
       if (oldStage !== stageId) {
         await addHistoryEntry(

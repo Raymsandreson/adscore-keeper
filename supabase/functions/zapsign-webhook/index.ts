@@ -1161,7 +1161,44 @@ Deno.serve(async (req) => {
             .maybeSingle()
 
           if (boardSettings) {
-            // Auto-close lead
+            // === Movimentação automática para "Procuração Assinada" ao assinar ===
+            // Política (jun/2026): ZapSign NÃO fecha lead automaticamente.
+            // Só move o card para a etapa 'procuracao_assinada' (se existir no board).
+            // O fechamento real (lead_status='closed', case_number, legal_case)
+            // só ocorre quando o acolhedor move manualmente para a etapa 'closed'.
+            try {
+              const { data: boardForStage } = await supabase
+                .from('kanban_boards')
+                .select('stages')
+                .eq('id', leadForBoard.board_id)
+                .single()
+              const stagesArr = (boardForStage?.stages as any[]) || []
+              const procStage = stagesArr.find((s: any) =>
+                s?.id === 'procuracao_assinada' ||
+                String(s?.name || '').toLowerCase().includes('procuração assinada') ||
+                String(s?.name || '').toLowerCase().includes('procuracao assinada')
+              )
+              if (procStage?.id) {
+                const { data: curLead } = await supabase
+                  .from('leads')
+                  .select('status')
+                  .eq('id', localDoc.lead_id)
+                  .single()
+                if (curLead?.status !== procStage.id) {
+                  await supabase
+                    .from('leads')
+                    .update({ status: procStage.id, updated_at: new Date().toISOString() })
+                    .eq('id', localDoc.lead_id)
+                  console.log(`[zapsign-webhook] Lead ${localDoc.lead_id} moved to '${procStage.id}' (procuração assinada)`)
+                }
+              } else {
+                console.log(`[zapsign-webhook] Board ${leadForBoard.board_id} não tem etapa 'procuracao_assinada' — pulando movimentação automática`)
+              }
+            } catch (e: any) {
+              console.warn('[zapsign-webhook] auto-move to procuracao_assinada failed:', e?.message)
+            }
+
+            // Auto-close lead (LEGADO — só roda se admin reativar auto_close_lead_on_sign manualmente)
             if (boardSettings.auto_close_lead_on_sign) {
               console.log(`[zapsign-webhook] Auto-closing lead ${localDoc.lead_id} (board setting)`)
               
