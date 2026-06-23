@@ -382,6 +382,7 @@ const BpcFunnelDetailPage = () => {
         dateField={dateField}
         bpcFilter={bpcFilter}
         filterPending={filterPending}
+        bpcLeads={filteredBpcLeads}
       />
 
 
