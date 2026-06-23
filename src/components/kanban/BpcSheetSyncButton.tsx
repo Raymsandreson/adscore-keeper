@@ -3,7 +3,7 @@ import { Download, Loader2, CheckCircle2, AlertCircle, RefreshCw } from "lucide-
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { invokeFunction } from "@/lib/functionRouter";
+import { cloudFunctions } from "@/lib/functionRouter";
 import { useToast } from "@/hooks/use-toast";
 
 interface Props {
