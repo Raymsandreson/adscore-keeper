@@ -10,20 +10,48 @@ const corsHeaders = {
 };
 
 const SPREADSHEET_ID = "1EXB6oFovhX2LOHsC2X20LFk-JVIkjk-NR5Er4cUn6Qw";
-const SHEET_TABS: { tab: string; operator: string }[] = [
-  { tab: "LEADS API", operator: "API" },
-  { tab: "LEADS ISRAEL", operator: "Israel" },
-  { tab: "LEADS CRIS", operator: "Cris" },
-  { tab: "LEADS MATEUS", operator: "Mateus" },
-  { tab: "LEADS EDILAN", operator: "Edilan" },
-  { tab: "LEDS KAROLYNE", operator: "Karolyne" },
-  { tab: "LEADS ANDRESSA", operator: "Andressa" },
-  { tab: "LEAD KEILANE", operator: "Keilane" },
+// Mapeamento por PALAVRA-CHAVE (não por nome exato). Resiliente a renomeação
+// de aba ("LEADS EDILAN" / "1LEADS EDILAN" / "EDILAN NOVO" → todos viram Edilan).
+// A primeira keyword que casar (case-insensitive) define o operador.
+const OPERATOR_KEYWORDS: { keyword: string; operator: string }[] = [
+  { keyword: "israel", operator: "Israel" },
+  { keyword: "cris", operator: "Cris" },
+  { keyword: "mateus", operator: "Mateus" },
+  { keyword: "edilan", operator: "Edilan" },
+  { keyword: "karol", operator: "Karolyne" },
+  { keyword: "andressa", operator: "Andressa" },
+  { keyword: "keilane", operator: "Keilane" },
+  { keyword: "api", operator: "API" },
 ];
-// Aba que unifica todas as outras. Aqui o operador vem da COLUNA `origem_vendedor`,
-// não do nome da aba. Usada pelo funil "BPC - Autismo" (source=unificada).
+// Abas ignoradas na descoberta (já tratadas em separado ou irrelevantes).
+const SKIP_TABS = new Set(["BASE_UNIFICADA"]);
+let SHEET_TABS: { tab: string; operator: string }[] = [];
 const UNIFIED_TAB = "BASE_UNIFICADA";
 const GATEWAY = "https://connector-gateway.lovable.dev/google_sheets/v4";
+
+async function discoverSheetTabs(): Promise<{ tab: string; operator: string }[]> {
+  const lovableKey = Deno.env.get("LOVABLE_API_KEY");
+  const gsKey = Deno.env.get("GOOGLE_SHEETS_API_KEY");
+  if (!lovableKey || !gsKey) throw new Error("Missing connector keys");
+  const resp = await fetch(
+    `${GATEWAY}/spreadsheets/${SPREADSHEET_ID}?fields=sheets.properties.title`,
+    { headers: { Authorization: `Bearer ${lovableKey}`, "X-Connection-Api-Key": gsKey } },
+  );
+  if (!resp.ok) {
+    const t = await resp.text();
+    throw new Error(`discoverSheetTabs ${resp.status}: ${t.substring(0, 200)}`);
+  }
+  const json = await resp.json();
+  const titles: string[] = (json.sheets || []).map((s: any) => s.properties?.title).filter(Boolean);
+  const found: { tab: string; operator: string }[] = [];
+  for (const title of titles) {
+    if (SKIP_TABS.has(title)) continue;
+    const lower = title.toLowerCase();
+    const match = OPERATOR_KEYWORDS.find((k) => lower.includes(k.keyword));
+    if (match) found.push({ tab: title, operator: match.operator });
+  }
+  return found;
+}
 
 type SheetRow = {
   form_lead_id: string;
