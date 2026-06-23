@@ -396,7 +396,7 @@ export function BpcKpisPanel({ board, fromDate, toDate, dateField, bpcFilter, fi
             <div className="flex items-center justify-center py-4">
               <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
             </div>
-          ) : a2.rows.length === 0 ? (
+          ) : a2.total === 0 ? (
             <p className="text-xs text-muted-foreground italic py-2">Nenhuma chegada no período.</p>
           ) : (
             <div className="space-y-1">
@@ -412,6 +412,26 @@ export function BpcKpisPanel({ board, fromDate, toDate, dateField, bpcFilter, fi
                   <span className="text-xs font-semibold w-10 text-right tabular-nums">{r.count}</span>
                 </div>
               ))}
+              {a2.outros > 0 && (
+                <div className="flex items-center gap-2" title={`Operadores: ${a2.outrosLabels.join(", ")}`}>
+                  <span className="text-xs w-40 truncate text-muted-foreground">
+                    Outros ({a2.outrosLabels.length})
+                  </span>
+                  <div className="flex-1 h-5 bg-muted/40 rounded-sm overflow-hidden">
+                    <div className="h-full bg-muted-foreground/60" style={{ width: `${(a2.outros / a2.max) * 100}%` }} />
+                  </div>
+                  <span className="text-xs font-semibold w-10 text-right tabular-nums">{a2.outros}</span>
+                </div>
+              )}
+              {a2.semOp > 0 && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs w-40 truncate text-muted-foreground italic">Sem operador</span>
+                  <div className="flex-1 h-5 bg-muted/40 rounded-sm overflow-hidden">
+                    <div className="h-full bg-amber-500/60" style={{ width: `${(a2.semOp / a2.max) * 100}%` }} />
+                  </div>
+                  <span className="text-xs font-semibold w-10 text-right tabular-nums">{a2.semOp}</span>
+                </div>
+              )}
             </div>
           )}
         </section>
