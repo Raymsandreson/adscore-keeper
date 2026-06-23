@@ -37,7 +37,7 @@ export const handler: RequestHandler = async (req, res) => {
     const tail = phoneDigits.slice(-8);
     const { data: leads } = await ext
       .from('leads')
-      .select('id, board_id, status, lead_phone, lead_name')
+      .select('id, board_id, status, lead_phone, lead_name, lead_status')
       .ilike('lead_phone', `%${tail}%`)
       .is('deleted_at', null)
       .order('updated_at', { ascending: false })
