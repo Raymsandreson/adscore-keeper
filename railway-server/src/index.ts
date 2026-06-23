@@ -99,6 +99,7 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'transcribe-activity-call': transcribeActivityCall,
   'suggest-step-actions': suggestStepActions,
   'wipe-instance-agent-labels': wipeInstanceAgentLabels,
+  'bpc-sheet-sync': bpcSheetSync,
 };
 
 const app = express();
