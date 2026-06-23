@@ -623,7 +623,7 @@ export function DynamicKanbanBoard({
 
 
         <div ref={bottomScrollRef} onScroll={handleBottomScroll} className="flex gap-1 overflow-x-auto pb-4">
-          {board.stages.map((stage) => {
+          {board.stages.filter(s => s.id !== 'closed').map((stage) => {
             const stageFilter = stageFilters[stage.id] || '';
             const allStageLeads = leadsByStage[stage.id] || [];
             // Filter leads by search query within the column
