@@ -155,11 +155,11 @@ export function BpcKpisPanel({ board, fromDate, toDate, dateField, bpcFilter, fi
     queryFn: async () => {
       if (!b1Stages.length || filterPending) return [] as any[];
       const PAGE = 1000;
-      const leads: Array<{ id: string; lead_name: string | null; acolhedor: string | null; lead_phone: string | null; status: string }> = [];
+      const leads: Array<{ id: string; lead_name: string | null; lead_phone: string | null; status: string }> = [];
       for (let off = 0; ; off += PAGE) {
         const { data, error } = await supabase
           .from("leads")
-          .select("id, lead_name, acolhedor, lead_phone, status")
+          .select("id, lead_name, lead_phone, status")
           .eq("board_id", boardId)
           .in("status", b1Stages)
           .range(off, off + PAGE - 1);
@@ -200,7 +200,7 @@ export function BpcKpisPanel({ board, fromDate, toDate, dateField, bpcFilter, fi
         return {
           id: l.id,
           name: l.lead_name || "(sem nome)",
-          acolhedor: (l.acolhedor || "").trim() || "—",
+          phone: l.lead_phone,
           stage: l.status,
           days,
         };
