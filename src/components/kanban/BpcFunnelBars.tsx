@@ -76,7 +76,6 @@ export function BpcFunnelBars({ board, metrics, loading, onOpenList, onSelectSta
         ) : (
           <div className="space-y-1.5">
             {funnelData.map((stage) => {
-              const widthPercent = Math.max(12, (stage.value / maxValue) * 100);
               const clickable = stage.value > 0;
               const handleClick = clickable
                 ? () => {
