@@ -13,6 +13,7 @@ import { BpcFunnelBars } from "@/components/kanban/BpcFunnelBars";
 import { BpcFormLeadsSheet } from "@/components/whatsapp/FocusDashboard/BpcFormLeadsSheet";
 import { BpcStageLeadsSheet } from "@/components/kanban/BpcStageLeadsSheet";
 import { BpcKpisPanel } from "@/components/kanban/BpcKpisPanel";
+import { BpcSheetSyncButton } from "@/components/kanban/BpcSheetSyncButton";
 import { buildBpcAcolhedorFilter, leadMatchesFilter } from "@/lib/bpcPhoneMatch";
 
 import { Button } from "@/components/ui/button";
