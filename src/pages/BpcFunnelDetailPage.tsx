@@ -1,11 +1,11 @@
 import { useMemo, useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, CalendarIcon, LayoutGrid, Loader2, Users, Filter, RefreshCw } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
-import { db as supabase } from "@/integrations/supabase";
+import { db as supabase, ensureExternalSession } from "@/integrations/supabase";
 import { useKanbanBoards } from "@/hooks/useKanbanBoards";
 import { useBpcFormLeads } from "@/hooks/useBpcFormLeads";
 import { useProfileNames } from "@/hooks/useProfileNames";
@@ -52,6 +52,7 @@ const BpcFunnelDetailPage = () => {
   const { boardId } = useParams<{ boardId: string }>();
   const navigate = useNavigate();
   const { boards } = useKanbanBoards();
+  const queryClient = useQueryClient();
   const board = useMemo(() => boards.find(b => b.id === boardId), [boards, boardId]);
 
   const [dateField, setDateField] = useState<DateField>("created_at");
@@ -174,6 +175,55 @@ const BpcFunnelDetailPage = () => {
     staleTime: 30_000,
     refetchOnWindowFocus: false,
   });
+
+  useEffect(() => {
+    if (!boardId) return;
+
+    const invalidateBpcFunnelData = () => {
+      queryClient.invalidateQueries({ queryKey: ["bpc-detail-leads"] });
+      queryClient.invalidateQueries({ queryKey: ["bpc-stage-leads"] });
+      queryClient.invalidateQueries({ queryKey: ["bpc-kpis-b1"] });
+      queryClient.invalidateQueries({ queryKey: ["bpc-kpis-b2"] });
+    };
+
+    const invalidateAfterHistoryWrite = () => {
+      invalidateBpcFunnelData();
+      window.setTimeout(invalidateBpcFunnelData, 800);
+    };
+
+    let cancelled = false;
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+
+    const subscribeToRealtime = async () => {
+      try {
+        await ensureExternalSession();
+      } catch (err) {
+        console.warn('[BpcFunnelDetailPage] External session unavailable for realtime:', err?.message || err);
+      }
+      if (cancelled) return;
+
+      channel = supabase
+        .channel(`bpc-funnel-detail-${boardId}`)
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "leads", filter: `board_id=eq.${boardId}` },
+          invalidateBpcFunnelData,
+        )
+        .subscribe((status) => {
+          if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') invalidateBpcFunnelData();
+        });
+    };
+
+    subscribeToRealtime();
+
+    window.addEventListener('adscore:lead-stage-changed', invalidateAfterHistoryWrite);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener('adscore:lead-stage-changed', invalidateAfterHistoryWrite);
+      if (channel) supabase.removeChannel(channel);
+    };
+  }, [boardId, queryClient]);
 
   // Stage breakdown — refiltra client-side. Durante carregamento da planilha, mostra dados brutos
   // pra não enganar com "0" enquanto o cruzamento ainda não tá pronto.

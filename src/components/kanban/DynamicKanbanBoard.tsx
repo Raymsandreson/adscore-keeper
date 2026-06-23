@@ -59,7 +59,7 @@ import { KanbanBoard, KanbanStage, useKanbanBoards } from '@/hooks/useKanbanBoar
 import { Lead } from '@/hooks/useLeads';
 import { differenceInDays, differenceInHours } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
-import { externalSupabase } from '@/integrations/supabase/external-client';
+import { ensureExternalSession, externalSupabase } from '@/integrations/supabase/external-client';
 import { LeadContactsManager } from './LeadContactsManager';
 import { LeadCardChecklists } from './LeadCardChecklists';
 import { ProfessionBadgePopover } from '@/components/instagram/ProfessionBadgePopover';
@@ -83,6 +83,14 @@ interface DynamicKanbanBoardProps {
   onManageContacts?: (lead: Lead) => void;
   availableBoards?: KanbanBoard[];
   onChangeLeadStatus?: (leadId: string, newStatus: 'no_response' | 'active' | 'closed' | 'refused' | 'inviavel' | 'cancelled') => void;
+}
+
+const QUERY_CHUNK_SIZE = 200;
+
+function chunkArray<T>(items: T[], size = QUERY_CHUNK_SIZE): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
+  return chunks;
 }
 
 export function DynamicKanbanBoard({
@@ -151,38 +159,59 @@ export function DynamicKanbanBoard({
       const leadIds = leads.map(l => l.id);
       if (leadIds.length === 0) return;
 
-      // Fetch from contact_leads junction table
-      const { data: junctionData, error: junctionError } = await externalSupabase
-        .from('contact_leads')
-        .select('lead_id, contact_id')
-        .in('lead_id', leadIds);
+      try {
+        await ensureExternalSession();
+      } catch (err) {
+        console.warn('[DynamicKanbanBoard] External session unavailable for contacts:', err);
+      }
 
-      if (junctionError) {
-        console.error('Error fetching contact_leads:', junctionError);
-        return;
+      // Fetch from contact_leads junction table
+      const junctionData: Array<{ lead_id: string; contact_id: string }> = [];
+      for (const chunk of chunkArray(leadIds)) {
+        const { data, error } = await externalSupabase
+          .from('contact_leads')
+          .select('lead_id, contact_id')
+          .in('lead_id', chunk);
+
+        if (error) {
+          console.error('Error fetching contact_leads:', error);
+          return;
+        }
+        junctionData.push(...((data || []) as Array<{ lead_id: string; contact_id: string }>));
       }
 
       // Fetch legacy contacts with lead_id
-      const { data: legacyData, error: legacyError } = await supabase
-        .from('contacts')
-        .select('id, lead_id, full_name, phone, instagram_username, profession, profession_cbo_code')
-        .in('lead_id', leadIds);
+      const legacyData: Array<{ id: string; lead_id: string | null; full_name: string; phone?: string | null; instagram_username?: string | null; profession?: string | null; profession_cbo_code?: string | null }> = [];
+      for (const chunk of chunkArray(leadIds)) {
+        const { data, error } = await supabase
+          .from('contacts')
+          .select('id, lead_id, full_name, phone, instagram_username, profession, profession_cbo_code')
+          .in('lead_id', chunk);
 
-      if (legacyError) {
-        console.error('Error fetching legacy contacts:', legacyError);
+        if (error) {
+          console.error('Error fetching legacy contacts:', error);
+          continue;
+        }
+        legacyData.push(...((data || []) as typeof legacyData));
       }
 
       // Get all contact IDs from junction
-      const junctionContactIds = (junctionData || []).map(j => j.contact_id);
+      const junctionContactIds = junctionData.map(j => j.contact_id);
       
       // Fetch contact names for junction contacts
       let junctionContacts: { id: string; full_name: string; phone?: string | null; instagram_username?: string | null; profession?: string | null; profession_cbo_code?: string | null }[] = [];
       if (junctionContactIds.length > 0) {
-        const { data: contactsData } = await supabase
-          .from('contacts')
-          .select('id, full_name, phone, instagram_username, profession, profession_cbo_code')
-          .in('id', junctionContactIds);
-        junctionContacts = contactsData || [];
+        for (const chunk of chunkArray(junctionContactIds)) {
+          const { data: contactsData, error } = await supabase
+            .from('contacts')
+            .select('id, full_name, phone, instagram_username, profession, profession_cbo_code')
+            .in('id', chunk);
+          if (error) {
+            console.error('Error fetching junction contacts:', error);
+            continue;
+          }
+          junctionContacts.push(...((contactsData || []) as typeof junctionContacts));
+        }
       }
 
       // Build contacts map per lead
@@ -190,7 +219,7 @@ export function DynamicKanbanBoard({
       const counts: Record<string, number> = {};
 
       // Add junction contacts
-      (junctionData || []).forEach(junction => {
+      junctionData.forEach(junction => {
         const contact = junctionContacts.find(c => c.id === junction.contact_id);
         if (contact) {
           if (!contactsMap[junction.lead_id]) {
@@ -204,7 +233,7 @@ export function DynamicKanbanBoard({
       });
 
       // Add legacy contacts
-      (legacyData || []).forEach(contact => {
+      legacyData.forEach(contact => {
         if (contact.lead_id) {
           if (!contactsMap[contact.lead_id]) {
             contactsMap[contact.lead_id] = [];
@@ -244,15 +273,25 @@ export function DynamicKanbanBoard({
         return;
       }
 
-      const { data, error } = await externalSupabase
-        .from('lead_stage_history')
-        .select('lead_id, to_stage, changed_at')
-        .in('lead_id', leadIds)
-        .order('changed_at', { ascending: false });
+      try {
+        await ensureExternalSession();
+      } catch (err) {
+        console.warn('[DynamicKanbanBoard] External session unavailable for stage history:', err);
+      }
 
-      if (error) {
-        console.error('Error fetching stage history:', error);
-        return;
+      const data: Array<{ lead_id: string; to_stage: string; changed_at: string }> = [];
+      for (const chunk of chunkArray(leadIds)) {
+        const { data: batch, error } = await externalSupabase
+          .from('lead_stage_history')
+          .select('lead_id, to_stage, changed_at')
+          .in('lead_id', chunk)
+          .order('changed_at', { ascending: false });
+
+        if (error) {
+          console.error('Error fetching stage history:', error);
+          return;
+        }
+        data.push(...((batch || []) as typeof data));
       }
 
       // Pick the most recent entry per (lead_id, to_stage) matching lead.status
@@ -260,7 +299,7 @@ export function DynamicKanbanBoard({
       const leadStatusById: Record<string, string | null> = {};
       leads.forEach(l => { leadStatusById[l.id] = l.status || null; });
 
-      (data || []).forEach((row: any) => {
+      data.forEach((row: any) => {
         const currentStage = leadStatusById[row.lead_id];
         if (!currentStage || row.to_stage !== currentStage) return;
         if (!map[row.lead_id]) {
@@ -272,6 +311,22 @@ export function DynamicKanbanBoard({
     };
 
     fetchStageEntries();
+  }, [leads]);
+
+  useEffect(() => {
+    const handleStageChanged = (event: Event) => {
+      const detail = (event as CustomEvent<{ leadId?: string; toStage?: string; changedAt?: string }>).detail;
+      if (!detail?.leadId || !detail.toStage) return;
+      const current = leads.find((lead) => lead.id === detail.leadId);
+      if (!current || current.status !== detail.toStage) return;
+      setStageEnteredAt((prev) => ({
+        ...prev,
+        [detail.leadId!]: detail.changedAt || new Date().toISOString(),
+      }));
+    };
+
+    window.addEventListener('adscore:lead-stage-changed', handleStageChanged as EventListener);
+    return () => window.removeEventListener('adscore:lead-stage-changed', handleStageChanged as EventListener);
   }, [leads]);
 
   const isOpenLeadStatus = (status?: string | null) =>
@@ -418,6 +473,7 @@ export function DynamicKanbanBoard({
       if (stage?.id.includes('closed') || stage?.id.includes('converted')) {
         setConversionDialog({ open: true, leadId: draggedLead.id, stageId: newStageId });
       } else {
+        setStageEnteredAt((prev) => ({ ...prev, [draggedLead.id]: new Date().toISOString() }));
         onMoveToStage(draggedLead.id, newStageId);
       }
     }
@@ -447,6 +503,7 @@ export function DynamicKanbanBoard({
 
   const handleConversionConfirm = () => {
     if (conversionDialog.leadId && conversionDialog.stageId) {
+      setStageEnteredAt((prev) => ({ ...prev, [conversionDialog.leadId!]: new Date().toISOString() }));
       onMoveToStage(conversionDialog.leadId, conversionDialog.stageId);
     }
     setConversionDialog({ open: false, leadId: null, stageId: null });

@@ -694,85 +694,104 @@ export const useLeads = (adAccountId?: string) => {
 
     window.addEventListener(LEAD_DELETED_EVENT, handleLocalLeadDeleted);
 
-    // Ensure anon session on the External DB before reads/realtime subscribe
-    ensureExternalSession().catch((err) => {
-      console.warn('[useLeads] ensureExternalSession failed (continuing):', err?.message || err);
-    });
-
     fetchLeads();
 
-    const channel = externalSupabase
-      .channel('leads-realtime')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'leads' },
-        (payload) => {
-          // Incremental local update — avoids re-downloading 2000+ leads on every change.
-          // Falls back to full refetch only when payload is unusable.
-          try {
-            const eventType = payload.eventType;
+    let cancelled = false;
+    let channel: ReturnType<typeof externalSupabase.channel> | null = null;
 
-            if (eventType === 'INSERT' && payload.new) {
-              const newRow = payload.new as Lead;
-              if (adAccountId && newRow.ad_account_id !== adAccountId) return;
-              if ((newRow as any).deleted_at) return;
-              setLeads(prev => {
-                if (prev.some(l => l.id === newRow.id)) return prev;
-                const next = [newRow, ...prev];
-                calculateStatsDebounced(next);
-                return next;
-              });
-              return;
-            }
+    const subscribeToRealtime = async () => {
+      try {
+        await ensureExternalSession();
+      } catch (err) {
+        console.warn('[useLeads] ensureExternalSession failed before realtime:', err?.message || err);
+      }
+      if (cancelled) return;
 
-            if (eventType === 'UPDATE' && payload.new) {
-              const updatedRow = payload.new as Lead;
-              setLeads(prev => {
-                // If soft-deleted, drop it
-                if ((updatedRow as any).deleted_at) {
-                  const next = prev.filter(l => l.id !== updatedRow.id);
+      channel = externalSupabase
+        .channel('leads-realtime')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'leads' },
+          (payload) => {
+            // Incremental local update — avoids re-downloading 2000+ leads on every change.
+            // Falls back to full refetch only when payload is unusable.
+            try {
+              const eventType = payload.eventType;
+
+              if (eventType === 'INSERT' && payload.new) {
+                const newRow = payload.new as Lead;
+                if (adAccountId && newRow.ad_account_id !== adAccountId) return;
+                if ((newRow as any).deleted_at) return;
+                setLeads(prev => {
+                  if (prev.some(l => l.id === newRow.id)) return prev;
+                  const next = [newRow, ...prev];
                   calculateStatsDebounced(next);
                   return next;
-                }
-                const idx = prev.findIndex(l => l.id === updatedRow.id);
-                if (idx === -1) return prev;
-                const next = [...prev];
-                next[idx] = { ...prev[idx], ...updatedRow };
-                calculateStatsDebounced(next);
-                return next;
-              });
-              return;
-            }
-
-            if (eventType === 'DELETE' && payload.old) {
-              const oldRow = payload.old as { id?: string };
-              if (!oldRow.id) {
-                realtimeRefetchHandler_legacy();
+                });
                 return;
               }
-              setLeads(prev => {
-                const next = prev.filter(l => l.id !== oldRow.id);
-                calculateStatsDebounced(next);
-                return next;
-              });
-              return;
-            }
 
-            // Unknown event shape — fall back to legacy debounced refetch
-            realtimeRefetchHandler_legacy();
-          } catch (err) {
-            console.warn('[useLeads realtime] incremental update failed, falling back:', err);
+              if (eventType === 'UPDATE' && payload.new) {
+                const updatedRow = payload.new as Lead;
+                setLeads(prev => {
+                  // If soft-deleted, drop it
+                  if ((updatedRow as any).deleted_at) {
+                    const next = prev.filter(l => l.id !== updatedRow.id);
+                    calculateStatsDebounced(next);
+                    return next;
+                  }
+                  const idx = prev.findIndex(l => l.id === updatedRow.id);
+                  if (idx === -1) {
+                    if (adAccountId && updatedRow.ad_account_id !== adAccountId) return prev;
+                    const next = [updatedRow, ...prev];
+                    calculateStatsDebounced(next);
+                    return next;
+                  }
+                  const next = [...prev];
+                  next[idx] = { ...prev[idx], ...updatedRow };
+                  calculateStatsDebounced(next);
+                  return next;
+                });
+                return;
+              }
+
+              if (eventType === 'DELETE' && payload.old) {
+                const oldRow = payload.old as { id?: string };
+                if (!oldRow.id) {
+                  realtimeRefetchHandler_legacy();
+                  return;
+                }
+                setLeads(prev => {
+                  const next = prev.filter(l => l.id !== oldRow.id);
+                  calculateStatsDebounced(next);
+                  return next;
+                });
+                return;
+              }
+
+              // Unknown event shape — fall back to legacy debounced refetch
+              realtimeRefetchHandler_legacy();
+            } catch (err) {
+              console.warn('[useLeads realtime] incremental update failed, falling back:', err);
+              realtimeRefetchHandler_legacy();
+            }
+          }
+        )
+        .subscribe((status) => {
+          if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
             realtimeRefetchHandler_legacy();
           }
-        }
-      )
-      .subscribe();
+        });
+    };
+
+    subscribeToRealtime();
 
     return () => {
+      cancelled = true;
       window.removeEventListener(LEAD_DELETED_EVENT, handleLocalLeadDeleted);
       if (realtimeTimerRef.current) clearTimeout(realtimeTimerRef.current);
       if (statsDebounceRef.current) clearTimeout(statsDebounceRef.current);
-      externalSupabase.removeChannel(channel);
+      if (channel) externalSupabase.removeChannel(channel);
     };
   }, [fetchLeads, adAccountId, realtimeRefetchHandler_legacy, calculateStatsDebounced]);
 
