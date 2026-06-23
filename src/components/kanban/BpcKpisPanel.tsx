@@ -4,7 +4,7 @@ import { BarChart3, Clock, ArrowRightLeft, Loader2, AlertTriangle, Users } from 
 
 import { db as supabase } from "@/integrations/supabase";
 import { KanbanBoard } from "@/hooks/useKanbanBoards";
-import type { BpcFormLead } from "@/hooks/useBpcFormLeads";
+import { useBpcFormLeads, type BpcFormLead } from "@/hooks/useBpcFormLeads";
 import { leadMatchesFilter, phoneKey, type BpcFilterResult } from "@/lib/bpcPhoneMatch";
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -87,18 +87,36 @@ export function BpcKpisPanel({ board, fromDate, toDate, dateField, bpcFilter, fi
   const filterActive = !!bpcFilter?.phoneKeys;
   const phoneKeysSig = filterActive ? Array.from(bpcFilter.phoneKeys!).sort().join(",") : "all";
 
+  // --- Janela larga independente do filtro da página ---
+  // Pega do dia 1 do mês passado até amanhã, para garantir cobertura de Hoje/Semana/Mês
+  // mesmo quando o usuário filtrou a página para um intervalo estreito.
+  const wideRange = useMemo(() => {
+    const { y, m } = brNowParts();
+    const from = new Date(Date.UTC(y, m - 1, 1, 3)); // 1º dia do mês anterior, 00:00 BR
+    const to = new Date(Date.now() + 24 * 3600 * 1000); // amanhã
+    return { from, to };
+  }, []);
+
+  const { leads: wideBpcLeads } = useBpcFormLeads({
+    from: wideRange.from,
+    to: wideRange.to,
+    enabled: true,
+    source: "unificada",
+  });
+
   // Mapa telefone(últimos 8) → operator da planilha (BASE_UNIFICADA).
-  // Usado pra rotular acolhedor em B1 cruzando pelo telefone.
+  // Usa o universo amplo para sempre conseguir rotular acolhedor em B1.
   const phoneToOperator = useMemo(() => {
     const m = new Map<string, string>();
-    for (const l of bpcLeads || []) {
+    const source = wideBpcLeads.length ? wideBpcLeads : bpcLeads;
+    for (const l of source || []) {
       const k = phoneKey(l.phone_normalized || l.phone_raw);
       if (!k) continue;
       const op = (l.operator || "").trim();
       if (op && !m.has(k)) m.set(k, op);
     }
     return m;
-  }, [bpcLeads]);
+  }, [wideBpcLeads, bpcLeads]);
 
   // ---- A1 + A2: derivados 100% da planilha BASE_UNIFICADA (fonte de verdade) ----
   // Período rápido (clique nos cards Hoje/Semana/Mês). Quando ativo, sobrescreve o filtro da página.
@@ -115,13 +133,13 @@ export function BpcKpisPanel({ board, fromDate, toDate, dateField, bpcFilter, fi
   }, [quickPeriod]);
 
 
-  // A1: Hoje / Semana / Mês (recorta a planilha por created_at, ignorando o período da página)
+  // A1: Hoje / Semana / Mês — sempre usa o universo amplo (independente do filtro da página)
   const a1 = useMemo(() => {
     const today = periodToday();
     const week = periodThisWeek();
     const month = periodThisMonth();
     let hoje = 0, semana = 0, mes = 0;
-    for (const l of bpcLeads || []) {
+    for (const l of wideBpcLeads || []) {
       const t = new Date(l.created_at).getTime();
       if (isNaN(t)) continue;
       if (t >= month.start.getTime() && t < month.end.getTime()) mes++;
@@ -129,7 +147,7 @@ export function BpcKpisPanel({ board, fromDate, toDate, dateField, bpcFilter, fi
       if (t >= today.start.getTime() && t < today.end.getTime()) hoje++;
     }
     return { hoje, semana, mes };
-  }, [bpcLeads]);
+  }, [wideBpcLeads]);
 
   // A2: chegadas por acolhedor — canônicos fixos (Mateus, Israel, Karolyne, Edilan).
   // Normaliza variações ("karol"→Karolyne, "edilan santos"→Edilan, etc.).
@@ -151,7 +169,7 @@ export function BpcKpisPanel({ board, fromDate, toDate, dateField, bpcFilter, fi
       if (low.includes("edilan")) return "Edilan";
       return null;
     };
-    for (const l of bpcLeads || []) {
+    for (const l of wideBpcLeads || []) {
       const t = new Date(l.created_at).getTime();
       if (isNaN(t) || t < startMs || t > endMs) continue;
       const op = (l.operator || "").trim();
@@ -166,7 +184,7 @@ export function BpcKpisPanel({ board, fromDate, toDate, dateField, bpcFilter, fi
     const max = Math.max(...allValues, 1);
     const total = rows.reduce((s, r) => s + r.count, 0) + semOp + outros;
     return { rows, semOp, outros, outrosLabels: Array.from(outrosLabels), max, total };
-  }, [bpcLeads, a2Bounds.start?.getTime(), a2Bounds.end?.getTime()]);
+  }, [wideBpcLeads, a2Bounds.start?.getTime(), a2Bounds.end?.getTime()]);
 
   const arrivalsLoading = false;
 
