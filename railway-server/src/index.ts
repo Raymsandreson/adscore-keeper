@@ -37,6 +37,7 @@ import { handler as sendWhatsappCloud } from './functions/send-whatsapp-cloud';
 import { handler as checkWhatsappCloudToken } from './functions/check-whatsapp-cloud-token';
 import { handler as metaCallQueueProcessor } from './functions/meta-call-queue-processor';
 import { handler as sheetLeadIngest } from './functions/sheet-lead-ingest';
+import { handler as bpcSheetSync } from './functions/bpc-sheet-sync';
 import { handler as gmailInssSync } from './functions/gmail-inss-sync';
 import { handler as notifyInssUpdate } from './functions/notify-inss-update';
 import { handler as gmailMessageBody } from './functions/gmail-message-body';
