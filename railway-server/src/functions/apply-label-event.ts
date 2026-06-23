@@ -102,15 +102,20 @@ export const handler: RequestHandler = async (req, res) => {
     }
 
     // 5) Histórico
-    await ext.from('lead_stage_history').insert({
-      lead_id: lead.id,
-      board_id: lead.board_id,
-      from_stage_id: previousStage,
-      to_stage_id: targetStageId,
-      changed_by: null,
-      source: 'whatsapp_label_event',
-      details: { instance_name: instLower, label_ids: labelIds },
-    }).then(() => {}, (e) => console.warn('[apply-label-event] history insert failed:', e?.message));
+    try {
+      const { error: histErr } = await ext.from('lead_stage_history').insert({
+        lead_id: lead.id,
+        from_stage: previousStage,
+        to_stage: targetStageId,
+        from_board_id: lead.board_id,
+        to_board_id: lead.board_id,
+        changed_by: null,
+        notes: `Movido via etiqueta WhatsApp (${instLower}) — labels: ${labelIds.join(',')}`,
+      });
+      if (histErr) console.warn('[apply-label-event] history insert failed:', histErr.message);
+    } catch (e: any) {
+      console.warn('[apply-label-event] history insert threw:', e?.message);
+    }
 
     return res.json({
       success: true,
