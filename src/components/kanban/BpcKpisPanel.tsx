@@ -164,7 +164,6 @@ export function BpcKpisPanel({ board, fromDate, toDate, dateField, bpcFilter, fi
     const total = rows.reduce((s, r) => s + r.count, 0) + semOp + outros;
     return { rows, semOp, outros, outrosLabels: Array.from(outrosLabels), max, total };
   }, [bpcLeads, a2Bounds.start?.getTime(), a2Bounds.end?.getTime()]);
-  }, [bpcLeads, a2Bounds.start?.getTime(), a2Bounds.end?.getTime()]);
 
   const arrivalsLoading = false;
 
