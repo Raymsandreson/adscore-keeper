@@ -169,7 +169,7 @@ export function BpcKpisPanel({ board, fromDate, toDate, dateField, bpcFilter, fi
       if (low.includes("edilan")) return "Edilan";
       return null;
     };
-    for (const l of bpcLeads || []) {
+    for (const l of wideBpcLeads || []) {
       const t = new Date(l.created_at).getTime();
       if (isNaN(t) || t < startMs || t > endMs) continue;
       const op = (l.operator || "").trim();
@@ -184,7 +184,7 @@ export function BpcKpisPanel({ board, fromDate, toDate, dateField, bpcFilter, fi
     const max = Math.max(...allValues, 1);
     const total = rows.reduce((s, r) => s + r.count, 0) + semOp + outros;
     return { rows, semOp, outros, outrosLabels: Array.from(outrosLabels), max, total };
-  }, [bpcLeads, a2Bounds.start?.getTime(), a2Bounds.end?.getTime()]);
+  }, [wideBpcLeads, a2Bounds.start?.getTime(), a2Bounds.end?.getTime()]);
 
   const arrivalsLoading = false;
 
