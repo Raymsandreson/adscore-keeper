@@ -806,7 +806,7 @@ export const useLeads = (adAccountId?: string) => {
         setLeads(prev => {
           const map = new Map(prev.map(l => [l.id, l]));
           let changed = false;
-          for (const row of data as Lead[]) {
+          for (const row of (data as unknown as Lead[])) {
             if ((row as any).deleted_at) {
               if (map.delete(row.id)) changed = true;
               continue;
