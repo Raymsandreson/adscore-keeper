@@ -4,7 +4,7 @@ import { BarChart3, Clock, ArrowRightLeft, Loader2, AlertTriangle, Users } from 
 
 import { db as supabase } from "@/integrations/supabase";
 import { KanbanBoard } from "@/hooks/useKanbanBoards";
-import type { BpcFormLead } from "@/hooks/useBpcFormLeads";
+import { useBpcFormLeads, type BpcFormLead } from "@/hooks/useBpcFormLeads";
 import { leadMatchesFilter, phoneKey, type BpcFilterResult } from "@/lib/bpcPhoneMatch";
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
