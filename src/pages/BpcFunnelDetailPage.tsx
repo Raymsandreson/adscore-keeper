@@ -191,24 +191,37 @@ const BpcFunnelDetailPage = () => {
       window.setTimeout(invalidateBpcFunnelData, 800);
     };
 
-    ensureExternalSession().catch((err) => {
-      console.warn('[BpcFunnelDetailPage] External session unavailable for realtime:', err?.message || err);
-    });
+    let cancelled = false;
+    let channel: ReturnType<typeof supabase.channel> | null = null;
 
-    const channel = supabase
-      .channel(`bpc-funnel-detail-${boardId}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "leads", filter: `board_id=eq.${boardId}` },
-        invalidateBpcFunnelData,
-      )
-      .subscribe();
+    const subscribeToRealtime = async () => {
+      try {
+        await ensureExternalSession();
+      } catch (err) {
+        console.warn('[BpcFunnelDetailPage] External session unavailable for realtime:', err?.message || err);
+      }
+      if (cancelled) return;
+
+      channel = supabase
+        .channel(`bpc-funnel-detail-${boardId}`)
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "leads", filter: `board_id=eq.${boardId}` },
+          invalidateBpcFunnelData,
+        )
+        .subscribe((status) => {
+          if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') invalidateBpcFunnelData();
+        });
+    };
+
+    subscribeToRealtime();
 
     window.addEventListener('adscore:lead-stage-changed', invalidateAfterHistoryWrite);
 
     return () => {
+      cancelled = true;
       window.removeEventListener('adscore:lead-stage-changed', invalidateAfterHistoryWrite);
-      supabase.removeChannel(channel);
+      if (channel) supabase.removeChannel(channel);
     };
   }, [boardId, queryClient]);
 
