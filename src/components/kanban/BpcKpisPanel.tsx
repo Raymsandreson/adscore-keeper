@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { BarChart3, Clock, ArrowRightLeft, Loader2, AlertTriangle, Users } from "lucide-react";
 
@@ -101,10 +101,16 @@ export function BpcKpisPanel({ board, fromDate, toDate, dateField, bpcFilter, fi
   }, [bpcLeads]);
 
   // ---- A1 + A2: derivados 100% da planilha BASE_UNIFICADA (fonte de verdade) ----
-  const a2Bounds = useMemo(() => ({
-    start: fromDate ?? null,
-    end: toDate ?? null,
-  }), [fromDate?.getTime(), toDate?.getTime()]);
+  // Período rápido (clique nos cards Hoje/Semana/Mês). Quando ativo, sobrescreve o filtro da página.
+  type QuickPeriod = "today" | "week" | "month" | null;
+  const [quickPeriod, setQuickPeriod] = useState<QuickPeriod>(null);
+
+  const a2Bounds = useMemo(() => {
+    if (quickPeriod === "today") return periodToday();
+    if (quickPeriod === "week") return periodThisWeek();
+    if (quickPeriod === "month") return periodThisMonth();
+    return { start: fromDate ?? null, end: toDate ?? null };
+  }, [quickPeriod, fromDate?.getTime(), toDate?.getTime()]);
 
   // A1: Hoje / Semana / Mês (recorta a planilha por created_at, ignorando o período da página)
   const a1 = useMemo(() => {
@@ -321,17 +327,45 @@ export function BpcKpisPanel({ board, fromDate, toDate, dateField, bpcFilter, fi
             </div>
           ) : (
             <div className="grid grid-cols-3 gap-2">
-              {[
-                { label: "Hoje", value: a1.hoje },
-                { label: "Esta semana", value: a1.semana },
-                { label: "Este mês", value: a1.mes },
-              ].map((k) => (
-                <div key={k.label} className="rounded-md border bg-muted/30 p-3 text-center">
-                  <div className="text-2xl font-bold text-primary">{k.value}</div>
-                  <div className="text-[11px] text-muted-foreground">{k.label}</div>
-                </div>
-              ))}
+              {([
+                { key: "today" as const, label: "Hoje", value: a1.hoje },
+                { key: "week" as const, label: "Esta semana", value: a1.semana },
+                { key: "month" as const, label: "Este mês", value: a1.mes },
+              ]).map((k) => {
+                const active = quickPeriod === k.key;
+                return (
+                  <button
+                    key={k.label}
+                    type="button"
+                    onClick={() => setQuickPeriod(active ? null : k.key)}
+                    className={cn(
+                      "rounded-md border p-3 text-center transition-colors cursor-pointer",
+                      active
+                        ? "bg-primary/15 border-primary ring-1 ring-primary/40"
+                        : "bg-muted/30 hover:bg-muted/60"
+                    )}
+                    title={active ? "Clique para limpar o filtro" : `Filtrar pelo período: ${k.label}`}
+                  >
+                    <div className={cn("text-2xl font-bold", active ? "text-primary" : "text-primary/90")}>
+                      {k.value}
+                    </div>
+                    <div className="text-[11px] text-muted-foreground">{k.label}</div>
+                  </button>
+                );
+              })}
             </div>
+          )}
+          {quickPeriod && (
+            <p className="text-[11px] text-muted-foreground italic">
+              Filtro rápido ativo — as seções abaixo mostram só o período selecionado.{" "}
+              <button
+                type="button"
+                className="underline underline-offset-2 hover:text-foreground"
+                onClick={() => setQuickPeriod(null)}
+              >
+                Limpar
+              </button>
+            </p>
           )}
         </section>
 
