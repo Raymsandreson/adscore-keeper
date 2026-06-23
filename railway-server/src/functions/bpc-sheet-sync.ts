@@ -13,7 +13,7 @@ const SHEET_TABS: { tab: string; operator: string }[] = [
   { tab: 'LEADS ISRAEL', operator: 'Israel' },
   { tab: 'LEADS CRIS', operator: 'Cris' },
   { tab: 'LEADS MATEUS', operator: 'Mateus' },
-  { tab: '1LEADS EDILAN', operator: 'Edilan' },
+  { tab: 'LEADS EDILAN', operator: 'Edilan' },
   { tab: 'LEDS KAROLYNE', operator: 'Karolyne' },
   { tab: 'LEADS ANDRESSA', operator: 'Andressa' },
   { tab: 'LEAD KEILANE', operator: 'Keilane' },
