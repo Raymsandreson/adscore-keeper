@@ -7,17 +7,40 @@ import { supabase as ext } from '../lib/supabase';
 const SPREADSHEET_ID_DEFAULT = '1EXB6oFovhX2LOHsC2X20LFk-JVIkjk-NR5Er4cUn6Qw';
 const GATEWAY = 'https://connector-gateway.lovable.dev/google_sheets/v4';
 
-// Abas da planilha, com operador derivado do nome da aba.
-const SHEET_TABS: { tab: string; operator: string }[] = [
-  { tab: 'LEADS API', operator: 'API' },
-  { tab: 'LEADS ISRAEL', operator: 'Israel' },
-  { tab: 'LEADS CRIS', operator: 'Cris' },
-  { tab: 'LEADS MATEUS', operator: 'Mateus' },
-  { tab: 'LEADS EDILAN', operator: 'Edilan' },
-  { tab: 'LEDS KAROLYNE', operator: 'Karolyne' },
-  { tab: 'LEADS ANDRESSA', operator: 'Andressa' },
-  { tab: 'LEAD KEILANE', operator: 'Keilane' },
+// Mapeamento por PALAVRA-CHAVE (não por nome exato).
+// Resiliente a renomear aba ("LEADS EDILAN" / "1LEADS EDILAN" / "EDILAN NOVO" → Edilan).
+const OPERATOR_KEYWORDS: { keyword: string; operator: string }[] = [
+  { keyword: 'israel', operator: 'Israel' },
+  { keyword: 'cris', operator: 'Cris' },
+  { keyword: 'mateus', operator: 'Mateus' },
+  { keyword: 'edilan', operator: 'Edilan' },
+  { keyword: 'karol', operator: 'Karolyne' },
+  { keyword: 'andressa', operator: 'Andressa' },
+  { keyword: 'keilane', operator: 'Keilane' },
+  { keyword: 'api', operator: 'API' },
 ];
+const SKIP_TABS = new Set(['BASE_UNIFICADA']);
+
+async function discoverSheetTabs(spreadsheetId: string): Promise<{ tab: string; operator: string }[]> {
+  const lovableKey = process.env.LOVABLE_API_KEY;
+  const gsKey = process.env.GOOGLE_SHEETS_API_KEY;
+  if (!lovableKey || !gsKey) throw new Error('Missing connector keys');
+  const resp = await fetch(
+    `${GATEWAY}/spreadsheets/${spreadsheetId}?fields=sheets.properties.title`,
+    { headers: { Authorization: `Bearer ${lovableKey}`, 'X-Connection-Api-Key': gsKey } },
+  );
+  if (!resp.ok) throw new Error(`discoverSheetTabs ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
+  const json: any = await resp.json();
+  const titles: string[] = (json.sheets || []).map((s: any) => s.properties?.title).filter(Boolean);
+  const found: { tab: string; operator: string }[] = [];
+  for (const title of titles) {
+    if (SKIP_TABS.has(title)) continue;
+    const lower = String(title).toLowerCase();
+    const match = OPERATOR_KEYWORDS.find((k) => lower.includes(k.keyword));
+    if (match) found.push({ tab: title, operator: match.operator });
+  }
+  return found;
+}
 
 interface ParsedRow {
   form_lead_id: string;
@@ -175,7 +198,13 @@ export const handler: RequestHandler = async (req, res) => {
     if (!stages.length) return ok({ success: false, error: 'board sem etapas' });
     const initialStageId = stages[0].id;
 
-    // 2) Lê todas as abas em paralelo limitado (3 por vez pra não estourar quota)
+    // 2) Descoberta dinâmica das abas + leitura em paralelo limitado (3 por vez)
+    let SHEET_TABS: { tab: string; operator: string }[] = [];
+    try {
+      SHEET_TABS = await discoverSheetTabs(spreadsheetId);
+    } catch (e: any) {
+      return ok({ success: false, error: `discover tabs: ${e?.message || e}` });
+    }
     const sheetRows: ParsedRow[] = [];
     const tabErrors: { tab: string; error: string }[] = [];
     for (let i = 0; i < SHEET_TABS.length; i += 3) {

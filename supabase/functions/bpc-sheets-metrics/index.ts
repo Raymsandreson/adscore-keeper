@@ -10,20 +10,48 @@ const corsHeaders = {
 };
 
 const SPREADSHEET_ID = "1EXB6oFovhX2LOHsC2X20LFk-JVIkjk-NR5Er4cUn6Qw";
-const SHEET_TABS: { tab: string; operator: string }[] = [
-  { tab: "LEADS API", operator: "API" },
-  { tab: "LEADS ISRAEL", operator: "Israel" },
-  { tab: "LEADS CRIS", operator: "Cris" },
-  { tab: "LEADS MATEUS", operator: "Mateus" },
-  { tab: "LEADS EDILAN", operator: "Edilan" },
-  { tab: "LEDS KAROLYNE", operator: "Karolyne" },
-  { tab: "LEADS ANDRESSA", operator: "Andressa" },
-  { tab: "LEAD KEILANE", operator: "Keilane" },
+// Mapeamento por PALAVRA-CHAVE (não por nome exato). Resiliente a renomeação
+// de aba ("LEADS EDILAN" / "1LEADS EDILAN" / "EDILAN NOVO" → todos viram Edilan).
+// A primeira keyword que casar (case-insensitive) define o operador.
+const OPERATOR_KEYWORDS: { keyword: string; operator: string }[] = [
+  { keyword: "israel", operator: "Israel" },
+  { keyword: "cris", operator: "Cris" },
+  { keyword: "mateus", operator: "Mateus" },
+  { keyword: "edilan", operator: "Edilan" },
+  { keyword: "karol", operator: "Karolyne" },
+  { keyword: "andressa", operator: "Andressa" },
+  { keyword: "keilane", operator: "Keilane" },
+  { keyword: "api", operator: "API" },
 ];
-// Aba que unifica todas as outras. Aqui o operador vem da COLUNA `origem_vendedor`,
-// não do nome da aba. Usada pelo funil "BPC - Autismo" (source=unificada).
+// Abas ignoradas na descoberta (já tratadas em separado ou irrelevantes).
+const SKIP_TABS = new Set(["BASE_UNIFICADA"]);
+let SHEET_TABS: { tab: string; operator: string }[] = [];
 const UNIFIED_TAB = "BASE_UNIFICADA";
 const GATEWAY = "https://connector-gateway.lovable.dev/google_sheets/v4";
+
+async function discoverSheetTabs(): Promise<{ tab: string; operator: string }[]> {
+  const lovableKey = Deno.env.get("LOVABLE_API_KEY");
+  const gsKey = Deno.env.get("GOOGLE_SHEETS_API_KEY");
+  if (!lovableKey || !gsKey) throw new Error("Missing connector keys");
+  const resp = await fetch(
+    `${GATEWAY}/spreadsheets/${SPREADSHEET_ID}?fields=sheets.properties.title`,
+    { headers: { Authorization: `Bearer ${lovableKey}`, "X-Connection-Api-Key": gsKey } },
+  );
+  if (!resp.ok) {
+    const t = await resp.text();
+    throw new Error(`discoverSheetTabs ${resp.status}: ${t.substring(0, 200)}`);
+  }
+  const json = await resp.json();
+  const titles: string[] = (json.sheets || []).map((s: any) => s.properties?.title).filter(Boolean);
+  const found: { tab: string; operator: string }[] = [];
+  for (const title of titles) {
+    if (SKIP_TABS.has(title)) continue;
+    const lower = title.toLowerCase();
+    const match = OPERATOR_KEYWORDS.find((k) => lower.includes(k.keyword));
+    if (match) found.push({ tab: title, operator: match.operator });
+  }
+  return found;
+}
 
 type SheetRow = {
   form_lead_id: string;
@@ -81,6 +109,7 @@ async function fetchTab(
   }
   const json = await resp.json();
   const values: any[][] = json.values || [];
+  console.log(`[bpc-sheets-metrics] fetchTab ${tab}: ${values.length} raw rows`);
   if (values.length < 2) return [];
   const headers = values[0].map((h: string) => String(h).toLowerCase().trim());
   if (onHeaders) onHeaders(headers);
@@ -88,7 +117,7 @@ async function fetchTab(
 
   return values.slice(1).filter((r) => r.length > 0).map((r) => {
     const o = rowToObject(headers, r);
-    const phoneRaw = o["telefone"] || o["phone_number"] || o["qual_o_seu_número_de_contato_?"] || "";
+    const phoneRaw = o["telefone"] || o["phone_number"] || o["número_do_whatsapp"] || o["qual_o_seu_número_de_contato_?"] || "";
     const name = o["nome_completo"] || o["full_name"] || "";
     return {
       form_lead_id: o["id"] || "",
@@ -185,40 +214,50 @@ Deno.serve(async (req) => {
     const tabsReadNames: string[] = [];
     let debugHeaders: string[] = [];
 
-    if (source === "unificada") {
-      tabsReadNames.push(UNIFIED_TAB);
+    // A planilha BASE_UNIFICADA atualmente está com colunas-chave (telefone, origem_vendedor)
+    // vazias. Por isso, mesmo quando o caller pede source=unificada, lemos as ABAS INDIVIDUAIS
+    // (descobertas dinamicamente) e o operador vem do nome da aba — fonte confiável.
+    try {
+      SHEET_TABS = await discoverSheetTabs();
+    } catch (e: any) {
+      console.error("[bpc-sheets-metrics] discoverSheetTabs failed:", e?.message || e);
+      SHEET_TABS = [];
+    }
+    const tabsToRead = instanceFilter
+      ? SHEET_TABS.filter((s) => instanceFilter.includes(s.operator.toLowerCase()))
+      : SHEET_TABS;
+    tabsReadNames.push(...tabsToRead.map((t) => t.tab));
+    for (let i = 0; i < tabsToRead.length; i++) {
+      const s = tabsToRead[i];
       try {
-        const rows = await fetchTab(UNIFIED_TAB, true, (h) => { debugHeaders = h; });
+        const rows = await fetchTab(s.tab, false, (h) => { if (!debugHeaders.length) debugHeaders = h; });
         allRows.push(...rows);
       } catch (e: any) {
         const msg = e?.message || String(e);
-        console.error(`[bpc-sheets-metrics] unified tab failed:`, msg);
-        tabErrors.push({ tab: UNIFIED_TAB, error: msg.substring(0, 200) });
+        console.error(`[bpc-sheets-metrics] tab "${s.tab}" failed:`, msg);
+        tabErrors.push({ tab: s.tab, error: msg.substring(0, 200) });
       }
-    } else {
-      const tabsToRead = instanceFilter
-        ? SHEET_TABS.filter((s) => instanceFilter.includes(s.operator.toLowerCase()))
-        : SHEET_TABS;
-      tabsReadNames.push(...tabsToRead.map((t) => t.tab));
-      for (let i = 0; i < tabsToRead.length; i++) {
-        const s = tabsToRead[i];
-        try {
-          const rows = await fetchTab(s.tab);
-          allRows.push(...rows);
-        } catch (e: any) {
-          const msg = e?.message || String(e);
-          console.error(`[bpc-sheets-metrics] tab "${s.tab}" failed:`, msg);
-          tabErrors.push({ tab: s.tab, error: msg.substring(0, 200) });
-        }
-        if (i < tabsToRead.length - 1) await new Promise((r) => setTimeout(r, 250));
-      }
+      if (i < tabsToRead.length - 1) await new Promise((r) => setTimeout(r, 250));
     }
+    // Marcamos source=unificada no response pra compatibilidade com o caller,
+    // mas a fonte real são as abas individuais.
+    void source;
+
+    // Dedup por form_lead_id (mesmo lead pode aparecer em abas duplicadas tipo
+    // "LEADS EDILAN" + "1LEADS EDILAN").
+    const seenIds = new Set<string>();
+    const dedupRows = allRows.filter((r) => {
+      const id = r.form_lead_id || `${r.phone_normalized}|${r.created_at}`;
+      if (seenIds.has(id)) return false;
+      seenIds.add(id);
+      return true;
+    });
 
     // Para "created" filtramos cedo (economia). Pros outros precisamos cruzar
     // com WA antes — então usamos todas as linhas como base.
     const baseRows = dateType === "created"
-      ? allRows.filter((r) => inPeriod(r.created_at, fromISO, toISO))
-      : allRows;
+      ? dedupRows.filter((r) => inPeriod(r.created_at, fromISO, toISO))
+      : dedupRows;
 
     // Cross-check com whatsapp_messages: pegamos PRIMEIRA e ÚLTIMA mensagem por telefone.
     const phones = Array.from(new Set(baseRows.map((r) => r.phone_normalized)));
@@ -282,18 +321,15 @@ Deno.serve(async (req) => {
     const toCallNow = leads.filter((l) => !l.has_whatsapp && !l.is_unviable).length;
     const alreadyOnWhatsApp = leads.filter((l) => l.has_whatsapp).length;
 
-    // Breakdown by operator. Nas abas por operador, cada aba = um operador.
-    // Na unificada, os operadores vêm da coluna `origem_vendedor`.
-    const operatorKeys = source === "unificada"
-      ? Array.from(new Set(leads.map((l) => l.operator).filter(Boolean)))
-      : SHEET_TABS.map((m) => m.operator);
+    // Breakdown por OPERADOR (dedup de aba): se 2 abas casam o mesmo operador
+    // (ex: "LEADS EDILAN" + "1LEADS EDILAN"), agregamos em uma linha só.
+    const operatorKeys = Array.from(new Set(SHEET_TABS.map((m) => m.operator)));
     const byOperator = operatorKeys.map((op) => {
       const opLeads = leads.filter((l) => l.operator === op);
+      const tabs = SHEET_TABS.filter((m) => m.operator === op).map((m) => m.tab);
       return {
         operator: op,
-        tab: source === "unificada"
-          ? UNIFIED_TAB
-          : (SHEET_TABS.find((m) => m.operator === op)?.tab ?? ""),
+        tab: tabs.join(" + "),
         total: opLeads.length,
         unviable: opLeads.filter((l) => l.is_unviable).length,
         toCallNow: opLeads.filter((l) => !l.has_whatsapp && !l.is_unviable).length,
