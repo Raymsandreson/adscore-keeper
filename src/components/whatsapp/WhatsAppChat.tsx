@@ -847,7 +847,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
       }
       const { data } = await externalSupabase
         .from('leads')
-        .select('adset_name, ad_name, campaign_name')
+        .select('adset_name, ad_name, campaign_name, board_id, status')
         .eq('id', conversation.lead_id)
         .maybeSingle();
       if (cancelled) return;
@@ -859,6 +859,11 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         });
       } else {
         setAdOrigin(null);
+      }
+      if (data && (data as any).board_id) {
+        setLeadStageInfo({ boardId: String((data as any).board_id), stageId: (data as any).status || null });
+      } else {
+        setLeadStageInfo(null);
       }
     })();
     return () => { cancelled = true; };
