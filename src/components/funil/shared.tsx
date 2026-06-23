@@ -21,13 +21,11 @@ export const FUNIL_THEME = {
 export function AnimatedNumber({
   value,
   className,
-  style,
   format = (n) => fmt.format(n),
   duration = 600,
 }: {
   value: number;
   className?: string;
-  style?: React.CSSProperties;
   format?: (n: number) => string;
   duration?: number;
 }) {
@@ -54,7 +52,7 @@ export function AnimatedNumber({
   }, [value]);
 
   return (
-    <span className={className} style={{ fontVariantNumeric: "tabular-nums", ...style }}>
+    <span className={className} style={{ fontVariantNumeric: "tabular-nums" }}>
       {format(display)}
     </span>
   );

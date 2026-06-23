@@ -30,6 +30,7 @@ function Cell({
       <AnimatedNumber
         value={value}
         className="block mt-2 text-3xl md:text-[32px] font-semibold"
+        // @ts-expect-error inline style
         style={{
           color: tone ?? FUNIL_THEME.textPrimary,
           fontFamily: '"IBM Plex Sans", sans-serif',
