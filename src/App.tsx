@@ -274,7 +274,7 @@ function SidebarLayout() {
                 <Route path="/workflow" element={<ProtectedRoute><WorkflowPage /></ProtectedRoute>} />
                 <Route path="/sales-funnels" element={<ProtectedRoute><SalesFunnelsPage /></ProtectedRoute>} />
                 <Route path="/sales-funnels/bpc/:boardId/analytics" element={<ProtectedRoute><FunilConversaoPage /></ProtectedRoute>} />
-                <Route path="/sales-funnels/gestao" element={<ProtectedRoute><SalesFunnelsPage /></ProtectedRoute>} />
+                
                 <Route path="/sales-funnels/bpc/:boardId" element={<ProtectedRoute><BpcFunnelDetailPage /></ProtectedRoute>} />
                 <Route path="/workflow-progress" element={<ProtectedRoute><WorkflowProgressPage /></ProtectedRoute>} />
                 <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
