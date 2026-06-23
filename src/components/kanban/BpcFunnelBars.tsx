@@ -99,10 +99,10 @@ export function BpcFunnelBars({ board, metrics, loading, onOpenList, onSelectSta
                 >
                   <div className="flex-1 min-w-0">
                     <div
-                      className="h-8 rounded-md flex items-center justify-between px-2.5 transition-all duration-300"
-                      style={{ backgroundColor: stage.color, width: `${widthPercent}%` }}
+                      className="h-8 rounded-md flex items-center justify-between px-2.5 transition-all duration-300 w-full"
+                      style={{ backgroundColor: stage.color }}
                     >
-                      <span className="text-white text-[11px] font-medium truncate mr-1">{stage.name}</span>
+                      <span className="text-white text-[11px] font-medium mr-1">{stage.name}</span>
                       <span className="text-white text-xs font-bold shrink-0">{stage.value}</span>
                     </div>
                   </div>
