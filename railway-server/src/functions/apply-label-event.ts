@@ -50,6 +50,11 @@ export const handler: RequestHandler = async (req, res) => {
     if (!lead.board_id) {
       return res.json({ success: true, moved: false, reason: 'lead sem board_id' });
     }
+    // Política (jun/2026): leads já fechados não são movimentados via etiqueta.
+    // Reabertura/fechamento agora é decisão manual do acolhedor no kanban.
+    if ((lead as any).lead_status === 'closed') {
+      return res.json({ success: true, moved: false, reason: 'lead já está closed — etiquetas não movem caso fechado' });
+    }
 
     // Se o chat ficou sem etiqueta, nada a fazer (não removemos do funil sozinhos).
     if (labelIds.length === 0) {
