@@ -1028,13 +1028,13 @@ Deno.serve(async (req) => {
     };
 
     // ========== EARLY SKIP: Filter high-volume noise events BEFORE logging ==========
+    // NOTA: "labels" NÃO está aqui — é processado abaixo (WA -> Sistema, mover card no Kanban)
     const skippableEvents = [
       "messages_update",
       "presence",
       "chats_update",
       "chats_delete",
       "contacts_update",
-      "labels",
       "message_ack",
       "chats",
     ];
