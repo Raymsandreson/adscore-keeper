@@ -35,6 +35,7 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
   'sync-result-labels': 'railway',
   'sync-stage-labels': 'railway',
   'apply-stage-label': 'railway',
+  'apply-label-event': 'railway',
   'list-stage-label-mappings': 'railway',
   'set-stage-result-key': 'railway',
   'get-whatsapp-group-info': 'railway',
