@@ -23,6 +23,8 @@ interface Props {
   bpcFilter: BpcFilterResult;
   /** True quando filtro acolhedor está ativo mas a planilha ainda carrega. */
   filterPending: boolean;
+  /** Leads vindos da planilha BASE_UNIFICADA — fonte de verdade pra "chegadas". */
+  bpcLeads: BpcFormLead[];
 }
 
 const STALE_DAYS_HIGHLIGHT = 7; // destaque visual: parado >7 dias na etapa
