@@ -36,10 +36,14 @@ export async function uazapiChatLabel(
   action: 'add' | 'remove',
 ): Promise<ChatLabelResult> {
   const url = `${baseUrl.replace(/\/$/, '')}/chat/labels`;
+  const body: Record<string, unknown> = { number: numberDigits };
+  if (action === 'add') body.add_labelid = labelId;
+  else body.remove_labelid = labelId;
+
   const r = await fetchWithTimeout(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', token },
-    body: JSON.stringify({ number: numberDigits, labelid: labelId, action }),
+    body: JSON.stringify(body),
   });
   const text = await r.text();
   let data: any = null;
