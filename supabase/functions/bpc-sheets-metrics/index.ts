@@ -224,6 +224,13 @@ Deno.serve(async (req) => {
         tabErrors.push({ tab: UNIFIED_TAB, error: msg.substring(0, 200) });
       }
     } else {
+      // Descobre dinamicamente as abas existentes na planilha (resiliente a rename).
+      try {
+        SHEET_TABS = await discoverSheetTabs();
+      } catch (e: any) {
+        console.error("[bpc-sheets-metrics] discoverSheetTabs failed:", e?.message || e);
+        SHEET_TABS = [];
+      }
       const tabsToRead = instanceFilter
         ? SHEET_TABS.filter((s) => instanceFilter.includes(s.operator.toLowerCase()))
         : SHEET_TABS;
