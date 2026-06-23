@@ -1,10 +1,12 @@
 // Aplicação/remoção de etiquetas em chat (não confundir com /label/edit que cria a etiqueta).
 //
-// UazAPI: POST /chat/labels  body: { number, labelid, action: 'add' | 'remove' }
+// UazAPI (jun/2026): POST /chat/labels aceita SOMENTE UMA das três operações por chamada:
+//   { number, add_labelid: "<id>" }     -> adiciona uma etiqueta
+//   { number, remove_labelid: "<id>" }  -> remove uma etiqueta
+//   { number, labelids: ["<id>", ...] } -> substitui o conjunto inteiro
+// Mandar `labelid` + `action` (formato antigo) hoje devolve 400 com
+// "Use only one operation: labelids, add_labelid, or remove_labelid".
 // Header: token = instance_token. number = só dígitos do telefone (sem @s.whatsapp.net).
-//
-// Se a UazAPI da instância usar variação diferente desse endpoint, ajustar aqui
-// e tudo (apply-stage-label, webhook reverso, manual select) passa a funcionar.
 
 const UAZAPI_TIMEOUT_MS = 10000;
 
