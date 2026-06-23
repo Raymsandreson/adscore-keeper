@@ -109,6 +109,7 @@ async function fetchTab(
   }
   const json = await resp.json();
   const values: any[][] = json.values || [];
+  console.log(`[bpc-sheets-metrics] fetchTab ${tab}: ${values.length} raw rows`);
   if (values.length < 2) return [];
   const headers = values[0].map((h: string) => String(h).toLowerCase().trim());
   if (onHeaders) onHeaders(headers);
