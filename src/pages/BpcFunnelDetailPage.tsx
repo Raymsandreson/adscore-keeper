@@ -374,6 +374,17 @@ const BpcFunnelDetailPage = () => {
         leadsPerStage={leadsData?.byStage || {}}
       />
 
+      {/* KPIs do Funil — somente leitura, abaixo do Funil de Conversão */}
+      <BpcKpisPanel
+        board={board}
+        fromDate={fromDate}
+        toDate={toDate}
+        dateField={dateField}
+        bpcFilter={bpcFilter}
+        filterPending={filterPending}
+      />
+
+
       <BpcFormLeadsSheet
         open={sheetOpen}
         onOpenChange={setSheetOpen}
