@@ -49,14 +49,7 @@ export function BpcFunnelBars({ board, metrics, loading, onOpenList, onSelectSta
       };
     });
     const maxValue = Math.max(...data.map((s) => s.value), 1);
-    return data.map((stage) => {
-      const pct = (stage.value / maxValue) * 100;
-      let barColor: string;
-      if (pct <= 40) barColor = '#ef4444';
-      else if (pct <= 70) barColor = '#f59e0b';
-      else barColor = '#22c55e';
-      return { ...stage, maxValue, barColor };
-    });
+    return data.map((stage) => ({ ...stage, maxValue }));
   }, [stages, metrics.total, leadsPerStage]);
 
   
