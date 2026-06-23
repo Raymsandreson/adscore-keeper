@@ -97,7 +97,7 @@ export function BpcKpisPanel({ board, fromDate, toDate, dateField, bpcFilter, fi
   // Pega do dia 1 do mês passado até amanhã, para garantir cobertura de Hoje/Semana/Mês
   // mesmo quando o usuário filtrou a página para um intervalo estreito.
   const wideRange = useMemo(() => {
-    const { y, m } = brNowParts();
+    const { y, m } = sheetNowParts();
     const from = new Date(Date.UTC(y, m - 1, 1, 3)); // 1º dia do mês anterior, 00:00 BR
     const to = new Date(Date.now() + 24 * 3600 * 1000); // amanhã
     return { from, to };
