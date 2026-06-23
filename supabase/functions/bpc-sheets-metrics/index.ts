@@ -311,18 +311,15 @@ Deno.serve(async (req) => {
     const toCallNow = leads.filter((l) => !l.has_whatsapp && !l.is_unviable).length;
     const alreadyOnWhatsApp = leads.filter((l) => l.has_whatsapp).length;
 
-    // Breakdown by operator. Nas abas por operador, cada aba = um operador.
-    // Na unificada, os operadores vêm da coluna `origem_vendedor`.
-    const operatorKeys = source === "unificada"
-      ? Array.from(new Set(leads.map((l) => l.operator).filter(Boolean)))
-      : SHEET_TABS.map((m) => m.operator);
+    // Breakdown por OPERADOR (dedup de aba): se 2 abas casam o mesmo operador
+    // (ex: "LEADS EDILAN" + "1LEADS EDILAN"), agregamos em uma linha só.
+    const operatorKeys = Array.from(new Set(SHEET_TABS.map((m) => m.operator)));
     const byOperator = operatorKeys.map((op) => {
       const opLeads = leads.filter((l) => l.operator === op);
+      const tabs = SHEET_TABS.filter((m) => m.operator === op).map((m) => m.tab);
       return {
         operator: op,
-        tab: source === "unificada"
-          ? UNIFIED_TAB
-          : (SHEET_TABS.find((m) => m.operator === op)?.tab ?? ""),
+        tab: tabs.join(" + "),
         total: opLeads.length,
         unviable: opLeads.filter((l) => l.is_unviable).length,
         toCallNow: opLeads.filter((l) => !l.has_whatsapp && !l.is_unviable).length,
