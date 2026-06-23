@@ -681,20 +681,28 @@ export const useLeads = (adAccountId?: string) => {
     }, 3000);
   }, [fetchLeads]);
 
+  // Refs estáveis para evitar re-execução do effect quando callbacks mudam de identidade
+  const fetchLeadsRef = useRef(fetchLeads);
+  const calculateStatsDebouncedRef = useRef(calculateStatsDebounced);
+  const realtimeRefetchRef = useRef(realtimeRefetchHandler_legacy);
+  useEffect(() => { fetchLeadsRef.current = fetchLeads; }, [fetchLeads]);
+  useEffect(() => { calculateStatsDebouncedRef.current = calculateStatsDebounced; }, [calculateStatsDebounced]);
+  useEffect(() => { realtimeRefetchRef.current = realtimeRefetchHandler_legacy; }, [realtimeRefetchHandler_legacy]);
+
   useEffect(() => {
     const handleLocalLeadDeleted = (event: Event) => {
       const leadId = (event as CustomEvent<{ leadId?: string }>).detail?.leadId;
       if (!leadId) return;
       setLeads(prev => {
         const next = prev.filter(l => l.id !== leadId);
-        if (next.length !== prev.length) calculateStatsDebounced(next);
+        if (next.length !== prev.length) calculateStatsDebouncedRef.current(next);
         return next;
       });
     };
 
     window.addEventListener(LEAD_DELETED_EVENT, handleLocalLeadDeleted);
 
-    fetchLeads();
+    fetchLeadsRef.current();
 
     let cancelled = false;
     let channel: ReturnType<typeof externalSupabase.channel> | null = null;
@@ -702,7 +710,7 @@ export const useLeads = (adAccountId?: string) => {
     const subscribeToRealtime = async () => {
       try {
         await ensureExternalSession();
-      } catch (err) {
+      } catch (err: any) {
         console.warn('[useLeads] ensureExternalSession failed before realtime:', err?.message || err);
       }
       if (cancelled) return;
@@ -713,8 +721,6 @@ export const useLeads = (adAccountId?: string) => {
           'postgres_changes',
           { event: '*', schema: 'public', table: 'leads' },
           (payload) => {
-            // Incremental local update — avoids re-downloading 2000+ leads on every change.
-            // Falls back to full refetch only when payload is unusable.
             try {
               const eventType = payload.eventType;
 
@@ -725,7 +731,7 @@ export const useLeads = (adAccountId?: string) => {
                 setLeads(prev => {
                   if (prev.some(l => l.id === newRow.id)) return prev;
                   const next = [newRow, ...prev];
-                  calculateStatsDebounced(next);
+                  calculateStatsDebouncedRef.current(next);
                   return next;
                 });
                 return;
@@ -734,22 +740,21 @@ export const useLeads = (adAccountId?: string) => {
               if (eventType === 'UPDATE' && payload.new) {
                 const updatedRow = payload.new as Lead;
                 setLeads(prev => {
-                  // If soft-deleted, drop it
                   if ((updatedRow as any).deleted_at) {
                     const next = prev.filter(l => l.id !== updatedRow.id);
-                    calculateStatsDebounced(next);
+                    calculateStatsDebouncedRef.current(next);
                     return next;
                   }
                   const idx = prev.findIndex(l => l.id === updatedRow.id);
                   if (idx === -1) {
                     if (adAccountId && updatedRow.ad_account_id !== adAccountId) return prev;
                     const next = [updatedRow, ...prev];
-                    calculateStatsDebounced(next);
+                    calculateStatsDebouncedRef.current(next);
                     return next;
                   }
                   const next = [...prev];
                   next[idx] = { ...prev[idx], ...updatedRow };
-                  calculateStatsDebounced(next);
+                  calculateStatsDebouncedRef.current(next);
                   return next;
                 });
                 return;
@@ -758,37 +763,33 @@ export const useLeads = (adAccountId?: string) => {
               if (eventType === 'DELETE' && payload.old) {
                 const oldRow = payload.old as { id?: string };
                 if (!oldRow.id) {
-                  realtimeRefetchHandler_legacy();
+                  realtimeRefetchRef.current();
                   return;
                 }
                 setLeads(prev => {
                   const next = prev.filter(l => l.id !== oldRow.id);
-                  calculateStatsDebounced(next);
+                  calculateStatsDebouncedRef.current(next);
                   return next;
                 });
                 return;
               }
 
-              // Unknown event shape — fall back to legacy debounced refetch
-              realtimeRefetchHandler_legacy();
+              realtimeRefetchRef.current();
             } catch (err) {
               console.warn('[useLeads realtime] incremental update failed, falling back:', err);
-              realtimeRefetchHandler_legacy();
+              realtimeRefetchRef.current();
             }
           }
         )
         .subscribe((status) => {
           if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-            realtimeRefetchHandler_legacy();
+            realtimeRefetchRef.current();
           }
         });
     };
 
     subscribeToRealtime();
 
-    // Polling delta a cada 3s — rede de segurança caso o canal realtime caia
-    // ou o evento não chegue (ex: webhook updou via service role e o filtro RLS engoliu).
-    // Busca só leads com updated_at > último poll (leve, traz só o que mudou).
     let lastPollAt = new Date(Date.now() - 15_000).toISOString();
     const pollInterval = setInterval(async () => {
       try {
@@ -821,7 +822,7 @@ export const useLeads = (adAccountId?: string) => {
           }
           if (!changed) return prev;
           const next = Array.from(map.values());
-          calculateStatsDebounced(next);
+          calculateStatsDebouncedRef.current(next);
           return next;
         });
       } catch {
@@ -837,7 +838,8 @@ export const useLeads = (adAccountId?: string) => {
       clearInterval(pollInterval);
       if (channel) externalSupabase.removeChannel(channel);
     };
-  }, [fetchLeads, adAccountId, realtimeRefetchHandler_legacy, calculateStatsDebounced]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adAccountId]);
 
   return {
     leads,
