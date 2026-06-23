@@ -43,6 +43,7 @@ import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { logGroupAudit } from '@/lib/groupAuditLog';
 import { normalizeWhatsAppConversationPhone } from '@/lib/whatsappPhone';
 import { AITextActions } from '@/components/ui/AITextActions';
+import { StageLabelSelect } from '@/components/kanban/StageLabelSelect';
 
 const TREATMENT_OPTIONS = ['', 'Dr.', 'Dra.', 'Sr.', 'Sra.', 'Prof.', 'Profa.'];
 const NAME_FORMAT_OPTIONS = [
@@ -787,6 +788,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const [muteType, setMuteType] = useState<string | null>(null);
   const [muteLoading, setMuteLoading] = useState(false);
   const [adOrigin, setAdOrigin] = useState<{ adset_name: string | null; ad_name: string | null; campaign_name: string | null } | null>(null);
+  const [leadStageInfo, setLeadStageInfo] = useState<{ boardId: string; stageId: string | null } | null>(null);
   const { notes, addNote, deleteNote } = useWhatsAppInternalNotes(conversation.phone);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -845,7 +847,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
       }
       const { data } = await externalSupabase
         .from('leads')
-        .select('adset_name, ad_name, campaign_name')
+        .select('adset_name, ad_name, campaign_name, board_id, status')
         .eq('id', conversation.lead_id)
         .maybeSingle();
       if (cancelled) return;
@@ -857,6 +859,11 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         });
       } else {
         setAdOrigin(null);
+      }
+      if (data && (data as any).board_id) {
+        setLeadStageInfo({ boardId: String((data as any).board_id), stageId: (data as any).status || null });
+      } else {
+        setLeadStageInfo(null);
       }
     })();
     return () => { cancelled = true; };
@@ -2361,6 +2368,23 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
               >
                 <Link2 className="h-3 w-3" /> Ver Lead
               </button>
+            )}
+            {primaryLeadId && leadStageInfo && (
+              <div
+                className="h-6 inline-flex items-center gap-1 px-1.5 rounded-full bg-muted/60 border border-border"
+                title="Mudar etiqueta no WhatsApp e a etapa no Kanban"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <StageLabelSelect
+                  variant="card"
+                  leadId={primaryLeadId}
+                  boardId={leadStageInfo.boardId}
+                  currentStageId={leadStageInfo.stageId}
+                  onStageChanged={(newStageId) =>
+                    setLeadStageInfo((prev) => (prev ? { ...prev, stageId: newStageId } : prev))
+                  }
+                />
+              </div>
             )}
             {conversation.contact_id && onViewContact && (
               <button
