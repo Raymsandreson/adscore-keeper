@@ -1027,14 +1027,61 @@ Deno.serve(async (req) => {
       });
     };
 
+    // ========== LABELS EVENT (WA -> Sistema): mover card no Kanban ==========
+    // Quando o operador troca a etiqueta direto no WhatsApp, o card do lead
+    // precisa acompanhar. Proxy fire-and-forget pro Railway que faz o trabalho.
+    if (eventType === "labels" && !isCallEvent) {
+      try {
+        const chatObj = body.chat || {};
+        const jid: string = String(chatObj.wa_chatid || chatObj.id || chatObj.wa_fastid || "");
+        const isGroup = jid.includes("@g.us");
+        // Telefone: tira sufixo @s.whatsapp.net e mantém só dígitos
+        const phone = jid.replace(/@.*$/, "").replace(/\D/g, "");
+        const rawLabels = chatObj.wa_labels ?? chatObj.labels ?? body.labels ?? [];
+        const labelIds: string[] = Array.isArray(rawLabels)
+          ? rawLabels.map((l: any) => String(typeof l === "object" ? (l.id ?? l.labelid ?? l.label_id ?? "") : l)).filter(Boolean)
+          : [];
+
+        if (!isGroup && phone && webhookInstanceName) {
+          const RAILWAY_URL = Deno.env.get("RAILWAY_URL") || "https://adscore-keeper-production.up.railway.app";
+          // fire-and-forget com timeout curto pra não segurar o webhook
+          const ctrl = new AbortController();
+          const t = setTimeout(() => ctrl.abort(), 4000);
+          fetch(`${RAILWAY_URL}/functions/apply-label-event`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ instance_name: webhookInstanceName, phone, label_ids: labelIds }),
+            signal: ctrl.signal,
+          })
+            .then(async (r) => {
+              clearTimeout(t);
+              const txt = await r.text().catch(() => "");
+              console.log("[whatsapp-webhook] labels->railway:", r.status, txt.slice(0, 200));
+            })
+            .catch((e) => {
+              clearTimeout(t);
+              console.warn("[whatsapp-webhook] labels->railway failed:", e?.message);
+            });
+        }
+      } catch (e: any) {
+        console.warn("[whatsapp-webhook] labels handler error:", e?.message);
+      }
+      await logWebhook("processed_labels");
+      return new Response(
+        JSON.stringify({ status: "ok", reason: "labels event forwarded" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 },
+      );
+    }
+
+
     // ========== EARLY SKIP: Filter high-volume noise events BEFORE logging ==========
+    // NOTA: "labels" NÃO está aqui — é processado abaixo (WA -> Sistema, mover card no Kanban)
     const skippableEvents = [
       "messages_update",
       "presence",
       "chats_update",
       "chats_delete",
       "contacts_update",
-      "labels",
       "message_ack",
       "chats",
     ];
