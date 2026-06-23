@@ -101,10 +101,16 @@ export function BpcKpisPanel({ board, fromDate, toDate, dateField, bpcFilter, fi
   }, [bpcLeads]);
 
   // ---- A1 + A2: derivados 100% da planilha BASE_UNIFICADA (fonte de verdade) ----
-  const a2Bounds = useMemo(() => ({
-    start: fromDate ?? null,
-    end: toDate ?? null,
-  }), [fromDate?.getTime(), toDate?.getTime()]);
+  // Período rápido (clique nos cards Hoje/Semana/Mês). Quando ativo, sobrescreve o filtro da página.
+  type QuickPeriod = "today" | "week" | "month" | null;
+  const [quickPeriod, setQuickPeriod] = useState<QuickPeriod>(null);
+
+  const a2Bounds = useMemo(() => {
+    if (quickPeriod === "today") return periodToday();
+    if (quickPeriod === "week") return periodThisWeek();
+    if (quickPeriod === "month") return periodThisMonth();
+    return { start: fromDate ?? null, end: toDate ?? null };
+  }, [quickPeriod, fromDate?.getTime(), toDate?.getTime()]);
 
   // A1: Hoje / Semana / Mês (recorta a planilha por created_at, ignorando o período da página)
   const a1 = useMemo(() => {
