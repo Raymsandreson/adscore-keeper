@@ -117,7 +117,7 @@ async function fetchTab(
 
   return values.slice(1).filter((r) => r.length > 0).map((r) => {
     const o = rowToObject(headers, r);
-    const phoneRaw = o["telefone"] || o["phone_number"] || o["qual_o_seu_número_de_contato_?"] || "";
+    const phoneRaw = o["telefone"] || o["phone_number"] || o["número_do_whatsapp"] || o["qual_o_seu_número_de_contato_?"] || "";
     const name = o["nome_completo"] || o["full_name"] || "";
     return {
       form_lead_id: o["id"] || "",
