@@ -28,6 +28,7 @@ interface Props {
 }
 
 const STALE_DAYS_HIGHLIGHT = 7; // destaque visual: parado >7 dias na etapa
+const B1_QUERY_VERSION = "stage-days-fallback-today-v2";
 
 // ---------- helpers de período ----------
 // IMPORTANTE: a planilha grava timestamps em -05:00 (fuso Meta/México).
@@ -70,6 +71,12 @@ function periodThisMonth() {
 
 function daysBetween(a: Date, b: Date) {
   return Math.floor((a.getTime() - b.getTime()) / 86400000);
+}
+
+function parseValidDate(raw: string | null | undefined): Date | null {
+  if (!raw) return null;
+  const date = new Date(raw);
+  return Number.isNaN(date.getTime()) ? null : date;
 }
 
 // ---------- componente ----------
@@ -199,7 +206,7 @@ export function BpcKpisPanel({ board, fromDate, toDate, dateField, bpcFilter, fi
   const b1Stages = [procAssinadaId, docsProtocoloId].filter(Boolean) as string[];
 
   const { data: b1Data, isFetching: b1Loading } = useQuery({
-    queryKey: ["bpc-kpis-b1", boardId, b1Stages.join(","), phoneKeysSig, filterPending],
+    queryKey: ["bpc-kpis-b1", B1_QUERY_VERSION, boardId, b1Stages.join(","), phoneKeysSig, filterPending],
     queryFn: async () => {
       if (!b1Stages.length || filterPending) return [] as any[];
       const PAGE = 1000;
@@ -244,11 +251,15 @@ export function BpcKpisPanel({ board, fromDate, toDate, dateField, bpcFilter, fi
       const now = new Date();
       return filtered.map((l) => {
         // Prioridade: 1) registro no histórico da etapa atual
-        //             2) updated_at do lead (última mudança — boa proxy de entrada na etapa)
-        //             3) created_at do lead (lead foi criado direto nessa etapa e nunca mudou)
-        const enteredRaw =
-          lastEntry.get(`${l.id}::${l.status}`) || l.updated_at || l.created_at;
-        const days = enteredRaw ? Math.max(0, daysBetween(now, new Date(enteredRaw))) : null;
+        //             2) updated_at do lead (última mudança — proxy de entrada na etapa)
+        //             3) created_at do lead (lead nasceu direto nessa etapa)
+        //             4) hoje (sem marco confiável, o odômetro começa em 0d; nunca "s/ registro")
+        const enteredAt =
+          parseValidDate(lastEntry.get(`${l.id}::${l.status}`)) ||
+          parseValidDate(l.updated_at) ||
+          parseValidDate(l.created_at) ||
+          now;
+        const days = Math.max(0, daysBetween(now, enteredAt));
         return {
           id: l.id,
           name: l.lead_name || "(sem nome)",
