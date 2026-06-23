@@ -4,7 +4,8 @@ import { BarChart3, Clock, ArrowRightLeft, Loader2, AlertTriangle, Users } from 
 
 import { db as supabase } from "@/integrations/supabase";
 import { KanbanBoard } from "@/hooks/useKanbanBoards";
-import { leadMatchesFilter, type BpcFilterResult } from "@/lib/bpcPhoneMatch";
+import type { BpcFormLead } from "@/hooks/useBpcFormLeads";
+import { leadMatchesFilter, phoneKey, type BpcFilterResult } from "@/lib/bpcPhoneMatch";
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -22,6 +23,8 @@ interface Props {
   bpcFilter: BpcFilterResult;
   /** True quando filtro acolhedor está ativo mas a planilha ainda carrega. */
   filterPending: boolean;
+  /** Leads vindos da planilha BASE_UNIFICADA — fonte de verdade pra "chegadas". */
+  bpcLeads: BpcFormLead[];
 }
 
 const STALE_DAYS_HIGHLIGHT = 7; // destaque visual: parado >7 dias na etapa
@@ -64,7 +67,7 @@ function daysBetween(a: Date, b: Date) {
 }
 
 // ---------- componente ----------
-export function BpcKpisPanel({ board, fromDate, toDate, dateField, bpcFilter, filterPending }: Props) {
+export function BpcKpisPanel({ board, fromDate, toDate, dateField, bpcFilter, filterPending, bpcLeads }: Props) {
   const boardId = board.id;
   const stages = board.stages || [];
   const stageByName = useMemo(() => {
@@ -78,106 +81,70 @@ export function BpcKpisPanel({ board, fromDate, toDate, dateField, bpcFilter, fi
     return m;
   }, [stages]);
 
-  const recepcaoId = stageByName.get("recepção")?.id;
   const procAssinadaId = stageByName.get("procuração assinada")?.id;
   const docsProtocoloId = stageByName.get("documentos p/ protocolo")?.id;
 
   const filterActive = !!bpcFilter?.phoneKeys;
   const phoneKeysSig = filterActive ? Array.from(bpcFilter.phoneKeys!).sort().join(",") : "all";
 
-  // ---- A1 + A2: leads do board com created_at + acolhedor + lead_phone ----
-  // Faz uma única busca paginada cobrindo do início do mês até agora (BR).
-  const monthBounds = useMemo(() => periodThisMonth(), []);
+  // Mapa telefone(últimos 8) → operator da planilha (BASE_UNIFICADA).
+  // Usado pra rotular acolhedor em B1 cruzando pelo telefone.
+  const phoneToOperator = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const l of bpcLeads || []) {
+      const k = phoneKey(l.phone_normalized || l.phone_raw);
+      if (!k) continue;
+      const op = (l.operator || "").trim();
+      if (op && !m.has(k)) m.set(k, op);
+    }
+    return m;
+  }, [bpcLeads]);
+
+  // ---- A1 + A2: derivados 100% da planilha BASE_UNIFICADA (fonte de verdade) ----
   const a2Bounds = useMemo(() => ({
     start: fromDate ?? null,
     end: toDate ?? null,
   }), [fromDate?.getTime(), toDate?.getTime()]);
 
-  // Buscamos do menor dos dois inícios (mês BR vs filtro da página) até agora ou toDate.
-  const fetchStart = useMemo(() => {
-    if (!a2Bounds.start) return null; // "Tudo" → sem limite inferior
-    return a2Bounds.start < monthBounds.start ? a2Bounds.start : monthBounds.start;
-  }, [a2Bounds.start, monthBounds.start]);
-  const fetchEnd = useMemo(() => {
-    const now = new Date();
-    if (!a2Bounds.end) return now > monthBounds.end ? now : monthBounds.end;
-    return a2Bounds.end > monthBounds.end ? a2Bounds.end : monthBounds.end;
-  }, [a2Bounds.end, monthBounds.end]);
-
-  const arrivalsKey = [
-    "bpc-kpis-arrivals",
-    boardId,
-    dateField,
-    fetchStart?.toISOString() ?? "none",
-    fetchEnd.toISOString(),
-  ];
-
-  const { data: arrivalRows = [], isFetching: arrivalsLoading } = useQuery({
-    queryKey: arrivalsKey,
-    queryFn: async () => {
-      const PAGE = 1000;
-      const all: Array<{ created_at: string; acolhedor: string | null; lead_phone: string | null; status: string | null }> = [];
-      for (let off = 0; ; off += PAGE) {
-        let q = supabase
-          .from("leads")
-          .select("created_at, acolhedor, lead_phone, status")
-          .eq("board_id", boardId)
-          .range(off, off + PAGE - 1)
-          .order("created_at", { ascending: false });
-        if (fetchStart) q = q.gte("created_at", fetchStart.toISOString());
-        q = q.lte("created_at", fetchEnd.toISOString());
-        const { data, error } = await q;
-        if (error) throw error;
-        const batch = data || [];
-        all.push(...(batch as any));
-        if (batch.length < PAGE) break;
-      }
-      return all;
-    },
-    enabled: !!boardId,
-    staleTime: 30_000,
-    refetchOnWindowFocus: false,
-  });
-
-  // Aplica filtro de acolhedor (mesma lógica do resto da tela)
-  const filteredArrivals = useMemo(() => {
-    if (filterPending) return [];
-    if (!filterActive) return arrivalRows;
-    return arrivalRows.filter((r) => leadMatchesFilter(r.lead_phone, bpcFilter));
-  }, [arrivalRows, filterActive, filterPending, phoneKeysSig]);
-
-  // A1: contagens Hoje / Semana / Mês (chegadas = lead criado, pois todo lead começa na Recepção)
+  // A1: Hoje / Semana / Mês (recorta a planilha por created_at, ignorando o período da página)
   const a1 = useMemo(() => {
     const today = periodToday();
     const week = periodThisWeek();
     const month = periodThisMonth();
     let hoje = 0, semana = 0, mes = 0;
-    for (const r of filteredArrivals) {
-      const t = new Date(r.created_at).getTime();
+    for (const l of bpcLeads || []) {
+      const t = new Date(l.created_at).getTime();
+      if (isNaN(t)) continue;
       if (t >= month.start.getTime() && t < month.end.getTime()) mes++;
       if (t >= week.start.getTime() && t < week.end.getTime()) semana++;
       if (t >= today.start.getTime() && t < today.end.getTime()) hoje++;
     }
     return { hoje, semana, mes };
-  }, [filteredArrivals]);
+  }, [bpcLeads]);
 
-  // A2: chegadas por acolhedor dentro do período do filtro da página
+  // A2: chegadas por acolhedor — apenas operadores reais da planilha (Mateus, Israel, Karol, Edilan).
+  // Respeita o período do filtro da página.
   const a2 = useMemo(() => {
     const startMs = a2Bounds.start?.getTime() ?? -Infinity;
     const endMs = a2Bounds.end?.getTime() ?? Infinity;
     const counts = new Map<string, number>();
-    for (const r of filteredArrivals) {
-      const t = new Date(r.created_at).getTime();
-      if (t < startMs || t > endMs) continue;
-      const name = (r.acolhedor || "").trim() || "— sem acolhedor —";
-      counts.set(name, (counts.get(name) || 0) + 1);
+    let semOp = 0;
+    for (const l of bpcLeads || []) {
+      const t = new Date(l.created_at).getTime();
+      if (isNaN(t) || t < startMs || t > endMs) continue;
+      const op = (l.operator || "").trim();
+      if (!op) { semOp++; continue; }
+      counts.set(op, (counts.get(op) || 0) + 1);
     }
     const rows = Array.from(counts.entries())
       .map(([name, count]) => ({ name, count }))
       .sort((a, b) => b.count - a.count);
-    const max = rows[0]?.count || 1;
-    return { rows, max, total: rows.reduce((s, r) => s + r.count, 0) };
-  }, [filteredArrivals, a2Bounds.start?.getTime(), a2Bounds.end?.getTime()]);
+    const max = Math.max(rows[0]?.count || 0, semOp, 1);
+    const total = rows.reduce((s, r) => s + r.count, 0) + semOp;
+    return { rows, semOp, max, total };
+  }, [bpcLeads, a2Bounds.start?.getTime(), a2Bounds.end?.getTime()]);
+
+  const arrivalsLoading = false;
 
   // ---- B1: tempo na etapa (Procuração Assinada / Documentos p/ Protocolo) ----
   // Buscamos leads cuja status seja uma dessas duas, junto com lead_stage_history MAX(changed_at) para to_stage = status.
@@ -188,11 +155,11 @@ export function BpcKpisPanel({ board, fromDate, toDate, dateField, bpcFilter, fi
     queryFn: async () => {
       if (!b1Stages.length || filterPending) return [] as any[];
       const PAGE = 1000;
-      const leads: Array<{ id: string; lead_name: string | null; acolhedor: string | null; lead_phone: string | null; status: string }> = [];
+      const leads: Array<{ id: string; lead_name: string | null; lead_phone: string | null; status: string }> = [];
       for (let off = 0; ; off += PAGE) {
         const { data, error } = await supabase
           .from("leads")
-          .select("id, lead_name, acolhedor, lead_phone, status")
+          .select("id, lead_name, lead_phone, status")
           .eq("board_id", boardId)
           .in("status", b1Stages)
           .range(off, off + PAGE - 1);
@@ -233,7 +200,7 @@ export function BpcKpisPanel({ board, fromDate, toDate, dateField, bpcFilter, fi
         return {
           id: l.id,
           name: l.lead_name || "(sem nome)",
-          acolhedor: (l.acolhedor || "").trim() || "—",
+          phone: l.lead_phone,
           stage: l.status,
           days,
         };
@@ -249,14 +216,16 @@ export function BpcKpisPanel({ board, fromDate, toDate, dateField, bpcFilter, fi
     for (const sid of b1Stages) map.set(sid, []);
     for (const row of b1Data || []) {
       const arr = map.get(row.stage) || [];
-      arr.push({ id: row.id, name: row.name, acolhedor: row.acolhedor, days: row.days });
+      const k = phoneKey(row.phone);
+      const acolhedor = (k && phoneToOperator.get(k)) || "—";
+      arr.push({ id: row.id, name: row.name, acolhedor, days: row.days });
       map.set(row.stage, arr);
     }
     for (const arr of map.values()) {
       arr.sort((a, b) => (b.days ?? -1) - (a.days ?? -1));
     }
     return map;
-  }, [b1Data, b1Stages.join(",")]);
+  }, [b1Data, b1Stages.join(","), phoneToOperator]);
 
   // ---- B2: mudanças de etapa no período (lead_stage_history) ----
   const { data: b2Rows = [], isFetching: b2Loading } = useQuery({
