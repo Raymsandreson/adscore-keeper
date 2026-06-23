@@ -12,6 +12,7 @@ import { useProfileNames } from "@/hooks/useProfileNames";
 import { BpcFunnelBars } from "@/components/kanban/BpcFunnelBars";
 import { BpcFormLeadsSheet } from "@/components/whatsapp/FocusDashboard/BpcFormLeadsSheet";
 import { BpcStageLeadsSheet } from "@/components/kanban/BpcStageLeadsSheet";
+import { BpcKpisPanel } from "@/components/kanban/BpcKpisPanel";
 import { buildBpcAcolhedorFilter, leadMatchesFilter } from "@/lib/bpcPhoneMatch";
 
 import { Button } from "@/components/ui/button";
