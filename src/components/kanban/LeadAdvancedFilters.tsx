@@ -150,8 +150,8 @@ export function LeadAdvancedFilters({
       <div className="flex items-center gap-2 flex-wrap">
         <div className="relative">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-          <Input
-            placeholder="Buscar por nome..."
+            <Input
+              placeholder="Buscar nome, telefone ou caso..."
             className="h-8 w-48 pl-7 text-xs"
             value={filters.searchTerm}
             onChange={e => update('searchTerm', e.target.value)}
@@ -452,10 +452,15 @@ export function LeadAdvancedFilters({
 export function applyLeadFilters(leads: any[], filters: LeadFilters): any[] {
   return leads.filter(lead => {
     if (filters.searchTerm) {
-      const term = filters.searchTerm.toLowerCase();
+      const term = filters.searchTerm.toLowerCase().trim();
+      const termDigits = term.replace(/\D/g, '');
       const name = (lead.lead_name || '').toLowerCase();
       const desc = (lead.description || '').toLowerCase();
-      if (!name.includes(term) && !desc.includes(term)) return false;
+      const victimName = (lead.victim_name || '').toLowerCase();
+      const phoneDigits = String(lead.lead_phone || '').replace(/\D/g, '');
+      const caseNumber = String(lead.case_number || '').toLowerCase();
+      const phoneMatch = termDigits.length >= 3 && phoneDigits.includes(termDigits);
+      if (!name.includes(term) && !desc.includes(term) && !victimName.includes(term) && !caseNumber.includes(term) && !phoneMatch) return false;
     }
 
     if (filters.createdBy && lead.created_by !== filters.createdBy) return false;
