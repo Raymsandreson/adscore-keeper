@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, CalendarIcon, LayoutGrid, Loader2, Users, Filter, RefreshCw } from "lucide-react";
+import { ArrowLeft, CalendarIcon, LayoutGrid, Loader2, Users, Filter, RefreshCw, BarChart3 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
