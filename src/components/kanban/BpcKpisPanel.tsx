@@ -327,17 +327,45 @@ export function BpcKpisPanel({ board, fromDate, toDate, dateField, bpcFilter, fi
             </div>
           ) : (
             <div className="grid grid-cols-3 gap-2">
-              {[
-                { label: "Hoje", value: a1.hoje },
-                { label: "Esta semana", value: a1.semana },
-                { label: "Este mês", value: a1.mes },
-              ].map((k) => (
-                <div key={k.label} className="rounded-md border bg-muted/30 p-3 text-center">
-                  <div className="text-2xl font-bold text-primary">{k.value}</div>
-                  <div className="text-[11px] text-muted-foreground">{k.label}</div>
-                </div>
-              ))}
+              {([
+                { key: "today" as const, label: "Hoje", value: a1.hoje },
+                { key: "week" as const, label: "Esta semana", value: a1.semana },
+                { key: "month" as const, label: "Este mês", value: a1.mes },
+              ]).map((k) => {
+                const active = quickPeriod === k.key;
+                return (
+                  <button
+                    key={k.label}
+                    type="button"
+                    onClick={() => setQuickPeriod(active ? null : k.key)}
+                    className={cn(
+                      "rounded-md border p-3 text-center transition-colors cursor-pointer",
+                      active
+                        ? "bg-primary/15 border-primary ring-1 ring-primary/40"
+                        : "bg-muted/30 hover:bg-muted/60"
+                    )}
+                    title={active ? "Clique para limpar o filtro" : `Filtrar pelo período: ${k.label}`}
+                  >
+                    <div className={cn("text-2xl font-bold", active ? "text-primary" : "text-primary/90")}>
+                      {k.value}
+                    </div>
+                    <div className="text-[11px] text-muted-foreground">{k.label}</div>
+                  </button>
+                );
+              })}
             </div>
+          )}
+          {quickPeriod && (
+            <p className="text-[11px] text-muted-foreground italic">
+              Filtro rápido ativo — as seções abaixo mostram só o período selecionado.{" "}
+              <button
+                type="button"
+                className="underline underline-offset-2 hover:text-foreground"
+                onClick={() => setQuickPeriod(null)}
+              >
+                Limpar
+              </button>
+            </p>
           )}
         </section>
 
