@@ -276,6 +276,10 @@ const BpcFunnelDetailPage = () => {
             <RefreshCw className={cn("h-3.5 w-3.5 mr-1.5", (leadsLoading || bpcLoading) && "animate-spin")} />
             Atualizar
           </Button>
+          <Button variant="outline" size="sm" onClick={() => navigate(`/sales-funnels/bpc/${board.id}/analytics`)}>
+            <BarChart3 className="h-3.5 w-3.5 mr-1.5" />
+            Análise de Conversão
+          </Button>
           <Button size="sm" onClick={() => navigate(`/leads?board=${board.id}`)}>
             <LayoutGrid className="h-3.5 w-3.5 mr-1.5" />
             Abrir Kanban
