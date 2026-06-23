@@ -216,14 +216,16 @@ export function BpcKpisPanel({ board, fromDate, toDate, dateField, bpcFilter, fi
     for (const sid of b1Stages) map.set(sid, []);
     for (const row of b1Data || []) {
       const arr = map.get(row.stage) || [];
-      arr.push({ id: row.id, name: row.name, acolhedor: row.acolhedor, days: row.days });
+      const k = phoneKey(row.phone);
+      const acolhedor = (k && phoneToOperator.get(k)) || "—";
+      arr.push({ id: row.id, name: row.name, acolhedor, days: row.days });
       map.set(row.stage, arr);
     }
     for (const arr of map.values()) {
       arr.sort((a, b) => (b.days ?? -1) - (a.days ?? -1));
     }
     return map;
-  }, [b1Data, b1Stages.join(",")]);
+  }, [b1Data, b1Stages.join(","), phoneToOperator]);
 
   // ---- B2: mudanças de etapa no período (lead_stage_history) ----
   const { data: b2Rows = [], isFetching: b2Loading } = useQuery({
