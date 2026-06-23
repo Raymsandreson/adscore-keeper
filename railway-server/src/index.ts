@@ -31,6 +31,7 @@ import { handler as syncAgentLabels } from './functions/sync-agent-labels';
 import { handler as syncResultLabels } from './functions/sync-result-labels';
 import { handler as syncStageLabels } from './functions/sync-stage-labels';
 import { handler as applyStageLabel } from './functions/apply-stage-label';
+import { handler as applyLabelEvent } from './functions/apply-label-event';
 import { handler as listStageLabelMappings } from './functions/list-stage-label-mappings';
 import { handler as setStageResultKey } from './functions/set-stage-result-key';
 import { handler as sendWhatsappCloud } from './functions/send-whatsapp-cloud';
@@ -79,6 +80,7 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'sync-result-labels': syncResultLabels,
   'sync-stage-labels': syncStageLabels,
   'apply-stage-label': applyStageLabel,
+  'apply-label-event': applyLabelEvent,
   'list-stage-label-mappings': listStageLabelMappings,
   'set-stage-result-key': setStageResultKey,
   'send-whatsapp-cloud': sendWhatsappCloud,
