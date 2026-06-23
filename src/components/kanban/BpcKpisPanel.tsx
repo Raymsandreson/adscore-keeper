@@ -105,12 +105,15 @@ export function BpcKpisPanel({ board, fromDate, toDate, dateField, bpcFilter, fi
   type QuickPeriod = "today" | "week" | "month" | null;
   const [quickPeriod, setQuickPeriod] = useState<QuickPeriod>(null);
 
+  // Sem filtro rápido = mostra TODOS os leads carregados (mesmo universo do A1),
+  // pra não esconder acolhedor cujas chegadas estão fora do recorte estreito da página.
   const a2Bounds = useMemo(() => {
     if (quickPeriod === "today") return periodToday();
     if (quickPeriod === "week") return periodThisWeek();
     if (quickPeriod === "month") return periodThisMonth();
-    return { start: fromDate ?? null, end: toDate ?? null };
-  }, [quickPeriod, fromDate?.getTime(), toDate?.getTime()]);
+    return { start: null as Date | null, end: null as Date | null };
+  }, [quickPeriod]);
+
 
   // A1: Hoje / Semana / Mês (recorta a planilha por created_at, ignorando o período da página)
   const a1 = useMemo(() => {
