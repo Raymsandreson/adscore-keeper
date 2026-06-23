@@ -2369,6 +2369,23 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                 <Link2 className="h-3 w-3" /> Ver Lead
               </button>
             )}
+            {primaryLeadId && leadStageInfo && (
+              <div
+                className="h-6 inline-flex items-center gap-1 px-1.5 rounded-full bg-muted/60 border border-border"
+                title="Mudar etiqueta no WhatsApp e a etapa no Kanban"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <StageLabelSelect
+                  variant="card"
+                  leadId={primaryLeadId}
+                  boardId={leadStageInfo.boardId}
+                  currentStageId={leadStageInfo.stageId}
+                  onStageChanged={(newStageId) =>
+                    setLeadStageInfo((prev) => (prev ? { ...prev, stageId: newStageId } : prev))
+                  }
+                />
+              </div>
+            )}
             {conversation.contact_id && onViewContact && (
               <button
                 type="button"
