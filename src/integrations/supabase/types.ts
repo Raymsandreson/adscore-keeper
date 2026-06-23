@@ -1930,7 +1930,6 @@ export type Database = {
           pago_acolhedor: string | null
           pendencia: string | null
           protocolado: string | null
-          senha_gov: string | null
           status_processo: string | null
           tempo_dias: number | null
           tipo: string | null
@@ -1962,7 +1961,6 @@ export type Database = {
           pago_acolhedor?: string | null
           pendencia?: string | null
           protocolado?: string | null
-          senha_gov?: string | null
           status_processo?: string | null
           tempo_dias?: number | null
           tipo?: string | null
@@ -1994,7 +1992,6 @@ export type Database = {
           pago_acolhedor?: string | null
           pendencia?: string | null
           protocolado?: string | null
-          senha_gov?: string | null
           status_processo?: string | null
           tempo_dias?: number | null
           tipo?: string | null

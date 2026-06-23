@@ -10,7 +10,7 @@ export interface ProcessTracking {
   cliente: string | null;
   caso: string | null;
   cpf: string | null;
-  senha_gov: string | null;
+  senha_gov?: string | null;
   data_criacao: string | null;
   tipo: string | null;
   acolhedor: string | null;
