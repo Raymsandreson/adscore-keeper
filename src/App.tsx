@@ -143,7 +143,6 @@ const FinancePage = lazyRetry(() => import("./pages/FinancePage"), "FinancePage"
 const ExpenseFormPage = lazyRetry(() => import("./pages/ExpenseFormPage"), "ExpenseFormPage");
 const CallsPage = lazyRetry(() => import("./pages/CallsPage"), "CallsPage");
 const AutoDialerPage = lazyRetry(() => import("./pages/AutoDialerPage"), "AutoDialerPage");
-const FunilConversaoPage = lazyRetry(() => import("./pages/FunilConversaoPage"), "FunilConversaoPage");
 const WhatsAppCloudPage = lazyRetry(() => import("./pages/WhatsAppCloudPage"), "WhatsAppCloudPage");
 const WhatsAppApiPage = lazyRetry(() => import("./pages/WhatsAppApiPage"), "WhatsAppApiPage");
 const WhatsAppApiConversasPage = lazyRetry(() => import("./pages/WhatsAppApiConversasPage"), "WhatsAppApiConversasPage");
@@ -229,9 +228,6 @@ function AppRoutes() {
         <Route path="/booking/:configId" element={<BookingPage />} />
         <Route path="/booking/:configId/:token" element={<BookingPage />} />
         <Route path="/revisar/:token" element={<DocumentReviewPage />} />
-        <Route path="/funil-conversao" element={<FunilConversaoPage />} />
-
-
 
         {/* All other routes with sidebar layout */}
         <Route path="*" element={<SidebarLayout />} />
@@ -273,8 +269,6 @@ function SidebarLayout() {
                 <Route path="/team" element={<ProtectedRoute><TeamPage /></ProtectedRoute>} />
                 <Route path="/workflow" element={<ProtectedRoute><WorkflowPage /></ProtectedRoute>} />
                 <Route path="/sales-funnels" element={<ProtectedRoute><SalesFunnelsPage /></ProtectedRoute>} />
-                <Route path="/sales-funnels/bpc/:boardId/analytics" element={<ProtectedRoute><FunilConversaoPage /></ProtectedRoute>} />
-                
                 <Route path="/sales-funnels/bpc/:boardId" element={<ProtectedRoute><BpcFunnelDetailPage /></ProtectedRoute>} />
                 <Route path="/workflow-progress" element={<ProtectedRoute><WorkflowProgressPage /></ProtectedRoute>} />
                 <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />

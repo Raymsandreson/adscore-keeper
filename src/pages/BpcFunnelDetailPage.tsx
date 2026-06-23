@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, CalendarIcon, LayoutGrid, Loader2, Users, Filter, RefreshCw, BarChart3 } from "lucide-react";
+import { ArrowLeft, CalendarIcon, LayoutGrid, Loader2, Users, Filter, RefreshCw } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
@@ -275,10 +275,6 @@ const BpcFunnelDetailPage = () => {
           <Button variant="outline" size="sm" onClick={handleRefresh} disabled={leadsLoading || bpcLoading}>
             <RefreshCw className={cn("h-3.5 w-3.5 mr-1.5", (leadsLoading || bpcLoading) && "animate-spin")} />
             Atualizar
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => navigate(`/sales-funnels/bpc/${board.id}/analytics`)}>
-            <BarChart3 className="h-3.5 w-3.5 mr-1.5" />
-            Análise de Conversão
           </Button>
           <Button size="sm" onClick={() => navigate(`/leads?board=${board.id}`)}>
             <LayoutGrid className="h-3.5 w-3.5 mr-1.5" />
