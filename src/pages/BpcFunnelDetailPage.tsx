@@ -5,7 +5,7 @@ import { ArrowLeft, CalendarIcon, LayoutGrid, Loader2, Users, Filter, RefreshCw 
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
-import { db as supabase } from "@/integrations/supabase";
+import { db as supabase, ensureExternalSession } from "@/integrations/supabase";
 import { useKanbanBoards } from "@/hooks/useKanbanBoards";
 import { useBpcFormLeads } from "@/hooks/useBpcFormLeads";
 import { useProfileNames } from "@/hooks/useProfileNames";
@@ -186,6 +186,15 @@ const BpcFunnelDetailPage = () => {
       queryClient.invalidateQueries({ queryKey: ["bpc-kpis-b2"] });
     };
 
+    const invalidateAfterHistoryWrite = () => {
+      invalidateBpcFunnelData();
+      window.setTimeout(invalidateBpcFunnelData, 800);
+    };
+
+    ensureExternalSession().catch((err) => {
+      console.warn('[BpcFunnelDetailPage] External session unavailable for realtime:', err?.message || err);
+    });
+
     const channel = supabase
       .channel(`bpc-funnel-detail-${boardId}`)
       .on(
@@ -195,7 +204,10 @@ const BpcFunnelDetailPage = () => {
       )
       .subscribe();
 
+    window.addEventListener('adscore:lead-stage-changed', invalidateAfterHistoryWrite);
+
     return () => {
+      window.removeEventListener('adscore:lead-stage-changed', invalidateAfterHistoryWrite);
       supabase.removeChannel(channel);
     };
   }, [boardId, queryClient]);
