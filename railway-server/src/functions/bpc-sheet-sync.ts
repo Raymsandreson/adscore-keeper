@@ -83,7 +83,7 @@ async function fetchTab(spreadsheetId: string, meta: { tab: string; operator: st
     const txt = await resp.text();
     throw new Error(`sheet "${meta.tab}" ${resp.status}: ${txt.slice(0, 200)}`);
   }
-  const json = await resp.json();
+  const json = (await resp.json()) as { values?: any[][] };
   const values: any[][] = json.values || [];
   if (values.length < 2) return [];
   const headers = values[0].map((h: string) => String(h).toLowerCase().trim());
