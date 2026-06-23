@@ -50,7 +50,7 @@ export function BpcFunnelBars({ board, metrics, loading, onOpenList, onSelectSta
     });
   }, [stages, metrics.total, leadsPerStage]);
 
-  const maxValue = useMemo(() => Math.max(...funnelData.map((s) => s.value), 1), [funnelData]);
+  
 
   if (!stages.length) return null;
 
