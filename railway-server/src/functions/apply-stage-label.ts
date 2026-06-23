@@ -55,6 +55,22 @@ export const handler: RequestHandler = async (req, res) => {
       });
     }
 
+    // 2b) Etiquetas de OUTROS boards mapeadas nas instâncias — vamos limpar para
+    // não deixar etiqueta órfã quando um lead muda de board.
+    const { data: otherBoardMappings } = await ext
+      .from('stage_instance_labels')
+      .select('instance_name, board_id, stage_id, label_id, label_name')
+      .neq('board_id', board_id)
+      .is('deleted_at', null);
+
+    const orphansByInst = new Map<string, Array<{ label_id: string; label_name: string }>>();
+    for (const m of (otherBoardMappings || []) as any[]) {
+      const key = String(m.instance_name).toLowerCase();
+      const list = orphansByInst.get(key) || [];
+      list.push({ label_id: m.label_id, label_name: m.label_name });
+      orphansByInst.set(key, list);
+    }
+
     // 3) Instâncias onde o contato existe
     const instances = await getInstancesForPhone(ext, phoneDigits);
     if (instances.length === 0) {
@@ -70,10 +86,11 @@ export const handler: RequestHandler = async (req, res) => {
         continue;
       }
       const baseUrl = inst.base_url || 'https://abraci.uazapi.com';
-      const out: any = { instance_name: inst.instance_name };
+      const out: any = { instance_name: inst.instance_name, orphans_removed: [] as any[] };
+      const newLabelId = entry.add.label_id;
 
-      // Remover label antiga (se houver e for diferente da nova)
-      if (entry.remove && entry.remove.label_id !== entry.add.label_id) {
+      // Remover label antiga do MESMO board (se houver e for diferente da nova)
+      if (entry.remove && entry.remove.label_id !== newLabelId) {
         try {
           const r = await uazapiChatLabel(baseUrl, inst.instance_token, phoneDigits, entry.remove.label_id, 'remove');
           out.removed = { label: entry.remove.label_name, ok: r.ok, status: r.status, ...(r.ok ? {} : { error: r.text.slice(0, 200) }) };
@@ -82,9 +99,24 @@ export const handler: RequestHandler = async (req, res) => {
         }
       }
 
+      // Remover etiquetas-órfãs de OUTROS boards nesta mesma instância.
+      // Idempotente na UazAPI: se o chat não tem aquela etiqueta, vira no-op silencioso.
+      const orphans = (orphansByInst.get(key) || []).filter((o) => o.label_id && o.label_id !== newLabelId);
+      // Dedup por label_id (mesma label pode estar mapeada em múltiplos stages)
+      const seen = new Set<string>();
+      const uniqueOrphans = orphans.filter((o) => (seen.has(o.label_id) ? false : (seen.add(o.label_id), true)));
+      for (const orph of uniqueOrphans) {
+        try {
+          const r = await uazapiChatLabel(baseUrl, inst.instance_token, phoneDigits, orph.label_id, 'remove');
+          if (r.ok) out.orphans_removed.push({ label: orph.label_name });
+        } catch {
+          // silencioso: best-effort
+        }
+      }
+
       // Adicionar label nova
       try {
-        const r = await uazapiChatLabel(baseUrl, inst.instance_token, phoneDigits, entry.add.label_id, 'add');
+        const r = await uazapiChatLabel(baseUrl, inst.instance_token, phoneDigits, newLabelId, 'add');
         out.added = { label: entry.add.label_name, ok: r.ok, status: r.status, ...(r.ok ? {} : { error: r.text.slice(0, 200) }) };
       } catch (e: any) {
         out.added = { label: entry.add.label_name, ok: false, error: e?.message };
