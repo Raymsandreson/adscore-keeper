@@ -37,7 +37,7 @@ export function BpcFunnelBars({ board, metrics, loading, onOpenList, onSelectSta
     const counts = leadsPerStage || {};
     const movedTotal = Object.values(counts).reduce((sum, n) => sum + (Number(n) || 0), 0);
     const residualFirst = Math.max(0, metrics.total - movedTotal);
-    return stages.map((stage, index) => {
+    const data = stages.map((stage, index) => {
       const realCount = Number(counts[stage.id] || 0);
       const value = stage.id === firstId ? realCount + residualFirst : realCount;
       return {
@@ -47,6 +47,15 @@ export function BpcFunnelBars({ board, metrics, loading, onOpenList, onSelectSta
         value,
         isFirst: index === 0,
       };
+    });
+    const maxValue = Math.max(...data.map((s) => s.value), 1);
+    return data.map((stage) => {
+      const pct = (stage.value / maxValue) * 100;
+      let barColor: string;
+      if (pct <= 40) barColor = '#ef4444';
+      else if (pct <= 70) barColor = '#f59e0b';
+      else barColor = '#22c55e';
+      return { ...stage, maxValue, barColor };
     });
   }, [stages, metrics.total, leadsPerStage]);
 
@@ -98,8 +107,8 @@ export function BpcFunnelBars({ board, metrics, loading, onOpenList, onSelectSta
                 >
                   <div className="flex-1 min-w-0">
                     <div
-                      className="h-8 rounded-md flex items-center justify-between px-2.5 transition-all duration-300 w-full"
-                      style={{ backgroundColor: stage.color }}
+                      className="h-8 rounded-md flex items-center justify-between px-2.5 transition-all duration-300 whitespace-nowrap"
+                      style={{ width: `${(stage.value / stage.maxValue) * 100}%`, minWidth: 'fit-content', backgroundColor: stage.barColor }}
                     >
                       <span className="text-white text-[11px] font-medium mr-1">{stage.name}</span>
                       <span className="text-white text-xs font-bold shrink-0">{stage.value}</span>
