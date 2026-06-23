@@ -12,6 +12,7 @@ import { useProfileNames } from "@/hooks/useProfileNames";
 import { BpcFunnelBars } from "@/components/kanban/BpcFunnelBars";
 import { BpcFormLeadsSheet } from "@/components/whatsapp/FocusDashboard/BpcFormLeadsSheet";
 import { BpcStageLeadsSheet } from "@/components/kanban/BpcStageLeadsSheet";
+import { BpcKpisPanel } from "@/components/kanban/BpcKpisPanel";
 import { buildBpcAcolhedorFilter, leadMatchesFilter } from "@/lib/bpcPhoneMatch";
 
 import { Button } from "@/components/ui/button";
@@ -372,6 +373,17 @@ const BpcFunnelDetailPage = () => {
         onSelectStage={(s) => setStageSheet(s)}
         leadsPerStage={leadsData?.byStage || {}}
       />
+
+      {/* KPIs do Funil — somente leitura, abaixo do Funil de Conversão */}
+      <BpcKpisPanel
+        board={board}
+        fromDate={fromDate}
+        toDate={toDate}
+        dateField={dateField}
+        bpcFilter={bpcFilter}
+        filterPending={filterPending}
+      />
+
 
       <BpcFormLeadsSheet
         open={sheetOpen}
