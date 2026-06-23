@@ -198,7 +198,13 @@ export const handler: RequestHandler = async (req, res) => {
     if (!stages.length) return ok({ success: false, error: 'board sem etapas' });
     const initialStageId = stages[0].id;
 
-    // 2) Lê todas as abas em paralelo limitado (3 por vez pra não estourar quota)
+    // 2) Descoberta dinâmica das abas + leitura em paralelo limitado (3 por vez)
+    let SHEET_TABS: { tab: string; operator: string }[] = [];
+    try {
+      SHEET_TABS = await discoverSheetTabs(spreadsheetId);
+    } catch (e: any) {
+      return ok({ success: false, error: `discover tabs: ${e?.message || e}` });
+    }
     const sheetRows: ParsedRow[] = [];
     const tabErrors: { tab: string; error: string }[] = [];
     for (let i = 0; i < SHEET_TABS.length; i += 3) {
