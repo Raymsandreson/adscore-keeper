@@ -217,6 +217,7 @@ Deno.serve(async (req) => {
       tabsReadNames.push(UNIFIED_TAB);
       try {
         const rows = await fetchTab(UNIFIED_TAB, true, (h) => { debugHeaders = h; });
+        console.log(`[bpc-sheets-metrics] unified rows fetched: ${rows.length}`);
         allRows.push(...rows);
       } catch (e: any) {
         const msg = e?.message || String(e);
