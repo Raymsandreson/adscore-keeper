@@ -214,42 +214,34 @@ Deno.serve(async (req) => {
     const tabsReadNames: string[] = [];
     let debugHeaders: string[] = [];
 
-    if (source === "unificada") {
-      tabsReadNames.push(UNIFIED_TAB);
+    // A planilha BASE_UNIFICADA atualmente está com colunas-chave (telefone, origem_vendedor)
+    // vazias. Por isso, mesmo quando o caller pede source=unificada, lemos as ABAS INDIVIDUAIS
+    // (descobertas dinamicamente) e o operador vem do nome da aba — fonte confiável.
+    try {
+      SHEET_TABS = await discoverSheetTabs();
+    } catch (e: any) {
+      console.error("[bpc-sheets-metrics] discoverSheetTabs failed:", e?.message || e);
+      SHEET_TABS = [];
+    }
+    const tabsToRead = instanceFilter
+      ? SHEET_TABS.filter((s) => instanceFilter.includes(s.operator.toLowerCase()))
+      : SHEET_TABS;
+    tabsReadNames.push(...tabsToRead.map((t) => t.tab));
+    for (let i = 0; i < tabsToRead.length; i++) {
+      const s = tabsToRead[i];
       try {
-        const rows = await fetchTab(UNIFIED_TAB, true, (h) => { debugHeaders = h; });
-        console.log(`[bpc-sheets-metrics] unified rows fetched: ${rows.length}`);
+        const rows = await fetchTab(s.tab, false, (h) => { if (!debugHeaders.length) debugHeaders = h; });
         allRows.push(...rows);
       } catch (e: any) {
         const msg = e?.message || String(e);
-        console.error(`[bpc-sheets-metrics] unified tab failed:`, msg);
-        tabErrors.push({ tab: UNIFIED_TAB, error: msg.substring(0, 200) });
+        console.error(`[bpc-sheets-metrics] tab "${s.tab}" failed:`, msg);
+        tabErrors.push({ tab: s.tab, error: msg.substring(0, 200) });
       }
-    } else {
-      // Descobre dinamicamente as abas existentes na planilha (resiliente a rename).
-      try {
-        SHEET_TABS = await discoverSheetTabs();
-      } catch (e: any) {
-        console.error("[bpc-sheets-metrics] discoverSheetTabs failed:", e?.message || e);
-        SHEET_TABS = [];
-      }
-      const tabsToRead = instanceFilter
-        ? SHEET_TABS.filter((s) => instanceFilter.includes(s.operator.toLowerCase()))
-        : SHEET_TABS;
-      tabsReadNames.push(...tabsToRead.map((t) => t.tab));
-      for (let i = 0; i < tabsToRead.length; i++) {
-        const s = tabsToRead[i];
-        try {
-          const rows = await fetchTab(s.tab);
-          allRows.push(...rows);
-        } catch (e: any) {
-          const msg = e?.message || String(e);
-          console.error(`[bpc-sheets-metrics] tab "${s.tab}" failed:`, msg);
-          tabErrors.push({ tab: s.tab, error: msg.substring(0, 200) });
-        }
-        if (i < tabsToRead.length - 1) await new Promise((r) => setTimeout(r, 250));
-      }
+      if (i < tabsToRead.length - 1) await new Promise((r) => setTimeout(r, 250));
     }
+    // Marcamos source=unificada no response pra compatibilidade com o caller,
+    // mas a fonte real são as abas individuais.
+    void source;
 
     // Para "created" filtramos cedo (economia). Pros outros precisamos cruzar
     // com WA antes — então usamos todas as linhas como base.
