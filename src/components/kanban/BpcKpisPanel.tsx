@@ -29,36 +29,42 @@ interface Props {
 
 const STALE_DAYS_HIGHLIGHT = 7; // destaque visual: parado >7 dias na etapa
 
-// ---------- helpers de período (America/Sao_Paulo, UTC-3 sem DST) ----------
-const BR_OFFSET_MS = 3 * 3600 * 1000;
+// ---------- helpers de período ----------
+// IMPORTANTE: a planilha grava timestamps em -05:00 (fuso Meta/México).
+// O usuário conta leads OLHANDO a coluna de data da planilha, então o "dia"
+// que importa é o dia em -05:00 — não o dia em BR (UTC-3).
+// Ex: lead 2026-06-22T22:00-05:00 = 2026-06-23T00:00 BR.
+// Na planilha aparece em 22/06; o operador conta como 22/06. Se usássemos
+// fuso BR aqui, contaríamos como 23/06 e divergiríamos da planilha.
+const SHEET_OFFSET_MS = 5 * 3600 * 1000; // -05:00
 
-function brNowParts() {
+function sheetNowParts() {
   const now = new Date();
-  const br = new Date(now.getTime() - BR_OFFSET_MS);
-  return { y: br.getUTCFullYear(), m: br.getUTCMonth(), d: br.getUTCDate(), dow: br.getUTCDay() };
+  const sh = new Date(now.getTime() - SHEET_OFFSET_MS);
+  return { y: sh.getUTCFullYear(), m: sh.getUTCMonth(), d: sh.getUTCDate(), dow: sh.getUTCDay() };
 }
 
-function brDayBoundsUTC(y: number, m: number, d: number, daysSpan = 1) {
-  // 00:00 BR = 03:00 UTC do mesmo dia
-  const start = new Date(Date.UTC(y, m, d, 3));
-  const end = new Date(Date.UTC(y, m, d + daysSpan, 3));
+function sheetDayBoundsUTC(y: number, m: number, d: number, daysSpan = 1) {
+  // 00:00 em -05:00 = 05:00 UTC do mesmo dia
+  const start = new Date(Date.UTC(y, m, d, 5));
+  const end = new Date(Date.UTC(y, m, d + daysSpan, 5));
   return { start, end };
 }
 
 function periodToday() {
-  const { y, m, d } = brNowParts();
-  return brDayBoundsUTC(y, m, d, 1);
+  const { y, m, d } = sheetNowParts();
+  return sheetDayBoundsUTC(y, m, d, 1);
 }
 function periodThisWeek() {
   // Semana começa segunda-feira (ISO)
-  const { y, m, d, dow } = brNowParts();
+  const { y, m, d, dow } = sheetNowParts();
   const offsetToMon = dow === 0 ? 6 : dow - 1;
-  return brDayBoundsUTC(y, m, d - offsetToMon, 7);
+  return sheetDayBoundsUTC(y, m, d - offsetToMon, 7);
 }
 function periodThisMonth() {
-  const { y, m } = brNowParts();
-  const start = new Date(Date.UTC(y, m, 1, 3));
-  const end = new Date(Date.UTC(y, m + 1, 1, 3));
+  const { y, m } = sheetNowParts();
+  const start = new Date(Date.UTC(y, m, 1, 5));
+  const end = new Date(Date.UTC(y, m + 1, 1, 5));
   return { start, end };
 }
 
