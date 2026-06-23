@@ -37,7 +37,6 @@ export function InsightBanner({
         <AnimatedNumber
           value={noResponse}
           className="block text-4xl md:text-5xl font-semibold"
-          // @ts-expect-error style passthrough
           style={{ color: FUNIL_THEME.alert, fontFamily: '"IBM Plex Sans", sans-serif' }}
         />
         <div className="text-xs uppercase tracking-[0.14em] mt-1" style={{ color: FUNIL_THEME.textTertiary }}>
