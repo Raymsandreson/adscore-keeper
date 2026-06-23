@@ -47,11 +47,14 @@ export function BpcSheetSyncButton({ boardId, onCreated }: Props) {
     setRunning(true);
     setResult(null);
     try {
-      const data = await invokeFunction<SyncResult>("bpc-sheet-sync", {
-        board_id: boardId,
-        since_days: sinceDays,
-        dry_run: dryRun,
+      const { data, error: invokeErr } = await cloudFunctions.invoke<SyncResult>("bpc-sheet-sync", {
+        body: {
+          board_id: boardId,
+          since_days: sinceDays,
+          dry_run: dryRun,
+        },
       });
+      if (invokeErr) throw invokeErr;
       setResult(data);
       setLastRunAt(new Date());
       if (data?.success && !dryRun && (data.created || 0) > 0) {
