@@ -46,6 +46,7 @@ export function useLeadStageHistory() {
     notes?: string
   ) => {
     try {
+      const changedAt = new Date().toISOString();
       // Get current user for changed_by attribution
       const { data: { user } } = await supabase.auth.getUser();
       
@@ -57,11 +58,17 @@ export function useLeadStageHistory() {
           to_stage: toStage,
           from_board_id: fromBoardId || null,
           to_board_id: toBoardId || null,
+          changed_at: changedAt,
           notes: notes || null,
           changed_by: user?.id || null,
         });
 
       if (error) throw error;
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('adscore:lead-stage-changed', {
+          detail: { leadId, fromStage, toStage, changedAt },
+        }));
+      }
     } catch (error) {
       console.error('Error adding history entry:', error);
     }
