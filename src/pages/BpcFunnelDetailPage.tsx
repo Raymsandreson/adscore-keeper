@@ -15,6 +15,7 @@ import { BpcStageLeadsSheet } from "@/components/kanban/BpcStageLeadsSheet";
 import { BpcKpisPanel } from "@/components/kanban/BpcKpisPanel";
 import { BpcSheetSyncButton } from "@/components/kanban/BpcSheetSyncButton";
 import { buildBpcAcolhedorFilter, leadMatchesFilter } from "@/lib/bpcPhoneMatch";
+import { FunilDashboard } from "@/components/funil/FunilDashboard";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -436,6 +437,8 @@ const BpcFunnelDetailPage = () => {
         filterPending={filterPending}
         bpcLeads={filteredBpcLeads}
       />
+      {/* Painel analítico — Funil de Conversão (dataset dedicado por período) */}
+      <FunilDashboard />
 
 
       <BpcFormLeadsSheet
