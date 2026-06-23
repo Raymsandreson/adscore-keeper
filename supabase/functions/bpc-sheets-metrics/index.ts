@@ -243,11 +243,21 @@ Deno.serve(async (req) => {
     // mas a fonte real são as abas individuais.
     void source;
 
+    // Dedup por form_lead_id (mesmo lead pode aparecer em abas duplicadas tipo
+    // "LEADS EDILAN" + "1LEADS EDILAN").
+    const seenIds = new Set<string>();
+    const dedupRows = allRows.filter((r) => {
+      const id = r.form_lead_id || `${r.phone_normalized}|${r.created_at}`;
+      if (seenIds.has(id)) return false;
+      seenIds.add(id);
+      return true;
+    });
+
     // Para "created" filtramos cedo (economia). Pros outros precisamos cruzar
     // com WA antes — então usamos todas as linhas como base.
     const baseRows = dateType === "created"
-      ? allRows.filter((r) => inPeriod(r.created_at, fromISO, toISO))
-      : allRows;
+      ? dedupRows.filter((r) => inPeriod(r.created_at, fromISO, toISO))
+      : dedupRows;
 
     // Cross-check com whatsapp_messages: pegamos PRIMEIRA e ÚLTIMA mensagem por telefone.
     const phones = Array.from(new Set(baseRows.map((r) => r.phone_normalized)));
