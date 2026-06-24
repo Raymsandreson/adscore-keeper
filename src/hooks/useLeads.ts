@@ -388,8 +388,10 @@ function usePagedLeads(
 }
 
 export const useLeads = (adAccountId?: string, options: UseLeadsOptions = {}) => {
-  const { mode = 'full', pageSize = 50, search = '', detailLevel = 'full' } = options;
+  const { mode = 'full', pageSize = 50, search = '', detailLevel = 'full', boardId } = options;
   const fetchColumns = detailLevel === 'index' ? LEAD_INDEX_COLUMNS : LEAD_FULL_COLUMNS;
+  // Chave de cache: segrega por (adAccountId, boardId) sem afetar consumidores legados (boardId vazio).
+  const cacheScope = boardId ? `${adAccountId || ''}::b:${boardId}` : adAccountId;
   const { user } = useAuthContext();
 
   // ===== PAGED MODE (on-demand) =====
@@ -397,7 +399,7 @@ export const useLeads = (adAccountId?: string, options: UseLeadsOptions = {}) =>
   const pagedState = usePagedLeads(adAccountId, mode === 'paged', pageSize, search);
 
   // Hydrate from cache synchronously so navigations don't flash empty.
-  const initialEntry = leadsCache.get(adAccountId);
+  const initialEntry = leadsCache.get(cacheScope);
   const [leads, setLeads] = useState<Lead[]>(() => initialEntry.leads);
   const [loading, setLoading] = useState(() => initialEntry.leads.length === 0);
   const [stats, setStats] = useState<LeadStats>(() => initialEntry.stats || leadsCache.emptyStats);
@@ -405,27 +407,27 @@ export const useLeads = (adAccountId?: string, options: UseLeadsOptions = {}) =>
   // Subscribe to cache so updates from other useLeads instances reflect here too.
   useEffect(() => {
     if (mode !== 'full') return;
-    const unsub = leadsCache.subscribe(adAccountId, (nextLeads, nextStats) => {
+    const unsub = leadsCache.subscribe(cacheScope, (nextLeads, nextStats) => {
       setLeads(nextLeads);
       if (nextStats) setStats(nextStats);
     });
     return () => { unsub(); };
-  }, [adAccountId, mode]);
+  }, [cacheScope, mode]);
 
   // Write-through: any local state change (mutation, realtime, poll) propagates to cache.
   useEffect(() => {
     if (mode !== 'full') return;
-    const entry = leadsCache.get(adAccountId);
+    const entry = leadsCache.get(cacheScope);
     if (entry.leads === leads) return;
     // Don't clobber cache with the initial empty state before first fetch.
     if (leads.length === 0 && entry.leads.length === 0) return;
-    leadsCache.set(adAccountId, leads, computeLeadStats(leads));
-  }, [leads, adAccountId, mode]);
+    leadsCache.set(cacheScope, leads, computeLeadStats(leads));
+  }, [leads, cacheScope, mode]);
 
   const fetchLeads = useCallback(async (retryCount = 0, force = false) => {
     // SWR: serve fresh cache without refetch
-    if (!force && leadsCache.isFresh(adAccountId)) {
-      const entry = leadsCache.get(adAccountId);
+    if (!force && leadsCache.isFresh(cacheScope)) {
+      const entry = leadsCache.get(cacheScope);
       setLeads(entry.leads);
       if (entry.stats) setStats(entry.stats);
       setLoading(false);
@@ -433,7 +435,7 @@ export const useLeads = (adAccountId?: string, options: UseLeadsOptions = {}) =>
     }
 
     // Dedupe concurrent fetches across all hook instances
-    const existingInflight = leadsCache.get(adAccountId).inflight;
+    const existingInflight = leadsCache.get(cacheScope).inflight;
     if (existingInflight && !force) {
       try {
         await existingInflight;
@@ -457,6 +459,7 @@ export const useLeads = (adAccountId?: string, options: UseLeadsOptions = {}) =>
           .order('created_at', { ascending: false })
           .range(from, to);
         if (adAccountId) query = query.eq('ad_account_id', adAccountId);
+        if (boardId) query = query.eq('board_id', boardId);
         const { data, error } = await query;
         if (error) throw error;
         if (data && data.length > 0) {
@@ -467,22 +470,22 @@ export const useLeads = (adAccountId?: string, options: UseLeadsOptions = {}) =>
           hasMore = false;
         }
       }
-      console.log(`✅ Leads carregados: ${allData.length} (${page} página(s))`);
+      console.log(`✅ Leads carregados: ${allData.length} (${page} página(s))${boardId ? ` [board=${boardId}]` : ''}`);
       return allData as Lead[];
     })();
 
-    leadsCache.setInflight(adAccountId, loader);
+    leadsCache.setInflight(cacheScope, loader);
 
     try {
       const typedLeads = await loader;
       // Merge per-id: preserva campos full já presentes em cache quando esta carga é 'index'.
-      const prevById = new Map(leadsCache.get(adAccountId).leads.map(l => [l.id, l]));
+      const prevById = new Map(leadsCache.get(cacheScope).leads.map(l => [l.id, l]));
       const merged = typedLeads.map(row => {
         const prev = prevById.get(row.id);
         return prev ? { ...prev, ...row } : row;
       });
       const nextStats = computeLeadStats(merged);
-      leadsCache.set(adAccountId, merged, nextStats);
+      leadsCache.set(cacheScope, merged, nextStats);
       // local state will be updated by subscriber, but set directly too for immediacy
       setLeads(merged);
       setStats(nextStats);
@@ -495,11 +498,12 @@ export const useLeads = (adAccountId?: string, options: UseLeadsOptions = {}) =>
       }
       toast.error('Erro ao carregar leads');
     } finally {
-      leadsCache.setInflight(adAccountId, null);
+      leadsCache.setInflight(cacheScope, null);
       setLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [adAccountId]);
+  }, [cacheScope]);
+
 
   const calculateStats = useCallback((leadsData: Lead[]) => {
     const total = leadsData.length;
