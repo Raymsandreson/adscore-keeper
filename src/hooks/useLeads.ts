@@ -100,7 +100,7 @@ function startSharedLeadsPoll(adAccountId?: string): () => void {
       try {
         let q = externalSupabase
           .from('leads')
-          .select(LEAD_SELECT_COLUMNS)
+          .select(LEAD_INDEX_COLUMNS)
           .gt('updated_at', e.lastPollAt)
           .order('updated_at', { ascending: false })
           .limit(200);
