@@ -1072,7 +1072,7 @@ export const useLeads = (adAccountId?: string, options: UseLeadsOptions = {}) =>
       if (channel) externalSupabase.removeChannel(channel);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [adAccountId]);
+  }, [adAccountId, boardId]);
 
   // Unified shape so consumers don't see `any`-poisoned types when paged mode is added.
   const base = {
