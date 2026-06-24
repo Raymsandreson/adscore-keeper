@@ -924,45 +924,10 @@ export const useLeads = (adAccountId?: string, options: UseLeadsOptions = {}) =>
 
     subscribeToRealtime();
 
-    let lastPollAt = new Date(Date.now() - 15_000).toISOString();
-    const pollInterval = setInterval(async () => {
-      try {
-        let q = externalSupabase
-          .from('leads')
-          .select(LEAD_SELECT_COLUMNS)
-          .gt('updated_at', lastPollAt)
-          .order('updated_at', { ascending: false })
-          .limit(200);
-        if (adAccountId) q = q.eq('ad_account_id', adAccountId);
-        const { data, error } = await q;
-        if (error) return;
-        lastPollAt = new Date().toISOString();
-        if (!data || data.length === 0) return;
-        setLeads(prev => {
-          const map = new Map(prev.map(l => [l.id, l]));
-          let changed = false;
-          for (const row of (data as unknown as Lead[])) {
-            if ((row as any).deleted_at) {
-              if (map.delete(row.id)) changed = true;
-              continue;
-            }
-            if (adAccountId && (row as any).ad_account_id !== adAccountId) continue;
-            const existing = map.get(row.id);
-            const merged = { ...(existing || {} as Lead), ...row };
-            if (!existing || existing.status !== row.status || existing.lead_status !== row.lead_status || existing.updated_at !== row.updated_at) {
-              map.set(row.id, merged);
-              changed = true;
-            }
-          }
-          if (!changed) return prev;
-          const next = Array.from(map.values());
-          calculateStatsDebouncedRef.current(next);
-          return next;
-        });
-      } catch {
-        // próximo tick tenta de novo
-      }
-    }, 3000);
+    // Polling de fallback ao realtime. Compartilhado por adAccountId
+    // (várias instâncias do hook = 1 só poll), pausado com a aba oculta,
+    // intervalo amplo (realtime já cobre o tempo-real).
+    const pollStop = startSharedLeadsPoll(adAccountId);
 
     return () => {
       cancelled = true;
