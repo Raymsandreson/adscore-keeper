@@ -466,10 +466,16 @@ export const useLeads = (adAccountId?: string, options: UseLeadsOptions = {}) =>
 
     try {
       const typedLeads = await loader;
-      const nextStats = computeLeadStats(typedLeads);
-      leadsCache.set(adAccountId, typedLeads, nextStats);
+      // Merge per-id: preserva campos full já presentes em cache quando esta carga é 'index'.
+      const prevById = new Map(leadsCache.get(adAccountId).leads.map(l => [l.id, l]));
+      const merged = typedLeads.map(row => {
+        const prev = prevById.get(row.id);
+        return prev ? { ...prev, ...row } : row;
+      });
+      const nextStats = computeLeadStats(merged);
+      leadsCache.set(adAccountId, merged, nextStats);
       // local state will be updated by subscriber, but set directly too for immediacy
-      setLeads(typedLeads);
+      setLeads(merged);
       setStats(nextStats);
     } catch (error) {
       console.error('Error fetching leads:', error);
