@@ -975,31 +975,8 @@ export const useLeads = (adAccountId?: string, options: UseLeadsOptions = {}) =>
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [adAccountId]);
 
-  // Paged-mode early return: bypass realtime/poll-heavy full pipeline.
-  if (mode === 'paged') {
-    return {
-      leads: pagedState.leads,
-      stats: leadsCache.emptyStats,
-      loading: pagedState.loading,
-      fetchLeads: pagedState.refetch as any,
-      addLead,
-      updateLead,
-      deleteLead,
-      updateLeadStatus,
-      updateLeadStatusAndSync,
-      syncLeadWithFacebook,
-      toggleFollower,
-      updateClientClassification,
-      // paged extras
-      page: pagedState.page,
-      setPage: pagedState.setPage,
-      pageSize: pagedState.pageSize,
-      totalCount: pagedState.totalCount,
-      hasMore: pagedState.hasMore,
-    } as any;
-  }
-
-  return {
+  // Unified shape so consumers don't see `any`-poisoned types when paged mode is added.
+  const base = {
     leads,
     stats,
     loading,
@@ -1012,7 +989,30 @@ export const useLeads = (adAccountId?: string, options: UseLeadsOptions = {}) =>
     syncLeadWithFacebook,
     toggleFollower,
     updateClientClassification,
+    // paged-mode extras (undefined in full mode)
+    page: undefined as number | undefined,
+    setPage: undefined as ((p: number) => void) | undefined,
+    pageSize: undefined as number | undefined,
+    totalCount: undefined as number | undefined,
+    hasMore: undefined as boolean | undefined,
   };
+
+  if (mode === 'paged') {
+    return {
+      ...base,
+      leads: pagedState.leads,
+      stats: leadsCache.emptyStats,
+      loading: pagedState.loading,
+      fetchLeads: pagedState.refetch as typeof fetchLeads,
+      page: pagedState.page,
+      setPage: pagedState.setPage,
+      pageSize: pagedState.pageSize,
+      totalCount: pagedState.totalCount,
+      hasMore: pagedState.hasMore,
+    };
+  }
+
+  return base;
 };
 
 
