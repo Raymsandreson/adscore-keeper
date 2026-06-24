@@ -66,6 +66,7 @@ const LEAD_INDEX_COLUMNS = [
 
 // Mantém alias legado para imports externos / outros métodos do hook.
 const LEAD_SELECT_COLUMNS = LEAD_FULL_COLUMNS;
+export { LEAD_FULL_COLUMNS, LEAD_INDEX_COLUMNS };
 
 const PAGE_SIZE = 1000;
 const LEAD_DELETED_EVENT = 'adscore:lead-deleted';
