@@ -122,10 +122,16 @@ export function BulkLeadCreationDialog({ open, onOpenChange, selectedConversatio
 
       for (const row of rows) {
         const conv = selectedConversations.find(c => c.phone === row.phone);
+        const rawPhone = (row.phone || '').trim();
+        const phoneDigits = rawPhone.replace(/\D/g, '');
+        // JID de grupo WhatsApp (>=17 dígitos ou contém @g.us) não é telefone real.
+        const isGroup = rawPhone.includes('@g.us') || phoneDigits.length >= 17;
         const { data, error } = await supabase
           .from('leads')
           .insert({
             lead_name: row.contact_name || `Lead - ${formatPhone(row.phone)}`,
+            lead_phone: isGroup ? null : (phoneDigits || null),
+            whatsapp_group_id: isGroup ? rawPhone : null,
             source: 'whatsapp',
             created_by: row.assigned_to !== 'none' ? row.assigned_to : (user?.id || null),
             board_id: row.board_id,
