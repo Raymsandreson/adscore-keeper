@@ -274,7 +274,7 @@ function SidebarLayout() {
                 <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
                 <Route path="/finance" element={<ProtectedRoute><FinancePage /></ProtectedRoute>} />
                 <Route path="/calls" element={<ProtectedRoute><CallsPage /></ProtectedRoute>} />
-                <Route path="/discadora" element={<ProtectedRoute><AutoDialerPage /></ProtectedRoute>} />
+                
                 <Route path="/whatsapp" element={<ProtectedRoute><WhatsAppPage /></ProtectedRoute>} />
                 <Route path="/whatsapp/cloud" element={<ProtectedRoute><WhatsAppCloudPage /></ProtectedRoute>} />
                 <Route path="/whatsapp-api" element={<ProtectedRoute><WhatsAppApiConversasPage /></ProtectedRoute>} />
