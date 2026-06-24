@@ -231,8 +231,18 @@ export const useLeads = (adAccountId?: string, options: UseLeadsOptions = {}) =>
       setLeads(nextLeads);
       if (nextStats) setStats(nextStats);
     });
-    return unsub;
+    return () => { unsub(); };
   }, [adAccountId, mode]);
+
+  // Write-through: any local state change (mutation, realtime, poll) propagates to cache.
+  useEffect(() => {
+    if (mode !== 'full') return;
+    const entry = leadsCache.get(adAccountId);
+    if (entry.leads === leads) return;
+    // Don't clobber cache with the initial empty state before first fetch.
+    if (leads.length === 0 && entry.leads.length === 0) return;
+    leadsCache.set(adAccountId, leads, computeLeadStats(leads));
+  }, [leads, adAccountId, mode]);
 
   const fetchLeads = useCallback(async (retryCount = 0, force = false) => {
     // SWR: serve fresh cache without refetch
