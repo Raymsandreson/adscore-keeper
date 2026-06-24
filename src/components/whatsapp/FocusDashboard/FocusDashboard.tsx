@@ -181,9 +181,6 @@ export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpen
                   <span className="text-[10px] opacity-70 leading-none">{k.sub}</span>
                 )}
                 </button>
-                {k.label === 'Fechados' && (
-                  <ClosedPodiumCard closedLeads={data.closedLeads} onClick={() => setClosedSheetOpen(true)} />
-                )}
               </div>
             );
           })}
