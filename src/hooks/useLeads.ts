@@ -1014,6 +1014,12 @@ export const useLeads = (adAccountId?: string, options: UseLeadsOptions = {}) =>
                     calculateStatsDebouncedRef.current(next);
                     return next;
                   }
+                  // Se o lead mudou de board e este hook está scoped a um board específico, remova.
+                  if (boardId && (updatedRow as any).board_id !== boardId) {
+                    const next = prev.filter(l => l.id !== updatedRow.id);
+                    calculateStatsDebouncedRef.current(next);
+                    return next;
+                  }
                   const next = [...prev];
                   next[idx] = { ...prev[idx], ...updatedRow };
                   calculateStatsDebouncedRef.current(next);
