@@ -46,7 +46,6 @@ export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpen
 
   const [collapsed, setCollapsed] = useState(false);
   const [datePickerOpen, setDatePickerOpen] = useState(false);
-  const [closedSheetOpen, setClosedSheetOpen] = useState(false);
 
   const initials = useMemo(() => {
     const name = (user?.user_metadata as any)?.full_name || user?.email || '?';
