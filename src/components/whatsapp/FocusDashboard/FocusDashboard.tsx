@@ -7,7 +7,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { CalendarIcon, RefreshCw, Trophy, Users, User as UserIcon, ChevronUp, ChevronDown, Percent, XCircle, Clock, Filter } from 'lucide-react';
+import { CalendarIcon, RefreshCw, Users, User as UserIcon, ChevronUp, ChevronDown, Percent, XCircle, Clock, Filter } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useFocusDashboardData, FocusPeriod } from '@/hooks/useFocusDashboardData';
