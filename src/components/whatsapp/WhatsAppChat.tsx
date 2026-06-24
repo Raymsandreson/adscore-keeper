@@ -3206,7 +3206,12 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
 
       {/* Messages + Call Records Timeline */}
       <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 space-y-2 bg-muted/10">
-        {timelineItems.map((item, idx) => {
+        {isHydratingConversation ? (
+          <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
+            <Loader2 className="h-6 w-6 animate-spin" />
+            <span className="text-xs">Carregando conversa…</span>
+          </div>
+        ) : timelineItems.map((item, idx) => {
           // Date separator
           const itemDate = new Date(item.timestamp);
           const prevItemDate = idx > 0 ? new Date(timelineItems[idx - 1].timestamp) : null;
