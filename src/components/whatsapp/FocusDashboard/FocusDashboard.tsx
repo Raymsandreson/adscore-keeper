@@ -14,7 +14,6 @@ import { useFocusDashboardData, FocusPeriod } from '@/hooks/useFocusDashboardDat
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useUserTeams } from '@/hooks/useUserTeams';
 import { usePageState } from '@/hooks/usePageState';
-import { ClosedPodiumCard } from './ClosedPodiumCard';
 import { ClosedLeadsSheet } from './ClosedLeadsSheet';
 import { cn } from '@/lib/utils';
 
@@ -182,9 +181,6 @@ export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpen
                   <span className="text-[10px] opacity-70 leading-none">{k.sub}</span>
                 )}
                 </button>
-                {k.label === 'Fechados' && (
-                  <ClosedPodiumCard closedLeads={data.closedLeads} onClick={() => setClosedSheetOpen(true)} />
-                )}
               </div>
             );
           })}
