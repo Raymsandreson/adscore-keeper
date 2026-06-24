@@ -1,61 +1,55 @@
-## Contexto
+# Plano — Reduzir chamadas do useLeads
 
-`useLeads` é consumido por 40+ componentes (Dashboard, Kanban, Finance, Contacts, Activities…). Hoje toda navegação remonta o hook → dispara o loop paginado de 1000 em 1000 do zero. O `leads` retornado é assumido como **dataset completo** em quase todos os lugares (stats, filtros locais, kanban). Trocar o contrato pra paginação cega quebra muita coisa.
+## Causa raiz confirmada
+`fetchLeads` (src/hooks/useLeads.ts:412-435) faz loop `range(0, PAGE_SIZE-1)` com `PAGE_SIZE=1000`. Com ~15k leads vira 15 requests por carregamento frio. Cada coluna em `LEAD_SELECT_COLUMNS` (50+) infla o payload, então não dá pra subir o limite sem estourar o `max-rows` do PostgREST (1000).
 
-## Estratégia em 2 camadas
+## Estratégia (alinhada com a resposta do usuário)
+Duas camadas no `useLeads`:
 
-### 1. Cache compartilhado (default, sem mudança de API)
+1. **Camada Index (leve, default em `/leads`):** carrega só `id, ad_account_id, board_id, status, lead_status, lead_name, lead_phone, created_at, updated_at, deleted_at`. ~10 colunas pequenas → cabe 5000+ por página. Para 15k leads: 3 requests em vez de 15.
+2. **Camada Detail (sob demanda):** novo hook `useLeadDetails(ids)` que busca o restante das colunas só para os leads visíveis no viewport / cards abertos / drawer. Resultado mescla no cache compartilhado.
 
-- Cache **module-level** (singleton fora do React) keyed por `adAccountId ?? '__all__'`.
-- Guarda: `{ leads, stats, fetchedAt, inflight }`.
-- Política **stale-while-revalidate**:
-  - Mount: se há cache → hidrata `leads`/`stats` na hora (sem loading), revalida em background se `> 60s`.
-  - Se outro mount já tem `inflight` (Promise) → aguarda a mesma Promise em vez de disparar um segundo loop paginado.
-  - TTL frescor: 60s. TTL hard: 10min (acima disso mostra loading se ainda não temos dados).
-- Persistência leve em `sessionStorage` (chave por `adAccountId`, comprimida só com os campos do `LEAD_SELECT_COLUMNS`) pra sobreviver a F5 da mesma aba. Skip se >5MB.
-- Invalidação:
-  - `addLead`, `updateLead`, `deleteLead`, `toggleFollower`, `updateClientClassification`, evento `LEAD_DELETED_EVENT`, payload realtime → atualiza o cache (mesma mutação que já fazem em `setLeads`).
-  - Poll incremental (`updated_at > lastPollAt`) já existente continua e também escreve no cache.
-- Resultado: navegar entre `/finance` → `/leads` → `/whatsapp` reusa instantaneamente; só dispara fetch se o cache estiver stale.
+Cache `leadsCache` continua único — entradas são leads "parciais" até o detail chegar. UI já tolera campos null.
 
-### 2. API paginada opt-in (sem alterar consumidores atuais)
+## Mudanças
 
-Adicionar parâmetro novo, sem mexer no comportamento default:
+### `src/hooks/useLeads.ts`
+- Separar `LEAD_INDEX_COLUMNS` (leve) e `LEAD_FULL_COLUMNS` (atual, mantém nome `LEAD_SELECT_COLUMNS` para compat).
+- Nova opção `UseLeadsOptions.detailLevel?: 'index' | 'full'` (default `'full'` para não quebrar consumidores legados).
+- `fetchLeads`: usar colunas conforme `detailLevel`. Stats (`computeLeadStats`) só precisam de `status`/`lead_status`/`created_at` → continuam OK com index.
+- Poller compartilhado também usa colunas index.
 
-```ts
-useLeads(adAccountId)                          // legado: carrega tudo (com cache)
-useLeads(adAccountId, { mode: 'paged', pageSize: 50, search })  // novo: sob demanda
-```
+### `src/hooks/useLeadDetails.ts` (novo)
+- Recebe `string[]` de ids visíveis (debounced 150ms).
+- Faz 1 query `.in('id', faltantes)` pedindo `LEAD_FULL_COLUMNS`.
+- Mescla via `leadsCache.update` (já existe). Marca ids já carregados num `Set` local da sessão para não rebaixar.
 
-No modo `paged`:
-- Não dispara o loop completo. Faz 1 request por página com `.range()`.
-- Retorna extra: `{ page, setPage, totalCount, hasMore, search, setSearch, isFetchingPage }`.
-- `search` filtra server-side via `or(lead_name.ilike.%q%,lead_phone.ilike.%q%,lead_email.ilike.%q%)` com debounce 300ms.
-- Não popula o cache global (datasets diferentes).
-- Stats nesse modo: vem de `count` separado, não calculado localmente.
+### `src/components/kanban/UnifiedKanbanManager.tsx` (e card render)
+- Passar `{ detailLevel: 'index' }` no `useLeads(adAccountId, …)`.
+- No componente que renderiza cards visíveis (lista por coluna), usar `IntersectionObserver` ou simples slice → chamar `useLeadDetails(visibleIds)`.
+- Drawer/Detalhe ao abrir um card: força fetch full daquele id (já cobre via `useLeadDetails([id])`).
 
-Consumidores migram pra `mode: 'paged'` um a um quando fizer sentido (listagens grandes). Nada quebra hoje.
+### Outros consumidores
+- Não tocar. Continuam com `detailLevel: 'full'` default. Quando o cache estiver populado pela camada index, eles vão revalidar e completar — sem regressão.
 
-## O que NÃO vou mexer
+## Fora de escopo
+- Não muda Realtime, mutations, ZapSign, dashboards Finance.
+- Não migra outros consumidores (`Dashboard`, `SegmentAnalysis`, etc.) — fica para iteração futura se aparecer pressão.
+- Não mexe em `usePagedLeads` (já existe, sem uso real).
 
-- Assinatura realtime, poll incremental de 3s, mutações (`addLead/updateLead/…`), CAPI, geo-rules, criação de grupo WA, snapshot de auditoria — tudo permanece igual.
-- Os 40+ consumidores: zero alteração nesta entrega.
-- Schema do banco.
+## Riscos
+- **Filtros que dependem de coluna não-index** (ex: filtro por `city`, `acolhedor`) deixam de funcionar até o detail chegar. Mitigação: lista de filtros do Kanban hoje usa só `status`/`lead_status`/`board_id` — já cobertos. Auditar antes de habilitar.
+- **Card mostra placeholder** enquanto detail carrega. Mitigação: skeleton só nos campos faltantes; nome/telefone já vêm no index.
+- **Cache misto** (alguns leads index, outros full). `leadsCache.update` faz merge shallow — campos full preservados quando o index revalida (objeto novo sobrescreve, então merge precisa preservar ricos). **Ajuste necessário em `leadsCache.update`**: quando vier um row com menos chaves que o existente, manter chaves antigas (`{ ...existing, ...row }` em vez de substituir).
 
-## Riscos e mitigação
+## Verificação (Regra V do LDPEV)
+1. `bunx tsc --noEmit` passa.
+2. Abrir `/leads?cat=previdenciario` com cache vazio → contar requests `leads?select=…` na aba Network. Esperado: ≤3 (index) + 1 por viewport scroll, em vez de 15.
+3. Abrir um card → 1 request `leads?id=eq.<uuid>&select=<full>`.
+4. Navegar para outra página e voltar → 0 requests (cache fresh).
+5. Conferir que Dashboard (`/`) continua funcionando com stats reais (consumidor full).
 
-- **Cache stale mostrando lead deletado** → realtime + evento local já tratam; cache escuta os mesmos updates.
-- **sessionStorage estourar** → guard de 5MB, fallback só em memória.
-- **Multi-tab divergência** → realtime resolve em ≤3s; aceitável.
-- **Rollback**: cache vive em arquivo novo `src/hooks/useLeadsCache.ts`. Se quebrar, basta voltar o `useLeads.ts` (1 arquivo).
-
-## Entrega desta rodada
-
-Só a **Camada 1 (cache SWR)** + esqueleto da Camada 2 pronto pra uso. Não vou migrar consumidores agora — confirma quais listagens quer paginar primeiro depois que o cache estiver de pé?
-
-## Verificação pós-implementação
-
-1. `npm run build` limpo.
-2. Abrir DevTools Network, navegar `/finance` → `/leads` → `/finance`: confirmar que a 2ª visita ao `/leads` não dispara loop `leads?select=...&offset=...`.
-3. Editar 1 lead no Kanban: confirmar update instantâneo (cache invalidado).
-4. F5 em `/leads`: cache de sessionStorage hidrata antes do fetch.
+## Tamanho estimado
+- 1 arquivo novo (~80 linhas)
+- 3 arquivos editados (~150 linhas no total)
+- Sem migration, sem mudança de schema, sem deploy de edge function.
