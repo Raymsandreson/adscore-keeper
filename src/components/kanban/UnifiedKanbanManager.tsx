@@ -43,6 +43,7 @@ import { useProfilesList } from '@/hooks/useProfilesList';
 import { AccidentDataExtractor, ExtractedAccidentData, CurrentLeadData } from '@/components/leads/AccidentDataExtractor';
 import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { useLeads, Lead, LeadStatus } from '@/hooks/useLeads';
+import { useLeadDetails } from '@/hooks/useLeadDetails';
 import { useLeadStageHistory } from '@/hooks/useLeadStageHistory';
 import { useChecklists } from '@/hooks/useChecklists';
 import { useConversionAlerts } from '@/hooks/useConversionAlerts';
