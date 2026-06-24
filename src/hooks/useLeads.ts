@@ -1053,7 +1053,7 @@ export const useLeads = (adAccountId?: string, options: UseLeadsOptions = {}) =>
     // Polling de fallback ao realtime. Compartilhado por adAccountId
     // (várias instâncias do hook = 1 só poll), pausado com a aba oculta,
     // intervalo amplo (realtime já cobre o tempo-real).
-    const pollStop = startSharedLeadsPoll(adAccountId);
+    const pollStop = startSharedLeadsPoll(adAccountId, boardId);
 
     return () => {
       cancelled = true;
