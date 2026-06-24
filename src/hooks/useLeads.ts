@@ -24,6 +24,13 @@ export interface UseLeadsOptions {
    * Reduz ~60% do payload por linha. Detalhes faltantes podem ser buscados via useLeadDetails(ids).
    */
   detailLevel?: 'full' | 'index';
+  /**
+   * Filtro server-side por board_id. Reduz drasticamente o número de leads carregados
+   * quando a tela só renderiza um board específico (ex: Kanban Previdenciário).
+   * Quando setado, o cache é segregado por (adAccountId, boardId) — outros consumidores
+   * sem boardId continuam vendo o cache global e não são afetados.
+   */
+  boardId?: string;
 }
 
 // Colunas "full" — usadas pela maioria dos consumidores que precisam do lead completo.
@@ -83,8 +90,8 @@ const POLL_INTERVAL_MS = 30_000;
 type SharedPoll = { refs: number; timer: number | null; lastPollAt: string };
 const sharedPolls = new Map<string, SharedPoll>();
 
-function startSharedLeadsPoll(adAccountId?: string): () => void {
-  const key = adAccountId || '__all__';
+function startSharedLeadsPoll(adAccountId?: string, boardId?: string): () => void {
+  const key = `${adAccountId || '__all__'}::b:${boardId || '__all__'}`;
   let entry = sharedPolls.get(key);
   if (!entry) {
     entry = { refs: 0, timer: null, lastPollAt: new Date(Date.now() - 60_000).toISOString() };
@@ -105,12 +112,13 @@ function startSharedLeadsPoll(adAccountId?: string): () => void {
           .order('updated_at', { ascending: false })
           .limit(200);
         if (adAccountId) q = q.eq('ad_account_id', adAccountId);
+        if (boardId) q = q.eq('board_id', boardId);
         const { data, error } = await q;
         if (error) return;
         e.lastPollAt = new Date().toISOString();
         if (!data || data.length === 0) return;
         leadsCache.update(
-          adAccountId,
+          key,
           (prev) => {
             const map = new Map(prev.map((l) => [l.id, l]));
             let changed = false;
@@ -120,6 +128,7 @@ function startSharedLeadsPoll(adAccountId?: string): () => void {
                 continue;
               }
               if (adAccountId && (row as any).ad_account_id !== adAccountId) continue;
+              if (boardId && (row as any).board_id !== boardId) continue;
               const existing = map.get(row.id);
               const merged = { ...(existing || ({} as Lead)), ...row };
               if (
@@ -379,8 +388,10 @@ function usePagedLeads(
 }
 
 export const useLeads = (adAccountId?: string, options: UseLeadsOptions = {}) => {
-  const { mode = 'full', pageSize = 50, search = '', detailLevel = 'full' } = options;
+  const { mode = 'full', pageSize = 50, search = '', detailLevel = 'full', boardId } = options;
   const fetchColumns = detailLevel === 'index' ? LEAD_INDEX_COLUMNS : LEAD_FULL_COLUMNS;
+  // Chave de cache: segrega por (adAccountId, boardId) sem afetar consumidores legados (boardId vazio).
+  const cacheScope = boardId ? `${adAccountId || ''}::b:${boardId}` : adAccountId;
   const { user } = useAuthContext();
 
   // ===== PAGED MODE (on-demand) =====
@@ -388,7 +399,7 @@ export const useLeads = (adAccountId?: string, options: UseLeadsOptions = {}) =>
   const pagedState = usePagedLeads(adAccountId, mode === 'paged', pageSize, search);
 
   // Hydrate from cache synchronously so navigations don't flash empty.
-  const initialEntry = leadsCache.get(adAccountId);
+  const initialEntry = leadsCache.get(cacheScope);
   const [leads, setLeads] = useState<Lead[]>(() => initialEntry.leads);
   const [loading, setLoading] = useState(() => initialEntry.leads.length === 0);
   const [stats, setStats] = useState<LeadStats>(() => initialEntry.stats || leadsCache.emptyStats);
@@ -396,27 +407,27 @@ export const useLeads = (adAccountId?: string, options: UseLeadsOptions = {}) =>
   // Subscribe to cache so updates from other useLeads instances reflect here too.
   useEffect(() => {
     if (mode !== 'full') return;
-    const unsub = leadsCache.subscribe(adAccountId, (nextLeads, nextStats) => {
+    const unsub = leadsCache.subscribe(cacheScope, (nextLeads, nextStats) => {
       setLeads(nextLeads);
       if (nextStats) setStats(nextStats);
     });
     return () => { unsub(); };
-  }, [adAccountId, mode]);
+  }, [cacheScope, mode]);
 
   // Write-through: any local state change (mutation, realtime, poll) propagates to cache.
   useEffect(() => {
     if (mode !== 'full') return;
-    const entry = leadsCache.get(adAccountId);
+    const entry = leadsCache.get(cacheScope);
     if (entry.leads === leads) return;
     // Don't clobber cache with the initial empty state before first fetch.
     if (leads.length === 0 && entry.leads.length === 0) return;
-    leadsCache.set(adAccountId, leads, computeLeadStats(leads));
-  }, [leads, adAccountId, mode]);
+    leadsCache.set(cacheScope, leads, computeLeadStats(leads));
+  }, [leads, cacheScope, mode]);
 
   const fetchLeads = useCallback(async (retryCount = 0, force = false) => {
     // SWR: serve fresh cache without refetch
-    if (!force && leadsCache.isFresh(adAccountId)) {
-      const entry = leadsCache.get(adAccountId);
+    if (!force && leadsCache.isFresh(cacheScope)) {
+      const entry = leadsCache.get(cacheScope);
       setLeads(entry.leads);
       if (entry.stats) setStats(entry.stats);
       setLoading(false);
@@ -424,7 +435,7 @@ export const useLeads = (adAccountId?: string, options: UseLeadsOptions = {}) =>
     }
 
     // Dedupe concurrent fetches across all hook instances
-    const existingInflight = leadsCache.get(adAccountId).inflight;
+    const existingInflight = leadsCache.get(cacheScope).inflight;
     if (existingInflight && !force) {
       try {
         await existingInflight;
@@ -448,6 +459,7 @@ export const useLeads = (adAccountId?: string, options: UseLeadsOptions = {}) =>
           .order('created_at', { ascending: false })
           .range(from, to);
         if (adAccountId) query = query.eq('ad_account_id', adAccountId);
+        if (boardId) query = query.eq('board_id', boardId);
         const { data, error } = await query;
         if (error) throw error;
         if (data && data.length > 0) {
@@ -458,22 +470,22 @@ export const useLeads = (adAccountId?: string, options: UseLeadsOptions = {}) =>
           hasMore = false;
         }
       }
-      console.log(`✅ Leads carregados: ${allData.length} (${page} página(s))`);
+      console.log(`✅ Leads carregados: ${allData.length} (${page} página(s))${boardId ? ` [board=${boardId}]` : ''}`);
       return allData as Lead[];
     })();
 
-    leadsCache.setInflight(adAccountId, loader);
+    leadsCache.setInflight(cacheScope, loader);
 
     try {
       const typedLeads = await loader;
       // Merge per-id: preserva campos full já presentes em cache quando esta carga é 'index'.
-      const prevById = new Map(leadsCache.get(adAccountId).leads.map(l => [l.id, l]));
+      const prevById = new Map(leadsCache.get(cacheScope).leads.map(l => [l.id, l]));
       const merged = typedLeads.map(row => {
         const prev = prevById.get(row.id);
         return prev ? { ...prev, ...row } : row;
       });
       const nextStats = computeLeadStats(merged);
-      leadsCache.set(adAccountId, merged, nextStats);
+      leadsCache.set(cacheScope, merged, nextStats);
       // local state will be updated by subscriber, but set directly too for immediacy
       setLeads(merged);
       setStats(nextStats);
@@ -486,11 +498,12 @@ export const useLeads = (adAccountId?: string, options: UseLeadsOptions = {}) =>
       }
       toast.error('Erro ao carregar leads');
     } finally {
-      leadsCache.setInflight(adAccountId, null);
+      leadsCache.setInflight(cacheScope, null);
       setLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [adAccountId]);
+  }, [cacheScope]);
+
 
   const calculateStats = useCallback((leadsData: Lead[]) => {
     const total = leadsData.length;
@@ -974,6 +987,7 @@ export const useLeads = (adAccountId?: string, options: UseLeadsOptions = {}) =>
               if (eventType === 'INSERT' && payload.new) {
                 const newRow = payload.new as Lead;
                 if (adAccountId && newRow.ad_account_id !== adAccountId) return;
+                if (boardId && (newRow as any).board_id !== boardId) return;
                 if ((newRow as any).deleted_at) return;
                 setLeads(prev => {
                   if (prev.some(l => l.id === newRow.id)) return prev;
@@ -995,7 +1009,14 @@ export const useLeads = (adAccountId?: string, options: UseLeadsOptions = {}) =>
                   const idx = prev.findIndex(l => l.id === updatedRow.id);
                   if (idx === -1) {
                     if (adAccountId && updatedRow.ad_account_id !== adAccountId) return prev;
+                    if (boardId && (updatedRow as any).board_id !== boardId) return prev;
                     const next = [updatedRow, ...prev];
+                    calculateStatsDebouncedRef.current(next);
+                    return next;
+                  }
+                  // Se o lead mudou de board e este hook está scoped a um board específico, remova.
+                  if (boardId && (updatedRow as any).board_id !== boardId) {
+                    const next = prev.filter(l => l.id !== updatedRow.id);
                     calculateStatsDebouncedRef.current(next);
                     return next;
                   }
@@ -1040,7 +1061,7 @@ export const useLeads = (adAccountId?: string, options: UseLeadsOptions = {}) =>
     // Polling de fallback ao realtime. Compartilhado por adAccountId
     // (várias instâncias do hook = 1 só poll), pausado com a aba oculta,
     // intervalo amplo (realtime já cobre o tempo-real).
-    const pollStop = startSharedLeadsPoll(adAccountId);
+    const pollStop = startSharedLeadsPoll(adAccountId, boardId);
 
     return () => {
       cancelled = true;
@@ -1051,7 +1072,7 @@ export const useLeads = (adAccountId?: string, options: UseLeadsOptions = {}) =>
       if (channel) externalSupabase.removeChannel(channel);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [adAccountId]);
+  }, [adAccountId, boardId]);
 
   // Unified shape so consumers don't see `any`-poisoned types when paged mode is added.
   const base = {
