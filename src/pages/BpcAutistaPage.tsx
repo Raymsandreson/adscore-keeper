@@ -7,7 +7,13 @@ import { Badge } from "@/components/ui/badge";
 import { Loader2, CheckCircle2, XCircle, FileText, ExternalLink, Accessibility } from "lucide-react";
 import { toast } from "sonner";
 
-type Lead = { id: string; lead_name: string | null; case_number: string | null };
+type CaseOption = {
+  id: string;
+  lead_id: string;
+  case_number: string | null;
+  title: string | null;
+  status: string | null;
+};
 
 type AmbiguousCandidate = { id: string; name: string };
 
@@ -52,14 +58,14 @@ async function montarDossie(payload: Record<string, unknown>): Promise<InvokeOut
 
 export default function BpcAutistaPage() {
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<Lead[]>([]);
+  const [results, setResults] = useState<CaseOption[]>([]);
   const [searching, setSearching] = useState(false);
-  const [selected, setSelected] = useState<Lead | null>(null);
+  const [selected, setSelected] = useState<CaseOption | null>(null);
   const [loading, setLoading] = useState(false);
   const [ambiguous, setAmbiguous] = useState<AmbiguousCandidate[] | null>(null);
   const [result, setResult] = useState<DossieResult | null>(null);
 
-  // Busca leads (debounced)
+  // Busca casos em legal_cases (debounced)
   useEffect(() => {
     if (!query || query.length < 2 || selected) {
       setResults([]);
@@ -69,13 +75,14 @@ export default function BpcAutistaPage() {
       setSearching(true);
       try {
         const { data, error } = await db
-          .from("leads")
-          .select("id, lead_name, case_number")
-          .or(`lead_name.ilike.%${query}%,case_number.ilike.%${query}%`)
-          .is("deleted_at", null)
-          .limit(10);
+          .from("legal_cases")
+          .select("id, lead_id, case_number, title, status")
+          .or(`title.ilike.%${query}%,case_number.ilike.%${query}%`)
+          .not("lead_id", "is", null)
+          .order("title", { ascending: true })
+          .limit(20);
         if (error) throw error;
-        setResults((data ?? []) as Lead[]);
+        setResults((data ?? []) as CaseOption[]);
       } catch (e: any) {
         toast.error("Erro ao buscar casos: " + e.message);
       } finally {
@@ -90,7 +97,7 @@ export default function BpcAutistaPage() {
     setLoading(true);
     setAmbiguous(null);
     setResult(null);
-    const body = payload ?? { lead_id: selected.id, case_name: selected.lead_name };
+    const body = payload ?? { lead_id: selected.lead_id, case_name: selected.title };
     const out = await montarDossie(body);
     setLoading(false);
     if (out.tipo === "ok") setResult(out.data);
@@ -119,6 +126,13 @@ export default function BpcAutistaPage() {
     return out;
   }, [gates]);
 
+  const selectedLabel = useMemo(() => {
+    if (!selected) return "";
+    const parts: string[] = [selected.title ?? "(sem título)"];
+    if (selected.case_number) parts.push(`(${selected.case_number})`);
+    return parts.join(" ");
+  }, [selected]);
+
   return (
     <div className="container max-w-4xl mx-auto p-6 space-y-6">
       <header className="space-y-1">
@@ -138,8 +152,8 @@ export default function BpcAutistaPage() {
         <CardContent className="space-y-3">
           <div className="relative">
             <Input
-              placeholder="Nome do caso ou número PREV"
-              value={selected ? `${selected.lead_name ?? ""} ${selected.case_number ? `(${selected.case_number})` : ""}` : query}
+              placeholder="Título do caso ou número PREV"
+              value={selected ? selectedLabel : query}
               onChange={(e) => {
                 setSelected(null);
                 setQuery(e.target.value);
@@ -147,20 +161,27 @@ export default function BpcAutistaPage() {
             />
             {!selected && results.length > 0 && (
               <div className="absolute z-10 mt-1 w-full bg-popover border rounded-md shadow-md max-h-64 overflow-auto">
-                {results.map((l) => (
+                {results.map((c) => (
                   <button
-                    key={l.id}
+                    key={c.id}
                     type="button"
                     className="w-full text-left px-3 py-2 hover:bg-accent text-sm"
                     onClick={() => {
-                      setSelected(l);
+                      setSelected(c);
                       setResults([]);
                       setQuery("");
                     }}
                   >
-                    <div className="font-medium">{l.lead_name || "(sem nome)"}</div>
-                    {l.case_number && (
-                      <div className="text-xs text-muted-foreground">{l.case_number}</div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{c.title || "(sem título)"}</span>
+                      {c.status && (
+                        <Badge variant="secondary" className="text-[10px] px-1 py-0">
+                          {c.status}
+                        </Badge>
+                      )}
+                    </div>
+                    {c.case_number && (
+                      <div className="text-xs text-muted-foreground">{c.case_number}</div>
                     )}
                   </button>
                 ))}
