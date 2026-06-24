@@ -5,7 +5,7 @@ import {
   MessageCircle, CreditCard, Filter, Bot, Target, Heart, Megaphone,
   Zap, Search, ClipboardList, Phone, Scale, Briefcase, AtSign, RefreshCw, FileText,
   LogOut, MessagesSquare, Settings, ChevronRight, User, Chrome, Archive, MapPin,
-  MessageSquare as MessageSquareIcon, ExternalLink,
+  MessageSquare as MessageSquareIcon, ExternalLink, Accessibility,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -150,6 +150,7 @@ export function AppSidebar() {
         { id: "process-tracking", label: "Controle Processual", icon: <ClipboardList className="h-3.5 w-3.5" />, path: "/process-tracking", color: "text-emerald-500" },
         { id: "nuclei", label: "Núcleos", icon: <Scale className="h-3.5 w-3.5" />, path: "/nuclei", color: "text-orange-500" },
         { id: "hearings", label: "Audiências", icon: <Gavel className="h-3.5 w-3.5" />, path: "/hearings", color: "text-rose-500" },
+        { id: "bpc-autista", label: "BPC -AUTISTA", icon: <Accessibility className="h-3.5 w-3.5" />, path: "/processual/bpc-autista", color: "text-sky-500" },
         { id: "workflow-progress", label: "Fluxo de Trabalho", icon: <Zap className="h-3.5 w-3.5" />, path: "/workflow-progress", color: "text-purple-500" },
       ],
     },
