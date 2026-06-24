@@ -1009,6 +1009,7 @@ export const useLeads = (adAccountId?: string, options: UseLeadsOptions = {}) =>
                   const idx = prev.findIndex(l => l.id === updatedRow.id);
                   if (idx === -1) {
                     if (adAccountId && updatedRow.ad_account_id !== adAccountId) return prev;
+                    if (boardId && (updatedRow as any).board_id !== boardId) return prev;
                     const next = [updatedRow, ...prev];
                     calculateStatsDebouncedRef.current(next);
                     return next;
