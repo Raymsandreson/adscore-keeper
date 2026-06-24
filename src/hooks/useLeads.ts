@@ -179,54 +179,98 @@ const getReadableErrorMessage = (error: unknown, fallback: string) => {
   return fallback;
 };
 
-export const useLeads = (adAccountId?: string) => {
-  const { user } = useAuthContext();
-  const [leads, setLeads] = useState<Lead[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [stats, setStats] = useState<LeadStats>({
-    total: 0,
-    new: 0,
-    contacted: 0,
-    qualified: 0,
-    notQualified: 0,
-    converted: 0,
-    lost: 0,
-    comment: 0,
-    totalSpent: 0,
-    totalRevenue: 0,
-    costPerLead: 0,
-    costPerConvertedLead: 0,
-    conversionRate: 0,
-    qualificationRate: 0,
-  });
+// Pure stats calculator - shared between hook and cache so all paths stay in sync.
+export const computeLeadStats = (leadsData: Lead[]): LeadStats => {
+  const total = leadsData.length;
+  const newLeads = leadsData.filter(l => l.status === 'new').length;
+  const contacted = leadsData.filter(l => l.status === 'contacted').length;
+  const qualified = leadsData.filter(l => l.status === 'qualified').length;
+  const notQualified = leadsData.filter(l => l.status === 'not_qualified').length;
+  const converted = leadsData.filter(l => l.status === 'converted').length;
+  const lost = leadsData.filter(l => l.status === 'lost').length;
+  const comment = leadsData.filter(l => l.status === 'comment').length;
+  const totalSpent = leadsData.reduce((acc, l) => acc + (l.ad_spend_at_conversion || 0), 0);
+  const totalRevenue = leadsData.filter(l => l.status === 'converted')
+    .reduce((acc, l) => acc + (l.conversion_value || 0), 0);
+  return {
+    total,
+    new: newLeads,
+    contacted,
+    qualified,
+    notQualified,
+    converted,
+    lost,
+    comment,
+    totalSpent,
+    totalRevenue,
+    costPerLead: total > 0 ? totalSpent / total : 0,
+    costPerConvertedLead: converted > 0 ? totalSpent / converted : 0,
+    conversionRate: total > 0 ? (converted / total) * 100 : 0,
+    qualificationRate: total > 0 ? (qualified / total) * 100 : 0,
+  };
+};
 
-  const fetchLeads = useCallback(async (retryCount = 0) => {
-    setLoading(true);
-    try {
-      // Paginated fetch to avoid timeouts on large datasets
+export const useLeads = (adAccountId?: string, options: UseLeadsOptions = {}) => {
+  const { mode = 'full', pageSize = 50, search = '' } = options;
+  const { user } = useAuthContext();
+
+  // ===== PAGED MODE (on-demand) =====
+  // Self-contained branch; doesn't touch the SWR full-list cache.
+  const pagedState = usePagedLeads(adAccountId, mode === 'paged', pageSize, search);
+
+  // Hydrate from cache synchronously so navigations don't flash empty.
+  const initialEntry = leadsCache.get(adAccountId);
+  const [leads, setLeads] = useState<Lead[]>(() => initialEntry.leads);
+  const [loading, setLoading] = useState(() => initialEntry.leads.length === 0);
+  const [stats, setStats] = useState<LeadStats>(() => initialEntry.stats || leadsCache.emptyStats);
+
+  // Subscribe to cache so updates from other useLeads instances reflect here too.
+  useEffect(() => {
+    if (mode !== 'full') return;
+    const unsub = leadsCache.subscribe(adAccountId, (nextLeads, nextStats) => {
+      setLeads(nextLeads);
+      if (nextStats) setStats(nextStats);
+    });
+    return unsub;
+  }, [adAccountId, mode]);
+
+  const fetchLeads = useCallback(async (retryCount = 0, force = false) => {
+    // SWR: serve fresh cache without refetch
+    if (!force && leadsCache.isFresh(adAccountId)) {
+      const entry = leadsCache.get(adAccountId);
+      setLeads(entry.leads);
+      if (entry.stats) setStats(entry.stats);
+      setLoading(false);
+      return;
+    }
+
+    // Dedupe concurrent fetches across all hook instances
+    const existingInflight = leadsCache.get(adAccountId).inflight;
+    if (existingInflight && !force) {
+      try {
+        await existingInflight;
+      } catch { /* error already toasted by owner */ }
+      return;
+    }
+
+    if (leads.length === 0) setLoading(true);
+
+    const loader = (async (): Promise<Lead[]> => {
       let allData: any[] = [];
       let page = 0;
       let hasMore = true;
-
       while (hasMore) {
         const from = page * PAGE_SIZE;
         const to = from + PAGE_SIZE - 1;
-
         let query = externalSupabase
           .from('leads')
           .select(LEAD_SELECT_COLUMNS)
           .is('deleted_at', null)
           .order('created_at', { ascending: false })
           .range(from, to);
-
-        if (adAccountId) {
-          query = query.eq('ad_account_id', adAccountId);
-        }
-
+        if (adAccountId) query = query.eq('ad_account_id', adAccountId);
         const { data, error } = await query;
-
         if (error) throw error;
-
         if (data && data.length > 0) {
           allData = allData.concat(data);
           hasMore = data.length === PAGE_SIZE;
@@ -235,24 +279,32 @@ export const useLeads = (adAccountId?: string) => {
           hasMore = false;
         }
       }
-
       console.log(`✅ Leads carregados: ${allData.length} (${page} página(s))`);
+      return allData as Lead[];
+    })();
 
-      const typedLeads = allData as Lead[];
+    leadsCache.setInflight(adAccountId, loader);
+
+    try {
+      const typedLeads = await loader;
+      const nextStats = computeLeadStats(typedLeads);
+      leadsCache.set(adAccountId, typedLeads, nextStats);
+      // local state will be updated by subscriber, but set directly too for immediacy
       setLeads(typedLeads);
-      calculateStats(typedLeads);
+      setStats(nextStats);
     } catch (error) {
       console.error('Error fetching leads:', error);
-      // Retry up to 2 times with increasing delay
       if (retryCount < 2) {
         console.log(`🔄 Retry ${retryCount + 1}/2 em ${(retryCount + 1) * 2}s...`);
-        setTimeout(() => fetchLeads(retryCount + 1), (retryCount + 1) * 2000);
+        setTimeout(() => fetchLeads(retryCount + 1, true), (retryCount + 1) * 2000);
         return;
       }
       toast.error('Erro ao carregar leads');
     } finally {
+      leadsCache.setInflight(adAccountId, null);
       setLoading(false);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [adAccountId]);
 
   const calculateStats = useCallback((leadsData: Lead[]) => {
