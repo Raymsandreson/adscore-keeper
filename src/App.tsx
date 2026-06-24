@@ -142,7 +142,7 @@ const ProfilePage = lazyRetry(() => import("./pages/ProfilePage"), "ProfilePage"
 const FinancePage = lazyRetry(() => import("./pages/FinancePage"), "FinancePage");
 const ExpenseFormPage = lazyRetry(() => import("./pages/ExpenseFormPage"), "ExpenseFormPage");
 const CallsPage = lazyRetry(() => import("./pages/CallsPage"), "CallsPage");
-const AutoDialerPage = lazyRetry(() => import("./pages/AutoDialerPage"), "AutoDialerPage");
+
 const WhatsAppCloudPage = lazyRetry(() => import("./pages/WhatsAppCloudPage"), "WhatsAppCloudPage");
 const WhatsAppApiPage = lazyRetry(() => import("./pages/WhatsAppApiPage"), "WhatsAppApiPage");
 const WhatsAppApiConversasPage = lazyRetry(() => import("./pages/WhatsAppApiConversasPage"), "WhatsAppApiConversasPage");
