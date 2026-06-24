@@ -49,6 +49,88 @@ const LEAD_DELETED_EVENT = 'adscore:lead-deleted';
 const isAlreadyMissingLeadError = (error?: string) =>
   String(error || '').toLowerCase().includes('lead não encontrado no banco externo');
 
+// ──────────────────────────────────────────────────────────────────────────
+// Poller compartilhado: 1 setInterval por adAccountId, qualquer número de
+// instâncias do useLeads montadas se inscrevem nele via refcount. Pausa
+// automaticamente com a aba oculta. Realtime já cobre o tempo-real; o
+// poller é apenas fallback contra eventos perdidos, então 30s basta.
+// ──────────────────────────────────────────────────────────────────────────
+const POLL_INTERVAL_MS = 30_000;
+type SharedPoll = { refs: number; timer: number | null; lastPollAt: string };
+const sharedPolls = new Map<string, SharedPoll>();
+
+function startSharedLeadsPoll(adAccountId?: string): () => void {
+  const key = adAccountId || '__all__';
+  let entry = sharedPolls.get(key);
+  if (!entry) {
+    entry = { refs: 0, timer: null, lastPollAt: new Date(Date.now() - 60_000).toISOString() };
+    sharedPolls.set(key, entry);
+  }
+  entry.refs++;
+
+  if (entry.timer === null) {
+    const tick = async () => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      const e = sharedPolls.get(key);
+      if (!e) return;
+      try {
+        let q = externalSupabase
+          .from('leads')
+          .select(LEAD_SELECT_COLUMNS)
+          .gt('updated_at', e.lastPollAt)
+          .order('updated_at', { ascending: false })
+          .limit(200);
+        if (adAccountId) q = q.eq('ad_account_id', adAccountId);
+        const { data, error } = await q;
+        if (error) return;
+        e.lastPollAt = new Date().toISOString();
+        if (!data || data.length === 0) return;
+        leadsCache.update(
+          adAccountId,
+          (prev) => {
+            const map = new Map(prev.map((l) => [l.id, l]));
+            let changed = false;
+            for (const row of (data as unknown as Lead[])) {
+              if ((row as any).deleted_at) {
+                if (map.delete(row.id)) changed = true;
+                continue;
+              }
+              if (adAccountId && (row as any).ad_account_id !== adAccountId) continue;
+              const existing = map.get(row.id);
+              const merged = { ...(existing || ({} as Lead)), ...row };
+              if (
+                !existing ||
+                existing.status !== row.status ||
+                existing.lead_status !== row.lead_status ||
+                existing.updated_at !== row.updated_at
+              ) {
+                map.set(row.id, merged);
+                changed = true;
+              }
+            }
+            return changed ? Array.from(map.values()) : prev;
+          },
+          (next) => computeLeadStats(next),
+        );
+      } catch {
+        /* próximo tick tenta de novo */
+      }
+    };
+    entry.timer = window.setInterval(tick, POLL_INTERVAL_MS);
+  }
+
+  return () => {
+    const e = sharedPolls.get(key);
+    if (!e) return;
+    e.refs--;
+    if (e.refs <= 0) {
+      if (e.timer !== null) window.clearInterval(e.timer);
+      sharedPolls.delete(key);
+    }
+  };
+}
+
+
 export type LeadStatus = 'new' | 'contacted' | 'qualified' | 'not_qualified' | 'converted' | 'lost' | 'comment';
 export type LeadBusinessStatus = 'active' | 'closed' | 'refused' | 'inviavel' | 'cancelled';
 export type SyncStatus = 'local' | 'synced' | 'syncing' | 'error';
@@ -924,52 +1006,17 @@ export const useLeads = (adAccountId?: string, options: UseLeadsOptions = {}) =>
 
     subscribeToRealtime();
 
-    let lastPollAt = new Date(Date.now() - 15_000).toISOString();
-    const pollInterval = setInterval(async () => {
-      try {
-        let q = externalSupabase
-          .from('leads')
-          .select(LEAD_SELECT_COLUMNS)
-          .gt('updated_at', lastPollAt)
-          .order('updated_at', { ascending: false })
-          .limit(200);
-        if (adAccountId) q = q.eq('ad_account_id', adAccountId);
-        const { data, error } = await q;
-        if (error) return;
-        lastPollAt = new Date().toISOString();
-        if (!data || data.length === 0) return;
-        setLeads(prev => {
-          const map = new Map(prev.map(l => [l.id, l]));
-          let changed = false;
-          for (const row of (data as unknown as Lead[])) {
-            if ((row as any).deleted_at) {
-              if (map.delete(row.id)) changed = true;
-              continue;
-            }
-            if (adAccountId && (row as any).ad_account_id !== adAccountId) continue;
-            const existing = map.get(row.id);
-            const merged = { ...(existing || {} as Lead), ...row };
-            if (!existing || existing.status !== row.status || existing.lead_status !== row.lead_status || existing.updated_at !== row.updated_at) {
-              map.set(row.id, merged);
-              changed = true;
-            }
-          }
-          if (!changed) return prev;
-          const next = Array.from(map.values());
-          calculateStatsDebouncedRef.current(next);
-          return next;
-        });
-      } catch {
-        // próximo tick tenta de novo
-      }
-    }, 3000);
+    // Polling de fallback ao realtime. Compartilhado por adAccountId
+    // (várias instâncias do hook = 1 só poll), pausado com a aba oculta,
+    // intervalo amplo (realtime já cobre o tempo-real).
+    const pollStop = startSharedLeadsPoll(adAccountId);
 
     return () => {
       cancelled = true;
       window.removeEventListener(LEAD_DELETED_EVENT, handleLocalLeadDeleted);
       if (realtimeTimerRef.current) clearTimeout(realtimeTimerRef.current);
       if (statsDebounceRef.current) clearTimeout(statsDebounceRef.current);
-      clearInterval(pollInterval);
+      pollStop();
       if (channel) externalSupabase.removeChannel(channel);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
