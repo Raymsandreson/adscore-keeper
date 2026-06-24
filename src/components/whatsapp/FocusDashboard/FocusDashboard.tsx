@@ -14,7 +14,6 @@ import { useFocusDashboardData, FocusPeriod } from '@/hooks/useFocusDashboardDat
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useUserTeams } from '@/hooks/useUserTeams';
 import { usePageState } from '@/hooks/usePageState';
-import { ClosedPodiumCard } from './ClosedPodiumCard';
 import { ClosedLeadsSheet } from './ClosedLeadsSheet';
 import { cn } from '@/lib/utils';
 
