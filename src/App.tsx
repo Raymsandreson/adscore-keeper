@@ -163,7 +163,7 @@ const ContactsPage = lazyRetry(() => import("./pages/ContactsPage"), "ContactsPa
 const InstagramPage = lazyRetry(() => import("./pages/InstagramPage"), "InstagramPage");
 const SettingsPage = lazyRetry(() => import("./pages/SettingsPage"), "SettingsPage");
 const ReferralSearchPage = lazyRetry(() => import("./pages/ReferralSearchPage"), "ReferralSearchPage");
-const AgentMonitorPage = lazyRetry(() => import("./pages/AgentMonitorPage"), "AgentMonitorPage");
+
 const GerarProcuracaoPage = lazyRetry(() => import("./pages/GerarProcuracaoPage"), "GerarProcuracaoPage");
 
 const LandingPage = lazyRetry(() => import("./pages/LandingPage"), "LandingPage");
