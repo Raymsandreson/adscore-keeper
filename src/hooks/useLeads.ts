@@ -18,10 +18,16 @@ export interface UseLeadsOptions {
   pageSize?: number;
   /** paged mode only - server-side ilike on name/phone/email */
   search?: string;
+  /**
+   * 'full' (default): retorna todas as colunas do lead (compat com consumidores legados).
+   * 'index': retorna apenas as colunas necessárias para listagem/filtro/Kanban-card.
+   * Reduz ~60% do payload por linha. Detalhes faltantes podem ser buscados via useLeadDetails(ids).
+   */
+  detailLevel?: 'full' | 'index';
 }
 
-// Columns to fetch - avoids pulling unnecessary large text columns
-const LEAD_SELECT_COLUMNS = [
+// Colunas "full" — usadas pela maioria dos consumidores que precisam do lead completo.
+const LEAD_FULL_COLUMNS = [
   'id', 'ad_account_id', 'campaign_id', 'campaign_name', 'adset_id', 'adset_name',
   'creative_id', 'creative_name', 'ad_name', 'ad_start_date',
   'lead_name', 'lead_phone', 'lead_email', 'source', 'status',
@@ -43,6 +49,24 @@ const LEAD_SELECT_COLUMNS = [
   'action_source', 'action_source_detail',
   'lead_status_reason', 'lead_status_changed_at', 'cac', 'inviavel_date', 'cancelled_date'
 ].join(',');
+
+// Colunas "index" — só o suficiente para Kanban card + filtros básicos + stats.
+const LEAD_INDEX_COLUMNS = [
+  'id', 'ad_account_id', 'board_id',
+  'lead_name', 'lead_phone', 'lead_email',
+  'status', 'lead_status', 'source',
+  'created_at', 'updated_at',
+  'acolhedor', 'case_number', 'victim_name', 'case_type',
+  'city', 'state', 'product_service_id',
+  'ad_spend_at_conversion', 'conversion_value',
+  'lead_status_reason', 'lead_status_changed_at',
+  'followup_count', 'last_followup_at',
+  'whatsapp_group_id', 'client_classification',
+].join(',');
+
+// Mantém alias legado para imports externos / outros métodos do hook.
+const LEAD_SELECT_COLUMNS = LEAD_FULL_COLUMNS;
+export { LEAD_FULL_COLUMNS, LEAD_INDEX_COLUMNS };
 
 const PAGE_SIZE = 1000;
 const LEAD_DELETED_EVENT = 'adscore:lead-deleted';
@@ -76,7 +100,7 @@ function startSharedLeadsPoll(adAccountId?: string): () => void {
       try {
         let q = externalSupabase
           .from('leads')
-          .select(LEAD_SELECT_COLUMNS)
+          .select(LEAD_INDEX_COLUMNS)
           .gt('updated_at', e.lastPollAt)
           .order('updated_at', { ascending: false })
           .limit(200);
@@ -355,7 +379,8 @@ function usePagedLeads(
 }
 
 export const useLeads = (adAccountId?: string, options: UseLeadsOptions = {}) => {
-  const { mode = 'full', pageSize = 50, search = '' } = options;
+  const { mode = 'full', pageSize = 50, search = '', detailLevel = 'full' } = options;
+  const fetchColumns = detailLevel === 'index' ? LEAD_INDEX_COLUMNS : LEAD_FULL_COLUMNS;
   const { user } = useAuthContext();
 
   // ===== PAGED MODE (on-demand) =====
@@ -418,7 +443,7 @@ export const useLeads = (adAccountId?: string, options: UseLeadsOptions = {}) =>
         const to = from + PAGE_SIZE - 1;
         let query = externalSupabase
           .from('leads')
-          .select(LEAD_SELECT_COLUMNS)
+          .select(fetchColumns)
           .is('deleted_at', null)
           .order('created_at', { ascending: false })
           .range(from, to);
@@ -441,10 +466,16 @@ export const useLeads = (adAccountId?: string, options: UseLeadsOptions = {}) =>
 
     try {
       const typedLeads = await loader;
-      const nextStats = computeLeadStats(typedLeads);
-      leadsCache.set(adAccountId, typedLeads, nextStats);
+      // Merge per-id: preserva campos full já presentes em cache quando esta carga é 'index'.
+      const prevById = new Map(leadsCache.get(adAccountId).leads.map(l => [l.id, l]));
+      const merged = typedLeads.map(row => {
+        const prev = prevById.get(row.id);
+        return prev ? { ...prev, ...row } : row;
+      });
+      const nextStats = computeLeadStats(merged);
+      leadsCache.set(adAccountId, merged, nextStats);
       // local state will be updated by subscriber, but set directly too for immediacy
-      setLeads(typedLeads);
+      setLeads(merged);
       setStats(nextStats);
     } catch (error) {
       console.error('Error fetching leads:', error);

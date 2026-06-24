@@ -43,6 +43,7 @@ import { useProfilesList } from '@/hooks/useProfilesList';
 import { AccidentDataExtractor, ExtractedAccidentData, CurrentLeadData } from '@/components/leads/AccidentDataExtractor';
 import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { useLeads, Lead, LeadStatus } from '@/hooks/useLeads';
+import { useLeadDetails } from '@/hooks/useLeadDetails';
 import { useLeadStageHistory } from '@/hooks/useLeadStageHistory';
 import { useChecklists } from '@/hooks/useChecklists';
 import { useConversionAlerts } from '@/hooks/useConversionAlerts';
@@ -164,7 +165,7 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
     addLead,
     updateLead,
     deleteLead,
-  } = useLeads(adAccountId);
+  } = useLeads(adAccountId, { detailLevel: 'index' });
 
   // Stage history hook
   const { addHistoryEntry } = useLeadStageHistory();
@@ -172,6 +173,10 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
 
   // Derive editingLead from persisted ID
   const editingLead = allLeads.find(l => l.id === editingLeadId) ?? null;
+
+  // Quando um lead entra em edição, carrega colunas full apenas dele.
+  useLeadDetails(editingLeadId ? [editingLeadId] : [], adAccountId);
+
 
   // Filter leads by selected board
   const boardLeads = useMemo(() => {
