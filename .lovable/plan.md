@@ -1,73 +1,61 @@
-## O que vou construir
+## Contexto
 
-Um "ajudante" no Railway que, de 5 em 5 minutos, lê a planilha do Google que você mandou e cria/atualiza leads no funil BPC. Linha nova na planilha = card novo na primeira etapa do funil. Sem duplicar.
+`useLeads` é consumido por 40+ componentes (Dashboard, Kanban, Finance, Contacts, Activities…). Hoje toda navegação remonta o hook → dispara o loop paginado de 1000 em 1000 do zero. O `leads` retornado é assumido como **dataset completo** em quase todos os lugares (stats, filtros locais, kanban). Trocar o contrato pra paginação cega quebra muita coisa.
 
-Metáfora: hoje a planilha é só o **placar** do painel (KPIs). Vou transformá-la também na **esteira de chegada** — cada nome que cai lá vira automaticamente um card no kanban.
+## Estratégia em 2 camadas
 
-## Decisões que tomei por você (você skipou as perguntas)
+### 1. Cache compartilhado (default, sem mudança de API)
 
-| Pergunta | Decisão |
-|---|---|
-| Qual aba? | `BASE_UNIFICADA` (mesma que já alimenta os KPIs hoje, pra manter coerência) |
-| O que fazer com linha nova? | Criar lead novo na primeira etapa do board BPC. Não mexo no status depois — quem move o card é a equipe |
-| Frequência | A cada 5 minutos (equilíbrio entre "rápido" e "não estourar quota do Google") |
-| Chave única (anti-duplicado) | `form_lead_id` (coluna A, `l:...`) — é o ID do Meta, único de verdade |
+- Cache **module-level** (singleton fora do React) keyed por `adAccountId ?? '__all__'`.
+- Guarda: `{ leads, stats, fetchedAt, inflight }`.
+- Política **stale-while-revalidate**:
+  - Mount: se há cache → hidrata `leads`/`stats` na hora (sem loading), revalida em background se `> 60s`.
+  - Se outro mount já tem `inflight` (Promise) → aguarda a mesma Promise em vez de disparar um segundo loop paginado.
+  - TTL frescor: 60s. TTL hard: 10min (acima disso mostra loading se ainda não temos dados).
+- Persistência leve em `sessionStorage` (chave por `adAccountId`, comprimida só com os campos do `LEAD_SELECT_COLUMNS`) pra sobreviver a F5 da mesma aba. Skip se >5MB.
+- Invalidação:
+  - `addLead`, `updateLead`, `deleteLead`, `toggleFollower`, `updateClientClassification`, evento `LEAD_DELETED_EVENT`, payload realtime → atualiza o cache (mesma mutação que já fazem em `setLeads`).
+  - Poll incremental (`updated_at > lastPollAt`) já existente continua e também escreve no cache.
+- Resultado: navegar entre `/finance` → `/leads` → `/whatsapp` reusa instantaneamente; só dispara fetch se o cache estiver stale.
 
-Se alguma dessas decisões não bate com o que você queria, é só me dizer depois que ajusto.
+### 2. API paginada opt-in (sem alterar consumidores atuais)
 
-## Como vai funcionar (passo a passo do "ajudante")
+Adicionar parâmetro novo, sem mexer no comportamento default:
 
-```text
-A cada 5 min:
-  1. Lê planilha BASE_UNIFICADA (Google Sheets API via conector)
-  2. Pra cada linha:
-     a. Já existe lead com esse form_lead_id no Externo? → pula
-     b. Não existe? → cria lead com:
-        - nome, telefone (normalizado)
-        - acolhedor (coluna origem_vendedor)
-        - board_id = BPC, status = primeira etapa
-        - source = 'planilha_trafego'
-        - external_form_lead_id = l:... (chave anti-duplicado)
-  3. Grava log de quantos criou / pulou / falharam
+```ts
+useLeads(adAccountId)                          // legado: carrega tudo (com cache)
+useLeads(adAccountId, { mode: 'paged', pageSize: 50, search })  // novo: sob demanda
 ```
 
-## Onde mexo
+No modo `paged`:
+- Não dispara o loop completo. Faz 1 request por página com `.range()`.
+- Retorna extra: `{ page, setPage, totalCount, hasMore, search, setSearch, isFetchingPage }`.
+- `search` filtra server-side via `or(lead_name.ilike.%q%,lead_phone.ilike.%q%,lead_email.ilike.%q%)` com debounce 300ms.
+- Não popula o cache global (datasets diferentes).
+- Stats nesse modo: vem de `count` separado, não calculado localmente.
 
-**Backend (Railway — onde fica o ajudante novo):**
-- Cria `railway-server/src/functions/bpc-sheet-sync.ts` — o ajudante em si
-- Registra rota em `railway-server/src/index.ts`
-- Adiciona `'bpc-sheet-sync': 'railway'` em `src/lib/functionRouter.ts`
-- Variáveis novas no Railway: `BPC_SHEET_ID` (o ID da sua planilha) e `BPC_BOARD_ID` (o board do BPC)
-
-**Banco Externo (almoxarifado):**
-- Adiciona coluna `external_form_lead_id text unique` em `leads` (anti-duplicado)
-- Roda via `run-external-migration`, sem você precisar abrir painel
-
-**Agendador (quem cutuca o ajudante a cada 5min):**
-- pg_cron no Externo chamando o endpoint do Railway
-
-**Frontend:**
-- Botão "Sincronizar agora" no painel detalhado BPC, pra forçar a checagem sem esperar os 5min
-- Indicador "Última sincronização: há X min"
+Consumidores migram pra `mode: 'paged'` um a um quando fizer sentido (listagens grandes). Nada quebra hoje.
 
 ## O que NÃO vou mexer
 
-- KPIs atuais (continuam lendo da planilha como hoje)
-- Lógica do funil, etapas, permissões
-- Lead que já existe — não mexo em status, nome, nada. Só crio o que falta
-- Outras planilhas / outros funis (só BPC)
+- Assinatura realtime, poll incremental de 3s, mutações (`addLead/updateLead/…`), CAPI, geo-rules, criação de grupo WA, snapshot de auditoria — tudo permanece igual.
+- Os 40+ consumidores: zero alteração nesta entrega.
+- Schema do banco.
 
-## Pré-requisito
+## Riscos e mitigação
 
-Preciso que você confirme: a conta Google que tá conectada no Lovable (conector Google Sheets) **tem acesso de leitura** nessa planilha? Se não tiver, o ajudante vai bater na porta e ninguém abre. Se quiser, eu testo a leitura primeiro antes de construir o resto — me responde "testa primeiro" e eu faço só essa parte pra confirmar acesso.
+- **Cache stale mostrando lead deletado** → realtime + evento local já tratam; cache escuta os mesmos updates.
+- **sessionStorage estourar** → guard de 5MB, fallback só em memória.
+- **Multi-tab divergência** → realtime resolve em ≤3s; aceitável.
+- **Rollback**: cache vive em arquivo novo `src/hooks/useLeadsCache.ts`. Se quebrar, basta voltar o `useLeads.ts` (1 arquivo).
 
-## Detalhes técnicos (pode pular)
+## Entrega desta rodada
 
-- Idempotência via `ON CONFLICT (external_form_lead_id) DO NOTHING`
-- Normalização de telefone: últimos 8 dígitos como `phoneKey` (mesmo padrão do resto do projeto)
-- Batch insert de 100 em 100 pra não travar
-- Retry com backoff em 429/5xx do Google
-- Resposta sempre HTTP 200 `{ success, created, skipped, errors }`
-- Cron via pg_cron no Externo (não no Cloud)
+Só a **Camada 1 (cache SWR)** + esqueleto da Camada 2 pronto pra uso. Não vou migrar consumidores agora — confirma quais listagens quer paginar primeiro depois que o cache estiver de pé?
 
-Posso seguir?
+## Verificação pós-implementação
+
+1. `npm run build` limpo.
+2. Abrir DevTools Network, navegar `/finance` → `/leads` → `/finance`: confirmar que a 2ª visita ao `/leads` não dispara loop `leads?select=...&offset=...`.
+3. Editar 1 lead no Kanban: confirmar update instantâneo (cache invalidado).
+4. F5 em `/leads`: cache de sessionStorage hidrata antes do fetch.

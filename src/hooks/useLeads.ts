@@ -9,6 +9,16 @@ import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { applyGeoRuleForLead } from '@/utils/applyGeoRuleForLead';
 import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { fireOrphanMatchForLead } from '@/lib/fireOrphanMatchForLead';
+import { leadsCache } from './useLeadsCache';
+
+export interface UseLeadsOptions {
+  /** 'full' (default): legacy behavior - loads ALL leads, cached SWR. 'paged': on-demand pagination. */
+  mode?: 'full' | 'paged';
+  /** paged mode only */
+  pageSize?: number;
+  /** paged mode only - server-side ilike on name/phone/email */
+  search?: string;
+}
 
 // Columns to fetch - avoids pulling unnecessary large text columns
 const LEAD_SELECT_COLUMNS = [
@@ -169,54 +179,108 @@ const getReadableErrorMessage = (error: unknown, fallback: string) => {
   return fallback;
 };
 
-export const useLeads = (adAccountId?: string) => {
-  const { user } = useAuthContext();
-  const [leads, setLeads] = useState<Lead[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [stats, setStats] = useState<LeadStats>({
-    total: 0,
-    new: 0,
-    contacted: 0,
-    qualified: 0,
-    notQualified: 0,
-    converted: 0,
-    lost: 0,
-    comment: 0,
-    totalSpent: 0,
-    totalRevenue: 0,
-    costPerLead: 0,
-    costPerConvertedLead: 0,
-    conversionRate: 0,
-    qualificationRate: 0,
-  });
+// Pure stats calculator - shared between hook and cache so all paths stay in sync.
+export const computeLeadStats = (leadsData: Lead[]): LeadStats => {
+  const total = leadsData.length;
+  const newLeads = leadsData.filter(l => l.status === 'new').length;
+  const contacted = leadsData.filter(l => l.status === 'contacted').length;
+  const qualified = leadsData.filter(l => l.status === 'qualified').length;
+  const notQualified = leadsData.filter(l => l.status === 'not_qualified').length;
+  const converted = leadsData.filter(l => l.status === 'converted').length;
+  const lost = leadsData.filter(l => l.status === 'lost').length;
+  const comment = leadsData.filter(l => l.status === 'comment').length;
+  const totalSpent = leadsData.reduce((acc, l) => acc + (l.ad_spend_at_conversion || 0), 0);
+  const totalRevenue = leadsData.filter(l => l.status === 'converted')
+    .reduce((acc, l) => acc + (l.conversion_value || 0), 0);
+  return {
+    total,
+    new: newLeads,
+    contacted,
+    qualified,
+    notQualified,
+    converted,
+    lost,
+    comment,
+    totalSpent,
+    totalRevenue,
+    costPerLead: total > 0 ? totalSpent / total : 0,
+    costPerConvertedLead: converted > 0 ? totalSpent / converted : 0,
+    conversionRate: total > 0 ? (converted / total) * 100 : 0,
+    qualificationRate: total > 0 ? (qualified / total) * 100 : 0,
+  };
+};
 
-  const fetchLeads = useCallback(async (retryCount = 0) => {
-    setLoading(true);
-    try {
-      // Paginated fetch to avoid timeouts on large datasets
+export const useLeads = (adAccountId?: string, options: UseLeadsOptions = {}) => {
+  const { mode = 'full', pageSize = 50, search = '' } = options;
+  const { user } = useAuthContext();
+
+  // ===== PAGED MODE (on-demand) =====
+  // Self-contained branch; doesn't touch the SWR full-list cache.
+  const pagedState = usePagedLeads(adAccountId, mode === 'paged', pageSize, search);
+
+  // Hydrate from cache synchronously so navigations don't flash empty.
+  const initialEntry = leadsCache.get(adAccountId);
+  const [leads, setLeads] = useState<Lead[]>(() => initialEntry.leads);
+  const [loading, setLoading] = useState(() => initialEntry.leads.length === 0);
+  const [stats, setStats] = useState<LeadStats>(() => initialEntry.stats || leadsCache.emptyStats);
+
+  // Subscribe to cache so updates from other useLeads instances reflect here too.
+  useEffect(() => {
+    if (mode !== 'full') return;
+    const unsub = leadsCache.subscribe(adAccountId, (nextLeads, nextStats) => {
+      setLeads(nextLeads);
+      if (nextStats) setStats(nextStats);
+    });
+    return () => { unsub(); };
+  }, [adAccountId, mode]);
+
+  // Write-through: any local state change (mutation, realtime, poll) propagates to cache.
+  useEffect(() => {
+    if (mode !== 'full') return;
+    const entry = leadsCache.get(adAccountId);
+    if (entry.leads === leads) return;
+    // Don't clobber cache with the initial empty state before first fetch.
+    if (leads.length === 0 && entry.leads.length === 0) return;
+    leadsCache.set(adAccountId, leads, computeLeadStats(leads));
+  }, [leads, adAccountId, mode]);
+
+  const fetchLeads = useCallback(async (retryCount = 0, force = false) => {
+    // SWR: serve fresh cache without refetch
+    if (!force && leadsCache.isFresh(adAccountId)) {
+      const entry = leadsCache.get(adAccountId);
+      setLeads(entry.leads);
+      if (entry.stats) setStats(entry.stats);
+      setLoading(false);
+      return;
+    }
+
+    // Dedupe concurrent fetches across all hook instances
+    const existingInflight = leadsCache.get(adAccountId).inflight;
+    if (existingInflight && !force) {
+      try {
+        await existingInflight;
+      } catch { /* error already toasted by owner */ }
+      return;
+    }
+
+    if (leads.length === 0) setLoading(true);
+
+    const loader = (async (): Promise<Lead[]> => {
       let allData: any[] = [];
       let page = 0;
       let hasMore = true;
-
       while (hasMore) {
         const from = page * PAGE_SIZE;
         const to = from + PAGE_SIZE - 1;
-
         let query = externalSupabase
           .from('leads')
           .select(LEAD_SELECT_COLUMNS)
           .is('deleted_at', null)
           .order('created_at', { ascending: false })
           .range(from, to);
-
-        if (adAccountId) {
-          query = query.eq('ad_account_id', adAccountId);
-        }
-
+        if (adAccountId) query = query.eq('ad_account_id', adAccountId);
         const { data, error } = await query;
-
         if (error) throw error;
-
         if (data && data.length > 0) {
           allData = allData.concat(data);
           hasMore = data.length === PAGE_SIZE;
@@ -225,24 +289,32 @@ export const useLeads = (adAccountId?: string) => {
           hasMore = false;
         }
       }
-
       console.log(`✅ Leads carregados: ${allData.length} (${page} página(s))`);
+      return allData as Lead[];
+    })();
 
-      const typedLeads = allData as Lead[];
+    leadsCache.setInflight(adAccountId, loader);
+
+    try {
+      const typedLeads = await loader;
+      const nextStats = computeLeadStats(typedLeads);
+      leadsCache.set(adAccountId, typedLeads, nextStats);
+      // local state will be updated by subscriber, but set directly too for immediacy
       setLeads(typedLeads);
-      calculateStats(typedLeads);
+      setStats(nextStats);
     } catch (error) {
       console.error('Error fetching leads:', error);
-      // Retry up to 2 times with increasing delay
       if (retryCount < 2) {
         console.log(`🔄 Retry ${retryCount + 1}/2 em ${(retryCount + 1) * 2}s...`);
-        setTimeout(() => fetchLeads(retryCount + 1), (retryCount + 1) * 2000);
+        setTimeout(() => fetchLeads(retryCount + 1, true), (retryCount + 1) * 2000);
         return;
       }
       toast.error('Erro ao carregar leads');
     } finally {
+      leadsCache.setInflight(adAccountId, null);
       setLoading(false);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [adAccountId]);
 
   const calculateStats = useCallback((leadsData: Lead[]) => {
@@ -841,6 +913,30 @@ export const useLeads = (adAccountId?: string) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [adAccountId]);
 
+  // Paged-mode early return: bypass realtime/poll-heavy full pipeline.
+  if (mode === 'paged') {
+    return {
+      leads: pagedState.leads,
+      stats: leadsCache.emptyStats,
+      loading: pagedState.loading,
+      fetchLeads: pagedState.refetch as any,
+      addLead,
+      updateLead,
+      deleteLead,
+      updateLeadStatus,
+      updateLeadStatusAndSync,
+      syncLeadWithFacebook,
+      toggleFollower,
+      updateClientClassification,
+      // paged extras
+      page: pagedState.page,
+      setPage: pagedState.setPage,
+      pageSize: pagedState.pageSize,
+      totalCount: pagedState.totalCount,
+      hasMore: pagedState.hasMore,
+    } as const;
+  }
+
   return {
     leads,
     stats,
@@ -856,3 +952,69 @@ export const useLeads = (adAccountId?: string) => {
     updateClientClassification,
   };
 };
+
+// ============================================================
+// Paged mode: lightweight on-demand pagination with server-side search.
+// Does not hit the SWR full-list cache and skips realtime/poll.
+// ============================================================
+function usePagedLeads(
+  adAccountId: string | undefined,
+  enabled: boolean,
+  pageSize: number,
+  search: string,
+) {
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [page, setPage] = useState(0);
+  const [totalCount, setTotalCount] = useState(0);
+
+  // Debounce search input
+  const [debouncedSearch, setDebouncedSearch] = useState(search);
+  useEffect(() => {
+    if (!enabled) return;
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search, enabled]);
+
+  // Reset to page 0 when filters change
+  useEffect(() => { if (enabled) setPage(0); }, [debouncedSearch, adAccountId, enabled]);
+
+  const fetchPage = useCallback(async () => {
+    if (!enabled) return;
+    setLoading(true);
+    try {
+      const from = page * pageSize;
+      const to = from + pageSize - 1;
+      let query = externalSupabase
+        .from('leads')
+        .select(LEAD_SELECT_COLUMNS, { count: 'exact' })
+        .is('deleted_at', null)
+        .order('created_at', { ascending: false })
+        .range(from, to);
+      if (adAccountId) query = query.eq('ad_account_id', adAccountId);
+      const q = debouncedSearch.trim();
+      if (q) {
+        const safe = q.replace(/[%,()]/g, ' ');
+        query = query.or(
+          `lead_name.ilike.%${safe}%,lead_phone.ilike.%${safe}%,lead_email.ilike.%${safe}%`,
+        );
+      }
+      const { data, error, count } = await query;
+      if (error) throw error;
+      setLeads(((data || []) as unknown) as Lead[]);
+      setTotalCount(count ?? 0);
+    } catch (err) {
+      console.error('[usePagedLeads] fetch error:', err);
+      toast.error('Erro ao carregar leads');
+    } finally {
+      setLoading(false);
+    }
+  }, [enabled, adAccountId, page, pageSize, debouncedSearch]);
+
+  useEffect(() => { fetchPage(); }, [fetchPage]);
+
+  const hasMore = (page + 1) * pageSize < totalCount;
+
+  return { leads, loading, page, setPage, pageSize, totalCount, hasMore, refetch: fetchPage };
+}
+
