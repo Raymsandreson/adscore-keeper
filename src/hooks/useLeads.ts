@@ -24,6 +24,13 @@ export interface UseLeadsOptions {
    * Reduz ~60% do payload por linha. Detalhes faltantes podem ser buscados via useLeadDetails(ids).
    */
   detailLevel?: 'full' | 'index';
+  /**
+   * Filtro server-side por board_id. Reduz drasticamente o número de leads carregados
+   * quando a tela só renderiza um board específico (ex: Kanban Previdenciário).
+   * Quando setado, o cache é segregado por (adAccountId, boardId) — outros consumidores
+   * sem boardId continuam vendo o cache global e não são afetados.
+   */
+  boardId?: string;
 }
 
 // Colunas "full" — usadas pela maioria dos consumidores que precisam do lead completo.
