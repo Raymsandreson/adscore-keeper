@@ -379,7 +379,8 @@ function usePagedLeads(
 }
 
 export const useLeads = (adAccountId?: string, options: UseLeadsOptions = {}) => {
-  const { mode = 'full', pageSize = 50, search = '' } = options;
+  const { mode = 'full', pageSize = 50, search = '', detailLevel = 'full' } = options;
+  const fetchColumns = detailLevel === 'index' ? LEAD_INDEX_COLUMNS : LEAD_FULL_COLUMNS;
   const { user } = useAuthContext();
 
   // ===== PAGED MODE (on-demand) =====
