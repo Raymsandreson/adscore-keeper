@@ -165,7 +165,7 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
     addLead,
     updateLead,
     deleteLead,
-  } = useLeads(adAccountId, { detailLevel: 'index' });
+  } = useLeads(adAccountId, { detailLevel: 'index', boardId: selectedBoardId || undefined });
 
   // Stage history hook
   const { addHistoryEntry } = useLeadStageHistory();
