@@ -987,6 +987,7 @@ export const useLeads = (adAccountId?: string, options: UseLeadsOptions = {}) =>
               if (eventType === 'INSERT' && payload.new) {
                 const newRow = payload.new as Lead;
                 if (adAccountId && newRow.ad_account_id !== adAccountId) return;
+                if (boardId && (newRow as any).board_id !== boardId) return;
                 if ((newRow as any).deleted_at) return;
                 setLeads(prev => {
                   if (prev.some(l => l.id === newRow.id)) return prev;
