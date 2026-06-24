@@ -9,6 +9,16 @@ import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { applyGeoRuleForLead } from '@/utils/applyGeoRuleForLead';
 import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { fireOrphanMatchForLead } from '@/lib/fireOrphanMatchForLead';
+import { leadsCache } from './useLeadsCache';
+
+export interface UseLeadsOptions {
+  /** 'full' (default): legacy behavior - loads ALL leads, cached SWR. 'paged': on-demand pagination. */
+  mode?: 'full' | 'paged';
+  /** paged mode only */
+  pageSize?: number;
+  /** paged mode only - server-side ilike on name/phone/email */
+  search?: string;
+}
 
 // Columns to fetch - avoids pulling unnecessary large text columns
 const LEAD_SELECT_COLUMNS = [
