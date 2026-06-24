@@ -118,7 +118,7 @@ export function AppSidebar() {
     { id: "auto-dialer", label: "Discadora", icon: <Phone className="h-4 w-4" />, path: "/discadora", color: "text-cyan-500" },
     { id: "whatsapp", label: "WhatsApp", icon: <MessageSquareIcon className="h-4 w-4" />, path: "/whatsapp", color: "text-green-500" },
     { id: "whatsapp-api", label: "WhatsApp API", icon: <MessageSquareIcon className="h-4 w-4" />, path: "/whatsapp-api", color: "text-emerald-600" },
-    { id: "agent-monitor", label: "Monitor IA", icon: <Bot className="h-4 w-4" />, path: "/agent-monitor", color: "text-purple-500" },
+    
     { id: "contacts", label: "Contatos", icon: <Users className="h-4 w-4" />, path: "/contacts", color: "text-primary" },
     { id: "dashboard", label: "Visão Geral", icon: <LayoutDashboard className="h-4 w-4" />, path: "/dashboard" },
   ];
