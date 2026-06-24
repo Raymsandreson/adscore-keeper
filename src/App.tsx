@@ -286,7 +286,7 @@ function SidebarLayout() {
                 <Route path="/gerar-procuracao" element={<ProtectedRoute><GerarProcuracaoPage /></ProtectedRoute>} />
                 <Route path="/referrals" element={<ProtectedRoute><ReferralSearchPage /></ProtectedRoute>} />
                 <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
-                <Route path="/agent-monitor" element={<ProtectedRoute><AgentMonitorPage /></ProtectedRoute>} />
+                
                 
                 <Route path="/extension" element={<ProtectedRoute><ExtensionPage /></ProtectedRoute>} />
                 <Route path="/settings/zapsign-backfill" element={<ProtectedRoute><ZapsignBackfillPage /></ProtectedRoute>} />
