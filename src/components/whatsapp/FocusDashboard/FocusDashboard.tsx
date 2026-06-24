@@ -71,14 +71,6 @@ export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpen
 
     return (
       <>
-      <ClosedLeadsSheet
-        open={closedSheetOpen}
-        onOpenChange={setClosedSheetOpen}
-        closedLeads={data.closedLeads}
-        periodLabel={periodLabel}
-        onOpenChat={(phone) => onOpenChat?.(phone)}
-        onRefresh={data.refetch}
-      />
       <Card className="rounded-none border-x-0 border-t-0 bg-card shrink-0">
         <div className="px-2 py-2 flex items-stretch gap-2 flex-wrap">
           <ToggleGroup
