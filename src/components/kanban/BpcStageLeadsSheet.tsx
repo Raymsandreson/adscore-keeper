@@ -113,7 +113,7 @@ export function BpcStageLeadsSheet({
     const base = rows || [];
     const skipAcolhFilter = filterPending || !bpcFilter.phoneKeys;
     const term = q.trim().toLowerCase();
-    return base.filter((l) => {
+    const afterFilters = base.filter((l) => {
       if (!skipAcolhFilter && !leadMatchesFilter(l.lead_phone, bpcFilter)) return false;
       if (!term) return true;
       return (
@@ -122,6 +122,17 @@ export function BpcStageLeadsSheet({
         (l.acolhedor || "").toLowerCase().includes(term)
       );
     });
+    // Dedupe por telefone (mantém o mais recente conforme ordenação já aplicada).
+    const seen = new Set<string>();
+    const deduped: typeof afterFilters = [];
+    for (const l of afterFilters) {
+      const digits = (l.lead_phone || "").replace(/\D/g, "");
+      const key = digits || `id:${l.id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      deduped.push(l);
+    }
+    return deduped;
   }, [rows, q, bpcFilter, filterPending]);
 
   return (
