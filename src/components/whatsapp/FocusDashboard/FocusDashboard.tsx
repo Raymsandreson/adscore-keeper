@@ -66,16 +66,7 @@ export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpen
     const dispatchFilter = (filter: string) => {
       window.dispatchEvent(new CustomEvent('wa:set-quick-filter', { detail: { filter } }));
     };
-    const kpiCards = [
-      {
-        label: 'Fechados',
-        value: `${data.kpis.closed}/${data.kpis.goal} (${data.kpis.conversion}%)`,
-        sub: `${data.kpis.goal} viáveis de ${data.kpis.leadsReceived}`,
-        icon: Trophy,
-        tone: 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200/60 dark:border-emerald-900/40 text-emerald-700 dark:text-emerald-300',
-        onClick: () => setClosedSheetOpen(true),
-      },
-    ];
+    const kpiCards: { label: string; value: string; sub?: string; icon: any; tone: string; onClick?: () => void }[] = [];
 
     const periodLabel = PERIOD_OPTIONS.find(p => p.key === data.period)?.label || 'Período';
 
