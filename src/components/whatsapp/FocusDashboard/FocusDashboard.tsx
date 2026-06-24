@@ -282,12 +282,6 @@ export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpen
                 </div>
                 <span className="h-3 w-px bg-border/60" />
                 <div className="flex items-center gap-1">
-                  <Trophy className="h-3 w-3 text-emerald-700 dark:text-emerald-300" />
-                  <span className="font-semibold text-emerald-700 dark:text-emerald-300">Fechados</span>
-                  <span className="font-bold tabular-nums text-emerald-700 dark:text-emerald-300">{data.kpis.closed}/{data.kpis.goal}</span>
-                </div>
-                <span className="h-3 w-px bg-border/60" />
-                <div className="flex items-center gap-1">
                   <Percent className="h-3 w-3 text-violet-700 dark:text-violet-300" />
                   <span className="font-semibold text-violet-700 dark:text-violet-300">Conv.</span>
                   <span className="font-bold tabular-nums text-violet-700 dark:text-violet-300">{data.kpis.conversion}%</span>
