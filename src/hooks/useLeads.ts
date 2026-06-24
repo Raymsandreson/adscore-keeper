@@ -90,8 +90,8 @@ const POLL_INTERVAL_MS = 30_000;
 type SharedPoll = { refs: number; timer: number | null; lastPollAt: string };
 const sharedPolls = new Map<string, SharedPoll>();
 
-function startSharedLeadsPoll(adAccountId?: string): () => void {
-  const key = adAccountId || '__all__';
+function startSharedLeadsPoll(adAccountId?: string, boardId?: string): () => void {
+  const key = `${adAccountId || '__all__'}::b:${boardId || '__all__'}`;
   let entry = sharedPolls.get(key);
   if (!entry) {
     entry = { refs: 0, timer: null, lastPollAt: new Date(Date.now() - 60_000).toISOString() };
@@ -112,12 +112,13 @@ function startSharedLeadsPoll(adAccountId?: string): () => void {
           .order('updated_at', { ascending: false })
           .limit(200);
         if (adAccountId) q = q.eq('ad_account_id', adAccountId);
+        if (boardId) q = q.eq('board_id', boardId);
         const { data, error } = await q;
         if (error) return;
         e.lastPollAt = new Date().toISOString();
         if (!data || data.length === 0) return;
         leadsCache.update(
-          adAccountId,
+          key,
           (prev) => {
             const map = new Map(prev.map((l) => [l.id, l]));
             let changed = false;
@@ -127,6 +128,7 @@ function startSharedLeadsPoll(adAccountId?: string): () => void {
                 continue;
               }
               if (adAccountId && (row as any).ad_account_id !== adAccountId) continue;
+              if (boardId && (row as any).board_id !== boardId) continue;
               const existing = map.get(row.id);
               const merged = { ...(existing || ({} as Lead)), ...row };
               if (
