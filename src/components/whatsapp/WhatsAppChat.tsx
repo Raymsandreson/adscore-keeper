@@ -1742,6 +1742,9 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   useEffect(() => {
     const phone = conversation.phone;
     if (!phone) return;
+    // Reset stale call records imediatamente ao trocar de conversa, pra não
+    // renderizar o log da conversa anterior antes do fetch novo resolver.
+    setCallRecords([]);
     const phoneSuffix = phone.replace(/\D/g, '').slice(-8);
     const fetchCalls = async () => {
       // Use ilike for fuzzy matching on phone suffix to catch format differences
@@ -1767,6 +1770,29 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [conversation.phone, conversation.instance_name]);
+
+  // Detecta hidratação da conversa: ao clicar, o pai passa a conversa contendo
+  // apenas a mensagem-resumo (length <= 1) e dispara fetchFullConversation em
+  // seguida. Sem este guard a UI pisca com a última mensagem + log de chamadas
+  // antes do histórico chegar. Mostramos um skeleton até a hidratação concluir
+  // (mais mensagens chegarem) ou um timeout de segurança expirar.
+  const [isHydratingConversation, setIsHydratingConversation] = useState(false);
+  const hydrationKeyRef = useRef<string>('');
+  useEffect(() => {
+    const key = `${conversation.phone}__${(conversation.instance_name || '').toLowerCase()}`;
+    const msgCount = conversation.messages.length;
+    if (hydrationKeyRef.current !== key) {
+      hydrationKeyRef.current = key;
+      if (msgCount <= 1) {
+        setIsHydratingConversation(true);
+        const t = setTimeout(() => setIsHydratingConversation(false), 2000);
+        return () => clearTimeout(t);
+      }
+      setIsHydratingConversation(false);
+    } else if (msgCount > 1 && isHydratingConversation) {
+      setIsHydratingConversation(false);
+    }
+  }, [conversation.phone, conversation.instance_name, conversation.messages.length, isHydratingConversation]);
 
   // Merge messages, call records and internal notes into a unified timeline
   const timelineItems = (() => {
