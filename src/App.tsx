@@ -299,6 +299,7 @@ function SidebarLayout() {
                 <Route path="/cost-organization" element={<ProtectedRoute><CostOrganizationPage /></ProtectedRoute>} />
         <Route path="/process-tracking" element={<ProtectedRoute><ProcessTrackingPage /></ProtectedRoute>} />
         <Route path="/hearings" element={<ProtectedRoute><HearingsPage /></ProtectedRoute>} />
+        <Route path="/processual/bpc-autista" element={<ProtectedRoute><BpcAutistaPage /></ProtectedRoute>} />
                 <Route path="/archived" element={<ProtectedRoute><ArchivedItemsPage /></ProtectedRoute>} />
                 <Route path="/debug/hooks" element={<ProtectedRoute><HookDebugPage /></ProtectedRoute>} />
                 <Route path="/debug/group-audit" element={<ProtectedRoute><GroupAuditLogPage /></ProtectedRoute>} />
