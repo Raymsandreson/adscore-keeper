@@ -7,7 +7,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { CalendarIcon, RefreshCw, Trophy, Users, User as UserIcon, ChevronUp, ChevronDown, Percent, XCircle, Clock, Filter } from 'lucide-react';
+import { CalendarIcon, RefreshCw, Users, User as UserIcon, ChevronUp, ChevronDown, Percent, XCircle, Clock, Filter } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useFocusDashboardData, FocusPeriod } from '@/hooks/useFocusDashboardData';
@@ -46,7 +46,6 @@ export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpen
 
   const [collapsed, setCollapsed] = useState(false);
   const [datePickerOpen, setDatePickerOpen] = useState(false);
-  const [closedSheetOpen, setClosedSheetOpen] = useState(false);
 
   const initials = useMemo(() => {
     const name = (user?.user_metadata as any)?.full_name || user?.email || '?';
@@ -66,29 +65,12 @@ export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpen
     const dispatchFilter = (filter: string) => {
       window.dispatchEvent(new CustomEvent('wa:set-quick-filter', { detail: { filter } }));
     };
-    const kpiCards = [
-      {
-        label: 'Fechados',
-        value: `${data.kpis.closed}/${data.kpis.goal} (${data.kpis.conversion}%)`,
-        sub: `${data.kpis.goal} viáveis de ${data.kpis.leadsReceived}`,
-        icon: Trophy,
-        tone: 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200/60 dark:border-emerald-900/40 text-emerald-700 dark:text-emerald-300',
-        onClick: () => setClosedSheetOpen(true),
-      },
-    ];
+    const kpiCards: { label: string; value: string; sub?: string; icon: any; tone: string; onClick?: () => void }[] = [];
 
     const periodLabel = PERIOD_OPTIONS.find(p => p.key === data.period)?.label || 'Período';
 
     return (
       <>
-      <ClosedLeadsSheet
-        open={closedSheetOpen}
-        onOpenChange={setClosedSheetOpen}
-        closedLeads={data.closedLeads}
-        periodLabel={periodLabel}
-        onOpenChat={(phone) => onOpenChat?.(phone)}
-        onRefresh={data.refetch}
-      />
       <Card className="rounded-none border-x-0 border-t-0 bg-card shrink-0">
         <div className="px-2 py-2 flex items-stretch gap-2 flex-wrap">
           <ToggleGroup
@@ -288,12 +270,6 @@ export function FocusDashboard({ onOpenMissingDocs, onOpenZapsignPending, onOpen
                   <UserIcon className="h-3 w-3 text-blue-700 dark:text-blue-300" />
                   <span className="font-semibold text-blue-700 dark:text-blue-300">Leads</span>
                   <span className="font-bold tabular-nums text-blue-700 dark:text-blue-300">{data.kpis.leadsReceived}</span>
-                </div>
-                <span className="h-3 w-px bg-border/60" />
-                <div className="flex items-center gap-1">
-                  <Trophy className="h-3 w-3 text-emerald-700 dark:text-emerald-300" />
-                  <span className="font-semibold text-emerald-700 dark:text-emerald-300">Fechados</span>
-                  <span className="font-bold tabular-nums text-emerald-700 dark:text-emerald-300">{data.kpis.closed}/{data.kpis.goal}</span>
                 </div>
                 <span className="h-3 w-px bg-border/60" />
                 <div className="flex items-center gap-1">
