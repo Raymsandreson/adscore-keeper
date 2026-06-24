@@ -443,7 +443,7 @@ export const useLeads = (adAccountId?: string, options: UseLeadsOptions = {}) =>
         const to = from + PAGE_SIZE - 1;
         let query = externalSupabase
           .from('leads')
-          .select(LEAD_SELECT_COLUMNS)
+          .select(fetchColumns)
           .is('deleted_at', null)
           .order('created_at', { ascending: false })
           .range(from, to);
