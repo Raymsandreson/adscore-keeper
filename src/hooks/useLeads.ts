@@ -913,6 +913,30 @@ export const useLeads = (adAccountId?: string, options: UseLeadsOptions = {}) =>
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [adAccountId]);
 
+  // Paged-mode early return: bypass realtime/poll-heavy full pipeline.
+  if (mode === 'paged') {
+    return {
+      leads: pagedState.leads,
+      stats: leadsCache.emptyStats,
+      loading: pagedState.loading,
+      fetchLeads: pagedState.refetch as any,
+      addLead,
+      updateLead,
+      deleteLead,
+      updateLeadStatus,
+      updateLeadStatusAndSync,
+      syncLeadWithFacebook,
+      toggleFollower,
+      updateClientClassification,
+      // paged extras
+      page: pagedState.page,
+      setPage: pagedState.setPage,
+      pageSize: pagedState.pageSize,
+      totalCount: pagedState.totalCount,
+      hasMore: pagedState.hasMore,
+    } as const;
+  }
+
   return {
     leads,
     stats,
@@ -928,3 +952,69 @@ export const useLeads = (adAccountId?: string, options: UseLeadsOptions = {}) =>
     updateClientClassification,
   };
 };
+
+// ============================================================
+// Paged mode: lightweight on-demand pagination with server-side search.
+// Does not hit the SWR full-list cache and skips realtime/poll.
+// ============================================================
+function usePagedLeads(
+  adAccountId: string | undefined,
+  enabled: boolean,
+  pageSize: number,
+  search: string,
+) {
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [page, setPage] = useState(0);
+  const [totalCount, setTotalCount] = useState(0);
+
+  // Debounce search input
+  const [debouncedSearch, setDebouncedSearch] = useState(search);
+  useEffect(() => {
+    if (!enabled) return;
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search, enabled]);
+
+  // Reset to page 0 when filters change
+  useEffect(() => { if (enabled) setPage(0); }, [debouncedSearch, adAccountId, enabled]);
+
+  const fetchPage = useCallback(async () => {
+    if (!enabled) return;
+    setLoading(true);
+    try {
+      const from = page * pageSize;
+      const to = from + pageSize - 1;
+      let query = externalSupabase
+        .from('leads')
+        .select(LEAD_SELECT_COLUMNS, { count: 'exact' })
+        .is('deleted_at', null)
+        .order('created_at', { ascending: false })
+        .range(from, to);
+      if (adAccountId) query = query.eq('ad_account_id', adAccountId);
+      const q = debouncedSearch.trim();
+      if (q) {
+        const safe = q.replace(/[%,()]/g, ' ');
+        query = query.or(
+          `lead_name.ilike.%${safe}%,lead_phone.ilike.%${safe}%,lead_email.ilike.%${safe}%`,
+        );
+      }
+      const { data, error, count } = await query;
+      if (error) throw error;
+      setLeads((data || []) as Lead[]);
+      setTotalCount(count ?? 0);
+    } catch (err) {
+      console.error('[usePagedLeads] fetch error:', err);
+      toast.error('Erro ao carregar leads');
+    } finally {
+      setLoading(false);
+    }
+  }, [enabled, adAccountId, page, pageSize, debouncedSearch]);
+
+  useEffect(() => { fetchPage(); }, [fetchPage]);
+
+  const hasMore = (page + 1) * pageSize < totalCount;
+
+  return { leads, loading, page, setPage, pageSize, totalCount, hasMore, refetch: fetchPage };
+}
+
