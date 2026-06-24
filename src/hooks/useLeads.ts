@@ -934,7 +934,7 @@ export const useLeads = (adAccountId?: string, options: UseLeadsOptions = {}) =>
       window.removeEventListener(LEAD_DELETED_EVENT, handleLocalLeadDeleted);
       if (realtimeTimerRef.current) clearTimeout(realtimeTimerRef.current);
       if (statsDebounceRef.current) clearTimeout(statsDebounceRef.current);
-      clearInterval(pollInterval);
+      pollStop();
       if (channel) externalSupabase.removeChannel(channel);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
