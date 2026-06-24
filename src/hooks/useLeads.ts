@@ -996,7 +996,7 @@ export const useLeads = (adAccountId?: string, options: UseLeadsOptions = {}) =>
       pageSize: pagedState.pageSize,
       totalCount: pagedState.totalCount,
       hasMore: pagedState.hasMore,
-    } as const;
+    } as any;
   }
 
   return {
