@@ -1001,7 +1001,7 @@ function usePagedLeads(
       }
       const { data, error, count } = await query;
       if (error) throw error;
-      setLeads((data || []) as Lead[]);
+      setLeads(((data || []) as unknown) as Lead[]);
       setTotalCount(count ?? 0);
     } catch (err) {
       console.error('[usePagedLeads] fetch error:', err);
