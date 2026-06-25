@@ -2,9 +2,20 @@ import { useEffect, useMemo, useState } from "react";
 import { db } from "@/integrations/supabase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, CheckCircle2, XCircle, FileText, ExternalLink, Accessibility } from "lucide-react";
+import {
+  Loader2,
+  CheckCircle2,
+  XCircle,
+  FileText,
+  ExternalLink,
+  Accessibility,
+  ShieldAlert,
+  AlertTriangle,
+  Info,
+} from "lucide-react";
 import { toast } from "sonner";
 
 type CaseOption = {
@@ -17,10 +28,37 @@ type CaseOption = {
 
 type AmbiguousCandidate = { id: string; name: string };
 
-type DossieResult = {
+type Aviso = { campo: string; nivel: string; texto: string };
+
+type DocItem = {
+  file_id: string;
+  name: string;
+  tipo: string;
+  mime: string;
+  favorabilidade: "favoravel" | "adverso" | "neutro" | string;
+  motivo: string | null;
+  seguranca_bloqueado: boolean;
+  sugestao_incluir: boolean;
+};
+
+type CartaoInss = {
+  requerente: Record<string, unknown>;
+  endereco: Record<string, unknown>;
+  contato: Record<string, unknown>;
+  composicao_familiar: unknown;
+  renda_per_capita: number | null;
+  procurador: Record<string, unknown>;
+  bancario: Record<string, unknown>;
+  dossie_pdf_url: string | null;
+};
+
+type AnaliseResult = {
   ok: true;
+  modo: "analisar";
   protocolavel: boolean;
-  pdf_url: string;
+  avisos: Aviso[];
+  faltando_docs: string[];
+  documentos: DocItem[];
   gates: {
     cadunico_vencido: boolean | null;
     renda_acima_teto: boolean | null;
@@ -28,18 +66,26 @@ type DossieResult = {
     endereco_vencido: boolean | null;
     docs_adversos: Array<{ nome: string; motivo: string }>;
   };
-  agencias_ativo: boolean;
-  agencias?: Array<{ nome: string; endereco?: string }>;
-  incluidos: string[];
-  excluidos: string[];
+  cartao_inss: CartaoInss;
+  cartao_faltando: string[];
+  folder_id?: string;
+};
+
+type MontarResult = {
+  ok: true;
+  modo: "montar";
+  pdf_url: string;
+  qtd_incluidos: number;
+  bloqueados_seguranca: string[];
 };
 
 type InvokeOutcome =
-  | { tipo: "ok"; data: DossieResult }
+  | { tipo: "analisar"; data: AnaliseResult }
+  | { tipo: "montar"; data: MontarResult }
   | { tipo: "ambiguo"; candidatos: AmbiguousCandidate[] }
   | { tipo: "erro"; mensagem: string };
 
-async function montarDossie(payload: Record<string, unknown>): Promise<InvokeOutcome> {
+async function chamar(payload: Record<string, unknown>): Promise<InvokeOutcome> {
   const { data, error } = await db.functions.invoke("montar-dossie-inss", { body: payload });
   if (error) {
     let corpo: any = null;
@@ -53,7 +99,9 @@ async function montarDossie(payload: Record<string, unknown>): Promise<InvokeOut
     }
     return { tipo: "erro", mensagem: corpo?.erro || error.message };
   }
-  return { tipo: "ok", data: data as DossieResult };
+  const d = data as AnaliseResult | MontarResult;
+  if (d?.modo === "montar") return { tipo: "montar", data: d };
+  return { tipo: "analisar", data: d as AnaliseResult };
 }
 
 export default function BpcAutistaPage() {
@@ -61,9 +109,15 @@ export default function BpcAutistaPage() {
   const [results, setResults] = useState<CaseOption[]>([]);
   const [searching, setSearching] = useState(false);
   const [selected, setSelected] = useState<CaseOption | null>(null);
-  const [loading, setLoading] = useState(false);
+
+  const [analisando, setAnalisando] = useState(false);
+  const [montando, setMontando] = useState(false);
   const [ambiguous, setAmbiguous] = useState<AmbiguousCandidate[] | null>(null);
-  const [result, setResult] = useState<DossieResult | null>(null);
+
+  const [analise, setAnalise] = useState<AnaliseResult | null>(null);
+  const [folderId, setFolderId] = useState<string | null>(null);
+  const [incluidos, setIncluidos] = useState<Record<string, boolean>>({});
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
 
   // Busca casos em legal_cases (debounced)
   useEffect(() => {
@@ -92,39 +146,75 @@ export default function BpcAutistaPage() {
     return () => clearTimeout(t);
   }, [query, selected]);
 
-  async function handleMontar(payload?: Record<string, unknown>) {
-    if (!selected) return;
-    setLoading(true);
+  function resetTriagem() {
+    setAnalise(null);
+    setIncluidos({});
+    setPdfUrl(null);
     setAmbiguous(null);
-    setResult(null);
-    const body = payload ?? { lead_id: selected.lead_id, case_name: selected.title };
-    const out = await montarDossie(body);
-    setLoading(false);
-    if (out.tipo === "ok") setResult(out.data);
-    else if (out.tipo === "ambiguo") setAmbiguous(out.candidatos);
-    else toast.error(out.mensagem || "Falha ao montar o dossiê");
+    setFolderId(null);
   }
 
-  const gates = result?.gates;
-  const bloqueios = useMemo(() => {
-    if (!gates) return [];
-    const out: string[] = [];
-    if (gates.cadunico_vencido === true) out.push("CadÚnico vencido (atualizar no CRAS)");
-    if (gates.renda_acima_teto === true)
-      out.push(`Renda per capita acima do teto: R$ ${gates.renda_per_capita ?? "?"} (limite R$ 405,25)`);
-    if (gates.endereco_vencido === true) out.push("Comprovante de endereço vencido (>3 meses)");
-    for (const d of gates.docs_adversos ?? []) out.push(`Documento adverso: ${d.nome} — ${d.motivo}`);
-    return out;
-  }, [gates]);
+  async function handleAnalisar(payload?: Record<string, unknown>) {
+    if (!selected && !payload) return;
+    setAnalisando(true);
+    setAmbiguous(null);
+    setAnalise(null);
+    setPdfUrl(null);
+    const body = payload ?? { lead_id: selected!.lead_id, case_name: selected!.title };
+    const out = await chamar(body);
+    setAnalisando(false);
+    if (out.tipo === "analisar") {
+      setAnalise(out.data);
+      // folder_id não vem no payload da analisar; guardamos via candidato ou recuperamos no montar via case_name/lead_id
+      const seed: Record<string, boolean> = {};
+      for (const d of out.data.documentos) {
+        seed[d.file_id] = d.sugestao_incluir && !d.seguranca_bloqueado;
+      }
+      setIncluidos(seed);
+      // se viemos de um candidato (folder_id), persiste
+      if (payload && typeof (payload as any).folder_id === "string") {
+        setFolderId((payload as any).folder_id);
+      }
+    } else if (out.tipo === "ambiguo") {
+      setAmbiguous(out.candidatos);
+    } else if (out.tipo === "montar") {
+      // não deveria acontecer aqui
+      setPdfUrl(out.data.pdf_url);
+    } else {
+      toast.error(out.mensagem || "Falha na triagem");
+    }
+  }
 
-  const indeterminados = useMemo(() => {
-    if (!gates) return [];
-    const out: string[] = [];
-    if (gates.cadunico_vencido === null) out.push("CadÚnico: não foi possível avaliar");
-    if (gates.renda_acima_teto === null) out.push("Renda per capita: não foi possível avaliar");
-    if (gates.endereco_vencido === null) out.push("Endereço: não foi possível avaliar");
-    return out;
-  }, [gates]);
+  async function handleMontar() {
+    if (!analise || !selected) return;
+    const ids = Object.entries(incluidos)
+      .filter(([, v]) => v)
+      .map(([k]) => k);
+    if (ids.length === 0) {
+      toast.error("Selecione pelo menos um documento.");
+      return;
+    }
+    setMontando(true);
+    const body: Record<string, unknown> = {
+      lead_id: selected.lead_id,
+      case_name: selected.title,
+      incluir_ids: ids,
+    };
+    if (folderId) body.folder_id = folderId;
+    const out = await chamar(body);
+    setMontando(false);
+    if (out.tipo === "montar") {
+      setPdfUrl(out.data.pdf_url);
+      toast.success(`Dossiê montado com ${out.data.qtd_incluidos} documento(s).`);
+    } else if (out.tipo === "erro") {
+      toast.error(out.mensagem);
+    }
+  }
+
+  function toggleDoc(id: string, blocked: boolean) {
+    if (blocked) return;
+    setIncluidos((prev) => ({ ...prev, [id]: !prev[id] }));
+  }
 
   const selectedLabel = useMemo(() => {
     if (!selected) return "";
@@ -133,6 +223,17 @@ export default function BpcAutistaPage() {
     return parts.join(" ");
   }, [selected]);
 
+  const qtdSelecionados = useMemo(
+    () => Object.values(incluidos).filter(Boolean).length,
+    [incluidos],
+  );
+
+  const avisoIcon = (nivel: string) => {
+    if (nivel === "alto") return <ShieldAlert className="h-4 w-4 text-destructive shrink-0 mt-0.5" />;
+    if (nivel === "medio") return <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />;
+    return <Info className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />;
+  };
+
   return (
     <div className="container max-w-4xl mx-auto p-6 space-y-6">
       <header className="space-y-1">
@@ -140,8 +241,8 @@ export default function BpcAutistaPage() {
           <Accessibility className="h-6 w-6" /> BPC – Autista
         </h1>
         <p className="text-sm text-muted-foreground">
-          Monta o dossiê do INSS a partir da pasta do Drive e roda a triagem de elegibilidade. O lançamento no INSS é
-          manual, feito pelo advogado.
+          Lê a pasta do Drive, tria cada documento com IA e te deixa escolher o que entra no dossiê único do INSS. O
+          lançamento no portal é manual.
         </p>
       </header>
 
@@ -156,6 +257,7 @@ export default function BpcAutistaPage() {
               value={selected ? selectedLabel : query}
               onChange={(e) => {
                 setSelected(null);
+                resetTriagem();
                 setQuery(e.target.value);
               }}
             />
@@ -190,14 +292,14 @@ export default function BpcAutistaPage() {
             {searching && <p className="text-xs text-muted-foreground mt-1">Buscando…</p>}
           </div>
 
-          <Button onClick={() => handleMontar()} disabled={!selected || loading}>
-            {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
-            Montar Dossiê
+          <Button onClick={() => handleAnalisar()} disabled={!selected || analisando}>
+            {analisando ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+            {analise ? "Re-analisar pasta" : "Analisar pasta do Drive"}
           </Button>
 
-          {loading && (
+          {analisando && (
             <p className="text-sm text-muted-foreground">
-              Lendo a pasta no Drive e triando os documentos… (pode levar até 1 minuto)
+              Lendo a pasta no Drive e triando cada documento com IA… (pode levar até 1 minuto)
             </p>
           )}
         </CardContent>
@@ -214,8 +316,14 @@ export default function BpcAutistaPage() {
                 key={c.id}
                 type="button"
                 className="w-full text-left px-3 py-2 border rounded-md hover:bg-accent text-sm"
-                onClick={() => handleMontar({ folder_id: c.id })}
-                disabled={loading}
+                onClick={() =>
+                  handleAnalisar({
+                    folder_id: c.id,
+                    lead_id: selected?.lead_id,
+                    case_name: selected?.title,
+                  })
+                }
+                disabled={analisando}
               >
                 {c.name}
               </button>
@@ -224,107 +332,124 @@ export default function BpcAutistaPage() {
         </Card>
       )}
 
-      {result && (
+      {analise && (
         <>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="text-base">Resultado da triagem</CardTitle>
-              {result.protocolavel ? (
+              <CardTitle className="text-base">Recomendação da triagem</CardTitle>
+              {analise.protocolavel ? (
                 <Badge className="bg-emerald-600 hover:bg-emerald-700">
-                  <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Pronto para anexar
+                  <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Pronto para protocolar
                 </Badge>
               ) : (
                 <Badge variant="destructive">
-                  <XCircle className="h-3.5 w-3.5 mr-1" /> Bloqueado — revisar antes de protocolar
+                  <XCircle className="h-3.5 w-3.5 mr-1" /> Revisar antes de protocolar
                 </Badge>
               )}
             </CardHeader>
             <CardContent className="space-y-4">
-              {bloqueios.length > 0 && (
+              {analise.avisos.length > 0 && (
                 <div>
-                  <div className="text-sm font-medium text-destructive mb-1">Bloqueios</div>
+                  <div className="text-sm font-medium mb-1">Avisos</div>
                   <ul className="space-y-1 text-sm">
-                    {bloqueios.map((b, i) => (
+                    {analise.avisos.map((a, i) => (
                       <li key={i} className="flex gap-2">
-                        <XCircle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
-                        <span>{b}</span>
+                        {avisoIcon(a.nivel)}
+                        <span>
+                          <span className="text-muted-foreground">[{a.campo}]</span> {a.texto}
+                        </span>
                       </li>
                     ))}
                   </ul>
                 </div>
               )}
-              {indeterminados.length > 0 && (
+              {analise.faltando_docs.length > 0 && (
                 <div>
-                  <div className="text-sm font-medium text-muted-foreground mb-1">Não avaliado</div>
-                  <ul className="space-y-1 text-sm text-muted-foreground">
-                    {indeterminados.map((b, i) => (
-                      <li key={i}>• {b}</li>
+                  <div className="text-sm font-medium text-amber-700 mb-1">Documentos faltando</div>
+                  <ul className="space-y-1 text-sm">
+                    {analise.faltando_docs.map((d, i) => (
+                      <li key={i}>• {d}</li>
                     ))}
                   </ul>
                 </div>
               )}
-
-              <Button asChild variant="default">
-                <a href={result.pdf_url} target="_blank" rel="noreferrer">
-                  <FileText className="h-4 w-4 mr-2" />
-                  Abrir dossiê único (PDF)
-                  <ExternalLink className="h-3.5 w-3.5 ml-2" />
-                </a>
-              </Button>
+              {analise.cartao_faltando.length > 0 && (
+                <div className="text-xs text-muted-foreground">
+                  Campos do cartão INSS não preenchidos: {analise.cartao_faltando.join(", ")}
+                </div>
+              )}
             </CardContent>
           </Card>
 
           <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Documentos</CardTitle>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle className="text-base">
+                2. Escolher documentos do dossiê
+              </CardTitle>
+              <Badge variant="outline">{qtdSelecionados} selecionado(s)</Badge>
             </CardHeader>
-            <CardContent className="space-y-3">
-              {result.incluidos.length > 0 && (
-                <div>
-                  <div className="text-sm font-medium text-emerald-600 mb-1">Incluídos</div>
-                  <ul className="space-y-1 text-sm">
-                    {result.incluidos.map((n, i) => (
-                      <li key={i} className="flex gap-2">
-                        <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
-                        <span>{n}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+            <CardContent className="space-y-2">
+              {analise.documentos.length === 0 && (
+                <p className="text-sm text-muted-foreground">Nenhum documento encontrado na pasta.</p>
               )}
-              {result.excluidos.length > 0 && (
-                <div>
-                  <div className="text-sm font-medium text-destructive mb-1">Excluídos</div>
-                  <ul className="space-y-1 text-sm">
-                    {result.excluidos.map((n, i) => (
-                      <li key={i} className="flex gap-2 line-through text-destructive">
-                        <XCircle className="h-4 w-4 shrink-0 mt-0.5" />
-                        <span>{n}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+              {analise.documentos.map((d) => {
+                const checked = !!incluidos[d.file_id];
+                const blocked = d.seguranca_bloqueado;
+                const corFav =
+                  d.favorabilidade === "favoravel"
+                    ? "text-emerald-600"
+                    : d.favorabilidade === "adverso"
+                      ? "text-destructive"
+                      : "text-muted-foreground";
+                return (
+                  <label
+                    key={d.file_id}
+                    className={`flex items-start gap-3 p-2 rounded-md border ${
+                      blocked ? "bg-destructive/5 cursor-not-allowed" : "hover:bg-accent cursor-pointer"
+                    }`}
+                  >
+                    <Checkbox
+                      checked={checked && !blocked}
+                      disabled={blocked}
+                      onCheckedChange={() => toggleDoc(d.file_id, blocked)}
+                      className="mt-1"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-medium truncate">{d.name}</span>
+                        <Badge variant="outline" className="text-[10px]">
+                          {d.tipo}
+                        </Badge>
+                        <span className={`text-[10px] uppercase ${corFav}`}>{d.favorabilidade}</span>
+                        {blocked && (
+                          <Badge variant="destructive" className="text-[10px]">
+                            <ShieldAlert className="h-3 w-3 mr-1" /> bloqueado (sensível)
+                          </Badge>
+                        )}
+                      </div>
+                      {d.motivo && (
+                        <div className="text-xs text-muted-foreground mt-0.5">{d.motivo}</div>
+                      )}
+                    </div>
+                  </label>
+                );
+              })}
+
+              <div className="pt-2 flex items-center gap-3">
+                <Button onClick={handleMontar} disabled={montando || qtdSelecionados === 0}>
+                  {montando ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <FileText className="h-4 w-4 mr-2" />}
+                  Montar dossiê único (PDF)
+                </Button>
+                {pdfUrl && (
+                  <Button asChild variant="outline">
+                    <a href={pdfUrl} target="_blank" rel="noreferrer">
+                      Abrir PDF <ExternalLink className="h-3.5 w-3.5 ml-2" />
+                    </a>
+                  </Button>
+                )}
+              </div>
             </CardContent>
           </Card>
-
-          {result.agencias_ativo && result.agencias && result.agencias.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Agências (perícia)</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ul className="space-y-1 text-sm">
-                  {result.agencias.map((a, i) => (
-                    <li key={i}>
-                      <span className="font-medium">{a.nome}</span>
-                      {a.endereco ? <span className="text-muted-foreground"> — {a.endereco}</span> : null}
-                    </li>
-                  ))}
-                </ul>
-              </CardContent>
-            </Card>
-          )}
         </>
       )}
 
