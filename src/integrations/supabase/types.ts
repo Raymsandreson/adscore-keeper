@@ -6933,29 +6933,7 @@ export type Database = {
           uploaded_by?: string | null
           zapsign_document_id?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "process_documents_case_id_fkey"
-            columns: ["case_id"]
-            isOneToOne: false
-            referencedRelation: "legal_cases"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "process_documents_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "leads"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "process_documents_process_id_fkey"
-            columns: ["process_id"]
-            isOneToOne: false
-            referencedRelation: "lead_processes"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       process_movement_monitors: {
         Row: {
