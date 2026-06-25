@@ -113,12 +113,22 @@ export function useAutoImportGroupDocs(
         setProgress({ total, done, running: false, newlyImported: 0 });
 
         // 3) Já tudo importado? Só mostra badge verde.
-        if (done >= total) return;
+        if (done >= total) {
+          sessionStorage.setItem(`auto-import-docs:v5:${leadId}:done`, '1');
+          return;
+        }
 
-        // 4) 1x por sessão por lead — evita reprocessar a cada navegação.
-        const sessKey = `auto-import-docs:v4:${leadId}`;
-        if (sessionStorage.getItem(sessKey)) return;
-        sessionStorage.setItem(sessKey, '1');
+        // 4) Guarda só bloqueia quando o lead JÁ está 100% importado.
+        //    Se ainda falta mídia, sempre tenta de novo a cada montagem,
+        //    pegando só o que falta (a edge dedup por external_message_id).
+        const doneKey = `auto-import-docs:v5:${leadId}:done`;
+        if (sessionStorage.getItem(doneKey)) return;
+
+        // Dentro da mesma sessão, evita disparar 2 corridas simultâneas pro
+        // mesmo lead (ex: dois componentes que usam o hook ao mesmo tempo).
+        const runningKey = `auto-import-docs:v5:${leadId}:running`;
+        if (sessionStorage.getItem(runningKey)) return;
+        sessionStorage.setItem(runningKey, '1');
 
         setProgress({ total, done, running: true, newlyImported: 0 });
 
@@ -126,39 +136,48 @@ export function useAutoImportGroupDocs(
         let doneAcc = done;
         let newlyAcc = 0;
 
-        for (let i = 0; i < documents.length; i += CHUNK_SIZE) {
-          if (cancelled) return;
-          const chunk = documents.slice(i, i + CHUNK_SIZE);
+        try {
+          for (let i = 0; i < documents.length; i += CHUNK_SIZE) {
+            if (cancelled) return;
+            const chunk = documents.slice(i, i + CHUNK_SIZE);
 
-          const { data: resp, error: invokeErr } = await supabase.functions.invoke(
-            'import-group-docs-to-lead',
-            { body: { lead_id: leadId, lead_name: leadName, documents: chunk } },
-          );
+            const { data: resp, error: invokeErr } = await supabase.functions.invoke(
+              'import-group-docs-to-lead',
+              { body: { lead_id: leadId, lead_name: leadName, documents: chunk } },
+            );
 
-          if (cancelled) return;
-          if (invokeErr) {
-            console.warn('[useAutoImportGroupDocs] invoke error', invokeErr);
-            break;
+            if (cancelled) return;
+            if (invokeErr) {
+              // Loga e CONTINUA — uma falha de rede em um lote não pode
+              // abortar os outros 38 lotes que ainda faltam.
+              console.warn('[useAutoImportGroupDocs] invoke error (continuando)', invokeErr);
+              continue;
+            }
+
+            const results = (resp as any)?.results || [];
+            const okNew = results.filter(
+              (r: any) => (r.status === 'ok' || r.status === 'ok_no_drive') && !r.deduped,
+            ).length;
+            const okAll = results.filter(
+              (r: any) => r.status === 'ok' || r.status === 'ok_no_drive',
+            ).length;
+
+            newlyAcc += okNew;
+            doneAcc = Math.min(doneAcc + okAll, total);
+
+            setProgress({
+              total,
+              done: doneAcc,
+              running: i + CHUNK_SIZE < documents.length,
+              newlyImported: newlyAcc,
+            });
           }
 
-          const results = (resp as any)?.results || [];
-          const okNew = results.filter(
-            (r: any) => (r.status === 'ok' || r.status === 'ok_no_drive') && !r.deduped,
-          ).length;
-          const okAll = results.filter(
-            (r: any) => r.status === 'ok' || r.status === 'ok_no_drive',
-          ).length;
-
-          newlyAcc += okNew;
-          doneAcc = Math.min(doneAcc + okAll, total);
-
-          setProgress({
-            total,
-            done: doneAcc,
-            running: i + CHUNK_SIZE < documents.length,
-            newlyImported: newlyAcc,
-          });
+          if (doneAcc >= total) sessionStorage.setItem(doneKey, '1');
+        } finally {
+          sessionStorage.removeItem(runningKey);
         }
+
 
         setProgress((p) => ({ ...p, running: false }));
         if (newlyAcc > 0) onImported?.();
