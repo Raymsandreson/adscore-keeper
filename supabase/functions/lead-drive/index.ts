@@ -775,14 +775,14 @@ Deno.serve(async (req) => {
     }
 
     if (action === "upload_url_typed") {
-      // Sobe um arquivo de uma URL pública para uma SUBPASTA por tipo de documento dentro da pasta do lead.
+      // Sobe um arquivo de uma URL pública DIRETO para a pasta do lead (sem subpasta por tipo).
       // Body: { lead_id, lead_name, file_name, source_url, mime_type?, document_type }
       const { file_name, source_url, mime_type, document_type, dedup_key, content_hash } = body;
       if (!file_name || !source_url) throw new Error("file_name and source_url required");
       if (!document_type) throw new Error("document_type required");
 
       const leadFolderId = await getOrCreateLeadFolder(lead_id, lead_name, ext);
-      const subFolderId = await getOrCreateSubfolder(leadFolderId, document_type);
+      const subFolderId = leadFolderId; // arquivos vão direto na pasta do lead
 
       for (const [key, value] of [["dedup_key", dedup_key], ["content_hash", content_hash]] as const) {
         if (!value) continue;
