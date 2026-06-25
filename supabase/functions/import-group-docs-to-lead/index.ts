@@ -116,6 +116,12 @@ Deno.serve(async (req) => {
           continue;
         }
 
+        // Áudio nunca vai pro Drive — só imagens e documentos.
+        if (msg.message_type === "audio" || msg.message_type === "ptt") {
+          results.push({ msgId, status: "skipped_audio" });
+          continue;
+        }
+
         // --- Early skip: this message was already imported for this lead ---
         try {
           const { data: existingDoc } = await cloud

@@ -74,7 +74,7 @@ export function useAutoImportGroupDocs(
         let mediaQuery = externalSupabase
           .from('whatsapp_messages')
           .select('external_message_id, message_type, media_url, created_at')
-          .in('message_type', ['image', 'document', 'video', 'audio'])
+          .in('message_type', ['image', 'document'])
           .not('media_url', 'is', null)
           .order('created_at', { ascending: false })
           .limit(200);
