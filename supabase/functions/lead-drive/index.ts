@@ -13,6 +13,7 @@ const GATEWAY = "https://connector-gateway.lovable.dev/google_drive/drive/v3";
 const UPLOAD_GATEWAY = "https://connector-gateway.lovable.dev/google_drive/upload/drive/v3";
 const ROOT_FOLDER_NAME = "AdScore Keeper - Leads";
 const MAX_ANALYZE_BYTES = 8 * 1024 * 1024;
+const FUNCTION_VERSION = 2;
 
 function gwHeaders(extra: Record<string, string> = {}) {
   return {
@@ -24,6 +25,19 @@ function gwHeaders(extra: Record<string, string> = {}) {
 
 function driveQ(value: string): string {
   return value.replace(/['\\]/g, "");
+}
+
+async function driveJson(path: string, init: RequestInit = {}) {
+  const res = await fetch(`${GATEWAY}${path}`, {
+    ...init,
+    headers: gwHeaders({
+      ...(init.headers as Record<string, string> | undefined),
+    }),
+  });
+  const text = await res.text();
+  const data = text ? JSON.parse(text) : null;
+  if (!res.ok) throw new Error(`drive request failed [${res.status}]: ${text}`);
+  return data;
 }
 
 async function sha256Hex(bytes: Uint8Array): Promise<string> {
@@ -234,7 +248,58 @@ Deno.serve(async (req) => {
         return true;
       });
       return new Response(
-        JSON.stringify({ folder_id: folderId, folder_url: `https://drive.google.com/drive/folders/${folderId}`, files }),
+        JSON.stringify({ folder_id: folderId, folder_url: `https://drive.google.com/drive/folders/${folderId}`, files, _functionVersion: FUNCTION_VERSION }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    if (action === "flatten_subfolders") {
+      const folderId = await getOrCreateLeadFolder(lead_id, lead_name, ext);
+      const foldersQuery = encodeURIComponent(
+        `'${folderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+      );
+      const folderData = await driveJson(
+        `/files?q=${foldersQuery}&fields=files(id,name)&pageSize=1000`,
+      );
+
+      const moved: Array<{ id: string; name: string; from_folder_id: string; from_folder_name: string }> = [];
+      const deletedFolders: Array<{ id: string; name: string }> = [];
+      const skipped: Array<{ id?: string; name?: string; reason: string }> = [];
+
+      for (const folder of folderData.files || []) {
+        const childQuery = encodeURIComponent(`'${folder.id}' in parents and trashed=false`);
+        const childData = await driveJson(
+          `/files?q=${childQuery}&fields=files(id,name,mimeType,size)&pageSize=1000`,
+        );
+
+        for (const child of childData.files || []) {
+          if (child.mimeType === "application/vnd.google-apps.folder") {
+            skipped.push({ id: child.id, name: child.name, reason: "nested_folder" });
+            continue;
+          }
+          const moveParams = new URLSearchParams({
+            addParents: folderId,
+            removeParents: folder.id,
+            fields: "id,name,parents",
+          });
+          await driveJson(`/files/${child.id}?${moveParams.toString()}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({}),
+          });
+          moved.push({ id: child.id, name: child.name, from_folder_id: folder.id, from_folder_name: folder.name });
+        }
+
+        const remainingQuery = encodeURIComponent(`'${folder.id}' in parents and trashed=false`);
+        const remaining = await driveJson(`/files?q=${remainingQuery}&fields=files(id)&pageSize=1`);
+        if ((remaining.files || []).length === 0) {
+          await fetch(`${GATEWAY}/files/${folder.id}`, { method: "DELETE", headers: gwHeaders() });
+          deletedFolders.push({ id: folder.id, name: folder.name });
+        }
+      }
+
+      return new Response(
+        JSON.stringify({ ok: true, folder_id: folderId, moved, deletedFolders, skipped, _functionVersion: FUNCTION_VERSION }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
@@ -798,7 +863,7 @@ Deno.serve(async (req) => {
           const existing = listJson.files?.[0];
           if (existing) {
             return new Response(
-              JSON.stringify({ ok: true, file: existing, deduped: true, lead_folder_id: leadFolderId, subfolder_id: subFolderId }),
+        JSON.stringify({ ok: true, file: existing, deduped: true, lead_folder_id: leadFolderId, subfolder_id: subFolderId, _functionVersion: FUNCTION_VERSION }),
               { headers: { ...corsHeaders, "Content-Type": "application/json" } },
             );
           }
@@ -825,7 +890,7 @@ Deno.serve(async (req) => {
           );
           if (existing) {
             return new Response(
-              JSON.stringify({ ok: true, file: existing, deduped: true, lead_folder_id: leadFolderId, subfolder_id: subFolderId }),
+        JSON.stringify({ ok: true, file: existing, deduped: true, lead_folder_id: leadFolderId, subfolder_id: subFolderId, _functionVersion: FUNCTION_VERSION }),
               { headers: { ...corsHeaders, "Content-Type": "application/json" } },
             );
           }
@@ -860,7 +925,7 @@ Deno.serve(async (req) => {
       if (!res.ok) throw new Error(`drive upload_url_typed failed [${res.status}]: ${await res.text()}`);
       const file = await res.json();
       return new Response(
-        JSON.stringify({ ok: true, file, lead_folder_id: leadFolderId, subfolder_id: subFolderId }),
+        JSON.stringify({ ok: true, file, lead_folder_id: leadFolderId, subfolder_id: subFolderId, _functionVersion: FUNCTION_VERSION }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
