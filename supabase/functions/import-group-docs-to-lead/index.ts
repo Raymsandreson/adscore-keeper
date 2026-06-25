@@ -149,25 +149,44 @@ Deno.serve(async (req) => {
         let bytes: Uint8Array | null = null;
         let strategy = "";
 
+        // --- Strategy 0: media_url is already a plain decrypted file
+        // (Railway pipeline saves decrypted media to our Supabase Storage).
+        // Detect by URL: /storage/v1/object/ or any URL not ending in .enc.
+        const isPlainStorageUrl =
+          !!msg.media_url &&
+          (msg.media_url.includes("/storage/v1/object/") ||
+            (!msg.media_url.endsWith(".enc") && !msg.media_url.includes(".enc?")));
+        if (msg.media_url && isPlainStorageUrl) {
+          try {
+            const fr = await fetch(msg.media_url);
+            if (fr.ok) {
+              bytes = new Uint8Array(await fr.arrayBuffer());
+              strategy = "plain_media_url";
+            }
+          } catch (_) { /* fallthrough */ }
+        }
+
         // --- Strategy 1: UazAPI returns a decrypted fileURL ---
-        try {
-          const dl = await fetch(`${baseUrl}/message/download`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", token },
-            body: JSON.stringify({ id: msg.external_message_id }),
-          });
-          if (dl.ok) {
-            const dlJson = await dl.json();
-            const fileURL: string | undefined = dlJson.fileURL || dlJson.url;
-            if (fileURL) {
-              const fr = await fetch(fileURL);
-              if (fr.ok) {
-                bytes = new Uint8Array(await fr.arrayBuffer());
-                strategy = "uazapi_fileURL";
+        if (!bytes) {
+          try {
+            const dl = await fetch(`${baseUrl}/message/download`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", token },
+              body: JSON.stringify({ id: msg.external_message_id }),
+            });
+            if (dl.ok) {
+              const dlJson = await dl.json();
+              const fileURL: string | undefined = dlJson.fileURL || dlJson.url;
+              if (fileURL) {
+                const fr = await fetch(fileURL);
+                if (fr.ok) {
+                  bytes = new Uint8Array(await fr.arrayBuffer());
+                  strategy = "uazapi_fileURL";
+                }
               }
             }
-          }
-        } catch (_) { /* fallthrough */ }
+          } catch (_) { /* fallthrough */ }
+        }
 
         // --- Strategy 2: download .enc and decrypt locally ---
         if (!bytes && mediaKeyB64 && msg.media_url) {
@@ -179,13 +198,20 @@ Deno.serve(async (req) => {
             bytes = decoded;
             strategy = "aes_local_decrypt";
           } catch (e: any) {
-            results.push({
-              msgId,
-              status: "decrypt_failed",
-              error: e?.message || String(e),
-            });
-            continue;
+            // Don't fail the whole item — fall through to no_data_available.
+            console.warn(`[import-group-docs] decrypt failed for ${msgId}:`, e?.message || e);
           }
+        }
+
+        // --- Strategy 3: last-resort plain download even if URL looked enc ---
+        if (!bytes && msg.media_url) {
+          try {
+            const fr = await fetch(msg.media_url);
+            if (fr.ok) {
+              bytes = new Uint8Array(await fr.arrayBuffer());
+              strategy = "plain_media_url_fallback";
+            }
+          } catch (_) { /* fallthrough */ }
         }
 
         if (!bytes) {
