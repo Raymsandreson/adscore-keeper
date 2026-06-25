@@ -83,7 +83,7 @@ export default function ImportGroupDocsDialog({
         .from('whatsapp_messages')
         .select('external_message_id, message_type, message_text, media_url, created_at, metadata, contact_name')
         .eq('phone', whatsappGroupId)
-        .in('message_type', ['image', 'document', 'video', 'audio'])
+        .in('message_type', ['image', 'document'])
         .not('media_url', 'is', null)
         .order('created_at', { ascending: false })
         .limit(200);
