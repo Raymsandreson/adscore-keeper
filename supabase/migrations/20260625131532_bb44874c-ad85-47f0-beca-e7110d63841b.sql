@@ -1,0 +1,1 @@
+ALTER TABLE public.process_documents DROP CONSTRAINT IF EXISTS process_documents_lead_id_fkey; ALTER TABLE public.process_documents DROP CONSTRAINT IF EXISTS process_documents_case_id_fkey; ALTER TABLE public.process_documents DROP CONSTRAINT IF EXISTS process_documents_process_id_fkey;
