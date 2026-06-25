@@ -277,10 +277,15 @@ Deno.serve(async (req) => {
             skipped.push({ id: child.id, name: child.name, reason: "nested_folder" });
             continue;
           }
-          await driveJson(`/files/${child.id}?fields=id,name,parents`, {
+          const moveParams = new URLSearchParams({
+            addParents: folderId,
+            removeParents: folder.id,
+            fields: "id,name,parents",
+          });
+          await driveJson(`/files/${child.id}?${moveParams.toString()}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ addParents: folderId, removeParents: folder.id }),
+            body: JSON.stringify({}),
           });
           moved.push({ id: child.id, name: child.name, from_folder_id: folder.id, from_folder_name: folder.name });
         }
