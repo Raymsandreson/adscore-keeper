@@ -33,7 +33,8 @@ const STAGE_LABEL_COLOR_BY_NAME: Array<[RegExp, number]> = [
   [/procura[cç][aã]o\s*assinada/i, 14],
   [/aguar\.?\s*assinatura|procura[cç][aã]o\s*enviada/i, 12],
   [/fechado|deferimento/i, 4],
-  [/recusado|desqualificado|indeferimento/i, 13],
+  [/recusado|indeferimento/i, 13],
+  [/desqualificado/i, 10],
   [/invi[aá]vel/i, 9],
   [/judicializa[cç][aã]o/i, 8],
 ];
