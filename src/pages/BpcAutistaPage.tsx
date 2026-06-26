@@ -230,7 +230,7 @@ export default function BpcAutistaPage() {
     setBaixandoPdf(true);
     const toastId = toast.loading("Montando dossiê...");
     try {
-      const { data, error } = await db.functions.invoke("montar-dossie-pdf-unico", {
+      const { data, error } = await authClient.functions.invoke("montar-dossie-pdf-unico", {
         body: { documentos },
       });
       if (error) throw new Error(error.message || "Falha ao chamar a função");
