@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { resolveProcessAssignment } from '@/lib/processAssignment';
+import { resolveProcessAssignment, createOrAttachAndamentoActivity } from '@/lib/processAssignment';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
