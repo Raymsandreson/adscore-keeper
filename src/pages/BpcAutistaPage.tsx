@@ -231,9 +231,11 @@ export default function BpcAutistaPage() {
     setBaixandoPdf(true);
     const toastId = toast.loading("Montando dossiê...");
     try {
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
-      const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
-      const { data: sessionData } = await authClient.auth.getSession();
+      // A função vive no Supabase EXTERNO (kmedldlepwiityjsdahz), não no Cloud.
+      const supabaseUrl = "https://kmedldlepwiityjsdahz.supabase.co";
+      const anonKey =
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImttZWRsZGxlcHdpaXR5anNkYWh6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTExOTAsImV4cCI6MjA5MDQ2NzE5MH0.s51bWtABFjJGfGyuPFWr5Tp8CzbxPD5eieFUqUVuQTs";
+      const { data: sessionData } = await db.auth.getSession();
       const accessToken = sessionData?.session?.access_token ?? anonKey;
 
       const resp = await fetch(`${supabaseUrl}/functions/v1/montar-dossie-pdf-unico`, {
