@@ -475,31 +475,31 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
 
       if (error) throw error;
       
-      // Auto-create "Dar andamento" activity (assigned per CASO_PROCESS_ASSIGNMENTS)
+      // Auto-create/attach "Dar andamento" activity via helper central
       try {
         const { extAssignedTo, assignedName } = await resolveAssignment(manualForm.title.trim(), caseId, user?.id);
-        const { error: actErr } = await externalSupabase.from('lead_activities').insert({
-          lead_id: leadId,
-          lead_name: manualForm.title.trim(),
-          case_id: caseId,
-          title: `Dar andamento - ${manualForm.title.trim()}`,
-          description: `Atividade criada automaticamente para o processo: ${manualForm.title.trim()}${manualForm.process_number ? ` (Nº ${manualForm.process_number})` : ''}`,
-          activity_type: 'tarefa',
-          status: 'pendente',
-          priority: 'normal',
-          assigned_to: extAssignedTo ?? extUserId,
-          assigned_to_name: assignedName,
-          created_by: extUserId,
-          deadline: new Date().toISOString().slice(0, 10),
-          process_title: manualForm.title.trim(),
-        } as any);
-        if (actErr) throw actErr;
-        toast.success('Processo adicionado e atividade criada');
+        const r = await createOrAttachAndamentoActivity({
+          leadId,
+          caseId,
+          processId: null,
+          processTitle: manualForm.title.trim(),
+          extAssignedTo: extAssignedTo ?? extUserId,
+          assignedName,
+          extCreatedBy: extUserId,
+        });
+        if (!r.ok) {
+          console.error('[AddProcessDialog/manual] activity failed:', r.error);
+          toast.error(`Atividade não criada: ${r.error || 'erro'}`);
+          toast.success('Processo adicionado ao caso');
+        } else {
+          toast.success('Processo adicionado e atividade criada');
+        }
       } catch (actErr: any) {
         console.error('[AddProcessDialog/manual] activity failed:', actErr);
         toast.error(`Atividade não criada: ${actErr?.message || actErr?.code || 'erro'}`);
         toast.success('Processo adicionado ao caso');
       }
+
 
       
       onProcessAdded();
