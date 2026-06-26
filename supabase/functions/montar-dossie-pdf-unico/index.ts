@@ -74,10 +74,7 @@ async function bmpToPng(bytes: Uint8Array): Promise<Uint8Array> {
   return new Uint8Array(out);
 }
 
-serve_handler();
-
-function serve_handler() {
-  Deno.serve(async (req) => {
+Deno.serve(async (req) => {
     if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
     try {
