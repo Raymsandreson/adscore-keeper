@@ -46,6 +46,7 @@ export async function resolveProcessAssignment(
   processTitle: string,
   caseTitle: string | null | undefined,
   currentUserId: string | undefined,
+  caseNumber?: string | null | undefined,
 ): Promise<{ extAssignedTo: string | null; assignedName: string | null }> {
   const mapped = CASO_PROCESS_ASSIGNMENTS[processTitle];
   if (mapped) {
@@ -54,20 +55,24 @@ export async function resolveProcessAssignment(
   }
 
   if (processTitle === 'Benefício INSS') {
-    const t = (caseTitle || '').toUpperCase();
-    if (t.includes('PREV')) {
+    // Olhamos title + case_number juntos. Usuários frequentemente nomeiam casos
+    // sem "PREV"/"CASO" no título (ex: "✅Familia 384 Cocal...") mas o
+    // case_number sempre carrega o prefixo do funil ("CASO 384", "PREV 1607").
+    const haystack = `${caseTitle || ''} ${caseNumber || ''}`.toUpperCase();
+    if (haystack.includes('PREV')) {
       const choice = await pickInssPrevAssignee();
       if (choice) {
         const ext = await remapToExternal(choice.userId);
         return { extAssignedTo: ext, assignedName: choice.userName };
       }
       // usuário cancelou → cai para fallback no criador
-    } else if (t.includes('CASO')) {
+    } else if (haystack.includes('CASO')) {
       const ext = await remapToExternal(INSS_CASO_DEFAULT.userId);
       return { extAssignedTo: ext, assignedName: INSS_CASO_DEFAULT.userName };
     }
     // fallback abaixo (criador)
   }
+
 
   if (currentUserId) {
     let name: string | null = null;
