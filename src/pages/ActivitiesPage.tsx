@@ -939,6 +939,19 @@ const ActivitiesPage = () => {
     try {
       const currentActivity = selectedActivity;
 
+      // BUGFIX: anexos pendentes (sem id) pertencem à atividade ATUAL que está
+      // sendo concluída — não à próxima. Persistir AGORA, antes de concluir,
+      // para garantir que os arquivos não se percam.
+      if (pendingNoteAttachments.length > 0) {
+        try {
+          await flushPendingAttachments(currentActivity.id);
+        } catch (e) {
+          console.error('[completeAndNext] flush atual falhou', e);
+          toast.error('Falha ao salvar anexos da atividade atual. Tente novamente.');
+          return;
+        }
+      }
+
       // Capture form values BEFORE any state changes
       const nextData = {
         title: formTitle,
@@ -979,9 +992,6 @@ const ActivitiesPage = () => {
 
       // Create the next activity with the captured form data
       const nextCreated = await createActivity(nextData);
-
-      // Persiste links/anexos adicionados na etapa antes da próxima atividade existir
-      if (nextCreated?.id) await flushPendingAttachments(nextCreated.id);
 
       if (notifyOptions) {
         await sendGroupNotification(notifyOptions);
