@@ -379,31 +379,28 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
             await autoCreatePartiesFromEnvolvidos(insertedProcess.id, fonte.envolvidos, user?.id);
           }
           
-          // Auto-create "Dar andamento" activity (assigned per CASO_PROCESS_ASSIGNMENTS)
+          // Auto-create/attach "Dar andamento" activity via helper central
           try {
             const extUserId = await remapToExternal(user?.id);
             const { extAssignedTo, assignedName } = await resolveAssignment(title, caseId, user?.id);
-            const { error: actErr } = await externalSupabase.from('lead_activities').insert({
-              lead_id: leadId,
-              lead_name: title,
-              case_id: caseId,
-              title: `Dar andamento - ${title}`,
-              description: `Atividade criada automaticamente para o processo: ${title} (Nº ${result.numero_cnj})`,
-              activity_type: 'tarefa',
-              status: 'pendente',
-              priority: 'normal',
-              assigned_to: extAssignedTo ?? extUserId,
-              assigned_to_name: assignedName,
-              created_by: extUserId,
-              deadline: new Date().toISOString().slice(0, 10),
-              process_id: insertedProcess?.id || null,
-              process_title: title,
-            } as any);
-            if (actErr) throw actErr;
+            const r = await createOrAttachAndamentoActivity({
+              leadId,
+              caseId,
+              processId: insertedProcess?.id || null,
+              processTitle: title,
+              extAssignedTo: extAssignedTo ?? extUserId,
+              assignedName,
+              extCreatedBy: extUserId,
+            });
+            if (!r.ok) {
+              console.error(`[AddProcessDialog/escavador] activity "${title}" failed:`, r.error);
+              toast.error(`Atividade de "${title}" não criada: ${r.error || 'erro'}`);
+            }
           } catch (actErr: any) {
             console.error(`[AddProcessDialog/escavador] activity "${title}" failed:`, actErr);
             toast.error(`Atividade de "${title}" não criada: ${actErr?.message || actErr?.code || 'erro'}`);
           }
+
 
 
         }
