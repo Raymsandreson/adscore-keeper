@@ -119,6 +119,7 @@ interface ActivityFormCompactProps {
   leads: LeadOption[];
   // Anexos do campo de notas ainda não persistidos (atividade nova / etapas)
   onNotesPendingChange?: (pending: Attachment[]) => void;
+  onNotesCommitCandidatesChange?: (attachments: Attachment[]) => void;
   onNotesUploadStateChange?: (uploading: boolean) => void;
 }
 
@@ -801,6 +802,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
                       label={field.label}
                       editorHeight={compactEditorHeight}
                       onPendingChange={props.onNotesPendingChange}
+                      onCommitCandidatesChange={props.onNotesCommitCandidatesChange}
                       onUploadStateChange={props.onNotesUploadStateChange}
                     />
                   </div>

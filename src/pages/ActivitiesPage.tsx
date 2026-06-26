@@ -241,10 +241,16 @@ const ActivitiesPage = () => {
   const [selectedActivity, setSelectedActivity] = useState<LeadActivity | null>(null);
   // Anexos/links adicionados no campo de notas antes da atividade ter id
   const pendingNoteAttachmentsRef = useRef<Attachment[]>([]);
+  // Anexos adicionados nesta edição, inclusive os que já tentaram insert imediato.
+  // Usado como confirmação final antes de salvar/concluir para evitar perda por race/RLS momentâneo.
+  const noteAttachmentCommitCandidatesRef = useRef<Attachment[]>([]);
   const [noteAttachmentsUploading, setNoteAttachmentsUploading] = useState(false);
   const noteAttachmentsUploadingRef = useRef(false);
   const handleNotesPendingChange = useCallback((pending: Attachment[]) => {
     pendingNoteAttachmentsRef.current = pending;
+  }, []);
+  const handleNotesCommitCandidatesChange = useCallback((attachments: Attachment[]) => {
+    noteAttachmentCommitCandidatesRef.current = attachments;
   }, []);
   const handleNotesUploadStateChange = useCallback((uploading: boolean) => {
     noteAttachmentsUploadingRef.current = uploading;
@@ -584,6 +590,7 @@ const ActivitiesPage = () => {
     setFormMatrixQuadrant('');
     setFormIsSystem(false);
     handleNotesPendingChange([]);
+    handleNotesCommitCandidatesChange([]);
     handleNotesUploadStateChange(false);
   };
 
@@ -619,14 +626,52 @@ const ActivitiesPage = () => {
     }
   };
 
-  // Grava no banco externo os anexos/links que foram adicionados enquanto a
-  // atividade ainda não tinha id (atividade nova ou criação da próxima etapa).
+  const uniqueAttachmentsByUrl = (items: Attachment[]) => {
+    const seen = new Set<string>();
+    return items.filter((attachment) => {
+      if (!attachment.file_url) return false;
+      const key = attachment.file_url;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  };
+
+  // Confirma no banco externo os anexos/links adicionados no campo de notas.
+  // Em vez de depender só do insert imediato do componente, este commit final
+  // consulta o activity_id atual e insere somente o que ainda não está vinculado.
   const flushPendingAttachments = async (activityId: string, pendingOverride?: Attachment[]) => {
     const pending = pendingOverride ?? pendingNoteAttachmentsRef.current;
-    if (!activityId || pending.length === 0) return true;
+    const candidates = uniqueAttachmentsByUrl([
+      ...pending,
+      ...noteAttachmentCommitCandidatesRef.current,
+    ]);
+    if (!activityId || candidates.length === 0) return true;
     const { data: { user } } = await supabase.auth.getUser();
     const extUserId = await remapToExternal(user?.id || null);
-    const rows = pending.map((a) => ({
+
+    const urls = candidates.map((a) => a.file_url);
+    const { data: existing, error: existingError } = await externalSupabase
+      .from('activity_attachments')
+      .select('id, file_url')
+      .eq('activity_id', activityId)
+      .in('file_url', urls);
+
+    if (existingError) {
+      toast.error('Não consegui confirmar os anexos da atividade');
+      console.error('[flushPendingAttachments] select existente falhou', existingError);
+      throw existingError;
+    }
+
+    const existingUrls = new Set((existing || []).map((row: any) => row.file_url));
+    const missing = candidates.filter((attachment) => !existingUrls.has(attachment.file_url));
+    if (missing.length === 0) {
+      handleNotesPendingChange([]);
+      handleNotesCommitCandidatesChange([]);
+      return true;
+    }
+
+    const rows = missing.map((a) => ({
       activity_id: activityId,
       file_url: a.file_url,
       file_name: a.file_name,
@@ -652,6 +697,7 @@ const ActivitiesPage = () => {
       throw err;
     }
     handleNotesPendingChange([]);
+    handleNotesCommitCandidatesChange([]);
     return true;
   };
 
@@ -907,9 +953,19 @@ const ActivitiesPage = () => {
 
   const handleUpdate = async () => {
     if (!selectedActivity) return;
+    if (noteAttachmentsUploadingRef.current) {
+      toast.info('Aguarde o envio dos anexos terminar antes de salvar.');
+      return;
+    }
     if (!formAssignedTo) { toast.error('Selecione o assessor'); return; }
     if (!formDeadline) { toast.error('Informe o prazo'); return; }
     if (!formNotificationDate) { toast.error('Informe a data de notificação'); return; }
+    try {
+      await flushPendingAttachments(selectedActivity.id, pendingNoteAttachmentsRef.current);
+    } catch {
+      toast.error('Falha ao salvar anexos. A atividade não foi salva.');
+      return;
+    }
     await updateActivity(selectedActivity.id, {
       title: formTitle,
       description: null,
@@ -1218,6 +1274,16 @@ const ActivitiesPage = () => {
 
   const handleWorkflowComplete = async () => {
     if (!selectedActivity) return;
+    if (noteAttachmentsUploadingRef.current) {
+      toast.info('Aguarde o envio dos anexos terminar antes de concluir.');
+      return;
+    }
+    try {
+      await flushPendingAttachments(selectedActivity.id, pendingNoteAttachmentsRef.current);
+    } catch {
+      toast.error('Falha ao salvar anexos. A atividade não foi concluída.');
+      return;
+    }
     await updateActivity(selectedActivity.id, {
       title: formTitle, what_was_done: formWhatWasDone || null,
       current_status_notes: formCurrentStatus || null, next_steps: formNextSteps || null,
@@ -1867,6 +1933,7 @@ const ActivitiesPage = () => {
       supabase={supabase}
       leads={leads}
       onNotesPendingChange={handleNotesPendingChange}
+      onNotesCommitCandidatesChange={handleNotesCommitCandidatesChange}
       onNotesUploadStateChange={handleNotesUploadStateChange}
     />
   );
@@ -2023,6 +2090,7 @@ const ActivitiesPage = () => {
                     size="sm"
                     className="flex-1 gap-2"
                     onClick={handleWorkflowComplete}
+                      disabled={noteAttachmentsUploading}
                   >
                     <CheckCircle2 className="h-4 w-4" /> Concluir
                   </Button>
@@ -2032,6 +2100,7 @@ const ActivitiesPage = () => {
                   size="sm"
                   className="w-full gap-2"
                   onClick={handleWorkflowCompleteAndNext}
+                  disabled={noteAttachmentsUploading}
                 >
                   <ArrowRight className="h-4 w-4" /> Concluir e Criar Próxima Atv
                 </Button>
