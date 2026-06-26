@@ -155,7 +155,14 @@ export function ActivityNotesField({ value, onChange, activityId, placeholder, l
             })
             .select()
             .single();
-          if (!error && data) newAttachment.id = data.id;
+          if (error) {
+            console.error('[ActivityNotesField] insert externo falhou', error);
+            toast.error(`Anexo "${file.name}" enviado, mas falhou ao vincular à atividade. Tente novamente.`);
+            // NÃO adiciona ao estado para evitar que o flush posterior vincule
+            // este anexo à atividade ERRADA (ex.: próxima atividade no "Concluir + Próx").
+            continue;
+          }
+          if (data) newAttachment.id = data.id;
         }
 
         setAttachments(prev => [...prev, newAttachment]);
