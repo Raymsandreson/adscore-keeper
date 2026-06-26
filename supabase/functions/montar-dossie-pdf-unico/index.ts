@@ -18,7 +18,7 @@ function gwHeaders(): Record<string, string> {
   };
 }
 
-const ACCEPTED_EXT = new Set(["pdf", "jpg", "jpeg", "png", "bmp"]);
+const ACCEPTED_EXT = new Set(["pdf", "jpg", "jpeg", "png"]);
 
 function extOf(name: string, mime: string): string {
   const m = (mime || "").toLowerCase();
