@@ -52,8 +52,8 @@ const PREDEFINED_PROCESSES = [
   'Onboarding',
 ];
 
-// Atribuições centralizadas em src/lib/processAssignment.ts
-import { resolveProcessAssignment } from '@/lib/processAssignment';
+// Atribuições centralizadas em src/lib/processAssignment.ts (import no topo)
+
 
 
 /**
