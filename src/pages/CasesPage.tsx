@@ -544,7 +544,7 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
 
             // Auto-create activity usando o resolver central.
             try {
-              const { extAssignedTo, assignedName } = await resolveProcessAssignment(title, editTitle || legalCase.title, user?.id);
+              const { extAssignedTo, assignedName } = await resolveProcessAssignment(title, editTitle || legalCase.title, user?.id, legalCase.case_number);
               const extCreatedBy = await remapToExternal(user?.id);
               const { error: actErr } = await externalSupabase.from('lead_activities').insert({
                 lead_id: legalCase.lead_id,
@@ -565,9 +565,11 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
               console.error(`[CasesPage] activity "${title}" failed:`, actErr);
               toast.error(`Atividade de "${title}" não criada: ${actErr?.message || actErr?.code || 'erro'}`);
             }
-          } catch (err) {
-            console.warn(`Error creating process "${title}":`, err);
+          } catch (err: any) {
+            console.error(`[CasesPage] Error creating process "${title}":`, err);
+            toast.error(`Processo "${title}" falhou: ${err?.message || err?.code || 'erro'}`);
           }
+
         }
         toast.success(`${selectedProcesses.size} processo(s) criado(s)`);
         toast.success('Atividades atribuídas automaticamente');
