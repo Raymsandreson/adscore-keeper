@@ -157,7 +157,7 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
       }
 
       try {
-        const { extAssignedTo, assignedName } = await resolveProcessAssignment(title, titulo, user?.id);
+        const { extAssignedTo, assignedName } = await resolveProcessAssignment(title, titulo, user?.id, caseNumber);
         const { error: actErr } = await externalSupabase.from('lead_activities').insert({
           lead_id: caseLeadId,
           title: `Dar andamento - ${title}`,
