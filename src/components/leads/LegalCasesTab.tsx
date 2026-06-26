@@ -132,43 +132,56 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
     if (selectedProcesses.size === 0) return;
     const { data: { user } } = await supabase.auth.getUser();
     const titulo = caseTitle?.trim() || editingCase?.title || '';
+    const extCreatedBy = await remapToExternal(user?.id);
+    let okProc = 0, failProc = 0, okAct = 0, failAct = 0;
     for (const title of selectedProcesses) {
+      let savedProcessId: string | null = null;
       try {
-        const { data: savedProcess } = await externalSupabase.from('lead_processes').insert({
+        const { data: savedProcess, error: procErr } = await externalSupabase.from('lead_processes').insert({
           lead_id: caseLeadId,
           case_id: caseId,
           process_type: 'administrativo',
           title,
           status: 'em_andamento',
           started_at: new Date().toISOString().slice(0, 10),
-          created_by: user?.id,
+          created_by: extCreatedBy,
         } as any).select('id').single();
+        if (procErr) throw procErr;
+        savedProcessId = savedProcess?.id || null;
+        okProc++;
+      } catch (err: any) {
+        failProc++;
+        console.error(`[autoCreateProcesses] processo "${title}" falhou:`, err);
+        toast.error(`Processo "${title}": ${err?.message || 'erro'}`);
+        continue;
+      }
 
-        try {
-          const { extAssignedTo, assignedName } = await resolveProcessAssignment(title, titulo, user?.id);
-          const extCreatedBy = await remapToExternal(user?.id);
-          await externalSupabase.from('lead_activities').insert({
-            lead_id: caseLeadId,
-            title: `Dar andamento - ${title}`,
-            description: `Atividade criada automaticamente para o processo: ${title}`,
-            activity_type: 'tarefa',
-            status: 'pendente',
-            priority: 'normal',
-            assigned_to: extAssignedTo,
-            assigned_to_name: assignedName,
-            created_by: extCreatedBy,
-            deadline: new Date().toISOString().slice(0, 10),
-            process_id: savedProcess?.id || null,
-          } as any);
-        } catch (actErr) {
-          console.warn(`Error creating activity for process "${title}":`, actErr);
-        }
-      } catch (err) {
-        console.warn(`Error creating process "${title}":`, err);
+      try {
+        const { extAssignedTo, assignedName } = await resolveProcessAssignment(title, titulo, user?.id);
+        const { error: actErr } = await externalSupabase.from('lead_activities').insert({
+          lead_id: caseLeadId,
+          title: `Dar andamento - ${title}`,
+          description: `Atividade criada automaticamente para o processo: ${title}`,
+          activity_type: 'tarefa',
+          status: 'pendente',
+          priority: 'normal',
+          assigned_to: extAssignedTo,
+          assigned_to_name: assignedName,
+          created_by: extCreatedBy,
+          deadline: new Date().toISOString().slice(0, 10),
+          process_id: savedProcessId,
+          process_title: title,
+        } as any);
+        if (actErr) throw actErr;
+        okAct++;
+      } catch (err: any) {
+        failAct++;
+        console.error(`[autoCreateProcesses] atividade "${title}" falhou:`, err);
+        toast.error(`Atividade de "${title}" não criada: ${err?.message || err?.code || 'erro'}`);
       }
     }
-    toast.success(`${selectedProcesses.size} processo(s) criado(s) automaticamente`);
-    toast.success('Atividades atribuídas automaticamente');
+    toast.success(`${okProc} processo(s) criado(s) | ${okAct} atividade(s) atribuída(s)`);
+    if (failProc || failAct) toast.warning(`${failProc} processo(s) e ${failAct} atividade(s) com erro — veja toasts vermelhos`);
   };
 
 
