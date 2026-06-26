@@ -7,6 +7,7 @@ import { PDFDocument } from "https://esm.sh/pdf-lib@1.17.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-request-id",
   "Access-Control-Expose-Headers": "x-dossie-paginas, x-dossie-documentos, x-dossie-tamanho-mb",
 };
