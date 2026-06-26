@@ -546,7 +546,7 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
             try {
               const { extAssignedTo, assignedName } = await resolveProcessAssignment(title, editTitle || legalCase.title, user?.id);
               const extCreatedBy = await remapToExternal(user?.id);
-              await externalSupabase.from('lead_activities').insert({
+              const { error: actErr } = await externalSupabase.from('lead_activities').insert({
                 lead_id: legalCase.lead_id,
                 title: `Dar andamento - ${title}`,
                 description: `Atividade criada automaticamente para o processo: ${title}`,
@@ -558,9 +558,12 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
                 created_by: extCreatedBy,
                 deadline: new Date().toISOString().slice(0, 10),
                 process_id: savedProcess?.id || null,
+                process_title: title,
               } as any);
-            } catch (actErr) {
-              console.warn(`Error creating activity for "${title}":`, actErr);
+              if (actErr) throw actErr;
+            } catch (actErr: any) {
+              console.error(`[CasesPage] activity "${title}" failed:`, actErr);
+              toast.error(`Atividade de "${title}" não criada: ${actErr?.message || actErr?.code || 'erro'}`);
             }
           } catch (err) {
             console.warn(`Error creating process "${title}":`, err);

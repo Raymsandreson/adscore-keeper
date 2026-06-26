@@ -380,9 +380,10 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
           try {
             const extUserId = await remapToExternal(user?.id);
             const { extAssignedTo, assignedName } = await resolveAssignment(title, caseId, user?.id);
-            await externalSupabase.from('lead_activities').insert({
+            const { error: actErr } = await externalSupabase.from('lead_activities').insert({
               lead_id: leadId,
               lead_name: title,
+              case_id: caseId,
               title: `Dar andamento - ${title}`,
               description: `Atividade criada automaticamente para o processo: ${title} (Nº ${result.numero_cnj})`,
               activity_type: 'tarefa',
@@ -392,10 +393,15 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
               assigned_to_name: assignedName,
               created_by: extUserId,
               deadline: new Date().toISOString().slice(0, 10),
+              process_id: insertedProcess?.id || null,
+              process_title: title,
             } as any);
-          } catch (actErr) {
-            console.error('Error auto-creating activity:', actErr);
+            if (actErr) throw actErr;
+          } catch (actErr: any) {
+            console.error(`[AddProcessDialog/escavador] activity "${title}" failed:`, actErr);
+            toast.error(`Atividade de "${title}" não criada: ${actErr?.message || actErr?.code || 'erro'}`);
           }
+
 
         }
       }
@@ -472,9 +478,10 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
       // Auto-create "Dar andamento" activity (assigned per CASO_PROCESS_ASSIGNMENTS)
       try {
         const { extAssignedTo, assignedName } = await resolveAssignment(manualForm.title.trim(), caseId, user?.id);
-        await externalSupabase.from('lead_activities').insert({
+        const { error: actErr } = await externalSupabase.from('lead_activities').insert({
           lead_id: leadId,
           lead_name: manualForm.title.trim(),
+          case_id: caseId,
           title: `Dar andamento - ${manualForm.title.trim()}`,
           description: `Atividade criada automaticamente para o processo: ${manualForm.title.trim()}${manualForm.process_number ? ` (Nº ${manualForm.process_number})` : ''}`,
           activity_type: 'tarefa',
@@ -484,13 +491,16 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
           assigned_to_name: assignedName,
           created_by: extUserId,
           deadline: new Date().toISOString().slice(0, 10),
+          process_title: manualForm.title.trim(),
         } as any);
+        if (actErr) throw actErr;
         toast.success('Processo adicionado e atividade criada');
-
-      } catch (actErr) {
-        console.error('Error auto-creating activity:', actErr);
+      } catch (actErr: any) {
+        console.error('[AddProcessDialog/manual] activity failed:', actErr);
+        toast.error(`Atividade não criada: ${actErr?.message || actErr?.code || 'erro'}`);
         toast.success('Processo adicionado ao caso');
       }
+
       
       onProcessAdded();
       onOpenChange(false);
