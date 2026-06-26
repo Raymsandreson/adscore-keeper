@@ -2,7 +2,7 @@
 // Aceita: pdf, jpg, jpeg, png, bmp. Ignora áudio e demais tipos.
 // Ordem das páginas: identificação → procuração → comprovante → cadunico → laudo médico.
 import { PDFDocument } from "https://esm.sh/pdf-lib@1.17.1";
-import { encode as base64Encode } from "https://deno.land/std@0.168.0/encoding/base64.ts";
+import { encode as base64Encode } from "https://deno.land/std@0.224.0/encoding/base64.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
