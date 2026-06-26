@@ -538,34 +538,15 @@ export default function BpcAutistaPage() {
                     </Button>
                     <Button
                       variant="default"
-                      onClick={async () => {
-                        try {
-                          const toastId = toast.loading("Baixando PDF...");
-                          const resp = await fetch(pdfUrl);
-                          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-                          const buf = await resp.arrayBuffer();
-                          const bytes = new Uint8Array(buf);
-                          const blob = new Blob([bytes], { type: "application/pdf" });
-                          const url = URL.createObjectURL(blob);
-                          const cpfRaw = String(
-                            (analise?.cartao_inss?.requerente as any)?.cpf ?? "",
-                          ).replace(/\D/g, "") || "sem_cpf";
-                          const prev = (selected?.case_number || "sem_prev").replace(/[^A-Za-z0-9_-]/g, "_");
-                          const a = document.createElement("a");
-                          a.href = url;
-                          a.download = `dossie_${prev}_${cpfRaw}.pdf`;
-                          document.body.appendChild(a);
-                          a.click();
-                          a.remove();
-                          URL.revokeObjectURL(url);
-                          toast.success("PDF baixado.", { id: toastId });
-                        } catch (e: any) {
-                          toast.error(e?.message || "Falha ao baixar PDF");
-                        }
-                      }}
+                      onClick={handleBaixarDossiePdf}
+                      disabled={baixandoPdf || qtdSelecionados === 0}
                     >
-                      <Download className="h-3.5 w-3.5 mr-2" />
-                      Baixar PDF
+                      {baixandoPdf ? (
+                        <Loader2 className="h-3.5 w-3.5 mr-2 animate-spin" />
+                      ) : (
+                        <Download className="h-3.5 w-3.5 mr-2" />
+                      )}
+                      {baixandoPdf ? "Baixando..." : "Baixar PDF"}
                     </Button>
                   </>
                 )}
