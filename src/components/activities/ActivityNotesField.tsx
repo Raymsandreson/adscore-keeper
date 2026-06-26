@@ -306,6 +306,7 @@ export function ActivityNotesField({ value, onChange, activityId, placeholder, l
     if (att.id) {
       await externalSupabase.from('activity_attachments').delete().eq('id', att.id);
     }
+    syncCommitCandidates(commitCandidatesRef.current.filter(a => a.file_url !== att.file_url));
     syncAttachments(attachmentsRef.current.filter((_, i) => i !== idx));
   };
 
