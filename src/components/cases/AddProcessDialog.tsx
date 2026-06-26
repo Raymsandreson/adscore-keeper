@@ -26,25 +26,28 @@ import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { ResponsibleUserSelect } from './ResponsibleUserSelect';
 
 // Resolver de atribuição centralizado em src/lib/processAssignment.ts
-import { resolveProcessAssignment } from '@/lib/processAssignment';
+import { resolveProcessAssignment, createOrAttachAndamentoActivity } from '@/lib/processAssignment';
 
 async function resolveAssignment(
   processTitle: string,
   caseId: string,
   currentUserId: string | undefined,
 ): Promise<{ extAssignedTo: string | null; assignedName: string | null }> {
-  // Busca o título do caso para alimentar a regra especial do Benefício INSS.
+  // Busca title + case_number do caso para alimentar a regra especial do INSS.
   let caseTitle: string | null = null;
+  let caseNumber: string | null = null;
   try {
     const { data } = await externalSupabase
       .from('legal_cases')
-      .select('title')
+      .select('title, case_number')
       .eq('id', caseId)
       .maybeSingle();
     caseTitle = (data as any)?.title || null;
+    caseNumber = (data as any)?.case_number || null;
   } catch {}
-  return resolveProcessAssignment(processTitle, caseTitle, currentUserId);
+  return resolveProcessAssignment(processTitle, caseTitle, currentUserId, caseNumber);
 }
+
 
 
 
@@ -376,31 +379,28 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
             await autoCreatePartiesFromEnvolvidos(insertedProcess.id, fonte.envolvidos, user?.id);
           }
           
-          // Auto-create "Dar andamento" activity (assigned per CASO_PROCESS_ASSIGNMENTS)
+          // Auto-create/attach "Dar andamento" activity via helper central
           try {
             const extUserId = await remapToExternal(user?.id);
             const { extAssignedTo, assignedName } = await resolveAssignment(title, caseId, user?.id);
-            const { error: actErr } = await externalSupabase.from('lead_activities').insert({
-              lead_id: leadId,
-              lead_name: title,
-              case_id: caseId,
-              title: `Dar andamento - ${title}`,
-              description: `Atividade criada automaticamente para o processo: ${title} (Nº ${result.numero_cnj})`,
-              activity_type: 'tarefa',
-              status: 'pendente',
-              priority: 'normal',
-              assigned_to: extAssignedTo ?? extUserId,
-              assigned_to_name: assignedName,
-              created_by: extUserId,
-              deadline: new Date().toISOString().slice(0, 10),
-              process_id: insertedProcess?.id || null,
-              process_title: title,
-            } as any);
-            if (actErr) throw actErr;
+            const r = await createOrAttachAndamentoActivity({
+              leadId,
+              caseId,
+              processId: insertedProcess?.id || null,
+              processTitle: title,
+              extAssignedTo: extAssignedTo ?? extUserId,
+              assignedName,
+              extCreatedBy: extUserId,
+            });
+            if (!r.ok) {
+              console.error(`[AddProcessDialog/escavador] activity "${title}" failed:`, r.error);
+              toast.error(`Atividade de "${title}" não criada: ${r.error || 'erro'}`);
+            }
           } catch (actErr: any) {
             console.error(`[AddProcessDialog/escavador] activity "${title}" failed:`, actErr);
             toast.error(`Atividade de "${title}" não criada: ${actErr?.message || actErr?.code || 'erro'}`);
           }
+
 
 
         }
@@ -475,31 +475,31 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
 
       if (error) throw error;
       
-      // Auto-create "Dar andamento" activity (assigned per CASO_PROCESS_ASSIGNMENTS)
+      // Auto-create/attach "Dar andamento" activity via helper central
       try {
         const { extAssignedTo, assignedName } = await resolveAssignment(manualForm.title.trim(), caseId, user?.id);
-        const { error: actErr } = await externalSupabase.from('lead_activities').insert({
-          lead_id: leadId,
-          lead_name: manualForm.title.trim(),
-          case_id: caseId,
-          title: `Dar andamento - ${manualForm.title.trim()}`,
-          description: `Atividade criada automaticamente para o processo: ${manualForm.title.trim()}${manualForm.process_number ? ` (Nº ${manualForm.process_number})` : ''}`,
-          activity_type: 'tarefa',
-          status: 'pendente',
-          priority: 'normal',
-          assigned_to: extAssignedTo ?? extUserId,
-          assigned_to_name: assignedName,
-          created_by: extUserId,
-          deadline: new Date().toISOString().slice(0, 10),
-          process_title: manualForm.title.trim(),
-        } as any);
-        if (actErr) throw actErr;
-        toast.success('Processo adicionado e atividade criada');
+        const r = await createOrAttachAndamentoActivity({
+          leadId,
+          caseId,
+          processId: null,
+          processTitle: manualForm.title.trim(),
+          extAssignedTo: extAssignedTo ?? extUserId,
+          assignedName,
+          extCreatedBy: extUserId,
+        });
+        if (!r.ok) {
+          console.error('[AddProcessDialog/manual] activity failed:', r.error);
+          toast.error(`Atividade não criada: ${r.error || 'erro'}`);
+          toast.success('Processo adicionado ao caso');
+        } else {
+          toast.success('Processo adicionado e atividade criada');
+        }
       } catch (actErr: any) {
         console.error('[AddProcessDialog/manual] activity failed:', actErr);
         toast.error(`Atividade não criada: ${actErr?.message || actErr?.code || 'erro'}`);
         toast.success('Processo adicionado ao caso');
       }
+
 
       
       onProcessAdded();

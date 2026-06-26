@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { resolveProcessAssignment } from '@/lib/processAssignment';
+import { resolveProcessAssignment, createOrAttachAndamentoActivity } from '@/lib/processAssignment';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
@@ -542,32 +542,34 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
               }
             }
 
-            // Auto-create activity usando o resolver central.
+            // Auto-create/attach activity via helper central (lida com índice único).
             try {
-              const { extAssignedTo, assignedName } = await resolveProcessAssignment(title, editTitle || legalCase.title, user?.id);
+              const { extAssignedTo, assignedName } = await resolveProcessAssignment(title, editTitle || legalCase.title, user?.id, legalCase.case_number);
               const extCreatedBy = await remapToExternal(user?.id);
-              const { error: actErr } = await externalSupabase.from('lead_activities').insert({
-                lead_id: legalCase.lead_id,
-                title: `Dar andamento - ${title}`,
-                description: `Atividade criada automaticamente para o processo: ${title}`,
-                activity_type: 'tarefa',
-                status: 'pendente',
-                priority: 'normal',
-                assigned_to: extAssignedTo,
-                assigned_to_name: assignedName,
-                created_by: extCreatedBy,
-                deadline: new Date().toISOString().slice(0, 10),
-                process_id: savedProcess?.id || null,
-                process_title: title,
-              } as any);
-              if (actErr) throw actErr;
+              const result = await createOrAttachAndamentoActivity({
+                leadId: legalCase.lead_id,
+                caseId: legalCase.id,
+                caseTitle: editTitle || legalCase.title,
+                processId: savedProcess?.id || null,
+                processTitle: title,
+                extAssignedTo,
+                assignedName,
+                extCreatedBy,
+              });
+              if (!result.ok) {
+                console.error(`[CasesPage] activity "${title}" failed:`, result.error);
+                toast.error(`Atividade de "${title}" não criada: ${result.error || 'erro'}`);
+              }
             } catch (actErr: any) {
               console.error(`[CasesPage] activity "${title}" failed:`, actErr);
               toast.error(`Atividade de "${title}" não criada: ${actErr?.message || actErr?.code || 'erro'}`);
             }
-          } catch (err) {
-            console.warn(`Error creating process "${title}":`, err);
+
+          } catch (err: any) {
+            console.error(`[CasesPage] Error creating process "${title}":`, err);
+            toast.error(`Processo "${title}" falhou: ${err?.message || err?.code || 'erro'}`);
           }
+
         }
         toast.success(`${selectedProcesses.size} processo(s) criado(s)`);
         toast.success('Atividades atribuídas automaticamente');

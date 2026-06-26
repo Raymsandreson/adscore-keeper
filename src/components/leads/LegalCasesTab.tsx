@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { resolveProcessAssignment } from '@/lib/processAssignment';
+import { resolveProcessAssignment, createOrAttachAndamentoActivity } from '@/lib/processAssignment';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -157,22 +157,18 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
       }
 
       try {
-        const { extAssignedTo, assignedName } = await resolveProcessAssignment(title, titulo, user?.id);
-        const { error: actErr } = await externalSupabase.from('lead_activities').insert({
-          lead_id: caseLeadId,
-          title: `Dar andamento - ${title}`,
-          description: `Atividade criada automaticamente para o processo: ${title}`,
-          activity_type: 'tarefa',
-          status: 'pendente',
-          priority: 'normal',
-          assigned_to: extAssignedTo,
-          assigned_to_name: assignedName,
-          created_by: extCreatedBy,
-          deadline: new Date().toISOString().slice(0, 10),
-          process_id: savedProcessId,
-          process_title: title,
-        } as any);
-        if (actErr) throw actErr;
+        const { extAssignedTo, assignedName } = await resolveProcessAssignment(title, titulo, user?.id, caseNumber);
+        const result = await createOrAttachAndamentoActivity({
+          leadId: caseLeadId,
+          caseId,
+          caseTitle: titulo,
+          processId: savedProcessId,
+          processTitle: title,
+          extAssignedTo,
+          assignedName,
+          extCreatedBy,
+        });
+        if (!result.ok) throw new Error(result.error || 'erro');
         okAct++;
       } catch (err: any) {
         failAct++;
@@ -183,6 +179,7 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
     toast.success(`${okProc} processo(s) criado(s) | ${okAct} atividade(s) atribuída(s)`);
     if (failProc || failAct) toast.warning(`${failProc} processo(s) e ${failAct} atividade(s) com erro — veja toasts vermelhos`);
   };
+
 
 
   const handleSaveCase = async () => {

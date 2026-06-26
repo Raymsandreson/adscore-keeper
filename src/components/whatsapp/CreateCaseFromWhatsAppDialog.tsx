@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { resolveProcessAssignment } from '@/lib/processAssignment';
+import { resolveProcessAssignment, createOrAttachAndamentoActivity } from '@/lib/processAssignment';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
@@ -679,30 +679,33 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
                   proc.title,
                   title.trim(),
                   user?.id,
+                  (result as any)?.case_number || caseNumber,
                 );
+
                 const extCreatedByAct = await remapToExternal(user?.id);
-                const { error: actErr } = await externalSupabase.from('lead_activities').insert({
-                  lead_id: finalLeadId || null,
-                  lead_name: title.trim(),
-                  case_id: result.id,
-                  case_title: title.trim(),
-                  title: `Dar andamento - ${proc.title}`,
-                  description: `Atividade criada automaticamente para o processo: ${proc.title}`,
-                  activity_type: 'tarefa',
-                  status: 'pendente',
-                  priority: 'normal',
-                  assigned_to: extAssignedTo,
-                  assigned_to_name: assignedName,
-                  created_by: extCreatedByAct,
-                  deadline: new Date().toISOString().slice(0, 10),
-                  process_id: savedProcess.id,
-                  process_title: proc.title,
-                } as any);
-                if (actErr) throw actErr;
+                if (!finalLeadId) {
+                  console.warn(`[CreateCase] activity for "${proc.title}" skipped: no lead`);
+                } else {
+                  const r = await createOrAttachAndamentoActivity({
+                    leadId: finalLeadId,
+                    caseId: result.id,
+                    caseTitle: title.trim(),
+                    processId: savedProcess.id,
+                    processTitle: proc.title,
+                    extAssignedTo,
+                    assignedName,
+                    extCreatedBy: extCreatedByAct,
+                  });
+                  if (!r.ok) {
+                    console.error(`[CreateCase] activity "${proc.title}" failed:`, r.error);
+                    toast.error(`Atividade de "${proc.title}" não criada: ${r.error || 'erro'}`);
+                  }
+                }
               } catch (actErr: any) {
                 console.error(`[CreateCase] activity "${proc.title}" failed:`, actErr);
                 toast.error(`Atividade de "${proc.title}" não criada: ${actErr?.message || actErr?.code || 'erro'}`);
               }
+
             }
           } catch (procErr) {
             failedProcesses += 1;
