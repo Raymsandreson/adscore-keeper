@@ -379,7 +379,7 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
           // Auto-create "Dar andamento" activity (assigned per CASO_PROCESS_ASSIGNMENTS)
           try {
             const extUserId = await remapToExternal(user?.id);
-            const { extAssignedTo, assignedName } = await resolveAssignment(title, user?.id);
+            const { extAssignedTo, assignedName } = await resolveAssignment(title, caseId, user?.id);
             await externalSupabase.from('lead_activities').insert({
               lead_id: leadId,
               lead_name: title,
@@ -471,7 +471,7 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
       
       // Auto-create "Dar andamento" activity (assigned per CASO_PROCESS_ASSIGNMENTS)
       try {
-        const { extAssignedTo, assignedName } = await resolveAssignment(manualForm.title.trim(), user?.id);
+        const { extAssignedTo, assignedName } = await resolveAssignment(manualForm.title.trim(), caseId, user?.id);
         await externalSupabase.from('lead_activities').insert({
           lead_id: leadId,
           lead_name: manualForm.title.trim(),
