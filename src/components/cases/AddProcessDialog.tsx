@@ -33,18 +33,21 @@ async function resolveAssignment(
   caseId: string,
   currentUserId: string | undefined,
 ): Promise<{ extAssignedTo: string | null; assignedName: string | null }> {
-  // Busca o título do caso para alimentar a regra especial do Benefício INSS.
+  // Busca title + case_number do caso para alimentar a regra especial do INSS.
   let caseTitle: string | null = null;
+  let caseNumber: string | null = null;
   try {
     const { data } = await externalSupabase
       .from('legal_cases')
-      .select('title')
+      .select('title, case_number')
       .eq('id', caseId)
       .maybeSingle();
     caseTitle = (data as any)?.title || null;
+    caseNumber = (data as any)?.case_number || null;
   } catch {}
-  return resolveProcessAssignment(processTitle, caseTitle, currentUserId);
+  return resolveProcessAssignment(processTitle, caseTitle, currentUserId, caseNumber);
 }
+
 
 
 
