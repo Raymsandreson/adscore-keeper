@@ -143,9 +143,9 @@ Deno.serve(async (req) => {
             let imgBytes = item.bytes;
             let kind = item.ext;
             if (kind === "bmp") {
-              imgBytes = await bmpToPng(imgBytes);
-              kind = "png";
+              throw new Error("BMP não suportado. Converta para JPG/PNG.");
             }
+
             const embedded = kind === "png"
               ? await outPdf.embedPng(imgBytes)
               : await outPdf.embedJpg(imgBytes);
