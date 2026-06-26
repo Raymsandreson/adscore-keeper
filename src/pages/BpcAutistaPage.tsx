@@ -112,6 +112,7 @@ export default function BpcAutistaPage() {
 
   const [analisando, setAnalisando] = useState(false);
   const [montando, setMontando] = useState(false);
+  const [baixandoPdf, setBaixandoPdf] = useState(false);
   const [ambiguous, setAmbiguous] = useState<AmbiguousCandidate[] | null>(null);
 
   const [analise, setAnalise] = useState<AnaliseResult | null>(null);
