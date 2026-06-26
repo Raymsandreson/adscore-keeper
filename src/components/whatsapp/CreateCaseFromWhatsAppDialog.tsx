@@ -640,23 +640,12 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
         }
       }
 
-      // Add predefined processes (like LegalCasesTab)
-      // For 'Benefício INSS' the activity goes to the current user (case creator).
-      let inssAssigneeName: string | null = null;
-      if (selectedPredefinedProcesses.has('Benefício INSS') && user?.id) {
-        const { data: prof } = await supabase.from('profiles').select('full_name').eq('user_id', user.id).maybeSingle();
-        inssAssigneeName = prof?.full_name || null;
-      }
+      // Add predefined processes. A atribuição é resolvida no loop abaixo
+      // pelo helper central, que conhece a regra especial de Benefício INSS.
       for (const procName of selectedPredefinedProcesses) {
-        const isInss = procName === 'Benefício INSS';
-        const assignment = isInss
-          ? (user?.id ? { userId: user.id, userName: inssAssigneeName || '' } : undefined)
-          : CASO_PROCESS_ASSIGNMENTS[procName];
         allProcessesToCreate.push({
           title: procName,
           process_type: 'administrativo',
-          assignedTo: assignment?.userId,
-          assignedToName: assignment?.userName,
         });
       }
 
@@ -682,11 +671,15 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
             if (processError) throw processError;
             createdProcesses += 1;
 
-            // Auto-create activity for all cases with predefined process assignments
-            if (proc.assignedTo && savedProcess?.id) {
+            // Auto-create activity para todo processo. O resolver decide o responsável.
+            if (savedProcess?.id) {
               try {
-                const extAssignedTo = await remapToExternal(proc.assignedTo);
-                const extCreatedBy = await remapToExternal(user?.id);
+                const { extAssignedTo, assignedName } = await resolveProcessAssignment(
+                  proc.title,
+                  title.trim(),
+                  user?.id,
+                );
+                const extCreatedByAct = await remapToExternal(user?.id);
                 await externalSupabase.from('lead_activities').insert({
                   lead_id: finalLeadId || null,
                   lead_name: title.trim(),
@@ -698,8 +691,8 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
                   status: 'pendente',
                   priority: 'normal',
                   assigned_to: extAssignedTo,
-                  assigned_to_name: proc.assignedToName,
-                  created_by: extCreatedBy,
+                  assigned_to_name: assignedName,
+                  created_by: extCreatedByAct,
                   deadline: new Date().toISOString().slice(0, 10),
                   process_id: savedProcess.id,
                   process_title: proc.title,
@@ -713,9 +706,7 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
             console.warn(`Error creating process "${proc.title}":`, procErr);
           }
         }
-        if (createdProcesses > 0) {
-          toast.success(`${createdProcesses} processo(s) criado(s) automaticamente`);
-        }
+
         if (failedProcesses > 0) {
           toast.warning(`${failedProcesses} processo(s) não puderam ser criados automaticamente`);
         }
