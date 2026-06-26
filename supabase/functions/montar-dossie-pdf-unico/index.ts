@@ -3,7 +3,7 @@
 // Ordem das páginas: identificação → procuração → comprovante → cadunico → laudo médico.
 // Retorna o PDF como binário (application/pdf) para evitar inflar com base64.
 // Em caso de erro de negócio, retorna application/json com { ok:false, erro, falhas? }.
-import { PDFDocument } from "https://esm.sh/pdf-lib@1.17.1";
+import { PDFDocument } from "npm:pdf-lib@1.17.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
