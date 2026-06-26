@@ -194,7 +194,12 @@ Deno.serve(async (req) => {
     }
 
     // Retorna binário direto (sem base64 inflando 33%)
-    return new Response(pdfBytes, {
+    const pdfBody = pdfBytes.buffer.slice(
+      pdfBytes.byteOffset,
+      pdfBytes.byteOffset + pdfBytes.byteLength,
+    ) as ArrayBuffer;
+
+    return new Response(pdfBody, {
       status: 200,
       headers: {
         ...corsHeaders,
