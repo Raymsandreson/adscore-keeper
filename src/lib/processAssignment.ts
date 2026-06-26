@@ -116,3 +116,85 @@ function pickInssPrevAssignee(): { userId: string; userName: string } | null {
   }
   return INSS_PREV_OPTIONS[idx];
 }
+
+/**
+ * Cria a atividade "Dar andamento - <titulo>" do processo recém-cadastrado.
+ *
+ * Existe um índice único parcial em `lead_activities` (lead_id + lower(trim(title))
+ * + activity_type, WHERE status='pendente') que impede duplicar pendentes para o
+ * mesmo lead. Se já existe uma pendente com o mesmo título (caso clássico:
+ * atividade-fantasma criada antes do caso existir), em vez de violar a constraint
+ * e perder a atividade, **anexamos a pendente existente** ao caso/processo novo.
+ *
+ * Retorna { ok, mode: 'inserted'|'attached'|'skipped', error? }.
+ */
+export interface AndamentoActivityInput {
+  leadId: string;
+  caseId: string | null;
+  caseTitle?: string | null;
+  processId: string | null;
+  processTitle: string;
+  extAssignedTo: string | null;
+  assignedName: string | null;
+  extCreatedBy: string | null;
+}
+
+export async function createOrAttachAndamentoActivity(
+  input: AndamentoActivityInput,
+): Promise<{ ok: boolean; mode: 'inserted' | 'attached' | 'skipped'; error?: string }> {
+  const title = `Dar andamento - ${input.processTitle}`;
+  const today = new Date().toISOString().slice(0, 10);
+
+  // Procura uma atividade pendente equivalente (case-insensitive) para esse lead.
+  try {
+    const { data: existing } = await externalSupabase
+      .from('lead_activities')
+      .select('id, case_id, process_id')
+      .eq('lead_id', input.leadId)
+      .eq('status', 'pendente')
+      .is('deleted_at', null)
+      .ilike('title', title)
+      .limit(1)
+      .maybeSingle();
+
+    if (existing?.id) {
+      const updates: any = {
+        assigned_to: input.extAssignedTo,
+        assigned_to_name: input.assignedName,
+        process_title: input.processTitle,
+      };
+      if (!existing.case_id && input.caseId) updates.case_id = input.caseId;
+      if (!existing.process_id && input.processId) updates.process_id = input.processId;
+      const { error: upErr } = await externalSupabase
+        .from('lead_activities')
+        .update(updates)
+        .eq('id', existing.id);
+      if (upErr) return { ok: false, mode: 'attached', error: upErr.message };
+      return { ok: true, mode: 'attached' };
+    }
+  } catch (e: any) {
+    // segue para tentar inserir
+    console.warn('[createOrAttachAndamentoActivity] lookup failed:', e?.message);
+  }
+
+  const payload: any = {
+    lead_id: input.leadId,
+    title,
+    description: `Atividade criada automaticamente para o processo: ${input.processTitle}`,
+    activity_type: 'tarefa',
+    status: 'pendente',
+    priority: 'normal',
+    assigned_to: input.extAssignedTo,
+    assigned_to_name: input.assignedName,
+    created_by: input.extCreatedBy,
+    deadline: today,
+    process_id: input.processId,
+    process_title: input.processTitle,
+  };
+  if (input.caseId) payload.case_id = input.caseId;
+  if (input.caseTitle) payload.case_title = input.caseTitle;
+
+  const { error: insErr } = await externalSupabase.from('lead_activities').insert(payload);
+  if (insErr) return { ok: false, mode: 'inserted', error: insErr.message };
+  return { ok: true, mode: 'inserted' };
+}
