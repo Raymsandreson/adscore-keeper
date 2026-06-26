@@ -444,11 +444,26 @@ export default function BpcAutistaPage() {
           </Card>
 
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
+            <CardHeader className="flex flex-row items-center justify-between gap-2">
               <CardTitle className="text-base">
                 2. Escolher documentos do dossiê
               </CardTitle>
-              <Badge variant="outline">{qtdSelecionados} selecionado(s)</Badge>
+              <div className="flex items-center gap-2">
+                <Badge variant="outline">{qtdSelecionados} selecionado(s)</Badge>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleBaixarDossiePdf}
+                  disabled={qtdSelecionados === 0 || baixandoPdf}
+                >
+                  {baixandoPdf ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <FileText className="h-4 w-4 mr-2" />
+                  )}
+                  {baixandoPdf ? "Montando dossiê..." : "Baixar dossiê (PDF)"}
+                </Button>
+              </div>
             </CardHeader>
             <CardContent className="space-y-2">
               {analise.documentos.length === 0 && (
