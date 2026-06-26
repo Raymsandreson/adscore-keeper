@@ -240,7 +240,16 @@ const ActivitiesPage = () => {
   const [selectedActivityId, setSelectedActivityId] = usePageState<string | null>('activities_selectedId', null);
   const [selectedActivity, setSelectedActivity] = useState<LeadActivity | null>(null);
   // Anexos/links adicionados no campo de notas antes da atividade ter id
-  const [pendingNoteAttachments, setPendingNoteAttachments] = useState<Attachment[]>([]);
+  const pendingNoteAttachmentsRef = useRef<Attachment[]>([]);
+  const [noteAttachmentsUploading, setNoteAttachmentsUploading] = useState(false);
+  const noteAttachmentsUploadingRef = useRef(false);
+  const handleNotesPendingChange = useCallback((pending: Attachment[]) => {
+    pendingNoteAttachmentsRef.current = pending;
+  }, []);
+  const handleNotesUploadStateChange = useCallback((uploading: boolean) => {
+    noteAttachmentsUploadingRef.current = uploading;
+    setNoteAttachmentsUploading(uploading);
+  }, []);
   const [createdDialog, setCreatedDialog] = useState<{ open: boolean; title: string; activity: LeadActivity | null }>({ open: false, title: '', activity: null });
   const [leads, setLeads] = useState<LeadOption[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
@@ -574,6 +583,8 @@ const ActivitiesPage = () => {
     setCaseProcesses([]);
     setFormMatrixQuadrant('');
     setFormIsSystem(false);
+    handleNotesPendingChange([]);
+    handleNotesUploadStateChange(false);
   };
 
   // suggestActivityType moved below routineActivityTypes
@@ -610,11 +621,12 @@ const ActivitiesPage = () => {
 
   // Grava no banco externo os anexos/links que foram adicionados enquanto a
   // atividade ainda não tinha id (atividade nova ou criação da próxima etapa).
-  const flushPendingAttachments = async (activityId: string) => {
-    if (!activityId || pendingNoteAttachments.length === 0) return;
+  const flushPendingAttachments = async (activityId: string, pendingOverride?: Attachment[]) => {
+    const pending = pendingOverride ?? pendingNoteAttachmentsRef.current;
+    if (!activityId || pending.length === 0) return true;
     const { data: { user } } = await supabase.auth.getUser();
     const extUserId = await remapToExternal(user?.id || null);
-    const rows = pendingNoteAttachments.map((a) => ({
+    const rows = pending.map((a) => ({
       activity_id: activityId,
       file_url: a.file_url,
       file_name: a.file_name,
@@ -625,15 +637,30 @@ const ActivitiesPage = () => {
       link_title: a.link_title ?? null,
       created_by: extUserId,
     }));
-    const { error } = await externalSupabase.from('activity_attachments').insert(rows);
+    const { data, error } = await externalSupabase
+      .from('activity_attachments')
+      .insert(rows)
+      .select('id');
     if (error) {
-      toast.error('Atividade salva, mas falhou ao anexar os links');
+      toast.error('Atividade salva, mas falhou ao salvar os anexos');
       console.error('[flushPendingAttachments]', error);
+      throw error;
     }
-    setPendingNoteAttachments([]);
+    if ((data?.length || 0) !== rows.length) {
+      const err = new Error(`Insert de anexos retornou ${data?.length || 0}/${rows.length} registros`);
+      console.error('[flushPendingAttachments]', err);
+      throw err;
+    }
+    handleNotesPendingChange([]);
+    return true;
   };
 
   const handleCreate = async () => {
+    if (noteAttachmentsUploadingRef.current) {
+      toast.info('Aguarde o envio dos anexos terminar antes de salvar.');
+      return;
+    }
+
     let titleToUse = formTitle.trim();
 
     const hasContentForAI =
@@ -733,7 +760,7 @@ const ActivitiesPage = () => {
 
 
     // Persiste links/anexos adicionados antes da atividade existir
-    if (createdActivityId) await flushPendingAttachments(createdActivityId);
+    if (createdActivityId) await flushPendingAttachments(createdActivityId, pendingNoteAttachmentsRef.current);
 
     // If created for another assignee, add them to the filter so the activities are visible
     if (formAssignedTo && formAssignedTo !== user?.id && !filterAssignee.includes(formAssignedTo)) {
@@ -915,6 +942,16 @@ const ActivitiesPage = () => {
   };
 
   const handleComplete = async (id: string) => {
+    if (noteAttachmentsUploadingRef.current) {
+      toast.info('Aguarde o envio dos anexos terminar antes de concluir.');
+      return;
+    }
+    try {
+      await flushPendingAttachments(id, pendingNoteAttachmentsRef.current);
+    } catch {
+      toast.error('Falha ao salvar anexos. A atividade não foi concluída.');
+      return;
+    }
     await completeActivity(id);
     fetchActivities(getFilterParams());
     toast.success('Atividade concluída! 🎉', {
@@ -924,6 +961,10 @@ const ActivitiesPage = () => {
   };
 
   const openCompleteAndNotify = (source: 'sheet' | 'workflow') => {
+    if (noteAttachmentsUploadingRef.current) {
+      toast.info('Aguarde o envio dos anexos terminar antes de concluir.');
+      return;
+    }
     setCompleteNotifySource(source);
     setCompleteNotifyOpen(true);
   };
@@ -942,9 +983,10 @@ const ActivitiesPage = () => {
       // BUGFIX: anexos pendentes (sem id) pertencem à atividade ATUAL que está
       // sendo concluída — não à próxima. Persistir AGORA, antes de concluir,
       // para garantir que os arquivos não se percam.
-      if (pendingNoteAttachments.length > 0) {
+      const pendingBeforeComplete = pendingNoteAttachmentsRef.current;
+      if (pendingBeforeComplete.length > 0) {
         try {
-          await flushPendingAttachments(currentActivity.id);
+          await flushPendingAttachments(currentActivity.id, pendingBeforeComplete);
         } catch (e) {
           console.error('[completeAndNext] flush atual falhou', e);
           toast.error('Falha ao salvar anexos da atividade atual. Tente novamente.');
@@ -1824,7 +1866,8 @@ const ActivitiesPage = () => {
       formContactIdForTTS={formContactId || undefined}
       supabase={supabase}
       leads={leads}
-      onNotesPendingChange={setPendingNoteAttachments}
+      onNotesPendingChange={handleNotesPendingChange}
+      onNotesUploadStateChange={handleNotesUploadStateChange}
     />
   );
 
@@ -3763,12 +3806,12 @@ const ActivitiesPage = () => {
                     </Button>
                     <Button size="sm" variant="outline" className="h-8 text-xs" onClick={handleUpdate}>Salvar</Button>
                     {selectedActivity?.status !== 'concluida' && (
-                      <Button size="sm" className="h-8 text-xs gap-1 bg-warning hover:bg-warning/90 text-warning-foreground" onClick={() => openCompleteAndNotify('sheet')}>
+                      <Button size="sm" className="h-8 text-xs gap-1 bg-warning hover:bg-warning/90 text-warning-foreground" onClick={() => openCompleteAndNotify('sheet')} disabled={noteAttachmentsUploading}>
                         <CheckCircle2 className="h-3.5 w-3.5" /> Concluir + próxima
                       </Button>
                     )}
                     {selectedActivity?.status !== 'concluida' && (
-                      <Button size="sm" className="h-8 text-xs bg-success hover:bg-success/90 text-success-foreground" onClick={() => selectedActivity && handleComplete(selectedActivity.id)}>
+                      <Button size="sm" className="h-8 text-xs bg-success hover:bg-success/90 text-success-foreground" onClick={() => selectedActivity && handleComplete(selectedActivity.id)} disabled={noteAttachmentsUploading}>
                         <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Concluir
                       </Button>
                     )}
