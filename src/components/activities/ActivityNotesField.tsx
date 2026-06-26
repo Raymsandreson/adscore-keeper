@@ -65,15 +65,18 @@ interface ActivityNotesFieldProps {
   /** Recebe os anexos ainda não persistidos (sem id) para que o pai possa
    *  gravá-los quando a atividade for criada (atividade nova / fluxo de etapas). */
   onPendingChange?: (pending: Attachment[]) => void;
+  /** Recebe os anexos adicionados nesta edição para o pai confirmar/reatar antes de concluir. */
+  onCommitCandidatesChange?: (attachments: Attachment[]) => void;
   /** Informa o pai que há upload/insert de anexo em andamento, para impedir concluir antes de salvar. */
   onUploadStateChange?: (uploading: boolean) => void;
 }
 
-export function ActivityNotesField({ value, onChange, activityId, placeholder, label, editorHeight = 'clamp(110px, 20vh, 220px)', onPendingChange, onUploadStateChange }: ActivityNotesFieldProps) {
+export function ActivityNotesField({ value, onChange, activityId, placeholder, label, editorHeight = 'clamp(110px, 20vh, 220px)', onPendingChange, onCommitCandidatesChange, onUploadStateChange }: ActivityNotesFieldProps) {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [uploading, setUploading] = useState(false);
   const activeUploadsRef = useRef(0);
   const attachmentsRef = useRef<Attachment[]>([]);
+  const commitCandidatesRef = useRef<Attachment[]>([]);
   const [showLinkInput, setShowLinkInput] = useState(false);
   const [linkUrl, setLinkUrl] = useState('');
   const [linkTitle, setLinkTitle] = useState('');
@@ -88,13 +91,25 @@ export function ActivityNotesField({ value, onChange, activityId, placeholder, l
     onPendingChange?.(next.filter(a => !a.id));
   };
 
-  const appendAttachment = (attachment: Attachment) => {
+  const syncCommitCandidates = (next: Attachment[]) => {
+    commitCandidatesRef.current = next;
+    onCommitCandidatesChange?.(next);
+  };
+
+  const rememberCommitCandidate = (attachment: Attachment) => {
+    const exists = commitCandidatesRef.current.some((a) => a.file_url === attachment.file_url);
+    if (!exists) syncCommitCandidates([...commitCandidatesRef.current, attachment]);
+  };
+
+  const appendAttachment = (attachment: Attachment, trackForCommit = false) => {
+    if (trackForCommit) rememberCommitCandidate(attachment);
     syncAttachments([...attachmentsRef.current, attachment]);
   };
 
 
 
   useEffect(() => {
+    syncCommitCandidates([]);
     if (activityId) fetchAttachments();
     else syncAttachments([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -168,15 +183,13 @@ export function ActivityNotesField({ value, onChange, activityId, placeholder, l
             .single();
           if (error) {
             console.error('[ActivityNotesField] insert externo falhou', error);
-            toast.error(`Anexo "${file.name}" enviado, mas falhou ao vincular à atividade. Tente novamente.`);
-            // NÃO adiciona ao estado para evitar que o flush posterior vincule
-            // este anexo à atividade ERRADA (ex.: próxima atividade no "Concluir + Próx").
-            continue;
+            toast.warning(`Anexo "${file.name}" enviado. Vou confirmar o vínculo ao salvar/concluir.`);
+          } else if (data) {
+            newAttachment.id = data.id;
           }
-          if (data) newAttachment.id = data.id;
         }
 
-        appendAttachment(newAttachment);
+        appendAttachment(newAttachment, true);
       }
       toast.success('Arquivo(s) enviado(s)!');
     } catch (err) {
@@ -276,13 +289,13 @@ export function ActivityNotesField({ value, onChange, activityId, placeholder, l
         .single();
       if (error) {
         console.error('[ActivityNotesField] insert link externo falhou', error);
-        toast.error('Link enviado, mas falhou ao vincular à atividade. Tente novamente.');
-        return;
+        toast.warning('Link adicionado. Vou confirmar o vínculo ao salvar/concluir.');
+      } else if (data) {
+        newAttachment.id = data.id;
       }
-      if (data) newAttachment.id = data.id;
     }
 
-    appendAttachment(newAttachment);
+    appendAttachment(newAttachment, true);
     setLinkUrl('');
     setLinkTitle('');
     setShowLinkInput(false);
