@@ -541,44 +541,33 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
               }
             }
 
-            // Auto-create activity. INSS sempre vai pro criador do caso.
-            const isInss = title === 'Benefício INSS';
-            const assignment = isInss ? null : CASO_PROCESS_ASSIGNMENTS[title];
-            if (isInss || assignment) {
-              try {
-                let assignedCloudId: string | null | undefined = assignment?.userId ?? user?.id;
-                let assignedName: string | null | undefined = assignment?.userName ?? null;
-                if (isInss && user?.id) {
-                  const { data: prof } = await supabase.from('profiles').select('full_name').eq('user_id', user.id).maybeSingle();
-                  assignedName = prof?.full_name || null;
-                }
-                const extAssignedTo = await remapToExternal(assignedCloudId);
-                const extCreatedBy = await remapToExternal(user?.id);
-                await externalSupabase.from('lead_activities').insert({
-                  lead_id: legalCase.lead_id,
-                  title: `Dar andamento - ${title}`,
-                  description: `Atividade criada automaticamente para o processo: ${title}`,
-                  activity_type: 'tarefa',
-                  status: 'pendente',
-                  priority: 'normal',
-                  assigned_to: extAssignedTo,
-                  assigned_to_name: assignedName,
-                  created_by: extCreatedBy,
-                  deadline: new Date().toISOString().slice(0, 10),
-                  process_id: savedProcess?.id || null,
-                } as any);
-              } catch (actErr) {
-                console.warn(`Error creating activity for "${title}":`, actErr);
-              }
+            // Auto-create activity usando o resolver central.
+            try {
+              const { extAssignedTo, assignedName } = await resolveProcessAssignment(title, editTitle || legalCase.title, user?.id);
+              const extCreatedBy = await remapToExternal(user?.id);
+              await externalSupabase.from('lead_activities').insert({
+                lead_id: legalCase.lead_id,
+                title: `Dar andamento - ${title}`,
+                description: `Atividade criada automaticamente para o processo: ${title}`,
+                activity_type: 'tarefa',
+                status: 'pendente',
+                priority: 'normal',
+                assigned_to: extAssignedTo,
+                assigned_to_name: assignedName,
+                created_by: extCreatedBy,
+                deadline: new Date().toISOString().slice(0, 10),
+                process_id: savedProcess?.id || null,
+              } as any);
+            } catch (actErr) {
+              console.warn(`Error creating activity for "${title}":`, actErr);
             }
           } catch (err) {
             console.warn(`Error creating process "${title}":`, err);
           }
         }
         toast.success(`${selectedProcesses.size} processo(s) criado(s)`);
-        if (Array.from(selectedProcesses).some(t => CASO_PROCESS_ASSIGNMENTS[t] || t === 'Benefício INSS')) {
-          toast.success('Atividades atribuídas automaticamente');
-        }
+        toast.success('Atividades atribuídas automaticamente');
+
       }
       toast.success('Caso atualizado');
       setShowEditDialog(false);
