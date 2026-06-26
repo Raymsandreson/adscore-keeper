@@ -1040,6 +1040,11 @@ const ActivitiesPage = () => {
       // sendo concluída — não à próxima. Persistir AGORA, antes de concluir,
       // para garantir que os arquivos não se percam.
       const pendingBeforeComplete = pendingNoteAttachmentsRef.current;
+      // Snapshot dos anexos para replicar também na próxima atividade.
+      const attachmentsToCarryOver = uniqueAttachmentsByUrl([
+        ...pendingBeforeComplete,
+        ...noteAttachmentCommitCandidatesRef.current,
+      ]);
       if (pendingBeforeComplete.length > 0) {
         try {
           await flushPendingAttachments(currentActivity.id, pendingBeforeComplete);
@@ -1091,11 +1096,41 @@ const ActivitiesPage = () => {
       // Create the next activity with the captured form data
       const nextCreated = await createActivity(nextData);
 
+      // BUGFIX: replicar os MESMOS anexos na nova atividade, para que apareçam
+      // tanto na atividade concluída quanto na nova criada.
+      if (nextCreated?.id && attachmentsToCarryOver.length > 0) {
+        try {
+          const { data: { user: au } } = await supabase.auth.getUser();
+          const extUid = await remapToExternal(au?.id || null);
+          const rows = attachmentsToCarryOver.map((a) => ({
+            activity_id: nextCreated.id,
+            file_url: a.file_url,
+            file_name: a.file_name,
+            file_type: a.file_type,
+            file_size: a.file_size ?? null,
+            attachment_type: a.attachment_type,
+            link_url: a.link_url ?? null,
+            link_title: a.link_title ?? null,
+            created_by: extUid,
+          }));
+          const { error: carryErr } = await externalSupabase
+            .from('activity_attachments')
+            .insert(rows);
+          if (carryErr) {
+            console.error('[completeAndNext] carry-over anexos falhou', carryErr);
+            toast.error('Anexos não foram replicados na nova atividade');
+          }
+        } catch (e) {
+          console.error('[completeAndNext] carry-over anexos exception', e);
+        }
+      }
+
       if (notifyOptions) {
         await sendGroupNotification(notifyOptions);
       }
 
       toast.success('Atividade concluída e próxima criada!');
+
 
       if (completeNotifySource === 'workflow') {
         const timeSpent = getActivityTimeSpent();
