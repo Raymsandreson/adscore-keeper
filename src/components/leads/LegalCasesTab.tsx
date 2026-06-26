@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { resolveProcessAssignment } from '@/lib/processAssignment';
+import { resolveProcessAssignment, createOrAttachAndamentoActivity } from '@/lib/processAssignment';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
