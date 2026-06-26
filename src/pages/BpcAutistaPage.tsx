@@ -231,17 +231,28 @@ export default function BpcAutistaPage() {
     setBaixandoPdf(true);
     const toastId = toast.loading("Montando dossiê...");
     try {
-      const { data, error } = await authClient.functions.invoke("montar-dossie-pdf-unico", {
-        body: { documentos },
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+      const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
+      const { data: sessionData } = await authClient.auth.getSession();
+      const accessToken = sessionData?.session?.access_token ?? anonKey;
+
+      const resp = await fetch(`${supabaseUrl}/functions/v1/montar-dossie-pdf-unico`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: anonKey,
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ documentos }),
       });
-      if (error) throw new Error(error.message || "Falha ao chamar a função");
-      const res = data as any;
-      if (!res?.ok) {
+
+      const contentType = resp.headers.get("content-type") || "";
+      if (!contentType.includes("application/pdf")) {
+        // Erro de negócio → JSON
+        const res = await resp.json().catch(() => ({}));
         const msg = res?.erro || "Falha ao montar o dossiê.";
         if (Array.isArray(res?.falhas) && res.falhas.length > 0) {
-          const lista = res.falhas
-            .map((f: any) => `• ${f.nome}: ${f.motivo}`)
-            .join("\n");
+          const lista = res.falhas.map((f: any) => `• ${f.nome}: ${f.motivo}`).join("\n");
           toast.error(msg, { id: toastId, description: lista, duration: 12000 });
         } else {
           toast.error(msg, { id: toastId, duration: 8000 });
@@ -249,11 +260,7 @@ export default function BpcAutistaPage() {
         return;
       }
 
-      // Download
-      const binStr = atob(res.pdf_base64);
-      const bytes = new Uint8Array(binStr.length);
-      for (let i = 0; i < binStr.length; i++) bytes[i] = binStr.charCodeAt(i);
-      const blob = new Blob([bytes], { type: "application/pdf" });
+      const blob = await resp.blob();
       const blobUrl = URL.createObjectURL(blob);
       const cpfRaw = String(
         (analise.cartao_inss?.requerente as any)?.cpf ?? "",
@@ -268,8 +275,11 @@ export default function BpcAutistaPage() {
       a.remove();
       setTimeout(() => URL.revokeObjectURL(blobUrl), 1500);
 
+      const paginas = resp.headers.get("x-dossie-paginas") ?? "?";
+      const docs = resp.headers.get("x-dossie-documentos") ?? documentos.length;
+      const mb = resp.headers.get("x-dossie-tamanho-mb") ?? "?";
       toast.success(
-        `Dossiê com ${res.documentos_incluidos} documentos, ${res.paginas} páginas, ${res.tamanho_mb} MB. Baixado.`,
+        `Dossiê com ${docs} documentos, ${paginas} páginas, ${mb} MB. Baixado.`,
         { id: toastId, duration: 8000 },
       );
     } catch (e: any) {
@@ -278,6 +288,7 @@ export default function BpcAutistaPage() {
       setBaixandoPdf(false);
     }
   }
+
 
   const selectedLabel = useMemo(() => {
     if (!selected) return "";
