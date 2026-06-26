@@ -2,7 +2,7 @@
 // Aceita: pdf, jpg, jpeg, png, bmp. Ignora áudio e demais tipos.
 // Ordem das páginas: identificação → procuração → comprovante → cadunico → laudo médico.
 import { PDFDocument } from "https://esm.sh/pdf-lib@1.17.1";
-import { encode as base64Encode } from "https://deno.land/std@0.168.0/encoding/base64.ts";
+import { encode as base64Encode } from "https://deno.land/std@0.224.0/encoding/base64.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -18,7 +18,7 @@ function gwHeaders(): Record<string, string> {
   };
 }
 
-const ACCEPTED_EXT = new Set(["pdf", "jpg", "jpeg", "png", "bmp"]);
+const ACCEPTED_EXT = new Set(["pdf", "jpg", "jpeg", "png"]);
 
 function extOf(name: string, mime: string): string {
   const m = (mime || "").toLowerCase();
@@ -65,14 +65,8 @@ async function downloadDriveFile(fileId: string): Promise<Uint8Array> {
   return buf;
 }
 
-// Converte BMP em PNG usando jimp (browser build, roda em Deno via esm.sh)
-async function bmpToPng(bytes: Uint8Array): Promise<Uint8Array> {
-  const mod: any = await import("https://esm.sh/jimp@0.22.12?bundle");
-  const Jimp = mod.default || mod;
-  const img = await Jimp.read(Buffer.from(bytes));
-  const out = await img.getBufferAsync("image/png");
-  return new Uint8Array(out);
-}
+// BMP não é suportado nesta versão (jimp/esm.sh quebrou). Converta para PNG/JPG antes.
+
 
 Deno.serve(async (req) => {
     if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -149,9 +143,9 @@ Deno.serve(async (req) => {
             let imgBytes = item.bytes;
             let kind = item.ext;
             if (kind === "bmp") {
-              imgBytes = await bmpToPng(imgBytes);
-              kind = "png";
+              throw new Error("BMP não suportado. Converta para JPG/PNG.");
             }
+
             const embedded = kind === "png"
               ? await outPdf.embedPng(imgBytes)
               : await outPdf.embedJpg(imgBytes);
