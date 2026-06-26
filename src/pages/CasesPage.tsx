@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { resolveProcessAssignment } from '@/lib/processAssignment';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
@@ -351,17 +352,8 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
     'Benefício INSS', 'Inquérito Policial', 'Organizar docs', 'Onboarding',
   ];
 
-  // Mapping of process title → default assigned user for CASO-type cases.
-  // 'Benefício INSS' intencionalmente fora: atribui ao próprio criador do caso (ver lógica abaixo).
-  const CASO_PROCESS_ASSIGNMENTS: Record<string, { userId: string; userName: string }> = {
-    'Seguro de Vida': { userId: '807018be-a633-4d2c-8f89-30d1399e4df7', userName: 'Natasha' },
-    'Inquérito Policial': { userId: '1f788b8d-e30e-484a-9460-39a881d25128', userName: 'Wanessa' },
-    'Onboarding': { userId: '1f788b8d-e30e-484a-9460-39a881d25128', userName: 'Wanessa' },
-    'Indenização': { userId: '1f788b8d-e30e-484a-9460-39a881d25128', userName: 'Wanessa' },
-    'Relatório de Acidente': { userId: '807018be-a633-4d2c-8f89-30d1399e4df7', userName: 'Natasha' },
-    'TRCT + Verbas': { userId: '44fd2301-47c6-4912-a583-0213b1c368eb', userName: 'João Vitor' },
-    'Organizar docs': { userId: '7f41a35e-7d98-4ade-8270-52d727433e6a', userName: 'Abderaman' },
-  };
+  // Atribuições centralizadas em src/lib/processAssignment.ts
+
 
   const toggleProcess = (name: string) => {
     setSelectedProcesses(prev => {
@@ -550,44 +542,33 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
               }
             }
 
-            // Auto-create activity. INSS sempre vai pro criador do caso.
-            const isInss = title === 'Benefício INSS';
-            const assignment = isInss ? null : CASO_PROCESS_ASSIGNMENTS[title];
-            if (isInss || assignment) {
-              try {
-                let assignedCloudId: string | null | undefined = assignment?.userId ?? user?.id;
-                let assignedName: string | null | undefined = assignment?.userName ?? null;
-                if (isInss && user?.id) {
-                  const { data: prof } = await supabase.from('profiles').select('full_name').eq('user_id', user.id).maybeSingle();
-                  assignedName = prof?.full_name || null;
-                }
-                const extAssignedTo = await remapToExternal(assignedCloudId);
-                const extCreatedBy = await remapToExternal(user?.id);
-                await externalSupabase.from('lead_activities').insert({
-                  lead_id: legalCase.lead_id,
-                  title: `Dar andamento - ${title}`,
-                  description: `Atividade criada automaticamente para o processo: ${title}`,
-                  activity_type: 'tarefa',
-                  status: 'pendente',
-                  priority: 'normal',
-                  assigned_to: extAssignedTo,
-                  assigned_to_name: assignedName,
-                  created_by: extCreatedBy,
-                  deadline: new Date().toISOString().slice(0, 10),
-                  process_id: savedProcess?.id || null,
-                } as any);
-              } catch (actErr) {
-                console.warn(`Error creating activity for "${title}":`, actErr);
-              }
+            // Auto-create activity usando o resolver central.
+            try {
+              const { extAssignedTo, assignedName } = await resolveProcessAssignment(title, editTitle || legalCase.title, user?.id);
+              const extCreatedBy = await remapToExternal(user?.id);
+              await externalSupabase.from('lead_activities').insert({
+                lead_id: legalCase.lead_id,
+                title: `Dar andamento - ${title}`,
+                description: `Atividade criada automaticamente para o processo: ${title}`,
+                activity_type: 'tarefa',
+                status: 'pendente',
+                priority: 'normal',
+                assigned_to: extAssignedTo,
+                assigned_to_name: assignedName,
+                created_by: extCreatedBy,
+                deadline: new Date().toISOString().slice(0, 10),
+                process_id: savedProcess?.id || null,
+              } as any);
+            } catch (actErr) {
+              console.warn(`Error creating activity for "${title}":`, actErr);
             }
           } catch (err) {
             console.warn(`Error creating process "${title}":`, err);
           }
         }
         toast.success(`${selectedProcesses.size} processo(s) criado(s)`);
-        if (Array.from(selectedProcesses).some(t => CASO_PROCESS_ASSIGNMENTS[t] || t === 'Benefício INSS')) {
-          toast.success('Atividades atribuídas automaticamente');
-        }
+        toast.success('Atividades atribuídas automaticamente');
+
       }
       toast.success('Caso atualizado');
       setShowEditDialog(false);

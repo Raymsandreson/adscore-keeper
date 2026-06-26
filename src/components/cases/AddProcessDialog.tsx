@@ -25,42 +25,27 @@ import { autoCreatePartiesFromEnvolvidos } from '@/utils/escavadorPartyUtils';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { ResponsibleUserSelect } from './ResponsibleUserSelect';
 
-// Mapping título do processo → responsável padrão da atividade automática.
-// 'Benefício INSS' fora: atribui ao próprio criador do caso.
-const CASO_PROCESS_ASSIGNMENTS: Record<string, { userId: string; userName: string }> = {
-  'Seguro de Vida': { userId: '807018be-a633-4d2c-8f89-30d1399e4df7', userName: 'Natasha' },
-  'Inquérito Policial': { userId: '1f788b8d-e30e-484a-9460-39a881d25128', userName: 'Wanessa' },
-  'Onboarding': { userId: '1f788b8d-e30e-484a-9460-39a881d25128', userName: 'Wanessa' },
-  'Indenização': { userId: '1f788b8d-e30e-484a-9460-39a881d25128', userName: 'Wanessa' },
-  'Relatório de Acidente': { userId: '807018be-a633-4d2c-8f89-30d1399e4df7', userName: 'Natasha' },
-  'TRCT + Verbas': { userId: '44fd2301-47c6-4912-a583-0213b1c368eb', userName: 'João Vitor' },
-  'Organizar docs': { userId: '7f41a35e-7d98-4ade-8270-52d727433e6a', userName: 'Abderaman' },
-};
+// Resolver de atribuição centralizado em src/lib/processAssignment.ts
+import { resolveProcessAssignment } from '@/lib/processAssignment';
 
 async function resolveAssignment(
   processTitle: string,
+  caseId: string,
   currentUserId: string | undefined,
 ): Promise<{ extAssignedTo: string | null; assignedName: string | null }> {
-  const isInss = processTitle === 'Benefício INSS';
-  const mapped = CASO_PROCESS_ASSIGNMENTS[processTitle];
-  if (isInss) {
-    if (!currentUserId) return { extAssignedTo: null, assignedName: null };
-    let name: string | null = null;
-    try {
-      const { data: prof } = await supabase.from('profiles').select('full_name').eq('user_id', currentUserId).maybeSingle();
-      name = prof?.full_name || null;
-    } catch {}
-    const ext = await remapToExternal(currentUserId);
-    return { extAssignedTo: ext, assignedName: name };
-  }
-  if (mapped) {
-    const ext = await remapToExternal(mapped.userId);
-    return { extAssignedTo: ext, assignedName: mapped.userName };
-  }
-  // fallback: criador
-  const ext = currentUserId ? await remapToExternal(currentUserId) : null;
-  return { extAssignedTo: ext, assignedName: null };
+  // Busca o título do caso para alimentar a regra especial do Benefício INSS.
+  let caseTitle: string | null = null;
+  try {
+    const { data } = await externalSupabase
+      .from('legal_cases')
+      .select('title')
+      .eq('id', caseId)
+      .maybeSingle();
+    caseTitle = (data as any)?.title || null;
+  } catch {}
+  return resolveProcessAssignment(processTitle, caseTitle, currentUserId);
 }
+
 
 
 interface AddProcessDialogProps {
@@ -394,7 +379,7 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
           // Auto-create "Dar andamento" activity (assigned per CASO_PROCESS_ASSIGNMENTS)
           try {
             const extUserId = await remapToExternal(user?.id);
-            const { extAssignedTo, assignedName } = await resolveAssignment(title, user?.id);
+            const { extAssignedTo, assignedName } = await resolveAssignment(title, caseId, user?.id);
             await externalSupabase.from('lead_activities').insert({
               lead_id: leadId,
               lead_name: title,
@@ -486,7 +471,7 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
       
       // Auto-create "Dar andamento" activity (assigned per CASO_PROCESS_ASSIGNMENTS)
       try {
-        const { extAssignedTo, assignedName } = await resolveAssignment(manualForm.title.trim(), user?.id);
+        const { extAssignedTo, assignedName } = await resolveAssignment(manualForm.title.trim(), caseId, user?.id);
         await externalSupabase.from('lead_activities').insert({
           lead_id: leadId,
           lead_name: manualForm.title.trim(),
