@@ -26,7 +26,7 @@ import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { ResponsibleUserSelect } from './ResponsibleUserSelect';
 
 // Resolver de atribuição centralizado em src/lib/processAssignment.ts
-import { resolveProcessAssignment } from '@/lib/processAssignment';
+import { resolveProcessAssignment, createOrAttachAndamentoActivity } from '@/lib/processAssignment';
 
 async function resolveAssignment(
   processTitle: string,
