@@ -65,11 +65,15 @@ interface ActivityNotesFieldProps {
   /** Recebe os anexos ainda não persistidos (sem id) para que o pai possa
    *  gravá-los quando a atividade for criada (atividade nova / fluxo de etapas). */
   onPendingChange?: (pending: Attachment[]) => void;
+  /** Informa o pai que há upload/insert de anexo em andamento, para impedir concluir antes de salvar. */
+  onUploadStateChange?: (uploading: boolean) => void;
 }
 
-export function ActivityNotesField({ value, onChange, activityId, placeholder, label, editorHeight = 'clamp(110px, 20vh, 220px)', onPendingChange }: ActivityNotesFieldProps) {
+export function ActivityNotesField({ value, onChange, activityId, placeholder, label, editorHeight = 'clamp(110px, 20vh, 220px)', onPendingChange, onUploadStateChange }: ActivityNotesFieldProps) {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [uploading, setUploading] = useState(false);
+  const activeUploadsRef = useRef(0);
+  const attachmentsRef = useRef<Attachment[]>([]);
   const [showLinkInput, setShowLinkInput] = useState(false);
   const [linkUrl, setLinkUrl] = useState('');
   const [linkTitle, setLinkTitle] = useState('');
@@ -78,18 +82,23 @@ export function ActivityNotesField({ value, onChange, activityId, placeholder, l
   const fileInputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  const syncAttachments = (next: Attachment[]) => {
+    attachmentsRef.current = next;
+    setAttachments(next);
+    onPendingChange?.(next.filter(a => !a.id));
+  };
+
+  const appendAttachment = (attachment: Attachment) => {
+    syncAttachments([...attachmentsRef.current, attachment]);
+  };
+
 
 
   useEffect(() => {
     if (activityId) fetchAttachments();
-    else setAttachments([]);
-  }, [activityId]);
-
-  // Surfaça ao pai os anexos ainda sem id (não persistidos) para flush no create.
-  useEffect(() => {
-    onPendingChange?.(attachments.filter(a => !a.id));
+    else syncAttachments([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [attachments]);
+  }, [activityId]);
 
   const fetchAttachments = async () => {
     if (!activityId) return;
@@ -98,7 +107,7 @@ export function ActivityNotesField({ value, onChange, activityId, placeholder, l
       .select('*')
       .eq('activity_id', activityId)
       .order('created_at', { ascending: true });
-    if (data) setAttachments(data as any);
+    if (data) syncAttachments(data as any);
   };
 
   const getAttachmentType = (mimeType: string): string => {
@@ -109,7 +118,9 @@ export function ActivityNotesField({ value, onChange, activityId, placeholder, l
 
   const uploadFiles = async (filesArr: File[]) => {
     if (!filesArr.length) return;
+    activeUploadsRef.current += 1;
     setUploading(true);
+    onUploadStateChange?.(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
 
@@ -153,7 +164,7 @@ export function ActivityNotesField({ value, onChange, activityId, placeholder, l
               attachment_type: attachmentType,
               created_by: extUserId,
             })
-            .select()
+            .select('id, activity_id, file_url, file_name, file_type, file_size, attachment_type, link_url, link_title')
             .single();
           if (error) {
             console.error('[ActivityNotesField] insert externo falhou', error);
@@ -165,14 +176,17 @@ export function ActivityNotesField({ value, onChange, activityId, placeholder, l
           if (data) newAttachment.id = data.id;
         }
 
-        setAttachments(prev => [...prev, newAttachment]);
+        appendAttachment(newAttachment);
       }
       toast.success('Arquivo(s) enviado(s)!');
     } catch (err) {
       console.error(err);
       toast.error('Erro ao enviar arquivo');
     } finally {
-      setUploading(false);
+      activeUploadsRef.current = Math.max(0, activeUploadsRef.current - 1);
+      const stillUploading = activeUploadsRef.current > 0;
+      setUploading(stillUploading);
+      onUploadStateChange?.(stillUploading);
     }
   };
 
@@ -258,12 +272,17 @@ export function ActivityNotesField({ value, onChange, activityId, placeholder, l
           link_title: linkTitle || null,
           created_by: extUserId,
         })
-        .select()
+        .select('id, activity_id, file_url, file_name, file_type, file_size, attachment_type, link_url, link_title')
         .single();
-      if (!error && data) newAttachment.id = data.id;
+      if (error) {
+        console.error('[ActivityNotesField] insert link externo falhou', error);
+        toast.error('Link enviado, mas falhou ao vincular à atividade. Tente novamente.');
+        return;
+      }
+      if (data) newAttachment.id = data.id;
     }
 
-    setAttachments(prev => [...prev, newAttachment]);
+    appendAttachment(newAttachment);
     setLinkUrl('');
     setLinkTitle('');
     setShowLinkInput(false);
@@ -274,7 +293,7 @@ export function ActivityNotesField({ value, onChange, activityId, placeholder, l
     if (att.id) {
       await externalSupabase.from('activity_attachments').delete().eq('id', att.id);
     }
-    setAttachments(prev => prev.filter((_, i) => i !== idx));
+    syncAttachments(attachmentsRef.current.filter((_, i) => i !== idx));
   };
 
   const formatFileSize = (bytes?: number) => {
