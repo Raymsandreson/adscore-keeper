@@ -391,24 +391,27 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
             await autoCreatePartiesFromEnvolvidos(insertedProcess.id, fonte.envolvidos, user?.id);
           }
           
-          // Auto-create "Dar andamento" activity
+          // Auto-create "Dar andamento" activity (assigned per CASO_PROCESS_ASSIGNMENTS)
           try {
             const extUserId = await remapToExternal(user?.id);
+            const { extAssignedTo, assignedName } = await resolveAssignment(title, user?.id);
             await externalSupabase.from('lead_activities').insert({
               lead_id: leadId,
               lead_name: title,
-              title: 'Dar andamento',
+              title: `Dar andamento - ${title}`,
               description: `Atividade criada automaticamente para o processo: ${title} (Nº ${result.numero_cnj})`,
               activity_type: 'tarefa',
               status: 'pendente',
               priority: 'normal',
-              assigned_to: extUserId,
+              assigned_to: extAssignedTo ?? extUserId,
+              assigned_to_name: assignedName,
               created_by: extUserId,
               deadline: new Date().toISOString().slice(0, 10),
             } as any);
           } catch (actErr) {
             console.error('Error auto-creating activity:', actErr);
           }
+
         }
       }
 
