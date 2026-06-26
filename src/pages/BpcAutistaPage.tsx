@@ -236,7 +236,7 @@ export default function BpcAutistaPage() {
       const supabaseUrl = "https://gliigkupoebmlbwyvijp.supabase.co";
       const anonKey =
         "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdsaWlna3Vwb2VibWxid3l2aWpwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYwMDAxNDcsImV4cCI6MjA4MTU3NjE0N30.HnhqYYFjW9DjFUsUkrZDuCShCOU2P73o_DqvkVyVr38";
-      const { data: sessionData } = await supabase.auth.getSession();
+      const { data: sessionData } = await authClient.auth.getSession();
       const accessToken = sessionData?.session?.access_token ?? anonKey;
 
       const resp = await fetch(`${supabaseUrl}/functions/v1/montar-dossie-pdf-unico`, {
