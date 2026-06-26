@@ -679,7 +679,9 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
                   proc.title,
                   title.trim(),
                   user?.id,
+                  (result as any)?.case_number || caseNumber,
                 );
+
                 const extCreatedByAct = await remapToExternal(user?.id);
                 const { error: actErr } = await externalSupabase.from('lead_activities').insert({
                   lead_id: finalLeadId || null,
