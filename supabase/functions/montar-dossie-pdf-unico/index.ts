@@ -1,15 +1,18 @@
 // Monta UM PDF único concatenando documentos selecionados (Drive).
-// Aceita: pdf, jpg, jpeg, png, bmp. Ignora áudio e demais tipos.
+// Aceita: pdf, jpg, jpeg, png. Ignora áudio e demais tipos.
 // Ordem das páginas: identificação → procuração → comprovante → cadunico → laudo médico.
+// Retorna o PDF como binário (application/pdf) para evitar inflar com base64.
+// Em caso de erro de negócio, retorna application/json com { ok:false, erro, falhas? }.
 import { PDFDocument } from "https://esm.sh/pdf-lib@1.17.1";
-import { encode as base64Encode } from "https://deno.land/std@0.224.0/encoding/base64.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-request-id",
+  "Access-Control-Expose-Headers": "x-dossie-paginas, x-dossie-documentos, x-dossie-tamanho-mb",
 };
 
 const GATEWAY = "https://connector-gateway.lovable.dev/google_drive/drive/v3";
+const CONCURRENCY = 6;
 
 function gwHeaders(): Record<string, string> {
   return {
@@ -38,18 +41,12 @@ function isAudio(mime: string, name: string): boolean {
   return ["mp3", "ogg", "opus", "wav", "m4a", "aac", "amr"].includes(e);
 }
 
-// Ordem de classificação por tipo
 function tipoRank(tipo: string, name: string): number {
   const t = `${tipo || ""} ${name || ""}`.toLowerCase();
-  // 1) identificação
   if (/(\brg\b|\bcpf\b|identidade|identif|cnh|rne)/.test(t)) return 1;
-  // 2) procuração
   if (/procura/.test(t)) return 2;
-  // 3) comprovante de residência
   if (/(comprovante|resid[eê]ncia|endere[cç]o)/.test(t)) return 3;
-  // 4) cadúnico
   if (/(cad\s*[uú]nico|cadunico|cad[_\s-]?un)/.test(t)) return 4;
-  // 5) laudo médico
   if (/(laudo|m[eé]dic|relat[oó]rio|atestado|exame)/.test(t)) return 5;
   return 6;
 }
@@ -65,155 +62,149 @@ async function downloadDriveFile(fileId: string): Promise<Uint8Array> {
   return buf;
 }
 
-// BMP não é suportado nesta versão (jimp/esm.sh quebrou). Converta para PNG/JPG antes.
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  worker: (item: T, idx: number) => Promise<R>,
+): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let i = 0;
+  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (true) {
+      const idx = i++;
+      if (idx >= items.length) return;
+      out[idx] = await worker(items[idx], idx);
+    }
+  });
+  await Promise.all(runners);
+  return out;
+}
 
+function jsonError(payload: Record<string, unknown>, status = 200): Response {
+  return new Response(JSON.stringify({ ok: false, ...payload }), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
 
 Deno.serve(async (req) => {
-    if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
-    try {
-      const body = await req.json();
-      const documentos: Array<{ file_id: string; name: string; mime: string; tipo: string }> =
-        Array.isArray(body?.documentos) ? body.documentos : [];
+  try {
+    const body = await req.json();
+    const documentos: Array<{ file_id: string; name: string; mime: string; tipo: string }> =
+      Array.isArray(body?.documentos) ? body.documentos : [];
 
-      if (documentos.length === 0) {
-        return new Response(
-          JSON.stringify({ ok: false, erro: "Nenhum documento selecionado." }),
-          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
-      }
+    if (documentos.length === 0) {
+      return jsonError({ erro: "Nenhum documento selecionado." });
+    }
 
-      // Filtra: ignora áudio e tipos não aceitos
-      const elegiveis = documentos.filter((d) => {
-        if (isAudio(d.mime, d.name)) return false;
-        const e = extOf(d.name, d.mime);
-        return ACCEPTED_EXT.has(e);
-      });
+    const elegiveis = documentos.filter((d) => {
+      if (isAudio(d.mime, d.name)) return false;
+      const e = extOf(d.name, d.mime);
+      return ACCEPTED_EXT.has(e);
+    });
 
-      if (elegiveis.length === 0) {
-        return new Response(
-          JSON.stringify({ ok: false, erro: "Nenhum documento elegível (apenas PDF/JPG/PNG/BMP)." }),
-          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
-      }
+    if (elegiveis.length === 0) {
+      return jsonError({ erro: "Nenhum documento elegível (apenas PDF/JPG/PNG)." });
+    }
 
-      // Ordena por rank
-      elegiveis.sort((a, b) => {
-        const ra = tipoRank(a.tipo, a.name);
-        const rb = tipoRank(b.tipo, b.name);
-        if (ra !== rb) return ra - rb;
-        return (a.name || "").localeCompare(b.name || "");
-      });
+    elegiveis.sort((a, b) => {
+      const ra = tipoRank(a.tipo, a.name);
+      const rb = tipoRank(b.tipo, b.name);
+      if (ra !== rb) return ra - rb;
+      return (a.name || "").localeCompare(b.name || "");
+    });
 
-      // Baixa tudo, coletando falhas
-      const baixados: Array<{ doc: typeof elegiveis[number]; bytes: Uint8Array; ext: string }> = [];
-      const falhas: Array<{ nome: string; motivo: string }> = [];
-
-      for (const doc of elegiveis) {
+    // Download em paralelo (lotes de CONCURRENCY)
+    type Baixado = { doc: typeof elegiveis[number]; bytes: Uint8Array; ext: string };
+    const falhas: Array<{ nome: string; motivo: string }> = [];
+    const results = await mapWithConcurrency<typeof elegiveis[number], Baixado | null>(
+      elegiveis,
+      CONCURRENCY,
+      async (doc) => {
         const ext = extOf(doc.name, doc.mime);
         try {
           const bytes = await downloadDriveFile(doc.file_id);
-          baixados.push({ doc, bytes, ext });
+          return { doc, bytes, ext };
         } catch (e: any) {
           falhas.push({ nome: doc.name, motivo: e?.message || String(e) });
+          return null;
         }
-      }
+      },
+    );
 
-      if (falhas.length > 0) {
-        return new Response(
-          JSON.stringify({
-            ok: false,
-            erro: `Falha ao baixar ${falhas.length} documento(s). Dossiê não foi gerado.`,
-            falhas,
-          }),
-          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
-      }
-
-      // Monta o PDF final
-      const outPdf = await PDFDocument.create();
-
-      for (const item of baixados) {
-        try {
-          if (item.ext === "pdf") {
-            const src = await PDFDocument.load(item.bytes, { ignoreEncryption: true });
-            const pages = await outPdf.copyPages(src, src.getPageIndices());
-            for (const p of pages) outPdf.addPage(p);
-          } else {
-            let imgBytes = item.bytes;
-            let kind = item.ext;
-            if (kind === "bmp") {
-              throw new Error("BMP não suportado. Converta para JPG/PNG.");
-            }
-
-            const embedded = kind === "png"
-              ? await outPdf.embedPng(imgBytes)
-              : await outPdf.embedJpg(imgBytes);
-            // Página A4-ish, ajustando proporção
-            const maxW = 595;
-            const maxH = 842;
-            const ratio = Math.min(maxW / embedded.width, maxH / embedded.height);
-            const w = embedded.width * ratio;
-            const h = embedded.height * ratio;
-            const page = outPdf.addPage([maxW, maxH]);
-            page.drawImage(embedded, {
-              x: (maxW - w) / 2,
-              y: (maxH - h) / 2,
-              width: w,
-              height: h,
-            });
-          }
-        } catch (e: any) {
-          falhas.push({ nome: item.doc.name, motivo: `processar: ${e?.message || e}` });
-        }
-      }
-
-      if (falhas.length > 0) {
-        return new Response(
-          JSON.stringify({
-            ok: false,
-            erro: `Falha ao processar ${falhas.length} documento(s). Dossiê não foi gerado.`,
-            falhas,
-          }),
-          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
-      }
-
-      const pdfBytes = await outPdf.save();
-      const bytesTotal = pdfBytes.byteLength;
-      const mb = bytesTotal / (1024 * 1024);
-
-      if (mb > 45) {
-        return new Response(
-          JSON.stringify({
-            ok: false,
-            erro: `Dossiê final tem ${mb.toFixed(1)} MB. O INSS rejeita arquivos acima de 50 MB. Reduza a seleção antes de baixar.`,
-            tamanho_mb: Number(mb.toFixed(2)),
-            paginas: outPdf.getPageCount(),
-            documentos_incluidos: baixados.length,
-          }),
-          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
-      }
-
-      const base64 = base64Encode(pdfBytes);
-
-      return new Response(
-        JSON.stringify({
-          ok: true,
-          pdf_base64: base64,
-          paginas: outPdf.getPageCount(),
-          documentos_incluidos: baixados.length,
-          tamanho_mb: Number(mb.toFixed(2)),
-          tamanho_bytes: bytesTotal,
-        }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    } catch (e: any) {
-      return new Response(
-        JSON.stringify({ ok: false, erro: e?.message || String(e) }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+    if (falhas.length > 0) {
+      return jsonError({
+        erro: `Falha ao baixar ${falhas.length} documento(s). Dossiê não foi gerado.`,
+        falhas,
+      });
     }
-});
 
+    const baixados = results.filter((r): r is Baixado => r !== null);
+
+    const outPdf = await PDFDocument.create();
+    for (const item of baixados) {
+      try {
+        if (item.ext === "pdf") {
+          const src = await PDFDocument.load(item.bytes, { ignoreEncryption: true });
+          const pages = await outPdf.copyPages(src, src.getPageIndices());
+          for (const p of pages) outPdf.addPage(p);
+        } else {
+          const embedded = item.ext === "png"
+            ? await outPdf.embedPng(item.bytes)
+            : await outPdf.embedJpg(item.bytes);
+          const maxW = 595;
+          const maxH = 842;
+          const ratio = Math.min(maxW / embedded.width, maxH / embedded.height);
+          const w = embedded.width * ratio;
+          const h = embedded.height * ratio;
+          const page = outPdf.addPage([maxW, maxH]);
+          page.drawImage(embedded, {
+            x: (maxW - w) / 2,
+            y: (maxH - h) / 2,
+            width: w,
+            height: h,
+          });
+        }
+      } catch (e: any) {
+        falhas.push({ nome: item.doc.name, motivo: `processar: ${e?.message || e}` });
+      }
+    }
+
+    if (falhas.length > 0) {
+      return jsonError({
+        erro: `Falha ao processar ${falhas.length} documento(s). Dossiê não foi gerado.`,
+        falhas,
+      });
+    }
+
+    const pdfBytes = await outPdf.save();
+    const bytesTotal = pdfBytes.byteLength;
+    const mb = bytesTotal / (1024 * 1024);
+
+    if (mb > 45) {
+      return jsonError({
+        erro: `Dossiê final tem ${mb.toFixed(1)} MB. O INSS rejeita arquivos acima de 50 MB. Reduza a seleção antes de baixar.`,
+        tamanho_mb: Number(mb.toFixed(2)),
+        paginas: outPdf.getPageCount(),
+        documentos_incluidos: baixados.length,
+      });
+    }
+
+    // Retorna binário direto (sem base64 inflando 33%)
+    return new Response(pdfBytes, {
+      status: 200,
+      headers: {
+        ...corsHeaders,
+        "Content-Type": "application/pdf",
+        "Content-Length": String(bytesTotal),
+        "x-dossie-paginas": String(outPdf.getPageCount()),
+        "x-dossie-documentos": String(baixados.length),
+        "x-dossie-tamanho-mb": mb.toFixed(2),
+      },
+    });
+  } catch (e: any) {
+    return jsonError({ erro: e?.message || String(e) });
+  }
+});
