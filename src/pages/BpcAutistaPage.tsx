@@ -217,6 +217,67 @@ export default function BpcAutistaPage() {
     setIncluidos((prev) => ({ ...prev, [id]: !prev[id] }));
   }
 
+  async function handleBaixarDossiePdf() {
+    if (!analise || !selected) return;
+    const ids = new Set(
+      Object.entries(incluidos).filter(([, v]) => v).map(([k]) => k),
+    );
+    const documentos = analise.documentos
+      .filter((d) => ids.has(d.file_id))
+      .map((d) => ({ file_id: d.file_id, name: d.name, mime: d.mime, tipo: d.tipo }));
+    if (documentos.length === 0) return;
+
+    setBaixandoPdf(true);
+    const toastId = toast.loading("Montando dossiê...");
+    try {
+      const { data, error } = await db.functions.invoke("montar-dossie-pdf-unico", {
+        body: { documentos },
+      });
+      if (error) throw new Error(error.message || "Falha ao chamar a função");
+      const res = data as any;
+      if (!res?.ok) {
+        const msg = res?.erro || "Falha ao montar o dossiê.";
+        if (Array.isArray(res?.falhas) && res.falhas.length > 0) {
+          const lista = res.falhas
+            .map((f: any) => `• ${f.nome}: ${f.motivo}`)
+            .join("\n");
+          toast.error(msg, { id: toastId, description: lista, duration: 12000 });
+        } else {
+          toast.error(msg, { id: toastId, duration: 8000 });
+        }
+        return;
+      }
+
+      // Download
+      const binStr = atob(res.pdf_base64);
+      const bytes = new Uint8Array(binStr.length);
+      for (let i = 0; i < binStr.length; i++) bytes[i] = binStr.charCodeAt(i);
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      const blobUrl = URL.createObjectURL(blob);
+      const cpfRaw = String(
+        (analise.cartao_inss?.requerente as any)?.cpf ?? "",
+      ).replace(/\D/g, "") || "sem_cpf";
+      const prev = (selected.case_number || "sem_prev").replace(/[^A-Za-z0-9_-]/g, "_");
+      const filename = `dossie_${prev}_${cpfRaw}.pdf`;
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 1500);
+
+      toast.success(
+        `Dossiê com ${res.documentos_incluidos} documentos, ${res.paginas} páginas, ${res.tamanho_mb} MB. Baixado.`,
+        { id: toastId, duration: 8000 },
+      );
+    } catch (e: any) {
+      toast.error(e?.message || "Falha ao baixar dossiê", { id: toastId });
+    } finally {
+      setBaixandoPdf(false);
+    }
+  }
+
   const selectedLabel = useMemo(() => {
     if (!selected) return "";
     const parts: string[] = [selected.title ?? "(sem título)"];
