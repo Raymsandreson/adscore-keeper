@@ -231,11 +231,12 @@ export default function BpcAutistaPage() {
     setBaixandoPdf(true);
     const toastId = toast.loading("Montando dossiê...");
     try {
-      // A função vive no Supabase EXTERNO (kmedldlepwiityjsdahz), não no Cloud.
-      const supabaseUrl = "https://kmedldlepwiityjsdahz.supabase.co";
+      // A função vive no Supabase CLOUD porque depende das secrets do connector
+      // Google Drive (LOVABLE_API_KEY + GOOGLE_DRIVE_API_KEY), que só existem lá.
+      const supabaseUrl = "https://gliigkupoebmlbwyvijp.supabase.co";
       const anonKey =
-        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImttZWRsZGxlcHdpaXR5anNkYWh6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTExOTAsImV4cCI6MjA5MDQ2NzE5MH0.s51bWtABFjJGfGyuPFWr5Tp8CzbxPD5eieFUqUVuQTs";
-      const { data: sessionData } = await db.auth.getSession();
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdsaWlna3Vwb2VibWxid3l2aWpwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYwMDAxNDcsImV4cCI6MjA4MTU3NjE0N30.HnhqYYFjW9DjFUsUkrZDuCShCOU2P73o_DqvkVyVr38";
+      const { data: sessionData } = await authClient.auth.getSession();
       const accessToken = sessionData?.session?.access_token ?? anonKey;
 
       const resp = await fetch(`${supabaseUrl}/functions/v1/montar-dossie-pdf-unico`, {
@@ -245,6 +246,7 @@ export default function BpcAutistaPage() {
           apikey: anonKey,
           Authorization: `Bearer ${accessToken}`,
         },
+
         body: JSON.stringify({ documentos }),
       });
 
