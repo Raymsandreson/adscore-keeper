@@ -25,6 +25,44 @@ import { autoCreatePartiesFromEnvolvidos } from '@/utils/escavadorPartyUtils';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { ResponsibleUserSelect } from './ResponsibleUserSelect';
 
+// Mapping título do processo → responsável padrão da atividade automática.
+// 'Benefício INSS' fora: atribui ao próprio criador do caso.
+const CASO_PROCESS_ASSIGNMENTS: Record<string, { userId: string; userName: string }> = {
+  'Seguro de Vida': { userId: '807018be-a633-4d2c-8f89-30d1399e4df7', userName: 'Natasha' },
+  'Inquérito Policial': { userId: '1f788b8d-e30e-484a-9460-39a881d25128', userName: 'Wanessa' },
+  'Onboarding': { userId: '1f788b8d-e30e-484a-9460-39a881d25128', userName: 'Wanessa' },
+  'Indenização': { userId: '1f788b8d-e30e-484a-9460-39a881d25128', userName: 'Wanessa' },
+  'Relatório de Acidente': { userId: '807018be-a633-4d2c-8f89-30d1399e4df7', userName: 'Natasha' },
+  'TRCT + Verbas': { userId: '44fd2301-47c6-4912-a583-0213b1c368eb', userName: 'João Vitor' },
+  'Organizar docs': { userId: '7f41a35e-7d98-4ade-8270-52d727433e6a', userName: 'Abderaman' },
+};
+
+async function resolveAssignment(
+  processTitle: string,
+  currentUserId: string | undefined,
+): Promise<{ extAssignedTo: string | null; assignedName: string | null }> {
+  const isInss = processTitle === 'Benefício INSS';
+  const mapped = CASO_PROCESS_ASSIGNMENTS[processTitle];
+  if (isInss) {
+    if (!currentUserId) return { extAssignedTo: null, assignedName: null };
+    let name: string | null = null;
+    try {
+      const { data: prof } = await supabase.from('profiles').select('full_name').eq('user_id', currentUserId).maybeSingle();
+      name = prof?.full_name || null;
+    } catch {}
+    const ext = await remapToExternal(currentUserId);
+    return { extAssignedTo: ext, assignedName: name };
+  }
+  if (mapped) {
+    const ext = await remapToExternal(mapped.userId);
+    return { extAssignedTo: ext, assignedName: mapped.userName };
+  }
+  // fallback: criador
+  const ext = currentUserId ? await remapToExternal(currentUserId) : null;
+  return { extAssignedTo: ext, assignedName: null };
+}
+
+
 interface AddProcessDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -353,24 +391,27 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
             await autoCreatePartiesFromEnvolvidos(insertedProcess.id, fonte.envolvidos, user?.id);
           }
           
-          // Auto-create "Dar andamento" activity
+          // Auto-create "Dar andamento" activity (assigned per CASO_PROCESS_ASSIGNMENTS)
           try {
             const extUserId = await remapToExternal(user?.id);
+            const { extAssignedTo, assignedName } = await resolveAssignment(title, user?.id);
             await externalSupabase.from('lead_activities').insert({
               lead_id: leadId,
               lead_name: title,
-              title: 'Dar andamento',
+              title: `Dar andamento - ${title}`,
               description: `Atividade criada automaticamente para o processo: ${title} (Nº ${result.numero_cnj})`,
               activity_type: 'tarefa',
               status: 'pendente',
               priority: 'normal',
-              assigned_to: extUserId,
+              assigned_to: extAssignedTo ?? extUserId,
+              assigned_to_name: assignedName,
               created_by: extUserId,
               deadline: new Date().toISOString().slice(0, 10),
             } as any);
           } catch (actErr) {
             console.error('Error auto-creating activity:', actErr);
           }
+
         }
       }
 
@@ -443,21 +484,24 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
 
       if (error) throw error;
       
-      // Auto-create "Dar andamento" activity
+      // Auto-create "Dar andamento" activity (assigned per CASO_PROCESS_ASSIGNMENTS)
       try {
+        const { extAssignedTo, assignedName } = await resolveAssignment(manualForm.title.trim(), user?.id);
         await externalSupabase.from('lead_activities').insert({
           lead_id: leadId,
           lead_name: manualForm.title.trim(),
-          title: 'Dar andamento',
+          title: `Dar andamento - ${manualForm.title.trim()}`,
           description: `Atividade criada automaticamente para o processo: ${manualForm.title.trim()}${manualForm.process_number ? ` (Nº ${manualForm.process_number})` : ''}`,
           activity_type: 'tarefa',
           status: 'pendente',
           priority: 'normal',
-          assigned_to: extUserId,
+          assigned_to: extAssignedTo ?? extUserId,
+          assigned_to_name: assignedName,
           created_by: extUserId,
           deadline: new Date().toISOString().slice(0, 10),
         } as any);
-        toast.success('Processo adicionado e atividade "Dar andamento" criada');
+        toast.success('Processo adicionado e atividade criada');
+
       } catch (actErr) {
         console.error('Error auto-creating activity:', actErr);
         toast.success('Processo adicionado ao caso');
