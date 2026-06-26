@@ -6,7 +6,9 @@
  * `remapToExternal` antes de gravar em `lead_activities` (Externo).
  */
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { remapToExternal } from '@/integrations/supabase/uuid-remap';
+
 
 export const CASO_PROCESS_ASSIGNMENTS: Record<string, { userId: string; userName: string }> = {
   'Seguro de Vida': { userId: '807018be-a633-4d2c-8f89-30d1399e4df7', userName: 'Natasha' },
