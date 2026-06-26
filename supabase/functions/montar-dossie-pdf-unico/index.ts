@@ -65,14 +65,8 @@ async function downloadDriveFile(fileId: string): Promise<Uint8Array> {
   return buf;
 }
 
-// Converte BMP em PNG usando jimp (browser build, roda em Deno via esm.sh)
-async function bmpToPng(bytes: Uint8Array): Promise<Uint8Array> {
-  const mod: any = await import("https://esm.sh/jimp@0.22.12?bundle");
-  const Jimp = mod.default || mod;
-  const img = await Jimp.read(Buffer.from(bytes));
-  const out = await img.getBufferAsync("image/png");
-  return new Uint8Array(out);
-}
+// BMP não é suportado nesta versão (jimp/esm.sh quebrou). Converta para PNG/JPG antes.
+
 
 Deno.serve(async (req) => {
     if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
