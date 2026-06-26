@@ -681,7 +681,7 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
                   user?.id,
                 );
                 const extCreatedByAct = await remapToExternal(user?.id);
-                await externalSupabase.from('lead_activities').insert({
+                const { error: actErr } = await externalSupabase.from('lead_activities').insert({
                   lead_id: finalLeadId || null,
                   lead_name: title.trim(),
                   case_id: result.id,
@@ -698,8 +698,10 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
                   process_id: savedProcess.id,
                   process_title: proc.title,
                 } as any);
-              } catch (actErr) {
-                console.warn(`Error creating activity for process "${proc.title}":`, actErr);
+                if (actErr) throw actErr;
+              } catch (actErr: any) {
+                console.error(`[CreateCase] activity "${proc.title}" failed:`, actErr);
+                toast.error(`Atividade de "${proc.title}" não criada: ${actErr?.message || actErr?.code || 'erro'}`);
               }
             }
           } catch (procErr) {
