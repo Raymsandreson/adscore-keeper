@@ -3243,7 +3243,12 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
       )}
 
       {/* Messages + Call Records Timeline */}
-      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 space-y-2 bg-muted/10">
+      <div ref={messagesContainerRef} onScroll={handleMessagesScroll} className="flex-1 overflow-y-auto p-4 space-y-2 bg-muted/10">
+        {hasOlderMessages && !isHydratingConversation && (
+          <div className="flex items-center justify-center py-2 text-[10px] text-muted-foreground">
+            Role para cima para carregar mensagens mais antigas…
+          </div>
+        )}
         {isHydratingConversation ? (
           <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
             <Loader2 className="h-6 w-6 animate-spin" />
