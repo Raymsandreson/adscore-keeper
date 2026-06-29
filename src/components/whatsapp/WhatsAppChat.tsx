@@ -792,6 +792,9 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const { notes, addNote, deleteNote } = useWhatsAppInternalNotes(conversation.phone);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const MESSAGES_PAGE_SIZE = 50;
+  const [visibleCount, setVisibleCount] = useState(MESSAGES_PAGE_SIZE);
+  const preserveScrollRef = useRef<{ prevHeight: number; prevTop: number } | null>(null);
   const conversationKeyRef = useRef<string>('');
   const mediaInputRef = useRef<HTMLInputElement>(null);
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
