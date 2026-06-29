@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo, useReducer } from 'react';
+import { useState, useRef, useEffect, useMemo, useReducer, useCallback, useLayoutEffect } from 'react';
 import { WhatsAppConversation } from '@/hooks/useWhatsAppMessages';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -792,6 +792,9 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const { notes, addNote, deleteNote } = useWhatsAppInternalNotes(conversation.phone);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const MESSAGES_PAGE_SIZE = 50;
+  const [visibleCount, setVisibleCount] = useState(MESSAGES_PAGE_SIZE);
+  const preserveScrollRef = useRef<{ prevHeight: number; prevTop: number } | null>(null);
   const conversationKeyRef = useRef<string>('');
   const mediaInputRef = useRef<HTMLInputElement>(null);
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
@@ -1795,7 +1798,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   }, [conversation.phone, conversation.instance_name, conversation.messages.length, isHydratingConversation]);
 
   // Merge messages, call records and internal notes into a unified timeline
-  const timelineItems = (() => {
+  const allTimelineItems = (() => {
     const items: Array<{ type: 'message' | 'call' | 'note'; data: any; timestamp: string }> = [];
     for (const msg of messages) {
       items.push({ type: 'message', data: msg, timestamp: msg.created_at });
@@ -1810,9 +1813,44 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     return items;
   })();
 
+  // Paginação client-side: mostramos apenas as `visibleCount` mais recentes.
+  // Ao arrastar pro topo, carregamos +50 mantendo a posição visual.
+  const timelineItems = allTimelineItems.slice(Math.max(0, allTimelineItems.length - visibleCount));
+  const hasOlderMessages = allTimelineItems.length > timelineItems.length;
+
+  // Reset da paginação quando troca de conversa
+  useEffect(() => {
+    setVisibleCount(MESSAGES_PAGE_SIZE);
+  }, [conversation.phone, conversation.instance_name]);
+
+  const handleMessagesScroll = useCallback(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    if (container.scrollTop <= 80 && hasOlderMessages) {
+      preserveScrollRef.current = {
+        prevHeight: container.scrollHeight,
+        prevTop: container.scrollTop,
+      };
+      setVisibleCount((c) => c + MESSAGES_PAGE_SIZE);
+    }
+  }, [hasOlderMessages]);
+
+  // Preserva posição visual após carregar mensagens antigas
+  useLayoutEffect(() => {
+    const container = messagesContainerRef.current;
+    const saved = preserveScrollRef.current;
+    if (container && saved) {
+      const delta = container.scrollHeight - saved.prevHeight;
+      container.scrollTop = saved.prevTop + delta;
+      preserveScrollRef.current = null;
+    }
+  }, [visibleCount]);
+
   const prevItemsCountRef = useRef(0);
   useEffect(() => {
     if (timelineItems.length === 0) return;
+    // Não rolar se estamos apenas expandindo paginação (scroll preservado acima)
+    if (preserveScrollRef.current) return;
     const currentKey = `${conversation.phone}__${conversation.instance_name || ''}`;
     const isConversationSwitch = conversationKeyRef.current !== currentKey;
     const isInitialLoad = isConversationSwitch || prevItemsCountRef.current === 0;
@@ -3205,7 +3243,12 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
       )}
 
       {/* Messages + Call Records Timeline */}
-      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 space-y-2 bg-muted/10">
+      <div ref={messagesContainerRef} onScroll={handleMessagesScroll} className="flex-1 overflow-y-auto p-4 space-y-2 bg-muted/10">
+        {hasOlderMessages && !isHydratingConversation && (
+          <div className="flex items-center justify-center py-2 text-[10px] text-muted-foreground">
+            Role para cima para carregar mensagens mais antigas…
+          </div>
+        )}
         {isHydratingConversation ? (
           <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
             <Loader2 className="h-6 w-6 animate-spin" />
