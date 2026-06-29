@@ -1,21 +1,24 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { remapToExternal } from '@/integrations/supabase/uuid-remap';
-import { format, startOfDay, endOfDay } from 'date-fns';
+import { format, startOfDay, endOfDay, isSameDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import {
   FileText, Copy, Download, Loader2, MessageSquare, Send, UserPlus,
   Target, Phone, ArrowRightLeft, CheckCircle2, Clock, Trophy,
-  ListChecks, AlertTriangle, Briefcase,
+  ListChecks, AlertTriangle, Briefcase, CalendarIcon,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 import type { MyProductivity, MyDailyGoals } from '@/hooks/useMyProductivity';
 
 interface DailyReportDialogProps {
@@ -30,6 +33,7 @@ interface DailyReportDialogProps {
 
 interface LeadMovement {
   id: string;
+  lead_id?: string | null;
   lead_name: string;
   from_stage: string | null;
   to_stage: string | null;
@@ -48,6 +52,8 @@ export function DailyReportDialog({
 }: DailyReportDialogProps) {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [datePopoverOpen, setDatePopoverOpen] = useState(false);
   const [leadMovements, setLeadMovements] = useState<LeadMovement[]>([]);
   const [contactsCreated, setContactsCreated] = useState<DetailEntry[]>([]);
   const [leadsCreated, setLeadsCreated] = useState<DetailEntry[]>([]);
@@ -56,16 +62,23 @@ export function DailyReportDialog({
   const [activitiesCompleted, setActivitiesCompleted] = useState<DetailEntry[]>([]);
   const [callsMade, setCallsMade] = useState<DetailEntry[]>([]);
 
+  // Reset date to today whenever dialog opens for a (possibly different) user
+  useEffect(() => {
+    if (open) setSelectedDate(new Date());
+  }, [open, userId]);
+
   useEffect(() => {
     if (!open || !userId) return;
     fetchReportData();
-  }, [open, userId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, userId, selectedDate]);
+
+  const isToday = isSameDay(selectedDate, new Date());
 
   const fetchReportData = async () => {
     setLoading(true);
-    const now = new Date();
-    const startDate = startOfDay(now).toISOString();
-    const endDate = endOfDay(now).toISOString();
+    const startDate = startOfDay(selectedDate).toISOString();
+    const endDate = endOfDay(selectedDate).toISOString();
 
     try {
       const [stageRes, contactsRes, leadsRes, dmsRes, commentsRes, activitiesRes, callsRes, callRecordsRes] = await Promise.all([
@@ -125,6 +138,7 @@ export function DailyReportDialog({
 
       setLeadMovements(stageData.map(s => ({
         id: s.id,
+        lead_id: s.lead_id,
         lead_name: leadNameMap.get(s.lead_id) || s.lead_id?.slice(0, 8) || '?',
         from_stage: s.from_stage,
         to_stage: s.to_stage,
@@ -200,30 +214,93 @@ export function DailyReportDialog({
     return Math.round((current / target) * 100);
   };
 
+  // For dates other than today, derive metric counts from fetched detail data
+  // (overdue/sessionMinutes/checklist are "live today" data — set to 0 on other days).
+  const livePart = useMemo(() => {
+    const uniqueLeadsProgressed = new Set(
+      leadMovements.map(m => (m as any).lead_id).filter(Boolean)
+    );
+    const CLOSED_PATTERNS = ['closed', 'fechado', 'fechados', 'done'];
+    const isClosed = (id: string | null) => {
+      if (!id) return false;
+      const l = id.toLowerCase();
+      return CLOSED_PATTERNS.some(p => l === p || l.startsWith(p + '_'));
+    };
+    const leadsClosed = new Set(
+      leadMovements.filter(m => isClosed(m.to_stage)).map(m => (m as any).lead_id || m.id)
+    ).size;
+    return {
+      commentReplies: commentReplies.length,
+      dmsSent: dmsSent.length,
+      contactsCreated: contactsCreated.length,
+      leadsCreated: leadsCreated.length,
+      callsMade: callsMade.length,
+      stageChanges: leadMovements.length,
+      leadsProgressed: uniqueLeadsProgressed.size || leadMovements.length,
+      activitiesCompleted: activitiesCompleted.length,
+      leadsClosed,
+    };
+  }, [leadMovements, contactsCreated, leadsCreated, dmsSent, commentReplies, activitiesCompleted, callsMade]);
+
+  const effectiveProductivity: MyProductivity = isToday
+    ? productivity
+    : {
+        ...productivity,
+        ...livePart,
+        // Live-only metrics not historical: zero them out for non-today
+        activitiesOverdue: 0,
+        sessionMinutes: 0,
+        checklistItemsChecked: 0,
+        callsAnswered: 0,
+        callsUnanswered: 0,
+        totalActions:
+          livePart.commentReplies + livePart.dmsSent + livePart.contactsCreated +
+          livePart.leadsCreated + livePart.callsMade + livePart.stageChanges +
+          livePart.activitiesCompleted + livePart.leadsClosed,
+      };
+
+  const effectiveGoalProgress = useMemo(() => {
+    if (isToday) return goalProgress;
+    const p = effectiveProductivity;
+    const g = goals;
+    const ratios = [
+      p.commentReplies / g.target_replies,
+      p.dmsSent / g.target_dms,
+      p.contactsCreated / g.target_contacts,
+      p.leadsCreated / g.target_leads,
+      p.callsMade / g.target_calls,
+      p.stageChanges / g.target_stage_changes,
+      p.activitiesCompleted / g.target_activities,
+      p.leadsClosed / g.target_leads_closed,
+    ].map(r => Math.min(1, isFinite(r) ? r : 0));
+    return Math.round((ratios.reduce((s, r) => s + r, 0) / ratios.length) * 100);
+  }, [isToday, goalProgress, productivity, goals]);
+
+
   const generateTextReport = () => {
-    const today = format(new Date(), "dd/MM/yyyy (EEEE)", { locale: ptBR });
+    const today = format(selectedDate, "dd/MM/yyyy (EEEE)", { locale: ptBR });
     const lines: string[] = [];
 
     const emittedAt = format(new Date(), 'HH:mm', { locale: ptBR });
-    const perfLabel = goalProgress >= 80 ? '🟢 RENDIMENTO ALTO' : goalProgress >= 50 ? '🟡 RENDIMENTO MÉDIO' : '🔴 RENDIMENTO BAIXO';
+    const perfLabel = effectiveGoalProgress >= 80 ? '🟢 RENDIMENTO ALTO' : effectiveGoalProgress >= 50 ? '🟡 RENDIMENTO MÉDIO' : '🔴 RENDIMENTO BAIXO';
     lines.push(`📊 RELATÓRIO DIÁRIO — ${today}`);
     lines.push(`🕐 Emitido às ${emittedAt}`);
     lines.push(`👤 ${userName}`);
-    lines.push(`🎯 Meta geral: ${goalProgress}% — ${perfLabel}`);
+    lines.push(`🎯 Meta geral: ${effectiveGoalProgress}% — ${perfLabel}`);
     lines.push('');
     lines.push('═══ RESUMO DAS MÉTRICAS ═══');
-    lines.push(`💬 Comentários: ${productivity.commentReplies}/${goals.target_replies} (${metricPercent(productivity.commentReplies, goals.target_replies)}%)`);
-    lines.push(`📩 DMs enviadas: ${productivity.dmsSent}/${goals.target_dms} (${metricPercent(productivity.dmsSent, goals.target_dms)}%)`);
-    lines.push(`👥 Contatos criados: ${productivity.contactsCreated}/${goals.target_contacts} (${metricPercent(productivity.contactsCreated, goals.target_contacts)}%)`);
-    lines.push(`🎯 Leads criados: ${productivity.leadsCreated}/${goals.target_leads} (${metricPercent(productivity.leadsCreated, goals.target_leads)}%)`);
-    lines.push(`📞 Ligações: ${productivity.callsMade}/${goals.target_calls} (${metricPercent(productivity.callsMade, goals.target_calls)}%)`);
-    lines.push(`🔄 Fases movidas: ${productivity.stageChanges}/${goals.target_stage_changes} (${metricPercent(productivity.stageChanges, goals.target_stage_changes)}%)`);
-    lines.push(`📋 Passos checklist: ${productivity.checklistItemsChecked}/${goals.target_checklist_items} (${metricPercent(productivity.checklistItemsChecked, goals.target_checklist_items)}%)`);
-    lines.push(`✅ Atividades concluídas: ${productivity.activitiesCompleted}/${goals.target_activities} (${metricPercent(productivity.activitiesCompleted, goals.target_activities)}%)`);
-    lines.push(`⚠️ Atividades atrasadas: ${productivity.activitiesOverdue}`);
-    lines.push(`🏆 Fechados: ${productivity.leadsClosed}/${goals.target_leads_closed}`);
-    lines.push(`📊 Leads progredidos: ${productivity.leadsProgressed}`);
-    lines.push(`⏱️ Tempo online: ${formatMinutes(productivity.sessionMinutes)}/${formatMinutes(goals.target_session_minutes)}`);
+    lines.push(`💬 Comentários: ${effectiveProductivity.commentReplies}/${goals.target_replies} (${metricPercent(effectiveProductivity.commentReplies, goals.target_replies)}%)`);
+    lines.push(`📩 DMs enviadas: ${effectiveProductivity.dmsSent}/${goals.target_dms} (${metricPercent(effectiveProductivity.dmsSent, goals.target_dms)}%)`);
+    lines.push(`👥 Contatos criados: ${effectiveProductivity.contactsCreated}/${goals.target_contacts} (${metricPercent(effectiveProductivity.contactsCreated, goals.target_contacts)}%)`);
+    lines.push(`🎯 Leads criados: ${effectiveProductivity.leadsCreated}/${goals.target_leads} (${metricPercent(effectiveProductivity.leadsCreated, goals.target_leads)}%)`);
+    lines.push(`📞 Ligações: ${effectiveProductivity.callsMade}/${goals.target_calls} (${metricPercent(effectiveProductivity.callsMade, goals.target_calls)}%)`);
+    lines.push(`🔄 Fases movidas: ${effectiveProductivity.stageChanges}/${goals.target_stage_changes} (${metricPercent(effectiveProductivity.stageChanges, goals.target_stage_changes)}%)`);
+    lines.push(`📋 Passos checklist: ${effectiveProductivity.checklistItemsChecked}/${goals.target_checklist_items} (${metricPercent(effectiveProductivity.checklistItemsChecked, goals.target_checklist_items)}%)`);
+    lines.push(`✅ Atividades concluídas: ${effectiveProductivity.activitiesCompleted}/${goals.target_activities} (${metricPercent(effectiveProductivity.activitiesCompleted, goals.target_activities)}%)`);
+    lines.push(`⚠️ Atividades atrasadas: ${effectiveProductivity.activitiesOverdue}`);
+    lines.push(`🏆 Fechados: ${effectiveProductivity.leadsClosed}/${goals.target_leads_closed}`);
+    lines.push(`📊 Leads progredidos: ${effectiveProductivity.leadsProgressed}`);
+    lines.push(`⏱️ Tempo online: ${formatMinutes(effectiveProductivity.sessionMinutes)}/${formatMinutes(goals.target_session_minutes)}`);
 
     if (leadMovements.length > 0) {
       lines.push('');
@@ -279,18 +356,18 @@ export function DailyReportDialog({
   };
 
   const metrics = [
-    { icon: MessageSquare, color: 'text-blue-600', bg: 'bg-blue-50', label: 'Comentários', current: productivity.commentReplies, target: goals.target_replies },
-    { icon: Send, color: 'text-violet-600', bg: 'bg-violet-50', label: 'DMs', current: productivity.dmsSent, target: goals.target_dms },
-    { icon: UserPlus, color: 'text-teal-600', bg: 'bg-teal-50', label: 'Contatos', current: productivity.contactsCreated, target: goals.target_contacts },
-    { icon: Target, color: 'text-indigo-600', bg: 'bg-indigo-50', label: 'Leads', current: productivity.leadsCreated, target: goals.target_leads },
-    { icon: Phone, color: 'text-green-600', bg: 'bg-green-50', label: 'Ligações', current: productivity.callsMade, target: goals.target_calls },
-    { icon: ArrowRightLeft, color: 'text-amber-600', bg: 'bg-amber-50', label: 'Fases', current: productivity.stageChanges, target: goals.target_stage_changes },
-    { icon: ListChecks, color: 'text-cyan-600', bg: 'bg-cyan-50', label: 'Passos', current: productivity.checklistItemsChecked, target: goals.target_checklist_items },
-    { icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-50', label: 'Ativ. Concl.', current: productivity.activitiesCompleted, target: goals.target_activities },
-    { icon: AlertTriangle, color: 'text-red-600', bg: 'bg-red-50', label: 'Atrasadas', current: productivity.activitiesOverdue, target: 0 },
-    { icon: Trophy, color: 'text-yellow-600', bg: 'bg-yellow-50', label: 'Fechados', current: productivity.leadsClosed, target: goals.target_leads_closed },
-    { icon: Briefcase, color: 'text-purple-600', bg: 'bg-purple-50', label: 'Progredidos', current: productivity.leadsProgressed, target: 0 },
-    { icon: Clock, color: 'text-orange-600', bg: 'bg-orange-50', label: 'Tempo', current: productivity.sessionMinutes, target: goals.target_session_minutes, isMins: true },
+    { icon: MessageSquare, color: 'text-blue-600', bg: 'bg-blue-50', label: 'Comentários', current: effectiveProductivity.commentReplies, target: goals.target_replies },
+    { icon: Send, color: 'text-violet-600', bg: 'bg-violet-50', label: 'DMs', current: effectiveProductivity.dmsSent, target: goals.target_dms },
+    { icon: UserPlus, color: 'text-teal-600', bg: 'bg-teal-50', label: 'Contatos', current: effectiveProductivity.contactsCreated, target: goals.target_contacts },
+    { icon: Target, color: 'text-indigo-600', bg: 'bg-indigo-50', label: 'Leads', current: effectiveProductivity.leadsCreated, target: goals.target_leads },
+    { icon: Phone, color: 'text-green-600', bg: 'bg-green-50', label: 'Ligações', current: effectiveProductivity.callsMade, target: goals.target_calls },
+    { icon: ArrowRightLeft, color: 'text-amber-600', bg: 'bg-amber-50', label: 'Fases', current: effectiveProductivity.stageChanges, target: goals.target_stage_changes },
+    { icon: ListChecks, color: 'text-cyan-600', bg: 'bg-cyan-50', label: 'Passos', current: effectiveProductivity.checklistItemsChecked, target: goals.target_checklist_items },
+    { icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-50', label: 'Ativ. Concl.', current: effectiveProductivity.activitiesCompleted, target: goals.target_activities },
+    { icon: AlertTriangle, color: 'text-red-600', bg: 'bg-red-50', label: 'Atrasadas', current: effectiveProductivity.activitiesOverdue, target: 0 },
+    { icon: Trophy, color: 'text-yellow-600', bg: 'bg-yellow-50', label: 'Fechados', current: effectiveProductivity.leadsClosed, target: goals.target_leads_closed },
+    { icon: Briefcase, color: 'text-purple-600', bg: 'bg-purple-50', label: 'Progredidos', current: effectiveProductivity.leadsProgressed, target: 0 },
+    { icon: Clock, color: 'text-orange-600', bg: 'bg-orange-50', label: 'Tempo', current: effectiveProductivity.sessionMinutes, target: goals.target_session_minutes, isMins: true },
   ];
 
   const renderDetailList = (
@@ -352,17 +429,43 @@ export function DailyReportDialog({
             Relatório Diário
           </SheetTitle>
           <SheetDescription>
-            {userName} — {format(new Date(), "dd/MM/yyyy (EEEE)", { locale: ptBR })}
+            {userName} — {format(selectedDate, "dd/MM/yyyy (EEEE)", { locale: ptBR })}
+            {!isToday && <span className="ml-1 text-amber-600">(histórico)</span>}
           </SheetDescription>
         </SheetHeader>
 
         {/* Action buttons */}
-        <div className="flex gap-2 mt-3 mb-4">
+        <div className="flex flex-wrap gap-2 mt-3 mb-4">
+          <Popover open={datePopoverOpen} onOpenChange={setDatePopoverOpen}>
+            <PopoverTrigger asChild>
+              <Button size="sm" variant="outline" className="gap-1.5">
+                <CalendarIcon className="h-3.5 w-3.5" />
+                {format(selectedDate, "dd/MM/yyyy", { locale: ptBR })}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="start">
+              <Calendar
+                mode="single"
+                selected={selectedDate}
+                onSelect={(d) => { if (d) { setSelectedDate(d); setDatePopoverOpen(false); } }}
+                disabled={(d) => d > new Date()}
+                initialFocus
+                locale={ptBR}
+                className={cn("p-3 pointer-events-auto")}
+              />
+            </PopoverContent>
+          </Popover>
+          {!isToday && (
+            <Button size="sm" variant="ghost" onClick={() => setSelectedDate(new Date())} className="gap-1.5">
+              Hoje
+            </Button>
+          )}
           <Button size="sm" variant="outline" onClick={copyToClipboard} className="gap-1.5">
             <Copy className="h-3.5 w-3.5" />
             Copiar Relatório
           </Button>
         </div>
+
 
         {loading ? (
           <div className="flex items-center justify-center py-12">
@@ -372,13 +475,13 @@ export function DailyReportDialog({
           <ScrollArea className="h-[calc(100vh-220px)]">
             <div className="space-y-5 pr-2">
               {/* Goal progress header */}
-              <div className={`text-center p-3 rounded-lg border ${goalProgress >= 80 ? 'bg-green-50 border-green-200' : goalProgress >= 50 ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200'}`}>
-                <p className="text-2xl font-bold">{goalProgress}%</p>
-                <p className={`text-sm font-semibold ${goalProgress >= 80 ? 'text-green-700' : goalProgress >= 50 ? 'text-amber-700' : 'text-red-700'}`}>
-                  {goalProgress >= 80 ? '🟢 Rendimento Alto' : goalProgress >= 50 ? '🟡 Rendimento Médio' : '🔴 Rendimento Baixo'}
+              <div className={`text-center p-3 rounded-lg border ${effectiveGoalProgress >= 80 ? 'bg-green-50 border-green-200' : effectiveGoalProgress >= 50 ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200'}`}>
+                <p className="text-2xl font-bold">{effectiveGoalProgress}%</p>
+                <p className={`text-sm font-semibold ${effectiveGoalProgress >= 80 ? 'text-green-700' : effectiveGoalProgress >= 50 ? 'text-amber-700' : 'text-red-700'}`}>
+                  {effectiveGoalProgress >= 80 ? '🟢 Rendimento Alto' : effectiveGoalProgress >= 50 ? '🟡 Rendimento Médio' : '🔴 Rendimento Baixo'}
                 </p>
                 <p className="text-[10px] text-muted-foreground mt-0.5">
-                  Emitido às {format(new Date(), 'HH:mm', { locale: ptBR })} — {format(new Date(), "dd/MM/yyyy", { locale: ptBR })}
+                  Emitido às {format(new Date(), 'HH:mm', { locale: ptBR })} — {format(selectedDate, "dd/MM/yyyy", { locale: ptBR })}
                 </p>
               </div>
 
