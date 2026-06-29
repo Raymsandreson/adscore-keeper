@@ -138,6 +138,7 @@ export function DailyReportDialog({
 
       setLeadMovements(stageData.map(s => ({
         id: s.id,
+        lead_id: s.lead_id,
         lead_name: leadNameMap.get(s.lead_id) || s.lead_id?.slice(0, 8) || '?',
         from_stage: s.from_stage,
         to_stage: s.to_stage,
