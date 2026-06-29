@@ -45,7 +45,8 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, FileText } from "lucide-react";
+import { RelatorioDiarioUsuariosSheet } from "@/components/processual/RelatorioDiarioUsuariosSheet";
 
 const ACOES = [
   { id: "all", nome: "Todas as ações" },
@@ -60,6 +61,7 @@ export default function AcompanhamentoProcessualPage() {
   const [responsavel, setResponsavel] = useState("all");
   const [acao, setAcao] = useState("all");
   const [etiqueta, setEtiqueta] = useState("all");
+  const [relatorioOpen, setRelatorioOpen] = useState(false);
 
   const { data, loading, isMock, refresh } = useProcessualDashboard(periodo);
 
@@ -94,13 +96,19 @@ export default function AcompanhamentoProcessualPage() {
                 Monitora gargalos, tempos de transição e eficiência do fluxo jurídico — dados do WhatsJUD.
               </p>
             </div>
-            <Tabs value={periodo} onValueChange={(v) => setPeriodo(v as PeriodoProc)}>
-              <TabsList>
-                <TabsTrigger value="dia">Hoje</TabsTrigger>
-                <TabsTrigger value="semana">Semana</TabsTrigger>
-                <TabsTrigger value="mes">Mês</TabsTrigger>
-              </TabsList>
-            </Tabs>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setRelatorioOpen(true)}>
+                <FileText className="h-3.5 w-3.5" />
+                Relatório Diário
+              </Button>
+              <Tabs value={periodo} onValueChange={(v) => setPeriodo(v as PeriodoProc)}>
+                <TabsList>
+                  <TabsTrigger value="dia">Hoje</TabsTrigger>
+                  <TabsTrigger value="semana">Semana</TabsTrigger>
+                  <TabsTrigger value="mes">Mês</TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </div>
           </div>
 
           {/* Filtros globais */}
@@ -415,6 +423,8 @@ export default function AcompanhamentoProcessualPage() {
           />
         </section>
       </div>
+
+      <RelatorioDiarioUsuariosSheet open={relatorioOpen} onOpenChange={setRelatorioOpen} />
     </div>
   );
 }
