@@ -1,55 +1,64 @@
-# Plano — Reduzir chamadas do useLeads
+## Objetivo
 
-## Causa raiz confirmada
-`fetchLeads` (src/hooks/useLeads.ts:412-435) faz loop `range(0, PAGE_SIZE-1)` com `PAGE_SIZE=1000`. Com ~15k leads vira 15 requests por carregamento frio. Cada coluna em `LEAD_SELECT_COLUMNS` (50+) infla o payload, então não dá pra subir o limite sem estourar o `max-rows` do PostgREST (1000).
+Substituir o dataset mockado em `src/lib/processualDashboardData.ts` por dados reais lidos do Supabase Externo, mantendo a UI atual de `/processual/acompanhamento` e respeitando a regra "dashboards leem do Externo via `db`".
 
-## Estratégia (alinhada com a resposta do usuário)
-Duas camadas no `useLeads`:
+## Fontes que vou combinar
 
-1. **Camada Index (leve, default em `/leads`):** carrega só `id, ad_account_id, board_id, status, lead_status, lead_name, lead_phone, created_at, updated_at, deleted_at`. ~10 colunas pequenas → cabe 5000+ por página. Para 15k leads: 3 requests em vez de 15.
-2. **Camada Detail (sob demanda):** novo hook `useLeadDetails(ids)` que busca o restante das colunas só para os leads visíveis no viewport / cards abertos / drawer. Resultado mescla no cache compartilhado.
+| Bloco do dashboard | Tabela(s) reais usadas |
+|---|---|
+| Resumo (processos ativos, atualizações, sentenças, trânsitos) | `lead_processes` (status, `movimentacoes`), `legal_cases` (status/outcome_date) |
+| SLA por fase (Sentença, Acórdão, TST, Trânsito) | `lead_processes.movimentacoes[]` — detecto evento por keyword em `tipo_publicacao`/`conteudo`, calculo dias desde `started_at`/`data_distribuicao` |
+| Latência entre atualizações | Diferenças entre `data` consecutivas em `movimentacoes` por processo (somente movimentações processuais — conforme escolha do usuário) |
+| Transições de status | `lead_stage_history` agrupado por par `(from_stage→to_stage)`, média de dias entre eventos consecutivos |
+| Categorias (Onboarding, Relatório de Acidente, INSS, Indenização, Inquérito Policial) | Cruzo `kanban_boards.name`/`lead_activities.title` (regex de classificação) com `lead_activities` (criadas, concluídas) e `lead_processes` (protocolados) |
 
-Cache `leadsCache` continua único — entradas são leads "parciais" até o detail chegar. UI já tolera campos null.
+## Filtro de período
 
-## Mudanças
+"Hoje / Esta semana / Este mês" filtram pelo **marco final** do dado (movimentação, conclusão de atividade, mudança de etapa, sentença) caindo dentro da janela — conforme escolha do usuário.
 
-### `src/hooks/useLeads.ts`
-- Separar `LEAD_INDEX_COLUMNS` (leve) e `LEAD_FULL_COLUMNS` (atual, mantém nome `LEAD_SELECT_COLUMNS` para compat).
-- Nova opção `UseLeadsOptions.detailLevel?: 'index' | 'full'` (default `'full'` para não quebrar consumidores legados).
-- `fetchLeads`: usar colunas conforme `detailLevel`. Stats (`computeLeadStats`) só precisam de `status`/`lead_status`/`created_at` → continuam OK com index.
-- Poller compartilhado também usa colunas index.
+## Implementação
 
-### `src/hooks/useLeadDetails.ts` (novo)
-- Recebe `string[]` de ids visíveis (debounced 150ms).
-- Faz 1 query `.in('id', faltantes)` pedindo `LEAD_FULL_COLUMNS`.
-- Mescla via `leadsCache.update` (já existe). Marca ids já carregados num `Set` local da sessão para não rebaixar.
+1. **Novo módulo `src/lib/processualDashboardLive.ts`**
+   - Tipos reaproveitados de `processualDashboardData.ts` (`DashboardProcessualData`, `SlaFase`, etc.) — exporto/reuso.
+   - Função `fetchProcessualDashboard(periodo, filtros)` que dispara queries paralelas via `db` (externalSupabase):
+     - `lead_processes` (id, status, started_at, data_distribuicao, movimentacoes, workflow_name)
+     - `legal_cases` (id, status, outcome, outcome_date, closed_at, created_at, workflow_board_id)
+     - `lead_stage_history` (lead_id, from_stage, to_stage, changed_at) limitado à janela
+     - `lead_activities` (title, activity_type, status, created_at, completed_at, case_id) com `deleted_at is null`
+     - `kanban_boards` (id, name) para mapear categorias
+   - Reduções client-side:
+     - **Classificador de categoria**: regex sobre título da atividade / nome do board (já mapeado: ONBOARDING, ACIDENTE, INSS/BENEFÍCIO, INDENIZAÇÃO, INQUÉRITO).
+     - **Classificador de evento processual**: keywords em `tipo_publicacao` (`SENTEN`, `ACÓRDÃO`, `TST`, `TRÂNSITO`).
+     - **Latência**: para cada processo com ≥2 movimentações, calcular gaps em horas, agregar por dia (média) — 30/7/1 pontos.
+     - **Transições**: agrupar `lead_stage_history` ordenado por `lead_id, changed_at`, calcular intervalo entre pares consecutivos, devolver top 7 mais frequentes.
+   - Cache em memória (TTL 60s) por `(periodo, filtros)` para evitar refazer queries pesadas em troca de aba.
 
-### `src/components/kanban/UnifiedKanbanManager.tsx` (e card render)
-- Passar `{ detailLevel: 'index' }` no `useLeads(adAccountId, …)`.
-- No componente que renderiza cards visíveis (lista por coluna), usar `IntersectionObserver` ou simples slice → chamar `useLeadDetails(visibleIds)`.
-- Drawer/Detalhe ao abrir um card: força fetch full daquele id (já cobre via `useLeadDetails([id])`).
+2. **Novo hook `src/hooks/useProcessualDashboard.ts`**
+   - `useProcessualDashboard(periodo, filtros)` → `{ data, loading, error, refresh }`
+   - Internamente chama `fetchProcessualDashboard`, com `useEffect` que reage a `periodo`/`filtros`.
+   - Fallback: se a query falhar (sessão anônima sem RLS), retorna o dataset mock com flag `isMock: true` para o painel sinalizar.
 
-### Outros consumidores
-- Não tocar. Continuam com `detailLevel: 'full'` default. Quando o cache estiver populado pela camada index, eles vão revalidar e completar — sem regressão.
+3. **`src/pages/AcompanhamentoProcessualPage.tsx`**
+   - Trocar leitura direta de `DATASET_PROC[periodo]` por `useProcessualDashboard(periodo, filtros)`.
+   - Mostrar estado de loading (skeleton) e badge "Dados reais" / "Sem permissão — exibindo amostra" quando cair no fallback.
+   - Filtros `responsavel`/`etiqueta` são aplicados client-side sobre os arrays retornados (já existe a estrutura na page).
 
-## Fora de escopo
-- Não muda Realtime, mutations, ZapSign, dashboards Finance.
-- Não migra outros consumidores (`Dashboard`, `SegmentAnalysis`, etc.) — fica para iteração futura se aparecer pressão.
-- Não mexe em `usePagedLeads` (já existe, sem uso real).
+4. **Sem alterações de schema** — só leitura.
 
-## Riscos
-- **Filtros que dependem de coluna não-index** (ex: filtro por `city`, `acolhedor`) deixam de funcionar até o detail chegar. Mitigação: lista de filtros do Kanban hoje usa só `status`/`lead_status`/`board_id` — já cobertos. Auditar antes de habilitar.
-- **Card mostra placeholder** enquanto detail carrega. Mitigação: skeleton só nos campos faltantes; nome/telefone já vêm no index.
-- **Cache misto** (alguns leads index, outros full). `leadsCache.update` faz merge shallow — campos full preservados quando o index revalida (objeto novo sobrescreve, então merge precisa preservar ricos). **Ajuste necessário em `leadsCache.update`**: quando vier um row com menos chaves que o existente, manter chaves antigas (`{ ...existing, ...row }` em vez de substituir).
+## O que NÃO vou mexer
 
-## Verificação (Regra V do LDPEV)
-1. `bunx tsc --noEmit` passa.
-2. Abrir `/leads?cat=previdenciario` com cache vazio → contar requests `leads?select=…` na aba Network. Esperado: ≤3 (index) + 1 por viewport scroll, em vez de 15.
-3. Abrir um card → 1 request `leads?id=eq.<uuid>&select=<full>`.
-4. Navegar para outra página e voltar → 0 requests (cache fresh).
-5. Conferir que Dashboard (`/`) continua funcionando com stats reais (consumidor full).
+- `src/lib/processualDashboardData.ts` permanece como fonte do fallback/tipos.
+- Rota, sidebar, layout visual, paleta e tipografia do dashboard.
+- Nenhuma migration / nenhuma policy de banco.
+- Outras páginas/dashboards.
 
-## Tamanho estimado
-- 1 arquivo novo (~80 linhas)
-- 3 arquivos editados (~150 linhas no total)
-- Sem migration, sem mudança de schema, sem deploy de edge function.
+## Validação
+
+- Build + tsgo da página.
+- `db.from('lead_processes').select('id', { count: 'exact', head: true })` para confirmar que a sessão anônima do Externo retorna linhas. Se voltar 0 com count > 0 no Cloud, ajusto o hook para usar fallback e aviso o usuário que precisamos abrir uma policy no Externo para tornar o painel realmente "live".
+
+## Riscos conhecidos
+
+- **`movimentacoes` é JSONB livre** — a classificação por keyword pode subestimar sentenças/acórdãos. Vou logar no console o total classificado vs. total de movimentações pra calibrarmos depois.
+- **`lead_stage_history` no Externo** pode estar mais pobre do que no Cloud (bridge assíncrona). Se eu detectar < 100 linhas no período, sinalizo na UI.
+- **Performance**: `movimentacoes` pode ser grande — limito o select às colunas necessárias e processo em streaming (sem `select('*')`).
