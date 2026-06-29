@@ -48,7 +48,7 @@ interface DetailEntry {
 }
 
 export function DailyReportDialog({
-  open, onOpenChange, userId, userName, productivity, goals, effectiveGoalProgress,
+  open, onOpenChange, userId, userName, productivity, goals, goalProgress,
 }: DailyReportDialogProps) {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
