@@ -29,7 +29,6 @@ import {
 } from "recharts";
 
 import {
-  DATASET_PROC,
   ETIQUETAS,
   PERIODO_PROC_LABEL,
   PeriodoProc,
@@ -39,11 +38,14 @@ import {
   slaStatus,
   slaTone,
 } from "@/lib/processualDashboardData";
+import { useProcessualDashboard } from "@/hooks/useProcessualDashboard";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
+import { RefreshCw } from "lucide-react";
 
 const ACOES = [
   { id: "all", nome: "Todas as ações" },
@@ -59,7 +61,7 @@ export default function AcompanhamentoProcessualPage() {
   const [acao, setAcao] = useState("all");
   const [etiqueta, setEtiqueta] = useState("all");
 
-  const data = DATASET_PROC[periodo];
+  const { data, loading, isMock, refresh } = useProcessualDashboard(periodo);
 
   const totaisProtocolo = useMemo(() => {
     const fechados = data.categorias.reduce((s, c) => s + c.fechadosNoPeriodo, 0);
