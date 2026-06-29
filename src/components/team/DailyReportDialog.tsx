@@ -278,7 +278,7 @@ export function DailyReportDialog({
 
 
   const generateTextReport = () => {
-    const today = format(new Date(), "dd/MM/yyyy (EEEE)", { locale: ptBR });
+    const today = format(selectedDate, "dd/MM/yyyy (EEEE)", { locale: ptBR });
     const lines: string[] = [];
 
     const emittedAt = format(new Date(), 'HH:mm', { locale: ptBR });
