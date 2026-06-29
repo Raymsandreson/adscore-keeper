@@ -38,6 +38,7 @@ import {
   Link2,
   ArrowRightLeft,
   UserPlus,
+  User,
   Clock,
   AlertTriangle,
   Eye,
