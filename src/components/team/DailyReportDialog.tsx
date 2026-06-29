@@ -46,6 +46,7 @@ interface DetailEntry {
 export function DailyReportDialog({
   open, onOpenChange, userId, userName, productivity, goals, goalProgress,
 }: DailyReportDialogProps) {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [leadMovements, setLeadMovements] = useState<LeadMovement[]>([]);
   const [contactsCreated, setContactsCreated] = useState<DetailEntry[]>([]);
