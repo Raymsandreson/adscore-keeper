@@ -33,6 +33,7 @@ interface DailyReportDialogProps {
 
 interface LeadMovement {
   id: string;
+  lead_id?: string | null;
   lead_name: string;
   from_stage: string | null;
   to_stage: string | null;
