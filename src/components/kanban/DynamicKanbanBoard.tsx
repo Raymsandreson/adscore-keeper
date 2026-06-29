@@ -38,6 +38,7 @@ import {
   Link2,
   ArrowRightLeft,
   UserPlus,
+  User,
   Clock,
   AlertTriangle,
   Eye,
@@ -1089,12 +1090,12 @@ export function DynamicKanbanBoard({
                                     )}
                                   </div>
 
-                                  {/* Acolhedor vinculado ao lead */}
-                                  {(lead as any).acolhedor && (
+                                  {/* Nome da vítima, se identificada */}
+                                  {lead.victim_name && (
                                     <div className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
-                                      <UserPlus className="h-3 w-3 flex-shrink-0" />
-                                      <span className="truncate" title={`Acolhedor: ${(lead as any).acolhedor}`}>
-                                        Acolhedor: {(lead as any).acolhedor}
+                                      <User className="h-3 w-3 flex-shrink-0" />
+                                      <span className="truncate" title={`Vítima: ${lead.victim_name}`}>
+                                        Vítima: {lead.victim_name}
                                       </span>
                                     </div>
                                   )}
