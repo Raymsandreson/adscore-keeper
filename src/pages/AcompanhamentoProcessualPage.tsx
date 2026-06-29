@@ -96,13 +96,19 @@ export default function AcompanhamentoProcessualPage() {
                 Monitora gargalos, tempos de transição e eficiência do fluxo jurídico — dados do WhatsJUD.
               </p>
             </div>
-            <Tabs value={periodo} onValueChange={(v) => setPeriodo(v as PeriodoProc)}>
-              <TabsList>
-                <TabsTrigger value="dia">Hoje</TabsTrigger>
-                <TabsTrigger value="semana">Semana</TabsTrigger>
-                <TabsTrigger value="mes">Mês</TabsTrigger>
-              </TabsList>
-            </Tabs>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setRelatorioOpen(true)}>
+                <FileText className="h-3.5 w-3.5" />
+                Relatório Diário
+              </Button>
+              <Tabs value={periodo} onValueChange={(v) => setPeriodo(v as PeriodoProc)}>
+                <TabsList>
+                  <TabsTrigger value="dia">Hoje</TabsTrigger>
+                  <TabsTrigger value="semana">Semana</TabsTrigger>
+                  <TabsTrigger value="mes">Mês</TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </div>
           </div>
 
           {/* Filtros globais */}
