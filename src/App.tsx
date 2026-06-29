@@ -159,6 +159,7 @@ const ProcessTrackingPage = lazyRetry(() => import("./pages/ProcessTrackingPage"
 const ProcessesPage = lazyRetry(() => import("./pages/ProcessesPage"), "ProcessesPage");
 const HearingsPage = lazyRetry(() => import("./pages/HearingsPage"), "HearingsPage");
 const BpcAutistaPage = lazyRetry(() => import("./pages/BpcAutistaPage"), "BpcAutistaPage");
+const AcompanhamentoProcessualPage = lazyRetry(() => import("./pages/AcompanhamentoProcessualPage"), "AcompanhamentoProcessualPage");
 const ResetPasswordPage = lazyRetry(() => import("./pages/ResetPasswordPage"), "ResetPasswordPage");
 const ContactsPage = lazyRetry(() => import("./pages/ContactsPage"), "ContactsPage");
 const InstagramPage = lazyRetry(() => import("./pages/InstagramPage"), "InstagramPage");
@@ -300,6 +301,7 @@ function SidebarLayout() {
         <Route path="/process-tracking" element={<ProtectedRoute><ProcessTrackingPage /></ProtectedRoute>} />
         <Route path="/hearings" element={<ProtectedRoute><HearingsPage /></ProtectedRoute>} />
         <Route path="/processual/bpc-autista" element={<ProtectedRoute><BpcAutistaPage /></ProtectedRoute>} />
+        <Route path="/processual/acompanhamento" element={<ProtectedRoute><AcompanhamentoProcessualPage /></ProtectedRoute>} />
                 <Route path="/archived" element={<ProtectedRoute><ArchivedItemsPage /></ProtectedRoute>} />
                 <Route path="/debug/hooks" element={<ProtectedRoute><HookDebugPage /></ProtectedRoute>} />
                 <Route path="/debug/group-audit" element={<ProtectedRoute><GroupAuditLogPage /></ProtectedRoute>} />

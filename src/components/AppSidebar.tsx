@@ -148,6 +148,7 @@ export function AppSidebar() {
         { id: "cases", label: "Casos", icon: <Briefcase className="h-3.5 w-3.5" />, path: "/cases", color: "text-primary" },
         { id: "processes", label: "Processos", icon: <FileText className="h-3.5 w-3.5" />, path: "/processes", color: "text-blue-500" },
         { id: "process-tracking", label: "Controle Processual", icon: <ClipboardList className="h-3.5 w-3.5" />, path: "/process-tracking", color: "text-emerald-500" },
+        { id: "acompanhamento-processual", label: "Acompanhamento Processual", icon: <ClipboardList className="h-3.5 w-3.5" />, path: "/processual/acompanhamento", color: "text-indigo-500" },
         { id: "nuclei", label: "Núcleos", icon: <Scale className="h-3.5 w-3.5" />, path: "/nuclei", color: "text-orange-500" },
         { id: "hearings", label: "Audiências", icon: <Gavel className="h-3.5 w-3.5" />, path: "/hearings", color: "text-rose-500" },
         { id: "bpc-autista", label: "BPC -AUTISTA", icon: <Accessibility className="h-3.5 w-3.5" />, path: "/processual/bpc-autista", color: "text-sky-500" },
