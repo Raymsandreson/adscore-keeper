@@ -795,6 +795,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const MESSAGES_PAGE_SIZE = 50;
   const [visibleCount, setVisibleCount] = useState(MESSAGES_PAGE_SIZE);
   const preserveScrollRef = useRef<{ prevHeight: number; prevTop: number } | null>(null);
+  const stickBottomRef = useRef<boolean>(true);
   const conversationKeyRef = useRef<string>('');
   const mediaInputRef = useRef<HTMLInputElement>(null);
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
@@ -1821,11 +1822,16 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   // Reset da paginação quando troca de conversa
   useEffect(() => {
     setVisibleCount(MESSAGES_PAGE_SIZE);
+    stickBottomRef.current = true;
   }, [conversation.phone, conversation.instance_name]);
 
   const handleMessagesScroll = useCallback(() => {
     const container = messagesContainerRef.current;
     if (!container) return;
+    // Atualiza flag de "grudado no fim" (tolerância 80px)
+    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+    stickBottomRef.current = distanceFromBottom <= 80;
+
     if (container.scrollTop <= 80 && hasOlderMessages) {
       preserveScrollRef.current = {
         prevHeight: container.scrollHeight,
@@ -1849,7 +1855,6 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const prevItemsCountRef = useRef(0);
   useEffect(() => {
     if (timelineItems.length === 0) return;
-    // Não rolar se estamos apenas expandindo paginação (scroll preservado acima)
     if (preserveScrollRef.current) return;
     const currentKey = `${conversation.phone}__${conversation.instance_name || ''}`;
     const isConversationSwitch = conversationKeyRef.current !== currentKey;
@@ -1867,18 +1872,34 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     };
 
     if (isInitialLoad) {
-      // Salto instantâneo direto para o fim, repetido para cobrir lazy-load de mídias/imagens
+      stickBottomRef.current = true;
       jumpToBottom(false);
       requestAnimationFrame(() => jumpToBottom(false));
       const t1 = setTimeout(() => jumpToBottom(false), 50);
       const t2 = setTimeout(() => jumpToBottom(false), 200);
       const t3 = setTimeout(() => jumpToBottom(false), 600);
       return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
-    } else {
-      // Nova mensagem: scroll suave
+    } else if (stickBottomRef.current) {
       requestAnimationFrame(() => jumpToBottom(true));
     }
   }, [timelineItems.length, conversation.phone, conversation.instance_name]);
+
+  // ResizeObserver: mantém grudado no fim enquanto mídias (imagens/PDF) terminam de carregar
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    const ro = new ResizeObserver(() => {
+      if (preserveScrollRef.current) return;
+      if (stickBottomRef.current) {
+        container.scrollTop = container.scrollHeight;
+      }
+    });
+    ro.observe(container);
+    // Observa filhos diretos para reagir a iframes/imagens que mudam de tamanho
+    Array.from(container.children).forEach((child) => ro.observe(child as Element));
+    return () => ro.disconnect();
+  }, [conversation.phone, conversation.instance_name, timelineItems.length]);
+
 
   const handleToggleIdentifySender = (checked: boolean) => {
     setIdentifySender(checked);
