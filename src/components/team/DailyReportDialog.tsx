@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
@@ -45,6 +46,7 @@ interface DetailEntry {
 export function DailyReportDialog({
   open, onOpenChange, userId, userName, productivity, goals, goalProgress,
 }: DailyReportDialogProps) {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [leadMovements, setLeadMovements] = useState<LeadMovement[]>([]);
   const [contactsCreated, setContactsCreated] = useState<DetailEntry[]>([]);
@@ -291,7 +293,12 @@ export function DailyReportDialog({
     { icon: Clock, color: 'text-orange-600', bg: 'bg-orange-50', label: 'Tempo', current: productivity.sessionMinutes, target: goals.target_session_minutes, isMins: true },
   ];
 
-  const renderDetailList = (items: DetailEntry[], icon: React.ReactNode, title: string) => {
+  const renderDetailList = (
+    items: DetailEntry[],
+    icon: React.ReactNode,
+    title: string,
+    onItemClick?: (item: DetailEntry) => void,
+  ) => {
     if (items.length === 0) return null;
     return (
       <div className="space-y-2">
@@ -300,19 +307,41 @@ export function DailyReportDialog({
           <h4 className="text-sm font-semibold">{title} ({items.length})</h4>
         </div>
         <div className="space-y-1">
-          {items.map(item => (
-            <div key={item.id} className="flex items-start gap-2 p-2 rounded-md border bg-card text-xs">
-              <div className="flex-1 min-w-0">
-                <span className="font-medium">{item.label}</span>
-                {item.sublabel && <span className="text-muted-foreground ml-1">— {item.sublabel}</span>}
+          {items.map(item => {
+            const clickable = !!onItemClick;
+            const content = (
+              <>
+                <div className="flex-1 min-w-0">
+                  <span className="font-medium">{item.label}</span>
+                  {item.sublabel && <span className="text-muted-foreground ml-1">— {item.sublabel}</span>}
+                </div>
+                <span className="text-muted-foreground shrink-0">{item.time}</span>
+              </>
+            );
+            return clickable ? (
+              <button
+                key={item.id}
+                onClick={() => onItemClick!(item)}
+                className="flex w-full items-start gap-2 p-2 rounded-md border bg-card text-xs text-left hover:bg-accent transition"
+              >
+                {content}
+              </button>
+            ) : (
+              <div key={item.id} className="flex items-start gap-2 p-2 rounded-md border bg-card text-xs">
+                {content}
               </div>
-              <span className="text-muted-foreground shrink-0">{item.time}</span>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     );
   };
+
+  const openActivity = (id: string) => {
+    onOpenChange(false);
+    navigate(`/?openActivity=${id}`);
+  };
+
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -408,7 +437,7 @@ export function DailyReportDialog({
               {renderDetailList(commentReplies, <MessageSquare className="h-4 w-4 text-blue-600" />, 'Comentários')}
               {renderDetailList(dmsSent, <Send className="h-4 w-4 text-violet-600" />, 'DMs Enviadas')}
               {renderDetailList(callsMade, <Phone className="h-4 w-4 text-green-600" />, 'Ligações')}
-              {renderDetailList(activitiesCompleted, <CheckCircle2 className="h-4 w-4 text-emerald-600" />, 'Atividades Concluídas')}
+              {renderDetailList(activitiesCompleted, <CheckCircle2 className="h-4 w-4 text-emerald-600" />, 'Atividades Concluídas', (item) => openActivity(item.id))}
             </div>
           </ScrollArea>
         )}
