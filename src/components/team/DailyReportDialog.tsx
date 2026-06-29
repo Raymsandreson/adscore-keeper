@@ -481,7 +481,7 @@ export function DailyReportDialog({
                   {effectiveGoalProgress >= 80 ? '🟢 Rendimento Alto' : effectiveGoalProgress >= 50 ? '🟡 Rendimento Médio' : '🔴 Rendimento Baixo'}
                 </p>
                 <p className="text-[10px] text-muted-foreground mt-0.5">
-                  Emitido às {format(new Date(), 'HH:mm', { locale: ptBR })} — {format(new Date(), "dd/MM/yyyy", { locale: ptBR })}
+                  Emitido às {format(new Date(), 'HH:mm', { locale: ptBR })} — {format(selectedDate, "dd/MM/yyyy", { locale: ptBR })}
                 </p>
               </div>
 
