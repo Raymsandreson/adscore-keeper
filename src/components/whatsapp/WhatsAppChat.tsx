@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo, useReducer } from 'react';
+import { useState, useRef, useEffect, useMemo, useReducer, useCallback, useLayoutEffect } from 'react';
 import { WhatsAppConversation } from '@/hooks/useWhatsAppMessages';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
