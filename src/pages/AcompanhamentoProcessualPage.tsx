@@ -127,10 +127,24 @@ export default function AcompanhamentoProcessualPage() {
               onChange={setEtiqueta}
               options={ETIQUETAS.map((e) => ({ value: e.id, label: e.nome }))}
             />
-            <Badge variant="secondary" className="ml-auto gap-1.5">
-              <span className="h-2 w-2 rounded-full bg-emerald-500" />
-              {PERIODO_PROC_LABEL[periodo]} · {fmtInt.format(data.resumo.atualizacoesPeriodo)} atualizações
-            </Badge>
+            <div className="ml-auto flex items-center gap-2">
+              <Badge variant={isMock ? "outline" : "secondary"} className="gap-1.5">
+                <span
+                  className={cn(
+                    "h-2 w-2 rounded-full",
+                    loading ? "bg-amber-500 animate-pulse" : isMock ? "bg-zinc-400" : "bg-emerald-500",
+                  )}
+                />
+                {loading
+                  ? "Carregando..."
+                  : isMock
+                    ? "Sem dados no período — exibindo amostra"
+                    : `${PERIODO_PROC_LABEL[periodo]} · ${fmtInt.format(data.resumo.atualizacoesPeriodo)} atualizações`}
+              </Badge>
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={refresh} disabled={loading}>
+                <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
+              </Button>
+            </div>
           </div>
         </div>
       </div>
