@@ -2084,6 +2084,15 @@ ${scrapeData.content || ''}
                   )}
                 </div>)}
 
+                {isFieldVisible('victim_name') && (<div>
+                  <Label>Vítima</Label>
+                  <Input
+                    value={victimName}
+                    onChange={(e) => setVictimName(e.target.value)}
+                    placeholder="Nome completo da vítima"
+                  />
+                </div>)}
+
                 {isFieldVisible('acolhedor') && (<div>
                   <Label>Acolhedor</Label>
                   <Select value={acolhedor || '__none__'} onValueChange={(v) => setAcolhedor(v === '__none__' ? '' : v)}>
