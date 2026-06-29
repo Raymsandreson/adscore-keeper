@@ -795,6 +795,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const MESSAGES_PAGE_SIZE = 50;
   const [visibleCount, setVisibleCount] = useState(MESSAGES_PAGE_SIZE);
   const preserveScrollRef = useRef<{ prevHeight: number; prevTop: number } | null>(null);
+  const stickBottomRef = useRef<boolean>(true);
   const conversationKeyRef = useRef<string>('');
   const mediaInputRef = useRef<HTMLInputElement>(null);
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
