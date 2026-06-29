@@ -1811,7 +1811,6 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   })();
 
   const prevItemsCountRef = useRef(0);
-  const initialLoadUntilRef = useRef<number>(0);
   useEffect(() => {
     if (timelineItems.length === 0) return;
     const currentKey = `${conversation.phone}__${conversation.instance_name || ''}`;
@@ -1830,26 +1829,18 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     };
 
     if (isInitialLoad) {
-      // Janela de 3s onde toda atualização do timeline (histórico chegando em lotes,
-      // mídias carregando) força reposicionamento no fim — evita ficar nas mensagens
-      // mais antigas quando o histórico completo é prepended após a montagem inicial.
-      initialLoadUntilRef.current = Date.now() + 3000;
+      // Salto instantâneo direto para o fim, repetido para cobrir lazy-load de mídias/imagens
       jumpToBottom(false);
       requestAnimationFrame(() => jumpToBottom(false));
-      const timers = [50, 200, 600, 1200, 2000, 3000].map((d) =>
-        setTimeout(() => jumpToBottom(false), d)
-      );
-      return () => { timers.forEach(clearTimeout); };
-    } else if (Date.now() < initialLoadUntilRef.current) {
-      // Ainda na janela inicial — novos itens são histórico, não mensagem nova
-      jumpToBottom(false);
-      requestAnimationFrame(() => jumpToBottom(false));
+      const t1 = setTimeout(() => jumpToBottom(false), 50);
+      const t2 = setTimeout(() => jumpToBottom(false), 200);
+      const t3 = setTimeout(() => jumpToBottom(false), 600);
+      return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
     } else {
       // Nova mensagem: scroll suave
       requestAnimationFrame(() => jumpToBottom(true));
     }
   }, [timelineItems.length, conversation.phone, conversation.instance_name]);
-
 
   const handleToggleIdentifySender = (checked: boolean) => {
     setIdentifySender(checked);
