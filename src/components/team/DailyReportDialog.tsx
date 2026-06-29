@@ -48,7 +48,7 @@ interface DetailEntry {
 }
 
 export function DailyReportDialog({
-  open, onOpenChange, userId, userName, productivity, goals, goalProgress,
+  open, onOpenChange, userId, userName, productivity, goals, effectiveGoalProgress,
 }: DailyReportDialogProps) {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
@@ -274,7 +274,7 @@ export function DailyReportDialog({
       p.leadsClosed / g.target_leads_closed,
     ].map(r => Math.min(1, isFinite(r) ? r : 0));
     return Math.round((ratios.reduce((s, r) => s + r, 0) / ratios.length) * 100);
-  }, [isToday, goalProgress, effectiveProductivity, goals]);
+  }, [isToday, goalProgress, productivity, goals]);
 
 
   const generateTextReport = () => {
@@ -282,25 +282,25 @@ export function DailyReportDialog({
     const lines: string[] = [];
 
     const emittedAt = format(new Date(), 'HH:mm', { locale: ptBR });
-    const perfLabel = goalProgress >= 80 ? '🟢 RENDIMENTO ALTO' : goalProgress >= 50 ? '🟡 RENDIMENTO MÉDIO' : '🔴 RENDIMENTO BAIXO';
+    const perfLabel = effectiveGoalProgress >= 80 ? '🟢 RENDIMENTO ALTO' : effectiveGoalProgress >= 50 ? '🟡 RENDIMENTO MÉDIO' : '🔴 RENDIMENTO BAIXO';
     lines.push(`📊 RELATÓRIO DIÁRIO — ${today}`);
     lines.push(`🕐 Emitido às ${emittedAt}`);
     lines.push(`👤 ${userName}`);
-    lines.push(`🎯 Meta geral: ${goalProgress}% — ${perfLabel}`);
+    lines.push(`🎯 Meta geral: ${effectiveGoalProgress}% — ${perfLabel}`);
     lines.push('');
     lines.push('═══ RESUMO DAS MÉTRICAS ═══');
-    lines.push(`💬 Comentários: ${productivity.commentReplies}/${goals.target_replies} (${metricPercent(productivity.commentReplies, goals.target_replies)}%)`);
-    lines.push(`📩 DMs enviadas: ${productivity.dmsSent}/${goals.target_dms} (${metricPercent(productivity.dmsSent, goals.target_dms)}%)`);
-    lines.push(`👥 Contatos criados: ${productivity.contactsCreated}/${goals.target_contacts} (${metricPercent(productivity.contactsCreated, goals.target_contacts)}%)`);
-    lines.push(`🎯 Leads criados: ${productivity.leadsCreated}/${goals.target_leads} (${metricPercent(productivity.leadsCreated, goals.target_leads)}%)`);
-    lines.push(`📞 Ligações: ${productivity.callsMade}/${goals.target_calls} (${metricPercent(productivity.callsMade, goals.target_calls)}%)`);
-    lines.push(`🔄 Fases movidas: ${productivity.stageChanges}/${goals.target_stage_changes} (${metricPercent(productivity.stageChanges, goals.target_stage_changes)}%)`);
-    lines.push(`📋 Passos checklist: ${productivity.checklistItemsChecked}/${goals.target_checklist_items} (${metricPercent(productivity.checklistItemsChecked, goals.target_checklist_items)}%)`);
-    lines.push(`✅ Atividades concluídas: ${productivity.activitiesCompleted}/${goals.target_activities} (${metricPercent(productivity.activitiesCompleted, goals.target_activities)}%)`);
-    lines.push(`⚠️ Atividades atrasadas: ${productivity.activitiesOverdue}`);
-    lines.push(`🏆 Fechados: ${productivity.leadsClosed}/${goals.target_leads_closed}`);
-    lines.push(`📊 Leads progredidos: ${productivity.leadsProgressed}`);
-    lines.push(`⏱️ Tempo online: ${formatMinutes(productivity.sessionMinutes)}/${formatMinutes(goals.target_session_minutes)}`);
+    lines.push(`💬 Comentários: ${effectiveProductivity.commentReplies}/${goals.target_replies} (${metricPercent(effectiveProductivity.commentReplies, goals.target_replies)}%)`);
+    lines.push(`📩 DMs enviadas: ${effectiveProductivity.dmsSent}/${goals.target_dms} (${metricPercent(effectiveProductivity.dmsSent, goals.target_dms)}%)`);
+    lines.push(`👥 Contatos criados: ${effectiveProductivity.contactsCreated}/${goals.target_contacts} (${metricPercent(effectiveProductivity.contactsCreated, goals.target_contacts)}%)`);
+    lines.push(`🎯 Leads criados: ${effectiveProductivity.leadsCreated}/${goals.target_leads} (${metricPercent(effectiveProductivity.leadsCreated, goals.target_leads)}%)`);
+    lines.push(`📞 Ligações: ${effectiveProductivity.callsMade}/${goals.target_calls} (${metricPercent(effectiveProductivity.callsMade, goals.target_calls)}%)`);
+    lines.push(`🔄 Fases movidas: ${effectiveProductivity.stageChanges}/${goals.target_stage_changes} (${metricPercent(effectiveProductivity.stageChanges, goals.target_stage_changes)}%)`);
+    lines.push(`📋 Passos checklist: ${effectiveProductivity.checklistItemsChecked}/${goals.target_checklist_items} (${metricPercent(effectiveProductivity.checklistItemsChecked, goals.target_checklist_items)}%)`);
+    lines.push(`✅ Atividades concluídas: ${effectiveProductivity.activitiesCompleted}/${goals.target_activities} (${metricPercent(effectiveProductivity.activitiesCompleted, goals.target_activities)}%)`);
+    lines.push(`⚠️ Atividades atrasadas: ${effectiveProductivity.activitiesOverdue}`);
+    lines.push(`🏆 Fechados: ${effectiveProductivity.leadsClosed}/${goals.target_leads_closed}`);
+    lines.push(`📊 Leads progredidos: ${effectiveProductivity.leadsProgressed}`);
+    lines.push(`⏱️ Tempo online: ${formatMinutes(effectiveProductivity.sessionMinutes)}/${formatMinutes(goals.target_session_minutes)}`);
 
     if (leadMovements.length > 0) {
       lines.push('');
@@ -356,18 +356,18 @@ export function DailyReportDialog({
   };
 
   const metrics = [
-    { icon: MessageSquare, color: 'text-blue-600', bg: 'bg-blue-50', label: 'Comentários', current: productivity.commentReplies, target: goals.target_replies },
-    { icon: Send, color: 'text-violet-600', bg: 'bg-violet-50', label: 'DMs', current: productivity.dmsSent, target: goals.target_dms },
-    { icon: UserPlus, color: 'text-teal-600', bg: 'bg-teal-50', label: 'Contatos', current: productivity.contactsCreated, target: goals.target_contacts },
-    { icon: Target, color: 'text-indigo-600', bg: 'bg-indigo-50', label: 'Leads', current: productivity.leadsCreated, target: goals.target_leads },
-    { icon: Phone, color: 'text-green-600', bg: 'bg-green-50', label: 'Ligações', current: productivity.callsMade, target: goals.target_calls },
-    { icon: ArrowRightLeft, color: 'text-amber-600', bg: 'bg-amber-50', label: 'Fases', current: productivity.stageChanges, target: goals.target_stage_changes },
-    { icon: ListChecks, color: 'text-cyan-600', bg: 'bg-cyan-50', label: 'Passos', current: productivity.checklistItemsChecked, target: goals.target_checklist_items },
-    { icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-50', label: 'Ativ. Concl.', current: productivity.activitiesCompleted, target: goals.target_activities },
-    { icon: AlertTriangle, color: 'text-red-600', bg: 'bg-red-50', label: 'Atrasadas', current: productivity.activitiesOverdue, target: 0 },
-    { icon: Trophy, color: 'text-yellow-600', bg: 'bg-yellow-50', label: 'Fechados', current: productivity.leadsClosed, target: goals.target_leads_closed },
-    { icon: Briefcase, color: 'text-purple-600', bg: 'bg-purple-50', label: 'Progredidos', current: productivity.leadsProgressed, target: 0 },
-    { icon: Clock, color: 'text-orange-600', bg: 'bg-orange-50', label: 'Tempo', current: productivity.sessionMinutes, target: goals.target_session_minutes, isMins: true },
+    { icon: MessageSquare, color: 'text-blue-600', bg: 'bg-blue-50', label: 'Comentários', current: effectiveProductivity.commentReplies, target: goals.target_replies },
+    { icon: Send, color: 'text-violet-600', bg: 'bg-violet-50', label: 'DMs', current: effectiveProductivity.dmsSent, target: goals.target_dms },
+    { icon: UserPlus, color: 'text-teal-600', bg: 'bg-teal-50', label: 'Contatos', current: effectiveProductivity.contactsCreated, target: goals.target_contacts },
+    { icon: Target, color: 'text-indigo-600', bg: 'bg-indigo-50', label: 'Leads', current: effectiveProductivity.leadsCreated, target: goals.target_leads },
+    { icon: Phone, color: 'text-green-600', bg: 'bg-green-50', label: 'Ligações', current: effectiveProductivity.callsMade, target: goals.target_calls },
+    { icon: ArrowRightLeft, color: 'text-amber-600', bg: 'bg-amber-50', label: 'Fases', current: effectiveProductivity.stageChanges, target: goals.target_stage_changes },
+    { icon: ListChecks, color: 'text-cyan-600', bg: 'bg-cyan-50', label: 'Passos', current: effectiveProductivity.checklistItemsChecked, target: goals.target_checklist_items },
+    { icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-50', label: 'Ativ. Concl.', current: effectiveProductivity.activitiesCompleted, target: goals.target_activities },
+    { icon: AlertTriangle, color: 'text-red-600', bg: 'bg-red-50', label: 'Atrasadas', current: effectiveProductivity.activitiesOverdue, target: 0 },
+    { icon: Trophy, color: 'text-yellow-600', bg: 'bg-yellow-50', label: 'Fechados', current: effectiveProductivity.leadsClosed, target: goals.target_leads_closed },
+    { icon: Briefcase, color: 'text-purple-600', bg: 'bg-purple-50', label: 'Progredidos', current: effectiveProductivity.leadsProgressed, target: 0 },
+    { icon: Clock, color: 'text-orange-600', bg: 'bg-orange-50', label: 'Tempo', current: effectiveProductivity.sessionMinutes, target: goals.target_session_minutes, isMins: true },
   ];
 
   const renderDetailList = (
@@ -449,10 +449,10 @@ export function DailyReportDialog({
           <ScrollArea className="h-[calc(100vh-220px)]">
             <div className="space-y-5 pr-2">
               {/* Goal progress header */}
-              <div className={`text-center p-3 rounded-lg border ${goalProgress >= 80 ? 'bg-green-50 border-green-200' : goalProgress >= 50 ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200'}`}>
-                <p className="text-2xl font-bold">{goalProgress}%</p>
-                <p className={`text-sm font-semibold ${goalProgress >= 80 ? 'text-green-700' : goalProgress >= 50 ? 'text-amber-700' : 'text-red-700'}`}>
-                  {goalProgress >= 80 ? '🟢 Rendimento Alto' : goalProgress >= 50 ? '🟡 Rendimento Médio' : '🔴 Rendimento Baixo'}
+              <div className={`text-center p-3 rounded-lg border ${effectiveGoalProgress >= 80 ? 'bg-green-50 border-green-200' : effectiveGoalProgress >= 50 ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200'}`}>
+                <p className="text-2xl font-bold">{effectiveGoalProgress}%</p>
+                <p className={`text-sm font-semibold ${effectiveGoalProgress >= 80 ? 'text-green-700' : effectiveGoalProgress >= 50 ? 'text-amber-700' : 'text-red-700'}`}>
+                  {effectiveGoalProgress >= 80 ? '🟢 Rendimento Alto' : effectiveGoalProgress >= 50 ? '🟡 Rendimento Médio' : '🔴 Rendimento Baixo'}
                 </p>
                 <p className="text-[10px] text-muted-foreground mt-0.5">
                   Emitido às {format(new Date(), 'HH:mm', { locale: ptBR })} — {format(new Date(), "dd/MM/yyyy", { locale: ptBR })}
