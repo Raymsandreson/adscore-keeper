@@ -423,6 +423,8 @@ export default function AcompanhamentoProcessualPage() {
           />
         </section>
       </div>
+
+      <RelatorioDiarioUsuariosSheet open={relatorioOpen} onOpenChange={setRelatorioOpen} />
     </div>
   );
 }
