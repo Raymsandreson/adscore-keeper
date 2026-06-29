@@ -366,7 +366,10 @@ export function LeadEditDialog({
   const customLayoutTabs = useMemo(() => visibleLayoutTabs.filter(tab => tab.is_custom), [visibleLayoutTabs]);
   const isManagedLayoutTab = (tabKey: string) => managedLayoutTabKeys.has(tabKey);
   const isTabVisible = (tabKey: string) => !isManagedLayoutTab(tabKey) || !layoutBoardId || visibleTabKeys.has(tabKey);
-  const isFieldVisible = (fieldKey: string) => !layoutBoardId || visibleFieldKeys.has(fieldKey);
+  // victim_name e acolhedor são SEMPRE editáveis, independente do layout do board
+  const ALWAYS_VISIBLE_FIELDS = new Set(['victim_name', 'acolhedor']);
+  const isFieldVisible = (fieldKey: string) =>
+    ALWAYS_VISIBLE_FIELDS.has(fieldKey) || !layoutBoardId || visibleFieldKeys.has(fieldKey);
 
   useEffect(() => {
     if (!isManagedLayoutTab(activeTab)) return;
