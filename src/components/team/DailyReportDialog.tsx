@@ -212,6 +212,69 @@ export function DailyReportDialog({
     return Math.round((current / target) * 100);
   };
 
+  // For dates other than today, derive metric counts from fetched detail data
+  // (overdue/sessionMinutes/checklist are "live today" data — set to 0 on other days).
+  const livePart = useMemo(() => {
+    const uniqueLeadsProgressed = new Set(
+      leadMovements.map(m => (m as any).lead_id).filter(Boolean)
+    );
+    const CLOSED_PATTERNS = ['closed', 'fechado', 'fechados', 'done'];
+    const isClosed = (id: string | null) => {
+      if (!id) return false;
+      const l = id.toLowerCase();
+      return CLOSED_PATTERNS.some(p => l === p || l.startsWith(p + '_'));
+    };
+    const leadsClosed = new Set(
+      leadMovements.filter(m => isClosed(m.to_stage)).map(m => (m as any).lead_id || m.id)
+    ).size;
+    return {
+      commentReplies: commentReplies.length,
+      dmsSent: dmsSent.length,
+      contactsCreated: contactsCreated.length,
+      leadsCreated: leadsCreated.length,
+      callsMade: callsMade.length,
+      stageChanges: leadMovements.length,
+      leadsProgressed: uniqueLeadsProgressed.size || leadMovements.length,
+      activitiesCompleted: activitiesCompleted.length,
+      leadsClosed,
+    };
+  }, [leadMovements, contactsCreated, leadsCreated, dmsSent, commentReplies, activitiesCompleted, callsMade]);
+
+  const effectiveProductivity: MyProductivity = isToday
+    ? productivity
+    : {
+        ...productivity,
+        ...livePart,
+        // Live-only metrics not historical: zero them out for non-today
+        activitiesOverdue: 0,
+        sessionMinutes: 0,
+        checklistItemsChecked: 0,
+        callsAnswered: 0,
+        callsUnanswered: 0,
+        totalActions:
+          livePart.commentReplies + livePart.dmsSent + livePart.contactsCreated +
+          livePart.leadsCreated + livePart.callsMade + livePart.stageChanges +
+          livePart.activitiesCompleted + livePart.leadsClosed,
+      };
+
+  const effectiveGoalProgress = useMemo(() => {
+    if (isToday) return goalProgress;
+    const p = effectiveProductivity;
+    const g = goals;
+    const ratios = [
+      p.commentReplies / g.target_replies,
+      p.dmsSent / g.target_dms,
+      p.contactsCreated / g.target_contacts,
+      p.leadsCreated / g.target_leads,
+      p.callsMade / g.target_calls,
+      p.stageChanges / g.target_stage_changes,
+      p.activitiesCompleted / g.target_activities,
+      p.leadsClosed / g.target_leads_closed,
+    ].map(r => Math.min(1, isFinite(r) ? r : 0));
+    return Math.round((ratios.reduce((s, r) => s + r, 0) / ratios.length) * 100);
+  }, [isToday, goalProgress, effectiveProductivity, goals]);
+
+
   const generateTextReport = () => {
     const today = format(new Date(), "dd/MM/yyyy (EEEE)", { locale: ptBR });
     const lines: string[] = [];
