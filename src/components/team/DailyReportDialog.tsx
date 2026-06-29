@@ -437,7 +437,7 @@ export function DailyReportDialog({
               {renderDetailList(commentReplies, <MessageSquare className="h-4 w-4 text-blue-600" />, 'Comentários')}
               {renderDetailList(dmsSent, <Send className="h-4 w-4 text-violet-600" />, 'DMs Enviadas')}
               {renderDetailList(callsMade, <Phone className="h-4 w-4 text-green-600" />, 'Ligações')}
-              {renderDetailList(activitiesCompleted, <CheckCircle2 className="h-4 w-4 text-emerald-600" />, 'Atividades Concluídas')}
+              {renderDetailList(activitiesCompleted, <CheckCircle2 className="h-4 w-4 text-emerald-600" />, 'Atividades Concluídas', (item) => openActivity(item.id))}
             </div>
           </ScrollArea>
         )}
