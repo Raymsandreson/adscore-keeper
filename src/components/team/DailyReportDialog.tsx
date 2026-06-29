@@ -429,17 +429,43 @@ export function DailyReportDialog({
             Relatório Diário
           </SheetTitle>
           <SheetDescription>
-            {userName} — {format(new Date(), "dd/MM/yyyy (EEEE)", { locale: ptBR })}
+            {userName} — {format(selectedDate, "dd/MM/yyyy (EEEE)", { locale: ptBR })}
+            {!isToday && <span className="ml-1 text-amber-600">(histórico)</span>}
           </SheetDescription>
         </SheetHeader>
 
         {/* Action buttons */}
-        <div className="flex gap-2 mt-3 mb-4">
+        <div className="flex flex-wrap gap-2 mt-3 mb-4">
+          <Popover open={datePopoverOpen} onOpenChange={setDatePopoverOpen}>
+            <PopoverTrigger asChild>
+              <Button size="sm" variant="outline" className="gap-1.5">
+                <CalendarIcon className="h-3.5 w-3.5" />
+                {format(selectedDate, "dd/MM/yyyy", { locale: ptBR })}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="start">
+              <Calendar
+                mode="single"
+                selected={selectedDate}
+                onSelect={(d) => { if (d) { setSelectedDate(d); setDatePopoverOpen(false); } }}
+                disabled={(d) => d > new Date()}
+                initialFocus
+                locale={ptBR}
+                className={cn("p-3 pointer-events-auto")}
+              />
+            </PopoverContent>
+          </Popover>
+          {!isToday && (
+            <Button size="sm" variant="ghost" onClick={() => setSelectedDate(new Date())} className="gap-1.5">
+              Hoje
+            </Button>
+          )}
           <Button size="sm" variant="outline" onClick={copyToClipboard} className="gap-1.5">
             <Copy className="h-3.5 w-3.5" />
             Copiar Relatório
           </Button>
         </div>
+
 
         {loading ? (
           <div className="flex items-center justify-center py-12">
