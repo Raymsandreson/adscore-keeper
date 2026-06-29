@@ -51,6 +51,8 @@ export function DailyReportDialog({
 }: DailyReportDialogProps) {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [datePopoverOpen, setDatePopoverOpen] = useState(false);
   const [leadMovements, setLeadMovements] = useState<LeadMovement[]>([]);
   const [contactsCreated, setContactsCreated] = useState<DetailEntry[]>([]);
   const [leadsCreated, setLeadsCreated] = useState<DetailEntry[]>([]);
@@ -59,16 +61,23 @@ export function DailyReportDialog({
   const [activitiesCompleted, setActivitiesCompleted] = useState<DetailEntry[]>([]);
   const [callsMade, setCallsMade] = useState<DetailEntry[]>([]);
 
+  // Reset date to today whenever dialog opens for a (possibly different) user
+  useEffect(() => {
+    if (open) setSelectedDate(new Date());
+  }, [open, userId]);
+
   useEffect(() => {
     if (!open || !userId) return;
     fetchReportData();
-  }, [open, userId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, userId, selectedDate]);
+
+  const isToday = isSameDay(selectedDate, new Date());
 
   const fetchReportData = async () => {
     setLoading(true);
-    const now = new Date();
-    const startDate = startOfDay(now).toISOString();
-    const endDate = endOfDay(now).toISOString();
+    const startDate = startOfDay(selectedDate).toISOString();
+    const endDate = endOfDay(selectedDate).toISOString();
 
     try {
       const [stageRes, contactsRes, leadsRes, dmsRes, commentsRes, activitiesRes, callsRes, callRecordsRes] = await Promise.all([
