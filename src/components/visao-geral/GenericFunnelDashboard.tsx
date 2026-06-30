@@ -181,51 +181,60 @@ export default function GenericFunnelDashboard({ boardMatcher, title }: Props) {
           {(stages || []).length === 0 ? (
             <p className="text-sm text-muted-foreground">Sem etapas configuradas.</p>
           ) : (
-            <div
-              className="grid items-end gap-3"
-              style={{
-                gridTemplateColumns: `repeat(${stages!.length}, minmax(0, 1fr))`,
-                height: 280,
-              }}
-            >
-              {stages!.map((s) => {
-                const pct = (s.count / maxCount) * 100;
-                const sharePct = total > 0 ? Math.round((s.count / total) * 1000) / 10 : 0;
-                return (
-                  <div
-                    key={s.id}
-                    className="h-full flex flex-col items-center justify-end gap-2 min-w-0"
-                    title={`${s.name}: ${s.count} (${sharePct}%)`}
-                  >
-                    <div className="text-xs font-semibold tabular-nums">{s.count}</div>
-                    <div className="w-full flex-1 flex items-end">
-                      <div
-                        className="w-full rounded-t-md transition-all duration-500"
-                        style={{
-                          height: `${Math.max(pct, 2)}%`,
-                          background: s.color,
-                          minHeight: 4,
-                        }}
-                      />
-                    </div>
-                    <div className="w-full flex flex-col items-center gap-0.5">
-                      <div className="flex items-center gap-1 min-w-0 w-full justify-center">
-                        <span
-                          className="h-2 w-2 rounded-full shrink-0"
-                          style={{ background: s.color }}
-                        />
-                        <span className="text-[11px] truncate text-center" title={s.name}>
-                          {s.name}
-                        </span>
-                      </div>
-                      <span className="text-[10px] text-muted-foreground tabular-nums">
-                        {sharePct}%
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+            <TooltipProvider delayDuration={150}>
+              <div
+                className="grid items-end gap-3"
+                style={{
+                  gridTemplateColumns: `repeat(${stages!.length}, minmax(0, 1fr))`,
+                  height: 280,
+                }}
+              >
+                {stages!.map((s) => {
+                  const pct = (s.count / maxCount) * 100;
+                  const sharePct = total > 0 ? Math.round((s.count / total) * 1000) / 10 : 0;
+                  const barHeight = barsReady ? `${Math.max(pct, 2)}%` : "0%";
+                  return (
+                    <Tooltip key={s.id}>
+                      <TooltipTrigger asChild>
+                        <div className="h-full flex flex-col items-center justify-end gap-2 min-w-0 cursor-default">
+                          <div className="text-xs font-semibold tabular-nums">{s.count}</div>
+                          <div className="w-full flex-1 flex items-end">
+                            <div
+                              className="w-full rounded-t-md transition-[height] duration-700 ease-out"
+                              style={{
+                                height: barHeight,
+                                background: s.color,
+                                minHeight: barsReady ? 4 : 0,
+                              }}
+                            />
+                          </div>
+                          <div className="w-full flex flex-col items-center gap-0.5">
+                            <div className="flex items-center gap-1 min-w-0 w-full justify-center">
+                              <span
+                                className="h-2 w-2 rounded-full shrink-0"
+                                style={{ background: s.color }}
+                              />
+                              <span className="text-[11px] truncate text-center">
+                                {s.name}
+                              </span>
+                            </div>
+                            <span className="text-[10px] text-muted-foreground tabular-nums">
+                              {sharePct}%
+                            </span>
+                          </div>
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" sideOffset={6} className="space-y-1">
+                        <div className="font-medium text-sm">{s.name}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {s.count} leads ({sharePct}% do total)
+                        </div>
+                      </TooltipContent>
+                    </Tooltip>
+                  );
+                })}
+              </div>
+            </TooltipProvider>
           )}
         </CardContent>
       </Card>
