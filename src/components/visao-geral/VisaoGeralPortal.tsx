@@ -1,9 +1,8 @@
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useMemo, useState } from "react";
 import {
   HardHat,
   Brain,
   Baby,
-  Megaphone,
   Activity,
   Stethoscope,
   ShieldCheck,
@@ -11,8 +10,14 @@ import {
   ChevronRight,
   ArrowLeft,
   LayoutDashboard,
+  AlertCircle,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { useKanbanBoards } from "@/hooks/useKanbanBoards";
+import { useNavigate } from "react-router-dom";
+import { FunnelBoardCard } from "@/components/funnel/FunnelBoardCard";
+import { FunnelTeamDialog } from "@/components/funnel/FunnelTeamDialog";
+import { WorkflowBuilder } from "@/components/workflow/WorkflowBuilder";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import GenericFunnelDashboard from "./GenericFunnelDashboard";
@@ -34,6 +39,8 @@ interface SelectorItem {
   /** Custom renderer (used by Acompanhamento Processual). */
   customRender?: () => React.ReactNode;
   accent: string;
+  /** If true, renders the same detailed panel used inside Funis de Vendas. */
+  useDetailedPanel?: boolean;
 }
 
 const SELECTORS: SelectorItem[] = [
@@ -54,6 +61,7 @@ const SELECTORS: SelectorItem[] = [
     group: "funnel",
     boardMatcher: /bpc|autis/i,
     accent: "from-indigo-500/15 to-indigo-500/0 text-indigo-600",
+    useDetailedPanel: true,
   },
   {
     id: "auxilio-maternidade",
@@ -63,15 +71,6 @@ const SELECTORS: SelectorItem[] = [
     group: "funnel",
     boardMatcher: /maternidade/i,
     accent: "from-pink-500/15 to-pink-500/0 text-pink-600",
-  },
-  {
-    id: "gestao-marketing",
-    label: "Gestão Marketing",
-    description: "Funil de captação via tráfego pago e orgânico.",
-    icon: <Megaphone className="h-5 w-5" />,
-    group: "funnel",
-    boardMatcher: /marketing|gest[ãa]o.*marketing/i,
-    accent: "from-violet-500/15 to-violet-500/0 text-violet-600",
   },
   {
     id: "auxilio-acidente",
@@ -192,6 +191,10 @@ export default function VisaoGeralPortal() {
         <div>
           {active.customRender ? (
             active.customRender()
+          ) : active.useDetailedPanel && active.boardMatcher ? (
+            <Suspense fallback={<DashboardSkeleton />}>
+              <DetailedFunnelPanel boardMatcher={active.boardMatcher} />
+            </Suspense>
           ) : active.boardMatcher ? (
             <Suspense fallback={<DashboardSkeleton />}>
               <GenericFunnelDashboard
@@ -255,5 +258,69 @@ export default function VisaoGeralPortal() {
         </div>
       </section>
     </div>
+  );
+}
+
+function DetailedFunnelPanel({ boardMatcher }: { boardMatcher: RegExp }) {
+  const navigate = useNavigate();
+  const { boards, loading, fetchBoards } = useKanbanBoards();
+  const [teamBoard, setTeamBoard] = useState<{ id: string; name: string } | null>(null);
+  const [editBoardId, setEditBoardId] = useState<string | null>(null);
+  const [showBuilder, setShowBuilder] = useState(false);
+
+  const board = useMemo(
+    () =>
+      boards.find(
+        (b) => b.board_type === "funnel" && boardMatcher.test(b.name),
+      ) || null,
+    [boards, boardMatcher],
+  );
+
+  if (loading) return <DashboardSkeleton />;
+  if (!board) {
+    return (
+      <Card className="border-destructive/40">
+        <CardContent className="p-6 flex items-start gap-3">
+          <AlertCircle className="h-5 w-5 text-destructive mt-0.5" />
+          <div className="text-sm">
+            Funil não encontrado na base. Verifique o nome em Funis de Vendas.
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <>
+      <FunnelBoardCard
+        board={board}
+        expanded
+        onToggleExpand={() => {}}
+        onOpenKanban={() => navigate(`/leads?board=${board.id}`)}
+        onOpenTeam={() => setTeamBoard({ id: board.id, name: board.name })}
+        onEdit={() => {
+          setEditBoardId(board.id);
+          setShowBuilder(true);
+        }}
+      />
+
+      <WorkflowBuilder
+        open={showBuilder}
+        onOpenChange={setShowBuilder}
+        onWorkflowSaved={() => fetchBoards()}
+        initialEditBoardId={editBoardId}
+        initialCreateNew={false}
+        boardType="funnel"
+      />
+
+      {teamBoard && (
+        <FunnelTeamDialog
+          open={!!teamBoard}
+          onOpenChange={(o) => !o && setTeamBoard(null)}
+          boardId={teamBoard.id}
+          boardName={teamBoard.name}
+        />
+      )}
+    </>
   );
 }
