@@ -717,7 +717,7 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
             last_message: msg.message_text,
             last_message_at: msg.created_at,
             unread_count: !msg.read_at && msg.direction === 'inbound' ? 1 : 0,
-            messages: [msg],
+            messages: [msg as any],
             instance_name: msg.instance_name,
           });
         } else {
