@@ -191,6 +191,10 @@ export default function VisaoGeralPortal() {
         <div>
           {active.customRender ? (
             active.customRender()
+          ) : active.useDetailedPanel && active.boardMatcher ? (
+            <Suspense fallback={<DashboardSkeleton />}>
+              <DetailedFunnelPanel boardMatcher={active.boardMatcher} />
+            </Suspense>
           ) : active.boardMatcher ? (
             <Suspense fallback={<DashboardSkeleton />}>
               <GenericFunnelDashboard
