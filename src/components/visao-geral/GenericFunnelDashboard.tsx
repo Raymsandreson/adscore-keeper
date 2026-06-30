@@ -1,0 +1,232 @@
+import { useEffect, useState } from "react";
+import { db } from "@/integrations/supabase";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { RefreshCw, AlertCircle, ExternalLink } from "lucide-react";
+import { useKanbanBoards, type KanbanBoard } from "@/hooks/useKanbanBoards";
+import { Link } from "react-router-dom";
+
+interface StageCount {
+  id: string;
+  name: string;
+  color: string;
+  count: number;
+}
+
+interface Props {
+  /** Substring (case-insensitive) used to match the kanban board name. */
+  boardMatcher: RegExp;
+  /** Display title for this dashboard. */
+  title: string;
+}
+
+/**
+ * Lightweight, on-demand funnel dashboard.
+ * - Resolves the kanban board by name match.
+ * - Fetches lead counts per stage via head-count queries (no row download).
+ */
+export default function GenericFunnelDashboard({ boardMatcher, title }: Props) {
+  const { boards, loading: loadingBoards } = useKanbanBoards();
+  const [stages, setStages] = useState<StageCount[] | null>(null);
+  const [total, setTotal] = useState(0);
+  const [closedCount, setClosedCount] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [matchedBoard, setMatchedBoard] = useState<KanbanBoard | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  useEffect(() => {
+    if (loadingBoards) return;
+    const board =
+      boards.find((b) => b.board_type === "funnel" && boardMatcher.test(b.name)) || null;
+    setMatchedBoard(board);
+    if (!board) {
+      setLoading(false);
+      setError("Funil não encontrado na base. Verifique o nome em Funis de Vendas.");
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        // total per board (head+count avoids row download)
+        const totalResp = await db
+          .from("leads")
+          .select("id", { count: "exact", head: true })
+          .eq("board_id", board.id);
+        if (totalResp.error) throw totalResp.error;
+
+        const closedResp = await db
+          .from("leads")
+          .select("id", { count: "exact", head: true })
+          .eq("board_id", board.id)
+          .eq("lead_status", "closed");
+        if (closedResp.error) throw closedResp.error;
+
+        // counts per stage in parallel
+        const stagesArr = board.stages || [];
+        const perStage = await Promise.all(
+          stagesArr.map(async (s) => {
+            const { count, error } = await db
+              .from("leads")
+              .select("id", { count: "exact", head: true })
+              .eq("board_id", board.id)
+              .eq("status", s.id);
+            if (error) throw error;
+            return {
+              id: s.id,
+              name: s.name,
+              color: s.color || "#6366f1",
+              count: count || 0,
+            };
+          }),
+        );
+        if (cancelled) return;
+        setTotal(totalResp.count || 0);
+        setClosedCount(closedResp.count || 0);
+        setStages(perStage);
+      } catch (e: any) {
+        if (cancelled) return;
+        console.error("[GenericFunnelDashboard]", e);
+        setError(e?.message || "Falha ao carregar métricas");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [boards, loadingBoards, boardMatcher, reloadKey]);
+
+  if (loadingBoards || loading) {
+    return (
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-24 rounded-lg" />
+          ))}
+        </div>
+        <Skeleton className="h-64 rounded-lg" />
+      </div>
+    );
+  }
+
+  if (error || !matchedBoard) {
+    return (
+      <Card className="border-destructive/40">
+        <CardContent className="p-6 flex items-start gap-3">
+          <AlertCircle className="h-5 w-5 text-destructive mt-0.5" />
+          <div className="space-y-2">
+            <div className="font-medium">{title}</div>
+            <p className="text-sm text-muted-foreground">{error}</p>
+            <Button size="sm" variant="outline" onClick={() => setReloadKey((k) => k + 1)}>
+              <RefreshCw className="h-3.5 w-3.5 mr-2" /> Tentar novamente
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const maxCount = Math.max(1, ...(stages || []).map((s) => s.count));
+  const conv = total > 0 ? Math.round((closedCount / total) * 1000) / 10 : 0;
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <div className="text-xs text-muted-foreground uppercase tracking-wide">Funil</div>
+          <h2 className="text-xl font-semibold">{matchedBoard.name}</h2>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={() => setReloadKey((k) => k + 1)}>
+            <RefreshCw className="h-3.5 w-3.5 mr-2" /> Atualizar
+          </Button>
+          <Button size="sm" variant="outline" asChild>
+            <Link to={`/leads?board=${matchedBoard.id}`}>
+              <ExternalLink className="h-3.5 w-3.5 mr-2" /> Abrir Kanban
+            </Link>
+          </Button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <KpiCard label="Leads no funil" value={total} />
+        <KpiCard label="Fechados" value={closedCount} tone="success" />
+        <KpiCard label="Conversão" value={`${conv}%`} tone="primary" />
+        <KpiCard label="Etapas" value={(stages || []).length} />
+      </div>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Distribuição por etapa</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {(stages || []).length === 0 ? (
+            <p className="text-sm text-muted-foreground">Sem etapas configuradas.</p>
+          ) : (
+            stages!.map((s) => {
+              const pct = (s.count / maxCount) * 100;
+              const sharePct = total > 0 ? Math.round((s.count / total) * 1000) / 10 : 0;
+              return (
+                <div key={s.id} className="space-y-1">
+                  <div className="flex items-center justify-between text-sm">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span
+                        className="h-2.5 w-2.5 rounded-full shrink-0"
+                        style={{ background: s.color }}
+                      />
+                      <span className="truncate">{s.name}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <span>{sharePct}%</span>
+                      <Badge variant="secondary" className="tabular-nums">
+                        {s.count}
+                      </Badge>
+                    </div>
+                  </div>
+                  <div className="h-2 rounded-full bg-muted overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all"
+                      style={{ width: `${pct}%`, background: s.color }}
+                    />
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function KpiCard({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string | number;
+  tone?: "primary" | "success";
+}) {
+  const color =
+    tone === "primary"
+      ? "text-primary"
+      : tone === "success"
+        ? "text-emerald-600 dark:text-emerald-400"
+        : "text-foreground";
+  return (
+    <Card>
+      <CardContent className="p-4">
+        <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</div>
+        <div className={`mt-1 text-2xl font-semibold tabular-nums ${color}`}>{value}</div>
+      </CardContent>
+    </Card>
+  );
+}
