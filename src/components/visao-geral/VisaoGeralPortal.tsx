@@ -260,3 +260,67 @@ export default function VisaoGeralPortal() {
     </div>
   );
 }
+
+function DetailedFunnelPanel({ boardMatcher }: { boardMatcher: RegExp }) {
+  const navigate = useNavigate();
+  const { boards, loading, fetchBoards } = useKanbanBoards();
+  const [teamBoard, setTeamBoard] = useState<{ id: string; name: string } | null>(null);
+  const [editBoardId, setEditBoardId] = useState<string | null>(null);
+  const [showBuilder, setShowBuilder] = useState(false);
+
+  const board = useMemo(
+    () =>
+      boards.find(
+        (b) => b.board_type === "funnel" && boardMatcher.test(b.name),
+      ) || null,
+    [boards, boardMatcher],
+  );
+
+  if (loading) return <DashboardSkeleton />;
+  if (!board) {
+    return (
+      <Card className="border-destructive/40">
+        <CardContent className="p-6 flex items-start gap-3">
+          <AlertCircle className="h-5 w-5 text-destructive mt-0.5" />
+          <div className="text-sm">
+            Funil não encontrado na base. Verifique o nome em Funis de Vendas.
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <>
+      <FunnelBoardCard
+        board={board}
+        expanded
+        onToggleExpand={() => {}}
+        onOpenKanban={() => navigate(`/leads?board=${board.id}`)}
+        onOpenTeam={() => setTeamBoard({ id: board.id, name: board.name })}
+        onEdit={() => {
+          setEditBoardId(board.id);
+          setShowBuilder(true);
+        }}
+      />
+
+      <WorkflowBuilder
+        open={showBuilder}
+        onOpenChange={setShowBuilder}
+        onWorkflowSaved={() => fetchBoards()}
+        initialEditBoardId={editBoardId}
+        initialCreateNew={false}
+        boardType="funnel"
+      />
+
+      {teamBoard && (
+        <FunnelTeamDialog
+          open={!!teamBoard}
+          onOpenChange={(o) => !o && setTeamBoard(null)}
+          boardId={teamBoard.id}
+          boardName={teamBoard.name}
+        />
+      )}
+    </>
+  );
+}
