@@ -90,7 +90,7 @@ export default function GenericFunnelDashboard({ boardMatcher, title }: Props) {
               id: s.id,
               name: s.name,
               color: s.color || "#6366f1",
-              hoje              count: count || 0,
+              count: count || 0,
             };
           }),
         );
