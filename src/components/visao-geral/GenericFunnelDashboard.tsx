@@ -7,6 +7,12 @@ import { Button } from "@/components/ui/button";
 import { RefreshCw, AlertCircle, ExternalLink } from "lucide-react";
 import { useKanbanBoards, type KanbanBoard } from "@/hooks/useKanbanBoards";
 import { Link } from "react-router-dom";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface StageCount {
   id: string;
