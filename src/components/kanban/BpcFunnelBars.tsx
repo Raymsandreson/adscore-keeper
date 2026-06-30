@@ -31,6 +31,12 @@ interface BpcFunnelBarsProps {
 // planilha (apenas na primeira etapa, descontando o que já saiu pra `leads`).
 export function BpcFunnelBars({ board, metrics, loading, onOpenList, onSelectStage, leadsPerStage }: BpcFunnelBarsProps) {
   const stages = useMemo(() => board.stages || [], [board.stages]);
+  const [barsReady, setBarsReady] = useState(false);
+  useEffect(() => {
+    if (loading) { setBarsReady(false); return; }
+    const t = setTimeout(() => setBarsReady(true), 80);
+    return () => clearTimeout(t);
+  }, [loading, leadsPerStage, board.id]);
 
   const funnelData = useMemo(() => {
     const firstId = stages.find((s) => s.id === 'new')?.id ?? stages[0]?.id;
