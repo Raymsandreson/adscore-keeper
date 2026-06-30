@@ -162,8 +162,18 @@ function SelectorCard({
 }
 
 export default function VisaoGeralPortal() {
-  const [activeId, setActiveId] = useState<string | null>("bpc-autismo");
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const navigate = useNavigate();
+  const { boards } = useKanbanBoards();
   const active = activeId ? SELECTORS.find((s) => s.id === activeId) : null;
+
+  // Abre direto o painel detalhado do BPC (segunda tela).
+  useEffect(() => {
+    const bpc = boards.find(
+      (b) => b.board_type === "funnel" && /bpc|autis/i.test(b.name),
+    );
+    if (bpc) navigate(`/sales-funnels/bpc/${bpc.id}`, { replace: true });
+  }, [boards, navigate]);
 
   const funnelItems = SELECTORS.filter((s) => s.group === "funnel");
   const processItems = SELECTORS.filter((s) => s.group === "process");
