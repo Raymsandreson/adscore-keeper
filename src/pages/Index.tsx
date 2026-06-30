@@ -1,6 +1,6 @@
 import { useAuthContext } from "@/contexts/AuthContext";
 import { AuthForm } from "@/components/auth/AuthForm";
-import Dashboard from "@/components/Dashboard";
+import VisaoGeralPortal from "@/components/visao-geral/VisaoGeralPortal";
 import { Loader2, WifiOff, RefreshCw } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useEffect } from "react";
