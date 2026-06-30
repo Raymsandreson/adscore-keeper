@@ -685,9 +685,11 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
       }
 
       const phones = [...new Set(shares.map(s => s.phone))];
+      // Egress: evitar select('*') (metadata jsonb pesado). Buscar só o que a
+      // construção da lista usa abaixo.
       const { data: msgs } = await supabase
         .from('whatsapp_messages')
-        .select('*')
+        .select('id, phone, contact_name, contact_id, lead_id, message_text, message_type, media_url, direction, read_at, created_at, instance_name')
         .in('phone', phones)
         .order('created_at', { ascending: false })
         .limit(500);
@@ -715,11 +717,11 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
             last_message: msg.message_text,
             last_message_at: msg.created_at,
             unread_count: !msg.read_at && msg.direction === 'inbound' ? 1 : 0,
-            messages: [msg],
+            messages: [msg as any],
             instance_name: msg.instance_name,
           });
         } else {
-          existing.messages.push(msg);
+          existing.messages.push(msg as any);
           if (!msg.read_at && msg.direction === 'inbound') existing.unread_count++;
           if (!existing.contact_name && msg.contact_name) existing.contact_name = msg.contact_name;
           if (!existing.contact_id && msg.contact_id) existing.contact_id = msg.contact_id;
