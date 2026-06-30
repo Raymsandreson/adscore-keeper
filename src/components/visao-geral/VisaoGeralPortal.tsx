@@ -162,11 +162,26 @@ function SelectorCard({
 }
 
 export default function VisaoGeralPortal() {
-  const [activeId, setActiveId] = useState<string | null>("bpc-autismo");
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const navigate = useNavigate();
+  const { boards } = useKanbanBoards();
   const active = activeId ? SELECTORS.find((s) => s.id === activeId) : null;
 
   const funnelItems = SELECTORS.filter((s) => s.group === "funnel");
   const processItems = SELECTORS.filter((s) => s.group === "process");
+
+  const handleSelect = (id: string) => {
+    if (id === "bpc-autismo") {
+      const bpc = boards.find(
+        (b) => b.board_type === "funnel" && /bpc|autis/i.test(b.name),
+      );
+      if (bpc) {
+        navigate(`/sales-funnels/bpc/${bpc.id}`);
+        return;
+      }
+    }
+    setActiveId(id);
+  };
 
   if (active) {
     return (
@@ -234,7 +249,7 @@ export default function VisaoGeralPortal() {
             <SelectorCard
               key={item.id}
               item={item}
-              onClick={() => setActiveId(item.id)}
+              onClick={() => handleSelect(item.id)}
             />
           ))}
         </div>
@@ -252,7 +267,7 @@ export default function VisaoGeralPortal() {
             <SelectorCard
               key={item.id}
               item={item}
-              onClick={() => setActiveId(item.id)}
+              onClick={() => handleSelect(item.id)}
             />
           ))}
         </div>
