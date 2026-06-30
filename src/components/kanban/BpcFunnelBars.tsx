@@ -74,7 +74,7 @@ export function BpcFunnelBars({ board, metrics, loading, onOpenList, onSelectSta
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
           </div>
         ) : (
-          <div className="flex items-end gap-2 h-64 px-2">
+          <div className="flex items-stretch gap-2 h-64 px-2">
             {funnelData.map((stage) => {
               const clickable = stage.value > 0;
               const pct = Math.round((stage.value / stage.maxValue) * 100);
