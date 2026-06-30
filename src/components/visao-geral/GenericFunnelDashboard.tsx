@@ -42,6 +42,7 @@ export default function GenericFunnelDashboard({ boardMatcher, title }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [matchedBoard, setMatchedBoard] = useState<KanbanBoard | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [barsReady, setBarsReady] = useState(false);
 
   useEffect(() => {
     if (loadingBoards) return;
@@ -55,6 +56,8 @@ export default function GenericFunnelDashboard({ boardMatcher, title }: Props) {
     }
 
     let cancelled = false;
+    let timeoutId: ReturnType<typeof setTimeout>;
+    setBarsReady(false);
     (async () => {
       setLoading(true);
       setError(null);
@@ -87,7 +90,7 @@ export default function GenericFunnelDashboard({ boardMatcher, title }: Props) {
               id: s.id,
               name: s.name,
               color: s.color || "#6366f1",
-              count: count || 0,
+              hoje              count: count || 0,
             };
           }),
         );
@@ -95,6 +98,7 @@ export default function GenericFunnelDashboard({ boardMatcher, title }: Props) {
         setTotal(totalResp.count || 0);
         setClosedCount(closedResp.count || 0);
         setStages(perStage);
+        timeoutId = setTimeout(() => setBarsReady(true), 60);
       } catch (e: any) {
         if (cancelled) return;
         console.error("[GenericFunnelDashboard]", e);
@@ -106,6 +110,7 @@ export default function GenericFunnelDashboard({ boardMatcher, title }: Props) {
 
     return () => {
       cancelled = true;
+      clearTimeout(timeoutId);
     };
   }, [boards, loadingBoards, boardMatcher, reloadKey]);
 
