@@ -39,6 +39,8 @@ interface SelectorItem {
   /** Custom renderer (used by Acompanhamento Processual). */
   customRender?: () => React.ReactNode;
   accent: string;
+  /** If true, renders the same detailed panel used inside Funis de Vendas. */
+  useDetailedPanel?: boolean;
 }
 
 const SELECTORS: SelectorItem[] = [
