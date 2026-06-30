@@ -59,6 +59,7 @@ const SELECTORS: SelectorItem[] = [
     group: "funnel",
     boardMatcher: /bpc|autis/i,
     accent: "from-indigo-500/15 to-indigo-500/0 text-indigo-600",
+    useDetailedPanel: true,
   },
   {
     id: "auxilio-maternidade",
