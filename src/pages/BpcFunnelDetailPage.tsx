@@ -56,7 +56,7 @@ const BpcFunnelDetailPage = () => {
   const board = useMemo(() => boards.find(b => b.id === boardId), [boards, boardId]);
 
   const [dateField, setDateField] = useState<DateField>("created_at");
-  const [rangePreset, setRangePreset] = useState<RangePreset>("30d");
+  const [rangePreset, setRangePreset] = useState<RangePreset>("all");
   const [customRange, setCustomRange] = useState<{ from?: Date; to?: Date }>({});
   // Multi-select. Vazio = todos. "__none__" = sem acolhedor. Outros = nome (case-insensitive).
   const [selectedAcolhedores, setSelectedAcolhedores] = useState<string[]>([]);
