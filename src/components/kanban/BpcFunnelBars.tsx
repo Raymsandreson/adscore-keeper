@@ -52,8 +52,6 @@ export function BpcFunnelBars({ board, metrics, loading, onOpenList, onSelectSta
     return data.map((stage) => ({ ...stage, maxValue }));
   }, [stages, metrics.total, leadsPerStage]);
 
-  
-
   if (!stages.length) return null;
 
   return (
@@ -70,15 +68,16 @@ export function BpcFunnelBars({ board, metrics, loading, onOpenList, onSelectSta
           Leads da planilha BPC-LOAS (BASE_UNIFICADA)
         </CardDescription>
       </CardHeader>
-      <CardContent className="pt-2 space-y-3">
+      <CardContent className="pt-2 space-y-4">
         {loading ? (
           <div className="flex items-center justify-center py-6">
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
           </div>
         ) : (
-          <div className="space-y-1.5">
+          <div className="flex items-end gap-2 h-64 px-2">
             {funnelData.map((stage) => {
               const clickable = stage.value > 0;
+              const pct = Math.round((stage.value / stage.maxValue) * 100);
               const handleClick = clickable
                 ? () => {
                     if (onSelectStage) {
@@ -92,21 +91,28 @@ export function BpcFunnelBars({ board, metrics, loading, onOpenList, onSelectSta
                 <div
                   key={stage.id}
                   className={cn(
-                    "flex items-center gap-3 p-1.5 rounded-lg transition-colors",
-                    clickable ? "cursor-pointer hover:bg-muted/30" : "opacity-50"
+                    "flex flex-col items-center gap-1 flex-1 min-w-0",
+                    clickable ? "cursor-pointer" : "opacity-50"
                   )}
                   onClick={handleClick}
                   title={clickable ? `Ver leads em "${stage.name}"` : undefined}
                 >
-                  <div className="flex-1 min-w-0">
+                  <span className="text-[10px] font-semibold tabular-nums text-foreground">
+                    {stage.value}
+                  </span>
+                  <div className="w-full flex-1 flex items-end rounded-t-md overflow-hidden bg-muted/40">
                     <div
-                      className="h-8 rounded-md flex items-center justify-between px-2.5 transition-all duration-300 whitespace-nowrap"
-                      style={{ width: `${(stage.value / stage.maxValue) * 100}%`, minWidth: 'fit-content', backgroundColor: '#3B82F6' }}
-                    >
-                      <span className="text-white text-[11px] font-medium mr-1">{stage.name}</span>
-                      <span className="text-white text-xs font-bold shrink-0">{stage.value}</span>
-                    </div>
+                      className="w-full rounded-t-md transition-all duration-500"
+                      style={{
+                        height: `${pct}%`,
+                        backgroundColor: stage.color || '#3B82F6',
+                        minHeight: stage.value > 0 ? 4 : 0,
+                      }}
+                    />
                   </div>
+                  <span className="text-[10px] text-muted-foreground text-center leading-tight truncate w-full px-0.5">
+                    {stage.name}
+                  </span>
                 </div>
               );
             })}
