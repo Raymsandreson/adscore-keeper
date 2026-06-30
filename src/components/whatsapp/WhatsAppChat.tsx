@@ -19,6 +19,7 @@ import { DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, Dropdow
 import { useWhatsAppInternalNotes } from '@/hooks/useWhatsAppInternalNotes';
 import { openZapSignDialog } from '@/lib/zapsignDialogEvent';
 import { bindDownload } from '@/lib/downloadFile';
+import { mediaThumb, mediaPreview } from '@/lib/whatsappMediaTransform';
 import { SessionFieldEditor } from './SessionFieldEditor';
 import { GroupMembersDialog } from './GroupMembersDialog';
 import { WhatsAppConversationShareDialog } from './WhatsAppConversationShareDialog';
@@ -3048,7 +3049,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                       title={item.message_text || item.message_type}
                     >
                       {item.message_type === 'image' ? (
-                        <img src={item.media_url} alt="" className="h-full w-full object-cover" loading="lazy" />
+                        <img src={mediaThumb(item.media_url, 160)} alt="" className="h-full w-full object-cover" loading="lazy" />
                       ) : (
                         <div className="h-full w-full flex flex-col items-center justify-center gap-0.5">
                           <FileText className="h-5 w-5 text-muted-foreground" />
@@ -3551,7 +3552,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                       className="block"
                     >
                       <img
-                        src={msg.media_url}
+                        src={mediaPreview(msg.media_url, 640)}
                         alt="Imagem"
                         className="max-w-full rounded-lg max-h-[320px] w-auto object-contain cursor-zoom-in bg-black/5"
                         loading="lazy"
