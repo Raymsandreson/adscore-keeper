@@ -91,7 +91,7 @@ export function BpcFunnelBars({ board, metrics, loading, onOpenList, onSelectSta
                 <div
                   key={stage.id}
                   className={cn(
-                    "flex flex-col items-center gap-1 flex-1 min-w-0",
+                    "flex flex-col items-center gap-1 flex-1 min-w-0 h-full",
                     clickable ? "cursor-pointer" : "opacity-50"
                   )}
                   onClick={handleClick}
@@ -102,11 +102,11 @@ export function BpcFunnelBars({ board, metrics, loading, onOpenList, onSelectSta
                   </span>
                   <div className="w-full flex-1 flex items-end rounded-t-md overflow-hidden bg-muted/40">
                     <div
-                      className="w-full rounded-t-md transition-all duration-500"
+                      className="w-full rounded-t-md transition-[height] duration-700 ease-out"
                       style={{
-                        height: `${pct}%`,
+                        height: barsReady ? `${pct}%` : '0%',
                         backgroundColor: stage.color || '#3B82F6',
-                        minHeight: stage.value > 0 ? 4 : 0,
+                        minHeight: barsReady && stage.value > 0 ? 4 : 0,
                       }}
                     />
                   </div>
