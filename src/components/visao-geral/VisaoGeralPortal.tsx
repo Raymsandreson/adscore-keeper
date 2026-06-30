@@ -162,7 +162,7 @@ function SelectorCard({
 }
 
 export default function VisaoGeralPortal() {
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const [activeId, setActiveId] = useState<string | null>("bpc-autismo");
   const active = activeId ? SELECTORS.find((s) => s.id === activeId) : null;
 
   const funnelItems = SELECTORS.filter((s) => s.group === "funnel");
