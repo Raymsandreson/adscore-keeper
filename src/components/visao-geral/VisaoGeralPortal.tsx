@@ -70,15 +70,6 @@ const SELECTORS: SelectorItem[] = [
     accent: "from-pink-500/15 to-pink-500/0 text-pink-600",
   },
   {
-    id: "gestao-marketing",
-    label: "Gestão Marketing",
-    description: "Funil de captação via tráfego pago e orgânico.",
-    icon: <Megaphone className="h-5 w-5" />,
-    group: "funnel",
-    boardMatcher: /marketing|gest[ãa]o.*marketing/i,
-    accent: "from-violet-500/15 to-violet-500/0 text-violet-600",
-  },
-  {
     id: "auxilio-acidente",
     label: "Auxílio Acidente",
     description: "Funil de auxílio acidente.",
