@@ -166,39 +166,55 @@ export default function GenericFunnelDashboard({ boardMatcher, title }: Props) {
         <CardHeader className="pb-3">
           <CardTitle className="text-base">Distribuição por etapa</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-2">
+        <CardContent>
           {(stages || []).length === 0 ? (
             <p className="text-sm text-muted-foreground">Sem etapas configuradas.</p>
           ) : (
-            stages!.map((s) => {
-              const pct = (s.count / maxCount) * 100;
-              const sharePct = total > 0 ? Math.round((s.count / total) * 1000) / 10 : 0;
-              return (
-                <div key={s.id} className="space-y-1">
-                  <div className="flex items-center justify-between text-sm">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span
-                        className="h-2.5 w-2.5 rounded-full shrink-0"
-                        style={{ background: s.color }}
+            <div
+              className="grid items-end gap-3"
+              style={{
+                gridTemplateColumns: `repeat(${stages!.length}, minmax(0, 1fr))`,
+                height: 280,
+              }}
+            >
+              {stages!.map((s) => {
+                const pct = (s.count / maxCount) * 100;
+                const sharePct = total > 0 ? Math.round((s.count / total) * 1000) / 10 : 0;
+                return (
+                  <div
+                    key={s.id}
+                    className="h-full flex flex-col items-center justify-end gap-2 min-w-0"
+                    title={`${s.name}: ${s.count} (${sharePct}%)`}
+                  >
+                    <div className="text-xs font-semibold tabular-nums">{s.count}</div>
+                    <div className="w-full flex-1 flex items-end">
+                      <div
+                        className="w-full rounded-t-md transition-all duration-500"
+                        style={{
+                          height: `${Math.max(pct, 2)}%`,
+                          background: s.color,
+                          minHeight: 4,
+                        }}
                       />
-                      <span className="truncate">{s.name}</span>
                     </div>
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <span>{sharePct}%</span>
-                      <Badge variant="secondary" className="tabular-nums">
-                        {s.count}
-                      </Badge>
+                    <div className="w-full flex flex-col items-center gap-0.5">
+                      <div className="flex items-center gap-1 min-w-0 w-full justify-center">
+                        <span
+                          className="h-2 w-2 rounded-full shrink-0"
+                          style={{ background: s.color }}
+                        />
+                        <span className="text-[11px] truncate text-center" title={s.name}>
+                          {s.name}
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-muted-foreground tabular-nums">
+                        {sharePct}%
+                      </span>
                     </div>
                   </div>
-                  <div className="h-2 rounded-full bg-muted overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-all"
-                      style={{ width: `${pct}%`, background: s.color }}
-                    />
-                  </div>
-                </div>
-              );
-            })
+                );
+              })}
+            </div>
           )}
         </CardContent>
       </Card>
