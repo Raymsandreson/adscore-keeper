@@ -53,7 +53,7 @@ const Index = () => {
     return <AuthForm />;
   }
 
-  return <Dashboard />;
+  return <VisaoGeralPortal />;
 };
 
 export default Index;
