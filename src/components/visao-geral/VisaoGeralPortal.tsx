@@ -1,9 +1,8 @@
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useMemo, useState } from "react";
 import {
   HardHat,
   Brain,
   Baby,
-  Megaphone,
   Activity,
   Stethoscope,
   ShieldCheck,
@@ -11,8 +10,14 @@ import {
   ChevronRight,
   ArrowLeft,
   LayoutDashboard,
+  AlertCircle,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { useKanbanBoards } from "@/hooks/useKanbanBoards";
+import { useNavigate } from "react-router-dom";
+import { FunnelBoardCard } from "@/components/funnel/FunnelBoardCard";
+import { FunnelTeamDialog } from "@/components/funnel/FunnelTeamDialog";
+import { WorkflowBuilder } from "@/components/workflow/WorkflowBuilder";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import GenericFunnelDashboard from "./GenericFunnelDashboard";
