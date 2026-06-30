@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useMemo, useState } from "react";
 import {
   HardHat,
   Brain,
@@ -249,7 +249,7 @@ export default function VisaoGeralPortal() {
             <SelectorCard
               key={item.id}
               item={item}
-              onClick={() => setActiveId(item.id)}
+              onClick={() => handleSelect(item.id)}
             />
           ))}
         </div>
@@ -267,7 +267,7 @@ export default function VisaoGeralPortal() {
             <SelectorCard
               key={item.id}
               item={item}
-              onClick={() => setActiveId(item.id)}
+              onClick={() => handleSelect(item.id)}
             />
           ))}
         </div>
