@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Filter, Loader2 } from 'lucide-react';
@@ -31,6 +31,12 @@ interface BpcFunnelBarsProps {
 // planilha (apenas na primeira etapa, descontando o que já saiu pra `leads`).
 export function BpcFunnelBars({ board, metrics, loading, onOpenList, onSelectStage, leadsPerStage }: BpcFunnelBarsProps) {
   const stages = useMemo(() => board.stages || [], [board.stages]);
+  const [barsReady, setBarsReady] = useState(false);
+  useEffect(() => {
+    if (loading) { setBarsReady(false); return; }
+    const t = setTimeout(() => setBarsReady(true), 80);
+    return () => clearTimeout(t);
+  }, [loading, leadsPerStage, board.id]);
 
   const funnelData = useMemo(() => {
     const firstId = stages.find((s) => s.id === 'new')?.id ?? stages[0]?.id;
@@ -74,7 +80,7 @@ export function BpcFunnelBars({ board, metrics, loading, onOpenList, onSelectSta
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
           </div>
         ) : (
-          <div className="flex items-end gap-2 h-64 px-2">
+          <div className="flex items-stretch gap-2 h-64 px-2">
             {funnelData.map((stage) => {
               const clickable = stage.value > 0;
               const pct = Math.round((stage.value / stage.maxValue) * 100);
@@ -91,7 +97,7 @@ export function BpcFunnelBars({ board, metrics, loading, onOpenList, onSelectSta
                 <div
                   key={stage.id}
                   className={cn(
-                    "flex flex-col items-center gap-1 flex-1 min-w-0",
+                    "flex flex-col items-center gap-1 flex-1 min-w-0 h-full",
                     clickable ? "cursor-pointer" : "opacity-50"
                   )}
                   onClick={handleClick}
@@ -102,11 +108,11 @@ export function BpcFunnelBars({ board, metrics, loading, onOpenList, onSelectSta
                   </span>
                   <div className="w-full flex-1 flex items-end rounded-t-md overflow-hidden bg-muted/40">
                     <div
-                      className="w-full rounded-t-md transition-all duration-500"
+                      className="w-full rounded-t-md transition-[height] duration-700 ease-out"
                       style={{
-                        height: `${pct}%`,
+                        height: barsReady ? `${pct}%` : '0%',
                         backgroundColor: stage.color || '#3B82F6',
-                        minHeight: stage.value > 0 ? 4 : 0,
+                        minHeight: barsReady && stage.value > 0 ? 4 : 0,
                       }}
                     />
                   </div>
