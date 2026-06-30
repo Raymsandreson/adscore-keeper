@@ -167,16 +167,21 @@ export default function VisaoGeralPortal() {
   const { boards } = useKanbanBoards();
   const active = activeId ? SELECTORS.find((s) => s.id === activeId) : null;
 
-  // Abre direto o painel detalhado do BPC (segunda tela).
-  useEffect(() => {
-    const bpc = boards.find(
-      (b) => b.board_type === "funnel" && /bpc|autis/i.test(b.name),
-    );
-    if (bpc) navigate(`/sales-funnels/bpc/${bpc.id}`, { replace: true });
-  }, [boards, navigate]);
-
   const funnelItems = SELECTORS.filter((s) => s.group === "funnel");
   const processItems = SELECTORS.filter((s) => s.group === "process");
+
+  const handleSelect = (id: string) => {
+    if (id === "bpc-autismo") {
+      const bpc = boards.find(
+        (b) => b.board_type === "funnel" && /bpc|autis/i.test(b.name),
+      );
+      if (bpc) {
+        navigate(`/sales-funnels/bpc/${bpc.id}`);
+        return;
+      }
+    }
+    setActiveId(id);
+  };
 
   if (active) {
     return (
