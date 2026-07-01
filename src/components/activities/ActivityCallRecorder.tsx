@@ -341,7 +341,37 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
     setSilent(false);
     silentRef.current = false;
     setRecordingUrl(null);
+    setRecordingMime(null);
+    setAttached(false);
   }, [teardownAudio]);
+
+  const attachRecording = useCallback(async () => {
+    if (!recordingUrl || !activityId || attaching || attached) return;
+    setAttaching(true);
+    try {
+      const mime = recordingMime || 'audio/webm';
+      const ext = mime.includes('webm') ? 'webm' : 'mp4';
+      const { data: { user } } = await supabase.auth.getUser();
+      const extUserId = await remapToExternal(user?.id || null);
+      const { error: insErr } = await externalSupabase.from('activity_attachments').insert({
+        activity_id: activityId,
+        file_url: recordingUrl,
+        file_name: `Gravação da ligação.${ext}`,
+        file_type: mime,
+        attachment_type: 'audio',
+        created_by: extUserId,
+      });
+      if (insErr) throw insErr;
+      setAttached(true);
+      window.dispatchEvent(new CustomEvent('activity-attachments-changed', { detail: { activityId } }));
+      toast.success('Gravação anexada à atividade.');
+    } catch (e: any) {
+      console.error('[ActivityCallRecorder] anexar falhou:', e);
+      toast.error(e?.message || 'Não foi possível anexar a gravação.');
+    } finally {
+      setAttaching(false);
+    }
+  }, [recordingUrl, recordingMime, activityId, attaching, attached]);
 
   return (
     <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o && phase === 'done') reset(); }}>
