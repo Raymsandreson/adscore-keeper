@@ -11,6 +11,7 @@ import {
   ArrowLeft,
   LayoutDashboard,
   AlertCircle,
+  FileText,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { useKanbanBoards } from "@/hooks/useKanbanBoards";
