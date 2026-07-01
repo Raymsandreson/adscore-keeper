@@ -1221,7 +1221,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
     if (type?.startsWith('image') || msg.message_type === 'image') {
       return (
         <button type="button" onClick={() => setLightboxUrl(msg.media_url!)} className="block">
-          <img src={msg.media_url} alt="Imagem" className="max-w-[200px] max-h-[200px] rounded-md object-cover cursor-zoom-in" loading="lazy" />
+          <img src={mediaPreview(msg.media_url, 400)} alt="Imagem" className="max-w-[200px] max-h-[200px] rounded-md object-cover cursor-zoom-in" loading="lazy" />
         </button>
       );
     }
