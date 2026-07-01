@@ -459,6 +459,23 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
                 </ScrollArea>
               </div>
             )}
+            {recordingUrl && activityId && (
+              <Button
+                variant={attached ? 'outline' : 'default'}
+                className="w-full gap-2"
+                size="sm"
+                onClick={attachRecording}
+                disabled={attaching || attached}
+              >
+                {attaching ? (
+                  <><Loader2 className="h-4 w-4 animate-spin" /> Anexando…</>
+                ) : attached ? (
+                  <><Paperclip className="h-4 w-4" /> Áudio anexado à atividade</>
+                ) : (
+                  <><Paperclip className="h-4 w-4" /> Anexar áudio à atividade</>
+                )}
+              </Button>
+            )}
             {recordingUrl && (
               <Button
                 variant="outline"
