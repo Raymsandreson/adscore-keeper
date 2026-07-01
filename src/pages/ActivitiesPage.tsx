@@ -1524,7 +1524,8 @@ const ActivitiesPage = () => {
     activities.forEach(a => {
       // Usa deadline como chave principal; cai pra notification_date quando não há prazo
       // (ex: atividades concluídas sem prazo definido mas com data de notificação)
-      const key = a.deadline || (a as any).notification_date || null;
+      const raw = a.deadline || (a as any).notification_date || null;
+      const key = raw ? raw.slice(0, 10) : null;
       if (key) {
         if (!map[key]) map[key] = [];
         map[key].push(a);
