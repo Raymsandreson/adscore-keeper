@@ -228,16 +228,22 @@ export default function VisaoGeralPortal() {
 
   return (
     <div className="container mx-auto max-w-6xl px-4 py-8 space-y-8">
-      <header className="flex items-center gap-3">
-        <div className="h-11 w-11 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
-          <LayoutDashboard className="h-5 w-5" />
+      <header className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="h-11 w-11 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+            <LayoutDashboard className="h-5 w-5" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-semibold leading-tight">Visão Geral</h1>
+            <p className="text-sm text-muted-foreground">
+              Selecione um dashboard para carregar. Nada é processado até você abrir.
+            </p>
+          </div>
         </div>
-        <div>
-          <h1 className="text-2xl font-semibold leading-tight">Visão Geral</h1>
-          <p className="text-sm text-muted-foreground">
-            Selecione um dashboard para carregar. Nada é processado até você abrir.
-          </p>
-        </div>
+        <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setRelatorioOpen(true)}>
+          <FileText className="h-3.5 w-3.5" />
+          Relatório Diário
+        </Button>
       </header>
 
       <section className="space-y-3">
