@@ -23,7 +23,6 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import GenericFunnelDashboard from "./GenericFunnelDashboard";
 import { RelatorioDiarioUsuariosSheet } from "@/components/processual/RelatorioDiarioUsuariosSheet";
-import { Button } from "@/components/ui/button";
 
 const AcompanhamentoProcessualPage = lazy(
   () => import("@/pages/AcompanhamentoProcessualPage"),
