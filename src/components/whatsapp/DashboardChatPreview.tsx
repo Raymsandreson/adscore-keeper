@@ -566,7 +566,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
     try {
       const ext = file.name.split('.').pop() || 'bin';
       const path = `whatsapp-media/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
-      const { error: uploadError } = await supabase.storage.from('whatsapp-media').upload(path, file);
+      const { error: uploadError } = await supabase.storage.from('whatsapp-media').upload(path, file, { cacheControl: '2592000' });
       if (uploadError) throw uploadError;
       const { data: urlData } = supabase.storage.from('whatsapp-media').getPublicUrl(path);
       const mediaUrl = urlData.publicUrl;
@@ -635,7 +635,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
         try {
           const ext = recordedMime.includes('mp4') ? 'mp4' : 'webm';
           const path = `whatsapp-media/${Date.now()}_audio.${ext}`;
-          const { error: uploadError } = await supabase.storage.from('whatsapp-media').upload(path, blob);
+          const { error: uploadError } = await supabase.storage.from('whatsapp-media').upload(path, blob, { cacheControl: '2592000' });
           if (uploadError) throw uploadError;
           const { data: urlData } = supabase.storage.from('whatsapp-media').getPublicUrl(path);
           const mediaUrl = urlData.publicUrl;

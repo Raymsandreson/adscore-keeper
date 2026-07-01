@@ -2076,7 +2076,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     try {
       const ext = pastedImage.file.type.split('/')[1] || 'png';
       const path = `outbound/${Date.now()}_paste.${ext}`;
-      const { error: uploadError } = await supabase.storage.from('whatsapp-media').upload(path, pastedImage.file);
+      const { error: uploadError } = await supabase.storage.from('whatsapp-media').upload(path, pastedImage.file, { cacheControl: '2592000' });
       if (uploadError) throw uploadError;
       const { data: { publicUrl } } = supabase.storage.from('whatsapp-media').getPublicUrl(path);
       await onSendMedia(
@@ -2113,7 +2113,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     try {
       const ext = file.name.split('.').pop() || 'bin';
       const path = `outbound/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
-      const { error: uploadError } = await supabase.storage.from('whatsapp-media').upload(path, file);
+      const { error: uploadError } = await supabase.storage.from('whatsapp-media').upload(path, file, { cacheControl: '2592000' });
       if (uploadError) throw uploadError;
       const { data: { publicUrl } } = supabase.storage.from('whatsapp-media').getPublicUrl(path);
 
@@ -2160,7 +2160,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         setUploadingMedia(true);
         try {
           const path = `outbound/audio_${Date.now()}.${ext}`;
-          const { error: uploadError } = await supabase.storage.from('whatsapp-media').upload(path, blob, { contentType: outMime });
+          const { error: uploadError } = await supabase.storage.from('whatsapp-media').upload(path, blob, { cacheControl: '2592000', contentType: outMime });
           if (uploadError) throw uploadError;
           const { data: { publicUrl } } = supabase.storage.from('whatsapp-media').getPublicUrl(path);
           await onSendMedia(
