@@ -1490,17 +1490,27 @@ const ActivitiesPage = () => {
       // formAssignedTo é UUID do Cloud — precisa remapear antes de filtrar.
       const extAssignedTo = await remapToExternal(formAssignedTo);
       if (!extAssignedTo) { setter(null); return; }
-      const { count, error } = await externalSupabase
+      // Extrai apenas a parte da data (YYYY-MM-DD) caso venha com hora.
+      const dayStr = date.length >= 10 ? date.slice(0, 10) : date;
+      // notification_date é timestamp (tem hora) → precisa range do dia inteiro.
+      // deadline é DATE puro → eq funciona.
+      let query = externalSupabase
         .from('lead_activities')
         .select('id', { count: 'exact', head: true })
         .eq('assigned_to', extAssignedTo)
-        .eq(column, date)
         .neq('status', 'concluida');
+      if (column === 'notification_date') {
+        query = query.gte(column, `${dayStr}T00:00:00`).lt(column, `${dayStr}T23:59:59.999`);
+      } else {
+        query = query.eq(column, dayStr);
+      }
+      const { count, error } = await query;
       if (!error) setter(count ?? 0);
     };
     fetchDateCount(formDeadline, 'deadline', setDeadlineDateCount);
     fetchDateCount(formNotificationDate, 'notification_date', setNotifDateCount);
   }, [formDeadline, formNotificationDate, formAssignedTo]);
+
 
   // Calendar data
   const calendarDays = useMemo(() => {
