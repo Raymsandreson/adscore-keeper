@@ -281,6 +281,8 @@ export default function VisaoGeralPortal() {
           ))}
         </div>
       </section>
+
+      <RelatorioDiarioUsuariosSheet open={relatorioOpen} onOpenChange={setRelatorioOpen} />
     </div>
   );
 }
