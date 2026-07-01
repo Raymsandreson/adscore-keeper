@@ -3634,7 +3634,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                           className="block w-full rounded-lg overflow-hidden border bg-white cursor-zoom-in"
                         >
                           <img
-                            src={msg.media_url}
+                            src={mediaPreview(msg.media_url, 640)}
                             alt={fileName}
                             loading="lazy"
                             className="w-full max-h-[420px] object-contain bg-muted/30"
