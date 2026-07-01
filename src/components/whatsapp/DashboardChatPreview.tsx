@@ -18,6 +18,7 @@ import { ptBR } from 'date-fns/locale';
 import { Loader2, User, Send, MoreVertical, Link2, UserPlus, Plus, Scale, Sparkles, X, Users, Bot, BotOff, Paperclip, Image, FileUp, Lock, LockOpen, FileSignature, FileText, Volume2, VolumeX, BellOff, Trash2, FastForward, Mic } from 'lucide-react';
 import { Phone as PhoneIcon, PhoneIncoming, PhoneOutgoing, PhoneMissed } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { mediaPreview } from '@/lib/whatsappMediaTransform';
 import { toast } from 'sonner';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
