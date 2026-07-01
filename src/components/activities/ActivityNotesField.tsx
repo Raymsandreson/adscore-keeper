@@ -115,18 +115,6 @@ export function ActivityNotesField({ value, onChange, activityId, placeholder, l
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activityId]);
 
-  // Recarrega anexos quando outro componente (ex.: gravador de ligação) adiciona um novo.
-  useEffect(() => {
-    if (!activityId) return;
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      if (!detail || detail.activityId === activityId) fetchAttachments();
-    };
-    window.addEventListener('activity-attachments-changed', handler);
-    return () => window.removeEventListener('activity-attachments-changed', handler);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activityId]);
-
   const fetchAttachments = async () => {
     if (!activityId) return;
     const { data } = await externalSupabase
