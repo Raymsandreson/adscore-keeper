@@ -94,6 +94,9 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
   const [error, setError] = useState<string | null>(null);
   const [silent, setSilent] = useState(false);
   const [recordingUrl, setRecordingUrl] = useState<string | null>(null);
+  const [recordingMime, setRecordingMime] = useState<string | null>(null);
+  const [attaching, setAttaching] = useState(false);
+  const [attached, setAttached] = useState(false);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
