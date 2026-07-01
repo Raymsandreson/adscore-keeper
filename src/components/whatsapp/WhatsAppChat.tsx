@@ -45,6 +45,7 @@ import { logGroupAudit } from '@/lib/groupAuditLog';
 import { normalizeWhatsAppConversationPhone } from '@/lib/whatsappPhone';
 import { AITextActions } from '@/components/ui/AITextActions';
 import { StageLabelSelect } from '@/components/kanban/StageLabelSelect';
+import { LazyVideo } from '@/components/whatsapp/LazyVideo';
 
 const TREATMENT_OPTIONS = ['', 'Dr.', 'Dra.', 'Sr.', 'Sra.', 'Prof.', 'Profa.'];
 const NAME_FORMAT_OPTIONS = [
@@ -2075,7 +2076,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     try {
       const ext = pastedImage.file.type.split('/')[1] || 'png';
       const path = `outbound/${Date.now()}_paste.${ext}`;
-      const { error: uploadError } = await supabase.storage.from('whatsapp-media').upload(path, pastedImage.file);
+      const { error: uploadError } = await supabase.storage.from('whatsapp-media').upload(path, pastedImage.file, { cacheControl: '2592000' });
       if (uploadError) throw uploadError;
       const { data: { publicUrl } } = supabase.storage.from('whatsapp-media').getPublicUrl(path);
       await onSendMedia(
@@ -2112,7 +2113,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     try {
       const ext = file.name.split('.').pop() || 'bin';
       const path = `outbound/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
-      const { error: uploadError } = await supabase.storage.from('whatsapp-media').upload(path, file);
+      const { error: uploadError } = await supabase.storage.from('whatsapp-media').upload(path, file, { cacheControl: '2592000' });
       if (uploadError) throw uploadError;
       const { data: { publicUrl } } = supabase.storage.from('whatsapp-media').getPublicUrl(path);
 
@@ -2159,7 +2160,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         setUploadingMedia(true);
         try {
           const path = `outbound/audio_${Date.now()}.${ext}`;
-          const { error: uploadError } = await supabase.storage.from('whatsapp-media').upload(path, blob, { contentType: outMime });
+          const { error: uploadError } = await supabase.storage.from('whatsapp-media').upload(path, blob, { cacheControl: '2592000', contentType: outMime });
           if (uploadError) throw uploadError;
           const { data: { publicUrl } } = supabase.storage.from('whatsapp-media').getPublicUrl(path);
           await onSendMedia(
@@ -3588,9 +3589,12 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                 )}
                 {msg.message_type === 'video' && msg.media_url && !isEncUrl(msg.media_url) && (
                   <div className="mb-1">
-                    <video controls className="max-w-full rounded-lg max-h-[320px]" preload="metadata">
-                      <source src={msg.media_url} type={msg.media_type || 'video/mp4'} />
-                    </video>
+                    <LazyVideo
+                      src={msg.media_url}
+                      mimeType={msg.media_type || 'video/mp4'}
+                      className="max-w-full rounded-lg max-h-[320px]"
+                      posterClassName="rounded-lg w-[280px] h-[180px]"
+                    />
                     <button type="button" onClick={bindDownload(msg.media_url)} className="inline-flex items-center gap-1 text-[10px] mt-1 opacity-70 hover:opacity-100">
                       <Download className="h-3 w-3" /> Baixar vídeo
                     </button>

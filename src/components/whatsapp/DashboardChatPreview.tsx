@@ -31,6 +31,7 @@ import type { Lead } from '@/hooks/useLeads';
 import { isWhatsAppGroupId } from '@/lib/whatsappPhone';
 import type { Contact } from '@/hooks/useContacts';
 import { remapToExternal } from '@/integrations/supabase/uuid-remap';
+import { LazyVideo } from '@/components/whatsapp/LazyVideo';
 
 const TREATMENT_OPTIONS = ['', 'Dr.', 'Dra.', 'Sr.', 'Sra.', 'Prof.', 'Profa.'];
 const NAME_FORMAT_OPTIONS = [
@@ -565,7 +566,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
     try {
       const ext = file.name.split('.').pop() || 'bin';
       const path = `whatsapp-media/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
-      const { error: uploadError } = await supabase.storage.from('whatsapp-media').upload(path, file);
+      const { error: uploadError } = await supabase.storage.from('whatsapp-media').upload(path, file, { cacheControl: '2592000' });
       if (uploadError) throw uploadError;
       const { data: urlData } = supabase.storage.from('whatsapp-media').getPublicUrl(path);
       const mediaUrl = urlData.publicUrl;
@@ -634,7 +635,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
         try {
           const ext = recordedMime.includes('mp4') ? 'mp4' : 'webm';
           const path = `whatsapp-media/${Date.now()}_audio.${ext}`;
-          const { error: uploadError } = await supabase.storage.from('whatsapp-media').upload(path, blob);
+          const { error: uploadError } = await supabase.storage.from('whatsapp-media').upload(path, blob, { cacheControl: '2592000' });
           if (uploadError) throw uploadError;
           const { data: urlData } = supabase.storage.from('whatsapp-media').getPublicUrl(path);
           const mediaUrl = urlData.publicUrl;
@@ -1224,7 +1225,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
       );
     }
     if (type?.startsWith('video') || msg.message_type === 'video') {
-      return <video src={msg.media_url} controls className="max-w-[200px] max-h-[200px] rounded-md" />;
+      return <LazyVideo src={msg.media_url} mimeType={type || 'video/mp4'} className="max-w-[200px] max-h-[200px] rounded-md" posterClassName="rounded-md w-[200px] h-[160px]" />;
     }
     if (type?.startsWith('audio') || msg.message_type === 'audio') {
       return <audio src={msg.media_url} controls className="max-w-[220px]" />;
