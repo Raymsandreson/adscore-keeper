@@ -1558,7 +1558,8 @@ const ActivitiesPage = () => {
     }
     if (selectedCalDays.length > 0) {
       list = list.filter(a => {
-        const dateKey = a.deadline || a.notification_date;
+        const raw = a.deadline || a.notification_date;
+        const dateKey = raw ? raw.slice(0, 10) : null;
         return dateKey ? selectedCalDays.includes(dateKey) : false;
       });
     } else if (viewMode === 'list' && !filterStatus.includes('atrasada')) {
@@ -1567,7 +1568,8 @@ const ActivitiesPage = () => {
       // Atividades sem nenhuma data continuam visíveis (não têm lugar no calendário).
       const monthPrefix = format(calendarMonth, 'yyyy-MM');
       list = list.filter(a => {
-        const dateKey = a.deadline || a.notification_date;
+        const raw = a.deadline || a.notification_date;
+        const dateKey = raw ? raw.slice(0, 10) : null;
         return !dateKey || dateKey.startsWith(monthPrefix);
       });
     }
