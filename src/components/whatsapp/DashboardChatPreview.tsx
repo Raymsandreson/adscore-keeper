@@ -31,6 +31,7 @@ import type { Lead } from '@/hooks/useLeads';
 import { isWhatsAppGroupId } from '@/lib/whatsappPhone';
 import type { Contact } from '@/hooks/useContacts';
 import { remapToExternal } from '@/integrations/supabase/uuid-remap';
+import { LazyVideo } from '@/components/whatsapp/LazyVideo';
 
 const TREATMENT_OPTIONS = ['', 'Dr.', 'Dra.', 'Sr.', 'Sra.', 'Prof.', 'Profa.'];
 const NAME_FORMAT_OPTIONS = [

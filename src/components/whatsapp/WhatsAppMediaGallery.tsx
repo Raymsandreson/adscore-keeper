@@ -11,6 +11,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { MediaLightbox } from '@/components/whatsapp/MediaLightbox';
 import { bindDownload } from '@/lib/downloadFile';
 import { mediaThumb } from '@/lib/whatsappMediaTransform';
+import { LazyVideo } from '@/components/whatsapp/LazyVideo';
 
 interface Props {
   messages: WhatsAppMessage[];

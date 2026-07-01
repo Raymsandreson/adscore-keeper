@@ -45,6 +45,7 @@ import { logGroupAudit } from '@/lib/groupAuditLog';
 import { normalizeWhatsAppConversationPhone } from '@/lib/whatsappPhone';
 import { AITextActions } from '@/components/ui/AITextActions';
 import { StageLabelSelect } from '@/components/kanban/StageLabelSelect';
+import { LazyVideo } from '@/components/whatsapp/LazyVideo';
 
 const TREATMENT_OPTIONS = ['', 'Dr.', 'Dra.', 'Sr.', 'Sra.', 'Prof.', 'Profa.'];
 const NAME_FORMAT_OPTIONS = [
