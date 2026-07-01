@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Phone, Mic, Square, Loader2, Sparkles, Info, RotateCcw, Download } from 'lucide-react';
+import { Phone, Mic, Square, Loader2, Sparkles, Info, RotateCcw, Download, Paperclip } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
@@ -94,6 +94,9 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
   const [error, setError] = useState<string | null>(null);
   const [silent, setSilent] = useState(false);
   const [recordingUrl, setRecordingUrl] = useState<string | null>(null);
+  const [recordingMime, setRecordingMime] = useState<string | null>(null);
+  const [attaching, setAttaching] = useState(false);
+  const [attached, setAttached] = useState(false);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -228,24 +231,8 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
       const { data: urlData } = supabase.storage.from('activity-chat').getPublicUrl(path);
       const audio_url = urlData.publicUrl;
       setRecordingUrl(audio_url);
-
-      // Guarda a gravação como anexo de áudio da atividade (consulta/análise posterior).
-      if (activityId) {
-        try {
-          const { data: { user } } = await supabase.auth.getUser();
-          const extUserId = await remapToExternal(user?.id || null);
-          await externalSupabase.from('activity_attachments').insert({
-            activity_id: activityId,
-            file_url: audio_url,
-            file_name: `Gravação da ligação.${ext}`,
-            file_type: mime,
-            attachment_type: 'audio',
-            created_by: extUserId,
-          });
-        } catch (attErr) {
-          console.warn('[ActivityCallRecorder] não foi possível anexar a gravação:', attErr);
-        }
-      }
+      setRecordingMime(mime);
+      setAttached(false);
 
       // Busca contexto extra para a IA combinar (histórico do processo + mensagens da atividade).
       let previousActivities: any[] = [];
@@ -354,7 +341,37 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
     setSilent(false);
     silentRef.current = false;
     setRecordingUrl(null);
+    setRecordingMime(null);
+    setAttached(false);
   }, [teardownAudio]);
+
+  const attachRecording = useCallback(async () => {
+    if (!recordingUrl || !activityId || attaching || attached) return;
+    setAttaching(true);
+    try {
+      const mime = recordingMime || 'audio/webm';
+      const ext = mime.includes('webm') ? 'webm' : 'mp4';
+      const { data: { user } } = await supabase.auth.getUser();
+      const extUserId = await remapToExternal(user?.id || null);
+      const { error: insErr } = await externalSupabase.from('activity_attachments').insert({
+        activity_id: activityId,
+        file_url: recordingUrl,
+        file_name: `Gravação da ligação.${ext}`,
+        file_type: mime,
+        attachment_type: 'audio',
+        created_by: extUserId,
+      });
+      if (insErr) throw insErr;
+      setAttached(true);
+      window.dispatchEvent(new CustomEvent('activity-attachments-changed', { detail: { activityId } }));
+      toast.success('Gravação anexada à atividade.');
+    } catch (e: any) {
+      console.error('[ActivityCallRecorder] anexar falhou:', e);
+      toast.error(e?.message || 'Não foi possível anexar a gravação.');
+    } finally {
+      setAttaching(false);
+    }
+  }, [recordingUrl, recordingMime, activityId, attaching, attached]);
 
   return (
     <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o && phase === 'done') reset(); }}>
@@ -441,6 +458,23 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
                   <p className="text-xs whitespace-pre-wrap">{transcript}</p>
                 </ScrollArea>
               </div>
+            )}
+            {recordingUrl && activityId && (
+              <Button
+                variant={attached ? 'outline' : 'default'}
+                className="w-full gap-2"
+                size="sm"
+                onClick={attachRecording}
+                disabled={attaching || attached}
+              >
+                {attaching ? (
+                  <><Loader2 className="h-4 w-4 animate-spin" /> Anexando…</>
+                ) : attached ? (
+                  <><Paperclip className="h-4 w-4" /> Áudio anexado à atividade</>
+                ) : (
+                  <><Paperclip className="h-4 w-4" /> Anexar áudio à atividade</>
+                )}
+              </Button>
             )}
             {recordingUrl && (
               <Button
