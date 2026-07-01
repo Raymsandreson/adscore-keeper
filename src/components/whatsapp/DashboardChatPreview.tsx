@@ -1224,7 +1224,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
       );
     }
     if (type?.startsWith('video') || msg.message_type === 'video') {
-      return <video src={msg.media_url} controls className="max-w-[200px] max-h-[200px] rounded-md" />;
+      return <LazyVideo src={msg.media_url} mimeType={type || 'video/mp4'} className="max-w-[200px] max-h-[200px] rounded-md" posterClassName="rounded-md w-[200px] h-[160px]" />;
     }
     if (type?.startsWith('audio') || msg.message_type === 'audio') {
       return <audio src={msg.media_url} controls className="max-w-[220px]" />;

@@ -93,9 +93,12 @@ export function WhatsAppMediaGallery({ messages }: Props) {
                 ) : (
                   videos.map(msg => (
                     <div key={msg.id} className="rounded-lg overflow-hidden border">
-                      <video controls className="w-full max-h-[200px]" preload="none">
-                        <source src={msg.media_url!} type={msg.media_type || 'video/mp4'} />
-                      </video>
+                      <LazyVideo
+                        src={msg.media_url!}
+                        mimeType={msg.media_type || 'video/mp4'}
+                        className="w-full max-h-[200px]"
+                        posterClassName="w-full h-[140px] rounded"
+                      />
                       <div className="flex items-center justify-between px-2 py-1 bg-muted/50">
                         <span className="text-[10px] text-muted-foreground">{format(new Date(msg.created_at), "dd/MM/yy HH:mm", { locale: ptBR })}</span>
                         <button type="button" onClick={bindDownload(msg.media_url!)}><Download className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" /></button>

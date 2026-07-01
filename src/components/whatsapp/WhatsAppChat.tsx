@@ -3588,9 +3588,12 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                 )}
                 {msg.message_type === 'video' && msg.media_url && !isEncUrl(msg.media_url) && (
                   <div className="mb-1">
-                    <video controls className="max-w-full rounded-lg max-h-[320px]" preload="metadata">
-                      <source src={msg.media_url} type={msg.media_type || 'video/mp4'} />
-                    </video>
+                    <LazyVideo
+                      src={msg.media_url}
+                      mimeType={msg.media_type || 'video/mp4'}
+                      className="max-w-full rounded-lg max-h-[320px]"
+                      posterClassName="rounded-lg w-[280px] h-[180px]"
+                    />
                     <button type="button" onClick={bindDownload(msg.media_url)} className="inline-flex items-center gap-1 text-[10px] mt-1 opacity-70 hover:opacity-100">
                       <Download className="h-3 w-3" /> Baixar vídeo
                     </button>
