@@ -51,6 +51,7 @@ function toMyProductivity(u: UserProductivity): MyProductivity {
 }
 
 function computeProgress(p: MyProductivity, g: MyDailyGoals): number {
+  // Tempo de sessão intencionalmente ignorado no cálculo de meta.
   const ratios = [
     p.commentReplies / g.target_replies,
     p.dmsSent / g.target_dms,
@@ -61,7 +62,6 @@ function computeProgress(p: MyProductivity, g: MyDailyGoals): number {
     p.checklistItemsChecked / g.target_checklist_items,
     p.activitiesCompleted / g.target_activities,
     p.leadsClosed / g.target_leads_closed,
-    p.sessionMinutes / g.target_session_minutes,
   ].map((r) => Math.min(1, isFinite(r) ? r : 0));
   const avg = ratios.reduce((s, r) => s + r, 0) / ratios.length;
   return Math.round(avg * 100);
