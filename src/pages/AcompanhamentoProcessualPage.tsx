@@ -60,7 +60,6 @@ export default function AcompanhamentoProcessualPage() {
   const [responsavel, setResponsavel] = useState("all");
   const [acao, setAcao] = useState("all");
   const [etiqueta, setEtiqueta] = useState("all");
-  const [relatorioOpen, setRelatorioOpen] = useState(false);
 
   const { data, loading, isMock, refresh } = useProcessualDashboard(periodo);
 
