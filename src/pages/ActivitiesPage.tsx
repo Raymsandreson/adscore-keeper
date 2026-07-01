@@ -1503,7 +1503,9 @@ const ActivitiesPage = () => {
       if (!error) setter(count ?? 0);
     };
     fetchDateCount(formDeadline, 'deadline', setDeadlineDateCount);
-    fetchDateCount(formNotificationDate, 'notification_date', setNotifDateCount);
+    // O badge de Notificação deve indicar a mesma ocupação do dia exibida em Prazo.
+    // Portanto, mesmo usando a data escolhida em Notificação, a contagem é feita por `deadline`.
+    fetchDateCount(formNotificationDate, 'deadline', setNotifDateCount);
   }, [formDeadline, formNotificationDate, formAssignedTo]);
 
 
