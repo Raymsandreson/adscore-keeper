@@ -96,7 +96,7 @@ export function RelatorioDiarioUsuariosSheet({ open, onOpenChange }: Props) {
 
   return (
     <>
-      <Sheet open={open} onOpenChange={onOpenChange}>
+      <Sheet open={open && !selected} onOpenChange={onOpenChange}>
         <SheetContent className="w-full sm:max-w-md">
           <SheetHeader>
             <SheetTitle className="flex items-center gap-2">
