@@ -406,15 +406,15 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
           variant="outline"
           size="sm"
           className="h-7 text-xs gap-1 text-green-700 border-green-200 hover:bg-green-50 dark:text-green-400 dark:border-green-800 dark:hover:bg-green-900/20"
-          title="Gravar ligação e preencher a atividade automaticamente"
+          title="Grave um áudio para transcrever e preencher a atividade automaticamente"
         >
-          <Phone className="h-3 w-3" /><Mic className="h-3 w-3" /> Gravar ligação
+          <Mic className="h-3 w-3" /> Preenchimento por Áudio
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-80 p-3 space-y-3">
         <div className="flex items-center gap-2">
-          <Phone className="h-4 w-4 text-green-600" />
-          <span className="text-sm font-semibold">Gravar ligação → preencher atividade</span>
+          <Mic className="h-4 w-4 text-green-600" />
+          <span className="text-sm font-semibold">Preenchimento por Áudio</span>
         </div>
 
         {phase === 'idle' && (
