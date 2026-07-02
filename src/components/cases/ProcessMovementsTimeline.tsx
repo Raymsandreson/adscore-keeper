@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ExternalLink, Loader2, Milestone, Filter } from 'lucide-react';
@@ -41,9 +41,15 @@ function formatValor(v: number | null): string | null {
  * Por padrão mostra só o status atual (marco mais recente); o toggle
  * expande pro histórico completo, do mais recente ao mais antigo.
  */
-export function ProcessMovementsTimeline({ processId }: { processId: string }) {
-  const { movements, loading } = useProcessMovements(processId);
+export function ProcessMovementsTimeline({ processId, refreshKey }: { processId: string; refreshKey?: number }) {
+  const { movements, loading, refetch } = useProcessMovements(processId);
   const [onlyCurrent, setOnlyCurrent] = useState(true);
+
+  // Re-busca quando o pai sinaliza um novo sync (ex.: "buscar no Escavador").
+  // refreshKey inicia em 0 (falsy) → não dispara no mount, só após incremento.
+  useEffect(() => {
+    if (refreshKey) refetch();
+  }, [refreshKey, refetch]);
 
   // movements já vem ordenado por data DESC — o [0] é o status atual.
   const visible = useMemo(

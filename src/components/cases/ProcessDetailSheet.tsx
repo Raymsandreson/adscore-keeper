@@ -22,6 +22,7 @@ import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { LeadFunnelProgressBar } from '@/components/activities/LeadFunnelProgressBar';
 import { ResponsibleUserSelect } from './ResponsibleUserSelect';
 import { ProcessMovementsTimeline } from './ProcessMovementsTimeline';
+import { syncProcessMarcos } from '@/utils/escavadorMovementUtils';
 
 interface ProcessDetailSheetProps {
   open: boolean;
@@ -181,6 +182,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [activeTab, setActiveTab] = useState<TabId>(defaultTab ?? 'partes');
+  const [marcosRefreshKey, setMarcosRefreshKey] = useState(0);
   const [activities, setActivities] = useState<ProcessActivity[]>([]);
   const [loadingActivities, setLoadingActivities] = useState(false);
   const [documents, setDocuments] = useState<ProcessDocument[]>([]);
@@ -421,6 +423,23 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
       setForm(prev => ({ ...prev, ...updates, ...(rawOverride ? { escavador_raw: rawOverride } : {}) }));
       toast.success(`${count} campos atualizados a partir dos dados do Escavador`);
       onUpdated?.();
+
+      // Sincroniza marcos processuais (histórico append-only). Cobre processos
+      // já existentes ao re-buscar no Escavador — o AddProcessDialog só cobre o cadastro.
+      // Idempotente (upsert por hash); try/catch isolado pra não afetar a atualização de campos.
+      try {
+        const movs = raw.movimentacoes_detalhadas || raw.movimentacoes || fonte?.movimentacoes || [];
+        await syncProcessMarcos({
+          processId: process.id,
+          numeroCnj: form.process_number || raw.numero_cnj,
+          caseId: process.case_id || null,
+          leadId: process.lead_id || null,
+          movimentacoes: movs,
+        });
+        setMarcosRefreshKey((k) => k + 1); // faz a timeline re-buscar
+      } catch (mErr) {
+        console.error('Error syncing process marcos (re-extract):', mErr);
+      }
     } catch (err: any) {
       toast.error('Erro: ' + (err.message || ''));
     } finally {
@@ -824,7 +843,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
 
 
             {activeTab === 'marcos' && process?.id && (
-              <ProcessMovementsTimeline processId={process.id} />
+              <ProcessMovementsTimeline processId={process.id} refreshKey={marcosRefreshKey} />
             )}
 
             {activeTab === 'atividades' && (
