@@ -40,6 +40,11 @@ export interface WhatsAppMessage {
 const inFlightSummaries = new Map<string, { p: Promise<ConversationSummary[]>; at: number }>();
 const INFLIGHT_TTL_MS = 1500;
 
+// Corte de egress: só as N conversas mais recentes por instância. O retorno da
+// RPC é ordenado por last_message_at DESC, então a primeira página é sempre o
+// topo da sidebar. Antes buscávamos as ~33k conversas inteiras a cada refresh.
+const MAX_CONVERSATIONS_PER_INSTANCE = 200;
+
 export async function getConversationSummaries(
   instanceNames: string[],
   daysBack: number = 30
@@ -67,34 +72,24 @@ export async function getConversationSummaries(
     // vs "Karolyne Atendimento" cadastrado). A RPC usa '=' case-sensitive, então
     // tentamos múltiplas variantes (original, UPPER, lower) e mesclamos.
     const variants = Array.from(new Set([name, name.toUpperCase(), name.toLowerCase()]));
-    // O PostgREST do banco externo corta cada resposta em 1000 linhas, mesmo
-    // quando o count exato informa mais. Então paginamos em blocos: é como
-    // pegar várias caixas da prateleira, não só a primeira.
-    const pageSize = 1000;
-    const allRows: ConversationSummary[] = [];
-    let exactCount: number | null = null;
+    // A RPC ignora p_days_back e devolve TODAS as conversas da instância,
+    // ordenadas por last_message_at DESC. Buscar tudo (paginando até o fim)
+    // custava ~10 MB por refresh e estourou a cota de egress do projeto.
+    // Uma página com as N mais recentes cobre o que a sidebar exibe.
+    const { data, error } = await (externalSupabase as any)
+      .rpc('get_conversation_summaries', {
+        p_instance_names: variants,
+        p_days_back: daysBack,
+      })
+      .range(0, MAX_CONVERSATIONS_PER_INSTANCE - 1);
 
-    for (let from = 0; ; from += pageSize) {
-      const to = from + pageSize - 1;
-      const { data, error, count } = await (externalSupabase as any)
-        .rpc('get_conversation_summaries', {
-          p_instance_names: variants,
-          p_days_back: daysBack,
-        }, { count: from === 0 ? 'exact' : undefined })
-        .range(from, to);
-
-      if (error) {
-        console.warn(`[getConversationSummaries] failed for "${name}" page ${from}-${to}:`, error.message);
-        return allRows;
-      }
-
-      const rows = (data || []) as ConversationSummary[];
-      allRows.push(...rows);
-      if (from === 0 && typeof count === 'number') exactCount = count;
-      if (rows.length < pageSize || (exactCount !== null && allRows.length >= exactCount)) break;
+    if (error) {
+      console.warn(`[getConversationSummaries] failed for "${name}":`, error.message);
+      return [];
     }
 
-    console.log(`[getConversationSummaries] "${name}" → ${allRows.length} linhas (count exato: ${exactCount ?? 'n/a'})`);
+    const allRows = (data || []) as ConversationSummary[];
+    console.log(`[getConversationSummaries] "${name}" → ${allRows.length} linhas (cap: ${MAX_CONVERSATIONS_PER_INSTANCE})`);
     // Normaliza instance_name de volta para o nome canônico cadastrado
     return allRows.map((row: ConversationSummary) => ({ ...row, instance_name: name }));
   };
@@ -124,6 +119,31 @@ export async function getConversationSummaries(
 
 function instanceNameVariants(name: string): string[] {
   return Array.from(new Set([name, name.toUpperCase(), name.toLowerCase()]));
+}
+
+/**
+ * Checagem barata pro poll de fallback: retorna o last_message_at mais recente
+ * entre as instâncias (1 linha, ~200 bytes, coberto por
+ * idx_conversations_instance_last). Se o valor não mudou desde o último poll,
+ * o chamador pula o refresh completo de summaries.
+ * Retorna null em erro — o chamador decide o fallback.
+ */
+export async function getLatestConversationActivity(
+  instanceNames: string[]
+): Promise<string | null> {
+  if (!instanceNames || instanceNames.length === 0) return null;
+  const variants = Array.from(new Set(instanceNames.flatMap(instanceNameVariants)));
+  const { data, error } = await (externalSupabase as any)
+    .from('conversations')
+    .select('last_message_at')
+    .in('instance_name', variants)
+    .order('last_message_at', { ascending: false })
+    .limit(1);
+  if (error) {
+    console.warn('[getLatestConversationActivity] failed:', error.message);
+    return null;
+  }
+  return (data?.[0] as { last_message_at: string } | undefined)?.last_message_at ?? null;
 }
 
 export async function getConversationMessages(

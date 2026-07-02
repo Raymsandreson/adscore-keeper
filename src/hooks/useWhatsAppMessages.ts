@@ -5,6 +5,7 @@ import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { getMyAllowedInstanceIds } from '@/integrations/supabase/permissions';
 import {
   getConversationSummaries,
+  getLatestConversationActivity,
   getConversationMessages,
   markMessagesAsRead,
   linkMessagesToLead,
@@ -1456,19 +1457,37 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
   useEffect(() => {
     if (!hasLoaded || selectedInstanceId === null || selectedInstanceId === undefined) return;
 
-    // Fallback poll a cada 60s. Realtime é a fonte primária de deltas; o poll é
-    // só rede de segurança pra casos em que o canal cai silenciosamente. Antes
-    // estava em 15s, o que somado a multi-instância (N requests por refresh) +
-    // visibilitychange sem debounce estourava o console com get_conversation_summaries.
-    const POLL_INTERVAL_MS = 60_000;
+    // Fallback poll a cada 5min. Realtime é a fonte primária de deltas; o poll
+    // é só rede de segurança pra casos em que o canal cai silenciosamente.
+    // Antes de refazer o fetch completo (caro: summaries de todas as
+    // instâncias), consulta só o last_message_at mais recente (~200 bytes) e
+    // pula o refresh se nada mudou — o poll de 60s sem essa checagem foi o
+    // principal responsável pelo estouro de egress de jun/2026.
+    const POLL_INTERVAL_MS = 300_000;
     const VISIBILITY_DEBOUNCE_MS = 2_000;
     let lastRefetchAt = 0;
+    let lastActivitySeen: string | null = null;
 
-    const safeRefetch = () => {
+    // Mesmo critério de alvo do fetchMessages: falsy ou 'all' = todas.
+    const targetNames = ((!selectedInstanceId || selectedInstanceId === 'all')
+      ? instances
+      : instances.filter(i => i.id === selectedInstanceId)
+    ).map(i => i.instance_name);
+
+    const safeRefetch = async () => {
       if (document.visibilityState !== 'visible') return;
       const now = Date.now();
       if (now - lastRefetchAt < VISIBILITY_DEBOUNCE_MS) return;
       lastRefetchAt = now;
+
+      try {
+        const latest = await getLatestConversationActivity(targetNames);
+        if (latest !== null && latest === lastActivitySeen) return; // nada novo
+        if (latest !== null) lastActivitySeen = latest;
+        // latest === null (erro/sem dados): cai no refresh completo por segurança
+      } catch {
+        // checagem falhou — mantém o comportamento antigo de refetch direto
+      }
       fetchMessages(true).catch(() => {});
     };
 
@@ -1485,7 +1504,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
       window.clearInterval(intervalId);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [hasLoaded, selectedInstanceId, fetchMessages]);
+  }, [hasLoaded, selectedInstanceId, instances, fetchMessages]);
 
   // Load all messages for a specific conversation (when selected)
   const fetchFullConversation = useCallback(async (phone: string, instanceName?: string | null) => {
