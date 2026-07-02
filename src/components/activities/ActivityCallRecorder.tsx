@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Phone, Mic, Square, Loader2, Sparkles, Info, RotateCcw, Download } from 'lucide-react';
+import { Phone, Mic, Square, Loader2, Sparkles, Info, RotateCcw, Download, Send } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
@@ -41,6 +41,8 @@ interface Props {
   leadId?: string | null;
   caseId?: string | null;
   processId?: string | null;
+  /** JID do grupo WhatsApp vinculado (para envio rápido do áudio ao grupo). */
+  groupJid?: string | null;
 }
 
 type Phase = 'idle' | 'recording' | 'processing' | 'done';
@@ -86,7 +88,7 @@ export function callFieldTextToHtml(text: string): string {
     .join('');
 }
 
-export function ActivityCallRecorder({ context, onFields, activityId, leadId, caseId, processId }: Props) {
+export function ActivityCallRecorder({ context, onFields, activityId, leadId, caseId, processId, groupJid }: Props) {
   const [open, setOpen] = useState(false);
   const [phase, setPhase] = useState<Phase>('idle');
   const [seconds, setSeconds] = useState(0);
@@ -94,6 +96,8 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
   const [error, setError] = useState<string | null>(null);
   const [silent, setSilent] = useState(false);
   const [recordingUrl, setRecordingUrl] = useState<string | null>(null);
+  const [sendingToGroup, setSendingToGroup] = useState(false);
+  const [sentToGroup, setSentToGroup] = useState(false);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -354,7 +358,46 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
     setSilent(false);
     silentRef.current = false;
     setRecordingUrl(null);
+    setSentToGroup(false);
   }, [teardownAudio]);
+
+  const sendAudioToGroup = useCallback(async () => {
+    if (!recordingUrl || !groupJid) return;
+    setSendingToGroup(true);
+    try {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      let instanceId: string | undefined;
+      if (authUser) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('default_instance_id')
+          .eq('user_id', authUser.id)
+          .maybeSingle();
+        instanceId = (profile as any)?.default_instance_id || undefined;
+      }
+      const { data, error: sendErr } = await cloudFunctions.invoke('send-whatsapp', {
+        body: {
+          action: 'send_media',
+          phone: groupJid,
+          chat_id: groupJid,
+          media_url: recordingUrl,
+          media_type: 'audio/ogg',
+          lead_id: leadId || null,
+          ...(instanceId ? { instance_id: instanceId } : {}),
+        },
+      });
+      if (sendErr || !data?.success) {
+        throw new Error(data?.error || sendErr?.message || 'Falha ao enviar áudio ao grupo');
+      }
+      setSentToGroup(true);
+      toast.success('Áudio enviado ao grupo do WhatsApp!');
+    } catch (e: any) {
+      console.error('sendAudioToGroup error', e);
+      toast.error(e?.message || 'Erro ao enviar áudio ao grupo');
+    } finally {
+      setSendingToGroup(false);
+    }
+  }, [recordingUrl, groupJid, leadId]);
 
   return (
     <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o && phase === 'done') reset(); }}>
@@ -363,15 +406,15 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
           variant="outline"
           size="sm"
           className="h-7 text-xs gap-1 text-green-700 border-green-200 hover:bg-green-50 dark:text-green-400 dark:border-green-800 dark:hover:bg-green-900/20"
-          title="Gravar ligação e preencher a atividade automaticamente"
+          title="Grave um áudio para transcrever e preencher a atividade automaticamente"
         >
-          <Phone className="h-3 w-3" /><Mic className="h-3 w-3" /> Gravar ligação
+          <Mic className="h-3 w-3" /> Preenchimento por Áudio
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-80 p-3 space-y-3">
         <div className="flex items-center gap-2">
-          <Phone className="h-4 w-4 text-green-600" />
-          <span className="text-sm font-semibold">Gravar ligação → preencher atividade</span>
+          <Mic className="h-4 w-4 text-green-600" />
+          <span className="text-sm font-semibold">Preenchimento por Áudio</span>
         </div>
 
         {phase === 'idle' && (
@@ -450,6 +493,23 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
                 onClick={() => downloadRecording(recordingUrl, `gravacao-ligacao-${seconds}s.webm`)}
               >
                 <Download className="h-4 w-4" /> Baixar gravação
+              </Button>
+            )}
+            {recordingUrl && groupJid && (
+              <Button
+                variant="default"
+                className="w-full gap-2 bg-green-600 hover:bg-green-700"
+                size="sm"
+                onClick={sendAudioToGroup}
+                disabled={sendingToGroup || sentToGroup}
+              >
+                {sendingToGroup ? (
+                  <><Loader2 className="h-4 w-4 animate-spin" /> Enviando ao grupo…</>
+                ) : sentToGroup ? (
+                  <><Sparkles className="h-4 w-4" /> Áudio enviado ao grupo</>
+                ) : (
+                  <><Send className="h-4 w-4" /> Enviar áudio ao grupo WA</>
+                )}
               </Button>
             )}
             <Button variant="outline" className="w-full gap-2" size="sm" onClick={reset}>
