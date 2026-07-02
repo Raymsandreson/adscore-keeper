@@ -7,7 +7,7 @@
  * Fallback automático: se Railway falhar, tenta Cloud (e vice-versa).
  */
 
-type FunctionTarget = 'cloud' | 'railway';
+type FunctionTarget = 'cloud' | 'railway' | 'external';
 
 // ============================================================
 // MAPA DE ROTAS — Edite aqui para migrar funções
@@ -46,6 +46,11 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
   'gerar-cobranca-vara': 'railway',
   'send-email': 'railway',
 
+  // --- Consolidação no Supabase Externo (kmedldlepwiityjsdahz) ---
+  // Deploy: supabase functions deploy <slug> --project-ref kmedldlepwiityjsdahz --no-verify-jwt
+  // Fallback automático → Cloud (código legado) se o externo falhar.
+  'search-escavador': 'external',
+
   // --- Todas as demais ficam no Cloud por padrão ---
 };
 
@@ -56,6 +61,11 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
 // ============================================================
 const CLOUD_URL = 'https://gliigkupoebmlbwyvijp.supabase.co';
 const CLOUD_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdsaWlna3Vwb2VibWxid3l2aWpwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYwMDAxNDcsImV4cCI6MjA4MTU3NjE0N30.HnhqYYFjW9DjFUsUkrZDuCShCOU2P73o_DqvkVyVr38';
+
+// Supabase Externo (kmedldlepwiityjsdahz) — mesmas credenciais públicas do external-client.
+// Anon key não é segredo (mesmo padrão do CLOUD_ANON_KEY acima).
+const EXTERNAL_URL = 'https://kmedldlepwiityjsdahz.supabase.co';
+const EXTERNAL_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImttZWRsZGxlcHdpaXR5anNkYWh6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTExOTAsImV4cCI6MjA5MDQ2NzE5MH0.s51bWtABFjJGfGyuPFWr5Tp8CzbxPD5eieFUqUVuQTs';
 
 // Railway URL — endpoint público, não é segredo
 // Variáveis VITE_* não são suportadas no Lovable (build-time), então hardcoded.
@@ -184,6 +194,42 @@ async function callRailway<T>(
   return { data, error: null };
 }
 
+async function callExternal<T>(
+  functionName: string,
+  body?: Record<string, any>,
+  _authToken?: string,
+  requestId?: string
+): Promise<{ data: T | null; error: Error | null }> {
+  const url = `${EXTERNAL_URL}/functions/v1/${functionName}`;
+  const rid = requestId || generateRequestId();
+
+  // Ignora o JWT da sessão Cloud injetado no invokeFunction: ele é de OUTRO projeto.
+  // Funções no externo usam verify_jwt=false; o gateway só exige o apikey do externo.
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${EXTERNAL_ANON_KEY}`,
+      'apikey': EXTERNAL_ANON_KEY,
+      'x-request-id': rid,
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`External function error ${response.status} [rid=${rid}]: ${errorText}`);
+  }
+
+  const contentType = response.headers.get('content-type') || '';
+  if (contentType.includes('text/event-stream')) {
+    return { data: response as any, error: null };
+  }
+
+  const data = await response.json();
+  return { data, error: null };
+}
+
 /**
  * Invoca uma função com roteamento automático e fallback.
  * Drop-in replacement para cloudFunctions.invoke()
@@ -207,9 +253,20 @@ async function invokeFunction<T = any>(
   }
 
   const target = getTarget(functionName);
-  const primary = target === 'railway' ? callRailway : callCloud;
-  const fallback = target === 'railway' ? callCloud : callRailway;
-  const fallbackAvailable = target === 'railway' ? true : !!RAILWAY_URL;
+  const CALLERS: Record<FunctionTarget, typeof callCloud> = {
+    cloud: callCloud,
+    railway: callRailway,
+    external: callExternal,
+  };
+  // Fallback por alvo: external e railway caem no Cloud; Cloud cai no Railway (se houver).
+  const FALLBACK: Record<FunctionTarget, FunctionTarget | null> = {
+    cloud: RAILWAY_URL ? 'railway' : null,
+    railway: 'cloud',
+    external: 'cloud',
+  };
+  const primary = CALLERS[target];
+  const fallbackTarget = FALLBACK[target];
+  const fallback = fallbackTarget ? CALLERS[fallbackTarget] : null;
 
   try {
     const result = await primary<T>(functionName, body, authToken, requestId);
@@ -226,10 +283,9 @@ async function invokeFunction<T = any>(
 
     console.warn(`[Router] ${functionName} → ${target} FALHOU [rid=${requestId}]:`, err);
 
-    // Fallback: tenta o outro backend
-    if (fallbackAvailable) {
+    // Fallback: tenta o backend alternativo definido no mapa FALLBACK
+    if (fallback && fallbackTarget) {
       try {
-        const fallbackTarget = target === 'railway' ? 'cloud' : 'railway';
         console.log(`[Router] ${functionName} → fallback para ${fallbackTarget}... [rid=${requestId}]`);
         const result = await fallback<T>(functionName, body, authToken, requestId);
         console.log(`[Router] ${functionName} → ${fallbackTarget} (fallback) ✓ [rid=${requestId}]`);
