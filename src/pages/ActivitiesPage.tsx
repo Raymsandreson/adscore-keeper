@@ -61,6 +61,7 @@ import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameM
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
+import { filterAssignableMembers } from '@/lib/assigneeBlocklist';
 const ACTIVITY_TYPES = [
   { value: 'tarefa', label: 'Tarefa', bg: 'bg-blue-50 dark:bg-blue-950/20', border: 'border-blue-300 dark:border-blue-700', header: 'bg-blue-500', dot: 'bg-blue-500' },
   { value: 'audiencia', label: 'Audiência', bg: 'bg-green-50 dark:bg-green-950/20', border: 'border-green-300 dark:border-green-700', header: 'bg-green-500', dot: 'bg-green-500' },
@@ -2280,7 +2281,7 @@ const ActivitiesPage = () => {
                     <Check className={cn("mr-2 h-3.5 w-3.5", filterAssignee.length === 0 ? "opacity-100" : "opacity-0")} />
                     Todos
                   </CommandItem>
-                  {[...teamMembers].sort((a, b) => {
+                  {filterAssignableMembers([...teamMembers]).sort((a, b) => {
                     const aSel = filterAssignee.includes(a.user_id) ? 0 : 1;
                     const bSel = filterAssignee.includes(b.user_id) ? 0 : 1;
                     if (aSel !== bSel) return aSel - bSel;
