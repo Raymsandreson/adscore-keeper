@@ -211,6 +211,7 @@ export function FloatingNav() {
     { id: "activities", label: "Atividades", icon: <ClipboardList className="h-4 w-4" />, path: "/", color: "text-emerald-600" },
     { id: "leads-trabalhista", label: "Leads Trabalhista", icon: <Users className="h-4 w-4" />, path: "/leads?cat=trabalhista" },
     { id: "leads-previdenciario", label: "Leads Previdenciário", icon: <Users className="h-4 w-4" />, path: "/leads?cat=previdenciario" },
+    { id: "noticias", label: "Notícias", icon: <Newspaper className="h-4 w-4" />, path: "/noticias", color: "text-amber-500" },
     { id: "calls", label: "Ligações", icon: <Phone className="h-4 w-4" />, path: "/calls", color: "text-blue-500" },
     { id: "whatsapp", label: "WhatsApp", icon: <MessageSquareIcon className="h-4 w-4" />, path: "/whatsapp", color: "text-green-500" },
     { id: "instagram", label: "Instagram", icon: <AtSign className="h-4 w-4" />, path: "/instagram", color: "text-pink-500" },
