@@ -56,7 +56,7 @@ const NoticiasPage = () => {
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
     return leads.filter((l) => {
-      if (tab !== "all" && l.status !== tab) return false;
+      if (tab !== "all" && String(l.status) !== tab) return false;
       if (!term) return true;
       return (
         (l.lead_name || "").toLowerCase().includes(term) ||
