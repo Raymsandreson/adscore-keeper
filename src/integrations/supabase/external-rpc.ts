@@ -43,7 +43,10 @@ const INFLIGHT_TTL_MS = 1500;
 // Corte de egress: só as N conversas mais recentes por instância. O retorno da
 // RPC é ordenado por last_message_at DESC, então a primeira página é sempre o
 // topo da sidebar. Antes buscávamos as ~33k conversas inteiras a cada refresh.
-const MAX_CONVERSATIONS_PER_INSTANCE = 200;
+// 500 (e não 200) porque nas instâncias mais movimentadas 200 cobria só ~1 dia
+// de conversas — parecia "sumiço" do histórico na sidebar. Com 500, as mais
+// movimentadas alcançam 3+ dias; o resto, semanas (medido em 02/07/2026).
+const MAX_CONVERSATIONS_PER_INSTANCE = 500;
 
 export async function getConversationSummaries(
   instanceNames: string[],
