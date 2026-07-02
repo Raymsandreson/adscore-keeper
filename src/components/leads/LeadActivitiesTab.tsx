@@ -17,7 +17,7 @@ import { useProfilesList } from '@/hooks/useProfilesList';
 import { useTimeBlockSettings } from '@/hooks/useTimeBlockSettings';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { ActivityChatSheet } from '@/components/activities/ActivityChatSheet';
-import { ActivityEditSheet } from '@/components/activities/ActivityEditSheet';
+import { ActivityFullSheet } from '@/components/activities/ActivityFullSheet';
 import { TeamChatButton } from '@/components/chat/TeamChatButton';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { GroupExitAlert } from '@/components/whatsapp/GroupExitAlert';
@@ -534,11 +534,13 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
         onCreateActivity={handleCreateFromChat}
       />
 
-      {/* Activity Edit Sheet */}
-      <ActivityEditSheet
+      {/* Formulário completo (único do sistema) */}
+      <ActivityFullSheet
         open={!!editActivityId}
         onOpenChange={(open) => { if (!open) setEditActivityId(null); }}
         activityId={editActivityId}
+        leadId={leadId}
+        leadName={leadName}
         onUpdated={fetchActivities}
       />
     </div>
