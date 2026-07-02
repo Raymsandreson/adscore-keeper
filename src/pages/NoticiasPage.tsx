@@ -322,35 +322,49 @@ const NoticiasPage = () => {
                         {l.created_at ? formatDistanceToNow(new Date(l.created_at), { locale: ptBR, addSuffix: true }) : "—"}
                       </td>
                       <td className="px-2 py-2.5">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-8 w-8" disabled={movingId === l.id}>
-                              {movingId === l.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <MoreHorizontal className="h-4 w-4" />}
+                        <div className="flex items-center justify-end gap-1">
+                          {isNoticia ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8 border-amber-500/60 text-amber-700 hover:bg-amber-50 hover:text-amber-800 dark:hover:bg-amber-900/30"
+                              disabled={movingId === l.id}
+                              onClick={() => moveLead(l, VIAVEL_STATUS, "Movido para Viável")}
+                            >
+                              {movingId === l.id ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Star className="h-3.5 w-3.5 mr-1" />
+                              )}
+                              Viável
                             </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-56">
-                            <DropdownMenuItem onClick={() => setOpenLead(l)}>
-                              <Pencil className="h-4 w-4 mr-2" /> Editar lead
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            {isNoticia ? (
-                              <DropdownMenuItem
-                                onClick={() => moveLead(l, VIAVEL_STATUS, "Movido para Viável")}
-                                className="text-amber-700 focus:text-amber-800"
-                              >
-                                <Star className="h-4 w-4 mr-2" /> Marcar como Viável
-                              </DropdownMenuItem>
-                            ) : (
-                              <DropdownMenuItem
-                                onClick={() => moveLead(l, FIRST_KANBAN_STAGE, "Cadastrado no Kanban Trabalhista")}
-                                className="text-emerald-700 focus:text-emerald-800"
-                              >
-                                <CheckCircle2 className="h-4 w-4 mr-2" /> Cadastrar no Kanban
-                                <ArrowRight className="h-3 w-3 ml-auto" />
-                              </DropdownMenuItem>
-                            )}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8 border-emerald-500/60 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 dark:hover:bg-emerald-900/30"
+                              disabled={movingId === l.id}
+                              onClick={() => moveLead(l, FIRST_KANBAN_STAGE, "Cadastrado no Kanban Trabalhista")}
+                            >
+                              {movingId === l.id ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
+                              )}
+                              Cadastrar
+                              <ArrowRight className="h-3 w-3 ml-1" />
+                            </Button>
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => setOpenLead(l)}
+                            title="Editar lead"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   );
