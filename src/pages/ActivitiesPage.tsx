@@ -3577,6 +3577,7 @@ const ActivitiesPage = () => {
                       leadId={formLeadId}
                       caseId={formCaseId}
                       processId={formProcessId}
+                      groupJid={leadPreview?.whatsapp_group_id}
                       context={{
                         title: formTitle,
                         type: formType,
