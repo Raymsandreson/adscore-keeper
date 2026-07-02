@@ -428,13 +428,16 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
       // já existentes ao re-buscar no Escavador — o AddProcessDialog só cobre o cadastro.
       // Idempotente (upsert por hash); try/catch isolado pra não afetar a atualização de campos.
       try {
-        const movs = raw.movimentacoes_detalhadas || raw.movimentacoes || fonte?.movimentacoes || [];
+        // Só passa movimentações se forem as frescas do buscar_completo (estrutura real do
+        // Escavador). No re-extract offline o raw salvo não tem movimentações usáveis —
+        // aí passa vazio e o edge busca pelo CNJ (captura também movimentações novas).
+        const freshMovs = Array.isArray(raw.movimentacoes_detalhadas) ? raw.movimentacoes_detalhadas : [];
         await syncProcessMarcos({
           processId: process.id,
           numeroCnj: form.process_number || raw.numero_cnj,
           caseId: process.case_id || null,
           leadId: process.lead_id || null,
-          movimentacoes: movs,
+          movimentacoes: freshMovs,
         });
         setMarcosRefreshKey((k) => k + 1); // faz a timeline re-buscar
       } catch (mErr) {
