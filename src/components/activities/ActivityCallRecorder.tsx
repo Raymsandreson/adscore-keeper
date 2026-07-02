@@ -41,6 +41,8 @@ interface Props {
   leadId?: string | null;
   caseId?: string | null;
   processId?: string | null;
+  /** JID do grupo WhatsApp vinculado (para envio rápido do áudio ao grupo). */
+  groupJid?: string | null;
 }
 
 type Phase = 'idle' | 'recording' | 'processing' | 'done';
