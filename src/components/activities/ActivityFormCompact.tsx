@@ -13,7 +13,9 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { Search, X, ChevronDown, Copy, Loader2, UserPlus, Building2, Briefcase, Send, Info, Settings2, FileText, Plus, Mic } from 'lucide-react';
+import { Search, X, ChevronDown, Copy, Loader2, UserPlus, Building2, Briefcase, Send, Info, Settings2, FileText, Plus, Mic, Check } from 'lucide-react';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { filterAssignableMembers } from '@/lib/assigneeBlocklist';
 import { ActivityTTSButton } from '@/components/voice/ActivityTTSButton';
 import { ActivityFieldSettingsDialog } from '@/components/activities/ActivityFieldSettingsDialog';
 import { ActivityMessageTemplateSettings } from '@/components/activities/ActivityMessageTemplateSettings';
