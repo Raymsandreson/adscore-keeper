@@ -649,7 +649,7 @@ export function DynamicKanbanBoard({
                 className={`flex-shrink-0 rounded-lg border transition-all ${
                   isDropTarget ? 'ring-2 ring-primary ring-offset-2' : ''
                 } ${isReorderTarget ? 'ring-2 ring-amber-400 ring-offset-2' : ''} ${isBeingDragged ? 'opacity-40' : ''}`}
-                style={{ width: `max(260px, calc((100vw - ${(board.stages.length + 2) * 4 + 16}px) / ${board.stages.length + 2}))` }}
+                style={{ width: `max(340px, calc((100vw - ${(board.stages.length + 2) * 4 + 16}px) / ${board.stages.length + 2}))` }}
                 onDragOver={(e) => handleDragOver(e, stage.id)}
                 onDragLeave={handleDragLeave}
                 onDrop={(e) => handleDrop(e, stage.id)}
