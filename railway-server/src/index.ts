@@ -103,6 +103,7 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'suggest-step-actions': suggestStepActions,
   'wipe-instance-agent-labels': wipeInstanceAgentLabels,
   'bpc-sheet-sync': bpcSheetSync,
+  'transcode-audio-opus': transcodeAudioOpus,
 };
 
 const app = express();
