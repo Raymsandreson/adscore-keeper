@@ -16,11 +16,12 @@ import { toast } from 'sonner';
 import {
   FileText, MapPin, Building2, Scale, Users, Calendar, ExternalLink,
   Hash, Info, BookOpen, Landmark, Save, Loader2, Pencil, RefreshCw, ClipboardList, CheckCircle2, Clock,
-  Download, Upload, File, Trash2, FolderOpen
+  Download, Upload, File, Trash2, FolderOpen, Milestone
 } from 'lucide-react';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { LeadFunnelProgressBar } from '@/components/activities/LeadFunnelProgressBar';
 import { ResponsibleUserSelect } from './ResponsibleUserSelect';
+import { ProcessMovementsTimeline } from './ProcessMovementsTimeline';
 
 interface ProcessDetailSheetProps {
   open: boolean;
@@ -109,7 +110,8 @@ const TABS = [
   { id: 'tribunal', label: 'Tribunal', icon: Landmark },
   { id: 'local', label: 'Local', icon: MapPin },
   { id: 'datas', label: 'Datas', icon: Calendar },
-  
+  { id: 'marcos', label: 'Marcos', icon: Milestone },
+
   { id: 'atividades', label: 'Histórico', icon: ClipboardList },
   { id: 'config', label: 'Config', icon: Info },
   { id: 'notas', label: 'Notas', icon: FileText },
@@ -820,6 +822,10 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
               </>
             )}
 
+
+            {activeTab === 'marcos' && process?.id && (
+              <ProcessMovementsTimeline processId={process.id} />
+            )}
 
             {activeTab === 'atividades' && (
               <div className="space-y-2">
