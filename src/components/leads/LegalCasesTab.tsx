@@ -685,7 +685,7 @@ function CaseCard({ legalCase, boards, expanded, onToggle, onEdit, onStatusChang
                 <Select value={workflowId} onValueChange={setWorkflowId}>
                   <SelectTrigger><SelectValue placeholder="Selecione um fluxo..." /></SelectTrigger>
                   <SelectContent>
-                    {boards.map(b => (
+                    {boards.filter(b => b.board_type === 'workflow').map(b => (
                       <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
                     ))}
                   </SelectContent>
