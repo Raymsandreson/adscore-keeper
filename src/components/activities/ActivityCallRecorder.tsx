@@ -365,6 +365,24 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
     if (!recordingUrl || !groupJid) return;
     setSendingToGroup(true);
     try {
+      // Transcodifica pra ogg/opus (formato nativo dos áudios do WhatsApp) antes de enviar.
+      // Sem isso, o webm gravado no Chrome chega como "arquivo" e não como mensagem de voz.
+      let mediaUrl = recordingUrl;
+      let mediaType = 'audio/ogg';
+      try {
+        const { data: tx, error: txErr } = await cloudFunctions.invoke('transcode-audio-opus', {
+          body: { url: recordingUrl, folder: 'activity-audio' },
+        });
+        if (!txErr && tx?.success && tx?.url) {
+          mediaUrl = tx.url;
+          mediaType = tx.mime || 'audio/ogg';
+        } else {
+          console.warn('[sendAudioToGroup] transcode falhou, enviando original:', tx?.error || txErr?.message);
+        }
+      } catch (txe) {
+        console.warn('[sendAudioToGroup] transcode exceção, enviando original:', txe);
+      }
+
       const { data: { user: authUser } } = await supabase.auth.getUser();
       let instanceId: string | undefined;
       if (authUser) {
@@ -380,8 +398,10 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
           action: 'send_media',
           phone: groupJid,
           chat_id: groupJid,
-          media_url: recordingUrl,
-          media_type: 'audio/ogg',
+          media_url: mediaUrl,
+          media_type: mediaType,
+          ptt: true,
+          is_voice: true,
           lead_id: leadId || null,
           ...(instanceId ? { instance_id: instanceId } : {}),
         },
@@ -398,6 +418,7 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
       setSendingToGroup(false);
     }
   }, [recordingUrl, groupJid, leadId]);
+
 
   return (
     <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o && phase === 'done') reset(); }}>
