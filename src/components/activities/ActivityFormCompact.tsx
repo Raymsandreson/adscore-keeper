@@ -13,7 +13,9 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { Search, X, ChevronDown, Copy, Loader2, UserPlus, Building2, Briefcase, Send, Info, Settings2, FileText, Plus, Mic } from 'lucide-react';
+import { Search, X, ChevronDown, Copy, Loader2, UserPlus, Building2, Briefcase, Send, Info, Settings2, FileText, Plus, Mic, Check } from 'lucide-react';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { filterAssignableMembers } from '@/lib/assigneeBlocklist';
 import { ActivityTTSButton } from '@/components/voice/ActivityTTSButton';
 import { ActivityFieldSettingsDialog } from '@/components/activities/ActivityFieldSettingsDialog';
 import { ActivityMessageTemplateSettings } from '@/components/activities/ActivityMessageTemplateSettings';
@@ -597,14 +599,48 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
       <div className="grid grid-cols-4 gap-2">
         <div>
           <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Assessor *</span>
-          <Select value={props.formAssignedTo} onValueChange={props.handleSelectAssignee}>
-            <SelectTrigger className="h-8 text-xs mt-0.5"><SelectValue placeholder="—" /></SelectTrigger>
-            <SelectContent>
-              {props.teamMembers.map(m => (
-                <SelectItem key={m.user_id} value={m.user_id} className="text-xs">{m.full_name || 'Sem nome'}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {(() => {
+            const assignable = filterAssignableMembers(props.teamMembers);
+            const selected = assignable.find(m => m.user_id === props.formAssignedTo);
+            return (
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    role="combobox"
+                    className="h-8 mt-0.5 w-full justify-between text-xs font-normal px-2"
+                  >
+                    <span className={cn("truncate", !selected && "text-muted-foreground")}>
+                      {selected?.full_name || '—'}
+                    </span>
+                    <ChevronDown className="h-3 w-3 opacity-50 shrink-0 ml-1" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="p-0 w-[240px]" align="start">
+                  <Command>
+                    <CommandInput placeholder="Buscar assessor..." className="h-8 text-xs" />
+                    <CommandList>
+                      <CommandEmpty className="text-xs py-4 text-center">Nenhum encontrado</CommandEmpty>
+                      <CommandGroup>
+                        {assignable.map(m => (
+                          <CommandItem
+                            key={m.user_id}
+                            value={`${m.full_name || 'Sem nome'} ${m.user_id}`}
+                            onSelect={() => props.handleSelectAssignee(m.user_id)}
+                            className="text-xs"
+                          >
+                            <Check className={cn("mr-2 h-3 w-3", props.formAssignedTo === m.user_id ? "opacity-100" : "opacity-0")} />
+                            {m.full_name || 'Sem nome'}
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+            );
+          })()}
         </div>
         <div>
           <span className="text-[10px] text-muted-foreground uppercase tracking-wider inline-flex items-center gap-1 leading-none h-[14px]">
