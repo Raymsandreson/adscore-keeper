@@ -93,6 +93,7 @@ function stableHash(input: string): string {
   return `${a}${b}`;
 }
 
+// Texto COMPLETO da movimentação — usado só pra extrair valor/snippet (não pra classificar).
 function movText(mov: EscavadorMovimentacao): string {
   const cls = mov.classificacao_predita;
   return [
@@ -105,23 +106,45 @@ function movText(mov: EscavadorMovimentacao): string {
   ].filter(Boolean).join(' ');
 }
 
-function classify(text: string): { tipo: MarcoTipo; ordem: number } | null {
-  const t = normalize(text);
-  if (!t.trim()) return null;
+// Janela de "cabeçalho": título + começo do conteúdo (onde fica o assunto da movimentação).
+// Classificar pelo corpo inteiro é a fonte dos falsos-positivos (ex.: toda sentença tem o
+// boilerplate "após o trânsito em julgado, arquive-se" lá no fim). Só olhamos o cabeçalho.
+const HEAD_CHARS = 180;
+function headText(mov: EscavadorMovimentacao): string {
+  const body = String(mov.conteudo || mov.descricao || '').slice(0, HEAD_CHARS);
+  return [mov.tipo, mov.titulo, body].filter(Boolean).join(' ');
+}
 
-  // Ordem de prioridade importa: marcos com frase específica primeiro; "pagamento"
-  // por último (mais genérico) pra não roubar uma sentença que menciona pagamento.
-  if (hasAny(t, KW.transito)) return { tipo: 'transito_julgado', ordem: MARCO_ORDEM.transito_julgado };
+function mk(tipo: MarcoTipo) {
+  return { tipo, ordem: MARCO_ORDEM[tipo] };
+}
 
-  if (hasAny(t, KW.acordaoMarkers)) {
-    if (hasAny(t, KW.superiorMarkers)) return { tipo: 'acordao_superior', ordem: MARCO_ORDEM.acordao_superior };
-    return { tipo: 'acordao_2grau', ordem: MARCO_ORDEM.acordao_2grau };
+// Casa um marco numa string normalizada `s`. `head` é usado só pra decidir 2º grau vs superior.
+// Ordem: acórdão → acordo → sentença → trânsito → petição inicial → pagamento.
+// Sentença ANTES de trânsito (sentença cita "após o trânsito em julgado" no corpo, mas aqui
+// só vemos o cabeçalho — ainda assim mantemos a ordem por segurança).
+function matchMarco(s: string, head: string): { tipo: MarcoTipo; ordem: number } | null {
+  if (!s.trim()) return null;
+  if (hasAny(s, KW.acordaoMarkers)) {
+    return mk(hasAny(head, KW.superiorMarkers) ? 'acordao_superior' : 'acordao_2grau');
   }
-  if (hasAny(t, KW.acordo)) return { tipo: 'acordo', ordem: MARCO_ORDEM.acordo };
-  if (hasAny(t, KW.sentenca)) return { tipo: 'sentenca_1grau', ordem: MARCO_ORDEM.sentenca_1grau };
-  if (hasAny(t, KW.peticaoInicial)) return { tipo: 'peticao_inicial', ordem: MARCO_ORDEM.peticao_inicial };
-  if (hasAny(t, KW.pagamento)) return { tipo: 'pagamento', ordem: MARCO_ORDEM.pagamento };
+  if (hasAny(s, KW.acordo)) return mk('acordo');
+  if (hasAny(s, KW.sentenca)) return mk('sentenca_1grau');
+  if (hasAny(s, KW.transito)) return mk('transito_julgado');
+  if (hasAny(s, KW.peticaoInicial)) return mk('peticao_inicial');
+  if (hasAny(s, KW.pagamento)) return mk('pagamento');
   return null;
+}
+
+// Classifica uma movimentação em marco (ou null).
+// 1) Sinal primário: a classe que o Escavador já prediz (classificacao_predita.nome).
+// 2) Fallback: keyword no cabeçalho (nunca no corpo inteiro).
+function classify(mov: EscavadorMovimentacao): { tipo: MarcoTipo; ordem: number } | null {
+  const clsName = normalize(mov.classificacao_predita?.nome || '');
+  const head = normalize(headText(mov));
+  const byClass = matchMarco(clsName, head);
+  if (byClass) return byClass;
+  return matchMarco(head, head);
 }
 
 // Extrai o MAIOR valor em R$ do texto (heurística: indenização costuma ser o maior).
@@ -171,14 +194,14 @@ export function extractMarcos(
   const out: MarcoExtraido[] = [];
 
   for (const mov of movimentacoes) {
-    const text = movText(mov);
-    const cls = classify(text);
+    const cls = classify(mov);
     if (!cls) continue;
 
     const data = extractDate(mov);
     if (!data) continue; // sem data não entra na timeline (coluna NOT NULL)
 
-    const snippet = normalize(text).slice(0, 120);
+    const fullText = movText(mov);
+    const snippet = normalize(fullText).slice(0, 120);
     const hash = stableHash(`${numeroCnj}|${cls.tipo}|${data}|${snippet}`);
     if (seen.has(hash)) continue;
     seen.add(hash);
@@ -187,7 +210,7 @@ export function extractMarcos(
       tipo_movimentacao: cls.tipo,
       marco_ordem: cls.ordem,
       data_movimentacao: data,
-      valor_indenizacao_fixado: MARCOS_COM_VALOR.includes(cls.tipo) ? extractValor(text) : null,
+      valor_indenizacao_fixado: MARCOS_COM_VALOR.includes(cls.tipo) ? extractValor(fullText) : null,
       link_decisao: extractLink(mov),
       descricao: (mov.conteudo || mov.titulo || mov.descricao || '').toString().slice(0, 500) || null,
       escavador_movimentacao_id: mov.id != null ? String(mov.id) : null,
@@ -195,5 +218,14 @@ export function extractMarcos(
     });
   }
 
-  return out;
+  return dedupePeticaoInicial(out);
+}
+
+// Petição inicial é única (um ajuizamento). Se o parser pegou várias, mantém só a mais antiga
+// (menor data_movimentacao — string ISO compara cronologicamente).
+function dedupePeticaoInicial(marcos: MarcoExtraido[]): MarcoExtraido[] {
+  const pis = marcos.filter((m) => m.tipo_movimentacao === 'peticao_inicial');
+  if (pis.length <= 1) return marcos;
+  const earliest = pis.reduce((a, b) => (a.data_movimentacao! <= b.data_movimentacao! ? a : b));
+  return marcos.filter((m) => m.tipo_movimentacao !== 'peticao_inicial' || m === earliest);
 }
