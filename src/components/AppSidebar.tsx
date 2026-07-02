@@ -114,6 +114,7 @@ export function AppSidebar() {
 
   const quickLinks: NavItem[] = [
     { id: "activities", label: "Atividades", icon: <ClipboardList className="h-4 w-4" />, path: "/", color: "text-emerald-600" },
+    { id: "noticias", label: "Notícias", icon: <Newspaper className="h-4 w-4" />, path: "/noticias", color: "text-amber-500" },
     { id: "calls", label: "Ligações", icon: <Phone className="h-4 w-4" />, path: "/calls", color: "text-blue-500" },
     
     { id: "whatsapp", label: "WhatsApp", icon: <MessageSquareIcon className="h-4 w-4" />, path: "/whatsapp", color: "text-green-500" },
