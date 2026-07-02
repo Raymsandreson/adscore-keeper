@@ -131,6 +131,7 @@ class ErrorBoundary extends React.Component<
 const Index = lazyRetry(() => import("./pages/Index"), "Index");
 const ActivitiesPage = lazyRetry(() => import("./pages/ActivitiesPage"), "ActivitiesPage");
 const LeadsCenter = lazyRetry(() => import("./pages/LeadsCenter"), "LeadsCenter");
+const NoticiasPage = lazyRetry(() => import("./pages/NoticiasPage"), "NoticiasPage");
 const AnalyticsPage = lazyRetry(() => import("./pages/AnalyticsPage"), "AnalyticsPage");
 const LeaderboardPage = lazyRetry(() => import("./pages/LeaderboardPage"), "LeaderboardPage");
 const TeamPage = lazyRetry(() => import("./pages/TeamPage"), "TeamPage");
