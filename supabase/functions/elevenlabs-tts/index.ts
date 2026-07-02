@@ -94,6 +94,7 @@ serve(async (req) => {
       .upload(filePath, new Uint8Array(audioBuffer), {
         contentType: "audio/mpeg",
         upsert: false,
+        cacheControl: "31536000",
       });
 
     if (uploadErr) throw uploadErr;

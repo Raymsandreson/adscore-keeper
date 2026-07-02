@@ -251,6 +251,7 @@ async function downloadAndStoreMedia(
       .upload(filePath, fileBuffer, {
         contentType,
         upsert: true,
+        cacheControl: "31536000",
       });
 
     if (uploadError) {

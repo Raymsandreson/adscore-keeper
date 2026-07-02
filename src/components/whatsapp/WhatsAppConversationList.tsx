@@ -83,6 +83,8 @@ interface Props {
   cloudAssignees?: Map<string, string>;
   currentUserId?: string | null;
   canSeeAllAssignments?: boolean;
+  /** Busca server-side: mescla no estado conversas fora do top-N carregado. */
+  onServerSearch?: (term: string) => Promise<void>;
 }
 
 type QuickFilter = 'all' | 'has_lead' | 'no_lead' | 'unanswered' | 'calls' | 'groups' | 'shared' | 'lead_active' | 'lead_closed' | 'lead_inviavel' | 'mine' | 'unassigned';
@@ -90,8 +92,21 @@ type SortMode = 'alpha' | 'last_activity';
 type DirectionFilter = 'all' | 'inbound' | 'outbound';
 type DocFilter = 'all' | 'has_doc' | 'signed' | 'unsigned' | 'no_doc';
 
-export function WhatsAppConversationList({ conversations, loading, instanceSwitching, switchProgress, selectedPhone, selectedInstanceName, onSelect, boards, selectedInstanceId, bulkMode, selectedPhones, onToggleBulkPhone, onSelectAllFiltered, privatePhones, cloudAssignees, currentUserId, canSeeAllAssignments }: Props) {
+export function WhatsAppConversationList({ conversations, loading, instanceSwitching, switchProgress, selectedPhone, selectedInstanceName, onSelect, boards, selectedInstanceId, bulkMode, selectedPhones, onToggleBulkPhone, onSelectAllFiltered, privatePhones, cloudAssignees, currentUserId, canSeeAllAssignments, onServerSearch }: Props) {
   const [search, setSearch] = useState('');
+
+  // Busca server-side debounced: complementa o filtro local, que só enxerga
+  // as conversas carregadas (top-N por instância + unread). Sem isso, conversa
+  // antiga "some" da busca depois do cap de egress.
+  useEffect(() => {
+    if (!onServerSearch) return;
+    const term = search.trim();
+    if (term.length < 3) return;
+    const timeoutId = window.setTimeout(() => {
+      onServerSearch(term).catch(() => {});
+    }, 400);
+    return () => window.clearTimeout(timeoutId);
+  }, [search, onServerSearch]);
   const { items: sharedWithMe, sharedByMe } = useSharedWithMe();
   const { fetchProfileNames, getDisplayName } = useProfileNames();
 

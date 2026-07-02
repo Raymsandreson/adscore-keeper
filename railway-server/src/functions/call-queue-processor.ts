@@ -296,7 +296,7 @@ async function sendCallFollowupAudio(
 
     const { error: uploadErr } = await supabase.storage
       .from('whatsapp-media')
-      .upload(filePath, new Uint8Array(audioBuffer), { contentType: 'audio/mpeg', upsert: false });
+      .upload(filePath, new Uint8Array(audioBuffer), { contentType: 'audio/mpeg', upsert: false, cacheControl: '31536000' });
 
     if (uploadErr) {
       console.error('[call-queue] Upload error:', uploadErr);

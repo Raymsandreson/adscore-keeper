@@ -1097,7 +1097,7 @@ export function ContactsListPage() {
         const path = `broadcast/${Date.now()}.${ext}`;
         const { data: uploadData, error: uploadError } = await supabase.storage
           .from('whatsapp-media')
-          .upload(path, sendMediaFile, { contentType: sendMediaFile.type });
+          .upload(path, sendMediaFile, { contentType: sendMediaFile.type, cacheControl: '31536000' });
         setUploadingMedia(false);
         if (uploadError) throw uploadError;
         const { data: urlData } = supabase.storage.from('whatsapp-media').getPublicUrl(uploadData.path);

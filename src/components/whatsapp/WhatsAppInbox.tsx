@@ -182,7 +182,7 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
     loading, instanceSwitching, switchProgress,
     instances: _allInstances,
     instanceStats: _allInstanceStats,
-    statsLoading, hasLoaded, sendMessage, sendMedia, sendLocation, deleteMessage, clearConversation, markAsRead, linkToLead, linkToContact, refetch, refetchStats, refetchInstances, fetchFullConversation,
+    statsLoading, hasLoaded, sendMessage, sendMedia, sendLocation, deleteMessage, clearConversation, markAsRead, linkToLead, linkToContact, refetch, refetchStats, refetchInstances, fetchFullConversation, searchConversations,
   } = useWhatsAppMessages(selectedInstanceId, lockInstanceName);
 
   // Filtra instâncias/conversas/stats por aba (UazAPI x WhatsJUD API).
@@ -1945,6 +1945,7 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
                 cloudAssignees={cloudAssignees}
                 currentUserId={user?.id || null}
                 canSeeAllAssignments={canViewPrivate}
+                onServerSearch={searchConversations}
               />
             </div>
           ) : (
@@ -2015,6 +2016,7 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
               cloudAssignees={cloudAssignees}
               currentUserId={user?.id || null}
               canSeeAllAssignments={canViewPrivate}
+              onServerSearch={searchConversations}
             />
           </div>
 

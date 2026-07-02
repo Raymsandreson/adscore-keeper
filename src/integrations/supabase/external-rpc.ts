@@ -95,8 +95,21 @@ export async function getConversationSummaries(
   };
 
   const run = (async () => {
-    const results = await Promise.all(instanceNames.map(callOne));
+    // Unread em query separada (coberta por idx_conversations_instance_unread):
+    // garante que conversa pendente antiga apareça mesmo fora do top-N do cap.
+    const [results, unread] = await Promise.all([
+      Promise.all(instanceNames.map(callOne)),
+      fetchUnreadSummaries(instanceNames),
+    ]);
     const merged = results.flat();
+    const seen = new Set(merged.map(r => `${r.instance_name}|${r.phone}`));
+    for (const row of unread) {
+      const key = `${row.instance_name}|${row.phone}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        merged.push(row);
+      }
+    }
     merged.sort((a, b) => {
       const ta = a.last_message_at ? new Date(a.last_message_at).getTime() : 0;
       const tb = b.last_message_at ? new Date(b.last_message_at).getTime() : 0;
@@ -121,29 +134,140 @@ function instanceNameVariants(name: string): string[] {
   return Array.from(new Set([name, name.toUpperCase(), name.toLowerCase()]));
 }
 
+// Colunas da tabela conversations que espelham o retorno da RPC.
+const SUMMARY_COLUMNS =
+  'phone, contact_name, contact_id, lead_id, last_message_text, last_message_at, last_direction, instance_name, unread_count, message_count';
+
+// Mapeia variante de nome (UPPER/lower/original) de volta pro nome canônico.
+function buildVariantMap(instanceNames: string[]): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const name of instanceNames) {
+    for (const v of instanceNameVariants(name)) map.set(v, name);
+  }
+  return map;
+}
+
+// Normaliza linha crua de `conversations` pro shape da RPC (que faz COALESCE
+// de null pra '' em contact_id/lead_id e converte ids pra text).
+function mapConversationRow(row: any, variantToCanonical: Map<string, string>): ConversationSummary {
+  return {
+    phone: row.phone,
+    contact_name: row.contact_name ?? '',
+    contact_id: row.contact_id != null ? String(row.contact_id) : '',
+    lead_id: row.lead_id != null ? String(row.lead_id) : '',
+    last_message_text: row.last_message_text,
+    last_message_at: row.last_message_at,
+    last_direction: row.last_direction,
+    instance_name: variantToCanonical.get(row.instance_name) || row.instance_name,
+    unread_count: Number(row.unread_count) || 0,
+    message_count: Number(row.message_count) || 0,
+  };
+}
+
+// Janela de "pendência real": no banco há ~27k conversas com unread > 0
+// acumulado há meses (o time não marca antigas como lidas), então unread
+// sozinho não é sinal de pendência. Só unread com atividade recente entra.
+const UNREAD_WINDOW_DAYS = 7;
+const MAX_UNREAD_ROWS = 500;
+
 /**
- * Checagem barata pro poll de fallback: retorna o last_message_at mais recente
- * entre as instâncias (1 linha, ~200 bytes, coberto por
- * idx_conversations_instance_last). Se o valor não mudou desde o último poll,
- * o chamador pula o refresh completo de summaries.
+ * Conversas com unread pendente E atividade nos últimos UNREAD_WINDOW_DAYS.
+ * Complementa o cap do top-N: pendência recente que já saiu do top-N da
+ * instância continua visível na sidebar. Pendência mais antiga que a janela
+ * fica de fora por decisão (são milhares de unread históricos sem valor).
+ */
+async function fetchUnreadSummaries(instanceNames: string[]): Promise<ConversationSummary[]> {
+  if (!instanceNames || instanceNames.length === 0) return [];
+  const variantToCanonical = buildVariantMap(instanceNames);
+  const since = new Date(Date.now() - UNREAD_WINDOW_DAYS * 86_400_000).toISOString();
+  const { data, error } = await (externalSupabase as any)
+    .from('conversations')
+    .select(SUMMARY_COLUMNS)
+    .in('instance_name', Array.from(variantToCanonical.keys()))
+    .gt('unread_count', 0)
+    .gte('last_message_at', since)
+    // ASC de propósito: as unread mais recentes já entram pelo top-N do cap;
+    // quem precisa de resgate são as mais antigas da janela (as esquecidas).
+    .order('last_message_at', { ascending: true })
+    .limit(MAX_UNREAD_ROWS);
+  if (error) {
+    console.warn('[fetchUnreadSummaries] failed:', error.message);
+    return [];
+  }
+  const rows = (data || []) as any[];
+  if (rows.length === MAX_UNREAD_ROWS) {
+    console.warn(`[fetchUnreadSummaries] cap de ${MAX_UNREAD_ROWS} atingido — unread recente pode estar incompleto`);
+  }
+  return rows.map(r => mapConversationRow(r, variantToCanonical));
+}
+
+/**
+ * Busca server-side de conversas por telefone/nome/última mensagem, pra
+ * alcançar conversas fora do top-N carregado na sidebar. Limitada e ordenada
+ * por atividade recente.
+ */
+export async function searchConversationSummaries(
+  instanceNames: string[],
+  term: string,
+  limit = 50
+): Promise<ConversationSummary[]> {
+  const clean = term.trim().replace(/["\\]/g, '');
+  if (!clean || !instanceNames || instanceNames.length === 0) return [];
+  const variantToCanonical = buildVariantMap(instanceNames);
+  // Escapa curingas do ilike; aspas duplas protegem vírgulas dentro do or()
+  const pat = `%${clean.replace(/[%_]/g, m => `\\${m}`)}%`;
+  const { data, error } = await (externalSupabase as any)
+    .from('conversations')
+    .select(SUMMARY_COLUMNS)
+    .in('instance_name', Array.from(variantToCanonical.keys()))
+    .or(`phone.ilike."${pat}",contact_name.ilike."${pat}",last_message_text.ilike."${pat}"`)
+    .order('last_message_at', { ascending: false })
+    .limit(limit);
+  if (error) {
+    console.warn('[searchConversationSummaries] failed:', error.message);
+    return [];
+  }
+  return ((data || []) as any[]).map(r => mapConversationRow(r, variantToCanonical));
+}
+
+/**
+ * Checagem barata pro poll de fallback: assinatura combinando o
+ * last_message_at mais recente + count exato de conversas com unread recente
+ * (head:true — só header HTTP, zero linhas de payload). Muda quando chega
+ * mensagem nova OU quando alguém marca conversa como lida em outro
+ * dispositivo (markMessagesAsRead zera a conversa inteira, então o count cai).
  * Retorna null em erro — o chamador decide o fallback.
  */
-export async function getLatestConversationActivity(
+export async function getInboxActivitySignature(
   instanceNames: string[]
 ): Promise<string | null> {
   if (!instanceNames || instanceNames.length === 0) return null;
   const variants = Array.from(new Set(instanceNames.flatMap(instanceNameVariants)));
-  const { data, error } = await (externalSupabase as any)
-    .from('conversations')
-    .select('last_message_at')
-    .in('instance_name', variants)
-    .order('last_message_at', { ascending: false })
-    .limit(1);
-  if (error) {
-    console.warn('[getLatestConversationActivity] failed:', error.message);
+  // Truncado pra hora cheia: um `since` rolante faria o count mudar quando
+  // conversa antiga sai da janela, disparando refresh sem nada novo. Com o
+  // truncamento, isso acontece no máximo 1x/hora.
+  const sinceMs = Math.floor((Date.now() - UNREAD_WINDOW_DAYS * 86_400_000) / 3_600_000) * 3_600_000;
+  const since = new Date(sinceMs).toISOString();
+  const [latestRes, unreadRes] = await Promise.all([
+    (externalSupabase as any)
+      .from('conversations')
+      .select('last_message_at')
+      .in('instance_name', variants)
+      .order('last_message_at', { ascending: false })
+      .limit(1),
+    (externalSupabase as any)
+      .from('conversations')
+      .select('*', { count: 'exact', head: true })
+      .in('instance_name', variants)
+      .gt('unread_count', 0)
+      .gte('last_message_at', since),
+  ]);
+  if (latestRes.error || unreadRes.error) {
+    console.warn('[getInboxActivitySignature] failed:', latestRes.error?.message || unreadRes.error?.message);
     return null;
   }
-  return (data?.[0] as { last_message_at: string } | undefined)?.last_message_at ?? null;
+  const latest = latestRes.data?.[0]?.last_message_at ?? 'none';
+  return `${latest}|${unreadRes.count ?? 'n/a'}`;
 }
 
 export async function getConversationMessages(

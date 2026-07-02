@@ -92,7 +92,7 @@ async function transcodeAudioToOpus(
     const storagePath = `outbound/audio-opus-${stamp}.ogg`;
     const { error: upErr } = await supabase.storage
       .from('whatsapp-media')
-      .upload(storagePath, outBytes, { contentType: 'audio/ogg', upsert: false });
+      .upload(storagePath, outBytes, { contentType: 'audio/ogg', upsert: false, cacheControl: '31536000' });
     if (upErr) {
       console.error(`[send-cloud ${rid}] upload transcoded falhou:`, upErr);
       return null;

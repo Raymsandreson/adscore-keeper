@@ -541,7 +541,9 @@ async function downloadAndStoreMedia(
 
     const { error: uploadError } = await supabase.storage
       .from('whatsapp-media')
-      .upload(filePath, Buffer.from(fileBuffer), { contentType, upsert: true });
+      // cacheControl longo: arquivo tem nome timestampado (imutável), então
+      // navegador + CDN seguram por 1 ano e re-view não gera egress de origem.
+      .upload(filePath, Buffer.from(fileBuffer), { contentType, upsert: true, cacheControl: '31536000' });
 
     if (uploadError) {
       console.error('Storage upload error:', uploadError);

@@ -5,7 +5,8 @@ import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { getMyAllowedInstanceIds } from '@/integrations/supabase/permissions';
 import {
   getConversationSummaries,
-  getLatestConversationActivity,
+  getInboxActivitySignature,
+  searchConversationSummaries,
   getConversationMessages,
   markMessagesAsRead,
   linkMessagesToLead,
@@ -1460,13 +1461,15 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
     // Fallback poll a cada 5min. Realtime é a fonte primária de deltas; o poll
     // é só rede de segurança pra casos em que o canal cai silenciosamente.
     // Antes de refazer o fetch completo (caro: summaries de todas as
-    // instâncias), consulta só o last_message_at mais recente (~200 bytes) e
-    // pula o refresh se nada mudou — o poll de 60s sem essa checagem foi o
-    // principal responsável pelo estouro de egress de jun/2026.
+    // instâncias), consulta uma assinatura barata (último last_message_at +
+    // count head-only de unread recente, ~200 bytes) e pula o refresh se nada
+    // mudou — o poll de 60s sem essa checagem foi o principal responsável pelo
+    // estouro de egress de jun/2026. A assinatura inclui unread pra detectar
+    // leitura feita por outro usuário/dispositivo, não só mensagem nova.
     const POLL_INTERVAL_MS = 300_000;
     const VISIBILITY_DEBOUNCE_MS = 2_000;
     let lastRefetchAt = 0;
-    let lastActivitySeen: string | null = null;
+    let lastSignatureSeen: string | null = null;
 
     // Mesmo critério de alvo do fetchMessages: falsy ou 'all' = todas.
     const targetNames = ((!selectedInstanceId || selectedInstanceId === 'all')
@@ -1481,10 +1484,10 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
       lastRefetchAt = now;
 
       try {
-        const latest = await getLatestConversationActivity(targetNames);
-        if (latest !== null && latest === lastActivitySeen) return; // nada novo
-        if (latest !== null) lastActivitySeen = latest;
-        // latest === null (erro/sem dados): cai no refresh completo por segurança
+        const signature = await getInboxActivitySignature(targetNames);
+        if (signature !== null && signature === lastSignatureSeen) return; // nada novo
+        if (signature !== null) lastSignatureSeen = signature;
+        // signature === null (erro/sem dados): cai no refresh completo por segurança
       } catch {
         // checagem falhou — mantém o comportamento antigo de refetch direto
       }
@@ -1626,6 +1629,84 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
     fetchFullConversationRef.current = fetchFullConversation;
   }, [fetchFullConversation]);
 
+  // Busca server-side de conversas: alcança quem ficou fora do top-N do cap
+  // de egress. Mescla os resultados no estado `conversations` — o filtro
+  // client-side da sidebar passa a enxergá-los naturalmente. Entradas
+  // mescladas somem no próximo refresh completo se não baterem o cap; a
+  // sidebar refaz a busca no próximo digitar.
+  const searchConversations = useCallback(async (term: string) => {
+    const clean = (term || '').trim();
+    if (clean.length < 3) return;
+    const targetInstances = (!selectedInstanceId || selectedInstanceId === 'all')
+      ? instances
+      : instances.filter(i => i.id === selectedInstanceId);
+    const names = targetInstances.map(i => i.instance_name);
+    if (names.length === 0) return;
+
+    let summaries: Awaited<ReturnType<typeof searchConversationSummaries>> = [];
+    try {
+      summaries = await searchConversationSummaries(names, clean, 50);
+    } catch {
+      return; // busca é best-effort; o filtro local continua funcionando
+    }
+    if (!summaries.length) return;
+
+    const canonicalInstanceNames = new Map(
+      targetInstances.map(i => [normalizeInstanceName(i.instance_name), i.instance_name])
+    );
+
+    setConversations(prev => {
+      const known = new Set(prev.map(c => getConversationKey(c.phone, c.instance_name)));
+      const additions: WhatsAppConversation[] = [];
+      for (const summary of summaries) {
+        const summaryPhone = normalizeWhatsAppConversationPhone(summary.phone);
+        const canonicalInstanceName =
+          canonicalInstanceNames.get(normalizeInstanceName(summary.instance_name)) ||
+          summary.instance_name ||
+          null;
+        const key = getConversationKey(summaryPhone, canonicalInstanceName);
+        if (known.has(key)) continue;
+        known.add(key);
+        additions.push({
+          phone: summaryPhone,
+          contact_name: summary.contact_name,
+          contact_id: summary.contact_id,
+          lead_id: summary.lead_id,
+          last_message: summary.last_message_text,
+          last_message_at: summary.last_message_at,
+          unread_count: Number(summary.unread_count) || 0,
+          instance_name: canonicalInstanceName,
+          label_ids: null,
+          messages: [{
+            id: `summary-${summary.phone}-${canonicalInstanceName}`,
+            phone: summaryPhone,
+            contact_name: summary.contact_name,
+            message_text: summary.last_message_text,
+            message_type: 'text',
+            media_url: null,
+            media_type: null,
+            direction: summary.last_direction || 'inbound',
+            status: 'received',
+            contact_id: summary.contact_id,
+            lead_id: summary.lead_id,
+            external_message_id: null,
+            metadata: null,
+            created_at: summary.last_message_at,
+            read_at: null,
+            instance_name: canonicalInstanceName,
+            instance_token: null,
+          }],
+        });
+      }
+      if (additions.length === 0) return prev;
+      const next = [...prev, ...additions];
+      next.sort((a, b) =>
+        new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime()
+      );
+      return next;
+    });
+  }, [instances, selectedInstanceId]);
+
   return {
     messages,
     conversations,
@@ -1649,5 +1730,6 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
     refetchStats: fetchInstanceStats,
     fetchFullConversation,
     clearActivePhone,
+    searchConversations,
   };
 }

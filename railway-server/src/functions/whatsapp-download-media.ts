@@ -272,7 +272,7 @@ export const handler: RequestHandler = async (req, res) => {
     const filePath = `${safeInstance}/repair_${Date.now()}_${String(rowId).slice(0, 8)}.${extName}`;
     const { error: uploadErr } = await ext.storage
       .from('whatsapp-media')
-      .upload(filePath, bytes, { contentType, upsert: true });
+      .upload(filePath, bytes, { contentType, upsert: true, cacheControl: '31536000' });
     if (uploadErr) return ok({ success: false, error: uploadErr.message });
 
     const { data: publicData } = ext.storage.from('whatsapp-media').getPublicUrl(filePath);

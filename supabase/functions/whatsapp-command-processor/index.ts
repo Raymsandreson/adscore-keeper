@@ -130,6 +130,7 @@ async function generateTTSAudio(text: string, voiceId?: string): Promise<string 
       .upload(filePath, new Uint8Array(audioBuffer), {
         contentType: "audio/mpeg",
         upsert: false,
+        cacheControl: "31536000",
       });
 
     if (uploadErr) {
