@@ -1,4 +1,4 @@
-import { externalSupabase } from '@/integrations/supabase/external-client';
+import { db } from '@/integrations/supabase';
 import { cloudFunctions } from '@/lib/functionRouter';
 
 /**
@@ -22,7 +22,7 @@ export interface SyncMarcosParams {
   caseId?: string | null;
   leadId?: string | null;
   /** Se já temos as movimentações no client, passa direto (evita refetch no Escavador). */
-  movimentacoes?: any[];
+  movimentacoes?: unknown[];
 }
 
 /**
@@ -69,7 +69,9 @@ export const syncProcessMarcos = async (params: SyncMarcosParams): Promise<numbe
 
   // NOTE: process_movements é nova e ainda não está no types.ts gerado.
   // Cast local até o types.ts ser regenerado (supabase gen types).
-  const { error: insErr } = await (externalSupabase as any)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const client = db as any;
+  const { error: insErr } = await client
     .from('process_movements')
     .upsert(rows, {
       onConflict: 'process_id,tipo_movimentacao,conteudo_hash',
