@@ -22,6 +22,7 @@ import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { toast } from 'sonner';
 import { KanbanBoard } from '@/hooks/useKanbanBoards';
 import { autoCreatePartiesFromEnvolvidos } from '@/utils/escavadorPartyUtils';
+import { syncProcessMarcos } from '@/utils/escavadorMovementUtils';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { ResponsibleUserSelect } from './ResponsibleUserSelect';
 
@@ -377,6 +378,22 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
           // Auto-create contacts and process_parties from envolvidos
           if (insertedProcess?.id && fonte?.envolvidos?.length) {
             await autoCreatePartiesFromEnvolvidos(insertedProcess.id, fonte.envolvidos, user?.id);
+          }
+
+          // Sincroniza marcos processuais (histórico append-only em process_movements)
+          if (insertedProcess?.id) {
+            try {
+              const allMovs = movimentacoes.length > 0 ? movimentacoes : ((fonte as any)?.movimentacoes || []);
+              await syncProcessMarcos({
+                processId: insertedProcess.id,
+                numeroCnj: result.numero_cnj,
+                caseId,
+                leadId,
+                movimentacoes: allMovs,
+              });
+            } catch (mErr) {
+              console.error('Error syncing process marcos:', mErr);
+            }
           }
           
           // Auto-create/attach "Dar andamento" activity via helper central

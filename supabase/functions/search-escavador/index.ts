@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { extractMarcos } from "../_shared/escavadorMarcos.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -20,7 +21,7 @@ serve(async (req) => {
       });
     }
 
-    const { action, numero_cnj, nome, cpf_cnpj, oab_numero, oab_estado, cursor, documento_id } = await req.json();
+    const { action, numero_cnj, nome, cpf_cnpj, oab_numero, oab_estado, cursor, documento_id, movimentacoes: movimentacoesIn } = await req.json();
 
     let url = '';
     let method = 'GET';
@@ -114,8 +115,36 @@ serve(async (req) => {
           data: { ...processData, movimentacoes_detalhadas: movimentacoes },
         }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
         
+      case 'extrair_marcos': {
+        // Parseia marcos processuais. Aceita movimentacoes já obtidas (evita
+        // refetch) OU busca pelo numero_cnj. Retorno é puro (não persiste).
+        let movs: any[] = Array.isArray(movimentacoesIn) ? movimentacoesIn : [];
+        if (!movs.length) {
+          if (!numero_cnj) throw new Error('numero_cnj ou movimentacoes é obrigatório');
+          const movUrl = `${ESCAVADOR_BASE}/processos/numero_cnj/${encodeURIComponent(numero_cnj)}/movimentacoes`;
+          console.log(`Escavador extrair_marcos fetch: GET ${movUrl}`);
+          const resp = await fetch(movUrl, {
+            headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' },
+          });
+          if (resp.ok) {
+            const d = await resp.json();
+            movs = d.items || d.data || (Array.isArray(d) ? d : []);
+          }
+        }
+        const marcos = extractMarcos(movs, { numeroCnj: numero_cnj });
+        return new Response(JSON.stringify({
+          success: true,
+          data: {
+            numero_cnj: numero_cnj ?? null,
+            total_movimentacoes: movs.length,
+            marcos_encontrados: marcos.length,
+            marcos,
+          },
+        }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+
       default:
-        throw new Error('Ação inválida. Use: buscar_por_numero, buscar_por_nome, buscar_por_cpf_cnpj, buscar_por_oab, buscar_movimentacoes, buscar_documentos, buscar_autos, download_documento_pdf, buscar_envolvidos, buscar_completo');
+        throw new Error('Ação inválida. Use: buscar_por_numero, buscar_por_nome, buscar_por_cpf_cnpj, buscar_por_oab, buscar_movimentacoes, buscar_documentos, buscar_autos, download_documento_pdf, buscar_envolvidos, buscar_completo, extrair_marcos');
     }
 
     console.log(`Escavador request: ${method} ${url}`);
