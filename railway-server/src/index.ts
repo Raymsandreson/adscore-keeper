@@ -54,6 +54,7 @@ import { handler as recoverLeadsPhone55 } from './functions/recover-leads-phone-
 import { handler as transcribeActivityCall } from './functions/transcribe-activity-call';
 import { handler as suggestStepActions } from './functions/suggest-step-actions';
 import { handler as wipeInstanceAgentLabels } from './functions/wipe-instance-agent-labels';
+import { handler as transcodeAudioOpus } from './functions/transcode-audio-opus';
 
 
 
@@ -102,6 +103,7 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'suggest-step-actions': suggestStepActions,
   'wipe-instance-agent-labels': wipeInstanceAgentLabels,
   'bpc-sheet-sync': bpcSheetSync,
+  'transcode-audio-opus': transcodeAudioOpus,
 };
 
 const app = express();
