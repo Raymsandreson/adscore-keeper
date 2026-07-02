@@ -6,7 +6,7 @@ import {
   MessageCircle, CreditCard, Filter, Bot, Target, Heart, Megaphone,
   Zap, Menu, X, Search, ClipboardList, ChevronRight, Phone, FileText,
   MessageSquare as MessageSquareIcon, Scale, Briefcase, AtSign, RefreshCw,
-  ChevronUp, ChevronDown, LogOut, MessagesSquare, Settings, GripVertical,
+  ChevronUp, ChevronDown, LogOut, MessagesSquare, Settings, GripVertical, Newspaper,
 } from "lucide-react";
 import { onUpdateAvailable, applyUpdate, checkForUpdates, forceHardRefresh } from "@/lib/pwaUpdater";
 import { UpdateNotesDialog } from "@/components/updates/UpdateNotesDialog";
