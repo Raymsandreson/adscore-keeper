@@ -6,6 +6,7 @@ import { Sparkles, Loader2, Plus, RotateCcw, Lightbulb, Check } from 'lucide-rea
 import { toast } from 'sonner';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { cloudFunctions } from '@/lib/functionRouter';
+import { normalizeWhatsAppConversationPhone } from '@/lib/whatsappPhone';
 import { stripHtmlToText } from './ActivityCallRecorder';
 
 export interface NextStepsContext {
@@ -38,9 +39,13 @@ interface Props {
   caseId?: string | null;
   processId?: string | null;
   activityId?: string | null;
+  /** Telefone do lead (conversa privada) — usado para dar contexto de conversa à IA. */
+  leadPhone?: string | null;
+  /** JID/ID do grupo de WhatsApp do lead — usado para dar contexto de conversa à IA. */
+  groupJid?: string | null;
 }
 
-export function ActivityNextStepsAgent({ context, onApply, leadId, caseId, processId, activityId }: Props) {
+export function ActivityNextStepsAgent({ context, onApply, leadId, caseId, processId, activityId, leadPhone, groupJid }: Props) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
@@ -74,8 +79,44 @@ export function ActivityNextStepsAgent({ context, onApply, leadId, caseId, proce
         }
       } catch { /* contexto extra é opcional */ }
 
+      // Contexto extra: conversa recente do lead — privado + grupo. Dá à IA o que
+      // o cliente/grupo pediu, prometeu ou está aguardando, além do fluxo de trabalho.
+      let conversation: { channel: 'privado' | 'grupo'; from: string; text: string; date?: string }[] = [];
+      try {
+        const buildVariants = (raw?: string | null) => {
+          if (!raw) return [] as string[];
+          const norm = normalizeWhatsAppConversationPhone(raw);
+          return Array.from(new Set([String(raw).trim(), norm, norm ? `${norm}@g.us` : ''].filter(Boolean)));
+        };
+        const fetchChannel = async (raw: string | null | undefined, channel: 'privado' | 'grupo') => {
+          const variants = buildVariants(raw);
+          if (variants.length === 0) return [] as typeof conversation;
+          const { data } = await externalSupabase
+            .from('whatsapp_messages')
+            .select('message_text, direction, created_at, contact_name')
+            .in('phone', variants)
+            .not('message_text', 'is', null)
+            .order('created_at', { ascending: false })
+            .limit(25);
+          return (data || []).map((m: any) => ({
+            channel,
+            from: m.direction === 'outbound'
+              ? 'Escritório'
+              : (m.contact_name || (channel === 'grupo' ? 'Participante' : 'Cliente')),
+            text: String(m.message_text || '').slice(0, 500),
+            date: m.created_at ? String(m.created_at).slice(0, 16).replace('T', ' ') : undefined,
+          }));
+        };
+        const [priv, grp] = await Promise.all([
+          fetchChannel(leadPhone, 'privado'),
+          fetchChannel(groupJid, 'grupo'),
+        ]);
+        // Ordena cronológico (mais antigo primeiro) para a IA ler como diálogo.
+        conversation = [...priv, ...grp].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+      } catch { /* conversa é contexto opcional */ }
+
       const { data, error: fnErr } = await cloudFunctions.invoke('suggest-step-actions', {
-        body: { step_context: context.step, activity: context.activity, previous_activities },
+        body: { step_context: context.step, activity: context.activity, previous_activities, conversation },
       });
       if (fnErr) throw fnErr;
       if (!data?.success) throw new Error(data?.error || 'Falha ao gerar sugestões');
@@ -89,7 +130,7 @@ export function ActivityNextStepsAgent({ context, onApply, leadId, caseId, proce
     } finally {
       setLoading(false);
     }
-  }, [context, leadId, caseId, processId, activityId]);
+  }, [context, leadId, caseId, processId, activityId, leadPhone, groupJid]);
 
   const handleOpenChange = (o: boolean) => {
     setOpen(o);

@@ -3615,6 +3615,8 @@ const ActivitiesPage = () => {
                       leadId={formLeadId}
                       caseId={formCaseId}
                       processId={formProcessId}
+                      leadPhone={leadPreview?.lead_phone}
+                      groupJid={leadPreview?.whatsapp_group_id}
                       context={{
                         step: stepContext ? {
                           step_label: stepContext.stepLabel,

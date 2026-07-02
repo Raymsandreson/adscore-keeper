@@ -32,14 +32,21 @@ interface PreviousActivity {
   next_steps?: string;
   date?: string;
 }
+interface ConversationMsg {
+  channel?: string; // 'grupo' | 'privado'
+  from?: string;
+  text?: string;
+  date?: string;
+}
 
 export const handler: RequestHandler = async (req, res) => {
   const ok = (b: Record<string, unknown>) => res.status(200).json(b);
   try {
-    const { step_context, activity, previous_activities } = (req.body || {}) as {
+    const { step_context, activity, previous_activities, conversation } = (req.body || {}) as {
       step_context?: StepContext;
       activity?: ActivityInfo;
       previous_activities?: PreviousActivity[];
+      conversation?: ConversationMsg[];
     };
 
     const step = step_context || {};
@@ -53,6 +60,15 @@ export const handler: RequestHandler = async (req, res) => {
       ? previous_activities.slice(0, 6).map((a) => {
           const parts = [a.date ? `[${a.date}]` : null, a.title || '(sem título)', a.status ? `(${a.status})` : null, a.next_steps ? `→ próximo: ${a.next_steps}` : null].filter(Boolean);
           return `- ${parts.join(' ')}`;
+        }).join('\n')
+      : '';
+
+    const convText = Array.isArray(conversation) && conversation.length > 0
+      ? conversation.slice(-40).map((m) => {
+          const tag = m.channel === 'grupo' ? '[grupo]' : '[privado]';
+          const who = m.from || (m.channel === 'grupo' ? 'Participante' : 'Cliente');
+          const when = m.date ? ` (${m.date})` : '';
+          return `${tag} ${who}${when}: ${String(m.text || '').slice(0, 500)}`;
         }).join('\n')
       : '';
 
@@ -73,13 +89,15 @@ ATIVIDADE ATUAL:
 - O que foi feito: ${act.what_was_done || '(vazio)'}
 - Próximo passo (atual): ${act.next_steps || '(vazio)'}
 ${prevText ? `\nHISTÓRICO RECENTE DO PROCESSO (mais novo primeiro):\n${prevText}` : ''}
+${convText ? `\nCONVERSA RECENTE COM O CLIENTE E NO GRUPO (mais antigo primeiro; [grupo] = grupo interno do caso, [privado] = conversa direta com o cliente):\n${convText}` : ''}
 
-Gere de 3 a 5 PRÓXIMOS PASSOS práticos e específicos para CONCLUIR o objetivo do passo atual e avançar o processo. Priorize o que ainda falta (itens não marcados do checklist) e o que faz sentido após o que já foi feito. NÃO repita o que já está concluído. Se houver prazos/datas no contexto, leve-os em conta.`;
+Gere de 3 a 5 PRÓXIMOS PASSOS práticos e específicos para CONCLUIR o objetivo do passo atual e avançar o processo. Priorize o que ainda falta (itens não marcados do checklist) e o que faz sentido após o que já foi feito. Leve em conta o que o cliente/grupo pediu, prometeu ou está aguardando na conversa recente (ex.: documento pendente, dúvida não respondida, prazo combinado). NÃO repita o que já está concluído. Se houver prazos/datas no contexto, leve-os em conta.`;
 
     const system = `Você é um assistente jurídico de um escritório de advocacia brasileiro. Sua função é sugerir os PRÓXIMOS PASSOS para o assessor concluir o passo atual do fluxo de trabalho de um caso/processo e atingir o objetivo desse passo.
 - Seja prático, específico e acionável (nada genérico).
 - Cada passo começa com um verbo de ação (ex.: "Protocolar...", "Ligar para a vara...", "Solicitar laudo...", "Anexar...", "Cobrar...").
-- Baseie-se EXCLUSIVAMENTE no contexto fornecido; não invente fatos.
+- Baseie-se EXCLUSIVAMENTE no contexto fornecido (fluxo de trabalho, histórico e a conversa recente com o cliente/grupo); não invente fatos.
+- Quando a conversa recente indicar algo pendente (documento aguardado, resposta devida ao cliente, prazo combinado), reflita isso nos próximos passos.
 - Responda em português do Brasil.`;
 
     const data = await geminiChat({
