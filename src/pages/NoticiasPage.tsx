@@ -68,8 +68,8 @@ const NoticiasPage = () => {
     });
   }, [leads, search, tab]);
 
-  const countNoticias = leads.filter((l) => l.status === NOTICIA_STATUS).length;
-  const countViavel = leads.filter((l) => l.status === VIAVEL_STATUS).length;
+  const countNoticias = leads.filter((l) => String(l.status) === NOTICIA_STATUS).length;
+  const countViavel = leads.filter((l) => String(l.status) === VIAVEL_STATUS).length;
 
   const handleSave = async (leadId: string, updates: Partial<Lead>) => {
     await updateLead(leadId, updates);
@@ -77,7 +77,7 @@ const NoticiasPage = () => {
       prev
         .map((l) => (l.id === leadId ? { ...l, ...updates } : l))
         // se mudou para outro status, tira da lista
-        .filter((l) => l.status === NOTICIA_STATUS || l.status === VIAVEL_STATUS)
+        .filter((l) => String(l.status) === NOTICIA_STATUS || String(l.status) === VIAVEL_STATUS)
     );
   };
 
@@ -158,7 +158,7 @@ const NoticiasPage = () => {
                       {[l.city, l.state].filter(Boolean).join(" / ") || <span className="text-muted-foreground">—</span>}
                     </td>
                     <td className="px-3 py-2">
-                      {l.status === NOTICIA_STATUS ? (
+                      {String(l.status) === NOTICIA_STATUS ? (
                         <Badge variant="outline" className="border-slate-400 text-slate-600"><Newspaper className="h-3 w-3 mr-1" />Notícia</Badge>
                       ) : (
                         <Badge variant="outline" className="border-amber-500 text-amber-600"><Star className="h-3 w-3 mr-1" />Viável</Badge>
