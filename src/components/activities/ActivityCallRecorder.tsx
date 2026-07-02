@@ -495,6 +495,23 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
                 <Download className="h-4 w-4" /> Baixar gravação
               </Button>
             )}
+            {recordingUrl && groupJid && (
+              <Button
+                variant="default"
+                className="w-full gap-2 bg-green-600 hover:bg-green-700"
+                size="sm"
+                onClick={sendAudioToGroup}
+                disabled={sendingToGroup || sentToGroup}
+              >
+                {sendingToGroup ? (
+                  <><Loader2 className="h-4 w-4 animate-spin" /> Enviando ao grupo…</>
+                ) : sentToGroup ? (
+                  <><Sparkles className="h-4 w-4" /> Áudio enviado ao grupo</>
+                ) : (
+                  <><Send className="h-4 w-4" /> Enviar áudio ao grupo WA</>
+                )}
+              </Button>
+            )}
             <Button variant="outline" className="w-full gap-2" size="sm" onClick={reset}>
               <RotateCcw className="h-4 w-4" /> Gravar novamente
             </Button>
