@@ -334,7 +334,12 @@ export function DynamicKanbanBoard({
     !status || ['no_response', 'in_progress', 'active', 'novo', 'new', 'open'].includes(status);
 
   // Separate leads by business status
-  const activeLeads = useMemo(() => leads.filter(l => isOpenLeadStatus((l as any).lead_status)), [leads]);
+  // Leads com status "noticias"/"viavel" foram migrados para a aba /noticias — não exibir no Kanban.
+  const HIDDEN_STATUSES = ['noticias', 'viavel'];
+  const activeLeads = useMemo(
+    () => leads.filter(l => isOpenLeadStatus((l as any).lead_status) && !HIDDEN_STATUSES.includes(String(l.status || ''))),
+    [leads]
+  );
   const closedLeads = useMemo(() => leads.filter(l => (l as any).lead_status === 'closed'), [leads]);
   const refusedLeads = useMemo(() => leads.filter(l => (l as any).lead_status === 'refused'), [leads]);
   const inviavelLeads = useMemo(() => leads.filter(l => (l as any).lead_status === 'inviavel'), [leads]);

@@ -131,6 +131,7 @@ class ErrorBoundary extends React.Component<
 const Index = lazyRetry(() => import("./pages/Index"), "Index");
 const ActivitiesPage = lazyRetry(() => import("./pages/ActivitiesPage"), "ActivitiesPage");
 const LeadsCenter = lazyRetry(() => import("./pages/LeadsCenter"), "LeadsCenter");
+const NoticiasPage = lazyRetry(() => import("./pages/NoticiasPage"), "NoticiasPage");
 const AnalyticsPage = lazyRetry(() => import("./pages/AnalyticsPage"), "AnalyticsPage");
 const LeaderboardPage = lazyRetry(() => import("./pages/LeaderboardPage"), "LeaderboardPage");
 const TeamPage = lazyRetry(() => import("./pages/TeamPage"), "TeamPage");
@@ -265,6 +266,7 @@ function SidebarLayout() {
                 <Route path="/index" element={<Navigate to="/dashboard" replace />} />
                 <Route path="/dashboard" element={<Index />} />
                 <Route path="/leads" element={<ProtectedRoute><LeadsCenter /></ProtectedRoute>} />
+                <Route path="/noticias" element={<ProtectedRoute><NoticiasPage /></ProtectedRoute>} />
                 <Route path="/mapa-leads" element={<ProtectedRoute><LeadsMapPage /></ProtectedRoute>} />
                 <Route path="/analytics" element={<ProtectedRoute><AnalyticsPage /></ProtectedRoute>} />
                 <Route path="/leaderboard" element={<ProtectedRoute><LeaderboardPage /></ProtectedRoute>} />
