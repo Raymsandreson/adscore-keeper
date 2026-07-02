@@ -358,7 +358,46 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
     setSilent(false);
     silentRef.current = false;
     setRecordingUrl(null);
+    setSentToGroup(false);
   }, [teardownAudio]);
+
+  const sendAudioToGroup = useCallback(async () => {
+    if (!recordingUrl || !groupJid) return;
+    setSendingToGroup(true);
+    try {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      let instanceId: string | undefined;
+      if (authUser) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('default_instance_id')
+          .eq('user_id', authUser.id)
+          .maybeSingle();
+        instanceId = (profile as any)?.default_instance_id || undefined;
+      }
+      const { data, error: sendErr } = await cloudFunctions.invoke('send-whatsapp', {
+        body: {
+          action: 'send_media',
+          phone: groupJid,
+          chat_id: groupJid,
+          media_url: recordingUrl,
+          media_type: 'audio/ogg',
+          lead_id: leadId || null,
+          ...(instanceId ? { instance_id: instanceId } : {}),
+        },
+      });
+      if (sendErr || !data?.success) {
+        throw new Error(data?.error || sendErr?.message || 'Falha ao enviar áudio ao grupo');
+      }
+      setSentToGroup(true);
+      toast.success('Áudio enviado ao grupo do WhatsApp!');
+    } catch (e: any) {
+      console.error('sendAudioToGroup error', e);
+      toast.error(e?.message || 'Erro ao enviar áudio ao grupo');
+    } finally {
+      setSendingToGroup(false);
+    }
+  }, [recordingUrl, groupJid, leadId]);
 
   return (
     <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o && phase === 'done') reset(); }}>
