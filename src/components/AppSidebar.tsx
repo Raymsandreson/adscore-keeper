@@ -5,7 +5,7 @@ import {
   MessageCircle, CreditCard, Filter, Bot, Target, Heart, Megaphone,
   Zap, Search, ClipboardList, Phone, Scale, Briefcase, AtSign, RefreshCw, FileText,
   LogOut, MessagesSquare, Settings, ChevronRight, User, Chrome, Archive, MapPin,
-  MessageSquare as MessageSquareIcon, ExternalLink, Accessibility,
+  MessageSquare as MessageSquareIcon, ExternalLink, Accessibility, Newspaper,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
