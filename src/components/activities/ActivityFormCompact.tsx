@@ -600,7 +600,8 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
         <div>
           <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Assessor *</span>
           {(() => {
-            const assignable = filterAssignableMembers(props.teamMembers);
+            const assignable = filterAssignableMembers(props.teamMembers)
+              .slice().sort((a, b) => (a.full_name || '').localeCompare(b.full_name || '', 'pt-BR', { sensitivity: 'base' }));
             const selected = assignable.find(m => m.user_id === props.formAssignedTo);
             return (
               <Popover>
