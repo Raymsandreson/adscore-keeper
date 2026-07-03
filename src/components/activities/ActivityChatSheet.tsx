@@ -72,6 +72,35 @@ interface AIAssistantResponse {
   follow_up_suggestions: FollowUpSuggestion[] | null;
 }
 
+const AutoResizeTextarea = React.forwardRef<HTMLTextAreaElement, React.TextareaHTMLAttributes<HTMLTextAreaElement>>(
+  ({ className, value, onChange, ...props }, ref) => {
+    const innerRef = useRef<HTMLTextAreaElement | null>(null);
+    React.useImperativeHandle(ref, () => innerRef.current!);
+
+    useEffect(() => {
+      const el = innerRef.current;
+      if (!el) return;
+      el.style.height = 'auto';
+      el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+    }, [value]);
+
+    return (
+      <textarea
+        ref={innerRef}
+        value={value}
+        onChange={onChange}
+        rows={1}
+        className={cn(
+          "flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 resize-none overflow-hidden min-h-[32px]",
+          className
+        )}
+        {...props}
+      />
+    );
+  }
+);
+AutoResizeTextarea.displayName = "AutoResizeTextarea";
+
 interface ActivityChatSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
