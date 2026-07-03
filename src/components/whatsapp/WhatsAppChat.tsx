@@ -4129,7 +4129,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
               onKeyDown={handleKeyDown}
               onPaste={inputMode === 'message' ? handlePaste : undefined}
               className={cn(
-                "min-h-[44px] max-h-[120px] resize-none text-sm flex-1",
+                "min-h-[44px] max-h-[200px] resize-none overflow-y-auto text-sm flex-1",
                 inputMode === 'note' && "border-amber-300 dark:border-amber-700 bg-amber-50/50 dark:bg-amber-950/20",
                 inputMode === 'chat' && "border-blue-300 dark:border-blue-700 bg-blue-50/50 dark:bg-blue-950/20"
               )}
