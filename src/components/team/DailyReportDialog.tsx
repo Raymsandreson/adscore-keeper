@@ -29,6 +29,8 @@ interface DailyReportDialogProps {
   productivity: MyProductivity;
   goals: MyDailyGoals;
   goalProgress: number;
+  reportDateRange?: { start: Date; end: Date };
+  periodLabel?: string;
 }
 
 interface LeadMovement {
@@ -48,7 +50,7 @@ interface DetailEntry {
 }
 
 export function DailyReportDialog({
-  open, onOpenChange, userId, userName, productivity, goals, goalProgress,
+  open, onOpenChange, userId, userName, productivity, goals, goalProgress, reportDateRange, periodLabel,
 }: DailyReportDialogProps) {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
@@ -62,23 +64,37 @@ export function DailyReportDialog({
   const [activitiesCompleted, setActivitiesCompleted] = useState<DetailEntry[]>([]);
   const [callsMade, setCallsMade] = useState<DetailEntry[]>([]);
 
+  const activeRange = useMemo(() => ({
+    start: startOfDay(reportDateRange?.start ?? selectedDate),
+    end: endOfDay(reportDateRange?.end ?? selectedDate),
+  }), [reportDateRange?.start, reportDateRange?.end, selectedDate]);
+
+  const isSingleDayRange = isSameDay(activeRange.start, activeRange.end);
+  const isToday = isSingleDayRange && isSameDay(activeRange.start, new Date());
+  const rangeLabel = isSingleDayRange
+    ? format(activeRange.start, "dd/MM/yyyy (EEEE)", { locale: ptBR })
+    : `${format(activeRange.start, "dd/MM/yyyy", { locale: ptBR })} a ${format(activeRange.end, "dd/MM/yyyy", { locale: ptBR })}`;
+  const reportPeriodLabel = periodLabel ? `${periodLabel} — ${rangeLabel}` : rangeLabel;
+  const formatEntryTime = (date: string | Date) =>
+    isSingleDayRange
+      ? format(new Date(date), 'HH:mm', { locale: ptBR })
+      : format(new Date(date), 'dd/MM HH:mm', { locale: ptBR });
+
   // Reset date to today whenever dialog opens for a (possibly different) user
   useEffect(() => {
-    if (open) setSelectedDate(new Date());
-  }, [open, userId]);
+    if (open && !reportDateRange) setSelectedDate(new Date());
+  }, [open, userId, reportDateRange]);
 
   useEffect(() => {
     if (!open || !userId) return;
     fetchReportData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, userId, selectedDate]);
-
-  const isToday = isSameDay(selectedDate, new Date());
+  }, [open, userId, selectedDate, activeRange.start, activeRange.end]);
 
   const fetchReportData = async () => {
     setLoading(true);
-    const startDate = startOfDay(selectedDate).toISOString();
-    const endDate = endOfDay(selectedDate).toISOString();
+    const startDate = activeRange.start.toISOString();
+    const endDate = activeRange.end.toISOString();
 
     try {
       const [stageRes, contactsRes, leadsRes, dmsRes, commentsRes, activitiesRes, callsRes, callRecordsRes] = await Promise.all([
@@ -149,28 +165,28 @@ export function DailyReportDialog({
         id: c.id,
         label: c.full_name,
         sublabel: c.instagram_username ? `@${c.instagram_username}` : undefined,
-        time: format(new Date(c.created_at), 'HH:mm', { locale: ptBR }),
+        time: formatEntryTime(c.created_at),
       })));
 
       setLeadsCreated((leadsRes.data || []).map(l => ({
         id: l.id,
         label: l.lead_name || 'Sem nome',
         sublabel: l.status || undefined,
-        time: format(new Date(l.created_at), 'HH:mm', { locale: ptBR }),
+        time: formatEntryTime(l.created_at),
       })));
 
       setDmsSent((dmsRes.data || []).map(d => ({
         id: d.id,
         label: `@${d.instagram_username}`,
         sublabel: d.dm_message?.slice(0, 60) || undefined,
-        time: format(new Date(d.created_at), 'HH:mm', { locale: ptBR }),
+        time: formatEntryTime(d.created_at),
       })));
 
       setCommentReplies((commentsRes.data || []).map(c => ({
         id: c.id,
         label: `@${c.author_username || 'desconhecido'}`,
         sublabel: c.comment_text?.slice(0, 60) || undefined,
-        time: c.replied_at ? format(new Date(c.replied_at), 'HH:mm', { locale: ptBR }) : '',
+        time: c.replied_at ? formatEntryTime(c.replied_at) : '',
       })));
 
       const allCalls: DetailEntry[] = [
@@ -178,13 +194,13 @@ export function DailyReportDialog({
           id: c.id,
           label: c.contact_result || 'Ligação',
           sublabel: c.notes?.slice(0, 60) || undefined,
-          time: format(new Date(c.created_at), 'HH:mm', { locale: ptBR }),
+          time: formatEntryTime(c.created_at),
         })),
         ...(callRecordsRes.data || []).map(c => ({
           id: c.id,
           label: c.contact_name || 'Ligação',
           sublabel: `${c.call_result || ''} ${c.notes?.slice(0, 40) || ''}`.trim() || undefined,
-          time: format(new Date(c.created_at), 'HH:mm', { locale: ptBR }),
+          time: formatEntryTime(c.created_at),
         })),
       ];
       setCallsMade(allCalls);
@@ -193,7 +209,7 @@ export function DailyReportDialog({
         id: a.id,
         label: a.title || 'Atividade',
         sublabel: a.lead_name || undefined,
-        time: a.completed_at ? format(new Date(a.completed_at), 'HH:mm', { locale: ptBR }) : '',
+        time: a.completed_at ? formatEntryTime(a.completed_at) : '',
       })));
     } catch (err) {
       console.error('Error fetching report data:', err);
@@ -278,12 +294,11 @@ export function DailyReportDialog({
 
 
   const generateTextReport = () => {
-    const today = format(selectedDate, "dd/MM/yyyy (EEEE)", { locale: ptBR });
     const lines: string[] = [];
 
     const emittedAt = format(new Date(), 'HH:mm', { locale: ptBR });
     const perfLabel = effectiveGoalProgress >= 80 ? '🟢 RENDIMENTO ALTO' : effectiveGoalProgress >= 50 ? '🟡 RENDIMENTO MÉDIO' : '🔴 RENDIMENTO BAIXO';
-    lines.push(`📊 RELATÓRIO DIÁRIO — ${today}`);
+    lines.push(`📊 RELATÓRIO DE ATIVIDADES — ${reportPeriodLabel}`);
     lines.push(`🕐 Emitido às ${emittedAt}`);
     lines.push(`👤 ${userName}`);
     lines.push(`🎯 Meta geral: ${effectiveGoalProgress}% — ${perfLabel}`);
@@ -306,7 +321,7 @@ export function DailyReportDialog({
       lines.push('');
       lines.push(`═══ LEADS MOVIMENTADOS (${leadMovements.length}) ═══`);
       leadMovements.forEach(m => {
-        lines.push(`  • ${m.lead_name}: ${m.from_stage || '?'} → ${m.to_stage || '?'} (${format(new Date(m.changed_at), 'HH:mm')})`);
+        lines.push(`  • ${m.lead_name}: ${m.from_stage || '?'} → ${m.to_stage || '?'} (${formatEntryTime(m.changed_at)})`);
       });
     }
 
@@ -426,36 +441,43 @@ export function DailyReportDialog({
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
             <FileText className="h-5 w-5" />
-            Relatório Diário
+            Relatório de Atividades
           </SheetTitle>
           <SheetDescription>
-            {userName} — {format(selectedDate, "dd/MM/yyyy (EEEE)", { locale: ptBR })}
+            {userName} — {reportPeriodLabel}
             {!isToday && <span className="ml-1 text-amber-600">(histórico)</span>}
           </SheetDescription>
         </SheetHeader>
 
         {/* Action buttons */}
         <div className="flex flex-wrap gap-2 mt-3 mb-4">
-          <Popover open={datePopoverOpen} onOpenChange={setDatePopoverOpen}>
-            <PopoverTrigger asChild>
-              <Button size="sm" variant="outline" className="gap-1.5">
-                <CalendarIcon className="h-3.5 w-3.5" />
-                {format(selectedDate, "dd/MM/yyyy", { locale: ptBR })}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="start">
-              <Calendar
-                mode="single"
-                selected={selectedDate}
-                onSelect={(d) => { if (d) { setSelectedDate(d); setDatePopoverOpen(false); } }}
-                disabled={(d) => d > new Date()}
-                initialFocus
-                locale={ptBR}
-                className={cn("p-3 pointer-events-auto")}
-              />
-            </PopoverContent>
-          </Popover>
-          {!isToday && (
+          {reportDateRange ? (
+            <Button size="sm" variant="outline" className="gap-1.5" disabled>
+              <CalendarIcon className="h-3.5 w-3.5" />
+              {rangeLabel}
+            </Button>
+          ) : (
+            <Popover open={datePopoverOpen} onOpenChange={setDatePopoverOpen}>
+              <PopoverTrigger asChild>
+                <Button size="sm" variant="outline" className="gap-1.5">
+                  <CalendarIcon className="h-3.5 w-3.5" />
+                  {format(selectedDate, "dd/MM/yyyy", { locale: ptBR })}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar
+                  mode="single"
+                  selected={selectedDate}
+                  onSelect={(d) => { if (d) { setSelectedDate(d); setDatePopoverOpen(false); } }}
+                  disabled={(d) => d > new Date()}
+                  initialFocus
+                  locale={ptBR}
+                  className={cn("p-3 pointer-events-auto")}
+                />
+              </PopoverContent>
+            </Popover>
+          )}
+          {!reportDateRange && !isToday && (
             <Button size="sm" variant="ghost" onClick={() => setSelectedDate(new Date())} className="gap-1.5">
               Hoje
             </Button>
@@ -481,7 +503,7 @@ export function DailyReportDialog({
                   {effectiveGoalProgress >= 80 ? '🟢 Rendimento Alto' : effectiveGoalProgress >= 50 ? '🟡 Rendimento Médio' : '🔴 Rendimento Baixo'}
                 </p>
                 <p className="text-[10px] text-muted-foreground mt-0.5">
-                  Emitido às {format(new Date(), 'HH:mm', { locale: ptBR })} — {format(selectedDate, "dd/MM/yyyy", { locale: ptBR })}
+                  Emitido às {format(new Date(), 'HH:mm', { locale: ptBR })} — {rangeLabel}
                 </p>
               </div>
 
@@ -528,7 +550,7 @@ export function DailyReportDialog({
                             <Badge variant="secondary" className="text-[9px] h-4 px-1">{m.to_stage || '?'}</Badge>
                           </div>
                         </div>
-                        <span className="text-muted-foreground shrink-0">{format(new Date(m.changed_at), 'HH:mm')}</span>
+                        <span className="text-muted-foreground shrink-0">{formatEntryTime(m.changed_at)}</span>
                       </div>
                     ))}
                   </div>
