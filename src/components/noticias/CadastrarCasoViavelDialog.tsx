@@ -144,9 +144,24 @@ interface Props {
   onRegistered: () => void;
 }
 
+const ALLOWED_ACOLHEDOR_IDS = [
+  'f36dd4d0-b79f-42f8-8d56-8d566c25c8fc', // Analyne Sousa de Oliveira
+  'e2de0610-7a9b-44aa-b893-3d91293ed700', // Luiz Ricardo
+  '70200def-0910-4399-8a5e-0a27a02c5514', // Bruno Wenner Dantas Nunes
+  '01f77785-871a-4a2f-b237-2392c2cb7860', // Juliana Clara Santos Pimentel
+];
+
 export function CadastrarCasoViavelDialog({ lead, open, onOpenChange, saveLead, onRegistered }: Props) {
   const { profile, user } = useAuth();
   const profiles = useProfilesList();
+  const allowedProfiles = useMemo(
+    () => profiles.filter((p) => ALLOWED_ACOLHEDOR_IDS.includes(p.user_id)),
+    [profiles]
+  );
+  const defaultAcolhedor = useMemo(() => {
+    const analyne = allowedProfiles.find((p) => p.user_id === 'f36dd4d0-b79f-42f8-8d56-8d566c25c8fc');
+    return analyne?.full_name || analyne?.email || '';
+  }, [allowedProfiles]);
 
   const [newsText, setNewsText] = useState('');
   const [newsUrl, setNewsUrl] = useState('');
@@ -175,9 +190,13 @@ export function CadastrarCasoViavelDialog({ lead, open, onOpenChange, saveLead, 
     setGroupLink(String((lead as any).group_link || ''));
     setSteps({ save: 'idle', group: 'idle', link: 'idle' });
     const l = lead as any;
+    const allowedNames = new Set(allowedProfiles.map((p) => p.full_name || p.email || p.id));
+    const initialAcolhedor = l.acolhedor && allowedNames.has(l.acolhedor)
+      ? l.acolhedor
+      : defaultAcolhedor || profile?.full_name || user?.email || '';
     const initial: CasoForm = {
       ...EMPTY_FORM,
-      acolhedor: l.acolhedor || profile?.full_name || user?.email || '',
+      acolhedor: allowedNames.has(initialAcolhedor) ? initialAcolhedor : defaultAcolhedor || '',
       case_type: l.case_type || '',
       news_link: l.news_link || '',
       city: l.city || '',
@@ -468,11 +487,11 @@ export function CadastrarCasoViavelDialog({ lead, open, onOpenChange, saveLead, 
 
           <div>
             <Label>Acolhedor</Label>
-            {profiles.length > 0 ? (
+            {allowedProfiles.length > 0 ? (
               <Select value={form.acolhedor} onValueChange={(v) => set({ acolhedor: v })}>
                 <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
                 <SelectContent>
-                  {profiles.map((p) => (
+                  {allowedProfiles.map((p) => (
                     <SelectItem key={p.id} value={p.full_name || p.email || p.id}>{p.full_name || p.email}</SelectItem>
                   ))}
                 </SelectContent>
