@@ -68,13 +68,24 @@ function computeProgress(p: MyProductivity, g: MyDailyGoals): number {
   return Math.round(avg * 100);
 }
 
-export function RelatorioDiarioUsuariosSheet({ open, onOpenChange }: Props) {
-  const today = useMemo(() => {
-    const now = new Date();
-    return { start: startOfDay(now), end: endOfDay(now) };
-  }, []);
+type Period = "day" | "week" | "month";
 
-  const { productivity, loading } = useTeamProductivity(today);
+export function RelatorioDiarioUsuariosSheet({ open, onOpenChange }: Props) {
+  const [period, setPeriod] = useState<Period>("day");
+
+  const dateRange = useMemo(() => {
+    const now = new Date();
+    switch (period) {
+      case "week":
+        return { start: startOfWeek(now, { weekStartsOn: 1 }), end: endOfWeek(now, { weekStartsOn: 1 }) };
+      case "month":
+        return { start: startOfMonth(now), end: endOfMonth(now) };
+      default:
+        return { start: startOfDay(now), end: endOfDay(now) };
+    }
+  }, [period]);
+
+  const { productivity, loading } = useTeamProductivity(dateRange);
   const [selected, setSelected] = useState<UserProductivity | null>(null);
 
   const rows = useMemo(() => {
