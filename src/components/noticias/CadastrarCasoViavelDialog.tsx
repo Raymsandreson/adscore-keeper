@@ -144,9 +144,24 @@ interface Props {
   onRegistered: () => void;
 }
 
+const ALLOWED_ACOLHEDOR_IDS = [
+  'f36dd4d0-b79f-42f8-8d56-8d566c25c8fc', // Analyne Sousa de Oliveira
+  'e2de0610-7a9b-44aa-b893-3d91293ed700', // Luiz Ricardo
+  '70200def-0910-4399-8a5e-0a27a02c5514', // Bruno Wenner Dantas Nunes
+  '01f77785-871a-4a2f-b237-2392c2cb7860', // Juliana Clara Santos Pimentel
+];
+
 export function CadastrarCasoViavelDialog({ lead, open, onOpenChange, saveLead, onRegistered }: Props) {
   const { profile, user } = useAuth();
   const profiles = useProfilesList();
+  const allowedProfiles = useMemo(
+    () => profiles.filter((p) => ALLOWED_ACOLHEDOR_IDS.includes(p.user_id)),
+    [profiles]
+  );
+  const defaultAcolhedor = useMemo(() => {
+    const analyne = allowedProfiles.find((p) => p.user_id === 'f36dd4d0-b79f-42f8-8d56-8d566c25c8fc');
+    return analyne?.full_name || analyne?.email || '';
+  }, [allowedProfiles]);
 
   const [newsText, setNewsText] = useState('');
   const [newsUrl, setNewsUrl] = useState('');
