@@ -123,7 +123,7 @@ async function suggestNextSequence(): Promise<number | null> {
     for (const r of data || []) best = Math.max(best, parseLeadSeq((r as any).group_name));
   } catch { /* segue */ }
   try {
-    const { data } = await externalSupabase
+    const { data } = await (externalSupabase as any)
       .from('whatsapp_groups_uazapi_snapshot')
       .select('group_name')
       .ilike('group_name', '%lead%')
