@@ -8,6 +8,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { cloudFunctions } from '@/lib/functionRouter';
+import { sendVoiceToWa } from '@/lib/whatsappVoiceSend';
 
 export interface ActivityCallContext {
   title?: string;
@@ -43,6 +44,14 @@ interface Props {
   processId?: string | null;
   /** JID do grupo WhatsApp vinculado (para envio rápido do áudio ao grupo). */
   groupJid?: string | null;
+  /** Telefone do lead (fallback quando não há grupo). */
+  leadPhone?: string | null;
+  /**
+   * Emitido quando o áudio termina de subir pro storage e está pronto pra ser reenviado.
+   * O pai (ActivitiesPage) usa isso pra mostrar o botão "Enviar áudio no WA" ao lado
+   * do botão "Vincular WA" — permitindo mandar o áudio sem reabrir o popover.
+   */
+  onRecordingReady?: (info: { url: string; seconds: number } | null) => void;
 }
 
 type Phase = 'idle' | 'recording' | 'processing' | 'done';
@@ -88,7 +97,7 @@ export function callFieldTextToHtml(text: string): string {
     .join('');
 }
 
-export function ActivityCallRecorder({ context, onFields, activityId, leadId, caseId, processId, groupJid }: Props) {
+export function ActivityCallRecorder({ context, onFields, activityId, leadId, caseId, processId, groupJid, leadPhone, onRecordingReady }: Props) {
   const [open, setOpen] = useState(false);
   const [phase, setPhase] = useState<Phase>('idle');
   const [seconds, setSeconds] = useState(0);
@@ -96,8 +105,8 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
   const [error, setError] = useState<string | null>(null);
   const [silent, setSilent] = useState(false);
   const [recordingUrl, setRecordingUrl] = useState<string | null>(null);
-  const [sendingToGroup, setSendingToGroup] = useState(false);
-  const [sentToGroup, setSentToGroup] = useState(false);
+  const [sendingToWa, setSendingToWa] = useState(false);
+  const [sentToWa, setSentToWa] = useState(false);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -232,6 +241,7 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
       const { data: urlData } = supabase.storage.from('activity-chat').getPublicUrl(path);
       const audio_url = urlData.publicUrl;
       setRecordingUrl(audio_url);
+      onRecordingReady?.({ url: audio_url, seconds });
 
       // Guarda a gravação como anexo de áudio da atividade (consulta/análise posterior).
       if (activityId) {
@@ -328,7 +338,7 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
       setPhase('done');
       toast.error(e?.message || 'Erro ao processar a ligação');
     }
-  }, [context, onFields, activityId, leadId, caseId, processId]);
+  }, [context, onFields, activityId, leadId, caseId, processId, onRecordingReady, seconds]);
 
   const stopRecording = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -358,66 +368,28 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
     setSilent(false);
     silentRef.current = false;
     setRecordingUrl(null);
-    setSentToGroup(false);
-  }, [teardownAudio]);
+    setSentToWa(false);
+    onRecordingReady?.(null);
+  }, [teardownAudio, onRecordingReady]);
 
-  const sendAudioToGroup = useCallback(async () => {
-    if (!recordingUrl || !groupJid) return;
-    setSendingToGroup(true);
+  const waTarget = groupJid || leadPhone || null;
+  const waTargetLabel = groupJid ? 'grupo' : 'contato';
+
+  const sendAudioToWa = useCallback(async () => {
+    if (!recordingUrl || !waTarget) return;
+    setSendingToWa(true);
     try {
-      // Transcodifica pra ogg/opus (formato nativo dos áudios do WhatsApp) antes de enviar.
-      // Sem isso, o webm gravado no Chrome chega como "arquivo" e não como mensagem de voz.
-      let mediaUrl = recordingUrl;
-      let mediaType = 'audio/ogg';
-      try {
-        const { data: tx, error: txErr } = await cloudFunctions.invoke('transcode-audio-opus', {
-          body: { url: recordingUrl, folder: 'activity-audio' },
-        });
-        if (!txErr && tx?.success && tx?.url) {
-          mediaUrl = tx.url;
-          mediaType = tx.mime || 'audio/ogg';
-        } else {
-          console.warn('[sendAudioToGroup] transcode falhou, enviando original:', tx?.error || txErr?.message);
-        }
-      } catch (txe) {
-        console.warn('[sendAudioToGroup] transcode exceção, enviando original:', txe);
-      }
-
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      let instanceId: string | undefined;
-      if (authUser) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('default_instance_id')
-          .eq('user_id', authUser.id)
-          .maybeSingle();
-        instanceId = (profile as any)?.default_instance_id || undefined;
-      }
-      const { data, error: sendErr } = await cloudFunctions.invoke('send-whatsapp', {
-        body: {
-          action: 'send_media',
-          phone: groupJid,
-          chat_id: groupJid,
-          media_url: mediaUrl,
-          media_type: mediaType,
-          ptt: true,
-          is_voice: true,
-          lead_id: leadId || null,
-          ...(instanceId ? { instance_id: instanceId } : {}),
-        },
-      });
-      if (sendErr || !data?.success) {
-        throw new Error(data?.error || sendErr?.message || 'Falha ao enviar áudio ao grupo');
-      }
-      setSentToGroup(true);
-      toast.success('Áudio enviado ao grupo do WhatsApp!');
+      await sendVoiceToWa(recordingUrl, waTarget, leadId);
+      setSentToWa(true);
+      toast.success(`Áudio enviado ao ${waTargetLabel} do WhatsApp!`);
     } catch (e: any) {
-      console.error('sendAudioToGroup error', e);
-      toast.error(e?.message || 'Erro ao enviar áudio ao grupo');
+      console.error('sendAudioToWa error', e);
+      toast.error(e?.message || 'Erro ao enviar áudio no WhatsApp');
     } finally {
-      setSendingToGroup(false);
+      setSendingToWa(false);
     }
-  }, [recordingUrl, groupJid, leadId]);
+  }, [recordingUrl, waTarget, waTargetLabel, leadId]);
+
 
 
   return (
@@ -516,20 +488,20 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
                 <Download className="h-4 w-4" /> Baixar gravação
               </Button>
             )}
-            {recordingUrl && groupJid && (
+            {recordingUrl && waTarget && (
               <Button
                 variant="default"
                 className="w-full gap-2 bg-green-600 hover:bg-green-700"
                 size="sm"
-                onClick={sendAudioToGroup}
-                disabled={sendingToGroup || sentToGroup}
+                onClick={sendAudioToWa}
+                disabled={sendingToWa || sentToWa}
               >
-                {sendingToGroup ? (
-                  <><Loader2 className="h-4 w-4 animate-spin" /> Enviando ao grupo…</>
-                ) : sentToGroup ? (
-                  <><Sparkles className="h-4 w-4" /> Áudio enviado ao grupo</>
+                {sendingToWa ? (
+                  <><Loader2 className="h-4 w-4 animate-spin" /> Enviando ao {waTargetLabel}…</>
+                ) : sentToWa ? (
+                  <><Sparkles className="h-4 w-4" /> Áudio enviado ao {waTargetLabel}</>
                 ) : (
-                  <><Send className="h-4 w-4" /> Enviar áudio ao grupo WA</>
+                  <><Send className="h-4 w-4" /> Enviar áudio no WhatsApp ({waTargetLabel})</>
                 )}
               </Button>
             )}

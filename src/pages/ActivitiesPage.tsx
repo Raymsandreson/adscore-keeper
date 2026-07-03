@@ -15,6 +15,7 @@ import { ActivityTTSButton } from '@/components/voice/ActivityTTSButton';
 import { ActivityFormCompact, SendToGroupSection } from '@/components/activities/ActivityFormCompact';
 import { CobrarVaraSection } from '@/components/activities/CobrarVaraSection';
 import { ActivityCallRecorder, callFieldTextToHtml, stripHtmlToText } from '@/components/activities/ActivityCallRecorder';
+import { sendVoiceToWa } from '@/lib/whatsappVoiceSend';
 import { ActivityNextStepsAgent } from '@/components/activities/ActivityNextStepsAgent';
 import { CompleteAndNotifyDialog } from '@/components/activities/CompleteAndNotifyDialog';
 import { DashboardChatPreview } from '@/components/whatsapp/DashboardChatPreview';
@@ -37,7 +38,7 @@ import {
   Plus, Calendar, CheckCircle2, Clock, AlertTriangle,
   FileText, Loader2, Trash2, Search, X, ChevronLeft, ChevronRight, MessageCircle, Copy, ChevronsUpDown, Check,
   Play, ArrowRight, Trophy, SkipForward, Timer, Share2, User, ExternalLink, RotateCcw, LayoutGrid, List, Layers, Settings2, Sparkles, TrendingUp, Briefcase, MoreVertical,
-  Users, Pin, PinOff, Pencil, UserPlus,
+  Users, Pin, PinOff, Pencil, UserPlus, Mic,
 } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { ShareMenu } from '@/components/ShareMenu';
@@ -342,6 +343,9 @@ const ActivitiesPage = () => {
   const [showLeadSheet, setShowLeadSheet] = useState(false);
   const [waChatPreview, setWaChatPreview] = useState<{ phone: string; contact_name: string | null; instance_name: string | null } | null>(null);
   const [groupSearchOpen, setGroupSearchOpen] = useState(false);
+  // Áudio da gravação (Preenchimento por Áudio) pendente pra envio direto no botão WA.
+  const [pendingAudio, setPendingAudio] = useState<{ url: string; seconds: number } | null>(null);
+  const [sendingPendingAudio, setSendingPendingAudio] = useState(false);
   const [showProcessSheetId, setShowProcessSheetId] = useState<string | null>(null);
   const [viewModeRaw, setViewMode] = usePageState<'list' | 'blocks'>('activities_viewMode', 'blocks');
   const viewMode = (viewModeRaw === 'list' ? 'list' : 'blocks') as 'list' | 'blocks';
@@ -3578,6 +3582,8 @@ const ActivitiesPage = () => {
                       caseId={formCaseId}
                       processId={formProcessId}
                       groupJid={leadPreview?.whatsapp_group_id}
+                      leadPhone={leadPreview?.lead_phone}
+                      onRecordingReady={setPendingAudio}
                       context={{
                         title: formTitle,
                         type: formType,
@@ -3696,6 +3702,41 @@ const ActivitiesPage = () => {
                         >
                           <MessageCircle className="h-3 w-3" />
                           {hasGroup ? 'Grupo WA' : hasPhone ? 'WhatsApp' : 'Vincular WA'}
+                        </Button>
+                      );
+                    })()}
+                    {/* Chip de envio rápido do áudio recém-gravado ao WhatsApp vinculado. */}
+                    {pendingAudio && (leadPreview?.whatsapp_group_id || leadPreview?.lead_phone) && (() => {
+                      const target = leadPreview?.whatsapp_group_id || leadPreview?.lead_phone || '';
+                      const label = leadPreview?.whatsapp_group_id ? 'grupo' : 'contato';
+                      const mm = Math.floor(pendingAudio.seconds / 60).toString().padStart(2, '0');
+                      const ss = (pendingAudio.seconds % 60).toString().padStart(2, '0');
+                      return (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 text-xs gap-1 border-green-300 text-green-700 hover:bg-green-50 dark:border-green-800 dark:text-green-400 dark:hover:bg-green-950/30"
+                          disabled={sendingPendingAudio}
+                          onClick={async () => {
+                            if (!target || !pendingAudio) return;
+                            setSendingPendingAudio(true);
+                            try {
+                              await sendVoiceToWa(pendingAudio.url, target, formLeadId);
+                              toast.success(`Áudio enviado ao ${label} do WhatsApp!`);
+                              setPendingAudio(null);
+                            } catch (e: any) {
+                              toast.error(e?.message || 'Erro ao enviar áudio no WhatsApp');
+                            } finally {
+                              setSendingPendingAudio(false);
+                            }
+                          }}
+                          title={`Enviar a gravação (${mm}:${ss}) como áudio no WhatsApp do ${label}`}
+                        >
+                          {sendingPendingAudio ? (
+                            <><Loader2 className="h-3 w-3 animate-spin" /> Enviando…</>
+                          ) : (
+                            <><Mic className="h-3 w-3" /> Enviar áudio ({mm}:{ss})</>
+                          )}
                         </Button>
                       );
                     })()}
