@@ -146,7 +146,7 @@ Sua tarefa: ATUALIZAR os campos da atividade COMBINANDO o contexto existente com
 - Use o histórico de atividades anteriores e as mensagens internas apenas como contexto para escrever de forma coerente com o andamento do processo — NÃO copie esse histórico para dentro dos campos.
 - Para "Próximo passo", considere o próximo passo do fluxo de trabalho quando fizer sentido com o que foi dito na ligação.
 - Seja fiel e objetivo. NÃO invente fatos, nomes, datas ou prazos que não estejam na transcrição ou no contexto fornecido. Se um campo não tiver informação, retorne string vazia.
-- Escreva em português do Brasil, tom profissional e direto, em primeira pessoa quando fizer sentido (ex.: "Liguei para a vara e falei com...").`;
+- Escreva em português do Brasil, tom profissional e direto.`;
 
     let fields = { ...EMPTY_FIELDS };
     try {
