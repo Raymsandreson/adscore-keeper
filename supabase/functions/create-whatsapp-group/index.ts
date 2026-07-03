@@ -770,7 +770,16 @@ Deno.serve(async (req) => {
       const activeCurrentSeq = settings.current_sequence || 0
 
       const existingLeadSequence = extractExistingSequenceFromName(leadData?.lead_name || lead_name, activePrefix)
-      if (existingLeadSequence !== null && !useClosed) {
+      const forcedSequence = Number(body?.forced_sequence)
+      if (Number.isFinite(forcedSequence) && forcedSequence > 0) {
+        // Nº escolhido manualmente pelo usuário (ex: modal Cadastrar Caso Viável).
+        // Persiste no contador para os próximos acompanharem — o UPDATE pós-criação
+        // usa .lte, então um nº forçado MENOR que o contador nunca o regride.
+        nextSeq = Math.floor(forcedSequence)
+        shouldPersistSequence = !useClosed
+        shouldPersistClosedSequence = useClosed
+        console.log(`[create-group] forced_sequence=${nextSeq} (phase=${phase})`)
+      } else if (existingLeadSequence !== null && !useClosed) {
         nextSeq = existingLeadSequence
         shouldPersistSequence = false
       } else if (useClosed) {

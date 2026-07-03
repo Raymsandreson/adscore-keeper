@@ -89,6 +89,51 @@ function composeTitle(f: CasoForm): string {
 
 type StepState = 'idle' | 'running' | 'done' | 'error';
 
+// Extrai o nº de nomes tipo "LEAD 94", "LEAD169", "LEAD132/jun.26".
+// Números com zero à esquerda ("LEAD 0656") são de outro funil (INSS/BPC) e são ignorados.
+function parseLeadSeq(name: string | null | undefined): number {
+  const m = String(name || '').match(/^\s*(?:✅\s*)?LEAD\s*[-|:]?\s*(\d{1,6})\b/i);
+  if (!m || /^0/.test(m[1])) return 0;
+  return Number(m[1]);
+}
+
+// Maior nº entre: contador oficial, grupos vinculados a leads do board (tempo real)
+// e snapshot UazAPI (pega grupos criados manualmente; sincroniza 1x/dia). Best-effort:
+// cada fonte falha isolada e a sugestão continua editável pelo usuário.
+async function suggestNextSequence(): Promise<number | null> {
+  await ensureExternalSession();
+  let best = 0;
+  let seqStart: number | null = null;
+  try {
+    const { data } = await externalSupabase
+      .from('board_group_settings')
+      .select('current_sequence, sequence_start')
+      .eq('board_id', TRABALHISTA_BOARD_ID)
+      .maybeSingle();
+    if (data?.current_sequence) best = Math.max(best, data.current_sequence);
+    seqStart = data?.sequence_start ?? null;
+  } catch { /* segue com as outras fontes */ }
+  try {
+    const { data } = await externalSupabase
+      .from('lead_whatsapp_groups')
+      .select('group_name, leads!inner(board_id)')
+      .eq('leads.board_id', TRABALHISTA_BOARD_ID)
+      .ilike('group_name', '%lead%')
+      .limit(1000);
+    for (const r of data || []) best = Math.max(best, parseLeadSeq((r as any).group_name));
+  } catch { /* segue */ }
+  try {
+    const { data } = await externalSupabase
+      .from('whatsapp_groups_uazapi_snapshot')
+      .select('group_name')
+      .ilike('group_name', '%lead%')
+      .limit(3000);
+    for (const r of data || []) best = Math.max(best, parseLeadSeq((r as any).group_name));
+  } catch { /* segue */ }
+  if (best > 0) return best + 1;
+  return seqStart;
+}
+
 interface Props {
   lead: Lead | null;
   open: boolean;
@@ -109,7 +154,8 @@ export function CadastrarCasoViavelDialog({ lead, open, onOpenChange, saveLead, 
   const [registering, setRegistering] = useState(false);
   const [steps, setSteps] = useState<{ save: StepState; group: StepState; link: StepState }>({ save: 'idle', group: 'idle', link: 'idle' });
   const [groupLink, setGroupLink] = useState('');
-  const [nextSeq, setNextSeq] = useState<number | null>(null);
+  const [seqNumber, setSeqNumber] = useState('');
+  const [seqLoading, setSeqLoading] = useState(false);
   const titleTouched = useRef(false);
 
   const set = (patch: Partial<CasoForm>) => setForm((prev) => {
@@ -153,28 +199,24 @@ export function CadastrarCasoViavelDialog({ lead, open, onOpenChange, saveLead, 
     initial.lead_title = composeTitle(initial);
     setForm(initial);
 
-    // Próximo número da sequência (informativo — o nº final é reservado na criação).
-    ensureExternalSession()
-      .then(() => externalSupabase
-        .from('board_group_settings')
-        .select('current_sequence, sequence_start')
-        .eq('board_id', TRABALHISTA_BOARD_ID)
-        .maybeSingle())
-      .then(({ data }) => {
-        if (data) setNextSeq(Math.max((data.current_sequence || 0) + 1, data.sequence_start || 1));
-      })
-      .catch(() => setNextSeq(null));
+    // Sugere o próximo número aprendendo com o último grupo REAL criado, não só
+    // com o contador oficial (grupos criados manualmente não avançam o contador).
+    setSeqNumber('');
+    setSeqLoading(true);
+    suggestNextSequence()
+      .then((n) => setSeqNumber(n ? String(n) : ''))
+      .finally(() => setSeqLoading(false));
   }, [open, lead?.id]);
 
   const groupNamePreview = useMemo(() => {
     const local = [form.city.trim(), form.state.trim()].filter(Boolean).join('/');
-    const parts = [`LEAD ${nextSeq ?? '?'}`];
+    const parts = [`LEAD ${seqNumber || '?'}`];
     if (local) parts.push(local);
     const vs = [form.victim_name.trim(), form.main_company.trim()].filter(Boolean).join(' x ');
     if (vs) parts.push(vs);
     if (form.accident_date) parts.push(formatISOToBR(form.accident_date));
     return parts.join(' | ');
-  }, [form, nextSeq]);
+  }, [form, seqNumber]);
 
   const handleAnalyze = async () => {
     if (newsText.trim().length < 50) {
@@ -277,6 +319,7 @@ export function CadastrarCasoViavelDialog({ lead, open, onOpenChange, saveLead, 
           board_id: TRABALHISTA_BOARD_ID,
           creation_origin: 'noticia_viavel',
           phase: 'open',
+          ...(Number(seqNumber) > 0 ? { forced_sequence: Number(seqNumber) } : {}),
         },
       });
       if (error) throw error;
@@ -339,7 +382,7 @@ export function CadastrarCasoViavelDialog({ lead, open, onOpenChange, saveLead, 
           </DialogTitle>
           <DialogDescription>
             Cole o texto da notícia, analise com IA, revise os campos e cadastre. O grupo do WhatsApp
-            é criado automaticamente {nextSeq ? `(próximo número: LEAD ${nextSeq})` : ''} e o link salvo no lead.
+            é criado automaticamente e o link salvo no lead.
           </DialogDescription>
         </DialogHeader>
 
@@ -369,6 +412,18 @@ export function CadastrarCasoViavelDialog({ lead, open, onOpenChange, saveLead, 
             />
           </div>
 
+          <div>
+            <Label>Número do Lead (grupo)</Label>
+            <Input
+              value={seqNumber}
+              onChange={(e) => setSeqNumber(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              placeholder={seqLoading ? 'Calculando...' : 'Ex: 170'}
+              disabled={seqLoading}
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Sugerido a partir do último grupo criado — ajuste se estiver errado.
+            </p>
+          </div>
           <div>
             <Label>Data da criação</Label>
             <Input value={format(new Date(), 'dd/MM/yyyy')} readOnly className="bg-muted" />
