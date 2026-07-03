@@ -3,7 +3,8 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { startOfDay, endOfDay } from "date-fns";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "date-fns";
 import { ChevronRight, FileText, Loader2 } from "lucide-react";
 import { useTeamProductivity, type UserProductivity } from "@/hooks/useTeamProductivity";
 import { DailyReportDialog } from "@/components/team/DailyReportDialog";
