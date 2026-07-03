@@ -192,7 +192,7 @@ export function CadastrarCasoViavelDialog({ lead, open, onOpenChange, saveLead, 
     const l = lead as any;
     const initial: CasoForm = {
       ...EMPTY_FORM,
-      acolhedor: l.acolhedor || profile?.full_name || user?.email || '',
+      acolhedor: l.acolhedor || defaultAcolhedor || profile?.full_name || user?.email || '',
       case_type: l.case_type || '',
       news_link: l.news_link || '',
       city: l.city || '',
