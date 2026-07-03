@@ -342,6 +342,9 @@ const ActivitiesPage = () => {
   const [showLeadSheet, setShowLeadSheet] = useState(false);
   const [waChatPreview, setWaChatPreview] = useState<{ phone: string; contact_name: string | null; instance_name: string | null } | null>(null);
   const [groupSearchOpen, setGroupSearchOpen] = useState(false);
+  // Áudio da gravação (Preenchimento por Áudio) pendente pra envio direto no botão WA.
+  const [pendingAudio, setPendingAudio] = useState<{ url: string; seconds: number } | null>(null);
+  const [sendingPendingAudio, setSendingPendingAudio] = useState(false);
   const [showProcessSheetId, setShowProcessSheetId] = useState<string | null>(null);
   const [viewModeRaw, setViewMode] = usePageState<'list' | 'blocks'>('activities_viewMode', 'blocks');
   const viewMode = (viewModeRaw === 'list' ? 'list' : 'blocks') as 'list' | 'blocks';
