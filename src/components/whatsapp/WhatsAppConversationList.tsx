@@ -85,6 +85,9 @@ interface Props {
   canSeeAllAssignments?: boolean;
   /** Busca server-side: mescla no estado conversas fora do top-N carregado. */
   onServerSearch?: (term: string) => Promise<void>;
+  /** Carrega a próxima página de conversas (scroll no fim da lista). Retorna se pode haver mais. */
+  onLoadMore?: () => Promise<boolean>;
+  hasMore?: boolean;
 }
 
 type QuickFilter = 'all' | 'has_lead' | 'no_lead' | 'unanswered' | 'calls' | 'groups' | 'shared' | 'lead_active' | 'lead_closed' | 'lead_inviavel' | 'mine' | 'unassigned';
@@ -92,8 +95,27 @@ type SortMode = 'alpha' | 'last_activity';
 type DirectionFilter = 'all' | 'inbound' | 'outbound';
 type DocFilter = 'all' | 'has_doc' | 'signed' | 'unsigned' | 'no_doc';
 
-export function WhatsAppConversationList({ conversations, loading, instanceSwitching, switchProgress, selectedPhone, selectedInstanceName, onSelect, boards, selectedInstanceId, bulkMode, selectedPhones, onToggleBulkPhone, onSelectAllFiltered, privatePhones, cloudAssignees, currentUserId, canSeeAllAssignments, onServerSearch }: Props) {
+export function WhatsAppConversationList({ conversations, loading, instanceSwitching, switchProgress, selectedPhone, selectedInstanceName, onSelect, boards, selectedInstanceId, bulkMode, selectedPhones, onToggleBulkPhone, onSelectAllFiltered, privatePhones, cloudAssignees, currentUserId, canSeeAllAssignments, onServerSearch, onLoadMore, hasMore }: Props) {
   const [search, setSearch] = useState('');
+  const [loadingMore, setLoadingMore] = useState(false);
+  const loadingMoreRef = useRef(false);
+
+  // Scroll infinito: chegando perto do fim da lista, pede a próxima página
+  // de conversas ao servidor (keyset por instância — histórico completo
+  // alcançável sem carregar tudo de uma vez).
+  const handleListScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    if (!onLoadMore || !hasMore || loadingMoreRef.current) return;
+    const el = e.currentTarget;
+    if (el.scrollHeight - el.scrollTop - el.clientHeight > 300) return;
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
+    onLoadMore()
+      .catch(() => {})
+      .finally(() => {
+        loadingMoreRef.current = false;
+        setLoadingMore(false);
+      });
+  };
 
   // Busca server-side debounced: complementa o filtro local, que só enxerga
   // as conversas carregadas (top-N por instância + unread). Sem isso, conversa
@@ -887,7 +909,7 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto" onScroll={handleListScroll}>
         {filtered.length === 0 ? (
           <div className="text-center py-8 text-sm text-muted-foreground">
             Nenhuma conversa encontrada
@@ -903,6 +925,11 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
           ))
         ) : (
           sortedFiltered.map(conv => renderConversationCard(conv))
+        )}
+        {loadingMore && (
+          <div className="text-center py-3 text-xs text-muted-foreground">
+            Carregando conversas antigas…
+          </div>
         )}
       </div>
     </div>

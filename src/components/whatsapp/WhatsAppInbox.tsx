@@ -183,6 +183,7 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
     instances: _allInstances,
     instanceStats: _allInstanceStats,
     statsLoading, hasLoaded, sendMessage, sendMedia, sendLocation, deleteMessage, clearConversation, markAsRead, linkToLead, linkToContact, refetch, refetchStats, refetchInstances, fetchFullConversation, searchConversations,
+    loadMoreConversations, hasMoreConversations, loadOlderConversationMessages,
   } = useWhatsAppMessages(selectedInstanceId, lockInstanceName);
 
   // Filtra instâncias/conversas/stats por aba (UazAPI x WhatsJUD API).
@@ -1946,6 +1947,8 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
                 currentUserId={user?.id || null}
                 canSeeAllAssignments={canViewPrivate}
                 onServerSearch={searchConversations}
+                onLoadMore={loadMoreConversations}
+                hasMore={hasMoreConversations}
               />
             </div>
           ) : (
@@ -1986,6 +1989,7 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
                   }}
                   onOpenChat={handleOpenChatByPhone}
                   onClearConversation={clearConversation}
+                  onLoadOlderMessages={loadOlderConversationMessages}
                 />
               )}
             </div>
@@ -2017,6 +2021,8 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
               currentUserId={user?.id || null}
               canSeeAllAssignments={canViewPrivate}
               onServerSearch={searchConversations}
+              onLoadMore={loadMoreConversations}
+              hasMore={hasMoreConversations}
             />
           </div>
 
@@ -2065,6 +2071,7 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
                   }}
                   onOpenChat={handleOpenChatByPhone}
                   onClearConversation={clearConversation}
+                  onLoadOlderMessages={loadOlderConversationMessages}
                 />
               ) : (
                 <div className="flex-1 flex items-center justify-center bg-muted/20">

@@ -40,13 +40,12 @@ export interface WhatsAppMessage {
 const inFlightSummaries = new Map<string, { p: Promise<ConversationSummary[]>; at: number }>();
 const INFLIGHT_TTL_MS = 1500;
 
-// Corte de egress: só as N conversas mais recentes por instância. O retorno da
-// RPC é ordenado por last_message_at DESC, então a primeira página é sempre o
-// topo da sidebar. Antes buscávamos as ~33k conversas inteiras a cada refresh.
-// 500 (e não 200) porque nas instâncias mais movimentadas 200 cobria só ~1 dia
-// de conversas — parecia "sumiço" do histórico na sidebar. Com 500, as mais
-// movimentadas alcançam 3+ dias; o resto, semanas (medido em 02/07/2026).
-const MAX_CONVERSATIONS_PER_INSTANCE = 500;
+// Corte de egress: só as N conversas mais recentes por instância na carga
+// inicial (o retorno da RPC é ordenado por last_message_at DESC, então a
+// primeira página é sempre o topo da sidebar). Antes buscávamos as ~33k
+// conversas inteiras a cada refresh. Conversas mais antigas continuam TODAS
+// alcançáveis: o scroll da sidebar pagina via getOlderConversationSummaries.
+export const CONVERSATIONS_PAGE_SIZE = 100;
 
 export async function getConversationSummaries(
   instanceNames: string[],
@@ -84,7 +83,7 @@ export async function getConversationSummaries(
         p_instance_names: variants,
         p_days_back: daysBack,
       })
-      .range(0, MAX_CONVERSATIONS_PER_INSTANCE - 1);
+      .range(0, CONVERSATIONS_PAGE_SIZE - 1);
 
     if (error) {
       console.warn(`[getConversationSummaries] failed for "${name}":`, error.message);
@@ -92,7 +91,7 @@ export async function getConversationSummaries(
     }
 
     const allRows = (data || []) as ConversationSummary[];
-    console.log(`[getConversationSummaries] "${name}" → ${allRows.length} linhas (cap: ${MAX_CONVERSATIONS_PER_INSTANCE})`);
+    console.log(`[getConversationSummaries] "${name}" → ${allRows.length} linhas (página: ${CONVERSATIONS_PAGE_SIZE})`);
     // Normaliza instance_name de volta para o nome canônico cadastrado
     return allRows.map((row: ConversationSummary) => ({ ...row, instance_name: name }));
   };
@@ -205,6 +204,34 @@ async function fetchUnreadSummaries(instanceNames: string[]): Promise<Conversati
 }
 
 /**
+ * Página seguinte de conversas de UMA instância (scroll infinito da sidebar):
+ * keyset por last_message_at < cursor, direto na tabela conversations (coberta
+ * por idx_conversations_instance_last). Cursor POR instância — instâncias mais
+ * movimentadas têm horizonte mais curto na 1ª página, então um cursor global
+ * pularia conversas das menos movimentadas.
+ */
+export async function getOlderConversationSummaries(
+  instanceName: string,
+  beforeLastMessageAt: string,
+  pageSize = CONVERSATIONS_PAGE_SIZE
+): Promise<ConversationSummary[]> {
+  if (!instanceName || !beforeLastMessageAt) return [];
+  const variantToCanonical = buildVariantMap([instanceName]);
+  const { data, error } = await (externalSupabase as any)
+    .from('conversations')
+    .select(SUMMARY_COLUMNS)
+    .in('instance_name', Array.from(variantToCanonical.keys()))
+    .lt('last_message_at', beforeLastMessageAt)
+    .order('last_message_at', { ascending: false })
+    .limit(pageSize);
+  if (error) {
+    console.warn('[getOlderConversationSummaries] failed:', error.message);
+    return [];
+  }
+  return ((data || []) as any[]).map(r => mapConversationRow(r, variantToCanonical));
+}
+
+/**
  * Busca server-side de conversas por telefone/nome/última mensagem, pra
  * alcançar conversas fora do top-N carregado na sidebar. Limitada e ordenada
  * por atividade recente.
@@ -276,7 +303,33 @@ export async function getInboxActivitySignature(
 export async function getConversationMessages(
   phone: string,
   instanceName: string,
-  limit = 50
+  limit = 50,
+  beforeCreatedAt?: string
+): Promise<WhatsAppMessage[]> {
+  const normalizedPhone = normalizeWhatsAppConversationPhone(phone);
+  const phoneVariants = Array.from(new Set([phone, normalizedPhone, `${normalizedPhone}@g.us`].filter(Boolean)));
+  let query = (externalSupabase as any)
+    .from('whatsapp_messages')
+    .select('*')
+    .in('phone', phoneVariants)
+    .in('instance_name', instanceNameVariants(instanceName))
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (beforeCreatedAt) query = query.lt('created_at', beforeCreatedAt);
+  const { data, error } = await query;
+  if (error) throw error;
+  return data || [];
+}
+
+/**
+ * Delta de mensagens desde `afterCreatedAt` — reaproveita cache local: quem já
+ * baixou a conversa busca só o que chegou depois, em vez de rebaixar tudo.
+ */
+export async function getConversationMessagesSince(
+  phone: string,
+  instanceName: string,
+  afterCreatedAt: string,
+  limit = 500
 ): Promise<WhatsAppMessage[]> {
   const normalizedPhone = normalizeWhatsAppConversationPhone(phone);
   const phoneVariants = Array.from(new Set([phone, normalizedPhone, `${normalizedPhone}@g.us`].filter(Boolean)));
@@ -285,6 +338,7 @@ export async function getConversationMessages(
     .select('*')
     .in('phone', phoneVariants)
     .in('instance_name', instanceNameVariants(instanceName))
+    .gt('created_at', afterCreatedAt)
     .order('created_at', { ascending: false })
     .limit(limit);
   if (error) throw error;

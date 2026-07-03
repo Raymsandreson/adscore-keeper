@@ -5,13 +5,17 @@ import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { getMyAllowedInstanceIds } from '@/integrations/supabase/permissions';
 import {
   getConversationSummaries,
+  getOlderConversationSummaries,
   getInboxActivitySignature,
   searchConversationSummaries,
   getConversationMessages,
+  getConversationMessagesSince,
   markMessagesAsRead,
   linkMessagesToLead,
   linkConversationContactToLead,
   linkMessagesToContact,
+  CONVERSATIONS_PAGE_SIZE,
+  type ConversationSummary,
 } from '@/integrations/supabase/external-rpc';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useUserRole } from '@/hooks/useUserRole';
@@ -119,6 +123,14 @@ function extractLabelIdsFromMetadata(metadata: any): string[] | null {
 const getConversationKey = (phone: string, instanceName?: string | null) =>
   `${normalizeWhatsAppConversationPhone(phone)}__${normalizeInstanceName(instanceName)}`;
 
+// Página de mensagens por conversa: a UI renderiza 50 por vez (scroll-up
+// pagina client-side), então 300 cobre 6 "telas" antes de precisar de nova
+// ida ao servidor. Antes baixávamos 3.000 msgs × select('*') a cada abertura.
+const MESSAGES_FETCH_PAGE = 300;
+// Overlap refetchado a cada reabertura de conversa cacheada — captura
+// read_at/edições recentes que o delta por created_at não enxerga.
+const MESSAGES_REFRESH_OVERLAP = 50;
+
 async function fetchLatestConversationLabelIds(instanceNames: string[]) {
   const variants = Array.from(new Set(instanceNames.flatMap((name) => [name, name.toUpperCase(), name.toLowerCase()])));
   const labelByConversation = new Map<string, string[] | null>();
@@ -188,6 +200,10 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
   const lastSyncAtRef = useRef<Record<string, number>>({});
   const activeConversationKeyRef = useRef<string | null>(null);
   const fullConvCacheRef = useRef<Record<string, WhatsAppMessage[]>>({});
+  // false = servidor já confirmou que não há mensagens mais antigas que o cache
+  const convHasMoreOlderRef = useRef<Record<string, boolean>>({});
+  const loadingMoreConversationsRef = useRef(false);
+  const [hasMoreConversations, setHasMoreConversations] = useState(true);
   // Ref para `fetchFullConversation` permitir auto-rehidratação dentro do `fetchMessages`
   // sem criar dependência circular (fetchFullConversation é definido bem depois neste hook).
   const fetchFullConversationRef = useRef<((phone: string, instanceName?: string | null) => Promise<void>) | null>(null);
@@ -580,6 +596,19 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
           label_ids: conversation.label_ids?.length ? conversation.label_ids : previous.label_ids,
         };
       });
+
+      // Preserva conversas fora da 1ª página que o usuário já carregou (scroll
+      // "carregar mais" da sidebar ou busca server-side). Sem isso, cada refresh
+      // periódico encolheria a lista de volta pro topo.
+      const mergedKeys = new Set(mergedConvList.map(c => getConversationKey(c.phone, c.instance_name)));
+      for (const previous of conversationsRef.current) {
+        const key = getConversationKey(previous.phone, previous.instance_name);
+        if (!mergedKeys.has(key)) {
+          mergedKeys.add(key);
+          mergedConvList.push(previous);
+        }
+      }
+      mergedConvList.sort((a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime());
 
       conversationsRef.current = mergedConvList;
       // Evita re-render quando nada relevante mudou (causa principal do "piscar"
@@ -1109,7 +1138,12 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
 
     // Clear caches so stale data from previous instance doesn't leak
     fullConvCacheRef.current = {};
+    convHasMoreOlderRef.current = {};
     activeConversationKeyRef.current = null;
+    // Zera a lista base: o tail-merge do fetchMessages preserva conversas fora
+    // da 1ª página, e sem isso vazaria conversas do filtro anterior.
+    conversationsRef.current = [];
+    setHasMoreConversations(true);
     // Reset fetching guard so instance switch always triggers a fresh load
     isFetchingRef.current = false;
 
@@ -1527,8 +1561,34 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
     try {
       // Fetch directly from the external DB (source of truth for whatsapp_messages).
       await ensureExternalSession().catch(() => {});
-      const raw = await getConversationMessages(phone, instanceName, 3000);
-      const allMsgs: WhatsAppMessage[] = (raw as unknown as WhatsAppMessage[]).map((msg) => ({
+      const cached = fullConvCacheRef.current[targetConversationKey];
+      let raw: WhatsAppMessage[];
+      if (cached && cached.length > 0) {
+        // Conversa já baixada nesta sessão: busca só o delta (o que chegou
+        // depois da msg mais recente do cache) + overlap das últimas 50 pra
+        // capturar read_at/edições. Reabrir conversa custa ~0 de egress.
+        const newest = cached.reduce(
+          (max, m) => (new Date(m.created_at).getTime() > new Date(max).getTime() ? m.created_at : max),
+          cached[0].created_at
+        );
+        const [delta, overlap] = await Promise.all([
+          getConversationMessagesSince(phone, instanceName, newest),
+          getConversationMessages(phone, instanceName, MESSAGES_REFRESH_OVERLAP),
+        ]);
+        const byId = new Map<string, WhatsAppMessage>();
+        for (const m of cached) byId.set(m.id, m);
+        for (const m of [...(overlap as unknown as WhatsAppMessage[]), ...(delta as unknown as WhatsAppMessage[])]) {
+          byId.set(m.id, m); // versão fresca do servidor vence a cacheada
+        }
+        raw = Array.from(byId.values()).sort(
+          (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
+      } else {
+        raw = (await getConversationMessages(phone, instanceName, MESSAGES_FETCH_PAGE)) as unknown as WhatsAppMessage[];
+        // Página cheia ⇒ provavelmente há mais histórico no servidor
+        convHasMoreOlderRef.current[targetConversationKey] = raw.length >= MESSAGES_FETCH_PAGE;
+      }
+      const allMsgs: WhatsAppMessage[] = raw.map((msg) => ({
         ...msg,
         phone: normalizeWhatsAppConversationPhone(msg.phone),
       }));
@@ -1593,6 +1653,54 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
     }
   }, [getCanonicalInstanceName]);
 
+  // Página de mensagens mais antigas que o cache local (scroll-up no chat
+  // esgotou o que está em memória). Retorna quantas mensagens foram adicionadas;
+  // 0 = não há mais histórico no servidor.
+  const loadOlderConversationMessages = useCallback(async (phone: string, instanceName?: string | null): Promise<number> => {
+    if (!instanceName) return 0;
+    const targetInstanceName = getCanonicalInstanceName(instanceName);
+    const key = getConversationKey(phone, targetInstanceName);
+    const cached = fullConvCacheRef.current[key];
+    if (!cached || cached.length === 0) return 0;
+    if (convHasMoreOlderRef.current[key] === false) return 0;
+    const oldest = cached.reduce(
+      (min, m) => (new Date(m.created_at).getTime() < new Date(min).getTime() ? m.created_at : min),
+      cached[0].created_at
+    );
+    try {
+      await ensureExternalSession().catch(() => {});
+      const raw = (await getConversationMessages(phone, instanceName, MESSAGES_FETCH_PAGE, oldest)) as unknown as WhatsAppMessage[];
+      convHasMoreOlderRef.current[key] = raw.length >= MESSAGES_FETCH_PAGE;
+      if (raw.length === 0) return 0;
+      const existingIds = new Set(cached.map(m => m.id));
+      const seenExtIds = new Set(
+        cached.map(m => m.external_message_id?.split(':').pop()).filter(Boolean)
+      );
+      const older = raw
+        .map(msg => ({ ...msg, phone: normalizeWhatsAppConversationPhone(msg.phone) }))
+        .filter(m => {
+          if (existingIds.has(m.id)) return false;
+          const extId = m.external_message_id?.split(':').pop();
+          if (extId) {
+            if (seenExtIds.has(extId)) return false;
+            seenExtIds.add(extId);
+          }
+          return true;
+        });
+      if (older.length === 0) return 0;
+      // cache é DESC por created_at; as mais antigas entram no fim
+      const merged = [...cached, ...older];
+      fullConvCacheRef.current[key] = merged;
+      setConversations(prev => prev.map(c =>
+        getConversationKey(c.phone, c.instance_name) === key ? { ...c, messages: merged } : c
+      ));
+      return older.length;
+    } catch (error) {
+      console.error('Error loading older conversation messages:', error);
+      return 0;
+    }
+  }, [getCanonicalInstanceName]);
+
   const clearActivePhone = useCallback(() => {
     activeConversationKeyRef.current = null;
   }, []);
@@ -1634,23 +1742,13 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
   // client-side da sidebar passa a enxergá-los naturalmente. Entradas
   // mescladas somem no próximo refresh completo se não baterem o cap; a
   // sidebar refaz a busca no próximo digitar.
-  const searchConversations = useCallback(async (term: string) => {
-    const clean = (term || '').trim();
-    if (clean.length < 3) return;
-    const targetInstances = (!selectedInstanceId || selectedInstanceId === 'all')
-      ? instances
-      : instances.filter(i => i.id === selectedInstanceId);
-    const names = targetInstances.map(i => i.instance_name);
-    if (names.length === 0) return;
-
-    let summaries: Awaited<ReturnType<typeof searchConversationSummaries>> = [];
-    try {
-      summaries = await searchConversationSummaries(names, clean, 50);
-    } catch {
-      return; // busca é best-effort; o filtro local continua funcionando
-    }
+  // Mescla resumos vindos do servidor (busca server-side / paginação da
+  // sidebar) no estado, sem duplicar conversas já carregadas.
+  const mergeSummariesIntoConversations = useCallback((
+    summaries: ConversationSummary[],
+    targetInstances: WhatsAppInstance[],
+  ) => {
     if (!summaries.length) return;
-
     const canonicalInstanceNames = new Map(
       targetInstances.map(i => [normalizeInstanceName(i.instance_name), i.instance_name])
     );
@@ -1705,7 +1803,68 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
       );
       return next;
     });
-  }, [instances, selectedInstanceId]);
+  }, []);
+
+  const searchConversations = useCallback(async (term: string) => {
+    const clean = (term || '').trim();
+    if (clean.length < 3) return;
+    const targetInstances = (!selectedInstanceId || selectedInstanceId === 'all')
+      ? instances
+      : instances.filter(i => i.id === selectedInstanceId);
+    const names = targetInstances.map(i => i.instance_name);
+    if (names.length === 0) return;
+
+    let summaries: Awaited<ReturnType<typeof searchConversationSummaries>> = [];
+    try {
+      summaries = await searchConversationSummaries(names, clean, 50);
+    } catch {
+      return; // busca é best-effort; o filtro local continua funcionando
+    }
+    if (!summaries.length) return;
+
+    mergeSummariesIntoConversations(summaries, targetInstances);
+  }, [instances, selectedInstanceId, mergeSummariesIntoConversations]);
+
+  // Página seguinte da sidebar (scroll no fim da lista). Cursor POR instância:
+  // min(last_message_at) do que já está carregado daquela instância. Retorna
+  // se ainda pode haver mais páginas.
+  const loadMoreConversations = useCallback(async (): Promise<boolean> => {
+    if (loadingMoreConversationsRef.current) return true;
+    loadingMoreConversationsRef.current = true;
+    try {
+      const targetInstances = (!selectedInstanceId || selectedInstanceId === 'all')
+        ? instances
+        : instances.filter(i => i.id === selectedInstanceId);
+      if (targetInstances.length === 0) return false;
+      await ensureExternalSession().catch(() => {});
+
+      const cursorByInstance = new Map<string, string>();
+      for (const conv of conversationsRef.current) {
+        const norm = normalizeInstanceName(conv.instance_name);
+        const prev = cursorByInstance.get(norm);
+        if (!prev || new Date(conv.last_message_at).getTime() < new Date(prev).getTime()) {
+          cursorByInstance.set(norm, conv.last_message_at);
+        }
+      }
+
+      const pages = await Promise.all(targetInstances.map(inst => {
+        const cursor = cursorByInstance.get(normalizeInstanceName(inst.instance_name));
+        if (!cursor) return Promise.resolve([] as ConversationSummary[]);
+        return getOlderConversationSummaries(inst.instance_name, cursor);
+      }));
+
+      mergeSummariesIntoConversations(pages.flat(), targetInstances);
+      // Alguma instância devolveu página cheia ⇒ provavelmente ainda há mais
+      const more = pages.some(p => p.length >= CONVERSATIONS_PAGE_SIZE);
+      setHasMoreConversations(more);
+      return more;
+    } catch (error) {
+      console.error('Error loading more conversations:', error);
+      return true; // erro transitório: deixa o scroll tentar de novo
+    } finally {
+      loadingMoreConversationsRef.current = false;
+    }
+  }, [instances, selectedInstanceId, mergeSummariesIntoConversations]);
 
   return {
     messages,
@@ -1731,5 +1890,8 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
     fetchFullConversation,
     clearActivePhone,
     searchConversations,
+    loadMoreConversations,
+    hasMoreConversations,
+    loadOlderConversationMessages,
   };
 }

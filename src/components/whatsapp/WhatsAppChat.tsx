@@ -103,6 +103,8 @@ interface Props {
   onUpdateWithAI?: () => void;
   onOpenChat?: (phone: string) => void;
   onClearConversation?: (phone: string, instanceName?: string) => Promise<boolean>;
+  /** Busca no servidor mensagens mais antigas que as já carregadas. Retorna quantas adicionou (0 = fim do histórico). */
+  onLoadOlderMessages?: (phone: string, instanceName?: string | null) => Promise<number>;
 }
 
 function parseParticipants(raw: Array<Record<string, unknown>>) {
@@ -128,7 +130,7 @@ function parseParticipants(raw: Array<Record<string, unknown>>) {
   return { mapped, lidMap, phoneNameMap };
 }
 
-export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia, onSendLocation, onDeleteMessage, onLinkToLead, onLinkToContact, onCreateLead, onCreateContact, onCreateCase, extractingData, extractionStep, onCreateActivity, onNavigateToLead, onViewContact, onPrivacyChanged, shareInfo, onUpdateWithAI, onOpenChat, onClearConversation }: Props) {
+export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia, onSendLocation, onDeleteMessage, onLinkToLead, onLinkToContact, onCreateLead, onCreateContact, onCreateCase, extractingData, extractionStep, onCreateActivity, onNavigateToLead, onViewContact, onPrivacyChanged, shareInfo, onUpdateWithAI, onOpenChat, onClearConversation, onLoadOlderMessages }: Props) {
   const { profile } = useAuthContext();
   const { boards: kanbanBoards } = useKanbanBoards();
   const [newMessage, setNewMessage] = useState('');
@@ -796,6 +798,10 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const MESSAGES_PAGE_SIZE = 50;
   const [visibleCount, setVisibleCount] = useState(MESSAGES_PAGE_SIZE);
+  // Paginação server-side: quando o scroll-up esgota as mensagens em memória
+  const [loadingOlderFromServer, setLoadingOlderFromServer] = useState(false);
+  const loadingOlderFromServerRef = useRef(false);
+  const serverHistoryExhaustedRef = useRef(false);
   const preserveScrollRef = useRef<{ prevHeight: number; prevTop: number } | null>(null);
   const stickBottomRef = useRef<boolean>(true);
   const conversationKeyRef = useRef<string>('');
@@ -1833,6 +1839,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   useEffect(() => {
     setVisibleCount(MESSAGES_PAGE_SIZE);
     stickBottomRef.current = true;
+    serverHistoryExhaustedRef.current = false;
   }, [conversation.phone, conversation.instance_name]);
 
   const handleMessagesScroll = useCallback(() => {
@@ -1848,8 +1855,39 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         prevTop: container.scrollTop,
       };
       setVisibleCount((c) => c + MESSAGES_PAGE_SIZE);
+    } else if (
+      container.scrollTop <= 80 &&
+      !hasOlderMessages &&
+      onLoadOlderMessages &&
+      !serverHistoryExhaustedRef.current &&
+      !loadingOlderFromServerRef.current
+    ) {
+      // Esgotou o que está em memória: pede a próxima página ao servidor
+      loadingOlderFromServerRef.current = true;
+      setLoadingOlderFromServer(true);
+      preserveScrollRef.current = {
+        prevHeight: container.scrollHeight,
+        prevTop: container.scrollTop,
+      };
+      onLoadOlderMessages(conversation.phone, conversation.instance_name)
+        .then((added) => {
+          if (added > 0) {
+            // Expande a janela visível pra incluir a página recém-baixada
+            setVisibleCount((c) => c + added);
+          } else {
+            serverHistoryExhaustedRef.current = true;
+            preserveScrollRef.current = null;
+          }
+        })
+        .catch(() => {
+          preserveScrollRef.current = null;
+        })
+        .finally(() => {
+          loadingOlderFromServerRef.current = false;
+          setLoadingOlderFromServer(false);
+        });
     }
-  }, [hasOlderMessages]);
+  }, [hasOlderMessages, onLoadOlderMessages, conversation.phone, conversation.instance_name]);
 
   // Preserva posição visual após carregar mensagens antigas
   useLayoutEffect(() => {
@@ -3275,6 +3313,12 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
 
       {/* Messages + Call Records Timeline */}
       <div ref={messagesContainerRef} onScroll={handleMessagesScroll} className="flex-1 overflow-y-auto p-4 space-y-2 bg-muted/10">
+        {loadingOlderFromServer && (
+          <div className="flex items-center justify-center gap-2 py-2 text-[10px] text-muted-foreground">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            Carregando mensagens antigas…
+          </div>
+        )}
         {hasOlderMessages && !isHydratingConversation && (
           <div className="flex items-center justify-center py-2 text-[10px] text-muted-foreground">
             Role para cima para carregar mensagens mais antigas…
