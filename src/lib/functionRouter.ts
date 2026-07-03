@@ -50,6 +50,7 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
   // Deploy: supabase functions deploy <slug> --project-ref kmedldlepwiityjsdahz --no-verify-jwt
   // Fallback automático → Cloud (código legado) se o externo falhar.
   'search-escavador': 'external',
+  'analyze-news-case': 'external',
 
   // --- Todas as demais ficam no Cloud por padrão ---
 };

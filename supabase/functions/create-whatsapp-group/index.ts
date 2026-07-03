@@ -159,6 +159,13 @@ function cleanSequencePrefix(value: string | null | undefined): string {
   return String(value || '').replace(/[✅\s|:–—-]+$/g, '').trim()
 }
 
+// Colunas date do lead chegam como ISO (2026-06-21); no nome do grupo o padrão é dd/mm/aaaa.
+function formatLeadFieldValue(value: unknown): string {
+  const str = String(value)
+  const isoMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})(?:T|$)/)
+  return isoMatch ? `${isoMatch[3]}/${isoMatch[2]}/${isoMatch[1]}` : str
+}
+
 function decodeTemplateTextToken(field: string): string {
   try { return decodeURIComponent(field.slice(5)) } catch { return field.slice(5) }
 }
@@ -259,6 +266,9 @@ async function reserveAtomicClosedSequence(
   }
   const n = typeof data === 'number' ? data : Number(data)
   const reserved = Number.isFinite(n) && n > 0 ? n : null
+  // Loga sempre (não só em erro) pra confirmar em produção se a reserva atômica
+  // está de fato rodando e qual nº ela devolveu. data=null => UPDATE casou 0 linhas
+  // (board inexistente no projeto/sem permissão) e cai no fallback racy.
   console.log(`[create-group] reserve_closed_sequence board=${boardId} min=${minFloor} -> data=${JSON.stringify(data)} reserved=${reserved}`)
   return reserved
 }
@@ -435,6 +445,10 @@ Deno.serve(async (req) => {
     const supabaseUrl = RESOLVED_SUPABASE_URL
     const supabaseKey = RESOLVED_SERVICE_ROLE_KEY
     const supabase = createClient(supabaseUrl, supabaseKey)
+    // Cliente do banco EXTERNO (business data). Declarado no topo do handler
+    // porque os passos pós-criação (save_to_lead, criação de caso, etc.) usam
+    // `extClient` — antes ele só era declarado num bloco aninhado lá embaixo,
+    // causando ReferenceError no passo save_to_lead.
     const extClient = getExternalClient()
 
     const body = await req.json()
@@ -830,7 +844,7 @@ Deno.serve(async (req) => {
           else if (city) parts.push(city)
           else if (state) parts.push(state)
         } else if (leadData && leadData[field]) {
-          parts.push(field === 'lead_name' ? stripExistingSequenceFromName(leadData[field], activePrefix) : String(leadData[field]))
+          parts.push(field === 'lead_name' ? stripExistingSequenceFromName(leadData[field], activePrefix) : formatLeadFieldValue(leadData[field]))
         } else if (field === 'lead_name') {
           parts.push(stripExistingSequenceFromName(lead_name, activePrefix))
         }
@@ -1719,7 +1733,7 @@ Deno.serve(async (req) => {
           }
           const deadline = new Date()
           deadline.setDate(deadline.getDate() + (act.deadline_days || 1))
-          
+
           const assignedExtId = act.assigned_to ? await remapToExternal(extClient, act.assigned_to) : null;
 
           await extClient.from('lead_activities').insert({

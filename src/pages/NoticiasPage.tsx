@@ -3,6 +3,7 @@ import { externalSupabase, ensureExternalSession } from "@/integrations/supabase
 import { useLeads } from "@/hooks/useLeads";
 import { useKanbanBoards } from "@/hooks/useKanbanBoards";
 import { LeadEditDialog } from "@/components/kanban/LeadEditDialog";
+import { CadastrarCasoViavelDialog } from "@/components/noticias/CadastrarCasoViavelDialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -19,7 +20,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   Newspaper, Search, RefreshCw, Loader2, Star, CalendarIcon, MoreHorizontal,
-  ArrowRight, CheckCircle2, X, Pencil,
+  ArrowRight, CheckCircle2, X, Pencil, Sparkles,
 } from "lucide-react";
 import { format, formatDistanceToNow, startOfDay, endOfDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -41,6 +42,7 @@ const NoticiasPage = () => {
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState<FilterTab>("all");
   const [openLead, setOpenLead] = useState<Lead | null>(null);
+  const [casoLead, setCasoLead] = useState<Lead | null>(null);
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
   const [movingId, setMovingId] = useState<string | null>(null);
 
@@ -356,6 +358,16 @@ const NoticiasPage = () => {
                             </Button>
                           )}
                           <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 border-violet-500/60 text-violet-700 hover:bg-violet-50 hover:text-violet-800 dark:hover:bg-violet-900/30"
+                            onClick={() => setCasoLead(l)}
+                            title="Cadastrar Caso Viável (análise com IA + grupo WhatsApp)"
+                          >
+                            <Sparkles className="h-3.5 w-3.5 mr-1" />
+                            Caso Viável
+                          </Button>
+                          <Button
                             variant="ghost"
                             size="icon"
                             className="h-8 w-8"
@@ -382,6 +394,14 @@ const NoticiasPage = () => {
         onSave={handleSave}
         boards={boards}
         mode="sheet"
+      />
+
+      <CadastrarCasoViavelDialog
+        lead={casoLead}
+        open={!!casoLead}
+        onOpenChange={(v) => !v && setCasoLead(null)}
+        saveLead={handleSave}
+        onRegistered={fetchLeads}
       />
     </div>
   );
