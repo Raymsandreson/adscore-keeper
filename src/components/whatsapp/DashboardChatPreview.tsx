@@ -120,11 +120,20 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const mediaInputRef = useRef<HTMLInputElement>(null);
+  const messageInputRef = useRef<HTMLTextAreaElement>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    const el = messageInputRef.current;
+    if (!el) return;
+
+    el.style.height = '0px';
+    el.style.height = `${el.scrollHeight}px`;
+  }, [newMessage, open]);
 
   // Load identity preferences when phone changes
   useEffect(() => {
@@ -1796,11 +1805,12 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
               </DropdownMenu>
               <input ref={mediaInputRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleMediaUpload} />
               <Textarea
+                ref={messageInputRef}
                 value={newMessage}
                 onChange={(e) => setNewMessage(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder="Digite uma mensagem..."
-                className="min-h-[40px] max-h-[100px] resize-none text-sm flex-1"
+                className="min-h-[40px] resize-none overflow-hidden text-sm flex-1 min-w-0 leading-relaxed"
                 rows={1}
               />
               {newMessage.trim() ? (
