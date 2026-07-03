@@ -3705,6 +3705,41 @@ const ActivitiesPage = () => {
                         </Button>
                       );
                     })()}
+                    {/* Chip de envio rápido do áudio recém-gravado ao WhatsApp vinculado. */}
+                    {pendingAudio && (leadPreview?.whatsapp_group_id || leadPreview?.lead_phone) && (() => {
+                      const target = leadPreview?.whatsapp_group_id || leadPreview?.lead_phone || '';
+                      const label = leadPreview?.whatsapp_group_id ? 'grupo' : 'contato';
+                      const mm = Math.floor(pendingAudio.seconds / 60).toString().padStart(2, '0');
+                      const ss = (pendingAudio.seconds % 60).toString().padStart(2, '0');
+                      return (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 text-xs gap-1 border-green-300 text-green-700 hover:bg-green-50 dark:border-green-800 dark:text-green-400 dark:hover:bg-green-950/30"
+                          disabled={sendingPendingAudio}
+                          onClick={async () => {
+                            if (!target || !pendingAudio) return;
+                            setSendingPendingAudio(true);
+                            try {
+                              await sendVoiceToWa(pendingAudio.url, target, formLeadId);
+                              toast.success(`Áudio enviado ao ${label} do WhatsApp!`);
+                              setPendingAudio(null);
+                            } catch (e: any) {
+                              toast.error(e?.message || 'Erro ao enviar áudio no WhatsApp');
+                            } finally {
+                              setSendingPendingAudio(false);
+                            }
+                          }}
+                          title={`Enviar a gravação (${mm}:${ss}) como áudio no WhatsApp do ${label}`}
+                        >
+                          {sendingPendingAudio ? (
+                            <><Loader2 className="h-3 w-3 animate-spin" /> Enviando…</>
+                          ) : (
+                            <><Mic className="h-3 w-3" /> Enviar áudio ({mm}:{ss})</>
+                          )}
+                        </Button>
+                      );
+                    })()}
                   </div>
                 </div>
               </div>
