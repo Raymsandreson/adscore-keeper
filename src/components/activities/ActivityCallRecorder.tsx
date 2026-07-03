@@ -44,6 +44,14 @@ interface Props {
   processId?: string | null;
   /** JID do grupo WhatsApp vinculado (para envio rápido do áudio ao grupo). */
   groupJid?: string | null;
+  /** Telefone do lead (fallback quando não há grupo). */
+  leadPhone?: string | null;
+  /**
+   * Emitido quando o áudio termina de subir pro storage e está pronto pra ser reenviado.
+   * O pai (ActivitiesPage) usa isso pra mostrar o botão "Enviar áudio no WA" ao lado
+   * do botão "Vincular WA" — permitindo mandar o áudio sem reabrir o popover.
+   */
+  onRecordingReady?: (info: { url: string; seconds: number } | null) => void;
 }
 
 type Phase = 'idle' | 'recording' | 'processing' | 'done';
