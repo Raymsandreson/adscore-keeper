@@ -77,7 +77,7 @@ export function RelatorioDiarioUsuariosSheet({ open, onOpenChange }: Props) {
     const now = new Date();
     switch (period) {
       case "week":
-        return { start: startOfWeek(now, { weekStartsOn: 1 }), end: endOfWeek(now, { weekStartsOn: 1 }) };
+        return { start: startOfWeek(now, { weekStartsOn: 0 }), end: endOfWeek(now, { weekStartsOn: 0 }) };
       case "month":
         return { start: startOfMonth(now), end: endOfMonth(now) };
       default:
