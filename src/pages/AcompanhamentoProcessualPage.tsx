@@ -6,6 +6,7 @@ import {
   ArrowUpRight,
   CheckCircle2,
   Clock,
+  FileText,
   Filter as FilterIcon,
   Gavel,
   Scale,
@@ -14,6 +15,7 @@ import {
   TrendingUp,
   Users,
 } from "lucide-react";
+import { RelatorioDiarioUsuariosSheet } from "@/components/processual/RelatorioDiarioUsuariosSheet";
 import {
   Bar,
   BarChart,
