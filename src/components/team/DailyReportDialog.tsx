@@ -290,7 +290,7 @@ export function DailyReportDialog({
       p.leadsClosed / g.target_leads_closed,
     ].map(r => Math.min(1, isFinite(r) ? r : 0));
     return Math.round((ratios.reduce((s, r) => s + r, 0) / ratios.length) * 100);
-  }, [isToday, goalProgress, productivity, goals]);
+  }, [isToday, goalProgress, effectiveProductivity, goals]);
 
 
   const generateTextReport = () => {
