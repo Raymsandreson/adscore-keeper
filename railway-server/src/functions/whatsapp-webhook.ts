@@ -14,6 +14,7 @@ import { geminiChat } from '../lib/gemini';
 import { getLocationFromDDD } from '../lib/ddd-mapping';
 import { transcribeAudio } from '../lib/stt';
 import { verifyAgentLabelBeforeSend } from '../lib/verify-agent-label';
+import { uploadImageThumb } from '../lib/imageThumb';
 
 // ============================================================
 // Proactive first message — disparado quando o agente é ativado
@@ -549,6 +550,10 @@ async function downloadAndStoreMedia(
       console.error('Storage upload error:', uploadError);
       return { publicUrl: null, transcription, contentType, encryptedSource };
     }
+
+    // Thumb webp ao lado do original (convenção `${filePath}.thumb.webp`) —
+    // frontend usa em galeria/preview no lugar do image transform pago.
+    await uploadImageThumb(supabase, 'whatsapp-media', filePath, Buffer.from(fileBuffer), contentType);
 
     const { data: urlData } = supabase.storage.from('whatsapp-media').getPublicUrl(filePath);
     console.log('Media uploaded successfully:', urlData.publicUrl);

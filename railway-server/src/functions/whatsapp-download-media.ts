@@ -1,6 +1,7 @@
 import type { RequestHandler } from 'express';
 import * as nodeCrypto from 'crypto';
 import { supabase as ext } from '../lib/supabase';
+import { uploadImageThumb } from '../lib/imageThumb';
 
 const CLOUD_FUNCTIONS_URL =
   process.env.CLOUD_FUNCTIONS_URL ||
@@ -274,6 +275,9 @@ export const handler: RequestHandler = async (req, res) => {
       .from('whatsapp-media')
       .upload(filePath, bytes, { contentType, upsert: true, cacheControl: '31536000' });
     if (uploadErr) return ok({ success: false, error: uploadErr.message });
+
+    // Thumb webp ao lado do original (convenção `${filePath}.thumb.webp`)
+    await uploadImageThumb(ext, 'whatsapp-media', filePath, bytes, contentType);
 
     const { data: publicData } = ext.storage.from('whatsapp-media').getPublicUrl(filePath);
     const publicUrl = publicData.publicUrl;

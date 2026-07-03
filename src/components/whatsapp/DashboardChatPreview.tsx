@@ -18,7 +18,7 @@ import { ptBR } from 'date-fns/locale';
 import { Loader2, User, Send, MoreVertical, Link2, UserPlus, Plus, Scale, Sparkles, X, Users, Bot, BotOff, Paperclip, Image, FileUp, Lock, LockOpen, FileSignature, FileText, Volume2, VolumeX, BellOff, Trash2, FastForward, Mic } from 'lucide-react';
 import { Phone as PhoneIcon, PhoneIncoming, PhoneOutgoing, PhoneMissed } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { mediaPreview } from '@/lib/whatsappMediaTransform';
+import { mediaPreview, handleMediaThumbError } from '@/lib/whatsappMediaTransform';
 import { toast } from 'sonner';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
@@ -1230,7 +1230,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
     if (type?.startsWith('image') || msg.message_type === 'image') {
       return (
         <button type="button" onClick={() => setLightboxUrl(msg.media_url!)} className="block">
-          <img src={mediaPreview(msg.media_url, 400)} alt="Imagem" className="max-w-[200px] max-h-[200px] rounded-md object-cover cursor-zoom-in" loading="lazy" />
+          <img src={mediaPreview(msg.media_url)} alt="Imagem" className="max-w-[200px] max-h-[200px] rounded-md object-cover cursor-zoom-in" loading="lazy" onError={handleMediaThumbError} />
         </button>
       );
     }

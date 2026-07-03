@@ -10,7 +10,7 @@ import { ptBR } from 'date-fns/locale';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { MediaLightbox } from '@/components/whatsapp/MediaLightbox';
 import { bindDownload } from '@/lib/downloadFile';
-import { mediaThumb } from '@/lib/whatsappMediaTransform';
+import { mediaThumb, handleMediaThumbError } from '@/lib/whatsappMediaTransform';
 import { LazyVideo } from '@/components/whatsapp/LazyVideo';
 
 interface Props {
@@ -77,7 +77,7 @@ export function WhatsAppMediaGallery({ messages }: Props) {
                   <div className="grid grid-cols-3 gap-1.5">
                     {images.map(msg => (
                       <button key={msg.id} type="button" onClick={() => setLightboxUrl(msg.media_url!)} className="relative group aspect-square rounded-md overflow-hidden bg-muted cursor-zoom-in">
-                        <img src={mediaThumb(msg.media_url!, 200)} alt="" className="w-full h-full object-cover" loading="lazy" />
+                        <img src={mediaThumb(msg.media_url!)} alt="" className="w-full h-full object-cover" loading="lazy" onError={handleMediaThumbError} />
                         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-end justify-between p-1 opacity-0 group-hover:opacity-100">
                           <span className="text-[9px] text-white font-medium">{format(new Date(msg.created_at), 'dd/MM/yy')}</span>
                           <Download className="h-3.5 w-3.5 text-white" />

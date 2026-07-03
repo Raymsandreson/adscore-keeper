@@ -1,59 +1,45 @@
+import type { SyntheticEvent } from 'react';
+
 /**
  * Helpers para servir mídias do bucket whatsapp-media (público).
  *
- * DESATIVADO (jul/2026): o endpoint /render/image/ cobra por imagem de origem
- * distinta transformada no mês (100 inclusas no Pro) e estourou a quota
- * (400/100). Servir o original via CDN custa menos: originais sobem com
- * cacheControl de 1 ano e repetições caem no medidor de Cached Egress.
- * O fix definitivo é thumbnail gerado na ingestão (sharp no Railway).
+ * jul/2026: o image transform do Storage (/render/image/) foi substituído por
+ * thumbnail gerado na ingestão (sharp no Railway), porque o transform cobra
+ * por imagem de origem distinta/mês (100 inclusas no Pro; uso bateu 400).
+ * Convenção: thumb webp (~640px) em `${path}.thumb.webp` ao lado do original.
+ * Imagens antigas (sem thumb) voltam pro original via handleMediaThumbError.
  *
  * NÃO aplique em downloads, lightbox em tamanho real ou em vídeos/áudios/docs.
  */
 
-// Desliga o uso do endpoint /render/image/ (quota de transformations).
-const USE_STORAGE_TRANSFORM = false;
-
 const STORAGE_OBJECT_MARKER = '/storage/v1/object/public/';
-const STORAGE_RENDER_MARKER = '/storage/v1/render/image/public/';
+export const THUMB_SUFFIX = '.thumb.webp';
 
-export interface ThumbOptions {
-  width?: number;
-  height?: number;
-  quality?: number; // 20-100
-  resize?: 'cover' | 'contain' | 'fill';
-}
-
-/**
- * Converte URL pública do Storage em URL com image transform.
- * Aceita apenas imagens (extensão ou parâmetro). Para qualquer URL não-Storage
- * ou já transformada, devolve a URL original sem mudanças.
- */
-export function transformMediaUrl(url: string | null | undefined, opts: ThumbOptions = {}): string {
+function thumbConventionUrl(url: string | null | undefined): string {
   if (!url) return '';
-  if (!USE_STORAGE_TRANSFORM) return url;
-  // Já é transform endpoint
-  if (url.includes(STORAGE_RENDER_MARKER)) return url;
+  // Já aponta pro thumb
+  if (url.includes(THUMB_SUFFIX)) return url;
   // Não é Supabase Storage público
   if (!url.includes(STORAGE_OBJECT_MARKER)) return url;
-  // Só faz sentido em imagens
-  const lower = url.split('?')[0].toLowerCase();
-  if (!/\.(jpg|jpeg|png|webp|gif|bmp|heic)$/.test(lower)) return url;
-
-  const transformed = url.replace(STORAGE_OBJECT_MARKER, STORAGE_RENDER_MARKER);
-  const params = new URLSearchParams();
-  if (opts.width) params.set('width', String(opts.width));
-  if (opts.height) params.set('height', String(opts.height));
-  params.set('quality', String(opts.quality ?? 70));
-  if (opts.resize) params.set('resize', opts.resize);
-
-  const sep = transformed.includes('?') ? '&' : '?';
-  return `${transformed}${sep}${params.toString()}`;
+  // Só jpeg/png ganham thumb na ingestão (GIF/webp servem o original)
+  const [base, query] = url.split('?');
+  if (!/\.(jpg|jpeg|png)$/.test(base.toLowerCase())) return url;
+  return query ? `${base}${THUMB_SUFFIX}?${query}` : `${base}${THUMB_SUFFIX}`;
 }
 
-/** Atalho para thumbnails pequenos (lista de mídias, drag-handles). */
-export const mediaThumb = (url: string | null | undefined, width = 160) =>
-  transformMediaUrl(url, { width, quality: 65, resize: 'cover' });
+/** Thumbnails pequenos (lista de mídias, drag-handles). */
+export const mediaThumb = (url: string | null | undefined) => thumbConventionUrl(url);
 
-/** Atalho para imagens dentro do balão de chat. */
-export const mediaPreview = (url: string | null | undefined, width = 600) =>
-  transformMediaUrl(url, { width, quality: 75 });
+/** Imagens dentro do balão de chat. */
+export const mediaPreview = (url: string | null | undefined) => thumbConventionUrl(url);
+
+/**
+ * onError obrigatório em todo <img> que usa mediaThumb/mediaPreview:
+ * imagens anteriores ao deploy do thumb não têm `.thumb.webp` — cai no original.
+ */
+export function handleMediaThumbError(e: SyntheticEvent<HTMLImageElement>) {
+  const img = e.currentTarget;
+  if (img.src.includes(THUMB_SUFFIX)) {
+    img.src = img.src.replace(THUMB_SUFFIX, '');
+  }
+}

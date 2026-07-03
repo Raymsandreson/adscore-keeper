@@ -19,7 +19,7 @@ import { DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, Dropdow
 import { useWhatsAppInternalNotes } from '@/hooks/useWhatsAppInternalNotes';
 import { openZapSignDialog } from '@/lib/zapsignDialogEvent';
 import { bindDownload } from '@/lib/downloadFile';
-import { mediaThumb, mediaPreview } from '@/lib/whatsappMediaTransform';
+import { mediaThumb, mediaPreview, handleMediaThumbError, THUMB_SUFFIX } from '@/lib/whatsappMediaTransform';
 import { SessionFieldEditor } from './SessionFieldEditor';
 import { GroupMembersDialog } from './GroupMembersDialog';
 import { WhatsAppConversationShareDialog } from './WhatsAppConversationShareDialog';
@@ -3096,7 +3096,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                       title={item.message_text || item.message_type}
                     >
                       {item.message_type === 'image' ? (
-                        <img src={mediaThumb(item.media_url, 160)} alt="" className="h-full w-full object-cover" loading="lazy" />
+                        <img src={mediaThumb(item.media_url)} alt="" className="h-full w-full object-cover" loading="lazy" onError={handleMediaThumbError} />
                       ) : (
                         <div className="h-full w-full flex flex-col items-center justify-center gap-0.5">
                           <FileText className="h-5 w-5 text-muted-foreground" />
@@ -3605,12 +3605,17 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                       className="block"
                     >
                       <img
-                        src={mediaPreview(msg.media_url, 640)}
+                        src={mediaPreview(msg.media_url)}
                         alt="Imagem"
                         className="max-w-full rounded-lg max-h-[320px] w-auto object-contain cursor-zoom-in bg-black/5"
                         loading="lazy"
                         onError={(e) => {
                           const img = e.currentTarget;
+                          // Imagem antiga sem thumb: tenta o original antes de esconder
+                          if (img.src.includes(THUMB_SUFFIX)) {
+                            img.src = img.src.replace(THUMB_SUFFIX, '');
+                            return;
+                          }
                           img.style.display = 'none';
                           const sibling = img.parentElement?.parentElement?.querySelector('[data-img-fallback]') as HTMLElement | null;
                           if (sibling) sibling.style.display = 'flex';
@@ -3686,10 +3691,11 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                           className="block w-full rounded-lg overflow-hidden border bg-white cursor-zoom-in"
                         >
                           <img
-                            src={mediaPreview(msg.media_url, 640)}
+                            src={mediaPreview(msg.media_url)}
                             alt={fileName}
                             loading="lazy"
                             className="w-full max-h-[420px] object-contain bg-muted/30"
+                            onError={handleMediaThumbError}
                           />
                         </button>
                       )}
