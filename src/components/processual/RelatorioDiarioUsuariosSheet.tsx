@@ -70,6 +70,12 @@ function computeProgress(p: MyProductivity, g: MyDailyGoals): number {
 
 type Period = "day" | "week" | "month";
 
+const PERIOD_LABEL: Record<Period, string> = {
+  day: "Diária",
+  week: "Semanal",
+  month: "Mensal",
+};
+
 export function RelatorioDiarioUsuariosSheet({ open, onOpenChange }: Props) {
   const [period, setPeriod] = useState<Period>("day");
 
@@ -181,6 +187,8 @@ export function RelatorioDiarioUsuariosSheet({ open, onOpenChange }: Props) {
           productivity={toMyProductivity(selected)}
           goals={DEFAULT_GOALS}
           goalProgress={computeProgress(toMyProductivity(selected), DEFAULT_GOALS)}
+          reportDateRange={dateRange}
+          periodLabel={PERIOD_LABEL[period]}
         />
       )}
     </>
