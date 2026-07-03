@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { remapToExternal } from '@/integrations/supabase/uuid-remap';
@@ -71,6 +71,35 @@ interface AIAssistantResponse {
   } | null;
   follow_up_suggestions: FollowUpSuggestion[] | null;
 }
+
+const AutoResizeTextarea = React.forwardRef<HTMLTextAreaElement, React.TextareaHTMLAttributes<HTMLTextAreaElement>>(
+  ({ className, value, onChange, ...props }, ref) => {
+    const innerRef = useRef<HTMLTextAreaElement | null>(null);
+    React.useImperativeHandle(ref, () => innerRef.current!);
+
+    useEffect(() => {
+      const el = innerRef.current;
+      if (!el) return;
+      el.style.height = 'auto';
+      el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+    }, [value]);
+
+    return (
+      <textarea
+        ref={innerRef}
+        value={value}
+        onChange={onChange}
+        rows={1}
+        className={cn(
+          "flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 resize-none overflow-hidden min-h-[32px]",
+          className
+        )}
+        {...props}
+      />
+    );
+  }
+);
+AutoResizeTextarea.displayName = "AutoResizeTextarea";
 
 interface ActivityChatSheetProps {
   open: boolean;
@@ -1508,36 +1537,36 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
               </Button>
             </div>
           ) : (
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-end gap-1.5">
               <input ref={fileInputRef} type="file" accept="image/*,application/pdf" className="hidden" onChange={handleFileUpload} />
-              <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => fileInputRef.current?.click()} disabled={sending}>
+              <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 mb-0.5" onClick={() => fileInputRef.current?.click()} disabled={sending}>
                 <Paperclip className="h-4 w-4" />
               </Button>
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8 shrink-0 text-green-600 hover:text-green-700 hover:bg-green-50"
+                className="h-8 w-8 shrink-0 text-green-600 hover:text-green-700 hover:bg-green-50 mb-0.5"
                 onClick={startCallRecording}
                 disabled={sending}
                 title="Gravar chamada (sistema + mic)"
               >
                 <Phone className="h-4 w-4" />
               </Button>
-              <Input
+              <AutoResizeTextarea
                 data-chat-input
                 value={inputText}
                 onChange={e => setInputText(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder={aiAssistantMode ? "Pergunte à IA sobre o caso..." : "Digite uma mensagem..."}
-                className={cn("h-8 text-sm flex-1", aiAssistantMode && "border-primary/40")}
+                className={cn("text-sm flex-1", aiAssistantMode && "border-primary/40")}
                 disabled={sending || aiResponding}
               />
               {inputText.trim() ? (
-                <Button size="icon" className="h-8 w-8 rounded-full shrink-0" onClick={handleSendText} disabled={sending}>
+                <Button size="icon" className="h-8 w-8 rounded-full shrink-0 mb-0.5" onClick={handleSendText} disabled={sending}>
                   {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                 </Button>
               ) : (
-                <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={startRecording} disabled={sending}>
+                <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 mb-0.5" onClick={startRecording} disabled={sending}>
                   <Mic className="h-4 w-4" />
                 </Button>
               )}
