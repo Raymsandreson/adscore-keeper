@@ -11,7 +11,6 @@ import {
   ArrowLeft,
   LayoutDashboard,
   AlertCircle,
-  FileText,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { useKanbanBoards } from "@/hooks/useKanbanBoards";
@@ -22,7 +21,6 @@ import { WorkflowBuilder } from "@/components/workflow/WorkflowBuilder";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import GenericFunnelDashboard from "./GenericFunnelDashboard";
-import { RelatorioDiarioUsuariosSheet } from "@/components/processual/RelatorioDiarioUsuariosSheet";
 
 const AcompanhamentoProcessualPage = lazy(
   () => import("@/pages/AcompanhamentoProcessualPage"),
