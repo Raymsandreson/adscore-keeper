@@ -801,6 +801,14 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const conversationKeyRef = useRef<string>('');
   const mediaInputRef = useRef<HTMLInputElement>(null);
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Auto-resize the composer textarea based on content
+  useEffect(() => {
+    const el = messageInputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+  }, [newMessage]);
   const rosterFetchedForRef = useRef<string | null>(null); // conversation.phone whose roster we already fetched
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -4121,7 +4129,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
               onKeyDown={handleKeyDown}
               onPaste={inputMode === 'message' ? handlePaste : undefined}
               className={cn(
-                "min-h-[44px] max-h-[120px] resize-none text-sm flex-1",
+                "min-h-[44px] max-h-[200px] resize-none overflow-y-auto text-sm flex-1",
                 inputMode === 'note' && "border-amber-300 dark:border-amber-700 bg-amber-50/50 dark:bg-amber-950/20",
                 inputMode === 'chat' && "border-blue-300 dark:border-blue-700 bg-blue-50/50 dark:bg-blue-950/20"
               )}
