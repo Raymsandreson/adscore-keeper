@@ -801,6 +801,14 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const conversationKeyRef = useRef<string>('');
   const mediaInputRef = useRef<HTMLInputElement>(null);
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Auto-resize the composer textarea based on content
+  useEffect(() => {
+    const el = messageInputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+  }, [newMessage]);
   const rosterFetchedForRef = useRef<string | null>(null); // conversation.phone whose roster we already fetched
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
