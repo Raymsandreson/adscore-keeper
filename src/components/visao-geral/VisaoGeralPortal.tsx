@@ -11,7 +11,6 @@ import {
   ArrowLeft,
   LayoutDashboard,
   AlertCircle,
-  FileText,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { useKanbanBoards } from "@/hooks/useKanbanBoards";
@@ -22,7 +21,6 @@ import { WorkflowBuilder } from "@/components/workflow/WorkflowBuilder";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import GenericFunnelDashboard from "./GenericFunnelDashboard";
-import { RelatorioDiarioUsuariosSheet } from "@/components/processual/RelatorioDiarioUsuariosSheet";
 
 const AcompanhamentoProcessualPage = lazy(
   () => import("@/pages/AcompanhamentoProcessualPage"),
@@ -165,7 +163,6 @@ function SelectorCard({
 
 export default function VisaoGeralPortal() {
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [relatorioOpen, setRelatorioOpen] = useState(false);
   const navigate = useNavigate();
   const { boards } = useKanbanBoards();
   const active = activeId ? SELECTORS.find((s) => s.id === activeId) : null;
@@ -240,10 +237,6 @@ export default function VisaoGeralPortal() {
             </p>
           </div>
         </div>
-        <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setRelatorioOpen(true)}>
-          <FileText className="h-3.5 w-3.5" />
-          Relatório Diário
-        </Button>
       </header>
 
       <section className="space-y-3">
@@ -282,7 +275,7 @@ export default function VisaoGeralPortal() {
         </div>
       </section>
 
-      <RelatorioDiarioUsuariosSheet open={relatorioOpen} onOpenChange={setRelatorioOpen} />
+      
     </div>
   );
 }

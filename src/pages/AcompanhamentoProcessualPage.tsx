@@ -6,6 +6,7 @@ import {
   ArrowUpRight,
   CheckCircle2,
   Clock,
+  FileText,
   Filter as FilterIcon,
   Gavel,
   Scale,
@@ -14,6 +15,7 @@ import {
   TrendingUp,
   Users,
 } from "lucide-react";
+import { RelatorioDiarioUsuariosSheet } from "@/components/processual/RelatorioDiarioUsuariosSheet";
 import {
   Bar,
   BarChart,
@@ -60,6 +62,7 @@ export default function AcompanhamentoProcessualPage() {
   const [responsavel, setResponsavel] = useState("all");
   const [acao, setAcao] = useState("all");
   const [etiqueta, setEtiqueta] = useState("all");
+  const [relatorioOpen, setRelatorioOpen] = useState(false);
 
   const { data, loading, isMock, refresh } = useProcessualDashboard(periodo);
 
@@ -102,6 +105,10 @@ export default function AcompanhamentoProcessualPage() {
                   <TabsTrigger value="mes">Mês</TabsTrigger>
                 </TabsList>
               </Tabs>
+              <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setRelatorioOpen(true)}>
+                <FileText className="h-3.5 w-3.5" />
+                Relatório Diário
+              </Button>
             </div>
           </div>
 
@@ -418,6 +425,7 @@ export default function AcompanhamentoProcessualPage() {
         </section>
       </div>
 
+      <RelatorioDiarioUsuariosSheet open={relatorioOpen} onOpenChange={setRelatorioOpen} />
     </div>
   );
 }
