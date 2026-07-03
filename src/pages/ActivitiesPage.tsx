@@ -2217,15 +2217,15 @@ const ActivitiesPage = () => {
   return (
     <div className="h-[calc(100dvh-44px)] flex flex-col bg-background overflow-hidden">
       {/* Header */}
-      <div className="bg-primary text-primary-foreground px-4 py-2.5 flex items-center justify-between shrink-0 shadow-md z-20">
-        <div className="flex items-center gap-3">
-          <h1 className="text-lg font-semibold tracking-tight">Atividades</h1>
-          <div className="flex items-center gap-1.5 text-primary-foreground/80 text-xs">
+      <div className="bg-primary text-primary-foreground px-3 md:px-4 py-2 md:py-2.5 flex items-center justify-between gap-2 flex-wrap shrink-0 shadow-md z-20">
+        <div className="flex items-center gap-2 md:gap-3 min-w-0">
+          <h1 className="text-base md:text-lg font-semibold tracking-tight">Atividades</h1>
+          <div className="flex items-center gap-1.5 text-primary-foreground/80 text-[11px] md:text-xs">
             <span className="bg-primary-foreground/20 rounded-full px-2 py-0.5 font-medium">{stats.open} abertas</span>
             <span className="bg-primary-foreground/20 rounded-full px-2 py-0.5 font-medium">{stats.done} concluídas</span>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 md:gap-2 flex-wrap justify-end">
           {/* View mode toggle - prominent pill */}
           <div className="flex items-center bg-primary-foreground/15 rounded-full p-0.5 gap-0.5">
             <button
@@ -2256,13 +2256,13 @@ const ActivitiesPage = () => {
           <Button variant="ghost" size="icon" className="h-8 w-8 text-primary-foreground hover:bg-primary-foreground/10" onClick={startWorkflow} title="Workflow">
             <Play className="h-4 w-4" />
           </Button>
-          <Button size="sm" className="bg-white/20 text-primary-foreground font-semibold hover:bg-white/30 gap-1 shadow-sm border border-white/30" onClick={() => { resetForm(); setSheetMode('create'); setChatOpen(true); }}>
-            <Sparkles className="h-4 w-4" /> Chat IA
+          <Button size="sm" className="h-8 px-2 md:px-3 bg-white/20 text-primary-foreground font-semibold hover:bg-white/30 gap-1 shadow-sm border border-white/30" onClick={() => { resetForm(); setSheetMode('create'); setChatOpen(true); }} title="Chat IA">
+            <Sparkles className="h-4 w-4" /> <span className="hidden sm:inline">Chat IA</span>
           </Button>
-          <Button size="sm" className="bg-white text-primary font-semibold hover:bg-white/90 gap-1 shadow-sm" onClick={() => { resetForm(); setSheetMode('create'); }}>
-            <Plus className="h-4 w-4" /> Nova Atividade
+          <Button size="sm" className="h-8 px-2 md:px-3 bg-white text-primary font-semibold hover:bg-white/90 gap-1 shadow-sm" onClick={() => { resetForm(); setSheetMode('create'); }} title="Nova Atividade">
+            <Plus className="h-4 w-4" /> <span className="hidden sm:inline">Nova Atividade</span>
           </Button>
-          <UserMenu />
+          <div className="hidden md:block"><UserMenu /></div>
         </div>
       </div>
 
