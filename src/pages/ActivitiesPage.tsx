@@ -15,6 +15,7 @@ import { ActivityTTSButton } from '@/components/voice/ActivityTTSButton';
 import { ActivityFormCompact, SendToGroupSection } from '@/components/activities/ActivityFormCompact';
 import { CobrarVaraSection } from '@/components/activities/CobrarVaraSection';
 import { ActivityCallRecorder, callFieldTextToHtml, stripHtmlToText } from '@/components/activities/ActivityCallRecorder';
+import { sendVoiceToWa } from '@/lib/whatsappVoiceSend';
 import { ActivityNextStepsAgent } from '@/components/activities/ActivityNextStepsAgent';
 import { CompleteAndNotifyDialog } from '@/components/activities/CompleteAndNotifyDialog';
 import { DashboardChatPreview } from '@/components/whatsapp/DashboardChatPreview';
