@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   Newspaper, Search, RefreshCw, Loader2, Star, CalendarIcon, MoreHorizontal,
-  ArrowRight, CheckCircle2, X, Pencil, Sparkles,
+  ArrowRight, CheckCircle2, X, Sparkles, Trash2,
 } from "lucide-react";
 import { format, formatDistanceToNow, startOfDay, endOfDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -58,6 +58,7 @@ const NoticiasPage = () => {
         .select("*")
         .eq("board_id", TRABALHISTA_BOARD_ID)
         .in("status", [NOTICIA_STATUS, VIAVEL_STATUS])
+        .is("deleted_at", null)
         .order("created_at", { ascending: false })
         .limit(2000);
       if (error) throw error;
@@ -117,6 +118,42 @@ const NoticiasPage = () => {
       toast.success(successMsg);
     } catch (e: any) {
       toast.error("Falha ao mover lead", { description: e?.message });
+    } finally {
+      setMovingId(null);
+    }
+  };
+
+  // Soft-delete (mesmo padrão do resto do app): lead vai para Arquivados e é restaurável.
+  const discardLead = async (lead: Lead) => {
+    setMovingId(lead.id);
+    try {
+      await ensureExternalSession();
+      const { error } = await externalSupabase
+        .from("leads")
+        .update({ deleted_at: new Date().toISOString() } as any)
+        .eq("id", lead.id);
+      if (error) throw error;
+      setLeadsState((prev) => prev.filter((l) => l.id !== lead.id));
+      toast.success("Lead descartado", {
+        description: "Foi para Arquivados e pode ser restaurado.",
+        action: {
+          label: "Desfazer",
+          onClick: async () => {
+            const { error: undoErr } = await externalSupabase
+              .from("leads")
+              .update({ deleted_at: null } as any)
+              .eq("id", lead.id);
+            if (undoErr) {
+              toast.error("Falha ao desfazer", { description: undoErr.message });
+            } else {
+              setLeadsState((prev) => [lead, ...prev]);
+              toast.success("Lead restaurado");
+            }
+          },
+        },
+      });
+    } catch (e: any) {
+      toast.error("Falha ao descartar lead", { description: e?.message });
     } finally {
       setMovingId(null);
     }
@@ -297,8 +334,25 @@ const NoticiasPage = () => {
                       key={l.id}
                       className="border-t hover:bg-muted/40 transition-colors group"
                     >
-                      <td className="px-4 py-2.5 font-medium cursor-pointer" onClick={() => setOpenLead(l)}>
-                        {l.lead_name || <span className="text-muted-foreground">—</span>}
+                      <td className="px-4 py-2.5 cursor-pointer" onClick={() => setOpenLead(l)}>
+                        <div className="font-medium">
+                          {l.lead_name || <span className="text-muted-foreground">—</span>}
+                        </div>
+                        {(() => {
+                          const newsUrl = (l as any).news_link || (l as any).news_links?.[0];
+                          return newsUrl ? (
+                            <a
+                              href={newsUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs text-blue-600 dark:text-blue-400 hover:underline block max-w-[360px] truncate"
+                              onClick={(e) => e.stopPropagation()}
+                              title={newsUrl}
+                            >
+                              {newsUrl}
+                            </a>
+                          ) : null;
+                        })()}
                       </td>
                       <td className="px-4 py-2.5 cursor-pointer" onClick={() => setOpenLead(l)}>
                         {(l as any).victim_name || <span className="text-muted-foreground">—</span>}
@@ -370,11 +424,12 @@ const NoticiasPage = () => {
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-8 w-8"
-                            onClick={() => setOpenLead(l)}
-                            title="Editar lead"
+                            className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                            disabled={movingId === l.id}
+                            onClick={() => discardLead(l)}
+                            title="Descartar lead (vai para Arquivados, restaurável)"
                           >
-                            <Pencil className="h-3.5 w-3.5" />
+                            <Trash2 className="h-3.5 w-3.5" />
                           </Button>
                         </div>
                       </td>
