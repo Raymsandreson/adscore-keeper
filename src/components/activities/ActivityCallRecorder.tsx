@@ -97,7 +97,7 @@ export function callFieldTextToHtml(text: string): string {
     .join('');
 }
 
-export function ActivityCallRecorder({ context, onFields, activityId, leadId, caseId, processId, groupJid }: Props) {
+export function ActivityCallRecorder({ context, onFields, activityId, leadId, caseId, processId, groupJid, leadPhone, onRecordingReady }: Props) {
   const [open, setOpen] = useState(false);
   const [phase, setPhase] = useState<Phase>('idle');
   const [seconds, setSeconds] = useState(0);
@@ -105,8 +105,8 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
   const [error, setError] = useState<string | null>(null);
   const [silent, setSilent] = useState(false);
   const [recordingUrl, setRecordingUrl] = useState<string | null>(null);
-  const [sendingToGroup, setSendingToGroup] = useState(false);
-  const [sentToGroup, setSentToGroup] = useState(false);
+  const [sendingToWa, setSendingToWa] = useState(false);
+  const [sentToWa, setSentToWa] = useState(false);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
