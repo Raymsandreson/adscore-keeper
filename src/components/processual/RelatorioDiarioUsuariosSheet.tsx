@@ -113,14 +113,22 @@ export function RelatorioDiarioUsuariosSheet({ open, onOpenChange }: Props) {
           <SheetHeader>
             <SheetTitle className="flex items-center gap-2">
               <FileText className="h-4 w-4" />
-              Relatório Diário dos Usuários
+              Relatório de Atividades
             </SheetTitle>
             <SheetDescription>
-              Selecione um usuário para abrir o relatório completo de hoje.
+              Selecione um usuário para abrir o relatório completo.
             </SheetDescription>
           </SheetHeader>
 
-          <ScrollArea className="mt-4 h-[calc(100vh-130px)] pr-3">
+          <Tabs value={period} onValueChange={(v) => setPeriod(v as Period)} className="mt-4">
+            <TabsList className="w-full">
+              <TabsTrigger value="day" className="flex-1">Diária</TabsTrigger>
+              <TabsTrigger value="week" className="flex-1">Semanal</TabsTrigger>
+              <TabsTrigger value="month" className="flex-1">Mensal</TabsTrigger>
+            </TabsList>
+          </Tabs>
+
+          <ScrollArea className="mt-4 h-[calc(100vh-180px)] pr-3">
             {loading ? (
               <div className="flex items-center justify-center py-12 text-muted-foreground">
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
