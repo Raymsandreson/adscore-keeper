@@ -1,10 +1,17 @@
 /**
- * Helpers para servir mídias do bucket whatsapp-media (público) usando
- * o image transform do Supabase Storage. Reduz egress drasticamente em
- * thumbnails (imagens originais ~1MB → ~30-80KB com width+quality).
+ * Helpers para servir mídias do bucket whatsapp-media (público).
+ *
+ * DESATIVADO (jul/2026): o endpoint /render/image/ cobra por imagem de origem
+ * distinta transformada no mês (100 inclusas no Pro) e estourou a quota
+ * (400/100). Servir o original via CDN custa menos: originais sobem com
+ * cacheControl de 1 ano e repetições caem no medidor de Cached Egress.
+ * O fix definitivo é thumbnail gerado na ingestão (sharp no Railway).
  *
  * NÃO aplique em downloads, lightbox em tamanho real ou em vídeos/áudios/docs.
  */
+
+// Desliga o uso do endpoint /render/image/ (quota de transformations).
+const USE_STORAGE_TRANSFORM = false;
 
 const STORAGE_OBJECT_MARKER = '/storage/v1/object/public/';
 const STORAGE_RENDER_MARKER = '/storage/v1/render/image/public/';
@@ -23,6 +30,7 @@ export interface ThumbOptions {
  */
 export function transformMediaUrl(url: string | null | undefined, opts: ThumbOptions = {}): string {
   if (!url) return '';
+  if (!USE_STORAGE_TRANSFORM) return url;
   // Já é transform endpoint
   if (url.includes(STORAGE_RENDER_MARKER)) return url;
   // Não é Supabase Storage público
