@@ -2255,14 +2255,23 @@ const ActivitiesPage = () => {
               <span className="hidden sm:inline">Lista</span>
             </button>
           </div>
-          <Button variant="ghost" size="icon" className="h-8 w-8 text-primary-foreground hover:bg-primary-foreground/10" onClick={startWorkflow} title="Workflow">
-            <Play className="h-4 w-4" />
-          </Button>
-          <Button size="sm" className="h-8 w-8 md:w-auto px-0 md:px-3 bg-white/20 text-primary-foreground font-semibold hover:bg-white/30 gap-1 shadow-sm border border-white/30" onClick={() => { resetForm(); setSheetMode('create'); setChatOpen(true); }} title="Chat IA">
-            <Sparkles className="h-4 w-4" /> <span className="hidden md:inline">Chat IA</span>
-          </Button>
-          <Button size="sm" className="h-8 w-8 md:w-auto px-0 md:px-3 bg-white text-primary font-semibold hover:bg-white/90 gap-1 shadow-sm" onClick={() => { resetForm(); setSheetMode('create'); }} title="Nova Atividade">
-            <Plus className="h-4 w-4" /> <span className="hidden md:inline">Nova Atividade</span>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-8 w-8 text-primary-foreground hover:bg-primary-foreground/10" title="Mais ações">
+                <MoreVertical className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-40">
+              <DropdownMenuItem onClick={startWorkflow} className="gap-2 cursor-pointer">
+                <Play className="h-4 w-4" /> Workflow
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => { resetForm(); setSheetMode('create'); setChatOpen(true); }} className="gap-2 cursor-pointer">
+                <Sparkles className="h-4 w-4" /> Chat IA
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button size="sm" className="h-8 px-2 md:px-3 bg-white text-primary font-semibold hover:bg-white/90 gap-1 shadow-sm" onClick={() => { resetForm(); setSheetMode('create'); }} title="Nova Atividade">
+            <Plus className="h-4 w-4" /> <span className="hidden sm:inline">Nova Atividade</span>
           </Button>
           <div className="hidden md:block"><UserMenu /></div>
         </div>
