@@ -241,6 +241,7 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
       const { data: urlData } = supabase.storage.from('activity-chat').getPublicUrl(path);
       const audio_url = urlData.publicUrl;
       setRecordingUrl(audio_url);
+      onRecordingReady?.({ url: audio_url, seconds });
 
       // Guarda a gravação como anexo de áudio da atividade (consulta/análise posterior).
       if (activityId) {
