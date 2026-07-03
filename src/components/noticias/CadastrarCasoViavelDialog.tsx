@@ -149,6 +149,7 @@ export function CadastrarCasoViavelDialog({ lead, open, onOpenChange, saveLead, 
   const profiles = useProfilesList();
 
   const [newsText, setNewsText] = useState('');
+  const [newsUrl, setNewsUrl] = useState('');
   const [analyzing, setAnalyzing] = useState(false);
   const [form, setForm] = useState<CasoForm>(EMPTY_FORM);
   const [registering, setRegistering] = useState(false);
@@ -170,6 +171,7 @@ export function CadastrarCasoViavelDialog({ lead, open, onOpenChange, saveLead, 
     if (!open || !lead) return;
     titleTouched.current = false;
     setNewsText('');
+    setNewsUrl(String((lead as any).news_link || (lead as any).news_links?.[0] || ''));
     setGroupLink(String((lead as any).group_link || ''));
     setSteps({ save: 'idle', group: 'idle', link: 'idle' });
     const l = lead as any;
@@ -219,13 +221,33 @@ export function CadastrarCasoViavelDialog({ lead, open, onOpenChange, saveLead, 
   }, [form, seqNumber]);
 
   const handleAnalyze = async () => {
-    if (newsText.trim().length < 50) {
-      toast.error('Cole o texto da notícia (mínimo 50 caracteres) antes de analisar.');
+    let text = newsText.trim();
+    let sourceUrl = newsUrl.trim();
+    // URL colada direto na textarea também vale como link
+    if (!sourceUrl && /^https?:\/\/\S+$/.test(text)) {
+      sourceUrl = text;
+      text = '';
+    }
+    if (text.length < 50 && !sourceUrl) {
+      toast.error('Cole o texto da notícia (mínimo 50 caracteres) ou informe o link antes de analisar.');
       return;
     }
     setAnalyzing(true);
     try {
-      const { data, error } = await cloudFunctions.invoke('analyze-news-case', { body: { text: newsText } });
+      // Sem texto suficiente: lê a notícia pelo link (scrape-news / Firecrawl)
+      if (text.length < 50) {
+        const { data: scraped, error: scrapeErr } = await cloudFunctions.invoke('scrape-news', {
+          body: { url: sourceUrl },
+        });
+        if (scrapeErr || !scraped?.success) {
+          throw new Error(scraped?.error || scrapeErr?.message || 'Falha ao ler a notícia pelo link');
+        }
+        text = String(scraped.content || scraped.text || '').trim();
+        if (text.length < 50) throw new Error('Não foi possível extrair conteúdo suficiente desta página.');
+        setNewsText(text);
+        setNewsUrl(sourceUrl);
+      }
+      const { data, error } = await cloudFunctions.invoke('analyze-news-case', { body: { text } });
       if (error || !data?.success) throw new Error(data?.error || error?.message || 'Falha na análise');
       const d = data.data as Record<string, any>;
       const uf = String(d.state || '').toUpperCase().slice(0, 2);
@@ -249,7 +271,7 @@ export function CadastrarCasoViavelDialog({ lead, open, onOpenChange, saveLead, 
         company_size_justification: d.company_size_justification || form.company_size_justification,
         liability_type: LIABILITY_TYPES.includes(d.liability_type) ? d.liability_type : form.liability_type,
         liability_justification: d.liability_justification || form.liability_justification,
-        news_link: d.news_link || form.news_link,
+        news_link: sourceUrl || d.news_link || form.news_link,
       });
       toast.success('Análise concluída — revise os campos antes de cadastrar.');
     } catch (e: any) {
@@ -395,10 +417,21 @@ export function CadastrarCasoViavelDialog({ lead, open, onOpenChange, saveLead, 
             placeholder="Cole aqui o texto completo da notícia do acidente de trabalho..."
             rows={5}
           />
-          <Button type="button" onClick={handleAnalyze} disabled={analyzing || registering} className="gap-2">
-            {analyzing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-            {analyzing ? 'Analisando...' : 'Analisar com IA'}
-          </Button>
+          <div className="flex gap-2 items-center flex-wrap">
+            <Input
+              value={newsUrl}
+              onChange={(e) => setNewsUrl(e.target.value)}
+              placeholder="ou cole o link da notícia (https://...)"
+              className="h-9 flex-1 min-w-[240px]"
+            />
+            <Button type="button" onClick={handleAnalyze} disabled={analyzing || registering} className="gap-2">
+              {analyzing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+              {analyzing ? 'Analisando...' : 'Analisar com IA'}
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Com o texto vazio, a notícia é lida automaticamente pelo link.
+          </p>
         </div>
 
         {/* Campos do lead — todos editáveis */}
