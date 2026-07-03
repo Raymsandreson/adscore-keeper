@@ -487,11 +487,11 @@ export function CadastrarCasoViavelDialog({ lead, open, onOpenChange, saveLead, 
 
           <div>
             <Label>Acolhedor</Label>
-            {profiles.length > 0 ? (
+            {allowedProfiles.length > 0 ? (
               <Select value={form.acolhedor} onValueChange={(v) => set({ acolhedor: v })}>
                 <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
                 <SelectContent>
-                  {profiles.map((p) => (
+                  {allowedProfiles.map((p) => (
                     <SelectItem key={p.id} value={p.full_name || p.email || p.id}>{p.full_name || p.email}</SelectItem>
                   ))}
                 </SelectContent>
