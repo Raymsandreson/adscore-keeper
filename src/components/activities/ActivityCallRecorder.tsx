@@ -487,20 +487,20 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
                 <Download className="h-4 w-4" /> Baixar gravação
               </Button>
             )}
-            {recordingUrl && groupJid && (
+            {recordingUrl && waTarget && (
               <Button
                 variant="default"
                 className="w-full gap-2 bg-green-600 hover:bg-green-700"
                 size="sm"
-                onClick={sendAudioToGroup}
-                disabled={sendingToGroup || sentToGroup}
+                onClick={sendAudioToWa}
+                disabled={sendingToWa || sentToWa}
               >
-                {sendingToGroup ? (
-                  <><Loader2 className="h-4 w-4 animate-spin" /> Enviando ao grupo…</>
-                ) : sentToGroup ? (
-                  <><Sparkles className="h-4 w-4" /> Áudio enviado ao grupo</>
+                {sendingToWa ? (
+                  <><Loader2 className="h-4 w-4 animate-spin" /> Enviando ao {waTargetLabel}…</>
+                ) : sentToWa ? (
+                  <><Sparkles className="h-4 w-4" /> Áudio enviado ao {waTargetLabel}</>
                 ) : (
-                  <><Send className="h-4 w-4" /> Enviar áudio ao grupo WA</>
+                  <><Send className="h-4 w-4" /> Enviar áudio no WhatsApp ({waTargetLabel})</>
                 )}
               </Button>
             )}
