@@ -22,7 +22,7 @@ export const ASSIGNEE_BLOCKLIST: ReadonlySet<string> = new Set<string>([
   '1abf569d-d9a3-40a0-8e64-82bfde1827c9', // Gedeon Rodrigues da Silva
   '3e12ad15-e061-466d-94eb-3f0d99fd51a9', // Adalto Tavares Cavalcante Junior
   // Remoções adicionais
-  '523bade0-145a-44f2-8f24-8fd8b9fbb8c4', // João Pedro Sá
+  // '523bade0-145a-44f2-8f24-8fd8b9fbb8c4', // João Pedro Sá — restaurado
   '151a9715-0b2a-4abd-bfc0-b11270e3731e', // Guilherme
   '060e53d0-f547-4862-b3fe-5d611ae446aa', // Mariana Vitório
   '16ba558c-1eb4-4128-b31c-9f0f2b804090', // Ana Lígia Santos Cavalcante
