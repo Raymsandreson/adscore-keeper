@@ -338,7 +338,7 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
       setPhase('done');
       toast.error(e?.message || 'Erro ao processar a ligação');
     }
-  }, [context, onFields, activityId, leadId, caseId, processId]);
+  }, [context, onFields, activityId, leadId, caseId, processId, onRecordingReady, seconds]);
 
   const stopRecording = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
