@@ -3578,6 +3578,8 @@ const ActivitiesPage = () => {
                       caseId={formCaseId}
                       processId={formProcessId}
                       groupJid={leadPreview?.whatsapp_group_id}
+                      leadPhone={leadPreview?.lead_phone}
+                      onRecordingReady={setPendingAudio}
                       context={{
                         title: formTitle,
                         type: formType,
