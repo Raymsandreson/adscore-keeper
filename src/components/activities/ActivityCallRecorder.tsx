@@ -367,66 +367,28 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
     setSilent(false);
     silentRef.current = false;
     setRecordingUrl(null);
-    setSentToGroup(false);
-  }, [teardownAudio]);
+    setSentToWa(false);
+    onRecordingReady?.(null);
+  }, [teardownAudio, onRecordingReady]);
 
-  const sendAudioToGroup = useCallback(async () => {
-    if (!recordingUrl || !groupJid) return;
-    setSendingToGroup(true);
+  const waTarget = groupJid || leadPhone || null;
+  const waTargetLabel = groupJid ? 'grupo' : 'contato';
+
+  const sendAudioToWa = useCallback(async () => {
+    if (!recordingUrl || !waTarget) return;
+    setSendingToWa(true);
     try {
-      // Transcodifica pra ogg/opus (formato nativo dos áudios do WhatsApp) antes de enviar.
-      // Sem isso, o webm gravado no Chrome chega como "arquivo" e não como mensagem de voz.
-      let mediaUrl = recordingUrl;
-      let mediaType = 'audio/ogg';
-      try {
-        const { data: tx, error: txErr } = await cloudFunctions.invoke('transcode-audio-opus', {
-          body: { url: recordingUrl, folder: 'activity-audio' },
-        });
-        if (!txErr && tx?.success && tx?.url) {
-          mediaUrl = tx.url;
-          mediaType = tx.mime || 'audio/ogg';
-        } else {
-          console.warn('[sendAudioToGroup] transcode falhou, enviando original:', tx?.error || txErr?.message);
-        }
-      } catch (txe) {
-        console.warn('[sendAudioToGroup] transcode exceção, enviando original:', txe);
-      }
-
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      let instanceId: string | undefined;
-      if (authUser) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('default_instance_id')
-          .eq('user_id', authUser.id)
-          .maybeSingle();
-        instanceId = (profile as any)?.default_instance_id || undefined;
-      }
-      const { data, error: sendErr } = await cloudFunctions.invoke('send-whatsapp', {
-        body: {
-          action: 'send_media',
-          phone: groupJid,
-          chat_id: groupJid,
-          media_url: mediaUrl,
-          media_type: mediaType,
-          ptt: true,
-          is_voice: true,
-          lead_id: leadId || null,
-          ...(instanceId ? { instance_id: instanceId } : {}),
-        },
-      });
-      if (sendErr || !data?.success) {
-        throw new Error(data?.error || sendErr?.message || 'Falha ao enviar áudio ao grupo');
-      }
-      setSentToGroup(true);
-      toast.success('Áudio enviado ao grupo do WhatsApp!');
+      await sendVoiceToWa(recordingUrl, waTarget, leadId);
+      setSentToWa(true);
+      toast.success(`Áudio enviado ao ${waTargetLabel} do WhatsApp!`);
     } catch (e: any) {
-      console.error('sendAudioToGroup error', e);
-      toast.error(e?.message || 'Erro ao enviar áudio ao grupo');
+      console.error('sendAudioToWa error', e);
+      toast.error(e?.message || 'Erro ao enviar áudio no WhatsApp');
     } finally {
-      setSendingToGroup(false);
+      setSendingToWa(false);
     }
-  }, [recordingUrl, groupJid, leadId]);
+  }, [recordingUrl, waTarget, waTargetLabel, leadId]);
+
 
 
   return (
