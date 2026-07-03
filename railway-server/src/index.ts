@@ -105,6 +105,7 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'wipe-instance-agent-labels': wipeInstanceAgentLabels,
   'bpc-sheet-sync': bpcSheetSync,
   'transcode-audio-opus': transcodeAudioOpus,
+  'extract-activity-from-document': extractActivityFromDocument,
 };
 
 const app = express();
