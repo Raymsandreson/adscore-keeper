@@ -137,7 +137,7 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
   // Filter boards by category (Trabalhista vs Previdenciário) based on board name
   const categoryRegex = useMemo(() => {
     if (category === 'trabalhista') return /trab|acidente|\bcat\b|cipa/i;
-    if (category === 'previdenciario') return /prev|inss|bpc|benef|aposent|auxi?lio|loas|pensão|pensao/i;
+    if (category === 'previdenciario') return /prev|inss|bpc|benef|aposent|auxi?lio|loas|pensão|pensao|seguro\s+de\s+vida/i;
     return null;
   }, [category]);
 
