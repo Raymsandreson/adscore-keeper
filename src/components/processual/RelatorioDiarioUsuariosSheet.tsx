@@ -96,7 +96,7 @@ export function RelatorioDiarioUsuariosSheet({ open, onOpenChange }: Props) {
         const progress = computeProgress(my, DEFAULT_GOALS);
         return { u, my, progress };
       })
-      .sort((a, b) => b.progress - a.progress);
+      .sort((a, b) => b.u.totalActions - a.u.totalActions);
   }, [productivity]);
 
   const tone = (p: number) =>
