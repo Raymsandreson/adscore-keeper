@@ -8,6 +8,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { cloudFunctions } from '@/lib/functionRouter';
+import { sendVoiceToWa } from '@/lib/whatsappVoiceSend';
 
 export interface ActivityCallContext {
   title?: string;
