@@ -136,7 +136,7 @@ export function RelatorioDiarioUsuariosSheet({ open, onOpenChange }: Props) {
               </div>
             ) : rows.length === 0 ? (
               <div className="py-12 text-center text-sm text-muted-foreground">
-                Nenhum usuário com atividade hoje.
+                Nenhum usuário com atividade no período.
               </div>
             ) : (
               <div className="space-y-2">
