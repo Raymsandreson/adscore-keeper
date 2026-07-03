@@ -15,6 +15,7 @@ import { ActivityTTSButton } from '@/components/voice/ActivityTTSButton';
 import { ActivityFormCompact, SendToGroupSection } from '@/components/activities/ActivityFormCompact';
 import { CobrarVaraSection } from '@/components/activities/CobrarVaraSection';
 import { ActivityCallRecorder, callFieldTextToHtml, stripHtmlToText } from '@/components/activities/ActivityCallRecorder';
+import { ActivityDocumentUpload } from '@/components/activities/ActivityDocumentUpload';
 import { sendVoiceToWa } from '@/lib/whatsappVoiceSend';
 import { ActivityNextStepsAgent } from '@/components/activities/ActivityNextStepsAgent';
 import { CompleteAndNotifyDialog } from '@/components/activities/CompleteAndNotifyDialog';
@@ -3584,6 +3585,44 @@ const ActivitiesPage = () => {
                       groupJid={leadPreview?.whatsapp_group_id}
                       leadPhone={leadPreview?.lead_phone}
                       onRecordingReady={setPendingAudio}
+                      context={{
+                        title: formTitle,
+                        type: formType,
+                        lead_name: formLeadName,
+                        contact_name: formContactName,
+                        process_title: formProcessTitle,
+                        current_status: stripHtmlToText(formCurrentStatus),
+                        what_was_done: stripHtmlToText(formWhatWasDone),
+                        next_steps: stripHtmlToText(formNextSteps),
+                        solicitacao: stripHtmlToText(formSolicitacao),
+                        resposta_juizo: stripHtmlToText(formRespostaJuizo),
+                        notes: stripHtmlToText(formNotes),
+                        workflow: stepContext ? {
+                          step_label: stepContext.stepLabel,
+                          phase_label: stepContext.phaseLabel || undefined,
+                          objective_label: stepContext.objectiveLabel || undefined,
+                          next_step: (() => {
+                            const steps = stepContext.allSteps || [];
+                            const idx = steps.findIndex((s) => s.stepId === stepContext.stepId);
+                            const after = idx >= 0 ? steps.slice(idx + 1) : steps;
+                            return (after.find((s) => !s.checked) || after[0])?.stepLabel;
+                          })(),
+                        } : undefined,
+                      }}
+                      onFields={(f) => {
+                        if (f.what_was_done) setFormWhatWasDone(callFieldTextToHtml(f.what_was_done));
+                        if (f.current_status) setFormCurrentStatus(callFieldTextToHtml(f.current_status));
+                        if (f.next_steps) setFormNextSteps(callFieldTextToHtml(f.next_steps));
+                        if (f.solicitacao) setFormSolicitacao(callFieldTextToHtml(f.solicitacao));
+                        if (f.resposta_juizo) setFormRespostaJuizo(callFieldTextToHtml(f.resposta_juizo));
+                        if (f.notes) setFormNotes(callFieldTextToHtml(f.notes));
+                      }}
+                    />
+                    <ActivityDocumentUpload
+                      activityId={selectedActivity?.id}
+                      leadId={formLeadId}
+                      caseId={formCaseId}
+                      processId={formProcessId}
                       context={{
                         title: formTitle,
                         type: formType,

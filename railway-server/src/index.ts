@@ -55,6 +55,7 @@ import { handler as transcribeActivityCall } from './functions/transcribe-activi
 import { handler as suggestStepActions } from './functions/suggest-step-actions';
 import { handler as wipeInstanceAgentLabels } from './functions/wipe-instance-agent-labels';
 import { handler as transcodeAudioOpus } from './functions/transcode-audio-opus';
+import { handler as extractActivityFromDocument } from './functions/extract-activity-from-document';
 
 
 
@@ -104,6 +105,7 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'wipe-instance-agent-labels': wipeInstanceAgentLabels,
   'bpc-sheet-sync': bpcSheetSync,
   'transcode-audio-opus': transcodeAudioOpus,
+  'extract-activity-from-document': extractActivityFromDocument,
 };
 
 const app = express();
