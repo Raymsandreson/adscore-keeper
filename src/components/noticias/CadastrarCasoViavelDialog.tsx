@@ -190,9 +190,13 @@ export function CadastrarCasoViavelDialog({ lead, open, onOpenChange, saveLead, 
     setGroupLink(String((lead as any).group_link || ''));
     setSteps({ save: 'idle', group: 'idle', link: 'idle' });
     const l = lead as any;
+    const allowedNames = new Set(allowedProfiles.map((p) => p.full_name || p.email || p.id));
+    const initialAcolhedor = l.acolhedor && allowedNames.has(l.acolhedor)
+      ? l.acolhedor
+      : defaultAcolhedor || profile?.full_name || user?.email || '';
     const initial: CasoForm = {
       ...EMPTY_FORM,
-      acolhedor: l.acolhedor || defaultAcolhedor || profile?.full_name || user?.email || '',
+      acolhedor: allowedNames.has(initialAcolhedor) ? initialAcolhedor : defaultAcolhedor || '',
       case_type: l.case_type || '',
       news_link: l.news_link || '',
       city: l.city || '',
