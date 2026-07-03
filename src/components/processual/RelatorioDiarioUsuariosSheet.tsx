@@ -3,7 +3,8 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { startOfDay, endOfDay } from "date-fns";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "date-fns";
 import { ChevronRight, FileText, Loader2 } from "lucide-react";
 import { useTeamProductivity, type UserProductivity } from "@/hooks/useTeamProductivity";
 import { DailyReportDialog } from "@/components/team/DailyReportDialog";
@@ -67,13 +68,24 @@ function computeProgress(p: MyProductivity, g: MyDailyGoals): number {
   return Math.round(avg * 100);
 }
 
-export function RelatorioDiarioUsuariosSheet({ open, onOpenChange }: Props) {
-  const today = useMemo(() => {
-    const now = new Date();
-    return { start: startOfDay(now), end: endOfDay(now) };
-  }, []);
+type Period = "day" | "week" | "month";
 
-  const { productivity, loading } = useTeamProductivity(today);
+export function RelatorioDiarioUsuariosSheet({ open, onOpenChange }: Props) {
+  const [period, setPeriod] = useState<Period>("day");
+
+  const dateRange = useMemo(() => {
+    const now = new Date();
+    switch (period) {
+      case "week":
+        return { start: startOfWeek(now, { weekStartsOn: 1 }), end: endOfWeek(now, { weekStartsOn: 1 }) };
+      case "month":
+        return { start: startOfMonth(now), end: endOfMonth(now) };
+      default:
+        return { start: startOfDay(now), end: endOfDay(now) };
+    }
+  }, [period]);
+
+  const { productivity, loading } = useTeamProductivity(dateRange);
   const [selected, setSelected] = useState<UserProductivity | null>(null);
 
   const rows = useMemo(() => {
@@ -101,14 +113,22 @@ export function RelatorioDiarioUsuariosSheet({ open, onOpenChange }: Props) {
           <SheetHeader>
             <SheetTitle className="flex items-center gap-2">
               <FileText className="h-4 w-4" />
-              Relatório Diário dos Usuários
+              Relatório de Atividades
             </SheetTitle>
             <SheetDescription>
-              Selecione um usuário para abrir o relatório completo de hoje.
+              Selecione um usuário para abrir o relatório completo.
             </SheetDescription>
           </SheetHeader>
 
-          <ScrollArea className="mt-4 h-[calc(100vh-130px)] pr-3">
+          <Tabs value={period} onValueChange={(v) => setPeriod(v as Period)} className="mt-4">
+            <TabsList className="w-full">
+              <TabsTrigger value="day" className="flex-1">Diária</TabsTrigger>
+              <TabsTrigger value="week" className="flex-1">Semanal</TabsTrigger>
+              <TabsTrigger value="month" className="flex-1">Mensal</TabsTrigger>
+            </TabsList>
+          </Tabs>
+
+          <ScrollArea className="mt-4 h-[calc(100vh-180px)] pr-3">
             {loading ? (
               <div className="flex items-center justify-center py-12 text-muted-foreground">
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -116,7 +136,7 @@ export function RelatorioDiarioUsuariosSheet({ open, onOpenChange }: Props) {
               </div>
             ) : rows.length === 0 ? (
               <div className="py-12 text-center text-sm text-muted-foreground">
-                Nenhum usuário com atividade hoje.
+                Nenhum usuário com atividade no período.
               </div>
             ) : (
               <div className="space-y-2">
