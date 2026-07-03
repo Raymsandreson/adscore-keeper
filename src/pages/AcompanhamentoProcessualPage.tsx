@@ -105,6 +105,10 @@ export default function AcompanhamentoProcessualPage() {
                   <TabsTrigger value="mes">Mês</TabsTrigger>
                 </TabsList>
               </Tabs>
+              <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setRelatorioOpen(true)}>
+                <FileText className="h-3.5 w-3.5" />
+                Relatório Diário
+              </Button>
             </div>
           </div>
 
@@ -421,6 +425,7 @@ export default function AcompanhamentoProcessualPage() {
         </section>
       </div>
 
+      <RelatorioDiarioUsuariosSheet open={relatorioOpen} onOpenChange={setRelatorioOpen} />
     </div>
   );
 }
