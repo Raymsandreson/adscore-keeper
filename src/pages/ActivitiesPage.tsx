@@ -431,10 +431,12 @@ const ActivitiesPage = () => {
     if (viewMode === 'blocks') setOpenFilterKey(null);
   }, [viewMode]);
 
-  // Busca IDs de atividades com anexos/marker no externo (uma vez, para refletir estado dos botões)
+  // Busca IDs de atividades marcadas manualmente como "Com documentação" (marker)
   useEffect(() => {
     const load = async () => {
-      const { data } = await externalSupabase.from('activity_attachments').select('activity_id');
+      const { data } = await externalSupabase.from('activity_attachments')
+        .select('activity_id')
+        .eq('attachment_type', 'marker');
       if (data) setActivityIdsWithDocs(new Set(data.map((a: any) => a.activity_id)));
     };
     load();
