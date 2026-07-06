@@ -4006,11 +4006,58 @@ const ActivitiesPage = () => {
                       <Trash2 className="h-3.5 w-3.5" /> Excluir
                     </Button>
                     <Button size="sm" variant="outline" className="h-8 text-xs" onClick={handleUpdate}>Salvar</Button>
-                    {selectedActivity?.status !== 'concluida' && (
-                      <Button size="sm" className="h-8 text-xs gap-1 bg-warning hover:bg-warning/90 text-warning-foreground" onClick={() => openCompleteAndNotify('sheet')} disabled={noteAttachmentsUploading}>
-                        <CheckCircle2 className="h-3.5 w-3.5" /> Concluir + próxima
-                      </Button>
-                    )}
+                    {selectedActivity?.status !== 'concluida' && (() => {
+                      const audioTarget = leadPreview?.whatsapp_group_id || null;
+                      const canSendAudioToGroup = !!pendingAudio && !!audioTarget;
+                      return (
+                        <div className="inline-flex items-stretch rounded-md overflow-hidden shadow-sm">
+                          <Button
+                            size="sm"
+                            className="h-8 text-xs gap-1 bg-warning hover:bg-warning/90 text-warning-foreground rounded-r-none"
+                            onClick={() => openCompleteAndNotify('sheet')}
+                            disabled={noteAttachmentsUploading}
+                          >
+                            <CheckCircle2 className="h-3.5 w-3.5" /> Concluir + próxima
+                          </Button>
+                          {canSendAudioToGroup && (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  size="sm"
+                                  className="h-8 px-1.5 bg-warning hover:bg-warning/90 text-warning-foreground rounded-l-none border-l border-warning-foreground/20"
+                                  disabled={noteAttachmentsUploading}
+                                  title="Mais opções"
+                                >
+                                  <ChevronDown className="h-3.5 w-3.5" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-72">
+                                <DropdownMenuItem
+                                  className="text-xs"
+                                  disabled={sendingPendingAudio}
+                                  onClick={async () => {
+                                    if (!pendingAudio || !audioTarget) return;
+                                    setSendingPendingAudio(true);
+                                    try {
+                                      await sendVoiceToWa(pendingAudio.url, audioTarget, formLeadId);
+                                      toast.success('Áudio enviado ao grupo do WhatsApp!');
+                                      setPendingAudio(null);
+                                    } catch (e: any) {
+                                      toast.error(e?.message || 'Erro ao enviar áudio no WhatsApp');
+                                    } finally {
+                                      setSendingPendingAudio(false);
+                                    }
+                                    openCompleteAndNotify('sheet');
+                                  }}
+                                >
+                                  <Mic className="h-3.5 w-3.5 mr-2" /> Concluir + próxima e enviar áudio no grupo
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          )}
+                        </div>
+                      );
+                    })()}
                     {selectedActivity?.status !== 'concluida' && (
                       <Button size="sm" className="h-8 text-xs bg-success hover:bg-success/90 text-success-foreground" onClick={() => selectedActivity && handleComplete(selectedActivity.id)} disabled={noteAttachmentsUploading}>
                         <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Concluir
