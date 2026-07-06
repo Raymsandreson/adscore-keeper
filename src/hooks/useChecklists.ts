@@ -174,7 +174,7 @@ export const useChecklists = () => {
     }
   };
 
-  const updateTemplate = async (id: string, updates: Partial<ChecklistTemplate>) => {
+  const updateTemplate = async (id: string, updates: Partial<ChecklistTemplate>, { silent = false }: { silent?: boolean } = {}) => {
     try {
       const payload: Record<string, unknown> = {};
       if (updates.name !== undefined) payload.name = updates.name;
@@ -188,11 +188,11 @@ export const useChecklists = () => {
         .eq('id', id);
 
       if (error) throw error;
-      toast.success('Checklist atualizado!');
+      if (!silent) toast.success('Checklist atualizado!');
       fetchTemplates();
     } catch (error) {
       console.error('Error updating checklist:', error);
-      toast.error('Erro ao atualizar checklist');
+      if (!silent) toast.error('Erro ao atualizar checklist');
     }
   };
 
