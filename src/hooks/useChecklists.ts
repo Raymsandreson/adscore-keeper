@@ -251,7 +251,7 @@ export const useChecklists = () => {
     }
   };
 
-  const unlinkChecklistFromStage = async (linkId: string) => {
+  const unlinkChecklistFromStage = async (linkId: string, { silent = false }: { silent?: boolean } = {}) => {
     try {
       const { error } = await supabase
         .from('checklist_stage_links')
@@ -261,7 +261,7 @@ export const useChecklists = () => {
       if (error) throw error;
     } catch (error) {
       console.error('Error unlinking checklist:', error);
-      toast.error('Erro ao desvincular checklist');
+      if (!silent) toast.error('Erro ao desvincular checklist');
     }
   };
 
