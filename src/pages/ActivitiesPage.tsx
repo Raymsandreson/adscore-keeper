@@ -3959,8 +3959,8 @@ const ActivitiesPage = () => {
                 type="button"
                 onClick={toggleActionsPinned}
                 className={cn(
-                  "absolute right-2 -top-7 z-40 inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium border bg-background shadow-sm hover:bg-muted transition-colors",
-                  actionsPinned ? "text-primary border-primary/40" : "text-muted-foreground border-border"
+                  "absolute -top-7 z-40 inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium border bg-background shadow-sm hover:bg-muted transition-colors",
+                  actionsPinned ? "right-32 text-primary border-primary/40" : "right-2 text-muted-foreground border-border"
                 )}
                 title={actionsPinned ? "Desafixar ações (ocultar automático)" : "Fixar ações sempre visíveis"}
               >
