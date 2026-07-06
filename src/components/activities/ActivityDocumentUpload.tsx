@@ -23,6 +23,11 @@ interface Props {
   leadId?: string | null;
   caseId?: string | null;
   processId?: string | null;
+  /** Controle externo de abertura (ex: dropdown menu pai). */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /** Classe CSS adicional para o botão trigger (ex: sr-only quando controlado por menu pai). */
+  triggerClassName?: string;
 }
 
 type Phase = 'idle' | 'uploading' | 'processing' | 'done';
@@ -30,8 +35,13 @@ type Phase = 'idle' | 'uploading' | 'processing' | 'done';
 const ACCEPTED = '.pdf,.txt,.md,application/pdf,text/plain,text/markdown';
 const MAX_MB = 15;
 
-export function ActivityDocumentUpload({ context, onFields, activityId, leadId, caseId, processId }: Props) {
-  const [open, setOpen] = useState(false);
+export function ActivityDocumentUpload({ context, onFields, activityId, leadId, caseId, processId, open: openProp, onOpenChange, triggerClassName }: Props) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = openProp !== undefined ? openProp : internalOpen;
+  const setOpen = (v: boolean) => {
+    if (openProp === undefined) setInternalOpen(v);
+    onOpenChange?.(v);
+  };
   const [phase, setPhase] = useState<Phase>('idle');
   const [pastedText, setPastedText] = useState('');
   const [pickedFile, setPickedFile] = useState<File | null>(null);
@@ -189,7 +199,7 @@ export function ActivityDocumentUpload({ context, onFields, activityId, leadId, 
 
   return (
     <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o && phase === 'done') reset(); }}>
-      <PopoverTrigger asChild>
+      <PopoverTrigger asChild className={triggerClassName}>
         <Button
           variant="outline"
           size="sm"

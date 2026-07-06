@@ -43,10 +43,20 @@ interface Props {
   leadPhone?: string | null;
   /** JID/ID do grupo de WhatsApp do lead — usado para dar contexto de conversa à IA. */
   groupJid?: string | null;
+  /** Controle externo de abertura (ex: dropdown menu pai). */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /** Classe CSS adicional para o botão trigger (ex: sr-only quando controlado por menu pai). */
+  triggerClassName?: string;
 }
 
-export function ActivityNextStepsAgent({ context, onApply, leadId, caseId, processId, activityId, leadPhone, groupJid }: Props) {
-  const [open, setOpen] = useState(false);
+export function ActivityNextStepsAgent({ context, onApply, leadId, caseId, processId, activityId, leadPhone, groupJid, open: openProp, onOpenChange, triggerClassName }: Props) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = openProp !== undefined ? openProp : internalOpen;
+  const setOpen = (v: boolean) => {
+    if (openProp === undefined) setInternalOpen(v);
+    onOpenChange?.(v);
+  };
   const [loading, setLoading] = useState(false);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -145,7 +155,7 @@ export function ActivityNextStepsAgent({ context, onApply, leadId, caseId, proce
 
   return (
     <Popover open={open} onOpenChange={handleOpenChange}>
-      <PopoverTrigger asChild>
+      <PopoverTrigger asChild className={triggerClassName}>
         <Button
           variant="outline"
           size="sm"

@@ -52,6 +52,11 @@ interface Props {
    * do botão "Vincular WA" — permitindo mandar o áudio sem reabrir o popover.
    */
   onRecordingReady?: (info: { url: string; seconds: number } | null) => void;
+  /** Controle externo de abertura (ex: dropdown menu pai). */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /** Classe CSS adicional para o botão trigger (ex: sr-only quando controlado por menu pai). */
+  triggerClassName?: string;
 }
 
 type Phase = 'idle' | 'recording' | 'processing' | 'done';
@@ -97,8 +102,13 @@ export function callFieldTextToHtml(text: string): string {
     .join('');
 }
 
-export function ActivityCallRecorder({ context, onFields, activityId, leadId, caseId, processId, groupJid, leadPhone, onRecordingReady }: Props) {
-  const [open, setOpen] = useState(false);
+export function ActivityCallRecorder({ context, onFields, activityId, leadId, caseId, processId, groupJid, leadPhone, onRecordingReady, open: openProp, onOpenChange, triggerClassName }: Props) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = openProp !== undefined ? openProp : internalOpen;
+  const setOpen = (v: boolean) => {
+    if (openProp === undefined) setInternalOpen(v);
+    onOpenChange?.(v);
+  };
   const [phase, setPhase] = useState<Phase>('idle');
   const [seconds, setSeconds] = useState(0);
   const [transcript, setTranscript] = useState('');
@@ -394,7 +404,7 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
 
   return (
     <Popover open={open} onOpenChange={(o) => { setOpen(o); }}>
-      <PopoverTrigger asChild>
+      <PopoverTrigger asChild className={triggerClassName}>
         <Button
           variant="outline"
           size="sm"
