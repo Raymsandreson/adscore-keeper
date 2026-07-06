@@ -52,6 +52,9 @@ interface Props {
    * do botão "Vincular WA" — permitindo mandar o áudio sem reabrir o popover.
    */
   onRecordingReady?: (info: { url: string; seconds: number } | null) => void;
+  /** Controle externo de abertura (ex: dropdown menu pai). */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
 type Phase = 'idle' | 'recording' | 'processing' | 'done';
