@@ -431,18 +431,44 @@ const ActivitiesPage = () => {
     if (viewMode === 'blocks') setOpenFilterKey(null);
   }, [viewMode]);
 
-  // Busca IDs de atividades com anexos no externo (lazy: só quando filtro ativo)
+  // Busca IDs de atividades com anexos/marker no externo (uma vez, para refletir estado dos botões)
   useEffect(() => {
-    if (!filterHasDocs) {
-      setActivityIdsWithDocs(new Set());
-      return;
-    }
     const load = async () => {
       const { data } = await externalSupabase.from('activity_attachments').select('activity_id');
       if (data) setActivityIdsWithDocs(new Set(data.map((a: any) => a.activity_id)));
     };
     load();
-  }, [filterHasDocs]);
+  }, []);
+
+  const toggleHasDocs = useCallback(async (activityId: string) => {
+    const has = activityIdsWithDocs.has(activityId);
+    const next = new Set(activityIdsWithDocs);
+    if (has) {
+      next.delete(activityId);
+      setActivityIdsWithDocs(next);
+      try {
+        await externalSupabase.from('activity_attachments')
+          .delete()
+          .eq('activity_id', activityId)
+          .eq('attachment_type', 'marker');
+      } catch (e) { console.warn('[toggleHasDocs] delete falhou', e); }
+    } else {
+      next.add(activityId);
+      setActivityIdsWithDocs(next);
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        const extUserId = await remapToExternal(user?.id || null);
+        await externalSupabase.from('activity_attachments').insert({
+          activity_id: activityId,
+          file_url: '',
+          file_name: 'marker',
+          file_type: 'marker',
+          attachment_type: 'marker',
+          created_by: extUserId,
+        });
+      } catch (e) { console.warn('[toggleHasDocs] insert falhou', e); }
+    }
+  }, [activityIdsWithDocs]);
 
   const toggleFilter = (setter: React.Dispatch<React.SetStateAction<string[]>>, current: string[], value: string) => {
     setter(current.includes(value) ? current.filter(v => v !== value) : [...current, value]);
@@ -3329,6 +3355,20 @@ const ActivitiesPage = () => {
                             <CheckCircle2 className="h-3.5 w-3.5" />
                           </Button>
                         )}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className={cn(
+                            "h-6 w-6",
+                            activityIdsWithDocs.has(activity.id)
+                              ? "text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+                              : "text-muted-foreground hover:text-emerald-600"
+                          )}
+                          onClick={e => { e.stopPropagation(); toggleHasDocs(activity.id); }}
+                          title={activityIdsWithDocs.has(activity.id) ? "Desmarcar 'Com documentação'" : "Marcar como 'Com documentação'"}
+                        >
+                          <FileText className="h-3.5 w-3.5" />
+                        </Button>
                         <span onClick={e => e.stopPropagation()}>
                           <ShareMenu entityType="activity" entityId={activity.id} entityName={activity.title} summary={[activity.lead_name && `Lead: ${activity.lead_name}`, (activity as any).case_title && `Caso: ${(activity as any).case_title}`, (activity as any).process_title && `Processo: ${(activity as any).process_title}`].filter(Boolean).join('\n') || undefined} size="icon" variant="ghost" className="h-6 w-6 text-muted-foreground" />
                         </span>
