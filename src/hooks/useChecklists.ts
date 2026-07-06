@@ -150,7 +150,7 @@ export const useChecklists = () => {
     }
   }, []);
 
-  const createTemplate = async (template: Partial<ChecklistTemplate>) => {
+  const createTemplate = async (template: Partial<ChecklistTemplate>, { silent = false }: { silent?: boolean } = {}) => {
     try {
       const { data, error } = await supabase
         .from('checklist_templates')
@@ -164,12 +164,12 @@ export const useChecklists = () => {
         .single();
 
       if (error) throw error;
-      toast.success('Checklist criado!');
+      if (!silent) toast.success('Checklist criado!');
       fetchTemplates();
       return data;
     } catch (error) {
       console.error('Error creating checklist:', error);
-      toast.error('Erro ao criar checklist');
+      if (!silent) toast.error('Erro ao criar checklist');
       throw error;
     }
   };
