@@ -2588,7 +2588,7 @@ const ActivitiesPage = () => {
         </Button>
 
         {(filterStatus.length > 0 || filterType.length > 0 || filterAssignee.length > 0 || filterLead.length > 0 || filterContact.length > 0 || filterCase.length > 0 || selectedCalDays.length > 0 || filterHasDocs) && (
-          <Button variant="ghost" size="sm" className="h-7 text-xs text-destructive shrink-0" onClick={() => { setFilterStatus([]); setFilterType([]); setFilterAssignee([]); setFilterLead([]); setFilterContact([]); setFilterCase([]); setSelectedCalDays([]); }}>
+          <Button variant="ghost" size="sm" className="h-7 text-xs text-destructive shrink-0" onClick={() => { setFilterStatus([]); setFilterType([]); setFilterAssignee([]); setFilterLead([]); setFilterContact([]); setFilterCase([]); setSelectedCalDays([]); setFilterHasDocs(false); }}>
             <X className="h-3 w-3 mr-1" /> Limpar
           </Button>
         )}
