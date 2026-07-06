@@ -155,7 +155,7 @@ export function ActivityNextStepsAgent({ context, onApply, leadId, caseId, proce
 
   return (
     <Popover open={open} onOpenChange={handleOpenChange}>
-      <PopoverTrigger asChild>
+      <PopoverTrigger asChild className={triggerClassName}>
         <Button
           variant="outline"
           size="sm"
