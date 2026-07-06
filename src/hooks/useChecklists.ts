@@ -150,7 +150,7 @@ export const useChecklists = () => {
     }
   }, []);
 
-  const createTemplate = async (template: Partial<ChecklistTemplate>) => {
+  const createTemplate = async (template: Partial<ChecklistTemplate>, { silent = false }: { silent?: boolean } = {}) => {
     try {
       const { data, error } = await supabase
         .from('checklist_templates')
@@ -164,17 +164,17 @@ export const useChecklists = () => {
         .single();
 
       if (error) throw error;
-      toast.success('Checklist criado!');
+      if (!silent) toast.success('Checklist criado!');
       fetchTemplates();
       return data;
     } catch (error) {
       console.error('Error creating checklist:', error);
-      toast.error('Erro ao criar checklist');
+      if (!silent) toast.error('Erro ao criar checklist');
       throw error;
     }
   };
 
-  const updateTemplate = async (id: string, updates: Partial<ChecklistTemplate>) => {
+  const updateTemplate = async (id: string, updates: Partial<ChecklistTemplate>, { silent = false }: { silent?: boolean } = {}) => {
     try {
       const payload: Record<string, unknown> = {};
       if (updates.name !== undefined) payload.name = updates.name;
@@ -188,15 +188,15 @@ export const useChecklists = () => {
         .eq('id', id);
 
       if (error) throw error;
-      toast.success('Checklist atualizado!');
+      if (!silent) toast.success('Checklist atualizado!');
       fetchTemplates();
     } catch (error) {
       console.error('Error updating checklist:', error);
-      toast.error('Erro ao atualizar checklist');
+      if (!silent) toast.error('Erro ao atualizar checklist');
     }
   };
 
-  const deleteTemplate = async (id: string) => {
+  const deleteTemplate = async (id: string, { silent = false }: { silent?: boolean } = {}) => {
     try {
       const { error } = await supabase
         .from('checklist_templates')
@@ -204,11 +204,11 @@ export const useChecklists = () => {
         .eq('id', id);
 
       if (error) throw error;
-      toast.success('Checklist removido!');
+      if (!silent) toast.success('Checklist removido!');
       fetchTemplates();
     } catch (error) {
       console.error('Error deleting checklist:', error);
-      toast.error('Erro ao remover checklist');
+      if (!silent) toast.error('Erro ao remover checklist');
     }
   };
 
@@ -227,7 +227,7 @@ export const useChecklists = () => {
     return (data || []) as ChecklistStageLink[];
   };
 
-  const linkChecklistToStage = async (templateId: string, boardId: string, stageId: string) => {
+  const linkChecklistToStage = async (templateId: string, boardId: string, stageId: string, { silent = false }: { silent?: boolean } = {}) => {
     try {
       const { error } = await supabase
         .from('checklist_stage_links')
@@ -239,19 +239,19 @@ export const useChecklists = () => {
 
       if (error) {
         if (error.code === '23505') {
-          toast.info('Checklist já vinculado a esta fase');
+          if (!silent) toast.info('Checklist já vinculado a esta fase');
           return;
         }
         throw error;
       }
-      toast.success('Checklist vinculado!');
+      if (!silent) toast.success('Checklist vinculado!');
     } catch (error) {
       console.error('Error linking checklist:', error);
-      toast.error('Erro ao vincular checklist');
+      if (!silent) toast.error('Erro ao vincular checklist');
     }
   };
 
-  const unlinkChecklistFromStage = async (linkId: string) => {
+  const unlinkChecklistFromStage = async (linkId: string, { silent = false }: { silent?: boolean } = {}) => {
     try {
       const { error } = await supabase
         .from('checklist_stage_links')
@@ -261,7 +261,7 @@ export const useChecklists = () => {
       if (error) throw error;
     } catch (error) {
       console.error('Error unlinking checklist:', error);
-      toast.error('Erro ao desvincular checklist');
+      if (!silent) toast.error('Erro ao desvincular checklist');
     }
   };
 

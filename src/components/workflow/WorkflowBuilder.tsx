@@ -621,9 +621,9 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
           };
 
           if (templateId) {
-            await updateTemplate(templateId, templateData);
+            await updateTemplate(templateId, templateData, { silent: true });
           } else {
-            const created = await createTemplate(templateData);
+            const created = await createTemplate(templateData, { silent: true });
             templateId = created?.id;
           }
 
@@ -631,14 +631,14 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
             wantedTemplateIds.add(templateId);
             const hasLink = phaseLinks.some(l => l.checklist_template_id === templateId);
             if (!hasLink) {
-              await linkChecklistToStage(templateId, boardId, phase.stageId);
+              await linkChecklistToStage(templateId, boardId, phase.stageId, { silent: true });
             }
           }
         }
 
         for (const link of phaseLinks) {
           if (!wantedTemplateIds.has(link.checklist_template_id)) {
-            await unlinkChecklistFromStage(link.id);
+            await unlinkChecklistFromStage(link.id, { silent: true });
           }
         }
       }
