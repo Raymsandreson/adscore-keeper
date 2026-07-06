@@ -3693,6 +3693,7 @@ const ActivitiesPage = () => {
                       }}
                     />
                     {/* Chat Equipe moved to bottom action bar to reduce top clutter */}
+                    <div className="w-full" />
                     {formLeadId && (
                       <Button
                         variant="ghost"
