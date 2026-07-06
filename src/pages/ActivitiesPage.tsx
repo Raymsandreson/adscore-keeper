@@ -3522,7 +3522,7 @@ const ActivitiesPage = () => {
 
                   </div>
                 </div>
-                <div className="flex flex-col items-end gap-1 min-w-0">
+                <div className="flex flex-col items-stretch md:items-end gap-1 w-full md:w-auto md:min-w-0">
                   <div className="flex flex-wrap items-center justify-end gap-1">
                     {!formLeadId && (
                       <Button
