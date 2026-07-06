@@ -3527,277 +3527,252 @@ const ActivitiesPage = () => {
 
                   </div>
                 </div>
-                <div className="flex flex-col items-stretch md:items-end gap-1 w-full">
-                  <div className="flex flex-wrap items-center justify-end gap-1">
-                    {!formLeadId && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7 text-xs gap-1 border-primary/30 text-primary hover:bg-primary/10"
-                        onClick={() => window.dispatchEvent(new CustomEvent('activity-form:open-link-lead'))}
-                        title="Vincular um lead existente ou criar um novo"
-                      >
-                        <Plus className="h-3 w-3" />
-                        Vincular Lead
+                <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                  {/* Dropdown Vincular */}
+                  <Popover open={vincularOpen} onOpenChange={setVincularOpen}>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" size="sm" className="h-7 text-xs gap-1">
+                        <Link className="h-3 w-3" />
+                        Vincular <ChevronDown className="h-3 w-3" />
                       </Button>
-                    )}
-                    {!formCaseId && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7 text-xs gap-1"
-                        onClick={() => window.dispatchEvent(new CustomEvent('activity-form:open-link-case'))}
-                        title="Vincular um caso existente ou criar um novo"
-                      >
-                        <Briefcase className="h-3 w-3" />
-                        Vincular Caso
+                    </PopoverTrigger>
+                    <PopoverContent align="end" className="w-56 p-1.5 space-y-1">
+                      {!formLeadId && (
+                        <Button variant="ghost" size="sm" className="w-full justify-start h-8 text-xs gap-2" onClick={() => { window.dispatchEvent(new CustomEvent('activity-form:open-link-lead')); setVincularOpen(false); }}>
+                          <Plus className="h-3.5 w-3.5" /> Vincular Lead
+                        </Button>
+                      )}
+                      {!formCaseId && (
+                        <Button variant="ghost" size="sm" className="w-full justify-start h-8 text-xs gap-2" onClick={() => { window.dispatchEvent(new CustomEvent('activity-form:open-link-case')); setVincularOpen(false); }}>
+                          <Briefcase className="h-3.5 w-3.5" /> Vincular Caso
+                        </Button>
+                      )}
+                      {formCaseId && !formProcessId && (
+                        <Button variant="ghost" size="sm" className="w-full justify-start h-8 text-xs gap-2" onClick={() => { window.dispatchEvent(new CustomEvent('activity-form:open-link-process')); setVincularOpen(false); }}>
+                          <FileText className="h-3.5 w-3.5" /> Vincular Processo
+                        </Button>
+                      )}
+                      {!formContactId && (
+                        <Button variant="ghost" size="sm" className="w-full justify-start h-8 text-xs gap-2" onClick={() => { window.dispatchEvent(new CustomEvent('activity-form:open-link-contact')); setVincularOpen(false); }}>
+                          <UserPlus className="h-3.5 w-3.5" /> Vincular Contato
+                        </Button>
+                      )}
+                      {formProcessId && (
+                        <Button variant="ghost" size="sm" className="w-full justify-start h-8 text-xs gap-2" onClick={() => { setShowProcessSheetId(formProcessId); setVincularOpen(false); }}>
+                          <FileText className="h-3.5 w-3.5" /> Últimas movimentações
+                        </Button>
+                      )}
+                    </PopoverContent>
+                  </Popover>
+
+                  {/* Dropdown Preencher com */}
+                  <Popover open={preencherOpen} onOpenChange={setPreencherOpen}>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" size="sm" className="h-7 text-xs gap-1">
+                        <Sparkles className="h-3 w-3" />
+                        Preencher com <ChevronDown className="h-3 w-3" />
                       </Button>
-                    )}
-                    {formCaseId && !formProcessId && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7 text-xs gap-1"
-                        onClick={() => window.dispatchEvent(new CustomEvent('activity-form:open-link-process'))}
-                        title="Vincular um processo do caso"
-                      >
-                        <FileText className="h-3 w-3" />
-                        Vincular Processo
-                      </Button>
-                    )}
-                    {!formContactId && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7 text-xs gap-1"
-                        onClick={() => window.dispatchEvent(new CustomEvent('activity-form:open-link-contact'))}
-                        title="Vincular um contato"
-                      >
-                        <UserPlus className="h-3 w-3" />
-                        Vincular Contato
-                      </Button>
-                    )}
-                    {formProcessId && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 text-xs gap-1"
-                        onClick={() => setShowProcessSheetId(formProcessId)}
-                        title="Ver últimas movimentações do processo"
-                      >
-                        <FileText className="h-3 w-3" />
-                        Últimas movimentações
-                      </Button>
-                    )}
-                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={closeSheet}>
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  <div className="flex flex-wrap items-center justify-end gap-1">
-                    <ActivityCallRecorder
-                      activityId={selectedActivity?.id}
-                      leadId={formLeadId}
-                      caseId={formCaseId}
-                      processId={formProcessId}
-                      groupJid={leadPreview?.whatsapp_group_id}
-                      leadPhone={leadPreview?.lead_phone}
-                      onRecordingReady={setPendingAudio}
-                      context={{
-                        title: formTitle,
-                        type: formType,
-                        lead_name: formLeadName,
-                        contact_name: formContactName,
-                        process_title: formProcessTitle,
-                        current_status: stripHtmlToText(formCurrentStatus),
-                        what_was_done: stripHtmlToText(formWhatWasDone),
-                        next_steps: stripHtmlToText(formNextSteps),
-                        solicitacao: stripHtmlToText(formSolicitacao),
-                        resposta_juizo: stripHtmlToText(formRespostaJuizo),
-                        notes: stripHtmlToText(formNotes),
-                        workflow: stepContext ? {
-                          step_label: stepContext.stepLabel,
-                          phase_label: stepContext.phaseLabel || undefined,
-                          objective_label: stepContext.objectiveLabel || undefined,
-                          next_step: (() => {
-                            const steps = stepContext.allSteps || [];
-                            const idx = steps.findIndex((s) => s.stepId === stepContext.stepId);
-                            const after = idx >= 0 ? steps.slice(idx + 1) : steps;
-                            return (after.find((s) => !s.checked) || after[0])?.stepLabel;
-                          })(),
-                        } : undefined,
-                      }}
-                      onFields={(f) => {
-                        if (f.what_was_done) setFormWhatWasDone(callFieldTextToHtml(f.what_was_done));
-                        if (f.current_status) setFormCurrentStatus(callFieldTextToHtml(f.current_status));
-                        if (f.next_steps) setFormNextSteps(callFieldTextToHtml(f.next_steps));
-                        if (f.solicitacao) setFormSolicitacao(callFieldTextToHtml(f.solicitacao));
-                        if (f.resposta_juizo) setFormRespostaJuizo(callFieldTextToHtml(f.resposta_juizo));
-                        if (f.notes) setFormNotes(callFieldTextToHtml(f.notes));
-                      }}
-                    />
-                    <ActivityDocumentUpload
-                      activityId={selectedActivity?.id}
-                      leadId={formLeadId}
-                      caseId={formCaseId}
-                      processId={formProcessId}
-                      context={{
-                        title: formTitle,
-                        type: formType,
-                        lead_name: formLeadName,
-                        contact_name: formContactName,
-                        process_title: formProcessTitle,
-                        current_status: stripHtmlToText(formCurrentStatus),
-                        what_was_done: stripHtmlToText(formWhatWasDone),
-                        next_steps: stripHtmlToText(formNextSteps),
-                        solicitacao: stripHtmlToText(formSolicitacao),
-                        resposta_juizo: stripHtmlToText(formRespostaJuizo),
-                        notes: stripHtmlToText(formNotes),
-                        workflow: stepContext ? {
-                          step_label: stepContext.stepLabel,
-                          phase_label: stepContext.phaseLabel || undefined,
-                          objective_label: stepContext.objectiveLabel || undefined,
-                          next_step: (() => {
-                            const steps = stepContext.allSteps || [];
-                            const idx = steps.findIndex((s) => s.stepId === stepContext.stepId);
-                            const after = idx >= 0 ? steps.slice(idx + 1) : steps;
-                            return (after.find((s) => !s.checked) || after[0])?.stepLabel;
-                          })(),
-                        } : undefined,
-                      }}
-                      onFields={(f) => {
-                        if (f.what_was_done) setFormWhatWasDone(callFieldTextToHtml(f.what_was_done));
-                        if (f.current_status) setFormCurrentStatus(callFieldTextToHtml(f.current_status));
-                        if (f.next_steps) setFormNextSteps(callFieldTextToHtml(f.next_steps));
-                        if (f.solicitacao) setFormSolicitacao(callFieldTextToHtml(f.solicitacao));
-                        if (f.resposta_juizo) setFormRespostaJuizo(callFieldTextToHtml(f.resposta_juizo));
-                        if (f.notes) setFormNotes(callFieldTextToHtml(f.notes));
-                      }}
-                    />
-                    <ActivityNextStepsAgent
-                      activityId={selectedActivity?.id}
-                      leadId={formLeadId}
-                      caseId={formCaseId}
-                      processId={formProcessId}
-                      leadPhone={leadPreview?.lead_phone}
-                      groupJid={leadPreview?.whatsapp_group_id}
-                      context={{
-                        step: stepContext ? {
-                          step_label: stepContext.stepLabel,
-                          phase_label: stepContext.phaseLabel || undefined,
-                          objective_label: stepContext.objectiveLabel || undefined,
-                          next_step: (() => {
-                            const steps = stepContext.allSteps || [];
-                            const idx = steps.findIndex((s) => s.stepId === stepContext.stepId);
-                            const after = idx >= 0 ? steps.slice(idx + 1) : steps;
-                            return (after.find((s) => !s.checked) || after[0])?.stepLabel;
-                          })(),
-                          checklist: (stepContext.docChecklist || []).map((c) => ({ label: c.label, checked: c.checked })),
-                        } : undefined,
-                        activity: {
+                    </PopoverTrigger>
+                    <PopoverContent align="end" className="w-64 p-1.5 space-y-1">
+                      <ActivityCallRecorder
+                        open={callRecorderOpen}
+                        onOpenChange={(o) => { setCallRecorderOpen(o); if (o) setPreencherOpen(false); }}
+                        activityId={selectedActivity?.id}
+                        leadId={formLeadId}
+                        caseId={formCaseId}
+                        processId={formProcessId}
+                        groupJid={leadPreview?.whatsapp_group_id}
+                        leadPhone={leadPreview?.lead_phone}
+                        onRecordingReady={setPendingAudio}
+                        context={{
                           title: formTitle,
                           type: formType,
                           lead_name: formLeadName,
+                          contact_name: formContactName,
                           process_title: formProcessTitle,
                           current_status: stripHtmlToText(formCurrentStatus),
                           what_was_done: stripHtmlToText(formWhatWasDone),
                           next_steps: stripHtmlToText(formNextSteps),
+                          solicitacao: stripHtmlToText(formSolicitacao),
+                          resposta_juizo: stripHtmlToText(formRespostaJuizo),
                           notes: stripHtmlToText(formNotes),
-                        },
-                      }}
-                      onApply={(text) => {
-                        const html = callFieldTextToHtml(text);
-                        setFormNextSteps((prev) => (prev && prev !== '<p></p>' ? `${prev}${html}` : html));
-                      }}
-                    />
-                    {/* Chat Equipe moved to bottom action bar to reduce top clutter */}
-                    <div className="w-full" />
-                    {formLeadId && (
+                          workflow: stepContext ? {
+                            step_label: stepContext.stepLabel,
+                            phase_label: stepContext.phaseLabel || undefined,
+                            objective_label: stepContext.objectiveLabel || undefined,
+                            next_step: (() => {
+                              const steps = stepContext.allSteps || [];
+                              const idx = steps.findIndex((s) => s.stepId === stepContext.stepId);
+                              const after = idx >= 0 ? steps.slice(idx + 1) : steps;
+                              return (after.find((s) => !s.checked) || after[0])?.stepLabel;
+                            })(),
+                          } : undefined,
+                        }}
+                        onFields={(f) => {
+                          if (f.what_was_done) setFormWhatWasDone(callFieldTextToHtml(f.what_was_done));
+                          if (f.current_status) setFormCurrentStatus(callFieldTextToHtml(f.current_status));
+                          if (f.next_steps) setFormNextSteps(callFieldTextToHtml(f.next_steps));
+                          if (f.solicitacao) setFormSolicitacao(callFieldTextToHtml(f.solicitacao));
+                          if (f.resposta_juizo) setFormRespostaJuizo(callFieldTextToHtml(f.resposta_juizo));
+                          if (f.notes) setFormNotes(callFieldTextToHtml(f.notes));
+                        }}
+                      />
+                      <ActivityDocumentUpload
+                        open={docUploadOpen}
+                        onOpenChange={(o) => { setDocUploadOpen(o); if (o) setPreencherOpen(false); }}
+                        activityId={selectedActivity?.id}
+                        leadId={formLeadId}
+                        caseId={formCaseId}
+                        processId={formProcessId}
+                        context={{
+                          title: formTitle,
+                          type: formType,
+                          lead_name: formLeadName,
+                          contact_name: formContactName,
+                          process_title: formProcessTitle,
+                          current_status: stripHtmlToText(formCurrentStatus),
+                          what_was_done: stripHtmlToText(formWhatWasDone),
+                          next_steps: stripHtmlToText(formNextSteps),
+                          solicitacao: stripHtmlToText(formSolicitacao),
+                          resposta_juizo: stripHtmlToText(formRespostaJuizo),
+                          notes: stripHtmlToText(formNotes),
+                          workflow: stepContext ? {
+                            step_label: stepContext.stepLabel,
+                            phase_label: stepContext.phaseLabel || undefined,
+                            objective_label: stepContext.objectiveLabel || undefined,
+                            next_step: (() => {
+                              const steps = stepContext.allSteps || [];
+                              const idx = steps.findIndex((s) => s.stepId === stepContext.stepId);
+                              const after = idx >= 0 ? steps.slice(idx + 1) : steps;
+                              return (after.find((s) => !s.checked) || after[0])?.stepLabel;
+                            })(),
+                          } : undefined,
+                        }}
+                        onFields={(f) => {
+                          if (f.what_was_done) setFormWhatWasDone(callFieldTextToHtml(f.what_was_done));
+                          if (f.current_status) setFormCurrentStatus(callFieldTextToHtml(f.current_status));
+                          if (f.next_steps) setFormNextSteps(callFieldTextToHtml(f.next_steps));
+                          if (f.solicitacao) setFormSolicitacao(callFieldTextToHtml(f.solicitacao));
+                          if (f.resposta_juizo) setFormRespostaJuizo(callFieldTextToHtml(f.resposta_juizo));
+                          if (f.notes) setFormNotes(callFieldTextToHtml(f.notes));
+                        }}
+                      />
+                    </PopoverContent>
+                  </Popover>
+
+                  <ActivityNextStepsAgent
+                    open={nextStepsOpen}
+                    onOpenChange={setNextStepsOpen}
+                    activityId={selectedActivity?.id}
+                    leadId={formLeadId}
+                    caseId={formCaseId}
+                    processId={formProcessId}
+                    leadPhone={leadPreview?.lead_phone}
+                    groupJid={leadPreview?.whatsapp_group_id}
+                    context={{
+                      step: stepContext ? {
+                        step_label: stepContext.stepLabel,
+                        phase_label: stepContext.phaseLabel || undefined,
+                        objective_label: stepContext.objectiveLabel || undefined,
+                        next_step: (() => {
+                          const steps = stepContext.allSteps || [];
+                          const idx = steps.findIndex((s) => s.stepId === stepContext.stepId);
+                          const after = idx >= 0 ? steps.slice(idx + 1) : steps;
+                          return (after.find((s) => !s.checked) || after[0])?.stepLabel;
+                        })(),
+                        checklist: (stepContext.docChecklist || []).map((c) => ({ label: c.label, checked: c.checked })),
+                      } : undefined,
+                      activity: {
+                        title: formTitle,
+                        type: formType,
+                        lead_name: formLeadName,
+                        process_title: formProcessTitle,
+                        current_status: stripHtmlToText(formCurrentStatus),
+                        what_was_done: stripHtmlToText(formWhatWasDone),
+                        next_steps: stripHtmlToText(formNextSteps),
+                        notes: stripHtmlToText(formNotes),
+                      },
+                    }}
+                    onApply={(text) => {
+                      const html = callFieldTextToHtml(text);
+                      setFormNextSteps((prev) => (prev && prev !== '<p></p>' ? `${prev}${html}` : html));
+                    }}
+                  />
+
+                  {formLeadId && (() => {
+                    const hasGroup = !!leadPreview?.whatsapp_group_id;
+                    const hasPhone = !!leadPreview?.lead_phone;
+                    const hasAnyWa = hasGroup || hasPhone;
+                    return (
                       <Button
-                        variant="ghost"
+                        variant="outline"
                         size="sm"
-                        className={cn("h-7 text-xs gap-1")}
-                        onClick={() => setShowLeadSheet(true)}
-                        title="Abrir lead completo"
-                      >
-                        <ExternalLink className="h-3 w-3" />
-                        Lead
-                      </Button>
-                    )}
-                    {formLeadId && (() => {
-                      const hasGroup = !!leadPreview?.whatsapp_group_id;
-                      const hasPhone = !!leadPreview?.lead_phone;
-                      const hasAnyWa = hasGroup || hasPhone;
-                      return (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className={`h-7 text-xs gap-1 ${
-                            hasAnyWa
-                              ? 'text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-950/30'
-                              : 'text-muted-foreground/60 hover:text-muted-foreground hover:bg-muted/50'
-                          }`}
-                          onClick={() => {
-                            if (hasAnyWa) {
-                              const target = leadPreview?.whatsapp_group_id || leadPreview?.lead_phone || '';
-                              if (!target) return;
-                              setWaChatPreview({
-                                phone: target,
-                                contact_name: formLeadName || null,
-                                instance_name: null,
-                              });
-                            } else {
-                              setGroupSearchOpen(true);
-                            }
-                          }}
-                          title={
-                            hasGroup
-                              ? 'Abrir grupo do WhatsApp vinculado'
-                              : hasPhone
-                                ? 'Abrir conversa do WhatsApp'
-                                : 'Vincular grupo do WhatsApp ao lead'
+                        className={`h-7 text-xs gap-1 ${
+                          hasAnyWa
+                            ? 'text-green-600 border-green-200 hover:bg-green-50 dark:hover:bg-green-950/30'
+                            : 'text-muted-foreground/60 border-border hover:text-muted-foreground hover:bg-muted/50'
+                        }`}
+                        onClick={() => {
+                          if (hasAnyWa) {
+                            const target = leadPreview?.whatsapp_group_id || leadPreview?.lead_phone || '';
+                            if (!target) return;
+                            setWaChatPreview({
+                              phone: target,
+                              contact_name: formLeadName || null,
+                              instance_name: null,
+                            });
+                          } else {
+                            setGroupSearchOpen(true);
                           }
-                        >
-                          <MessageCircle className="h-3 w-3" />
-                          {hasGroup ? 'Grupo WA' : hasPhone ? 'WhatsApp' : 'Vincular WA'}
-                        </Button>
-                      );
-                    })()}
-                    {/* Chip de envio rápido do áudio recém-gravado ao WhatsApp vinculado. */}
-                    {pendingAudio && (leadPreview?.whatsapp_group_id || leadPreview?.lead_phone) && (() => {
-                      const target = leadPreview?.whatsapp_group_id || leadPreview?.lead_phone || '';
-                      const label = leadPreview?.whatsapp_group_id ? 'grupo' : 'contato';
-                      const mm = Math.floor(pendingAudio.seconds / 60).toString().padStart(2, '0');
-                      const ss = (pendingAudio.seconds % 60).toString().padStart(2, '0');
-                      return (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-7 text-xs gap-1 border-green-300 text-green-700 hover:bg-green-50 dark:border-green-800 dark:text-green-400 dark:hover:bg-green-950/30"
-                          disabled={sendingPendingAudio}
-                          onClick={async () => {
-                            if (!target || !pendingAudio) return;
-                            setSendingPendingAudio(true);
-                            try {
-                              await sendVoiceToWa(pendingAudio.url, target, formLeadId);
-                              toast.success(`Áudio enviado ao ${label} do WhatsApp!`);
-                              setPendingAudio(null);
-                            } catch (e: any) {
-                              toast.error(e?.message || 'Erro ao enviar áudio no WhatsApp');
-                            } finally {
-                              setSendingPendingAudio(false);
-                            }
-                          }}
-                          title={`Enviar a gravação (${mm}:${ss}) como áudio no WhatsApp do ${label}`}
-                        >
-                          {sendingPendingAudio ? (
-                            <><Loader2 className="h-3 w-3 animate-spin" /> Enviando…</>
-                          ) : (
-                            <><Mic className="h-3 w-3" /> Enviar áudio ({mm}:{ss})</>
-                          )}
-                        </Button>
-                      );
-                    })()}
-                  </div>
+                        }}
+                        title={
+                          hasGroup
+                            ? 'Abrir grupo do WhatsApp vinculado'
+                            : hasPhone
+                              ? 'Abrir conversa do WhatsApp'
+                              : 'Vincular grupo do WhatsApp ao lead'
+                        }
+                      >
+                        <MessageCircle className="h-3 w-3" />
+                        {hasGroup ? 'Grupo WA' : hasPhone ? 'WhatsApp' : 'Vincular WA'}
+                      </Button>
+                    );
+                  })()}
+
+                  {pendingAudio && (leadPreview?.whatsapp_group_id || leadPreview?.lead_phone) && (() => {
+                    const target = leadPreview?.whatsapp_group_id || leadPreview?.lead_phone || '';
+                    const label = leadPreview?.whatsapp_group_id ? 'grupo' : 'contato';
+                    const mm = Math.floor(pendingAudio.seconds / 60).toString().padStart(2, '0');
+                    const ss = (pendingAudio.seconds % 60).toString().padStart(2, '0');
+                    return (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs gap-1 border-green-300 text-green-700 hover:bg-green-50 dark:border-green-800 dark:text-green-400 dark:hover:bg-green-950/30"
+                        disabled={sendingPendingAudio}
+                        onClick={async () => {
+                          if (!target || !pendingAudio) return;
+                          setSendingPendingAudio(true);
+                          try {
+                            await sendVoiceToWa(pendingAudio.url, target, formLeadId);
+                            toast.success(`Áudio enviado ao ${label} do WhatsApp!`);
+                            setPendingAudio(null);
+                          } catch (e: any) {
+                            toast.error(e?.message || 'Erro ao enviar áudio no WhatsApp');
+                          } finally {
+                            setSendingPendingAudio(false);
+                          }
+                        }}
+                        title={`Enviar a gravação (${mm}:${ss}) como áudio no WhatsApp do ${label}`}
+                      >
+                        {sendingPendingAudio ? (
+                          <><Loader2 className="h-3 w-3 animate-spin" /> Enviando…</>
+                        ) : (
+                          <><Mic className="h-3 w-3" /> Enviar áudio ({mm}:{ss})</>
+                        )}
+                      </Button>
+                    );
+                  })()}
                 </div>
               </div>
               {(formCaseTitle || formProcessTitle) && (
