@@ -239,6 +239,8 @@ const ActivitiesPage = () => {
   const [filterLead, setFilterLead] = usePageState<string[]>('activities_filterLead', []);
   const [filterContact, setFilterContact] = usePageState<string[]>('activities_filterContact', []);
   const [filterCase, setFilterCase] = usePageState<string[]>('activities_filterCase', []);
+  const [filterHasDocs, setFilterHasDocs] = usePageState<boolean>('activities_filterHasDocs', false);
+  const [activityIdsWithDocs, setActivityIdsWithDocs] = useState<Set<string>>(new Set());
   const [sheetMode, setSheetMode] = usePageState<'create' | 'edit' | null>('activities_sheetMode', null);
   const [selectedActivityId, setSelectedActivityId] = usePageState<string | null>('activities_selectedId', null);
   const [selectedActivity, setSelectedActivity] = useState<LeadActivity | null>(null);
@@ -428,6 +430,19 @@ const ActivitiesPage = () => {
   useEffect(() => {
     if (viewMode === 'blocks') setOpenFilterKey(null);
   }, [viewMode]);
+
+  // Busca IDs de atividades com anexos no externo (lazy: só quando filtro ativo)
+  useEffect(() => {
+    if (!filterHasDocs) {
+      setActivityIdsWithDocs(new Set());
+      return;
+    }
+    const load = async () => {
+      const { data } = await externalSupabase.from('activity_attachments').select('activity_id');
+      if (data) setActivityIdsWithDocs(new Set(data.map((a: any) => a.activity_id)));
+    };
+    load();
+  }, [filterHasDocs]);
 
   const toggleFilter = (setter: React.Dispatch<React.SetStateAction<string[]>>, current: string[], value: string) => {
     setter(current.includes(value) ? current.filter(v => v !== value) : [...current, value]);
@@ -1557,6 +1572,9 @@ const ActivitiesPage = () => {
         getTemporalStatus(a) === 'atrasada' || realStatuses.includes(a.status as string)
       );
     }
+    if (filterHasDocs) {
+      list = list.filter(a => activityIdsWithDocs.has(a.id));
+    }
     if (filterCase.length > 0) {
       list = list.filter(a => (a as any).case_id && filterCase.includes((a as any).case_id));
     }
@@ -1584,7 +1602,7 @@ const ActivitiesPage = () => {
       const rb = priorityRank[b.priority || 'normal'] ?? 2;
       return ra - rb;
     });
-  }, [activities, selectedCalDays, filterCase, viewMode, calendarMonth, filterStatus]);
+  }, [activities, selectedCalDays, filterCase, viewMode, calendarMonth, filterStatus, filterHasDocs, activityIdsWithDocs]);
 
   const resolveUserName = (userId: string | null) => {
     if (!userId) return null;
@@ -2559,8 +2577,18 @@ const ActivitiesPage = () => {
           </PopoverContent>
         </Popover>
 
-        {(filterStatus.length > 0 || filterType.length > 0 || filterAssignee.length > 0 || filterLead.length > 0 || filterContact.length > 0 || filterCase.length > 0 || selectedCalDays.length > 0) && (
-          <Button variant="ghost" size="sm" className="h-7 text-xs text-destructive shrink-0" onClick={() => { setFilterStatus([]); setFilterType([]); setFilterAssignee([]); setFilterLead([]); setFilterContact([]); setFilterCase([]); setSelectedCalDays([]); }}>
+        <Button
+          variant={filterHasDocs ? "default" : "outline"}
+          size="sm"
+          className="h-7 text-xs shrink-0 gap-1"
+          onClick={() => setFilterHasDocs(v => !v)}
+        >
+          <FileText className="h-3 w-3" />
+          Com documentação
+        </Button>
+
+        {(filterStatus.length > 0 || filterType.length > 0 || filterAssignee.length > 0 || filterLead.length > 0 || filterContact.length > 0 || filterCase.length > 0 || selectedCalDays.length > 0 || filterHasDocs) && (
+          <Button variant="ghost" size="sm" className="h-7 text-xs text-destructive shrink-0" onClick={() => { setFilterStatus([]); setFilterType([]); setFilterAssignee([]); setFilterLead([]); setFilterContact([]); setFilterCase([]); setSelectedCalDays([]); setFilterHasDocs(false); }}>
             <X className="h-3 w-3 mr-1" /> Limpar
           </Button>
         )}
