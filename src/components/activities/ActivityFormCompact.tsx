@@ -397,7 +397,7 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
       </Button>
       {instances.length > 0 && (
         <Select value={selectedInstanceId} onValueChange={setSelectedInstanceId}>
-          <SelectTrigger className="h-8 text-xs w-[160px]">
+          <SelectTrigger className="h-8 text-xs w-[120px]">
             <SelectValue placeholder="Instância" />
           </SelectTrigger>
           <SelectContent>
