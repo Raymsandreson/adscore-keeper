@@ -3355,6 +3355,20 @@ const ActivitiesPage = () => {
                             <CheckCircle2 className="h-3.5 w-3.5" />
                           </Button>
                         )}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className={cn(
+                            "h-6 w-6",
+                            activityIdsWithDocs.has(activity.id)
+                              ? "text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+                              : "text-muted-foreground hover:text-emerald-600"
+                          )}
+                          onClick={e => { e.stopPropagation(); toggleHasDocs(activity.id); }}
+                          title={activityIdsWithDocs.has(activity.id) ? "Desmarcar 'Com documentação'" : "Marcar como 'Com documentação'"}
+                        >
+                          <FileText className="h-3.5 w-3.5" />
+                        </Button>
                         <span onClick={e => e.stopPropagation()}>
                           <ShareMenu entityType="activity" entityId={activity.id} entityName={activity.title} summary={[activity.lead_name && `Lead: ${activity.lead_name}`, (activity as any).case_title && `Caso: ${(activity as any).case_title}`, (activity as any).process_title && `Processo: ${(activity as any).process_title}`].filter(Boolean).join('\n') || undefined} size="icon" variant="ghost" className="h-6 w-6 text-muted-foreground" />
                         </span>
