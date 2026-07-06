@@ -2217,65 +2217,53 @@ const ActivitiesPage = () => {
   return (
     <div className="h-[calc(100dvh-44px)] flex flex-col bg-background overflow-hidden">
       {/* Header */}
-      <div className="bg-primary text-primary-foreground px-3 md:px-4 py-2 md:py-2.5 flex items-center justify-between gap-2 flex-wrap shrink-0 shadow-md z-20">
-        <div className="flex items-center gap-2 md:gap-3 min-w-0">
-          <h1 className="text-base md:text-lg font-semibold tracking-tight">Atividades</h1>
-          <div className="hidden sm:flex items-center gap-1.5 text-primary-foreground/80 text-[11px] md:text-xs">
+      <div className="bg-primary text-primary-foreground px-4 py-2.5 flex items-center justify-between shrink-0 shadow-md z-20">
+        <div className="flex items-center gap-3">
+          <h1 className="text-lg font-semibold tracking-tight">Atividades</h1>
+          <div className="flex items-center gap-1.5 text-primary-foreground/80 text-xs">
             <span className="bg-primary-foreground/20 rounded-full px-2 py-0.5 font-medium">{stats.open} abertas</span>
             <span className="bg-primary-foreground/20 rounded-full px-2 py-0.5 font-medium">{stats.done} concluídas</span>
           </div>
         </div>
-        <div className="flex items-center gap-1 md:gap-2 flex-wrap justify-end">
+        <div className="flex items-center gap-2">
           {/* View mode toggle - prominent pill */}
           <div className="flex items-center bg-primary-foreground/15 rounded-full p-0.5 gap-0.5">
             <button
               onClick={() => setViewMode('blocks')}
               className={cn(
-                "flex items-center gap-1.5 px-2 md:px-2.5 py-1 rounded-full text-xs font-medium transition-all",
+                "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-all",
                 viewMode === 'blocks'
                   ? "bg-primary-foreground text-primary shadow-sm"
                   : "text-primary-foreground/70 hover:text-primary-foreground"
               )}
-              title="Blocos"
             >
               <Layers className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Blocos</span>
+              Blocos
             </button>
             <button
               onClick={() => setViewMode('list')}
               className={cn(
-                "flex items-center gap-1.5 px-2 md:px-2.5 py-1 rounded-full text-xs font-medium transition-all",
+                "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-all",
                 viewMode === 'list'
                   ? "bg-primary-foreground text-primary shadow-sm"
                   : "text-primary-foreground/70 hover:text-primary-foreground"
               )}
-              title="Lista"
             >
               <List className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Lista</span>
+              Lista
             </button>
           </div>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-primary-foreground hover:bg-primary-foreground/10" title="Mais ações">
-                <MoreVertical className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-40">
-              <DropdownMenuItem onClick={startWorkflow} className="gap-2 cursor-pointer">
-                <Play className="h-4 w-4" /> Workflow
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => { resetForm(); setSheetMode('create'); setChatOpen(true); }} className="gap-2 cursor-pointer">
-                <Sparkles className="h-4 w-4" /> Chat IA
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <Button size="sm" className="h-8 px-2 md:px-3 bg-white text-primary font-semibold hover:bg-white/90 gap-1 shadow-sm" onClick={() => { resetForm(); setSheetMode('create'); }} title="Nova Atividade">
-            <Plus className="h-4 w-4" /> <span className="hidden sm:inline">Nova Atividade</span>
+          <Button variant="ghost" size="icon" className="h-8 w-8 text-primary-foreground hover:bg-primary-foreground/10" onClick={startWorkflow} title="Workflow">
+            <Play className="h-4 w-4" />
           </Button>
-          <div className="hidden md:block"><UserMenu /></div>
+          <Button size="sm" className="bg-white/20 text-primary-foreground font-semibold hover:bg-white/30 gap-1 shadow-sm border border-white/30" onClick={() => { resetForm(); setSheetMode('create'); setChatOpen(true); }}>
+            <Sparkles className="h-4 w-4" /> Chat IA
+          </Button>
+          <Button size="sm" className="bg-white text-primary font-semibold hover:bg-white/90 gap-1 shadow-sm" onClick={() => { resetForm(); setSheetMode('create'); }}>
+            <Plus className="h-4 w-4" /> Nova Atividade
+          </Button>
+          <UserMenu />
         </div>
-
       </div>
 
       {/* Filters strip - wraps into 2 rows when tight */}
