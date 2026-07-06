@@ -4015,7 +4015,7 @@ const ActivitiesPage = () => {
 
                 {/* Right group: primary actions */}
                 {sheetMode === 'edit' ? (
-                  <div className="flex items-center gap-2 flex-wrap">
+                  <div className="flex items-center gap-2 flex-wrap md:ml-auto md:justify-end">
                     {selectedActivity?.status === 'concluida' && (
                       <Popover>
                         <PopoverTrigger asChild>
