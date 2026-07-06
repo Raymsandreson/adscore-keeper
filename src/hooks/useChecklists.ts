@@ -196,7 +196,7 @@ export const useChecklists = () => {
     }
   };
 
-  const deleteTemplate = async (id: string) => {
+  const deleteTemplate = async (id: string, { silent = false }: { silent?: boolean } = {}) => {
     try {
       const { error } = await supabase
         .from('checklist_templates')
@@ -204,11 +204,11 @@ export const useChecklists = () => {
         .eq('id', id);
 
       if (error) throw error;
-      toast.success('Checklist removido!');
+      if (!silent) toast.success('Checklist removido!');
       fetchTemplates();
     } catch (error) {
       console.error('Error deleting checklist:', error);
-      toast.error('Erro ao remover checklist');
+      if (!silent) toast.error('Erro ao remover checklist');
     }
   };
 
