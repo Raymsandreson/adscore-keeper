@@ -139,7 +139,7 @@ const MATRIX_OPTIONS = [
   { value: 'eliminate', emoji: '🗑️', label: 'Retirar', color: 'border-muted bg-muted/50 text-muted-foreground', active: 'border-muted-foreground bg-muted-foreground text-background' },
 ];
 
-export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFieldSetting, reorderFields, formLeadIdForTTS, formContactIdForTTS, formAssignedTo, activityId }: {
+export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFieldSetting, reorderFields, formLeadIdForTTS, formContactIdForTTS, formAssignedTo, activityId, compactLabel }: {
   buildMsg: () => string;
   leadId: string;
   fieldSettings: any[];
@@ -149,6 +149,7 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
   formContactIdForTTS?: string;
   formAssignedTo?: string;
   activityId?: string;
+  compactLabel?: boolean;
 }) {
   const [sending, setSending] = useState(false);
   const { user } = useAuthContext();
@@ -388,7 +389,8 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
   };
 
   const hasLead = !!leadId;
-  const buttonLabel = hasLead ? 'Enviar ao Grupo' : 'Enviar ao Assessor';
+  const buttonLabel = compactLabel ? 'Enviar' : (hasLead ? 'Enviar ao Grupo' : 'Enviar ao Assessor');
+
 
   return (
     <div className="flex items-center gap-1.5 flex-wrap">
