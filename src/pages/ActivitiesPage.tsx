@@ -431,6 +431,19 @@ const ActivitiesPage = () => {
     if (viewMode === 'blocks') setOpenFilterKey(null);
   }, [viewMode]);
 
+  // Busca IDs de atividades com anexos no externo (lazy: só quando filtro ativo)
+  useEffect(() => {
+    if (!filterHasDocs) {
+      setActivityIdsWithDocs(new Set());
+      return;
+    }
+    const load = async () => {
+      const { data } = await externalSupabase.from('activity_attachments').select('activity_id');
+      if (data) setActivityIdsWithDocs(new Set(data.map((a: any) => a.activity_id)));
+    };
+    load();
+  }, [filterHasDocs]);
+
   const toggleFilter = (setter: React.Dispatch<React.SetStateAction<string[]>>, current: string[], value: string) => {
     setter(current.includes(value) ? current.filter(v => v !== value) : [...current, value]);
   };
