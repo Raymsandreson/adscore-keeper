@@ -388,7 +388,8 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
   };
 
   const hasLead = !!leadId;
-  const buttonLabel = hasLead ? 'Enviar ao Grupo' : 'Enviar ao Assessor';
+  const buttonLabel = compactLabel ? 'Enviar' : (hasLead ? 'Enviar ao Grupo' : 'Enviar ao Assessor');
+
 
   return (
     <div className="flex items-center gap-1.5 flex-wrap">
