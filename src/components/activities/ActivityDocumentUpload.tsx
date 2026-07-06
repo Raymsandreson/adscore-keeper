@@ -26,6 +26,8 @@ interface Props {
   /** Controle externo de abertura (ex: dropdown menu pai). */
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  /** Classe CSS adicional para o botão trigger (ex: sr-only quando controlado por menu pai). */
+  triggerClassName?: string;
 }
 
 type Phase = 'idle' | 'uploading' | 'processing' | 'done';
