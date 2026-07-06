@@ -404,7 +404,7 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
 
   return (
     <Popover open={open} onOpenChange={(o) => { setOpen(o); }}>
-      <PopoverTrigger asChild>
+      <PopoverTrigger asChild className={triggerClassName}>
         <Button
           variant="outline"
           size="sm"
