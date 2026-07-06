@@ -87,6 +87,71 @@ function composeTitle(f: CasoForm): string {
   return title;
 }
 
+// Iniciais do acolhedor: "Juliana Pimentel" → "JP", "Luiz Ricardo Silva" → "LR" (2 primeiras).
+function initialsOf(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[1][0]).toUpperCase();
+}
+
+// Monta a mensagem-resumo que vai no grupo assim que ele é criado.
+function composeGroupIntroMessage(f: CasoForm, groupLink: string): string {
+  const today = format(new Date(), 'dd/MM/yyyy');
+  const acolhedorLine = f.acolhedor
+    ? `${f.acolhedor}${initialsOf(f.acolhedor) ? ` (${initialsOf(f.acolhedor)})` : ''}`
+    : 'Não informado';
+  const respLine = [f.liability_type, f.liability_justification.trim()]
+    .filter(Boolean)
+    .join(' — ');
+  const linhas: string[] = [
+    `📅 Data da criação: ${today}`,
+    ``,
+    `🔢 Lead título: ${f.lead_title.trim() || 'Não informado'}`,
+    ``,
+    ` ✅ STATUS: OUTBOUND`,
+    ``,
+    `👤 Acolhedor: ${acolhedorLine}`,
+    ``,
+    `⚠️ Tipo de Caso: ${f.case_type || 'Não informado'}`,
+    ``,
+    `📰 Origem do Caso: Internet`,
+    ``,
+    `🔗 Link do Grupo do WhatsApp: ${groupLink || 'Não disponível'}`,
+    ``,
+    `📍 Cidade da Visita: ${f.visit_city || 'Não informado'}`,
+    ``,
+    `🏛️ Estado da Visita: ${f.visit_state || 'Não informado'}`,
+    ``,
+    `🌎 Região da Visita: ${f.visit_region || 'Não informado'}`,
+    ``,
+    `📅 Data do Acidente: ${f.accident_date ? formatISOToBR(f.accident_date) : 'Não informado'}`,
+    ``,
+    `💥 Dano: ${f.damage || 'Não informado'}`,
+    ``,
+    `🆔 Nome da Vítima: ${f.victim_name || 'Não informado'}`,
+    ``,
+    `🎂 Idade da Vítima: ${f.victim_age ? `${f.victim_age} anos` : 'Não informado'}`,
+    ``,
+    `📌 Endereço do Acidente: ${f.accident_address || 'Não informado'}`,
+    ``,
+    `🏠 Endereço da Visita: ${f.visit_address || [f.visit_city, f.visit_state].filter(Boolean).join(', ') || 'Não informado'}`,
+    ``,
+    `🏢 Nome da Empresa Terceirizada: ${f.contractor_company || 'Não informado'}`,
+    ``,
+    `🏢 Nome da Empresa Tomadora: ${f.main_company || 'Não informado'}`,
+    ``,
+    `📰 Link da Notícia: ${f.news_link || 'Não informado'}`,
+    ``,
+    `💰 Justificativa do Porte da Empresa: ${f.company_size_justification || 'Não informado'}`,
+    ``,
+    `⚖️ Tipo de Responsabilidade: ${respLine || 'Não informado'}`,
+    ``,
+    `📜 Viabilidade Jurídica: Positiva`,
+  ];
+  return linhas.join('\n');
+}
+
 type StepState = 'idle' | 'running' | 'done' | 'error';
 
 // Extrai o nº de nomes tipo "LEAD 94", "LEAD169", "LEAD132/jun.26".
