@@ -48,8 +48,13 @@ interface Props {
   onOpenChange?: (open: boolean) => void;
 }
 
-export function ActivityNextStepsAgent({ context, onApply, leadId, caseId, processId, activityId, leadPhone, groupJid }: Props) {
-  const [open, setOpen] = useState(false);
+export function ActivityNextStepsAgent({ context, onApply, leadId, caseId, processId, activityId, leadPhone, groupJid, open: openProp, onOpenChange }: Props) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = openProp !== undefined ? openProp : internalOpen;
+  const setOpen = (v: boolean) => {
+    if (openProp === undefined) setInternalOpen(v);
+    onOpenChange?.(v);
+  };
   const [loading, setLoading] = useState(false);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [error, setError] = useState<string | null>(null);
