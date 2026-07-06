@@ -23,6 +23,9 @@ interface Props {
   leadId?: string | null;
   caseId?: string | null;
   processId?: string | null;
+  /** Controle externo de abertura (ex: dropdown menu pai). */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
 type Phase = 'idle' | 'uploading' | 'processing' | 'done';
