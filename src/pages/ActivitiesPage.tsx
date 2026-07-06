@@ -3969,11 +3969,11 @@ const ActivitiesPage = () => {
               </button>
 
               <div className={cn(
-                "border-t border-border bg-primary/5 px-4 py-2.5 shadow-[0_-2px_10px_rgba(0,0,0,0.05)] z-10 flex flex-wrap gap-1.5 items-center justify-between transition-all overflow-hidden",
+                "border-t border-border bg-primary/5 px-4 py-2.5 shadow-[0_-2px_10px_rgba(0,0,0,0.05)] z-10 flex flex-col md:flex-row gap-2 md:gap-3 md:items-center md:justify-between transition-all overflow-hidden",
                 !actionsPinned && "absolute bottom-1.5 left-0 right-0 z-30 shadow-2xl max-h-0 opacity-0 pointer-events-none group-hover/actions:max-h-[400px] group-hover/actions:opacity-100 group-hover/actions:pointer-events-auto"
               )}>
                 {/* Left group: utilities */}
-                <div className="flex items-center gap-1.5 flex-wrap">
+                <div className="flex items-center gap-1.5 flex-wrap md:mr-auto">
                   {buildMsg && (
                     <SendToGroupSection buildMsg={buildMsg} leadId={formLeadId} fieldSettings={fieldSettings} updateFieldSetting={updateFieldSetting} reorderFields={reorderFields} formLeadIdForTTS={formLeadId || undefined} formContactIdForTTS={formContactId || undefined} formAssignedTo={formAssignedTo || undefined} activityId={selectedActivity?.id} compactLabel />
                   )}
