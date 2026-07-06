@@ -199,7 +199,7 @@ export function ActivityDocumentUpload({ context, onFields, activityId, leadId, 
 
   return (
     <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o && phase === 'done') reset(); }}>
-      <PopoverTrigger asChild>
+      <PopoverTrigger asChild className={triggerClassName}>
         <Button
           variant="outline"
           size="sm"
