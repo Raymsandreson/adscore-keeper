@@ -35,7 +35,7 @@ type Phase = 'idle' | 'uploading' | 'processing' | 'done';
 const ACCEPTED = '.pdf,.txt,.md,application/pdf,text/plain,text/markdown';
 const MAX_MB = 15;
 
-export function ActivityDocumentUpload({ context, onFields, activityId, leadId, caseId, processId, open: openProp, onOpenChange }: Props) {
+export function ActivityDocumentUpload({ context, onFields, activityId, leadId, caseId, processId, open: openProp, onOpenChange, triggerClassName }: Props) {
   const [internalOpen, setInternalOpen] = useState(false);
   const open = openProp !== undefined ? openProp : internalOpen;
   const setOpen = (v: boolean) => {
