@@ -453,17 +453,37 @@ export function CadastrarCasoViavelDialog({ lead, open, onOpenChange, saveLead, 
     }
 
     // Passo 3 — buscar link de convite (a função persiste em leads.group_link)
+    let inviteLink = '';
     try {
       const { data, error } = await cloudFunctions.invoke('get-group-invite-link', {
         body: { group_jid: groupJid, lead_id: lead.id },
       });
       if (error || !data?.success || !data?.invite_link) throw new Error(data?.error || error?.message || 'Link não retornado');
-      setGroupLink(data.invite_link);
+      inviteLink = String(data.invite_link);
+      setGroupLink(inviteLink);
       setSteps((s) => ({ ...s, link: 'done' }));
       toast.success('Caso cadastrado, grupo criado e link salvo no lead.');
     } catch (e: any) {
       setSteps((s) => ({ ...s, link: 'error' }));
       toast.warning('Grupo criado, mas não foi possível obter o link de convite agora.', { description: e?.message, duration: 8000 });
+    }
+
+    // Passo 4 — mensagem-resumo automática no próprio grupo recém-criado.
+    // Usa a mesma instância que criou o grupo (send-whatsapp resolve pela JID); sem
+    // necessidade de "associar número" — o grupo já pertence a essa instância.
+    try {
+      const message = composeGroupIntroMessage(form, inviteLink);
+      await cloudFunctions.invoke('send-whatsapp', {
+        body: {
+          phone: groupJid,
+          chat_id: groupJid,
+          message,
+          lead_id: lead.id,
+        },
+      });
+    } catch (e: any) {
+      console.warn('[CadastrarCasoViavel] falha ao enviar resumo no grupo', e);
+      toast.warning('Grupo criado, mas não consegui enviar o resumo automático.', { description: e?.message });
     }
 
     onRegistered();
