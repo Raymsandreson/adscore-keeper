@@ -3969,51 +3969,53 @@ const ActivitiesPage = () => {
               </button>
 
               <div className={cn(
-                "border-t border-border bg-primary/5 px-4 py-2.5 shadow-[0_-2px_10px_rgba(0,0,0,0.05)] z-10 flex flex-wrap gap-1.5 items-center justify-end transition-all overflow-hidden",
+                "border-t border-border bg-primary/5 px-4 py-2.5 shadow-[0_-2px_10px_rgba(0,0,0,0.05)] z-10 flex flex-wrap gap-1.5 items-center justify-between transition-all overflow-hidden",
                 !actionsPinned && "absolute bottom-1.5 left-0 right-0 z-30 shadow-2xl max-h-0 opacity-0 pointer-events-none group-hover/actions:max-h-[400px] group-hover/actions:opacity-100 group-hover/actions:pointer-events-auto"
               )}>
-              {buildMsg && (
-                <SendToGroupSection buildMsg={buildMsg} leadId={formLeadId} fieldSettings={fieldSettings} updateFieldSetting={updateFieldSetting} reorderFields={reorderFields} formLeadIdForTTS={formLeadId || undefined} formContactIdForTTS={formContactId || undefined} formAssignedTo={formAssignedTo || undefined} activityId={selectedActivity?.id} />
-              )}
-              {formProcessId && (
-                <CobrarVaraSection processId={formProcessId} activityId={selectedActivity?.id} leadId={formLeadId || null} />
-              )}
-              {sheetMode === 'edit' ? (
+                {/* Left group: utilities */}
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  {/* Secondary group: kebab menu hides Excluir / Duplicar / Chat Equipe / Chat IA */}
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="sm" className="h-8 text-xs gap-1">
-                        <MoreVertical className="h-3.5 w-3.5" /> Mais
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start" className="w-48">
-                      {selectedActivity?.id && (
-                        <DropdownMenuItem
-                          className="text-xs"
-                          onSelect={(e) => {
-                            // Evita que o fechamento do menu desmonte o Sheet
-                            e.preventDefault();
-                            setTeamChatOpen(true);
-                          }}
-                        >
-                          <Users className="h-3.5 w-3.5 mr-2" /> Chat Equipe
+                  {buildMsg && (
+                    <SendToGroupSection buildMsg={buildMsg} leadId={formLeadId} fieldSettings={fieldSettings} updateFieldSetting={updateFieldSetting} reorderFields={reorderFields} formLeadIdForTTS={formLeadId || undefined} formContactIdForTTS={formContactId || undefined} formAssignedTo={formAssignedTo || undefined} activityId={selectedActivity?.id} compactLabel />
+                  )}
+                  {formProcessId && (
+                    <CobrarVaraSection processId={formProcessId} activityId={selectedActivity?.id} leadId={formLeadId || null} />
+                  )}
+                  {sheetMode === 'edit' && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="outline" size="sm" className="h-8 text-xs gap-1">
+                          <MoreVertical className="h-3.5 w-3.5" /> Mais
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start" className="w-48">
+                        {selectedActivity?.id && (
+                          <DropdownMenuItem
+                            className="text-xs"
+                            onSelect={(e) => {
+                              e.preventDefault();
+                              setTeamChatOpen(true);
+                            }}
+                          >
+                            <Users className="h-3.5 w-3.5 mr-2" /> Chat Equipe
+                          </DropdownMenuItem>
+                        )}
+                        <DropdownMenuItem onClick={() => setChatOpen(true)} className="text-xs">
+                          <MessageCircle className="h-3.5 w-3.5 mr-2" /> Chat IA
                         </DropdownMenuItem>
-                      )}
-                      <DropdownMenuItem onClick={() => setChatOpen(true)} className="text-xs">
-                        <MessageCircle className="h-3.5 w-3.5 mr-2" /> Chat IA
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() => selectedActivity && handleCloneActivity(selectedActivity)}
-                        className="text-xs"
-                      >
-                        <Copy className="h-3.5 w-3.5 mr-2" /> Duplicar
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                        <DropdownMenuItem
+                          onClick={() => selectedActivity && handleCloneActivity(selectedActivity)}
+                          className="text-xs"
+                        >
+                          <Copy className="h-3.5 w-3.5 mr-2" /> Duplicar
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
+                </div>
 
-                  {/* Primary actions */}
-                  <div className="flex gap-1.5 flex-wrap items-center">
+                {/* Right group: primary actions */}
+                {sheetMode === 'edit' ? (
+                  <div className="flex items-center gap-2 flex-wrap">
                     {selectedActivity?.status === 'concluida' && (
                       <Popover>
                         <PopoverTrigger asChild>
@@ -4021,7 +4023,7 @@ const ActivitiesPage = () => {
                             <RotateCcw className="h-3.5 w-3.5" /> Reabrir
                           </Button>
                         </PopoverTrigger>
-                        <PopoverContent className="w-40 p-1" align="start">
+                        <PopoverContent className="w-40 p-1" align="end">
                           <div className="flex flex-col gap-0.5">
                             {[
                               { value: 'pendente', label: 'Pendente' },
@@ -4109,15 +4111,14 @@ const ActivitiesPage = () => {
                       );
                     })()}
                     {selectedActivity?.status !== 'concluida' && (
-                      <Button size="sm" className="h-8 text-xs bg-success hover:bg-success/90 text-success-foreground" onClick={() => selectedActivity && handleComplete(selectedActivity.id)} disabled={noteAttachmentsUploading}>
+                      <Button size="sm" className="h-8 text-xs bg-success hover:bg-success/90 text-success-foreground shadow-sm" onClick={() => selectedActivity && handleComplete(selectedActivity.id)} disabled={noteAttachmentsUploading}>
                         <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Concluir
                       </Button>
                     )}
                   </div>
-                </div>
-              ) : (
-                <div className="flex items-center justify-between max-w-2xl">
-                  <Button variant="ghost" size="sm" className="h-8 text-xs text-muted-foreground" onClick={closeSheet}>Cancelar</Button>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <Button variant="ghost" size="sm" className="h-8 text-xs text-muted-foreground" onClick={closeSheet}>Cancelar</Button>
                   <div className="flex gap-2">
                     <Button
                       variant="outline"
