@@ -1572,6 +1572,9 @@ const ActivitiesPage = () => {
         getTemporalStatus(a) === 'atrasada' || realStatuses.includes(a.status as string)
       );
     }
+    if (filterHasDocs) {
+      list = list.filter(a => activityIdsWithDocs.has(a.id));
+    }
     if (filterCase.length > 0) {
       list = list.filter(a => (a as any).case_id && filterCase.includes((a as any).case_id));
     }
