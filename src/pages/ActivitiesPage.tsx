@@ -359,6 +359,11 @@ const ActivitiesPage = () => {
   const [calendarExpanded, setCalendarExpanded] = useState(true);
   const [deadlineDateCount, setDeadlineDateCount] = useState<number | null>(null);
   const [notifDateCount, setNotifDateCount] = useState<number | null>(null);
+  const [vincularOpen, setVincularOpen] = useState(false);
+  const [preencherOpen, setPreencherOpen] = useState(false);
+  const [callRecorderOpen, setCallRecorderOpen] = useState(false);
+  const [docUploadOpen, setDocUploadOpen] = useState(false);
+  const [nextStepsOpen, setNextStepsOpen] = useState(false);
   const { configs: timeBlockSettings, saveSettings: saveTimeBlockConfigs } = useTimeBlockSettings();
   // Assignee's routine: when creating/editing for another user, load their routine
   const { configs: assigneeTimeBlockSettings } = useTimeBlockSettings(formAssignedTo || user?.id || undefined);
