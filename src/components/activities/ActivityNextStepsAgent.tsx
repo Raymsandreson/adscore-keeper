@@ -43,6 +43,9 @@ interface Props {
   leadPhone?: string | null;
   /** JID/ID do grupo de WhatsApp do lead — usado para dar contexto de conversa à IA. */
   groupJid?: string | null;
+  /** Controle externo de abertura (ex: dropdown menu pai). */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
 export function ActivityNextStepsAgent({ context, onApply, leadId, caseId, processId, activityId, leadPhone, groupJid }: Props) {
