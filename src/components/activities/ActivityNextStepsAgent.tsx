@@ -50,7 +50,7 @@ interface Props {
   triggerClassName?: string;
 }
 
-export function ActivityNextStepsAgent({ context, onApply, leadId, caseId, processId, activityId, leadPhone, groupJid, open: openProp, onOpenChange }: Props) {
+export function ActivityNextStepsAgent({ context, onApply, leadId, caseId, processId, activityId, leadPhone, groupJid, open: openProp, onOpenChange, triggerClassName }: Props) {
   const [internalOpen, setInternalOpen] = useState(false);
   const open = openProp !== undefined ? openProp : internalOpen;
   const setOpen = (v: boolean) => {
