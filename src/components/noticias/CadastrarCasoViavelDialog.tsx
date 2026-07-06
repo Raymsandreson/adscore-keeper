@@ -337,6 +337,10 @@ export function CadastrarCasoViavelDialog({ lead, open, onOpenChange, saveLead, 
       sector: form.sector || null,
       company_size_justification: form.company_size_justification || null,
       liability_type: form.liability_type || null,
+      // Sincroniza o nº do lead (usado por regenerate-lead-name p/ renomear grupo).
+      // Sem isso, regenerate-lead-name usa o lead_number antigo e sobrescreve o nome do grupo
+      // logo após a criação, ignorando o forced_sequence.
+      ...(Number(seqNumber) > 0 ? { lead_number: Number(seqNumber) } : {}),
       ...(notesExtra ? { notes: [((lead as any).notes || '').trim(), notesExtra].filter(Boolean).join('\n\n') } : {}),
     } as any;
 
