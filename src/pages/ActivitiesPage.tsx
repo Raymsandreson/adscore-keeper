@@ -3448,66 +3448,8 @@ const ActivitiesPage = () => {
                         )}
                       </div>
                     )}
-                    {(formCaseTitle || formProcessTitle) && (
-                      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground mt-0.5">
-                        {formCaseTitle && (
-                          <span className="flex items-center gap-1 truncate" title={formCaseTitle}>
-                            <Briefcase className="h-3 w-3 shrink-0" />
-                            <button
-                              type="button"
-                              onClick={() => {
-                                navigator.clipboard.writeText(formCaseTitle);
-                                toast.success('Caso copiado');
-                              }}
-                              className="truncate hover:text-primary text-left"
-                              title="Clique para copiar"
-                            >
-                              {formCaseTitle}
-                            </button>
-                            {formCaseId && (
-                              <button
-                                type="button"
-                                onClick={() => window.open(`/cases/${formCaseId}`, '_blank')}
-                                className="shrink-0 p-0.5 rounded hover:bg-muted hover:text-primary"
-                                title="Editar caso"
-                              >
-                                <Pencil className="h-3 w-3" />
-                              </button>
-                            )}
-                          </span>
-                        )}
-                        {formProcessTitle && (() => {
-                          const proc = formProcessId ? caseProcesses.find(p => p.id === formProcessId) : null;
-                          const procNumber = proc?.process_number || formProcessTitle;
-                          return (
-                            <span className="flex items-center gap-1 truncate" title={procNumber}>
-                              <FileText className="h-3 w-3 shrink-0" />
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  navigator.clipboard.writeText(procNumber);
-                                  toast.success('Nº do processo copiado');
-                                }}
-                                className="truncate hover:text-primary text-left"
-                                title="Clique para copiar o nº"
-                              >
-                                {formProcessTitle}
-                              </button>
-                              {formProcessId && (
-                                <button
-                                  type="button"
-                                  onClick={() => setShowProcessSheetId(formProcessId)}
-                                  className="shrink-0 p-0.5 rounded hover:bg-muted hover:text-primary"
-                                  title="Editar processo"
-                                >
-                                  <Pencil className="h-3 w-3" />
-                                </button>
-                              )}
-                            </span>
-                          );
-                        })()}
-                      </div>
-                    )}
+
+
                   </div>
                 </div>
                 <div className="flex flex-col items-end gap-1 min-w-0">
