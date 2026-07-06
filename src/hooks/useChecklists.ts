@@ -227,7 +227,7 @@ export const useChecklists = () => {
     return (data || []) as ChecklistStageLink[];
   };
 
-  const linkChecklistToStage = async (templateId: string, boardId: string, stageId: string) => {
+  const linkChecklistToStage = async (templateId: string, boardId: string, stageId: string, { silent = false }: { silent?: boolean } = {}) => {
     try {
       const { error } = await supabase
         .from('checklist_stage_links')
@@ -239,15 +239,15 @@ export const useChecklists = () => {
 
       if (error) {
         if (error.code === '23505') {
-          toast.info('Checklist já vinculado a esta fase');
+          if (!silent) toast.info('Checklist já vinculado a esta fase');
           return;
         }
         throw error;
       }
-      toast.success('Checklist vinculado!');
+      if (!silent) toast.success('Checklist vinculado!');
     } catch (error) {
       console.error('Error linking checklist:', error);
-      toast.error('Erro ao vincular checklist');
+      if (!silent) toast.error('Erro ao vincular checklist');
     }
   };
 
