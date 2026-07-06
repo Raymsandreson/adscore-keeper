@@ -393,7 +393,7 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
 
 
   return (
-    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o && phase === 'done') reset(); }}>
+    <Popover open={open} onOpenChange={(o) => { setOpen(o); }}>
       <PopoverTrigger asChild>
         <Button
           variant="outline"
