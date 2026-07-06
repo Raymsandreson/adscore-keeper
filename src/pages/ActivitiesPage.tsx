@@ -2577,7 +2577,17 @@ const ActivitiesPage = () => {
           </PopoverContent>
         </Popover>
 
-        {(filterStatus.length > 0 || filterType.length > 0 || filterAssignee.length > 0 || filterLead.length > 0 || filterContact.length > 0 || filterCase.length > 0 || selectedCalDays.length > 0) && (
+        <Button
+          variant={filterHasDocs ? "default" : "outline"}
+          size="sm"
+          className="h-7 text-xs shrink-0 gap-1"
+          onClick={() => setFilterHasDocs(v => !v)}
+        >
+          <FileText className="h-3 w-3" />
+          Com documentação
+        </Button>
+
+        {(filterStatus.length > 0 || filterType.length > 0 || filterAssignee.length > 0 || filterLead.length > 0 || filterContact.length > 0 || filterCase.length > 0 || selectedCalDays.length > 0 || filterHasDocs) && (
           <Button variant="ghost" size="sm" className="h-7 text-xs text-destructive shrink-0" onClick={() => { setFilterStatus([]); setFilterType([]); setFilterAssignee([]); setFilterLead([]); setFilterContact([]); setFilterCase([]); setSelectedCalDays([]); }}>
             <X className="h-3 w-3 mr-1" /> Limpar
           </Button>
