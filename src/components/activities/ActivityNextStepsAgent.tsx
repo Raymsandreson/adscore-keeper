@@ -46,6 +46,8 @@ interface Props {
   /** Controle externo de abertura (ex: dropdown menu pai). */
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  /** Classe CSS adicional para o botão trigger (ex: sr-only quando controlado por menu pai). */
+  triggerClassName?: string;
 }
 
 export function ActivityNextStepsAgent({ context, onApply, leadId, caseId, processId, activityId, leadPhone, groupJid, open: openProp, onOpenChange }: Props) {
