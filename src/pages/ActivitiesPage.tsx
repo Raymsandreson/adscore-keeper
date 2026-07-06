@@ -4117,7 +4117,7 @@ const ActivitiesPage = () => {
                     )}
                   </div>
                 ) : (
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 md:ml-auto md:justify-end">
                     <Button variant="ghost" size="sm" className="h-8 text-xs text-muted-foreground" onClick={closeSheet}>Cancelar</Button>
                   <div className="flex gap-2">
                     <Button
