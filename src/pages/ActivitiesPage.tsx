@@ -3477,8 +3477,8 @@ const ActivitiesPage = () => {
                 "bg-primary/5 px-4 py-2.5 transition-all overflow-hidden border-b",
                 !headerPinned && "absolute top-1.5 left-0 right-0 z-30 bg-background shadow-lg max-h-0 opacity-0 pointer-events-none group-hover/header:max-h-[500px] group-hover/header:opacity-100 group-hover/header:pointer-events-auto"
               )}>
-              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
-                <div className="flex items-center gap-2 w-full md:flex-1 min-w-0">
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-2 w-full min-w-0">
                   <Button variant="ghost" size="icon" className="h-7 w-7 md:hidden shrink-0" onClick={closeSheet}>
                     <ChevronLeft className="h-4 w-4" />
                   </Button>
