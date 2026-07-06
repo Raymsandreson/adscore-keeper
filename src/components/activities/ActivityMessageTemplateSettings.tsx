@@ -149,9 +149,9 @@ Pedido do usuário: ${aiPrompt}`,
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm" className="gap-2">
-          <FileText className="h-4 w-4" />
-          Modelos de Mensagem
+        <Button variant="outline" size="sm" className="h-8 text-xs gap-1">
+          <FileText className="h-3.5 w-3.5" />
+          Modelos
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-4xl max-h-[85vh]">

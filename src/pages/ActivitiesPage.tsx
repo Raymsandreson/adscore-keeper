@@ -3989,7 +3989,7 @@ const ActivitiesPage = () => {
               </button>
 
               <div className={cn(
-                "border-t border-border bg-primary/5 px-4 py-2.5 shadow-[0_-2px_10px_rgba(0,0,0,0.05)] z-10 space-y-2 transition-all overflow-hidden",
+                "border-t border-border bg-primary/5 px-4 py-2.5 shadow-[0_-2px_10px_rgba(0,0,0,0.05)] z-10 flex flex-wrap gap-1.5 items-center justify-end transition-all overflow-hidden",
                 !actionsPinned && "absolute bottom-1.5 left-0 right-0 z-30 shadow-2xl max-h-0 opacity-0 pointer-events-none group-hover/actions:max-h-[400px] group-hover/actions:opacity-100 group-hover/actions:pointer-events-auto"
               )}>
               {buildMsg && (
@@ -3999,7 +3999,7 @@ const ActivitiesPage = () => {
                 <CobrarVaraSection processId={formProcessId} activityId={selectedActivity?.id} leadId={formLeadId || null} />
               )}
               {sheetMode === 'edit' ? (
-                <div className="flex items-center justify-between gap-2 max-w-2xl flex-wrap">
+                <div className="flex items-center gap-1.5 flex-wrap">
                   {/* Secondary group: kebab menu hides Excluir / Duplicar / Chat Equipe / Chat IA */}
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
