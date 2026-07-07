@@ -248,6 +248,32 @@ async function getMaxSequenceFromLeadGroups(supabase: any, prefix: string): Prom
 }
 
 /**
+ * Max real do prefixo lendo a tabela `leads` (lead_name). Cobre leads criados
+ * antes do grupo (ex: Cadastrar Caso Viável, ZapSign auto-close) onde o número
+ * já foi carimbado no nome do lead mas ainda não existe entry em
+ * lead_whatsapp_groups. Sem isso, o floor da sequência sai atrasado.
+ */
+async function getMaxSequenceFromLeads(supabase: any, prefix: string): Promise<number> {
+  const p = cleanSequencePrefix(prefix)
+  if (!p) return 0
+  let max = 0
+  for (let from = 0; from < 20000; from += 1000) {
+    const { data, error } = await supabase
+      .from('leads')
+      .select('lead_name')
+      .ilike('lead_name', `%${p}%`)
+      .range(from, from + 999)
+    if (error) break
+    for (const row of (data || [])) {
+      const seq = extractGroupSequence(row.lead_name, p)
+      if (seq && seq > max) max = seq
+    }
+    if (!data || data.length < 1000) break
+  }
+  return max
+}
+
+/**
  * Reserva atômica via RPC reserve_closed_sequence: faz UPDATE ... RETURNING
  * incrementando o contador acima de GREATEST(snapshot, lead_whatsapp_groups).
  * Garante que dois fechamentos simultâneos NUNCA colidam no mesmo número.
