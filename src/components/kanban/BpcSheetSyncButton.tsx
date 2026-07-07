@@ -39,7 +39,7 @@ const SINCE_OPTIONS = [
   { value: 90, label: "Últimos 90 dias" },
 ];
 
-export function BpcSheetSyncButton({ boardId, onCreated }: Props) {
+export function BpcSheetSyncButton({ boardId, onCreated, spreadsheetId, label }: Props) {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [running, setRunning] = useState(false);
@@ -56,6 +56,7 @@ export function BpcSheetSyncButton({ boardId, onCreated }: Props) {
           board_id: boardId,
           since_days: sinceDays,
           dry_run: dryRun,
+          ...(spreadsheetId ? { spreadsheet_id: spreadsheetId } : {}),
         },
       });
       if (invokeErr) throw invokeErr;
