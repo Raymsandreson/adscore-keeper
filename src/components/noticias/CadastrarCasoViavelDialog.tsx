@@ -486,7 +486,7 @@ export function CadastrarCasoViavelDialog({ lead, open, onOpenChange, saveLead, 
           board_id: TRABALHISTA_BOARD_ID,
           creation_origin: 'noticia_viavel',
           phase: 'open',
-          ...(Number(seqNumber) > 0 ? { forced_sequence: Number(seqNumber) } : {}),
+          ...(resolvedSeq > 0 ? { forced_sequence: resolvedSeq } : {}),
         },
       });
       if (error) throw error;
