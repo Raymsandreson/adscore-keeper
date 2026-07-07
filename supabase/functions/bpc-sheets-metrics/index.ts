@@ -10,8 +10,6 @@ const corsHeaders = {
 };
 
 const DEFAULT_SPREADSHEET_ID = "1EXB6oFovhX2LOHsC2X20LFk-JVIkjk-NR5Er4cUn6Qw";
-// Preenchido por request via query param (?spreadsheet_id=...), fallback pra BPC.
-let SPREADSHEET_ID = DEFAULT_SPREADSHEET_ID;
 // Mapeamento por PALAVRA-CHAVE (não por nome exato). Resiliente a renomeação
 // de aba ("LEADS EDILAN" / "1LEADS EDILAN" / "EDILAN NOVO" → todos viram Edilan).
 // A primeira keyword que casar (case-insensitive) define o operador.
