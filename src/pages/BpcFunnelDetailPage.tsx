@@ -271,11 +271,18 @@ const BpcFunnelDetailPage = () => {
               <LayoutGrid className="h-5 w-5 text-primary" />
               {board.name}
             </h1>
-            <p className="text-xs text-muted-foreground">Painel detalhado do funil BPC</p>
+            <p className="text-xs text-muted-foreground">
+              Painel detalhado do funil {sheetCfg?.label ?? "BPC"}
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <BpcSheetSyncButton boardId={board.id} onCreated={handleRefresh} />
+          <BpcSheetSyncButton
+            boardId={board.id}
+            onCreated={handleRefresh}
+            spreadsheetId={sheetCfg?.spreadsheetId}
+            label={sheetCfg?.label}
+          />
           <Button variant="outline" size="sm" onClick={handleRefresh} disabled={leadsLoading || bpcLoading}>
             <RefreshCw className={cn("h-3.5 w-3.5 mr-1.5", (leadsLoading || bpcLoading) && "animate-spin")} />
             Atualizar
