@@ -87,6 +87,7 @@ function rowToObject(headers: string[], row: any[]): Record<string, string> {
 }
 
 async function fetchTab(
+  spreadsheetId: string,
   tab: string,
   operatorFromColumn = false,
   onHeaders?: (h: string[]) => void,
@@ -96,7 +97,7 @@ async function fetchTab(
   if (!lovableKey || !gsKey) throw new Error("Missing connector keys");
 
   const url =
-    `${GATEWAY}/spreadsheets/${SPREADSHEET_ID}/values/'${encodeURIComponent(tab)}'!A1:Z5000`;
+    `${GATEWAY}/spreadsheets/${spreadsheetId}/values/'${encodeURIComponent(tab)}'!A1:Z5000`;
   const resp = await fetch(url, {
     headers: {
       Authorization: `Bearer ${lovableKey}`,
