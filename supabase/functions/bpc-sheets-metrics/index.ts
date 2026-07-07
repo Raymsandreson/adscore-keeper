@@ -29,12 +29,12 @@ let SHEET_TABS: { tab: string; operator: string }[] = [];
 const UNIFIED_TAB = "BASE_UNIFICADA";
 const GATEWAY = "https://connector-gateway.lovable.dev/google_sheets/v4";
 
-async function discoverSheetTabs(): Promise<{ tab: string; operator: string }[]> {
+async function discoverSheetTabs(spreadsheetId: string): Promise<{ tab: string; operator: string }[]> {
   const lovableKey = Deno.env.get("LOVABLE_API_KEY");
   const gsKey = Deno.env.get("GOOGLE_SHEETS_API_KEY");
   if (!lovableKey || !gsKey) throw new Error("Missing connector keys");
   const resp = await fetch(
-    `${GATEWAY}/spreadsheets/${SPREADSHEET_ID}?fields=sheets.properties.title`,
+    `${GATEWAY}/spreadsheets/${spreadsheetId}?fields=sheets.properties.title`,
     { headers: { Authorization: `Bearer ${lovableKey}`, "X-Connection-Api-Key": gsKey } },
   );
   if (!resp.ok) {
