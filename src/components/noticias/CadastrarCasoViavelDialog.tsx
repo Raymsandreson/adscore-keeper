@@ -181,11 +181,11 @@ async function suggestNextSequence(): Promise<number | null> {
   // Fonte crítica: maior lead_number já persistido no board — evita colisão
   // com a constraint unique (product_id, lead_number).
   try {
-    const { data } = await externalSupabase
+    const { data } = await (externalSupabase as any)
       .from('leads')
       .select('lead_number')
       .eq('board_id', TRABALHISTA_BOARD_ID)
-      .order('lead_number', { ascending: false, nullsFirst: false })
+      .order('lead_number', { ascending: false })
       .limit(1);
     const maxLead = Number((data?.[0] as any)?.lead_number || 0);
     if (maxLead > 0) best = Math.max(best, maxLead);
