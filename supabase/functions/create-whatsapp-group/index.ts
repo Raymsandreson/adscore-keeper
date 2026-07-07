@@ -937,6 +937,60 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Instâncias marcadas como participantes obrigatórios em grupos pós-assinatura
+    // (flag always_add_to_closed_groups) — ex: Raym, João Manoel. Só quando phase='closed'.
+    if (phase === 'closed') {
+      const { data: mandatoryInstances } = await supabase
+        .from('whatsapp_instances')
+        .select('id, owner_phone, instance_name')
+        .eq('always_add_to_closed_groups', true)
+        .eq('is_active', true)
+      for (const inst of mandatoryInstances || []) {
+        if (!inst.owner_phone || inst.id === creatorInstance.id) continue
+        const p = normalizePhone(inst.owner_phone)
+        if (p && !participants.includes(p)) {
+          participants.push(p)
+          console.log(`[create-group] Added mandatory participant: ${inst.instance_name} (${p})`)
+        }
+      }
+    }
+
+    // Acolhedor do lead: busca instância WhatsApp pelo texto do campo acolhedor.
+    // acolhedor pode ser um UUID (novo padrão) OU um nome (padrão legado).
+    // Tenta: (a) profiles.user_id -> full_name -> instância; (b) match direto por nome.
+    const acolhedorRaw = (leadData?.acolhedor || '').toString().trim()
+    if (acolhedorRaw) {
+      let acolhedorName: string | null = null
+      // Tenta resolver como UUID
+      if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(acolhedorRaw)) {
+        const { data: prof } = await supabase
+          .from('profiles')
+          .select('full_name')
+          .eq('user_id', acolhedorRaw)
+          .maybeSingle()
+        acolhedorName = prof?.full_name || null
+      }
+      const searchName = acolhedorName || acolhedorRaw
+      if (searchName) {
+        const { data: acolInst } = await supabase
+          .from('whatsapp_instances')
+          .select('id, owner_phone, instance_name, owner_name')
+          .or(`instance_name.ilike.%${searchName}%,owner_name.ilike.%${searchName}%`)
+          .eq('is_active', true)
+          .limit(1)
+          .maybeSingle()
+        if (acolInst?.owner_phone && acolInst.id !== creatorInstance.id) {
+          const p = normalizePhone(acolInst.owner_phone)
+          if (p && !participants.includes(p)) {
+            participants.push(p)
+            console.log(`[create-group] Added acolhedor instance: ${acolInst.instance_name} (${p})`)
+          }
+        } else {
+          console.log(`[create-group] No matching instance found for acolhedor="${searchName}"`)
+        }
+      }
+    }
+
     if (participants.length === 0) {
       return new Response(JSON.stringify({ success: false, error: 'Nenhum participante encontrado para criar o grupo.' }), {
         status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
