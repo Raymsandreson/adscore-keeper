@@ -210,7 +210,7 @@ Deno.serve(async (req) => {
     // source: "" (abas por operador, padrão) | "unificada" (aba BASE_UNIFICADA)
     const source = (url.searchParams.get("source") || "").toLowerCase().trim();
     const spreadsheetIdParam = (url.searchParams.get("spreadsheet_id") || "").trim();
-    SPREADSHEET_ID = spreadsheetIdParam || DEFAULT_SPREADSHEET_ID;
+    const spreadsheetId = spreadsheetIdParam || DEFAULT_SPREADSHEET_ID;
 
     const tabErrors: { tab: string; error: string }[] = [];
     const allRows: SheetRow[] = [];
@@ -221,7 +221,7 @@ Deno.serve(async (req) => {
     // vazias. Por isso, mesmo quando o caller pede source=unificada, lemos as ABAS INDIVIDUAIS
     // (descobertas dinamicamente) e o operador vem do nome da aba — fonte confiável.
     try {
-      SHEET_TABS = await discoverSheetTabs();
+      SHEET_TABS = await discoverSheetTabs(spreadsheetId);
     } catch (e: any) {
       console.error("[bpc-sheets-metrics] discoverSheetTabs failed:", e?.message || e);
       SHEET_TABS = [];
@@ -233,7 +233,7 @@ Deno.serve(async (req) => {
     for (let i = 0; i < tabsToRead.length; i++) {
       const s = tabsToRead[i];
       try {
-        const rows = await fetchTab(s.tab, false, (h) => { if (!debugHeaders.length) debugHeaders = h; });
+        const rows = await fetchTab(spreadsheetId, s.tab, false, (h) => { if (!debugHeaders.length) debugHeaders = h; });
         allRows.push(...rows);
       } catch (e: any) {
         const msg = e?.message || String(e);
