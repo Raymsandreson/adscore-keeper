@@ -78,6 +78,8 @@ const BpcFunnelDetailPage = () => {
     to: toDate ?? new Date(),
   }), [fromDate, toDate]);
 
+  const sheetCfg = useMemo(() => getFunnelSheetConfig(board?.name), [board?.name]);
+
   const {
     metrics: bpcMetrics,
     leads: bpcLeads,
@@ -88,6 +90,7 @@ const BpcFunnelDetailPage = () => {
     to: bpcRange.to,
     enabled: !!board,
     source: "unificada",
+    spreadsheetId: sheetCfg?.spreadsheetId,
   });
 
   // Lista de acolhedores vinda da planilha (coluna operator) + sempre-presentes
