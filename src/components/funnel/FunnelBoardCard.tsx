@@ -82,16 +82,17 @@ export function FunnelBoardCard({
     [dateField, fromDate, toDate]
   );
 
-  const isBpc = isBpcFunnel(board.name);
+  const sheetCfg = useMemo(() => getFunnelSheetConfig(board.name), [board.name]);
+  const isBpc = !!sheetCfg;
 
-  // Acolhedores (multi-select) — só pra prévia BPC
+  // Acolhedores (multi-select) — só pra prévia dos funis com planilha
   const ALWAYS_SHOW_ACOLHEDORES = useMemo(() => ["Karolyne", "Edilan"], []);
   const [selectedAcolhedores, setSelectedAcolhedores] = useState<string[]>([]);
   const noAcolhedorFilter = selectedAcolhedores.length === 0;
   const toggleAcolhedor = (n: string) =>
     setSelectedAcolhedores(prev => prev.includes(n) ? prev.filter(x => x !== n) : [...prev, n]);
 
-  // Planilha BPC (só carrega no card BPC)
+  // Planilha (só carrega em funis com sheet configurada)
   const bpcRange = useMemo(() => ({
     from: fromDate ?? new Date("2020-01-01T00:00:00Z"),
     to: toDate ?? new Date(),
@@ -101,6 +102,7 @@ export function FunnelBoardCard({
     to: bpcRange.to,
     enabled: isBpc,
     source: "unificada",
+    spreadsheetId: sheetCfg?.spreadsheetId,
   });
 
   const allAcolhedores = useMemo(() => {
