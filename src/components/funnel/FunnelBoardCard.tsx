@@ -48,7 +48,7 @@ function computeRange(preset: RangePreset, custom?: { from?: Date; to?: Date }):
   return { from: custom?.from ?? null, to: custom?.to ?? null };
 }
 
-const isBpcFunnel = (name: string) => /bpc|autis/i.test(name);
+
 
 interface FunnelBoardCardProps {
   board: KanbanBoard;
