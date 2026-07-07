@@ -750,7 +750,10 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
           </SheetTitle>
         </SheetHeader>
 
-        {viewMode === 'list' ? (
+        {viewMode === 'list' && (initialEditBoardId || initialCreateNew) ? (
+          /* Transição: props indicam edição/criação; evita flash da lista */
+          <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">Carregando…</div>
+        ) : viewMode === 'list' ? (
           /* ===== LIST ===== */
           <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
             {boards.length === 0 ? (
