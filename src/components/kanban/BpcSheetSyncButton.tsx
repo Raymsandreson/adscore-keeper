@@ -10,6 +10,10 @@ interface Props {
   boardId: string;
   /** Disparado depois de uma sincronização real (não dry-run) que tenha criado leads. */
   onCreated?: () => void;
+  /** ID da planilha do Google Sheets. Se omitido, o backend usa a BPC-LOAS. */
+  spreadsheetId?: string;
+  /** Rótulo curto do funil pra exibir no diálogo (ex: "BPC", "Auxílio Acidente"). */
+  label?: string;
 }
 
 type SyncResult = {
