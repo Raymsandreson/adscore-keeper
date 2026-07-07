@@ -8919,6 +8919,7 @@ export type Database = {
         Row: {
           ad_account_id: string | null
           ad_account_name: string | null
+          always_add_to_closed_groups: boolean
           auto_identify_sender: boolean | null
           base_url: string | null
           created_at: string
@@ -8942,6 +8943,7 @@ export type Database = {
         Insert: {
           ad_account_id?: string | null
           ad_account_name?: string | null
+          always_add_to_closed_groups?: boolean
           auto_identify_sender?: boolean | null
           base_url?: string | null
           created_at?: string
@@ -8965,6 +8967,7 @@ export type Database = {
         Update: {
           ad_account_id?: string | null
           ad_account_name?: string | null
+          always_add_to_closed_groups?: boolean
           auto_identify_sender?: boolean | null
           base_url?: string | null
           created_at?: string
