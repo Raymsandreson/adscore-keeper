@@ -409,6 +409,18 @@ export function CadastrarCasoViavelDialog({ lead, open, onOpenChange, saveLead, 
     const notesExtra = form.liability_justification.trim()
       ? `Justificativa da responsabilidade (IA): ${form.liability_justification.trim()}`
       : '';
+    // Resolve o lead_number livre antes de salvar, para evitar colisão com
+    // a unique constraint (product_id, lead_number).
+    let resolvedSeq = Number(seqNumber) > 0 ? Number(seqNumber) : 0;
+    if (resolvedSeq > 0) {
+      try {
+        const free = await nextFreeLeadNumber(resolvedSeq);
+        if (free !== resolvedSeq) {
+          resolvedSeq = free;
+          setSeqNumber(String(free));
+        }
+      } catch { /* tenta salvar mesmo assim */ }
+    }
     const updates: Partial<Lead> = {
       lead_name: form.lead_title.trim(),
       status: FIRST_KANBAN_STAGE,
@@ -433,14 +445,29 @@ export function CadastrarCasoViavelDialog({ lead, open, onOpenChange, saveLead, 
       company_size_justification: form.company_size_justification || null,
       liability_type: form.liability_type || null,
       // Sincroniza o nº do lead (usado por regenerate-lead-name p/ renomear grupo).
-      // Sem isso, regenerate-lead-name usa o lead_number antigo e sobrescreve o nome do grupo
-      // logo após a criação, ignorando o forced_sequence.
-      ...(Number(seqNumber) > 0 ? { lead_number: Number(seqNumber) } : {}),
+      ...(resolvedSeq > 0 ? { lead_number: resolvedSeq } : {}),
       ...(notesExtra ? { notes: [((lead as any).notes || '').trim(), notesExtra].filter(Boolean).join('\n\n') } : {}),
     } as any;
 
+    const trySave = async (attempt: number): Promise<void> => {
+      try {
+        await saveLead(lead.id, updates);
+      } catch (e: any) {
+        const msg = String(e?.message || '');
+        const isDup = /leads_product_lead_number_uniq|duplicate key/i.test(msg);
+        if (isDup && attempt < 3 && resolvedSeq > 0) {
+          const free = await nextFreeLeadNumber(resolvedSeq + 1);
+          resolvedSeq = free;
+          setSeqNumber(String(free));
+          (updates as any).lead_number = free;
+          return trySave(attempt + 1);
+        }
+        throw e;
+      }
+    };
+
     try {
-      await saveLead(lead.id, updates);
+      await trySave(1);
       setSteps((s) => ({ ...s, save: 'done', group: 'running' }));
     } catch (e: any) {
       setSteps((s) => ({ ...s, save: 'error' }));
