@@ -15,6 +15,7 @@ import { BpcStageLeadsSheet } from "@/components/kanban/BpcStageLeadsSheet";
 import { BpcKpisPanel } from "@/components/kanban/BpcKpisPanel";
 import { BpcSheetSyncButton } from "@/components/kanban/BpcSheetSyncButton";
 import { buildBpcAcolhedorFilter, leadMatchesFilter } from "@/lib/bpcPhoneMatch";
+import { getFunnelSheetConfig } from "@/lib/funnelSheetConfig";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -77,6 +78,8 @@ const BpcFunnelDetailPage = () => {
     to: toDate ?? new Date(),
   }), [fromDate, toDate]);
 
+  const sheetCfg = useMemo(() => getFunnelSheetConfig(board?.name), [board?.name]);
+
   const {
     metrics: bpcMetrics,
     leads: bpcLeads,
@@ -87,6 +90,7 @@ const BpcFunnelDetailPage = () => {
     to: bpcRange.to,
     enabled: !!board,
     source: "unificada",
+    spreadsheetId: sheetCfg?.spreadsheetId,
   });
 
   // Lista de acolhedores vinda da planilha (coluna operator) + sempre-presentes
@@ -267,11 +271,18 @@ const BpcFunnelDetailPage = () => {
               <LayoutGrid className="h-5 w-5 text-primary" />
               {board.name}
             </h1>
-            <p className="text-xs text-muted-foreground">Painel detalhado do funil BPC</p>
+            <p className="text-xs text-muted-foreground">
+              Painel detalhado do funil {sheetCfg?.label ?? "BPC"}
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <BpcSheetSyncButton boardId={board.id} onCreated={handleRefresh} />
+          <BpcSheetSyncButton
+            boardId={board.id}
+            onCreated={handleRefresh}
+            spreadsheetId={sheetCfg?.spreadsheetId}
+            label={sheetCfg?.label}
+          />
           <Button variant="outline" size="sm" onClick={handleRefresh} disabled={leadsLoading || bpcLoading}>
             <RefreshCw className={cn("h-3.5 w-3.5 mr-1.5", (leadsLoading || bpcLoading) && "animate-spin")} />
             Atualizar

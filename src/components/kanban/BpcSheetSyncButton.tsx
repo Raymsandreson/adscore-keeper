@@ -10,6 +10,10 @@ interface Props {
   boardId: string;
   /** Disparado depois de uma sincronização real (não dry-run) que tenha criado leads. */
   onCreated?: () => void;
+  /** ID da planilha do Google Sheets. Se omitido, o backend usa a BPC-LOAS. */
+  spreadsheetId?: string;
+  /** Rótulo curto do funil pra exibir no diálogo (ex: "BPC", "Auxílio Acidente"). */
+  label?: string;
 }
 
 type SyncResult = {
@@ -35,7 +39,7 @@ const SINCE_OPTIONS = [
   { value: 90, label: "Últimos 90 dias" },
 ];
 
-export function BpcSheetSyncButton({ boardId, onCreated }: Props) {
+export function BpcSheetSyncButton({ boardId, onCreated, spreadsheetId, label }: Props) {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [running, setRunning] = useState(false);
@@ -52,6 +56,7 @@ export function BpcSheetSyncButton({ boardId, onCreated }: Props) {
           board_id: boardId,
           since_days: sinceDays,
           dry_run: dryRun,
+          ...(spreadsheetId ? { spreadsheet_id: spreadsheetId } : {}),
         },
       });
       if (invokeErr) throw invokeErr;
@@ -107,9 +112,9 @@ export function BpcSheetSyncButton({ boardId, onCreated }: Props) {
       <Dialog open={open} onOpenChange={(v) => !running && setOpen(v)}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Sincronizar planilha BPC</DialogTitle>
+            <DialogTitle>Sincronizar planilha {label ?? "BPC"}</DialogTitle>
             <DialogDescription>
-              Lê a planilha do Meta Ads (BASE_UNIFICADA + abas por acolhedor) e cria leads novos na
+              Lê a planilha do Meta Ads (abas por acolhedor) e cria leads novos na
               primeira etapa do funil. Linhas que já existem (mesmo telefone) são ignoradas.
             </DialogDescription>
           </DialogHeader>

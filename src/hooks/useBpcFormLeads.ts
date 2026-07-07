@@ -58,6 +58,11 @@ export function useBpcFormLeads(opts: {
   dateType?: BpcDateType;
   /** "unificada" lê a aba BASE_UNIFICADA (operador vem da coluna origem_vendedor). */
   source?: "unificada";
+  /**
+   * ID da planilha do Google Sheets. Se omitido, usa a BPC-LOAS default (backwards compat).
+   * Para funis com outra planilha (ex: Auxílio Acidente), passe explicitamente.
+   */
+  spreadsheetId?: string;
 }) {
   const [metrics, setMetrics] = useState<BpcMetrics>({
     total: 0,
@@ -84,6 +89,7 @@ export function useBpcFormLeads(opts: {
       url.searchParams.set("date_type", dateType);
       if (opts.source) url.searchParams.set("source", opts.source);
       if (opts.instanceName) url.searchParams.set("instance_name", opts.instanceName);
+      if (opts.spreadsheetId) url.searchParams.set("spreadsheet_id", opts.spreadsheetId);
       const { data: { session } } = await supabase.auth.getSession();
       const resp = await fetch(url.toString(), {
         headers: {
@@ -101,7 +107,7 @@ export function useBpcFormLeads(opts: {
     } finally {
       setLoading(false);
     }
-  }, [opts.from.getTime(), opts.to.getTime(), opts.enabled, opts.instanceName, dateType, opts.source]);
+  }, [opts.from.getTime(), opts.to.getTime(), opts.enabled, opts.instanceName, dateType, opts.source, opts.spreadsheetId]);
 
   useEffect(() => {
     fetchData();

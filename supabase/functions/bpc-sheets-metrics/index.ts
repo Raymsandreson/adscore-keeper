@@ -9,7 +9,7 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-request-id",
 };
 
-const SPREADSHEET_ID = "1EXB6oFovhX2LOHsC2X20LFk-JVIkjk-NR5Er4cUn6Qw";
+const DEFAULT_SPREADSHEET_ID = "1EXB6oFovhX2LOHsC2X20LFk-JVIkjk-NR5Er4cUn6Qw";
 // Mapeamento por PALAVRA-CHAVE (não por nome exato). Resiliente a renomeação
 // de aba ("LEADS EDILAN" / "1LEADS EDILAN" / "EDILAN NOVO" → todos viram Edilan).
 // A primeira keyword que casar (case-insensitive) define o operador.
@@ -29,12 +29,12 @@ let SHEET_TABS: { tab: string; operator: string }[] = [];
 const UNIFIED_TAB = "BASE_UNIFICADA";
 const GATEWAY = "https://connector-gateway.lovable.dev/google_sheets/v4";
 
-async function discoverSheetTabs(): Promise<{ tab: string; operator: string }[]> {
+async function discoverSheetTabs(spreadsheetId: string): Promise<{ tab: string; operator: string }[]> {
   const lovableKey = Deno.env.get("LOVABLE_API_KEY");
   const gsKey = Deno.env.get("GOOGLE_SHEETS_API_KEY");
   if (!lovableKey || !gsKey) throw new Error("Missing connector keys");
   const resp = await fetch(
-    `${GATEWAY}/spreadsheets/${SPREADSHEET_ID}?fields=sheets.properties.title`,
+    `${GATEWAY}/spreadsheets/${spreadsheetId}?fields=sheets.properties.title`,
     { headers: { Authorization: `Bearer ${lovableKey}`, "X-Connection-Api-Key": gsKey } },
   );
   if (!resp.ok) {
@@ -87,6 +87,7 @@ function rowToObject(headers: string[], row: any[]): Record<string, string> {
 }
 
 async function fetchTab(
+  spreadsheetId: string,
   tab: string,
   operatorFromColumn = false,
   onHeaders?: (h: string[]) => void,
@@ -96,7 +97,7 @@ async function fetchTab(
   if (!lovableKey || !gsKey) throw new Error("Missing connector keys");
 
   const url =
-    `${GATEWAY}/spreadsheets/${SPREADSHEET_ID}/values/'${encodeURIComponent(tab)}'!A1:Z5000`;
+    `${GATEWAY}/spreadsheets/${spreadsheetId}/values/'${encodeURIComponent(tab)}'!A1:Z5000`;
   const resp = await fetch(url, {
     headers: {
       Authorization: `Bearer ${lovableKey}`,
@@ -208,6 +209,8 @@ Deno.serve(async (req) => {
     const dateType = (url.searchParams.get("date_type") || "created").toLowerCase();
     // source: "" (abas por operador, padrão) | "unificada" (aba BASE_UNIFICADA)
     const source = (url.searchParams.get("source") || "").toLowerCase().trim();
+    const spreadsheetIdParam = (url.searchParams.get("spreadsheet_id") || "").trim();
+    const spreadsheetId = spreadsheetIdParam || DEFAULT_SPREADSHEET_ID;
 
     const tabErrors: { tab: string; error: string }[] = [];
     const allRows: SheetRow[] = [];
@@ -218,7 +221,7 @@ Deno.serve(async (req) => {
     // vazias. Por isso, mesmo quando o caller pede source=unificada, lemos as ABAS INDIVIDUAIS
     // (descobertas dinamicamente) e o operador vem do nome da aba — fonte confiável.
     try {
-      SHEET_TABS = await discoverSheetTabs();
+      SHEET_TABS = await discoverSheetTabs(spreadsheetId);
     } catch (e: any) {
       console.error("[bpc-sheets-metrics] discoverSheetTabs failed:", e?.message || e);
       SHEET_TABS = [];
@@ -230,7 +233,7 @@ Deno.serve(async (req) => {
     for (let i = 0; i < tabsToRead.length; i++) {
       const s = tabsToRead[i];
       try {
-        const rows = await fetchTab(s.tab, false, (h) => { if (!debugHeaders.length) debugHeaders = h; });
+        const rows = await fetchTab(spreadsheetId, s.tab, false, (h) => { if (!debugHeaders.length) debugHeaders = h; });
         allRows.push(...rows);
       } catch (e: any) {
         const msg = e?.message || String(e);

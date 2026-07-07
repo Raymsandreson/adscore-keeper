@@ -13,8 +13,9 @@ import { useEnsureStageLabels } from "@/hooks/useEnsureStageLabels";
 import { WorkflowBuilder } from "@/components/workflow/WorkflowBuilder";
 import { FunnelTeamDialog } from "@/components/funnel/FunnelTeamDialog";
 import { FunnelBoardCard } from "@/components/funnel/FunnelBoardCard";
+import { hasFunnelSheet } from "@/lib/funnelSheetConfig";
 
-const isBpcFunnel = (name: string) => /bpc|autis/i.test(name);
+const isBpcFunnel = (name: string) => hasFunnelSheet(name);
 
 const SalesFunnelsPage = () => {
   const navigate = useNavigate();
