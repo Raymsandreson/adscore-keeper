@@ -273,9 +273,20 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
         <SheetHeader className="px-4 pt-4 pb-2 shrink-0 border-b">
           <div className="flex items-center justify-between gap-2">
             <SheetTitle className="text-base truncate">{formTitle || 'Atividade'}</SheetTitle>
-            <Button variant="ghost" size="sm" onClick={handleOpenInPage} className="gap-1 text-xs shrink-0" title="Abrir na tela de Atividades">
-              <ExternalLink className="h-3 w-3" /> Tela cheia
-            </Button>
+            <div className="flex items-center gap-1">
+              <Button variant="ghost" size="sm" onClick={handleOpenInPage} className="gap-1 text-xs shrink-0" title="Abrir na tela de Atividades">
+                <ExternalLink className="h-3 w-3" /> Tela cheia
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => onOpenChange(false)}
+                className="h-8 w-8 shrink-0"
+                title="Fechar atividade"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
         </SheetHeader>
 
