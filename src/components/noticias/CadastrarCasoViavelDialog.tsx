@@ -178,6 +178,18 @@ async function suggestNextSequence(): Promise<number | null> {
     if (data?.current_sequence) best = Math.max(best, data.current_sequence);
     seqStart = data?.sequence_start ?? null;
   } catch { /* segue com as outras fontes */ }
+  // Fonte crítica: maior lead_number já persistido no board — evita colisão
+  // com a constraint unique (product_id, lead_number).
+  try {
+    const { data } = await (externalSupabase as any)
+      .from('leads')
+      .select('lead_number')
+      .eq('board_id', TRABALHISTA_BOARD_ID)
+      .order('lead_number', { ascending: false })
+      .limit(1);
+    const maxLead = Number((data?.[0] as any)?.lead_number || 0);
+    if (maxLead > 0) best = Math.max(best, maxLead);
+  } catch { /* segue */ }
   try {
     const { data } = await externalSupabase
       .from('lead_whatsapp_groups')
@@ -197,6 +209,24 @@ async function suggestNextSequence(): Promise<number | null> {
   } catch { /* segue */ }
   if (best > 0) return best + 1;
   return seqStart;
+}
+
+// Retorna o próximo lead_number livre a partir de `desired`, checando colisões
+// reais na tabela leads (unique constraint em (product_id, lead_number)).
+async function nextFreeLeadNumber(desired: number): Promise<number> {
+  await ensureExternalSession();
+  let candidate = Math.max(1, Math.floor(desired));
+  for (let i = 0; i < 50; i++) {
+    const { data } = await (externalSupabase as any)
+      .from('leads')
+      .select('id')
+      .eq('board_id', TRABALHISTA_BOARD_ID)
+      .eq('lead_number', candidate)
+      .limit(1);
+    if (!data || data.length === 0) return candidate;
+    candidate += 1;
+  }
+  return candidate;
 }
 
 interface Props {
@@ -379,6 +409,18 @@ export function CadastrarCasoViavelDialog({ lead, open, onOpenChange, saveLead, 
     const notesExtra = form.liability_justification.trim()
       ? `Justificativa da responsabilidade (IA): ${form.liability_justification.trim()}`
       : '';
+    // Resolve o lead_number livre antes de salvar, para evitar colisão com
+    // a unique constraint (product_id, lead_number).
+    let resolvedSeq = Number(seqNumber) > 0 ? Number(seqNumber) : 0;
+    if (resolvedSeq > 0) {
+      try {
+        const free = await nextFreeLeadNumber(resolvedSeq);
+        if (free !== resolvedSeq) {
+          resolvedSeq = free;
+          setSeqNumber(String(free));
+        }
+      } catch { /* tenta salvar mesmo assim */ }
+    }
     const updates: Partial<Lead> = {
       lead_name: form.lead_title.trim(),
       status: FIRST_KANBAN_STAGE,
@@ -403,14 +445,29 @@ export function CadastrarCasoViavelDialog({ lead, open, onOpenChange, saveLead, 
       company_size_justification: form.company_size_justification || null,
       liability_type: form.liability_type || null,
       // Sincroniza o nº do lead (usado por regenerate-lead-name p/ renomear grupo).
-      // Sem isso, regenerate-lead-name usa o lead_number antigo e sobrescreve o nome do grupo
-      // logo após a criação, ignorando o forced_sequence.
-      ...(Number(seqNumber) > 0 ? { lead_number: Number(seqNumber) } : {}),
+      ...(resolvedSeq > 0 ? { lead_number: resolvedSeq } : {}),
       ...(notesExtra ? { notes: [((lead as any).notes || '').trim(), notesExtra].filter(Boolean).join('\n\n') } : {}),
     } as any;
 
+    const trySave = async (attempt: number): Promise<void> => {
+      try {
+        await saveLead(lead.id, updates);
+      } catch (e: any) {
+        const msg = String(e?.message || '');
+        const isDup = /leads_product_lead_number_uniq|duplicate key/i.test(msg);
+        if (isDup && attempt < 3 && resolvedSeq > 0) {
+          const free = await nextFreeLeadNumber(resolvedSeq + 1);
+          resolvedSeq = free;
+          setSeqNumber(String(free));
+          (updates as any).lead_number = free;
+          return trySave(attempt + 1);
+        }
+        throw e;
+      }
+    };
+
     try {
-      await saveLead(lead.id, updates);
+      await trySave(1);
       setSteps((s) => ({ ...s, save: 'done', group: 'running' }));
     } catch (e: any) {
       setSteps((s) => ({ ...s, save: 'error' }));
@@ -429,7 +486,7 @@ export function CadastrarCasoViavelDialog({ lead, open, onOpenChange, saveLead, 
           board_id: TRABALHISTA_BOARD_ID,
           creation_origin: 'noticia_viavel',
           phase: 'open',
-          ...(Number(seqNumber) > 0 ? { forced_sequence: Number(seqNumber) } : {}),
+          ...(resolvedSeq > 0 ? { forced_sequence: resolvedSeq } : {}),
         },
       });
       if (error) throw error;
