@@ -321,12 +321,13 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
 
     setSending(true);
     try {
+      await ensureExternalSession();
       const [leadRes, profileRes] = await Promise.all([
-        supabase
+        externalSupabase
           .from('leads')
           .select('whatsapp_group_id, group_link, lead_name, board_id')
           .eq('id', leadId)
-          .single(),
+          .maybeSingle(),
         supabase.auth.getUser().then(async ({ data: { user } }) => {
           if (!user) return null;
           const { data } = await supabase
@@ -338,7 +339,7 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
         }),
       ]);
 
-      const lead = leadRes.data;
+      const lead = leadRes.data as any;
       const groupId = lead?.whatsapp_group_id;
       if (!groupId) {
         toast.error('Este lead não tem grupo WhatsApp vinculado');
@@ -348,12 +349,12 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
 
       let instanceId: string | undefined = selectedInstanceId || profileRes || undefined;
       if (!instanceId && lead?.board_id) {
-        const { data: boardInstances } = await supabase
+        const { data: boardInstances } = await externalSupabase
           .from('board_group_instances')
           .select('instance_id')
           .eq('board_id', lead.board_id)
           .limit(1);
-        instanceId = boardInstances?.[0]?.instance_id;
+        instanceId = (boardInstances as any)?.[0]?.instance_id;
       }
 
       const message = buildMsg();
