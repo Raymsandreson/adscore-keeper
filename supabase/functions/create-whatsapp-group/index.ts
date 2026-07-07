@@ -821,8 +821,9 @@ Deno.serve(async (req) => {
           // Sem isso, leads que fecham entre 2 syncs do snapshot colidem no mesmo nº.
           const snapMax = (await getNextGroupSequenceFromSnapshot(supabase, sequencePrefix)) || 0
           const lwgMax = await getMaxSequenceFromLeadGroups(supabase, sequencePrefix)
+          const leadsMax = await getMaxSequenceFromLeads(supabase, sequencePrefix)
           const settingsMax = (settings.closed_current_sequence || 0)
-          const floor = Math.max(snapMax > 0 ? snapMax - 1 : 0, lwgMax, settingsMax)
+          const floor = Math.max(snapMax > 0 ? snapMax - 1 : 0, lwgMax, leadsMax, settingsMax)
           const reserved = board_id
             ? await reserveAtomicClosedSequence(supabase, board_id, floor)
             : null
