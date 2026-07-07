@@ -112,9 +112,9 @@ export function BpcSheetSyncButton({ boardId, onCreated, spreadsheetId, label }:
       <Dialog open={open} onOpenChange={(v) => !running && setOpen(v)}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Sincronizar planilha BPC</DialogTitle>
+            <DialogTitle>Sincronizar planilha {label ?? "BPC"}</DialogTitle>
             <DialogDescription>
-              Lê a planilha do Meta Ads (BASE_UNIFICADA + abas por acolhedor) e cria leads novos na
+              Lê a planilha do Meta Ads (abas por acolhedor) e cria leads novos na
               primeira etapa do funil. Linhas que já existem (mesmo telefone) são ignoradas.
             </DialogDescription>
           </DialogHeader>
