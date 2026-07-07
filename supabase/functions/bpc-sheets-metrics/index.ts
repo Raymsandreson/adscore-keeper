@@ -210,6 +210,8 @@ Deno.serve(async (req) => {
     const dateType = (url.searchParams.get("date_type") || "created").toLowerCase();
     // source: "" (abas por operador, padrão) | "unificada" (aba BASE_UNIFICADA)
     const source = (url.searchParams.get("source") || "").toLowerCase().trim();
+    const spreadsheetIdParam = (url.searchParams.get("spreadsheet_id") || "").trim();
+    SPREADSHEET_ID = spreadsheetIdParam || DEFAULT_SPREADSHEET_ID;
 
     const tabErrors: { tab: string; error: string }[] = [];
     const allRows: SheetRow[] = [];
