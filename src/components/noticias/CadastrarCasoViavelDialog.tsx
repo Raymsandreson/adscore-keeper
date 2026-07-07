@@ -178,6 +178,18 @@ async function suggestNextSequence(): Promise<number | null> {
     if (data?.current_sequence) best = Math.max(best, data.current_sequence);
     seqStart = data?.sequence_start ?? null;
   } catch { /* segue com as outras fontes */ }
+  // Fonte crítica: maior lead_number já persistido no board — evita colisão
+  // com a constraint unique (product_id, lead_number).
+  try {
+    const { data } = await externalSupabase
+      .from('leads')
+      .select('lead_number')
+      .eq('board_id', TRABALHISTA_BOARD_ID)
+      .order('lead_number', { ascending: false, nullsFirst: false })
+      .limit(1);
+    const maxLead = Number((data?.[0] as any)?.lead_number || 0);
+    if (maxLead > 0) best = Math.max(best, maxLead);
+  } catch { /* segue */ }
   try {
     const { data } = await externalSupabase
       .from('lead_whatsapp_groups')
@@ -197,6 +209,24 @@ async function suggestNextSequence(): Promise<number | null> {
   } catch { /* segue */ }
   if (best > 0) return best + 1;
   return seqStart;
+}
+
+// Retorna o próximo lead_number livre a partir de `desired`, checando colisões
+// reais na tabela leads (unique constraint em (product_id, lead_number)).
+async function nextFreeLeadNumber(desired: number): Promise<number> {
+  await ensureExternalSession();
+  let candidate = Math.max(1, Math.floor(desired));
+  for (let i = 0; i < 50; i++) {
+    const { data } = await externalSupabase
+      .from('leads')
+      .select('id')
+      .eq('board_id', TRABALHISTA_BOARD_ID)
+      .eq('lead_number', candidate)
+      .limit(1);
+    if (!data || data.length === 0) return candidate;
+    candidate += 1;
+  }
+  return candidate;
 }
 
 interface Props {
