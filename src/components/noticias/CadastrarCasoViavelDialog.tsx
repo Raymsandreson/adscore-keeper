@@ -217,7 +217,7 @@ async function nextFreeLeadNumber(desired: number): Promise<number> {
   await ensureExternalSession();
   let candidate = Math.max(1, Math.floor(desired));
   for (let i = 0; i < 50; i++) {
-    const { data } = await externalSupabase
+    const { data } = await (externalSupabase as any)
       .from('leads')
       .select('id')
       .eq('board_id', TRABALHISTA_BOARD_ID)
