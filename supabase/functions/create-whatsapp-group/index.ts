@@ -248,6 +248,32 @@ async function getMaxSequenceFromLeadGroups(supabase: any, prefix: string): Prom
 }
 
 /**
+ * Max real do prefixo lendo a tabela `leads` (lead_name). Cobre leads criados
+ * antes do grupo (ex: Cadastrar Caso Viável, ZapSign auto-close) onde o número
+ * já foi carimbado no nome do lead mas ainda não existe entry em
+ * lead_whatsapp_groups. Sem isso, o floor da sequência sai atrasado.
+ */
+async function getMaxSequenceFromLeads(supabase: any, prefix: string): Promise<number> {
+  const p = cleanSequencePrefix(prefix)
+  if (!p) return 0
+  let max = 0
+  for (let from = 0; from < 20000; from += 1000) {
+    const { data, error } = await supabase
+      .from('leads')
+      .select('lead_name')
+      .ilike('lead_name', `%${p}%`)
+      .range(from, from + 999)
+    if (error) break
+    for (const row of (data || [])) {
+      const seq = extractGroupSequence(row.lead_name, p)
+      if (seq && seq > max) max = seq
+    }
+    if (!data || data.length < 1000) break
+  }
+  return max
+}
+
+/**
  * Reserva atômica via RPC reserve_closed_sequence: faz UPDATE ... RETURNING
  * incrementando o contador acima de GREATEST(snapshot, lead_whatsapp_groups).
  * Garante que dois fechamentos simultâneos NUNCA colidam no mesmo número.
@@ -795,8 +821,9 @@ Deno.serve(async (req) => {
           // Sem isso, leads que fecham entre 2 syncs do snapshot colidem no mesmo nº.
           const snapMax = (await getNextGroupSequenceFromSnapshot(supabase, sequencePrefix)) || 0
           const lwgMax = await getMaxSequenceFromLeadGroups(supabase, sequencePrefix)
+          const leadsMax = await getMaxSequenceFromLeads(supabase, sequencePrefix)
           const settingsMax = (settings.closed_current_sequence || 0)
-          const floor = Math.max(snapMax > 0 ? snapMax - 1 : 0, lwgMax, settingsMax)
+          const floor = Math.max(snapMax > 0 ? snapMax - 1 : 0, lwgMax, leadsMax, settingsMax)
           const reserved = board_id
             ? await reserveAtomicClosedSequence(supabase, board_id, floor)
             : null
@@ -906,6 +933,60 @@ Deno.serve(async (req) => {
         const p = normalizePhone(inst.owner_phone)
         if (p && !participants.includes(p)) {
           participants.push(p)
+        }
+      }
+    }
+
+    // Instâncias marcadas como participantes obrigatórios em grupos pós-assinatura
+    // (flag always_add_to_closed_groups) — ex: Raym, João Manoel. Só quando phase='closed'.
+    if (phase === 'closed') {
+      const { data: mandatoryInstances } = await supabase
+        .from('whatsapp_instances')
+        .select('id, owner_phone, instance_name')
+        .eq('always_add_to_closed_groups', true)
+        .eq('is_active', true)
+      for (const inst of mandatoryInstances || []) {
+        if (!inst.owner_phone || inst.id === creatorInstance.id) continue
+        const p = normalizePhone(inst.owner_phone)
+        if (p && !participants.includes(p)) {
+          participants.push(p)
+          console.log(`[create-group] Added mandatory participant: ${inst.instance_name} (${p})`)
+        }
+      }
+    }
+
+    // Acolhedor do lead: busca instância WhatsApp pelo texto do campo acolhedor.
+    // acolhedor pode ser um UUID (novo padrão) OU um nome (padrão legado).
+    // Tenta: (a) profiles.user_id -> full_name -> instância; (b) match direto por nome.
+    const acolhedorRaw = (leadData?.acolhedor || '').toString().trim()
+    if (acolhedorRaw) {
+      let acolhedorName: string | null = null
+      // Tenta resolver como UUID
+      if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(acolhedorRaw)) {
+        const { data: prof } = await supabase
+          .from('profiles')
+          .select('full_name')
+          .eq('user_id', acolhedorRaw)
+          .maybeSingle()
+        acolhedorName = prof?.full_name || null
+      }
+      const searchName = acolhedorName || acolhedorRaw
+      if (searchName) {
+        const { data: acolInst } = await supabase
+          .from('whatsapp_instances')
+          .select('id, owner_phone, instance_name, owner_name')
+          .or(`instance_name.ilike.%${searchName}%,owner_name.ilike.%${searchName}%`)
+          .eq('is_active', true)
+          .limit(1)
+          .maybeSingle()
+        if (acolInst?.owner_phone && acolInst.id !== creatorInstance.id) {
+          const p = normalizePhone(acolInst.owner_phone)
+          if (p && !participants.includes(p)) {
+            participants.push(p)
+            console.log(`[create-group] Added acolhedor instance: ${acolInst.instance_name} (${p})`)
+          }
+        } else {
+          console.log(`[create-group] No matching instance found for acolhedor="${searchName}"`)
         }
       }
     }
