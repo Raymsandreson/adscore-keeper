@@ -387,7 +387,7 @@ export function FunnelBoardCard({
               <div className="min-w-0">
                 <div className="text-xs font-semibold flex items-center gap-1.5">
                   <LayoutGrid className="h-3.5 w-3.5 text-primary" />
-                  Painel detalhado BPC
+                  {sheetCfg?.panelTitle ?? "Painel detalhado"}
                 </div>
                 <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-1">
                   Tabela completa + métricas da planilha.
