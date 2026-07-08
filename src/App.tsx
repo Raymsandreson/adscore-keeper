@@ -185,7 +185,6 @@ const RecoverPhone55Page = lazyRetry(() => import("./pages/RecoverPhone55Page"),
 const DocumentReviewPage = lazyRetry(() => import("./pages/DocumentReviewPage"), "DocumentReviewPage");
 const LeadsMapPage = lazyRetry(() => import("./pages/LeadsMapPage"), "LeadsMapPage");
 
-const queryClient = new QueryClient();
 
 const queryClient = new QueryClient({
   defaultOptions: {
