@@ -789,7 +789,13 @@ export function DynamicKanbanBoard({
                 {/* Column Content */}
                 <div className="h-[calc(100vh-380px)] min-h-[300px] overflow-y-auto">
                   <div className="p-2 space-y-2">
-                    {stageLeads.length === 0 ? (
+                    {stage.id === virtualStageId && virtualCards && virtualCards.length > 0 && (
+                      <SheetVirtualLeadsSection
+                        cards={virtualCards}
+                        sheetLabel={virtualSheetLabel ?? null}
+                      />
+                    )}
+                    {stageLeads.length === 0 && !(stage.id === virtualStageId && virtualCards && virtualCards.length > 0) ? (
                       <div className="flex flex-col items-center justify-center py-8 text-center">
                         <Users className="h-8 w-8 text-muted-foreground/40 mb-2" />
                         <p className="text-xs text-muted-foreground">
