@@ -131,6 +131,7 @@ export function BpcStageLeadsSheet({
     state: string | null;
     sheet_status?: string | null;
     sheet_ad?: string | null;
+    raw?: BpcFormLead;
   };
 
   const filtered = useMemo<UnifiedRow[]>(() => {
