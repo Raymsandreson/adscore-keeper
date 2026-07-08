@@ -2055,25 +2055,72 @@ Gere uma mensagem profissional e organizada com emojis, usando formatação do W
     } else if (settings.initial_message_template) {
       messageText = settings.initial_message_template
 
+      const fmtDate = (v: unknown): string => {
+        if (!v) return ''
+        try {
+          const d = new Date(String(v))
+          if (isNaN(d.getTime())) return String(v)
+          const dd = String(d.getUTCDate()).padStart(2, '0')
+          const mm = String(d.getUTCMonth() + 1).padStart(2, '0')
+          return `${dd}/${mm}/${d.getUTCFullYear()}`
+        } catch { return String(v) }
+      }
+      const damageShort = ((): string => {
+        const raw = String((leadData as any)?.damage_description || '').trim()
+        if (!raw) return ''
+        const first = raw.split(/[.\n;]/)[0].split(',')[0].trim()
+        return first.length > 60 ? first.slice(0, 57) + '...' : first
+      })()
+      const groupLinkUrl = groupId ? `https://chat.whatsapp.com/${String(groupId).replace('@g.us', '')}` : ''
+      const ld: any = leadData || {}
+
       const replacements: Record<string, string> = {
-        '{lead_name}': leadData?.lead_name || lead_name || '',
-        '{victim_name}': leadData?.victim_name || '',
-        '{case_type}': leadData?.case_type || '',
-        '{city}': leadData?.city || '',
-        '{state}': leadData?.state || '',
-        '{case_number}': leadData?.case_number || '',
+        '{lead_name}': ld.lead_name || lead_name || '',
+        '{victim_name}': ld.victim_name || '',
+        '{victim_age}': ld.victim_age ? `${ld.victim_age} anos` : '',
+        '{case_type}': ld.case_type || '',
+        '{case_number}': ld.case_number || '',
         '{group_name}': groupName || '',
+        '{group_link}': ld.group_link || groupLinkUrl,
         '{board_name}': boardName,
-        '{source}': leadData?.source || '',
-        '{main_company}': leadData?.main_company || '',
-        '{neighborhood}': leadData?.neighborhood || '',
-        '{notes}': leadData?.notes || '',
+        '{source}': ld.source || '',
+        '{main_company}': ld.main_company || '',
+        '{contractor_company}': ld.contractor_company || 'Não informado',
+        '{sector}': ld.sector || '',
+        '{neighborhood}': ld.neighborhood || '',
+        '{notes}': ld.notes || '',
+        '{acolhedor}': ld.acolhedor || '',
+        '{client_classification}': ld.client_classification || '',
+        '{visit_city}': ld.visit_city || ld.city || '',
+        '{visit_state}': ld.visit_state || ld.state || '',
+        '{visit_region}': ld.visit_region || '',
+        '{visit_address}': ld.visit_address || '',
+        '{accident_date}': fmtDate(ld.accident_date),
+        '{accident_address}': ld.accident_address || '',
+        '{damage_description}': ld.damage_description || '',
+        '{damage}': damageShort,
+        '{news_link}': ld.news_link || '',
+        '{company_size_justification}': ld.company_size_justification || '',
+        '{liability_type}': ld.liability_type || '',
+        '{legal_viability}': ld.legal_viability || '',
+        '{created_at}': fmtDate(ld.created_at || new Date().toISOString()),
+        '{city}': ld.city || ld.visit_city || '',
+        '{state}': ld.state || ld.visit_state || '',
       }
 
 
       for (const [key, value] of Object.entries(replacements)) {
         messageText = messageText.replaceAll(key, value)
       }
+      // Remove linhas cujo placeholder ficou vazio (ex: "🎂 Idade da Vítima: ")
+      messageText = messageText
+        .split('\n')
+        .filter(line => {
+          const t = line.trim()
+          if (!t) return true
+          return !/^[^:]+:\s*$/.test(t)
+        })
+        .join('\n')
     }
 
     if (messageText) {
