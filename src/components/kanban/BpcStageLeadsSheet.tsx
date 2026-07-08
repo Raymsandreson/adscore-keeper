@@ -64,6 +64,8 @@ export function BpcStageLeadsSheet({
   toDate,
   bpcFilter,
   filterPending,
+  sheetLeads,
+  isInboxStage,
 }: Props) {
   const navigate = useNavigate();
   const [q, setQ] = useState("");
