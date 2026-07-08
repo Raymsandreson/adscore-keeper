@@ -153,9 +153,16 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
   useEffect(() => {
     if (!categoryRegex || visibleBoards.length === 0) return;
     if (!selectedBoardId || !visibleBoards.some(b => b.id === selectedBoardId)) {
-      setSelectedBoardId(visibleBoards[0].id);
+      // Para Previdenciário, abrir em "Auxílio Acidente" por padrão quando disponível
+      const defaultBoard =
+        category === 'previdenciario'
+          ? visibleBoards.find(b =>
+              /aux[íi]lio\s*acidente|aux\.?\s*acidente/i.test(b.name)
+            )
+          : undefined;
+      setSelectedBoardId(defaultBoard?.id ?? visibleBoards[0].id);
     }
-  }, [categoryRegex, visibleBoards, selectedBoardId, setSelectedBoardId]);
+  }, [categoryRegex, visibleBoards, selectedBoardId, setSelectedBoardId, category]);
 
   // Leads hook
   const {
