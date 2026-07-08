@@ -263,6 +263,7 @@ const ActivitiesPage = () => {
     setNoteAttachmentsUploading(uploading);
   }, []);
   const [createdDialog, setCreatedDialog] = useState<{ open: boolean; title: string; activity: LeadActivity | null }>({ open: false, title: '', activity: null });
+  const [shareSummaryOpen, setShareSummaryOpen] = useState(false);
   const [leads, setLeads] = useState<LeadOption[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [calendarMonth, setCalendarMonth] = useState(new Date());
