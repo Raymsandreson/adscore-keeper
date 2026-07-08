@@ -51,6 +51,7 @@ import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { TeamChatButton } from '@/components/chat/TeamChatButton';
 import { TeamChatSheet } from '@/components/chat/TeamChatSheet';
 import { ActivityNotesField, type Attachment } from '@/components/activities/ActivityNotesField';
+import { AssessorSummaryShareDialog } from '@/components/activities/AssessorSummaryShareDialog';
 import { TimeBlockSettingsDialog, TimeBlockConfig } from '@/components/activities/TimeBlockSettingsDialog';
 import { ActivityCreatedDialog, randomChurchillQuote } from '@/components/activities/ActivityCreatedDialog';
 import { TrafficActivityPanel } from '@/components/traffic/TrafficActivityPanel';
