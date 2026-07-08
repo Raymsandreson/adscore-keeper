@@ -662,12 +662,14 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
           </Select>
         </div>
         <div className="col-span-full">
-          <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Fluxo de Trabalho *</span>
+          <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
+            Fluxo de Trabalho {props.formIsSystem ? '(opcional)' : '*'}
+          </span>
           <Select value={props.formWorkflowId || undefined} onValueChange={props.setFormWorkflowId}>
             <SelectTrigger
               className={cn(
                 "h-8 text-xs mt-0.5",
-                !props.formWorkflowId && "border-destructive/60 ring-1 ring-destructive/20"
+                !props.formWorkflowId && !props.formIsSystem && "border-destructive/60 ring-1 ring-destructive/20"
               )}
             >
               <SelectValue placeholder="Selecione um fluxo de trabalho" />
@@ -684,7 +686,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
               )}
             </SelectContent>
           </Select>
-          {!props.formWorkflowId && (
+          {!props.formWorkflowId && !props.formIsSystem && (
             <p className="text-[10px] text-destructive mt-0.5">Selecione um fluxo de trabalho para continuar</p>
           )}
         </div>
