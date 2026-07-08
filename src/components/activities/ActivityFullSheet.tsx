@@ -237,6 +237,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     case_title: formCaseTitle || null,
     process_id: formProcessId || null,
     process_title: formProcessTitle || null,
+    workflow_id: formWorkflowId || null,
     matrix_quadrant: formMatrixQuadrant || null,
     client_name_override: formClientNameOverride || null,
   });
