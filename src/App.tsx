@@ -2,7 +2,9 @@ import React, { lazy, Suspense, type ComponentType } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient } from "@tanstack/react-query";
+import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
+import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { AuthProvider } from "@/contexts/AuthContext";
@@ -183,7 +185,20 @@ const RecoverPhone55Page = lazyRetry(() => import("./pages/RecoverPhone55Page"),
 const DocumentReviewPage = lazyRetry(() => import("./pages/DocumentReviewPage"), "DocumentReviewPage");
 const LeadsMapPage = lazyRetry(() => import("./pages/LeadsMapPage"), "LeadsMapPage");
 
-const queryClient = new QueryClient();
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      gcTime: 1000 * 60 * 60 * 24, // 24h — obrigatório pro persister manter dados
+    },
+  },
+});
+
+const persister = createSyncStoragePersister({
+  storage: typeof window !== "undefined" ? window.localStorage : undefined,
+  key: "adscore-rq-cache",
+  throttleTime: 1000,
+});
 
 const PageLoading = () => (
   <div className="flex items-center justify-center h-screen">
@@ -195,7 +210,17 @@ const PageLoading = () => (
 
 const App = () => (
   <ErrorBoundary>
-      <QueryClientProvider client={queryClient}>
+      <PersistQueryClientProvider
+        client={queryClient}
+        persistOptions={{
+          persister,
+          maxAge: 1000 * 60 * 60 * 24, // 24h
+          // Só persiste queries marcadas com meta.persist = true (evita lotar localStorage)
+          dehydrateOptions: {
+            shouldDehydrateQuery: (q) => q.meta?.persist === true && q.state.status === "success",
+          },
+        }}
+      >
         <ThemeProvider>
           <AuthProvider>
             <SessionProvider>
@@ -211,7 +236,7 @@ const App = () => (
             </SessionProvider>
           </AuthProvider>
         </ThemeProvider>
-      </QueryClientProvider>
+      </PersistQueryClientProvider>
     </ErrorBoundary>
 );
 

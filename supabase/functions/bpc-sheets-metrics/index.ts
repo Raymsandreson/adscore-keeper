@@ -188,6 +188,17 @@ function inPeriod(iso: string, fromISO: string, toISO: string): boolean {
 }
 
 
+// TTL do snapshot no Externo. Dentro desse prazo, servimos direto do cache
+// (200-400ms). Fora, revalidamos síncrono mas ainda gravamos snapshot novo.
+const SNAPSHOT_TTL_MS = 5 * 60 * 1000; // 5min
+// Snapshot "stale mas servível" — se falhar de puxar do Sheets, devolve o velho
+// até 24h em vez de erro.
+const SNAPSHOT_STALE_MS = 24 * 60 * 60 * 1000;
+
+function cacheKeyOf(spreadsheetId: string, dateType: string, fromISO: string, toISO: string, instanceFilter: string): string {
+  return `${spreadsheetId}|${dateType}|${fromISO}|${toISO}|${instanceFilter}`;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -211,6 +222,34 @@ Deno.serve(async (req) => {
     const source = (url.searchParams.get("source") || "").toLowerCase().trim();
     const spreadsheetIdParam = (url.searchParams.get("spreadsheet_id") || "").trim();
     const spreadsheetId = spreadsheetIdParam || DEFAULT_SPREADSHEET_ID;
+    // force=1 bypassa o cache (usado por refetch manual)
+    const forceRefresh = url.searchParams.get("force") === "1";
+
+    // === CACHE LOOKUP (Externo) ===
+    const extUrl = Deno.env.get("EXTERNAL_SUPABASE_URL");
+    const extKey = Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY");
+    const extClient = (extUrl && extKey)
+      ? createClient(extUrl, extKey, { auth: { persistSession: false } })
+      : null;
+    const cacheKey = cacheKeyOf(spreadsheetId, dateType, fromISO, toISO, instanceFilter);
+
+    if (extClient && !forceRefresh) {
+      const { data: snap } = await extClient
+        .from("bpc_sheet_snapshots")
+        .select("payload, fetched_at")
+        .eq("cache_key", cacheKey)
+        .maybeSingle();
+      if (snap) {
+        const age = Date.now() - new Date(snap.fetched_at).getTime();
+        if (age < SNAPSHOT_TTL_MS) {
+          console.log(`[bpc-sheets-metrics] cache HIT (${Math.round(age/1000)}s) key=${cacheKey}`);
+          return new Response(
+            JSON.stringify({ ...snap.payload, _cache: "hit", _cache_age_ms: age }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
+        }
+      }
+    }
 
     const tabErrors: { tab: string; error: string }[] = [];
     const allRows: SheetRow[] = [];
@@ -267,32 +306,27 @@ Deno.serve(async (req) => {
     const firstByPhone = new Map<string, { direction: string; created_at: string }>();
     const lastByPhone = new Map<string, { created_at: string }>();
 
-    if (phones.length > 0) {
-      const extUrl = Deno.env.get("EXTERNAL_SUPABASE_URL");
-      const extKey = Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY");
-      if (extUrl && extKey) {
-        const ext = createClient(extUrl, extKey, { auth: { persistSession: false } });
-        const last8 = phones.map((p) => p.slice(-8)).filter((p) => p.length === 8);
-        if (last8.length > 0) {
-          const { data } = await ext
-            .from("whatsapp_messages")
-            .select("phone, direction, created_at")
-            .or(last8.map((p) => `phone.like.%${p}`).join(","))
-            .order("created_at", { ascending: true })
-            .limit(50000);
-          (data || []).forEach((r: any) => {
-            const np = normalizePhone(r.phone);
-            if (!np) return;
-            const key = np.slice(-8);
-            if (!firstByPhone.has(key)) {
-              firstByPhone.set(key, {
-                direction: String(r.direction || "").toLowerCase(),
-                created_at: r.created_at,
-              });
-            }
-            lastByPhone.set(key, { created_at: r.created_at }); // sobrescreve até a última
-          });
-        }
+    if (phones.length > 0 && extClient) {
+      const last8 = phones.map((p) => p.slice(-8)).filter((p) => p.length === 8);
+      if (last8.length > 0) {
+        const { data } = await extClient
+          .from("whatsapp_messages")
+          .select("phone, direction, created_at")
+          .or(last8.map((p) => `phone.like.%${p}`).join(","))
+          .order("created_at", { ascending: true })
+          .limit(50000);
+        (data || []).forEach((r: any) => {
+          const np = normalizePhone(r.phone);
+          if (!np) return;
+          const key = np.slice(-8);
+          if (!firstByPhone.has(key)) {
+            firstByPhone.set(key, {
+              direction: String(r.direction || "").toLowerCase(),
+              created_at: r.created_at,
+            });
+          }
+          lastByPhone.set(key, { created_at: r.created_at });
+        });
       }
     }
 
@@ -340,26 +374,77 @@ Deno.serve(async (req) => {
       };
     });
 
+    const responsePayload = {
+      success: true,
+      period: { from: fromISO, to: toISO, date_type: dateType },
+      instance_filter: instanceFilter || null,
+      source: source || null,
+      tabs_read: tabsReadNames,
+      debug_headers: debugHeaders,
+      tab_errors: tabErrors,
+      metrics: { total, unviable, toCallNow, alreadyOnWhatsApp },
+      byOperator,
+      leads: leads.sort((a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      ),
+      fetched_at: new Date().toISOString(),
+    };
+
+    // Grava snapshot no Externo (não bloqueia resposta em caso de erro)
+    if (extClient) {
+      extClient
+        .from("bpc_sheet_snapshots")
+        .upsert({
+          cache_key: cacheKey,
+          spreadsheet_id: spreadsheetId,
+          date_type: dateType,
+          from_iso: fromISO,
+          to_iso: toISO,
+          instance_filter: instanceFilter || null,
+          payload: responsePayload,
+          fetched_at: new Date().toISOString(),
+        }, { onConflict: "cache_key" })
+        .then(({ error }) => {
+          if (error) console.error("[bpc-sheets-metrics] snapshot upsert failed:", error.message);
+        });
+    }
+
     return new Response(
-      JSON.stringify({
-        success: true,
-        period: { from: fromISO, to: toISO, date_type: dateType },
-        instance_filter: instanceFilter || null,
-        source: source || null,
-        tabs_read: tabsReadNames,
-        debug_headers: debugHeaders,
-        tab_errors: tabErrors,
-        metrics: { total, unviable, toCallNow, alreadyOnWhatsApp },
-        byOperator,
-        leads: leads.sort((a, b) =>
-          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-        ),
-        fetched_at: new Date().toISOString(),
-      }),
+      JSON.stringify({ ...responsePayload, _cache: "miss" }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (e: any) {
     console.error("[bpc-sheets-metrics] error:", e);
+    // Tenta servir snapshot stale (até 24h) se o fetch fresh quebrou
+    try {
+      const extUrl = Deno.env.get("EXTERNAL_SUPABASE_URL");
+      const extKey = Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY");
+      if (extUrl && extKey) {
+        const ext = createClient(extUrl, extKey, { auth: { persistSession: false } });
+        const url = new URL(req.url);
+        const fromISO = url.searchParams.get("from") || "";
+        const toISO = url.searchParams.get("to") || "";
+        const instanceFilter = (url.searchParams.get("instance_name") || "").toLowerCase().trim();
+        const dateType = (url.searchParams.get("date_type") || "created").toLowerCase();
+        const spreadsheetId = (url.searchParams.get("spreadsheet_id") || "").trim() || DEFAULT_SPREADSHEET_ID;
+        const key = cacheKeyOf(spreadsheetId, dateType, fromISO, toISO, instanceFilter);
+        const { data: snap } = await ext
+          .from("bpc_sheet_snapshots")
+          .select("payload, fetched_at")
+          .eq("cache_key", key)
+          .maybeSingle();
+        if (snap) {
+          const age = Date.now() - new Date(snap.fetched_at).getTime();
+          if (age < SNAPSHOT_STALE_MS) {
+            console.log(`[bpc-sheets-metrics] serving STALE (${Math.round(age/1000)}s) after error`);
+            return new Response(
+              JSON.stringify({ ...snap.payload, _cache: "stale", _cache_age_ms: age, _error: e?.message }),
+              { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+            );
+          }
+        }
+      }
+    } catch (_) { /* ignore */ }
     return new Response(
       JSON.stringify({ success: false, error: e?.message || String(e) }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },

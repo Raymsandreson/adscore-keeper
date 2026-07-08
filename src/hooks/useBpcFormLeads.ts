@@ -142,10 +142,13 @@ export function useBpcFormLeads(opts: {
       }),
     // Cache generoso: mostra o valor antigo instantaneamente e revalida em background.
     staleTime: 60_000, // 1min "fresco" → mount subsequente não refaz fetch
-    gcTime: 30 * 60_000, // mantém no cache 30min mesmo sem consumidores
+    gcTime: 24 * 60 * 60_000, // 24h — precisa casar com o persister
     refetchInterval: enabled ? 60_000 : false,
     refetchOnWindowFocus: false,
     placeholderData: (prev) => prev, // segura o último valor durante refetch
+    // Persistir em localStorage → após F5 os leads aparecem instantaneamente
+    // com o snapshot da última sessão, enquanto o refetch roda em background.
+    meta: { persist: true },
   });
 
   const manualRefetch = useCallback(async () => {
