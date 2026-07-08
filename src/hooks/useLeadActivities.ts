@@ -112,6 +112,21 @@ export function useLeadActivities() {
         if (filtered.length === 1) query = query.eq('contact_id', filtered[0]);
         else if (filtered.length > 1) query = query.in('contact_id', filtered);
       }
+      if (filters?.workflow_id) {
+        const vals = Array.isArray(filters.workflow_id) ? filters.workflow_id : [filters.workflow_id];
+        const filtered = vals.filter(v => v !== 'all');
+        const hasNull = filtered.includes('__unassigned__');
+        const validIds = filtered.filter(v => v !== '__unassigned__');
+        if (hasNull && validIds.length > 0) {
+          query = query.or(`workflow_id.in.(${validIds.join(',')}),workflow_id.is.null`);
+        } else if (hasNull) {
+          query = query.is('workflow_id', null);
+        } else if (validIds.length === 1) {
+          query = query.eq('workflow_id', validIds[0]);
+        } else if (validIds.length > 1) {
+          query = query.in('workflow_id', validIds);
+        }
+      }
 
       const maxRows = filters?.limit ?? 500;
       query = query.limit(maxRows);
