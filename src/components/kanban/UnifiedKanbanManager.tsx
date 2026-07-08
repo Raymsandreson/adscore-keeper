@@ -199,6 +199,25 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
     sheetLabel: sheetVirtualLabel,
   } = useVirtualSheetLeadsForBoard(selectedBoard, boardLeads);
 
+  // Filtered virtual cards (apply acolhedor filter using the sheet's `operator` field).
+  const displayedVirtualCards = useMemo(() => {
+    if (!acolhedorFilter) return sheetVirtualCards;
+    return sheetVirtualCards.filter((c) => (c.operator || '') === acolhedorFilter);
+  }, [sheetVirtualCards, acolhedorFilter]);
+
+  // Union de acolhedores (kanban) + operadores (planilha) pro dropdown.
+  const acolhedorOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const l of boardLeads) {
+      const v = (l as any).acolhedor;
+      if (v) set.add(String(v));
+    }
+    for (const c of sheetVirtualCards) {
+      if (c.operator) set.add(c.operator);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [boardLeads, sheetVirtualCards]);
+
   // Filter leads by search query, checklist filter, and advanced filters
   const filteredLeads = useMemo(() => {
     let result = boardLeads;
