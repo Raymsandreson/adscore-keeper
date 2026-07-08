@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { db } from "@/integrations/supabase";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { RefreshCw, AlertCircle, ExternalLink } from "lucide-react";
 import { useKanbanBoards, type KanbanBoard } from "@/hooks/useKanbanBoards";
 import { Link } from "react-router-dom";
+import { useBpcFormLeads } from "@/hooks/useBpcFormLeads";
+import { getFunnelSheetConfig } from "@/lib/funnelSheetConfig";
 import {
   Tooltip,
   TooltipContent,
@@ -43,15 +45,37 @@ export default function GenericFunnelDashboard({ boardMatcher, title }: Props) {
   const [matchedBoard, setMatchedBoard] = useState<KanbanBoard | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [barsReady, setBarsReady] = useState(false);
+  const sheetCfg = useMemo(() => getFunnelSheetConfig(matchedBoard?.name), [matchedBoard?.name]);
+  const sheetRange = useMemo(
+    () => ({ from: new Date("2020-01-01T00:00:00Z"), to: new Date() }),
+    [reloadKey],
+  );
+  const { leads: sheetLeads, loading: sheetLoading } = useBpcFormLeads({
+    from: sheetRange.from,
+    to: sheetRange.to,
+    enabled: !!sheetCfg,
+    source: "unificada",
+    spreadsheetId: sheetCfg?.spreadsheetId,
+  });
+
+  const findDashboardBoard = (items: KanbanBoard[]) => {
+    const matches = items.filter((b) => b.board_type === "funnel" && boardMatcher.test(b.name));
+    return matches.find((b) => (b.stages || []).length > 0) || matches[0] || null;
+  };
 
   useEffect(() => {
     if (loadingBoards) return;
-    const board =
-      boards.find((b) => b.board_type === "funnel" && boardMatcher.test(b.name)) || null;
+    const board = findDashboardBoard(boards);
     setMatchedBoard(board);
     if (!board) {
       setLoading(false);
       setError("Funil não encontrado na base. Verifique o nome em Funis de Vendas.");
+      return;
+    }
+    const boardSheetCfg = getFunnelSheetConfig(board.name);
+    if (boardSheetCfg && sheetLoading && sheetLeads.length === 0) {
+      setLoading(true);
+      setError(null);
       return;
     }
 
@@ -62,6 +86,52 @@ export default function GenericFunnelDashboard({ boardMatcher, title }: Props) {
       setLoading(true);
       setError(null);
       try {
+        const stagesArr = board.stages || [];
+
+        if (boardSheetCfg) {
+          const firstStageId = stagesArr[0]?.id;
+          const sheetPhoneKeys = new Set(
+            sheetLeads
+              .map((lead) => (lead.phone_normalized || lead.phone_raw || "").replace(/\D/g, "").slice(-8))
+              .filter((key) => key.length === 8),
+          );
+          const byStage: Record<string, number> = {};
+          let closed = 0;
+          const PAGE = 1000;
+          for (let from = 0; ; from += PAGE) {
+            const { data, error } = await db
+              .from("leads")
+              .select("status, lead_phone, lead_status")
+              .eq("board_id", board.id)
+              .range(from, from + PAGE - 1);
+            if (error) throw error;
+            const rows = data || [];
+            for (const row of rows) {
+              const phoneKey = (row.lead_phone || "").replace(/\D/g, "").slice(-8);
+              if (!sheetPhoneKeys.has(phoneKey)) continue;
+              if (row.lead_status === "closed") closed++;
+              if (!row.status || row.status === firstStageId) continue;
+              byStage[row.status] = (byStage[row.status] || 0) + 1;
+            }
+            if (rows.length < PAGE) break;
+          }
+
+          if (firstStageId) byStage[firstStageId] = sheetLeads.length;
+          const perStage = stagesArr.map((s) => ({
+            id: s.id,
+            name: s.name,
+            color: s.color || "#6366f1",
+            count: byStage[s.id] || 0,
+          }));
+
+          if (cancelled) return;
+          setTotal(sheetLeads.length);
+          setClosedCount(closed);
+          setStages(perStage);
+          timeoutId = setTimeout(() => setBarsReady(true), 60);
+          return;
+        }
+
         // total per board (head+count avoids row download)
         const totalResp = await db
           .from("leads")
@@ -77,7 +147,6 @@ export default function GenericFunnelDashboard({ boardMatcher, title }: Props) {
         if (closedResp.error) throw closedResp.error;
 
         // counts per stage in parallel
-        const stagesArr = board.stages || [];
         const perStage = await Promise.all(
           stagesArr.map(async (s) => {
             const { count, error } = await db
@@ -112,7 +181,7 @@ export default function GenericFunnelDashboard({ boardMatcher, title }: Props) {
       cancelled = true;
       clearTimeout(timeoutId);
     };
-  }, [boards, loadingBoards, boardMatcher, reloadKey]);
+  }, [boards, loadingBoards, boardMatcher, reloadKey, sheetLeads, sheetLoading]);
 
   if (loadingBoards || loading) {
     return (
