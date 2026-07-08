@@ -158,6 +158,19 @@ function DetailRow({ label, value }: { label: string; value: string | null }) {
   );
 }
 
+function uniqueAcolhedorValue(operator?: string | null, tab?: string | null): string | null {
+  const values = [operator, tab].filter((v): v is string => !!v?.trim());
+  const seen = new Set<string>();
+  const unique: string[] = [];
+  for (const v of values) {
+    const key = v.trim().toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(v.trim());
+  }
+  return unique.join(" — ") || null;
+}
+
 interface DialogProps {
   lead: BpcFormLead | null;
   onClose: () => void;
