@@ -565,38 +565,44 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
       {/* Vínculos (Lead/Caso/Processo/Contato/Sistema) ficam APENAS no cabeçalho fixo da atividade
           para evitar duplicação visual. Só mostramos os botões de seleção aqui quando NADA está vinculado,
           como atalho inicial. */}
-      {!props.formLeadId && !props.formCaseId && !props.formProcessId && !props.formContactId && !props.formIsSystem && (
+      {!props.formLeadId && !props.formCaseId && !props.formProcessId && !props.formContactId && (
         <div className="flex flex-wrap items-center gap-1.5">
-          <Button type="button" variant="outline" size="sm" className="h-6 px-2 text-[10px] gap-1" onClick={() => setLinkLeadOpen(true)}>
-            <Building2 className="h-3 w-3" /> Lead
-          </Button>
-          <Button type="button" variant="outline" size="sm" className="h-6 px-2 text-[10px] gap-1" onClick={() => setLinkCaseOpen(true)}>
-            <Briefcase className="h-3 w-3" /> Caso
-          </Button>
-          <Button type="button" variant="outline" size="sm" className="h-6 px-2 text-[10px] gap-1" onClick={() => setLinkContactOpen(true)}>
-            <UserPlus className="h-3 w-3" /> Contato
-          </Button>
-          {props.setFormIsSystem && (
+          {!props.formIsSystem && (
             <>
-              <span className="text-muted-foreground text-xs">|</span>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-6 px-2 text-[10px] gap-1"
-                onClick={() => props.setFormIsSystem?.(true)}
-                title="Marcar como atividade interna do sistema"
-              >
-                <Settings2 className="h-3 w-3" /> Sistema
+              <Button type="button" variant="outline" size="sm" className="h-6 px-2 text-[10px] gap-1" onClick={() => setLinkLeadOpen(true)}>
+                <Building2 className="h-3 w-3" /> Lead
+              </Button>
+              <Button type="button" variant="outline" size="sm" className="h-6 px-2 text-[10px] gap-1" onClick={() => setLinkCaseOpen(true)}>
+                <Briefcase className="h-3 w-3" /> Caso
+              </Button>
+              <Button type="button" variant="outline" size="sm" className="h-6 px-2 text-[10px] gap-1" onClick={() => setLinkContactOpen(true)}>
+                <UserPlus className="h-3 w-3" /> Contato
               </Button>
             </>
           )}
-          <div className="flex items-start gap-1.5 px-2 py-1.5 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 w-full mt-1">
-            <Info className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-            <span className="text-[11px] text-amber-700 dark:text-amber-300">
-              Vincule esta atividade a um <strong>Lead</strong>, <strong>Caso</strong> ou marque como <strong>Sistema</strong>.
-            </span>
-          </div>
+          {props.setFormIsSystem && (
+            <>
+              {!props.formIsSystem && <span className="text-muted-foreground text-xs">|</span>}
+              <Button
+                type="button"
+                variant={props.formIsSystem ? 'default' : 'outline'}
+                size="sm"
+                className="h-6 px-2 text-[10px] gap-1"
+                onClick={() => props.setFormIsSystem?.(!props.formIsSystem)}
+                title={props.formIsSystem ? 'Desmarcar atividade do sistema' : 'Marcar como atividade interna do sistema'}
+              >
+                <Settings2 className="h-3 w-3" /> Sistema{props.formIsSystem ? ' ✓' : ''}
+              </Button>
+            </>
+          )}
+          {!props.formIsSystem && (
+            <div className="flex items-start gap-1.5 px-2 py-1.5 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 w-full mt-1">
+              <Info className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+              <span className="text-[11px] text-amber-700 dark:text-amber-300">
+                Vincule esta atividade a um <strong>Lead</strong>, <strong>Caso</strong> ou marque como <strong>Sistema</strong>.
+              </span>
+            </div>
+          )}
         </div>
       )}
 
