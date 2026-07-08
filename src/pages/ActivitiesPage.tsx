@@ -241,6 +241,7 @@ const ActivitiesPage = () => {
   const [filterLead, setFilterLead] = usePageState<string[]>('activities_filterLead', []);
   const [filterContact, setFilterContact] = usePageState<string[]>('activities_filterContact', []);
   const [filterCase, setFilterCase] = usePageState<string[]>('activities_filterCase', []);
+  const [filterWorkflow, setFilterWorkflow] = usePageState<string[]>('activities_filterWorkflow', []);
   const [filterHasDocs, setFilterHasDocs] = usePageState<boolean>('activities_filterHasDocs', false);
   const [activityIdsWithDocs, setActivityIdsWithDocs] = useState<Set<string>>(new Set());
   const [sheetMode, setSheetMode] = usePageState<'create' | 'edit' | null>('activities_sheetMode', null);
@@ -328,7 +329,7 @@ const ActivitiesPage = () => {
   const [contactSearch, setContactSearch] = useState('');
 
   // Activity counts for filter badges
-  const [allActivitiesRaw, setAllActivitiesRaw] = useState<{ lead_id: string | null; contact_id: string | null; assigned_to: string | null; activity_type: string; status: string }[]>([]);
+  const [allActivitiesRaw, setAllActivitiesRaw] = useState<{ lead_id: string | null; contact_id: string | null; assigned_to: string | null; activity_type: string; status: string; workflow_id: string | null }[]>([]);
   const [openFilterKey, setOpenFilterKey] = useState<string | null>(null);
   const [showAllTypes, setShowAllTypes] = useState(false);
 
@@ -410,6 +411,7 @@ const ActivitiesPage = () => {
     assigned_to: filterAssignee.length > 0 ? filterAssignee : 'all',
     lead_id: filterLead.length > 0 ? filterLead : 'all',
     contact_id: filterContact.length > 0 ? filterContact : 'all',
+    workflow_id: filterWorkflow.length > 0 ? filterWorkflow : 'all',
     // Sem isso, o teto padrão de 500 corta pendentes antigas quando "Todos" está ativo
     // (as mais recentes 500 enchem com concluídas e a lista perde pendentes).
     limit: 5000,
@@ -439,7 +441,7 @@ const ActivitiesPage = () => {
 
   useEffect(() => {
     fetchActivities(getFilterParams());
-  }, [fetchActivities, filterStatus, filterType, filterAssignee, filterLead, filterContact]);
+  }, [fetchActivities, filterStatus, filterType, filterAssignee, filterLead, filterContact, filterWorkflow]);
 
   useEffect(() => {
     if (viewMode === 'blocks') setOpenFilterKey(null);
@@ -503,7 +505,7 @@ const ActivitiesPage = () => {
   const countsLoadedRef = useRef(false);
   useEffect(() => {
     const loadCounts = async () => {
-      const { data } = await (externalSupabase as any).from('lead_activities').select('lead_id, contact_id, assigned_to, activity_type, status').limit(2000);
+      const { data } = await (externalSupabase as any).from('lead_activities').select('lead_id, contact_id, assigned_to, activity_type, status, workflow_id').limit(2000);
       setAllActivitiesRaw(data || []);
       countsLoadedRef.current = true;
     };
@@ -519,7 +521,7 @@ const ActivitiesPage = () => {
   
   // Refresh counts only after mutations (create/update/delete) - not on every fetch
   const refreshCounts = useCallback(async () => {
-    const { data } = await (externalSupabase as any).from('lead_activities').select('lead_id, contact_id, assigned_to, activity_type, status').limit(2000);
+    const { data } = await (externalSupabase as any).from('lead_activities').select('lead_id, contact_id, assigned_to, activity_type, status, workflow_id').limit(2000);
     setAllActivitiesRaw(data || []);
   }, []);
   
@@ -610,13 +612,21 @@ const ActivitiesPage = () => {
         filtered = filtered.filter(a => a.lead_id && filterLead.includes(a.lead_id));
       if (excludeField !== 'contact_id' && filterContact.length > 0)
         filtered = filtered.filter(a => a.contact_id && filterContact.includes(a.contact_id));
+      if (excludeField !== 'workflow_id' && filterWorkflow.length > 0) {
+        const hasUnassigned = filterWorkflow.includes('__unassigned__');
+        const validIds = filterWorkflow.filter(v => v !== '__unassigned__');
+        filtered = filtered.filter(a => {
+          if (hasUnassigned && !a.workflow_id) return true;
+          return validIds.length > 0 && a.workflow_id && validIds.includes(a.workflow_id);
+        });
+      }
       return filtered;
     };
-  }, [allActivitiesRaw, filterAssignee, filterType, filterStatus, filterLead, filterContact]);
+  }, [allActivitiesRaw, filterAssignee, filterType, filterStatus, filterLead, filterContact, filterWorkflow]);
 
   // Count helpers - contextual to other active filters
   const countByField = useMemo(() => {
-    const countFor = (fieldKey: 'lead_id' | 'contact_id' | 'assigned_to' | 'activity_type' | 'status', value: string) => {
+    const countFor = (fieldKey: 'lead_id' | 'contact_id' | 'assigned_to' | 'activity_type' | 'status' | 'workflow_id', value: string) => {
       const filtered = getFilteredRaw(fieldKey);
       const matching = filtered.filter(a => a[fieldKey] === value);
       return {
@@ -2502,6 +2512,62 @@ const ActivitiesPage = () => {
           </PopoverContent>
         </Popover>
 
+        {/* Fluxo de Trabalho */}
+        <Popover open={openFilterKey === 'workflow'} onOpenChange={o => setOpenFilterKey(o ? 'workflow' : null)}>
+          <PopoverTrigger asChild>
+            <Button variant={filterWorkflow.length > 0 ? "default" : "outline"} size="sm" className="h-7 text-xs shrink-0 gap-1">
+              <Layers className="h-3 w-3" />
+              {filterWorkflow.length === 0
+                ? 'Fluxo'
+                : filterWorkflow.length === 1
+                  ? (workflowOptions.find(w => w.id === filterWorkflow[0])?.name?.split(' ')[0] || '1')
+                  : `${filterWorkflow.length}`}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-[300px] p-0" align="start">
+            <Command>
+              <CommandInput placeholder="Buscar fluxo de trabalho..." />
+              <CommandList>
+                <CommandEmpty>Nenhum encontrado</CommandEmpty>
+                <CommandGroup>
+                  <CommandItem value="__clear_all_workflow" onSelect={() => setFilterWorkflow([])}>
+                    <Check className={cn("mr-2 h-3.5 w-3.5", filterWorkflow.length === 0 ? "opacity-100" : "opacity-0")} />
+                    Todos
+                  </CommandItem>
+                  <CommandItem value="__unassigned__" onSelect={() => toggleFilter(setFilterWorkflow, filterWorkflow, '__unassigned__')}>
+                    <Check className={cn("mr-2 h-3.5 w-3.5", filterWorkflow.includes('__unassigned__') ? "opacity-100" : "opacity-0")} />
+                    <span className="flex-1 truncate text-muted-foreground italic">Sem fluxo</span>
+                    <span className="ml-2 flex gap-1 text-[10px]">
+                      <Badge variant="outline" className="px-1 py-0 text-[10px]">
+                        {allActivitiesRaw.filter(a => !a.workflow_id && a.status !== 'concluida').length}⏳
+                      </Badge>
+                      <Badge variant="secondary" className="px-1 py-0 text-[10px]">
+                        {allActivitiesRaw.filter(a => !a.workflow_id && a.status === 'concluida').length}✓
+                      </Badge>
+                    </span>
+                  </CommandItem>
+                  {workflowOptions.map(w => {
+                    const c = countByField('workflow_id', w.id);
+                    const isSelected = filterWorkflow.includes(w.id);
+                    return (
+                      <CommandItem key={w.id} value={w.name} onSelect={() => toggleFilter(setFilterWorkflow, filterWorkflow, w.id)}>
+                        <Check className={cn("mr-2 h-3.5 w-3.5", isSelected ? "opacity-100" : "opacity-0")} />
+                        <span className="flex-1 truncate">{w.name}</span>
+                        {(c.open > 0 || c.done > 0) && (
+                          <span className="ml-2 flex gap-1 text-[10px]">
+                            <Badge variant="outline" className="px-1 py-0 text-[10px]">{c.open}⏳</Badge>
+                            <Badge variant="secondary" className="px-1 py-0 text-[10px]">{c.done}✓</Badge>
+                          </span>
+                        )}
+                      </CommandItem>
+                    );
+                  })}
+                </CommandGroup>
+              </CommandList>
+            </Command>
+          </PopoverContent>
+        </Popover>
+
         {/* Lead */}
         <Popover open={openFilterKey === 'lead'} onOpenChange={o => setOpenFilterKey(o ? 'lead' : null)}>
           <PopoverTrigger asChild>
@@ -2648,8 +2714,8 @@ const ActivitiesPage = () => {
           Com documentação
         </Button>
 
-        {(filterStatus.length > 0 || filterType.length > 0 || filterAssignee.length > 0 || filterLead.length > 0 || filterContact.length > 0 || filterCase.length > 0 || selectedCalDays.length > 0 || filterHasDocs) && (
-          <Button variant="ghost" size="sm" className="h-7 text-xs text-destructive shrink-0" onClick={() => { setFilterStatus([]); setFilterType([]); setFilterAssignee([]); setFilterLead([]); setFilterContact([]); setFilterCase([]); setSelectedCalDays([]); setFilterHasDocs(false); }}>
+        {(filterStatus.length > 0 || filterType.length > 0 || filterAssignee.length > 0 || filterLead.length > 0 || filterContact.length > 0 || filterCase.length > 0 || filterWorkflow.length > 0 || selectedCalDays.length > 0 || filterHasDocs) && (
+          <Button variant="ghost" size="sm" className="h-7 text-xs text-destructive shrink-0" onClick={() => { setFilterStatus([]); setFilterType([]); setFilterAssignee([]); setFilterLead([]); setFilterContact([]); setFilterCase([]); setFilterWorkflow([]); setSelectedCalDays([]); setFilterHasDocs(false); }}>
             <X className="h-3 w-3 mr-1" /> Limpar
           </Button>
         )}
