@@ -805,7 +805,7 @@ const ActivitiesPage = () => {
       toast.error('Informe a data de notificação');
       return;
     }
-    if (!formWorkflowId) {
+    if (!formWorkflowId && !formIsSystem) {
       toast.error('Selecione um fluxo de trabalho para continuar');
       return;
     }
