@@ -322,6 +322,8 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
                 formContactId={formContactId} formContactName={formContactName}
                 formCaseId={formCaseId} formCaseTitle={formCaseTitle}
                 formProcessId={formProcessId} formProcessTitle={formProcessTitle}
+                formWorkflowId={formWorkflowId} setFormWorkflowId={setFormWorkflowId}
+                workflowOptions={workflowOptions}
                 formClientNameOverride={formClientNameOverride}
                 setFormClientNameOverride={setFormClientNameOverride}
                 formIsSystem={formIsSystem} setFormIsSystem={setFormIsSystem}
