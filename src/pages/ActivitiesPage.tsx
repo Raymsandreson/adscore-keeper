@@ -241,6 +241,7 @@ const ActivitiesPage = () => {
   const [filterLead, setFilterLead] = usePageState<string[]>('activities_filterLead', []);
   const [filterContact, setFilterContact] = usePageState<string[]>('activities_filterContact', []);
   const [filterCase, setFilterCase] = usePageState<string[]>('activities_filterCase', []);
+  const [filterWorkflow, setFilterWorkflow] = usePageState<string[]>('activities_filterWorkflow', []);
   const [filterHasDocs, setFilterHasDocs] = usePageState<boolean>('activities_filterHasDocs', false);
   const [activityIdsWithDocs, setActivityIdsWithDocs] = useState<Set<string>>(new Set());
   const [sheetMode, setSheetMode] = usePageState<'create' | 'edit' | null>('activities_sheetMode', null);
