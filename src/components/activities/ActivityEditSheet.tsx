@@ -20,13 +20,15 @@ function copyField(text: string | null | undefined) {
 }
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Save, Loader2, ChevronDown, CheckCircle2, Trash2, ExternalLink } from 'lucide-react';
+import { Save, Loader2, ChevronDown, CheckCircle2, Trash2, ExternalLink, X, Search } from 'lucide-react';
 import { useActivityTypes } from '@/hooks/useActivityTypes';
 import { useProfilesList } from '@/hooks/useProfilesList';
 import { cn } from '@/lib/utils';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { RichTextEditor } from '@/components/ui/RichTextEditor';
 import { ActivityNotesField } from '@/components/activities/ActivityNotesField';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 
 interface ActivityEditSheetProps {
   open: boolean;
