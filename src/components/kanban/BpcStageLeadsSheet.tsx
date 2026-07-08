@@ -244,15 +244,24 @@ export function BpcStageLeadsSheet({
             <div className="space-y-2 pb-6">
               {filtered.map((l) => {
                 const phoneDigits = (l.lead_phone || "").replace(/\D/g, "");
+                const isSheet = l.source === "sheet";
                 return (
                   <div
-                    key={l.id}
+                    key={l.key}
                     className="border rounded-lg p-3 hover:bg-muted/40 transition-colors"
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0 flex-1">
-                        <div className="font-medium text-sm truncate">
-                          {l.lead_name || "Sem nome"}
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="font-medium text-sm truncate">
+                            {l.lead_name || "Sem nome"}
+                          </div>
+                          {isSheet && (
+                            <Badge variant="secondary" className="text-[10px] gap-1 shrink-0">
+                              <SheetIcon className="h-2.5 w-2.5" />
+                              da planilha
+                            </Badge>
+                          )}
                         </div>
                         <div className="text-xs text-muted-foreground flex items-center gap-1.5 mt-0.5">
                           <Phone className="h-3 w-3" />
@@ -261,19 +270,26 @@ export function BpcStageLeadsSheet({
                         <div className="text-[11px] text-muted-foreground mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
                           {l.acolhedor && <span>👤 {l.acolhedor}</span>}
                           {(l.city || l.state) && <span>📍 {[l.city, l.state].filter(Boolean).join("/")}</span>}
-                          <span>{dateField === "created_at" ? "Cadastro" : "Atualizado"}: {fmtDateBR(l[dateField])}</span>
+                          {isSheet && l.sheet_ad && <span>📢 {l.sheet_ad}</span>}
+                          {isSheet && l.sheet_status && <span>🏷️ {l.sheet_status}</span>}
+                          <span>
+                            {dateField === "created_at" ? "Cadastro" : "Atualizado"}:{" "}
+                            {fmtDateBR(isSheet ? l.created_at : l[dateField])}
+                          </span>
                         </div>
                       </div>
                       <div className="flex flex-col gap-1 shrink-0">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-7 px-2 text-xs"
-                          onClick={() => navigate(`/leads?board=${boardId}&lead=${l.id}`)}
-                        >
-                          <ExternalLink className="h-3 w-3 mr-1" />
-                          Abrir
-                        </Button>
+                        {!isSheet && l.id && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 px-2 text-xs"
+                            onClick={() => navigate(`/leads?board=${boardId}&lead=${l.id}`)}
+                          >
+                            <ExternalLink className="h-3 w-3 mr-1" />
+                            Abrir
+                          </Button>
+                        )}
                         {phoneDigits && (
                           <Button
                             size="sm"
