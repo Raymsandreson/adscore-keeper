@@ -63,6 +63,8 @@ interface ActivityFormCompactProps {
   formContactId: string; formContactName: string;
   formCaseId: string; formCaseTitle: string;
   formProcessId: string; formProcessTitle: string;
+  formWorkflowId: string; setFormWorkflowId: (v: string) => void;
+  workflowOptions: { id: string; name: string }[];
   formClientNameOverride?: string;
   setFormClientNameOverride?: (v: string) => void;
   formIsSystem?: boolean; setFormIsSystem?: (v: boolean) => void;
@@ -658,6 +660,33 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
               ))}
             </SelectContent>
           </Select>
+        </div>
+        <div className="col-span-full">
+          <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Fluxo de Trabalho *</span>
+          <Select value={props.formWorkflowId || undefined} onValueChange={props.setFormWorkflowId}>
+            <SelectTrigger
+              className={cn(
+                "h-8 text-xs mt-0.5",
+                !props.formWorkflowId && "border-destructive/60 ring-1 ring-destructive/20"
+              )}
+            >
+              <SelectValue placeholder="Selecione um fluxo de trabalho" />
+            </SelectTrigger>
+            <SelectContent>
+              {props.workflowOptions.length === 0 ? (
+                <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                  Nenhum fluxo cadastrado
+                </div>
+              ) : (
+                props.workflowOptions.map(w => (
+                  <SelectItem key={w.id} value={w.id} className="text-xs">{w.name}</SelectItem>
+                ))
+              )}
+            </SelectContent>
+          </Select>
+          {!props.formWorkflowId && (
+            <p className="text-[10px] text-destructive mt-0.5">Selecione um fluxo de trabalho para continuar</p>
+          )}
         </div>
         <div>
           <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Situação</span>

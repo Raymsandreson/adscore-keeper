@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { Save, Loader2, CheckCircle2, Trash2, ExternalLink, X } from 'lucide-react';
 import { ActivityFormCompact } from '@/components/activities/ActivityFormCompact';
 import { useActivityTypes } from '@/hooks/useActivityTypes';
+import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { useProfilesList } from '@/hooks/useProfilesList';
 import { useActivityFieldSettings } from '@/hooks/useActivityFieldSettings';
 import { useActivityStepContext } from '@/hooks/useActivityStepContext';
@@ -60,6 +61,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
   const [formCaseTitle, setFormCaseTitle] = useState('');
   const [formProcessId, setFormProcessId] = useState('');
   const [formProcessTitle, setFormProcessTitle] = useState('');
+  const [formWorkflowId, setFormWorkflowId] = useState('');
   const [formIsSystem, setFormIsSystem] = useState(false);
   const [formRepeatWeekDays, setFormRepeatWeekDays] = useState<number[]>([]);
   const [formWhatWasDone, setFormWhatWasDone] = useState('');
@@ -79,6 +81,8 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
   const [caseSearch, setCaseSearch] = useState('');
 
   const { types: activityTypes } = useActivityTypes();
+  const { boards: allBoards } = useKanbanBoards();
+  const workflowOptions = allBoards.filter(b => b.board_type === 'workflow').map(b => ({ id: b.id, name: b.name }));
   const profiles = useProfilesList();
   const { fields: fieldSettings, updateField: updateFieldSetting, reorderFields } = useActivityFieldSettings();
   const { updateActivity, completeActivity, deleteActivity } = useLeadActivities();
@@ -144,6 +148,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     setFormCaseTitle(act.case_title || '');
     setFormProcessId(act.process_id || '');
     setFormProcessTitle(act.process_title || '');
+    setFormWorkflowId((act as any).workflow_id || '');
     setFormIsSystem(!!act.is_system);
     setFormWhatWasDone(act.what_was_done || '');
     setFormCurrentStatus(act.current_status_notes || '');
@@ -232,6 +237,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     case_title: formCaseTitle || null,
     process_id: formProcessId || null,
     process_title: formProcessTitle || null,
+    workflow_id: formWorkflowId || null,
     matrix_quadrant: formMatrixQuadrant || null,
     client_name_override: formClientNameOverride || null,
   });
@@ -316,6 +322,8 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
                 formContactId={formContactId} formContactName={formContactName}
                 formCaseId={formCaseId} formCaseTitle={formCaseTitle}
                 formProcessId={formProcessId} formProcessTitle={formProcessTitle}
+                formWorkflowId={formWorkflowId} setFormWorkflowId={setFormWorkflowId}
+                workflowOptions={workflowOptions}
                 formClientNameOverride={formClientNameOverride}
                 setFormClientNameOverride={setFormClientNameOverride}
                 formIsSystem={formIsSystem} setFormIsSystem={setFormIsSystem}
