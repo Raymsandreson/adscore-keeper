@@ -708,48 +708,6 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
         availableAcolhedores={filterOptions.acolhedores}
       />
 
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <Card>
-          <CardContent className="pt-4">
-            <div className="text-2xl font-bold">
-              {hasActiveFilters ? <>{stats.filtered.total} <span className="text-sm font-normal text-muted-foreground">/ {stats.board.total}</span></> : stats.board.total}
-            </div>
-            <p className="text-xs text-muted-foreground">Total de Leads</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4">
-            <div className="text-2xl font-bold text-muted-foreground">
-              {hasActiveFilters ? <>{stats.filtered.inbox} <span className="text-sm font-normal text-muted-foreground">/ {stats.board.inbox}</span></> : stats.board.inbox}
-            </div>
-            <p className="text-xs text-muted-foreground">Caixa de Entrada</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4">
-            <div className="text-2xl font-bold text-primary">
-              {hasActiveFilters ? <>{stats.filtered.funnel} <span className="text-sm font-normal text-muted-foreground">/ {stats.board.funnel}</span></> : stats.board.funnel}
-            </div>
-            <p className="text-xs text-muted-foreground">Em Andamento</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4">
-            <div className="text-2xl font-bold text-green-500">
-              {hasActiveFilters ? <>{stats.filtered.closed} <span className="text-sm font-normal text-muted-foreground">/ {stats.board.closed}</span></> : stats.board.closed}
-            </div>
-            <p className="text-xs text-muted-foreground">Fechados</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4">
-            <div className="text-2xl font-bold text-amber-500">
-              {hasActiveFilters ? <>{stats.filtered.conversionRate}% <span className="text-sm font-normal text-muted-foreground">/ {stats.board.conversionRate}%</span></> : <>{stats.board.conversionRate}%</>}
-            </div>
-            <p className="text-xs text-muted-foreground">Taxa de Conversão</p>
-          </CardContent>
-        </Card>
-      </div>
 
 
       {/* Analytics: Funnel Chart and Stage Time Metrics - Collapsible */}
