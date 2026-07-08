@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { Save, Loader2, CheckCircle2, Trash2, ExternalLink, X } from 'lucide-react';
 import { ActivityFormCompact } from '@/components/activities/ActivityFormCompact';
 import { useActivityTypes } from '@/hooks/useActivityTypes';
+import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { useProfilesList } from '@/hooks/useProfilesList';
 import { useActivityFieldSettings } from '@/hooks/useActivityFieldSettings';
 import { useActivityStepContext } from '@/hooks/useActivityStepContext';

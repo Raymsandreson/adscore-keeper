@@ -57,6 +57,7 @@ import { ActivityCreatedDialog, randomChurchillQuote } from '@/components/activi
 import { TrafficActivityPanel } from '@/components/traffic/TrafficActivityPanel';
 import { useTimeBlockSettings } from '@/hooks/useTimeBlockSettings';
 import { useActivityTypes } from '@/hooks/useActivityTypes';
+import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu';
 import { cn } from '@/lib/utils';
@@ -309,6 +310,7 @@ const ActivitiesPage = () => {
   const [formCaseTitle, setFormCaseTitle] = useState('');
   const [formProcessId, setFormProcessId] = useState('');
   const [formProcessTitle, setFormProcessTitle] = useState('');
+  const [formWorkflowId, setFormWorkflowId] = useState('');
   const [formIsSystem, setFormIsSystem] = useState(false);
   const [availableCases, setAvailableCases] = useState<{id: string; case_number: string; title: string; lead_id: string | null}[]>([]);
   const [caseSearch, setCaseSearch] = useState('');
@@ -373,6 +375,11 @@ const ActivitiesPage = () => {
   const blocksViewUserId = viewMode === 'blocks' && filterAssignee.length === 1 ? filterAssignee[0] : undefined;
   const { configs: blocksViewSettings } = useTimeBlockSettings(blocksViewUserId || user?.id || undefined);
   const { types: dbActivityTypes } = useActivityTypes();
+  const { boards: allBoards } = useKanbanBoards();
+  const workflowOptions = useMemo(
+    () => allBoards.filter(b => b.board_type === 'workflow').map(b => ({ id: b.id, name: b.name })),
+    [allBoards]
+  );
   const [timeBlockSettingsOpen, setTimeBlockSettingsOpen] = useState(false);
   const [selectedBlockKey, setSelectedBlockKey] = useState<string | null>(null);
   const [blockSearchText, setBlockSearchText] = useState('');
@@ -437,6 +444,15 @@ const ActivitiesPage = () => {
   useEffect(() => {
     if (viewMode === 'blocks') setOpenFilterKey(null);
   }, [viewMode]);
+
+  // Prefill workflow from linked process (user can still change)
+  useEffect(() => {
+    if (!formProcessId) return;
+    const proc = caseProcesses.find(p => p.id === formProcessId);
+    if (proc?.workflow_id && !formWorkflowId) {
+      setFormWorkflowId(proc.workflow_id);
+    }
+  }, [formProcessId, caseProcesses, formWorkflowId]);
 
   // Busca IDs de atividades marcadas manualmente como "Com documentação" (marker)
   useEffect(() => {
@@ -641,6 +657,7 @@ const ActivitiesPage = () => {
     setCaseSearch('');
     setFormProcessId('');
     setFormProcessTitle('');
+    setFormWorkflowId('');
     setLeadCases([]);
     setCaseProcesses([]);
     setFormMatrixQuadrant('');
@@ -788,6 +805,10 @@ const ActivitiesPage = () => {
       toast.error('Informe a data de notificação');
       return;
     }
+    if (!formWorkflowId) {
+      toast.error('Selecione um fluxo de trabalho para continuar');
+      return;
+    }
 
     if (!titleToUse && hasContentForAI) {
       const aiLoadingId = toast.loading('Gerando assunto com IA...');
@@ -823,6 +844,7 @@ const ActivitiesPage = () => {
       case_title: formCaseTitle || null,
       process_id: formProcessId || null,
       process_title: formProcessTitle || null,
+      workflow_id: formWorkflowId || null,
       is_system: formIsSystem,
       client_name_override: formClientNameOverride || null,
     };
@@ -1446,6 +1468,7 @@ const ActivitiesPage = () => {
     setFormCaseTitle('');
     setFormProcessId('');
     setFormProcessTitle('');
+    setFormWorkflowId('');
     setCaseProcesses([]);
     // Load cases for this lead
     externalSupabase.from('legal_cases').select('id, case_number, title').eq('lead_id', leadId).then(({ data }) => {
@@ -1514,6 +1537,7 @@ const ActivitiesPage = () => {
     setFormCaseTitle('');
     setFormProcessId('');
     setFormProcessTitle('');
+    setFormWorkflowId('');
     setLeadCases([]);
     setCaseProcesses([]);
     // Load all contacts
@@ -1991,6 +2015,8 @@ const ActivitiesPage = () => {
       formContactId={formContactId} formContactName={formContactName}
       formCaseId={formCaseId} formCaseTitle={formCaseTitle}
       formProcessId={formProcessId} formProcessTitle={formProcessTitle}
+      formWorkflowId={formWorkflowId} setFormWorkflowId={setFormWorkflowId}
+      workflowOptions={workflowOptions}
       formClientNameOverride={formClientNameOverride}
       setFormClientNameOverride={setFormClientNameOverride}
       formIsSystem={formIsSystem} setFormIsSystem={setFormIsSystem}

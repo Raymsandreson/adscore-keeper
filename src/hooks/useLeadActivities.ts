@@ -43,6 +43,7 @@ export interface LeadActivity {
   process_title: string | null;
   is_system: boolean | null;
   client_name_override?: string | null;
+  workflow_id?: string | null;
 }
 
 export function useLeadActivities() {
@@ -173,6 +174,7 @@ export function useLeadActivities() {
           process_title: activity.process_title || null,
           is_system: activity.is_system ?? false,
           client_name_override: activity.client_name_override || null,
+          workflow_id: activity.workflow_id || null,
         } as any)
         .select()
         .single();
