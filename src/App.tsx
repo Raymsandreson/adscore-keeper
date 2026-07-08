@@ -187,6 +187,20 @@ const LeadsMapPage = lazyRetry(() => import("./pages/LeadsMapPage"), "LeadsMapPa
 
 const queryClient = new QueryClient();
 
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      gcTime: 1000 * 60 * 60 * 24, // 24h — obrigatório pro persister manter dados
+    },
+  },
+});
+
+const persister = createSyncStoragePersister({
+  storage: typeof window !== "undefined" ? window.localStorage : undefined,
+  key: "adscore-rq-cache",
+  throttleTime: 1000,
+});
+
 const PageLoading = () => (
   <div className="flex items-center justify-center h-screen">
     <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />
@@ -197,7 +211,17 @@ const PageLoading = () => (
 
 const App = () => (
   <ErrorBoundary>
-      <QueryClientProvider client={queryClient}>
+      <PersistQueryClientProvider
+        client={queryClient}
+        persistOptions={{
+          persister,
+          maxAge: 1000 * 60 * 60 * 24, // 24h
+          // Só persiste queries marcadas com meta.persist = true (evita lotar localStorage)
+          dehydrateOptions: {
+            shouldDehydrateQuery: (q) => q.meta?.persist === true && q.state.status === "success",
+          },
+        }}
+      >
         <ThemeProvider>
           <AuthProvider>
             <SessionProvider>
@@ -213,7 +237,7 @@ const App = () => (
             </SessionProvider>
           </AuthProvider>
         </ThemeProvider>
-      </QueryClientProvider>
+      </PersistQueryClientProvider>
     </ErrorBoundary>
 );
 
