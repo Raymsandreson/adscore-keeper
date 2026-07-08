@@ -4423,6 +4423,16 @@ const ActivitiesPage = () => {
         responseTimeMinutes={null}
       />
 
+      <AssessorSummaryShareDialog
+        open={shareSummaryOpen}
+        onOpenChange={setShareSummaryOpen}
+        activities={displayedActivities}
+        teamMembers={teamMembers}
+        filterAssignee={filterAssignee}
+        selectedCalDays={selectedCalDays}
+        allKnownActivityTypes={allKnownActivityTypes}
+      />
+
       {/* Busca de grupos do contato (mesmo dialog usado dentro do Lead) */}
       {formLeadId && (
         <LeadGroupSearchDialog
