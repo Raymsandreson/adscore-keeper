@@ -612,9 +612,17 @@ const ActivitiesPage = () => {
         filtered = filtered.filter(a => a.lead_id && filterLead.includes(a.lead_id));
       if (excludeField !== 'contact_id' && filterContact.length > 0)
         filtered = filtered.filter(a => a.contact_id && filterContact.includes(a.contact_id));
+      if (excludeField !== 'workflow_id' && filterWorkflow.length > 0) {
+        const hasUnassigned = filterWorkflow.includes('__unassigned__');
+        const validIds = filterWorkflow.filter(v => v !== '__unassigned__');
+        filtered = filtered.filter(a => {
+          if (hasUnassigned && !a.workflow_id) return true;
+          return validIds.length > 0 && a.workflow_id && validIds.includes(a.workflow_id);
+        });
+      }
       return filtered;
     };
-  }, [allActivitiesRaw, filterAssignee, filterType, filterStatus, filterLead, filterContact]);
+  }, [allActivitiesRaw, filterAssignee, filterType, filterStatus, filterLead, filterContact, filterWorkflow]);
 
   // Count helpers - contextual to other active filters
   const countByField = useMemo(() => {
