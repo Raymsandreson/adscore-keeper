@@ -773,6 +773,9 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
           }}
           onEditLead={(lead) => setEditingLeadId(lead.id)}
           availableBoards={boards}
+          virtualCards={sheetVirtualCards}
+          virtualStageId={sheetVirtualStageId}
+          virtualSheetLabel={sheetVirtualLabel}
           onChangeLeadStatus={async (leadId, newStatus) => {
             try {
               // Get current lead data for history
