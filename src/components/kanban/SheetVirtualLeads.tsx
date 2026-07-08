@@ -134,10 +134,6 @@ export function SheetVirtualLeadCard({ lead, onOpen }: SheetLeadCardProps) {
         </div>
         <div className="text-[10px] text-muted-foreground flex flex-wrap gap-x-2 gap-y-0.5">
           {lead.operator && <span>👤 {lead.operator}</span>}
-          {lead.ad_name && (
-            <span className="truncate max-w-[160px]">📢 {lead.ad_name}</span>
-          )}
-          {lead.lead_status && <span>🏷️ {lead.lead_status}</span>}
         </div>
         <div className="text-[10px] text-muted-foreground">
           Cadastro: {fmtDateBR(lead.created_at)}
