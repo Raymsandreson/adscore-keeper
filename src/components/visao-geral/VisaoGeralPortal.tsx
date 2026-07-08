@@ -288,10 +288,12 @@ function DetailedFunnelPanel({ boardMatcher }: { boardMatcher: RegExp }) {
   const [showBuilder, setShowBuilder] = useState(false);
 
   const board = useMemo(
-    () =>
-      boards.find(
+    () => {
+      const matches = boards.filter(
         (b) => b.board_type === "funnel" && boardMatcher.test(b.name),
-      ) || null,
+      );
+      return matches.find((b) => (b.stages || []).length > 0) || matches[0] || null;
+    },
     [boards, boardMatcher],
   );
 
