@@ -39,6 +39,8 @@ import { db } from '@/integrations/supabase';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { toast } from 'sonner';
 import { useAuthContext } from '@/contexts/AuthContext';
+import { getMyAllowedInstanceIds } from '@/integrations/supabase/permissions';
+import { useUserRole } from '@/hooks/useUserRole';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { logGroupAudit } from '@/lib/groupAuditLog';
@@ -131,7 +133,8 @@ function parseParticipants(raw: Array<Record<string, unknown>>) {
 }
 
 export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia, onSendLocation, onDeleteMessage, onLinkToLead, onLinkToContact, onCreateLead, onCreateContact, onCreateCase, extractingData, extractionStep, onCreateActivity, onNavigateToLead, onViewContact, onPrivacyChanged, shareInfo, onUpdateWithAI, onOpenChat, onClearConversation, onLoadOlderMessages }: Props) {
-  const { profile } = useAuthContext();
+  const { profile, user } = useAuthContext();
+  const { isAdmin } = useUserRole();
   const { boards: kanbanBoards } = useKanbanBoards();
   const [newMessage, setNewMessage] = useState('');
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
@@ -182,6 +185,42 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const [creatingDriveLead, setCreatingDriveLead] = useState(false);
   // Marca local de mensagens salvas no Drive nesta sessão (id -> link)
   const [driveSavedById, setDriveSavedById] = useState<Record<string, { link?: string; name?: string }>>({});
+
+  // Instância remetente (override manual). Se null, usa conversation.instance_name.
+  const [availableInstances, setAvailableInstances] = useState<{ id: string; instance_name: string }[]>([]);
+  const [sendInstanceOverride, setSendInstanceOverride] = useState<string | null>(null);
+  const effectiveInstanceName = sendInstanceOverride || conversation.instance_name;
+
+  // Reset override quando trocar de conversa.
+  useEffect(() => {
+    setSendInstanceOverride(null);
+  }, [conversation.phone, conversation.instance_name]);
+
+  // Lista instâncias ativas permitidas ao usuário para envio.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!user?.id) return;
+      try {
+        let query = externalSupabase
+          .from('whatsapp_instances')
+          .select('id, instance_name')
+          .eq('is_active', true)
+          .order('instance_name');
+        if (!isAdmin) {
+          const allowedIds = await getMyAllowedInstanceIds(user.id);
+          if (allowedIds.length === 0) { if (!cancelled) setAvailableInstances([]); return; }
+          query = query.in('id', allowedIds);
+        }
+        const { data } = await query;
+        if (cancelled) return;
+        setAvailableInstances(((data || []) as any[]).map(r => ({ id: r.id, instance_name: r.instance_name })));
+      } catch {
+        if (!cancelled) setAvailableInstances([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [user?.id, isAdmin]);
 
   const runDriveUpload = async (msg: any, leadId: string, leadNameInput?: string, opts?: { silent?: boolean }) => {
     const silent = !!opts?.silent;
@@ -2059,7 +2098,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         outgoingMessage,
         conversation.contact_id || undefined,
         conversation.lead_id || undefined,
-        conversation.instance_name,
+        effectiveInstanceName,
         identifySender,
         conversationChatId,
         nameFormat === 'nickname' ? null : (treatmentTitle || null),
@@ -2128,7 +2167,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
       await onSendMedia(
         conversation.phone, publicUrl, pastedImage.file.type, pastedCaption || undefined, `screenshot.${ext}`,
         conversation.contact_id || undefined, conversation.lead_id || undefined,
-        conversation.instance_name, conversationChatId
+        effectiveInstanceName, conversationChatId
       );
       handleCancelPastedImage();
       setNewMessage('');
@@ -2166,7 +2205,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
       await onSendMedia(
         conversation.phone, publicUrl, file.type, '', file.name,
         conversation.contact_id || undefined, conversation.lead_id || undefined,
-        conversation.instance_name, conversationChatId
+        effectiveInstanceName, conversationChatId
       );
     } catch (err: any) {
       toast.error('Erro ao enviar mídia: ' + err.message);
@@ -2212,7 +2251,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
           await onSendMedia(
             conversation.phone, publicUrl, outMime, undefined, undefined,
             conversation.contact_id || undefined, conversation.lead_id || undefined,
-            conversation.instance_name, conversationChatId
+            effectiveInstanceName, conversationChatId
           );
         } catch (err: any) {
           toast.error('Erro ao enviar áudio: ' + err.message);
@@ -2692,7 +2731,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                       recipientPhone || conversation.phone, msg,
                       conversation.contact_id || undefined,
                       conversation.lead_id || undefined,
-                      conversation.instance_name,
+                      effectiveInstanceName,
                       identifySender,
                       conversationChatId,
                       nameFormat === 'nickname' ? null : (treatmentTitle || null),
@@ -4071,6 +4110,30 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                 />
               )}
             </>
+          )}
+          {inputMode === 'message' && availableInstances.length > 0 && !shareInfo && (
+            <Select
+              value={effectiveInstanceName || '__default__'}
+              onValueChange={(v) => setSendInstanceOverride(v === '__default__' ? null : v)}
+            >
+              <SelectTrigger className="h-7 w-[140px] text-xs" title="Instância remetente">
+                <SelectValue placeholder="Instância" />
+              </SelectTrigger>
+              <SelectContent>
+                {conversation.instance_name && (
+                  <SelectItem value={conversation.instance_name} className="text-xs">
+                    {conversation.instance_name} (do grupo)
+                  </SelectItem>
+                )}
+                {availableInstances
+                  .filter(i => i.instance_name.toLowerCase() !== (conversation.instance_name || '').toLowerCase())
+                  .map(i => (
+                    <SelectItem key={i.id} value={i.instance_name} className="text-xs">
+                      {i.instance_name}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
           )}
         </div>
         {/* Pasted image preview */}
