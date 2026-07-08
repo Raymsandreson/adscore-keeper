@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Loader2, Search, Phone, MessageCircle, ExternalLink } from "lucide-react";
+import { Loader2, Search, Phone, MessageCircle, ExternalLink, Sheet as SheetIcon } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import { db as supabase } from "@/integrations/supabase";
@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { leadMatchesFilter, type BpcFilterResult } from "@/lib/bpcPhoneMatch";
+import type { BpcFormLead } from "@/hooks/useBpcFormLeads";
 
 interface Props {
   open: boolean;
@@ -24,6 +25,10 @@ interface Props {
   /** Filtro de acolhedor já calculado pela página pai. Quando phoneKeys é null, sem filtro. */
   bpcFilter: Pick<BpcFilterResult, "phoneKeys">;
   filterPending: boolean;
+  /** Leads da planilha (Meta Lead Ads). Usados para a primeira etapa (Recepção). */
+  sheetLeads?: BpcFormLead[];
+  /** True quando a etapa selecionada é a primeira do board (inbox). */
+  isInboxStage?: boolean;
 }
 
 function fmtPhone(p?: string | null) {
