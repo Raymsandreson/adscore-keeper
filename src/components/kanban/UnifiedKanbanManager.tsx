@@ -49,6 +49,7 @@ import { useChecklists } from '@/hooks/useChecklists';
 import { useConversionAlerts } from '@/hooks/useConversionAlerts';
 import { KanbanBoardSelector } from '@/components/kanban/KanbanBoardSelector';
 import { DynamicKanbanBoard } from '@/components/kanban/DynamicKanbanBoard';
+import { useVirtualSheetLeadsForBoard } from '@/components/kanban/SheetVirtualLeads';
 import { ImportInstagramProspects } from '@/components/kanban/ImportInstagramProspects';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { StageTimeMetrics } from '@/components/kanban/StageTimeMetrics';
@@ -190,6 +191,13 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
     if (!selectedBoardId) return allLeads;
     return allLeads.filter(lead => lead.board_id === selectedBoardId);
   }, [allLeads, selectedBoardId]);
+
+  // Cards virtuais da planilha (Meta Ads) — só para boards com sheet conectada.
+  const {
+    virtualCards: sheetVirtualCards,
+    firstStageId: sheetVirtualStageId,
+    sheetLabel: sheetVirtualLabel,
+  } = useVirtualSheetLeadsForBoard(selectedBoard, boardLeads);
 
   // Filter leads by search query, checklist filter, and advanced filters
   const filteredLeads = useMemo(() => {
@@ -765,6 +773,9 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
           }}
           onEditLead={(lead) => setEditingLeadId(lead.id)}
           availableBoards={boards}
+          virtualCards={sheetVirtualCards}
+          virtualStageId={sheetVirtualStageId}
+          virtualSheetLabel={sheetVirtualLabel}
           onChangeLeadStatus={async (leadId, newStatus) => {
             try {
               // Get current lead data for history

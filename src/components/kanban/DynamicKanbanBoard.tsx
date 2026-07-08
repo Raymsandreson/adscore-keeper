@@ -70,6 +70,8 @@ import { StageLabelSelect } from './StageLabelSelect';
 import { StageLabelSetupPanel } from './StageLabelSetupPanel';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Tag } from 'lucide-react';
+import { SheetVirtualLeadsSection } from './SheetVirtualLeads';
+import type { BpcFormLead } from '@/hooks/useBpcFormLeads';
 
 
 interface DynamicKanbanBoardProps {
@@ -84,6 +86,10 @@ interface DynamicKanbanBoardProps {
   onManageContacts?: (lead: Lead) => void;
   availableBoards?: KanbanBoard[];
   onChangeLeadStatus?: (leadId: string, newStatus: 'no_response' | 'active' | 'closed' | 'refused' | 'inviavel' | 'cancelled') => void;
+  /** Cards virtuais (planilha) exibidos no topo da etapa `virtualStageId`. */
+  virtualCards?: BpcFormLead[];
+  virtualStageId?: string;
+  virtualSheetLabel?: string | null;
 }
 
 const QUERY_CHUNK_SIZE = 200;
@@ -106,6 +112,9 @@ export function DynamicKanbanBoard({
   onManageContacts,
   availableBoards = [],
   onChangeLeadStatus,
+  virtualCards,
+  virtualStageId,
+  virtualSheetLabel,
 }: DynamicKanbanBoardProps) {
   const { confirmDelete, ConfirmDeleteDialog } = useConfirmDelete();
   const { reorderStages, updateStage, deleteStage } = useKanbanBoards();
@@ -780,7 +789,13 @@ export function DynamicKanbanBoard({
                 {/* Column Content */}
                 <div className="h-[calc(100vh-380px)] min-h-[300px] overflow-y-auto">
                   <div className="p-2 space-y-2">
-                    {stageLeads.length === 0 ? (
+                    {stage.id === virtualStageId && virtualCards && virtualCards.length > 0 && (
+                      <SheetVirtualLeadsSection
+                        cards={virtualCards}
+                        sheetLabel={virtualSheetLabel ?? null}
+                      />
+                    )}
+                    {stageLeads.length === 0 && !(stage.id === virtualStageId && virtualCards && virtualCards.length > 0) ? (
                       <div className="flex flex-col items-center justify-center py-8 text-center">
                         <Users className="h-8 w-8 text-muted-foreground/40 mb-2" />
                         <p className="text-xs text-muted-foreground">
