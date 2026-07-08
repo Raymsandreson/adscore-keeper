@@ -186,6 +186,42 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   // Marca local de mensagens salvas no Drive nesta sessão (id -> link)
   const [driveSavedById, setDriveSavedById] = useState<Record<string, { link?: string; name?: string }>>({});
 
+  // Instância remetente (override manual). Se null, usa conversation.instance_name.
+  const [availableInstances, setAvailableInstances] = useState<{ id: string; instance_name: string }[]>([]);
+  const [sendInstanceOverride, setSendInstanceOverride] = useState<string | null>(null);
+  const effectiveInstanceName = sendInstanceOverride || conversation.instance_name;
+
+  // Reset override quando trocar de conversa.
+  useEffect(() => {
+    setSendInstanceOverride(null);
+  }, [conversation.phone, conversation.instance_name]);
+
+  // Lista instâncias ativas permitidas ao usuário para envio.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!user?.id) return;
+      try {
+        let query = externalSupabase
+          .from('whatsapp_instances')
+          .select('id, instance_name')
+          .eq('is_active', true)
+          .order('instance_name');
+        if (!isAdmin) {
+          const allowedIds = await getMyAllowedInstanceIds(user.id);
+          if (allowedIds.length === 0) { if (!cancelled) setAvailableInstances([]); return; }
+          query = query.in('id', allowedIds);
+        }
+        const { data } = await query;
+        if (cancelled) return;
+        setAvailableInstances(((data || []) as any[]).map(r => ({ id: r.id, instance_name: r.instance_name })));
+      } catch {
+        if (!cancelled) setAvailableInstances([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [user?.id, isAdmin]);
+
   const runDriveUpload = async (msg: any, leadId: string, leadNameInput?: string, opts?: { silent?: boolean }) => {
     const silent = !!opts?.silent;
     if (!msg?.media_url) {
