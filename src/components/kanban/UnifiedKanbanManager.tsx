@@ -208,15 +208,9 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
       result = result.filter(lead => checklistFilteredIds.has(lead.id));
     }
     
-    // Apply "today only" filter (leads created hoje)
-    if (todayOnly) {
-      const start = new Date(); start.setHours(0, 0, 0, 0);
-      const end = new Date(); end.setHours(23, 59, 59, 999);
-      const s = start.getTime(); const e = end.getTime();
-      result = result.filter(lead => {
-        const t = lead.created_at ? new Date(lead.created_at).getTime() : 0;
-        return t >= s && t <= e;
-      });
+    // Apply acolhedor filter
+    if (acolhedorFilter) {
+      result = result.filter(lead => ((lead as any).acolhedor || '') === acolhedorFilter);
     }
     
     // Apply search filter — busca por nome, telefone ou número do caso
