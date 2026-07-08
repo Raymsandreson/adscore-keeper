@@ -3238,9 +3238,15 @@ const ActivitiesPage = () => {
                         </Badge>
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent align="end" className="w-[560px] max-w-[calc(100vw-2rem)] p-3">
-                      <p className="text-xs font-bold text-muted-foreground mb-2 uppercase tracking-wider">Resumo por assessor</p>
-                      <div className="max-h-[300px] overflow-y-auto space-y-1">
+                    <PopoverContent align="end" className="w-[420px] max-w-[calc(100vw-2rem)] p-0">
+                      <div className="px-3 pt-3 pb-2 border-b flex items-center justify-between">
+                        <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Resumo por assessor</p>
+                        <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                          <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-destructive" />Abertas</span>
+                          <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-green-600" />Concluídas</span>
+                        </div>
+                      </div>
+                      <div className="max-h-[400px] overflow-y-auto p-2">
                         {(() => {
                           const baseActivities = displayedActivities;
                           const selectedMembers = filterAssignee.length > 0
@@ -3248,33 +3254,50 @@ const ActivitiesPage = () => {
                             : teamMembers.filter(m => baseActivities.some(a => a.assigned_to === m.user_id));
 
                           if (selectedMembers.length === 0) {
-                            return <div className="text-xs text-muted-foreground">Nenhuma atividade para o filtro atual.</div>;
+                            return <div className="text-xs text-muted-foreground p-2">Nenhuma atividade para o filtro atual.</div>;
                           }
 
-                          return selectedMembers.map(member => {
+                          const rows = selectedMembers.map(member => {
                             const memberActivities = baseActivities.filter(a => a.assigned_to === member.user_id);
                             if (memberActivities.length === 0) return null;
+
+                            const typeRows = allKnownActivityTypes
+                              .map(t => {
+                                const typeActs = memberActivities.filter(a => a.activity_type === t.value);
+                                const open = typeActs.filter(a => a.status !== 'concluida').length;
+                                const done = typeActs.filter(a => a.status === 'concluida').length;
+                                return { label: t.label, open, done };
+                              })
+                              .filter(r => r.open > 0 || r.done > 0)
+                              .sort((a, b) => (b.open + b.done) - (a.open + a.done));
+
+                            const totalOpen = typeRows.reduce((s, r) => s + r.open, 0);
+                            const totalDone = typeRows.reduce((s, r) => s + r.done, 0);
+
                             return (
-                              <div key={member.user_id} className="flex items-center gap-2 flex-wrap py-0.5">
-                                <span className="text-[10px] font-semibold text-foreground/80 min-w-[80px] truncate">
-                                  {member.full_name?.split(' ')[0] || 'Sem nome'}
-                                </span>
-                                {allKnownActivityTypes.map(t => {
-                                  const typeActs = memberActivities.filter(a => a.activity_type === t.value);
-                                  const openCount = typeActs.filter(a => a.status !== 'concluida').length;
-                                  const doneCount = typeActs.filter(a => a.status === 'concluida').length;
-                                  if (openCount === 0 && doneCount === 0) return null;
-                                  return (
-                                    <div key={t.value} className="flex items-center gap-1 text-[10px] shrink-0 bg-muted/40 rounded-full px-2 py-0.5">
-                                      <span className="font-medium text-muted-foreground">{t.label}</span>
-                                      <span className="text-destructive font-bold">{openCount}</span>
-                                      <span className="text-green-600 font-bold">{doneCount}</span>
+                              <div key={member.user_id} className="mb-2 last:mb-0 rounded-md border border-border/50 overflow-hidden">
+                                <div className="flex items-center justify-between bg-muted/50 px-2.5 py-1.5">
+                                  <span className="text-xs font-semibold truncate">{member.full_name?.split(' ').slice(0, 2).join(' ') || 'Sem nome'}</span>
+                                  <div className="flex items-center gap-2 text-[11px] font-bold tabular-nums">
+                                    <span className="text-destructive">{totalOpen}</span>
+                                    <span className="text-muted-foreground/40">·</span>
+                                    <span className="text-green-600">{totalDone}</span>
+                                  </div>
+                                </div>
+                                <div className="divide-y divide-border/40">
+                                  {typeRows.map(r => (
+                                    <div key={r.label} className="grid grid-cols-[1fr_auto_auto] items-center gap-3 px-2.5 py-1 text-[11px]">
+                                      <span className="text-muted-foreground truncate">{r.label}</span>
+                                      <span className="text-destructive font-semibold tabular-nums w-6 text-right">{r.open || ''}</span>
+                                      <span className="text-green-600 font-semibold tabular-nums w-6 text-right">{r.done || ''}</span>
                                     </div>
-                                  );
-                                })}
+                                  ))}
+                                </div>
                               </div>
                             );
                           });
+
+                          return rows;
                         })()}
                       </div>
                     </PopoverContent>
