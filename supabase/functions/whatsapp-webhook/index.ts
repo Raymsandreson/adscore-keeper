@@ -2167,26 +2167,59 @@ Deno.serve(async (req) => {
                   insertPayload.created_by = autoLink.assigned_user_id;
                 }
 
-                const { data: newLead, error: leadErr } = await supabase
-                  .from("leads")
-                  .insert(insertPayload)
-                  .select("id")
-                  .single();
+                // Sanitize phone at write-time: only digits, must have >=10 digits and not be group JID
+                const normalizedPhone = String(insertPayload.lead_phone || "").replace(/\D/g, "");
+                const isRealPhone = normalizedPhone.length >= 10 && !normalizedPhone.startsWith("120363");
+                if (!isRealPhone) {
+                  console.warn("CTWA: refusing to create lead with invalid phone:", insertPayload.lead_phone);
+                } else {
+                  insertPayload.lead_phone = normalizedPhone;
 
-                if (leadErr) {
-                  console.error("Error auto-creating lead from CTWA:", leadErr);
-                } else if (newLead) {
-                  leadId = (newLead as any).id;
-                  console.log(
-                    "Auto-created lead from CTWA:",
-                    leadId,
-                    "board:",
-                    autoLink.board_id,
-                    "campaign:",
-                    detectedCampaignId,
-                    "acolhedor:",
-                    resolvedAcolhedor,
-                  );
+                  const { data: newLead, error: leadErr } = await supabase
+                    .from("leads")
+                    .insert(insertPayload)
+                    .select("id")
+                    .single();
+
+                  if (leadErr) {
+                    console.error("Error auto-creating lead from CTWA:", leadErr);
+                  } else if (newLead) {
+                    leadId = (newLead as any).id;
+
+                    // Anti-race reconciliation: if a concurrent event already created a lead for the
+                    // same phone in the last 60s, keep the earliest one and soft-delete ours.
+                    try {
+                      const { data: sameBucket } = await supabase
+                        .from("leads")
+                        .select("id, created_at")
+                        .eq("lead_phone", normalizedPhone)
+                        .is("deleted_at", null)
+                        .order("created_at", { ascending: true })
+                        .limit(2);
+                      const rows = (sameBucket || []) as Array<{ id: string; created_at: string }>;
+                      if (rows.length >= 2 && rows[0].id !== leadId) {
+                        console.warn("CTWA race detected — adopting earliest lead:", rows[0].id, "discarding:", leadId);
+                        // Re-parent whatsapp_messages we might have just written
+                        await supabase.from("whatsapp_messages").update({ lead_id: rows[0].id }).eq("lead_id", leadId);
+                        // Soft-delete the duplicate we just created
+                        await supabase.from("leads").update({ deleted_at: new Date().toISOString() }).eq("id", leadId);
+                        leadId = rows[0].id;
+                      }
+                    } catch (raceErr: any) {
+                      console.warn("CTWA race reconciliation failed:", raceErr?.message);
+                    }
+
+                    console.log(
+                      "Auto-created lead from CTWA:",
+                      leadId,
+                      "board:",
+                      autoLink.board_id,
+                      "campaign:",
+                      detectedCampaignId,
+                      "acolhedor:",
+                      resolvedAcolhedor,
+                    );
+                  }
                 }
               }
 
