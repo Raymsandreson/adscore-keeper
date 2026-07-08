@@ -225,7 +225,10 @@ export function AssessorSummaryShareDialog({
         </div>
 
         {/* Hidden card used for image generation */}
-        <div className="sr-only">
+        <div
+          aria-hidden="true"
+          style={{ position: 'fixed', left: -10000, top: 0, width: 720, pointerEvents: 'none', opacity: 0 }}
+        >
           <div
             ref={cardRef}
             style={{
