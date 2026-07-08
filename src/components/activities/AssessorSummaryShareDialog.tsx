@@ -138,7 +138,6 @@ export function AssessorSummaryShareDialog({
       cancelled = true;
       clearTimeout(timer);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, rows, periodLabel]);
 
   const handleDownload = async () => {
