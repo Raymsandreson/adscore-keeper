@@ -94,6 +94,23 @@ export function ActivityEditSheet({ open, onOpenChange, activityId, onUpdated }:
   const [notes, setNotes] = useState('');
   const [detailsOpen, setDetailsOpen] = useState(true);
 
+  // Linked entities (editable)
+  const [leadId, setLeadId] = useState<string | null>(null);
+  const [leadName, setLeadName] = useState<string | null>(null);
+  const [caseId, setCaseId] = useState<string | null>(null);
+  const [caseTitle, setCaseTitle] = useState<string | null>(null);
+  const [processId, setProcessId] = useState<string | null>(null);
+  const [processTitle, setProcessTitle] = useState<string | null>(null);
+  const [processNumber, setProcessNumber] = useState<string>('');
+
+  const [leadSearch, setLeadSearch] = useState('');
+  const [leadResults, setLeadResults] = useState<{ id: string; lead_name: string | null }[]>([]);
+  const [caseResults, setCaseResults] = useState<{ id: string; case_number: string | null; title: string | null }[]>([]);
+  const [processResults, setProcessResults] = useState<{ id: string; title: string | null; process_number: string | null }[]>([]);
+  const [leadOpen, setLeadOpen] = useState(false);
+  const [caseOpen, setCaseOpen] = useState(false);
+  const [processOpen, setProcessOpen] = useState(false);
+
   const { types: activityTypes } = useActivityTypes();
   const profiles = useProfilesList();
 
