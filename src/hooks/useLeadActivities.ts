@@ -118,13 +118,13 @@ export function useLeadActivities() {
         const hasNull = filtered.includes('__unassigned__');
         const validIds = filtered.filter(v => v !== '__unassigned__');
         if (hasNull && validIds.length > 0) {
-          query = query.or(`workflow_id.in.(${validIds.join(',')}),workflow_id.is.null`);
+          query = (query as any).or(`workflow_id.in.(${validIds.join(',')}),workflow_id.is.null`);
         } else if (hasNull) {
           query = query.is('workflow_id', null);
         } else if (validIds.length === 1) {
-          query = query.eq('workflow_id', validIds[0]);
+          query = (query as any).eq('workflow_id', validIds[0]);
         } else if (validIds.length > 1) {
-          query = query.in('workflow_id', validIds);
+          query = (query as any).in('workflow_id', validIds);
         }
       }
 
