@@ -213,9 +213,20 @@ export function ActivityEditSheet({ open, onOpenChange, activityId, onUpdated }:
         current_status_notes: currentStatus || null,
         next_steps: nextSteps || null,
         notes: notes || null,
+        lead_id: leadId || null,
+        lead_name: leadName || null,
+        case_id: caseId || null,
+        case_title: caseTitle || null,
+        process_id: processId || null,
+        process_title: processTitle || null,
         completed_at: status === 'concluida' && !activity?.completed_at ? new Date().toISOString() : activity?.completed_at,
       } as any)
       .eq('id', activityId);
+
+    // Persist process_number back to lead_processes if it changed
+    if (processId) {
+      await supabase.from('lead_processes').update({ process_number: processNumber || null } as any).eq('id', processId);
+    }
 
     setSaving(false);
     if (error) {
