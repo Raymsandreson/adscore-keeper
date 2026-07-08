@@ -70,6 +70,8 @@ import { StageLabelSelect } from './StageLabelSelect';
 import { StageLabelSetupPanel } from './StageLabelSetupPanel';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Tag } from 'lucide-react';
+import { SheetVirtualLeadsSection } from './SheetVirtualLeads';
+import type { BpcFormLead } from '@/hooks/useBpcFormLeads';
 
 
 interface DynamicKanbanBoardProps {
@@ -84,6 +86,10 @@ interface DynamicKanbanBoardProps {
   onManageContacts?: (lead: Lead) => void;
   availableBoards?: KanbanBoard[];
   onChangeLeadStatus?: (leadId: string, newStatus: 'no_response' | 'active' | 'closed' | 'refused' | 'inviavel' | 'cancelled') => void;
+  /** Cards virtuais (planilha) exibidos no topo da etapa `virtualStageId`. */
+  virtualCards?: BpcFormLead[];
+  virtualStageId?: string;
+  virtualSheetLabel?: string | null;
 }
 
 const QUERY_CHUNK_SIZE = 200;
