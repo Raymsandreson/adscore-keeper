@@ -196,10 +196,8 @@ export function SheetLeadDetailDialog({ lead, onClose }: DialogProps) {
               value={fmtPhone(lead.phone_normalized || lead.phone_raw)}
             />
             <DetailRow
-              label="Acolhedor / Aba"
-              value={
-                [lead.operator, lead.tab].filter(Boolean).join(" — ") || "—"
-              }
+              label="Acolhedor"
+              value={uniqueAcolhedorValue(lead.operator, lead.tab) || "—"}
             />
             <DetailRow label="Status na planilha" value={lead.lead_status || "—"} />
             <DetailRow label="Campanha" value={lead.campaign_name || "—"} />
