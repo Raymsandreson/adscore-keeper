@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 
 import { db as supabase } from "@/integrations/supabase";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -69,6 +70,7 @@ export function BpcStageLeadsSheet({
 }: Props) {
   const navigate = useNavigate();
   const [q, setQ] = useState("");
+  const [detailLead, setDetailLead] = useState<BpcFormLead | null>(null);
 
   const queryKey = [
     "bpc-stage-leads",
@@ -129,6 +131,7 @@ export function BpcStageLeadsSheet({
     state: string | null;
     sheet_status?: string | null;
     sheet_ad?: string | null;
+    raw?: BpcFormLead;
   };
 
   const filtered = useMemo<UnifiedRow[]>(() => {
@@ -177,6 +180,7 @@ export function BpcStageLeadsSheet({
           state: null,
           sheet_status: s.lead_status || null,
           sheet_ad: s.ad_name || s.campaign_name || null,
+          raw: s,
         }))
       : [];
 
@@ -248,7 +252,10 @@ export function BpcStageLeadsSheet({
                 return (
                   <div
                     key={l.key}
-                    className="border rounded-lg p-3 hover:bg-muted/40 transition-colors"
+                    className={`border rounded-lg p-3 hover:bg-muted/40 transition-colors ${isSheet ? "cursor-pointer" : ""}`}
+                    onClick={() => {
+                      if (isSheet && l.raw) setDetailLead(l.raw);
+                    }}
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0 flex-1">
@@ -278,7 +285,7 @@ export function BpcStageLeadsSheet({
                           </span>
                         </div>
                       </div>
-                      <div className="flex flex-col gap-1 shrink-0">
+                      <div className="flex flex-col gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
                         {!isSheet && l.id && (
                           <Button
                             size="sm"
@@ -288,6 +295,16 @@ export function BpcStageLeadsSheet({
                           >
                             <ExternalLink className="h-3 w-3 mr-1" />
                             Abrir
+                          </Button>
+                        )}
+                        {isSheet && l.raw && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 px-2 text-xs"
+                            onClick={() => setDetailLead(l.raw!)}
+                          >
+                            Detalhes
                           </Button>
                         )}
                         {phoneDigits && (
@@ -310,6 +327,62 @@ export function BpcStageLeadsSheet({
           )}
         </ScrollArea>
       </SheetContent>
+
+      <Dialog open={!!detailLead} onOpenChange={(o) => !o && setDetailLead(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <SheetIcon className="h-4 w-4" />
+              {detailLead?.name || "Sem nome"}
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Lead vindo da planilha do Meta Ads (ainda não importado ao CRM).
+            </DialogDescription>
+          </DialogHeader>
+          {detailLead && (
+            <div className="text-sm space-y-2">
+              <DetailRow label="Telefone" value={fmtPhone(detailLead.phone_normalized || detailLead.phone_raw)} />
+              <DetailRow label="Acolhedor / Aba" value={[detailLead.operator, detailLead.tab].filter(Boolean).join(" — ") || "—"} />
+              <DetailRow label="Status na planilha" value={detailLead.lead_status || "—"} />
+              <DetailRow label="Campanha" value={detailLead.campaign_name || "—"} />
+              <DetailRow label="Anúncio" value={detailLead.ad_name || "—"} />
+              <DetailRow label="Formulário" value={detailLead.form_name || "—"} />
+              <DetailRow label="Orgânico?" value={detailLead.is_organic ? "Sim" : "Não"} />
+              <DetailRow label="Tem WhatsApp?" value={detailLead.has_whatsapp ? "Sim" : "Não"} />
+              <DetailRow label="Estado civil" value={detailLead.estado_civil || "—"} />
+              <DetailRow label="Filho autista" value={detailLead.filho_autista || "—"} />
+              <DetailRow label="Laudo" value={detailLead.laudo || "—"} />
+              <DetailRow label="Renda" value={detailLead.renda || "—"} />
+              <DetailRow label="Possui advogado" value={detailLead.possui_advogado || "—"} />
+              <DetailRow label="1º contato" value={detailLead.first_contact_at ? `${fmtDateBR(detailLead.first_contact_at)} (${detailLead.first_contact_by || "?"})` : "—"} />
+              <DetailRow label="Último contato" value={fmtDateBR(detailLead.last_contact_at)} />
+              <DetailRow label="Cadastro" value={fmtDateBR(detailLead.created_at)} />
+              <DetailRow label="Inviável" value={detailLead.is_unviable ? "Sim" : "Não"} />
+            </div>
+          )}
+          <DialogFooter className="gap-2">
+            {detailLead?.phone_normalized && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => window.open(`https://wa.me/${detailLead.phone_normalized.replace(/\D/g, "")}`, "_blank")}
+              >
+                <MessageCircle className="h-3.5 w-3.5 mr-2" /> Abrir no WhatsApp
+              </Button>
+            )}
+            <Button size="sm" onClick={() => setDetailLead(null)}>Fechar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Sheet>
+  );
+}
+
+function DetailRow({ label, value }: { label: string; value: string | null }) {
+  return (
+    <div className="flex items-start justify-between gap-3 border-b border-border/40 pb-1.5 last:border-0">
+      <span className="text-xs text-muted-foreground shrink-0">{label}</span>
+      <span className="text-xs font-medium text-right break-words">{value || "—"}</span>
+    </div>
   );
 }
