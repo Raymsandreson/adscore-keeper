@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Loader2, Search, Phone, MessageCircle, ExternalLink } from "lucide-react";
+import { Loader2, Search, Phone, MessageCircle, ExternalLink, Sheet as SheetIcon } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import { db as supabase } from "@/integrations/supabase";
@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { leadMatchesFilter, type BpcFilterResult } from "@/lib/bpcPhoneMatch";
+import type { BpcFormLead } from "@/hooks/useBpcFormLeads";
 
 interface Props {
   open: boolean;
@@ -24,6 +25,10 @@ interface Props {
   /** Filtro de acolhedor já calculado pela página pai. Quando phoneKeys é null, sem filtro. */
   bpcFilter: Pick<BpcFilterResult, "phoneKeys">;
   filterPending: boolean;
+  /** Leads da planilha (Meta Lead Ads). Usados para a primeira etapa (Recepção). */
+  sheetLeads?: BpcFormLead[];
+  /** True quando a etapa selecionada é a primeira do board (inbox). */
+  isInboxStage?: boolean;
 }
 
 function fmtPhone(p?: string | null) {
@@ -59,6 +64,8 @@ export function BpcStageLeadsSheet({
   toDate,
   bpcFilter,
   filterPending,
+  sheetLeads,
+  isInboxStage,
 }: Props) {
   const navigate = useNavigate();
   const [q, setQ] = useState("");
@@ -109,12 +116,74 @@ export function BpcStageLeadsSheet({
     },
   });
 
-  const filtered = useMemo(() => {
+  type UnifiedRow = {
+    key: string;
+    source: "kanban" | "sheet";
+    id: string | null;
+    lead_name: string | null;
+    lead_phone: string | null;
+    acolhedor: string | null;
+    created_at: string | null;
+    updated_at: string | null;
+    city: string | null;
+    state: string | null;
+    sheet_status?: string | null;
+    sheet_ad?: string | null;
+  };
+
+  const filtered = useMemo<UnifiedRow[]>(() => {
     const base = rows || [];
     const skipAcolhFilter = filterPending || !bpcFilter.phoneKeys;
     const term = q.trim().toLowerCase();
-    const afterFilters = base.filter((l) => {
-      if (!skipAcolhFilter && !leadMatchesFilter(l.lead_phone, bpcFilter)) return false;
+
+    const kanbanRows: UnifiedRow[] = base
+      .filter((l) => (skipAcolhFilter ? true : leadMatchesFilter(l.lead_phone, bpcFilter)))
+      .map((l) => ({
+        key: `k:${l.id}`,
+        source: "kanban" as const,
+        id: l.id,
+        lead_name: l.lead_name,
+        lead_phone: l.lead_phone,
+        acolhedor: l.acolhedor,
+        created_at: l.created_at,
+        updated_at: l.updated_at,
+        city: l.city,
+        state: l.state,
+      }));
+
+    // Última-8 dígitos das leads já no kanban → usadas para deduplicar contra a planilha.
+    const kanbanPhoneKeys = new Set(
+      kanbanRows
+        .map((l) => (l.lead_phone || "").replace(/\D/g, "").slice(-8))
+        .filter((p) => p.length === 8),
+    );
+
+    const sheetRows: UnifiedRow[] = (isInboxStage && sheetLeads?.length)
+      ? sheetLeads
+        .filter((s) => {
+          const last8 = (s.phone_normalized || "").slice(-8);
+          if (last8.length !== 8) return false;
+          return !kanbanPhoneKeys.has(last8);
+        })
+        .map((s) => ({
+          key: `s:${s.form_lead_id || s.phone_normalized}`,
+          source: "sheet" as const,
+          id: null,
+          lead_name: s.name || null,
+          lead_phone: s.phone_normalized || s.phone_raw || null,
+          acolhedor: s.operator || null,
+          created_at: s.created_at || null,
+          updated_at: null,
+          city: null,
+          state: null,
+          sheet_status: s.lead_status || null,
+          sheet_ad: s.ad_name || s.campaign_name || null,
+        }))
+      : [];
+
+    const merged = [...kanbanRows, ...sheetRows];
+
+    const afterSearch = merged.filter((l) => {
       if (!term) return true;
       return (
         (l.lead_name || "").toLowerCase().includes(term) ||
@@ -122,18 +191,19 @@ export function BpcStageLeadsSheet({
         (l.acolhedor || "").toLowerCase().includes(term)
       );
     });
-    // Dedupe por telefone (mantém o mais recente conforme ordenação já aplicada).
+
+    // Dedup por telefone: kanban sempre vence porque aparece antes.
     const seen = new Set<string>();
-    const deduped: typeof afterFilters = [];
-    for (const l of afterFilters) {
+    const deduped: UnifiedRow[] = [];
+    for (const l of afterSearch) {
       const digits = (l.lead_phone || "").replace(/\D/g, "");
-      const key = digits || `id:${l.id}`;
+      const key = digits.slice(-8) || `id:${l.id ?? l.key}`;
       if (seen.has(key)) continue;
       seen.add(key);
       deduped.push(l);
     }
     return deduped;
-  }, [rows, q, bpcFilter, filterPending]);
+  }, [rows, q, bpcFilter, filterPending, sheetLeads, isInboxStage]);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -174,15 +244,24 @@ export function BpcStageLeadsSheet({
             <div className="space-y-2 pb-6">
               {filtered.map((l) => {
                 const phoneDigits = (l.lead_phone || "").replace(/\D/g, "");
+                const isSheet = l.source === "sheet";
                 return (
                   <div
-                    key={l.id}
+                    key={l.key}
                     className="border rounded-lg p-3 hover:bg-muted/40 transition-colors"
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0 flex-1">
-                        <div className="font-medium text-sm truncate">
-                          {l.lead_name || "Sem nome"}
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="font-medium text-sm truncate">
+                            {l.lead_name || "Sem nome"}
+                          </div>
+                          {isSheet && (
+                            <Badge variant="secondary" className="text-[10px] gap-1 shrink-0">
+                              <SheetIcon className="h-2.5 w-2.5" />
+                              da planilha
+                            </Badge>
+                          )}
                         </div>
                         <div className="text-xs text-muted-foreground flex items-center gap-1.5 mt-0.5">
                           <Phone className="h-3 w-3" />
@@ -191,19 +270,26 @@ export function BpcStageLeadsSheet({
                         <div className="text-[11px] text-muted-foreground mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
                           {l.acolhedor && <span>👤 {l.acolhedor}</span>}
                           {(l.city || l.state) && <span>📍 {[l.city, l.state].filter(Boolean).join("/")}</span>}
-                          <span>{dateField === "created_at" ? "Cadastro" : "Atualizado"}: {fmtDateBR(l[dateField])}</span>
+                          {isSheet && l.sheet_ad && <span>📢 {l.sheet_ad}</span>}
+                          {isSheet && l.sheet_status && <span>🏷️ {l.sheet_status}</span>}
+                          <span>
+                            {dateField === "created_at" ? "Cadastro" : "Atualizado"}:{" "}
+                            {fmtDateBR(isSheet ? l.created_at : l[dateField])}
+                          </span>
                         </div>
                       </div>
                       <div className="flex flex-col gap-1 shrink-0">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-7 px-2 text-xs"
-                          onClick={() => navigate(`/leads?board=${boardId}&lead=${l.id}`)}
-                        >
-                          <ExternalLink className="h-3 w-3 mr-1" />
-                          Abrir
-                        </Button>
+                        {!isSheet && l.id && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 px-2 text-xs"
+                            onClick={() => navigate(`/leads?board=${boardId}&lead=${l.id}`)}
+                          >
+                            <ExternalLink className="h-3 w-3 mr-1" />
+                            Abrir
+                          </Button>
+                        )}
                         {phoneDigits && (
                           <Button
                             size="sm"
