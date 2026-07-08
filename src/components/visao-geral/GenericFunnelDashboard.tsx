@@ -72,6 +72,12 @@ export default function GenericFunnelDashboard({ boardMatcher, title }: Props) {
       setError("Funil não encontrado na base. Verifique o nome em Funis de Vendas.");
       return;
     }
+    const boardSheetCfg = getFunnelSheetConfig(board.name);
+    if (boardSheetCfg && sheetLoading && sheetLeads.length === 0) {
+      setLoading(true);
+      setError(null);
+      return;
+    }
 
     let cancelled = false;
     let timeoutId: ReturnType<typeof setTimeout>;
@@ -81,11 +87,8 @@ export default function GenericFunnelDashboard({ boardMatcher, title }: Props) {
       setError(null);
       try {
         const stagesArr = board.stages || [];
-        const boardSheetCfg = getFunnelSheetConfig(board.name);
 
         if (boardSheetCfg) {
-          if (sheetLoading && sheetLeads.length === 0) return;
-
           const firstStageId = stagesArr[0]?.id;
           const sheetPhoneKeys = new Set(
             sheetLeads
