@@ -626,7 +626,7 @@ const ActivitiesPage = () => {
 
   // Count helpers - contextual to other active filters
   const countByField = useMemo(() => {
-    const countFor = (fieldKey: 'lead_id' | 'contact_id' | 'assigned_to' | 'activity_type' | 'status', value: string) => {
+    const countFor = (fieldKey: 'lead_id' | 'contact_id' | 'assigned_to' | 'activity_type' | 'status' | 'workflow_id', value: string) => {
       const filtered = getFilteredRaw(fieldKey);
       const matching = filtered.filter(a => a[fieldKey] === value);
       return {
