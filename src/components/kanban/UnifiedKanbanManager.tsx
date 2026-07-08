@@ -794,7 +794,7 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
           }}
           onEditLead={(lead) => setEditingLeadId(lead.id)}
           availableBoards={boards}
-          virtualCards={sheetVirtualCards}
+          virtualCards={displayedVirtualCards}
           virtualStageId={sheetVirtualStageId}
           virtualSheetLabel={sheetVirtualLabel}
           onChangeLeadStatus={async (leadId, newStatus) => {
