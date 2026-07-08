@@ -132,7 +132,8 @@ function parseParticipants(raw: Array<Record<string, unknown>>) {
 }
 
 export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia, onSendLocation, onDeleteMessage, onLinkToLead, onLinkToContact, onCreateLead, onCreateContact, onCreateCase, extractingData, extractionStep, onCreateActivity, onNavigateToLead, onViewContact, onPrivacyChanged, shareInfo, onUpdateWithAI, onOpenChat, onClearConversation, onLoadOlderMessages }: Props) {
-  const { profile } = useAuthContext();
+  const { profile, user } = useAuthContext();
+  const { isAdmin } = useUserRole();
   const { boards: kanbanBoards } = useKanbanBoards();
   const [newMessage, setNewMessage] = useState('');
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
