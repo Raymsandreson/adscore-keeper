@@ -355,7 +355,7 @@ export function BpcStageLeadsSheet({
           {detailLead && (
             <div className="text-sm space-y-2">
               <DetailRow label="Telefone" value={fmtPhone(detailLead.phone_normalized || detailLead.phone_raw)} />
-              <DetailRow label="Acolhedor / Aba" value={[detailLead.operator, detailLead.tab].filter(Boolean).join(" — ") || "—"} />
+              <DetailRow label="Acolhedor" value={uniqueAcolhedorValue(detailLead.operator, detailLead.tab) || "—"} />
               <DetailRow label="Status na planilha" value={detailLead.lead_status || "—"} />
               <DetailRow label="Campanha" value={detailLead.campaign_name || "—"} />
               <DetailRow label="Anúncio" value={detailLead.ad_name || "—"} />
