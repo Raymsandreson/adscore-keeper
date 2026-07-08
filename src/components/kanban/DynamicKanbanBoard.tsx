@@ -112,6 +112,9 @@ export function DynamicKanbanBoard({
   onManageContacts,
   availableBoards = [],
   onChangeLeadStatus,
+  virtualCards,
+  virtualStageId,
+  virtualSheetLabel,
 }: DynamicKanbanBoardProps) {
   const { confirmDelete, ConfirmDeleteDialog } = useConfirmDelete();
   const { reorderStages, updateStage, deleteStage } = useKanbanBoards();
