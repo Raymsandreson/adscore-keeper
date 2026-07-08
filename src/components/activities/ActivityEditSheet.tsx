@@ -144,8 +144,49 @@ export function ActivityEditSheet({ open, onOpenChange, activityId, onUpdated }:
     setCurrentStatus(act.current_status_notes || '');
     setNextSteps(act.next_steps || '');
     setNotes(act.notes || '');
+    setLeadId(act.lead_id || null);
+    setLeadName(act.lead_name || null);
+    setCaseId(act.case_id || null);
+    setCaseTitle(act.case_title || null);
+    setProcessId(act.process_id || null);
+    setProcessTitle(act.process_title || null);
+    // Fetch process_number if we have a process
+    if (act.process_id) {
+      supabase.from('lead_processes').select('process_number').eq('id', act.process_id).maybeSingle()
+        .then(({ data }) => setProcessNumber((data as any)?.process_number || ''));
+    } else {
+      setProcessNumber('');
+    }
     setLoading(false);
   }, [activityId]);
+
+  // Search leads
+  useEffect(() => {
+    if (!leadOpen) return;
+    const timer = setTimeout(async () => {
+      const q = supabase.from('leads').select('id, lead_name').is('deleted_at', null).order('created_at', { ascending: false }).limit(30);
+      const { data } = leadSearch.trim()
+        ? await q.ilike('lead_name', `%${leadSearch.trim()}%`)
+        : await q;
+      setLeadResults((data || []) as any);
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [leadSearch, leadOpen]);
+
+  // Fetch cases when lead changes / case popover opens
+  useEffect(() => {
+    if (!leadId) { setCaseResults([]); return; }
+    supabase.from('legal_cases').select('id, case_number, title').eq('lead_id', leadId).is('deleted_at', null).order('created_at', { ascending: false })
+      .then(({ data }) => setCaseResults((data || []) as any));
+  }, [leadId]);
+
+  // Fetch processes when case changes
+  useEffect(() => {
+    if (!caseId) { setProcessResults([]); return; }
+    supabase.from('lead_processes').select('id, title, process_number').eq('case_id', caseId).order('created_at', { ascending: false })
+      .then(({ data }) => setProcessResults((data || []) as any));
+  }, [caseId]);
+
 
   useEffect(() => {
     if (open && activityId) {
