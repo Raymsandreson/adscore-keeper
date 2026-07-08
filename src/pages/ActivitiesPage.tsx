@@ -441,7 +441,7 @@ const ActivitiesPage = () => {
 
   useEffect(() => {
     fetchActivities(getFilterParams());
-  }, [fetchActivities, filterStatus, filterType, filterAssignee, filterLead, filterContact]);
+  }, [fetchActivities, filterStatus, filterType, filterAssignee, filterLead, filterContact, filterWorkflow]);
 
   useEffect(() => {
     if (viewMode === 'blocks') setOpenFilterKey(null);
