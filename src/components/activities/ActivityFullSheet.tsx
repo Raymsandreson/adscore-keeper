@@ -81,6 +81,8 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
   const [caseSearch, setCaseSearch] = useState('');
 
   const { types: activityTypes } = useActivityTypes();
+  const { boards: allBoards } = useKanbanBoards();
+  const workflowOptions = allBoards.filter(b => b.board_type === 'workflow').map(b => ({ id: b.id, name: b.name }));
   const profiles = useProfilesList();
   const { fields: fieldSettings, updateField: updateFieldSetting, reorderFields } = useActivityFieldSettings();
   const { updateActivity, completeActivity, deleteActivity } = useLeadActivities();
