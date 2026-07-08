@@ -70,6 +70,7 @@ export function BpcStageLeadsSheet({
 }: Props) {
   const navigate = useNavigate();
   const [q, setQ] = useState("");
+  const [detailLead, setDetailLead] = useState<BpcFormLead | null>(null);
 
   const queryKey = [
     "bpc-stage-leads",
