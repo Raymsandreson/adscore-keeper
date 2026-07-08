@@ -116,12 +116,6 @@ export function BpcStageLeadsSheet({
     },
   });
 
-  const filtered = useMemo(() => {
-    const base = rows || [];
-    const skipAcolhFilter = filterPending || !bpcFilter.phoneKeys;
-    const term = q.trim().toLowerCase();
-    const afterFilters = base.filter((l) => {
-      if (!skipAcolhFilter && !leadMatchesFilter(l.lead_phone, bpcFilter)) return false;
   type UnifiedRow = {
     key: string;
     source: "kanban" | "sheet";
