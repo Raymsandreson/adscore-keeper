@@ -234,7 +234,7 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
     }
     
     return result;
-  }, [boardLeads, searchQuery, checklistFilteredIds, advancedFilters, todayOnly]);
+  }, [boardLeads, searchQuery, checklistFilteredIds, advancedFilters, acolhedorFilter]);
 
   // Derive available filter options from all leads in the board
   const filterOptions = useMemo(() => {
