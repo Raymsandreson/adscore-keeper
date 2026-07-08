@@ -58,10 +58,14 @@ export default function GenericFunnelDashboard({ boardMatcher, title }: Props) {
     spreadsheetId: sheetCfg?.spreadsheetId,
   });
 
+  const findDashboardBoard = (items: KanbanBoard[]) => {
+    const matches = items.filter((b) => b.board_type === "funnel" && boardMatcher.test(b.name));
+    return matches.find((b) => (b.stages || []).length > 0) || matches[0] || null;
+  };
+
   useEffect(() => {
     if (loadingBoards) return;
-    const board =
-      boards.find((b) => b.board_type === "funnel" && boardMatcher.test(b.name)) || null;
+    const board = findDashboardBoard(boards);
     setMatchedBoard(board);
     if (!board) {
       setLoading(false);
