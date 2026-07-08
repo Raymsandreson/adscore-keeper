@@ -411,6 +411,7 @@ const ActivitiesPage = () => {
     assigned_to: filterAssignee.length > 0 ? filterAssignee : 'all',
     lead_id: filterLead.length > 0 ? filterLead : 'all',
     contact_id: filterContact.length > 0 ? filterContact : 'all',
+    workflow_id: filterWorkflow.length > 0 ? filterWorkflow : 'all',
     // Sem isso, o teto padrão de 500 corta pendentes antigas quando "Todos" está ativo
     // (as mais recentes 500 enchem com concluídas e a lista perde pendentes).
     limit: 5000,
