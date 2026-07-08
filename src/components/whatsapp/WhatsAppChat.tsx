@@ -4110,6 +4110,29 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                 />
               )}
             </>
+          {inputMode === 'message' && availableInstances.length > 0 && !shareInfo && (
+            <Select
+              value={effectiveInstanceName || '__default__'}
+              onValueChange={(v) => setSendInstanceOverride(v === '__default__' ? null : v)}
+            >
+              <SelectTrigger className="h-7 w-[140px] text-xs" title="Instância remetente">
+                <SelectValue placeholder="Instância" />
+              </SelectTrigger>
+              <SelectContent>
+                {conversation.instance_name && (
+                  <SelectItem value={conversation.instance_name} className="text-xs">
+                    {conversation.instance_name} (do grupo)
+                  </SelectItem>
+                )}
+                {availableInstances
+                  .filter(i => i.instance_name.toLowerCase() !== (conversation.instance_name || '').toLowerCase())
+                  .map(i => (
+                    <SelectItem key={i.id} value={i.instance_name} className="text-xs">
+                      {i.instance_name}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
           )}
         </div>
         {/* Pasted image preview */}
