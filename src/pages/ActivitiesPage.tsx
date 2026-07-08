@@ -505,7 +505,7 @@ const ActivitiesPage = () => {
   const countsLoadedRef = useRef(false);
   useEffect(() => {
     const loadCounts = async () => {
-      const { data } = await (externalSupabase as any).from('lead_activities').select('lead_id, contact_id, assigned_to, activity_type, status').limit(2000);
+      const { data } = await (externalSupabase as any).from('lead_activities').select('lead_id, contact_id, assigned_to, activity_type, status, workflow_id').limit(2000);
       setAllActivitiesRaw(data || []);
       countsLoadedRef.current = true;
     };
@@ -521,7 +521,7 @@ const ActivitiesPage = () => {
   
   // Refresh counts only after mutations (create/update/delete) - not on every fetch
   const refreshCounts = useCallback(async () => {
-    const { data } = await (externalSupabase as any).from('lead_activities').select('lead_id, contact_id, assigned_to, activity_type, status').limit(2000);
+    const { data } = await (externalSupabase as any).from('lead_activities').select('lead_id, contact_id, assigned_to, activity_type, status, workflow_id').limit(2000);
     setAllActivitiesRaw(data || []);
   }, []);
   
