@@ -471,6 +471,8 @@ const BpcFunnelDetailPage = () => {
         toDate={toDate}
         bpcFilter={bpcFilter}
         filterPending={filterPending}
+        sheetLeads={filteredBpcLeads}
+        isInboxStage={!!stageSheet && board.stages?.[0]?.id === stageSheet.id}
       />
     </div>
   );
