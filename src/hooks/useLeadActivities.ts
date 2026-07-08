@@ -56,6 +56,7 @@ export function useLeadActivities() {
     assigned_to?: string | string[];
     lead_id?: string | string[];
     contact_id?: string | string[];
+    workflow_id?: string | string[];
     limit?: number;
   }) => {
     setLoading(true);
