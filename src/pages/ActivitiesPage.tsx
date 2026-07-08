@@ -2512,6 +2512,62 @@ const ActivitiesPage = () => {
           </PopoverContent>
         </Popover>
 
+        {/* Fluxo de Trabalho */}
+        <Popover open={openFilterKey === 'workflow'} onOpenChange={o => setOpenFilterKey(o ? 'workflow' : null)}>
+          <PopoverTrigger asChild>
+            <Button variant={filterWorkflow.length > 0 ? "default" : "outline"} size="sm" className="h-7 text-xs shrink-0 gap-1">
+              <Layers className="h-3 w-3" />
+              {filterWorkflow.length === 0
+                ? 'Fluxo'
+                : filterWorkflow.length === 1
+                  ? (workflowOptions.find(w => w.id === filterWorkflow[0])?.name?.split(' ')[0] || '1')
+                  : `${filterWorkflow.length}`}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-[300px] p-0" align="start">
+            <Command>
+              <CommandInput placeholder="Buscar fluxo de trabalho..." />
+              <CommandList>
+                <CommandEmpty>Nenhum encontrado</CommandEmpty>
+                <CommandGroup>
+                  <CommandItem value="__clear_all_workflow" onSelect={() => setFilterWorkflow([])}>
+                    <Check className={cn("mr-2 h-3.5 w-3.5", filterWorkflow.length === 0 ? "opacity-100" : "opacity-0")} />
+                    Todos
+                  </CommandItem>
+                  <CommandItem value="__unassigned__" onSelect={() => toggleFilter(setFilterWorkflow, filterWorkflow, '__unassigned__')}>
+                    <Check className={cn("mr-2 h-3.5 w-3.5", filterWorkflow.includes('__unassigned__') ? "opacity-100" : "opacity-0")} />
+                    <span className="flex-1 truncate text-muted-foreground italic">Sem fluxo</span>
+                    <span className="ml-2 flex gap-1 text-[10px]">
+                      <Badge variant="outline" className="px-1 py-0 text-[10px]">
+                        {allActivitiesRaw.filter(a => !a.workflow_id && a.status !== 'concluida').length}⏳
+                      </Badge>
+                      <Badge variant="secondary" className="px-1 py-0 text-[10px]">
+                        {allActivitiesRaw.filter(a => !a.workflow_id && a.status === 'concluida').length}✓
+                      </Badge>
+                    </span>
+                  </CommandItem>
+                  {workflowOptions.map(w => {
+                    const c = countByField('workflow_id', w.id);
+                    const isSelected = filterWorkflow.includes(w.id);
+                    return (
+                      <CommandItem key={w.id} value={w.name} onSelect={() => toggleFilter(setFilterWorkflow, filterWorkflow, w.id)}>
+                        <Check className={cn("mr-2 h-3.5 w-3.5", isSelected ? "opacity-100" : "opacity-0")} />
+                        <span className="flex-1 truncate">{w.name}</span>
+                        {(c.open > 0 || c.done > 0) && (
+                          <span className="ml-2 flex gap-1 text-[10px]">
+                            <Badge variant="outline" className="px-1 py-0 text-[10px]">{c.open}⏳</Badge>
+                            <Badge variant="secondary" className="px-1 py-0 text-[10px]">{c.done}✓</Badge>
+                          </span>
+                        )}
+                      </CommandItem>
+                    );
+                  })}
+                </CommandGroup>
+              </CommandList>
+            </Command>
+          </PopoverContent>
+        </Popover>
+
         {/* Lead */}
         <Popover open={openFilterKey === 'lead'} onOpenChange={o => setOpenFilterKey(o ? 'lead' : null)}>
           <PopoverTrigger asChild>
