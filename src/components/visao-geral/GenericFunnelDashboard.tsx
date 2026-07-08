@@ -80,6 +80,8 @@ export default function GenericFunnelDashboard({ boardMatcher, title }: Props) {
         const boardSheetCfg = getFunnelSheetConfig(board.name);
 
         if (boardSheetCfg) {
+          if (sheetLoading && sheetLeads.length === 0) return;
+
           const firstStageId = stagesArr[0]?.id;
           const sheetPhoneKeys = new Set(
             sheetLeads
