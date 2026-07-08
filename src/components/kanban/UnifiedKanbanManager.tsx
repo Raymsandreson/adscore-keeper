@@ -634,14 +634,22 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
             />
           </div>
           
-          <Button
-            variant={todayOnly ? "default" : "outline"}
-            size="sm"
-            onClick={() => setTodayOnly(!todayOnly)}
-            title="Mostrar apenas leads criados hoje"
+          <Select
+            value={acolhedorFilter || '__all__'}
+            onValueChange={(v) => setAcolhedorFilter(v === '__all__' ? '' : v)}
           >
-            Hoje
-          </Button>
+            <SelectTrigger className="w-[180px] h-9" title="Filtrar por acolhedor">
+              <SelectValue placeholder="Acolhedor" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all__">Todos os acolhedores</SelectItem>
+              {acolhedorOptions.map((name) => (
+                <SelectItem key={name} value={name}>
+                  {name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
           <Button variant="outline" size="icon" onClick={() => fetchLeads()}>
             <RefreshCw className="h-4 w-4" />
