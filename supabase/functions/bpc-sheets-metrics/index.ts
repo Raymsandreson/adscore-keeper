@@ -306,32 +306,27 @@ Deno.serve(async (req) => {
     const firstByPhone = new Map<string, { direction: string; created_at: string }>();
     const lastByPhone = new Map<string, { created_at: string }>();
 
-    if (phones.length > 0) {
-      const extUrl = Deno.env.get("EXTERNAL_SUPABASE_URL");
-      const extKey = Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY");
-      if (extUrl && extKey) {
-        const ext = createClient(extUrl, extKey, { auth: { persistSession: false } });
-        const last8 = phones.map((p) => p.slice(-8)).filter((p) => p.length === 8);
-        if (last8.length > 0) {
-          const { data } = await ext
-            .from("whatsapp_messages")
-            .select("phone, direction, created_at")
-            .or(last8.map((p) => `phone.like.%${p}`).join(","))
-            .order("created_at", { ascending: true })
-            .limit(50000);
-          (data || []).forEach((r: any) => {
-            const np = normalizePhone(r.phone);
-            if (!np) return;
-            const key = np.slice(-8);
-            if (!firstByPhone.has(key)) {
-              firstByPhone.set(key, {
-                direction: String(r.direction || "").toLowerCase(),
-                created_at: r.created_at,
-              });
-            }
-            lastByPhone.set(key, { created_at: r.created_at }); // sobrescreve até a última
-          });
-        }
+    if (phones.length > 0 && extClient) {
+      const last8 = phones.map((p) => p.slice(-8)).filter((p) => p.length === 8);
+      if (last8.length > 0) {
+        const { data } = await extClient
+          .from("whatsapp_messages")
+          .select("phone, direction, created_at")
+          .or(last8.map((p) => `phone.like.%${p}`).join(","))
+          .order("created_at", { ascending: true })
+          .limit(50000);
+        (data || []).forEach((r: any) => {
+          const np = normalizePhone(r.phone);
+          if (!np) return;
+          const key = np.slice(-8);
+          if (!firstByPhone.has(key)) {
+            firstByPhone.set(key, {
+              direction: String(r.direction || "").toLowerCase(),
+              created_at: r.created_at,
+            });
+          }
+          lastByPhone.set(key, { created_at: r.created_at });
+        });
       }
     }
 
