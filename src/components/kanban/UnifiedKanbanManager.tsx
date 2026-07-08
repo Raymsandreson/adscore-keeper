@@ -192,6 +192,13 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
     return allLeads.filter(lead => lead.board_id === selectedBoardId);
   }, [allLeads, selectedBoardId]);
 
+  // Cards virtuais da planilha (Meta Ads) — só para boards com sheet conectada.
+  const {
+    virtualCards: sheetVirtualCards,
+    firstStageId: sheetVirtualStageId,
+    sheetLabel: sheetVirtualLabel,
+  } = useVirtualSheetLeadsForBoard(selectedBoard, boardLeads);
+
   // Filter leads by search query, checklist filter, and advanced filters
   const filteredLeads = useMemo(() => {
     let result = boardLeads;
