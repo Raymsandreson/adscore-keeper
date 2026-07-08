@@ -374,26 +374,77 @@ Deno.serve(async (req) => {
       };
     });
 
+    const responsePayload = {
+      success: true,
+      period: { from: fromISO, to: toISO, date_type: dateType },
+      instance_filter: instanceFilter || null,
+      source: source || null,
+      tabs_read: tabsReadNames,
+      debug_headers: debugHeaders,
+      tab_errors: tabErrors,
+      metrics: { total, unviable, toCallNow, alreadyOnWhatsApp },
+      byOperator,
+      leads: leads.sort((a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      ),
+      fetched_at: new Date().toISOString(),
+    };
+
+    // Grava snapshot no Externo (não bloqueia resposta em caso de erro)
+    if (extClient) {
+      extClient
+        .from("bpc_sheet_snapshots")
+        .upsert({
+          cache_key: cacheKey,
+          spreadsheet_id: spreadsheetId,
+          date_type: dateType,
+          from_iso: fromISO,
+          to_iso: toISO,
+          instance_filter: instanceFilter || null,
+          payload: responsePayload,
+          fetched_at: new Date().toISOString(),
+        }, { onConflict: "cache_key" })
+        .then(({ error }) => {
+          if (error) console.error("[bpc-sheets-metrics] snapshot upsert failed:", error.message);
+        });
+    }
+
     return new Response(
-      JSON.stringify({
-        success: true,
-        period: { from: fromISO, to: toISO, date_type: dateType },
-        instance_filter: instanceFilter || null,
-        source: source || null,
-        tabs_read: tabsReadNames,
-        debug_headers: debugHeaders,
-        tab_errors: tabErrors,
-        metrics: { total, unviable, toCallNow, alreadyOnWhatsApp },
-        byOperator,
-        leads: leads.sort((a, b) =>
-          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-        ),
-        fetched_at: new Date().toISOString(),
-      }),
+      JSON.stringify({ ...responsePayload, _cache: "miss" }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (e: any) {
     console.error("[bpc-sheets-metrics] error:", e);
+    // Tenta servir snapshot stale (até 24h) se o fetch fresh quebrou
+    try {
+      const extUrl = Deno.env.get("EXTERNAL_SUPABASE_URL");
+      const extKey = Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY");
+      if (extUrl && extKey) {
+        const ext = createClient(extUrl, extKey, { auth: { persistSession: false } });
+        const url = new URL(req.url);
+        const fromISO = url.searchParams.get("from") || "";
+        const toISO = url.searchParams.get("to") || "";
+        const instanceFilter = (url.searchParams.get("instance_name") || "").toLowerCase().trim();
+        const dateType = (url.searchParams.get("date_type") || "created").toLowerCase();
+        const spreadsheetId = (url.searchParams.get("spreadsheet_id") || "").trim() || DEFAULT_SPREADSHEET_ID;
+        const key = cacheKeyOf(spreadsheetId, dateType, fromISO, toISO, instanceFilter);
+        const { data: snap } = await ext
+          .from("bpc_sheet_snapshots")
+          .select("payload, fetched_at")
+          .eq("cache_key", key)
+          .maybeSingle();
+        if (snap) {
+          const age = Date.now() - new Date(snap.fetched_at).getTime();
+          if (age < SNAPSHOT_STALE_MS) {
+            console.log(`[bpc-sheets-metrics] serving STALE (${Math.round(age/1000)}s) after error`);
+            return new Response(
+              JSON.stringify({ ...snap.payload, _cache: "stale", _cache_age_ms: age, _error: e?.message }),
+              { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+            );
+          }
+        }
+      }
+    } catch (_) { /* ignore */ }
     return new Response(
       JSON.stringify({ success: false, error: e?.message || String(e) }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
