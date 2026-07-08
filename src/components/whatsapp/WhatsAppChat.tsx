@@ -2167,7 +2167,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
       await onSendMedia(
         conversation.phone, publicUrl, pastedImage.file.type, pastedCaption || undefined, `screenshot.${ext}`,
         conversation.contact_id || undefined, conversation.lead_id || undefined,
-        conversation.instance_name, conversationChatId
+        effectiveInstanceName, conversationChatId
       );
       handleCancelPastedImage();
       setNewMessage('');
@@ -2205,7 +2205,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
       await onSendMedia(
         conversation.phone, publicUrl, file.type, '', file.name,
         conversation.contact_id || undefined, conversation.lead_id || undefined,
-        conversation.instance_name, conversationChatId
+        effectiveInstanceName, conversationChatId
       );
     } catch (err: any) {
       toast.error('Erro ao enviar mídia: ' + err.message);
@@ -2251,7 +2251,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
           await onSendMedia(
             conversation.phone, publicUrl, outMime, undefined, undefined,
             conversation.contact_id || undefined, conversation.lead_id || undefined,
-            conversation.instance_name, conversationChatId
+            effectiveInstanceName, conversationChatId
           );
         } catch (err: any) {
           toast.error('Erro ao enviar áudio: ' + err.message);
@@ -2731,7 +2731,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                       recipientPhone || conversation.phone, msg,
                       conversation.contact_id || undefined,
                       conversation.lead_id || undefined,
-                      conversation.instance_name,
+                      effectiveInstanceName,
                       identifySender,
                       conversationChatId,
                       nameFormat === 'nickname' ? null : (treatmentTitle || null),
