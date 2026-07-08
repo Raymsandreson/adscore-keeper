@@ -20,13 +20,15 @@ function copyField(text: string | null | undefined) {
 }
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Save, Loader2, ChevronDown, CheckCircle2, Trash2, ExternalLink } from 'lucide-react';
+import { Save, Loader2, ChevronDown, CheckCircle2, Trash2, ExternalLink, X, Search } from 'lucide-react';
 import { useActivityTypes } from '@/hooks/useActivityTypes';
 import { useProfilesList } from '@/hooks/useProfilesList';
 import { cn } from '@/lib/utils';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { RichTextEditor } from '@/components/ui/RichTextEditor';
 import { ActivityNotesField } from '@/components/activities/ActivityNotesField';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 
 interface ActivityEditSheetProps {
   open: boolean;
@@ -92,6 +94,23 @@ export function ActivityEditSheet({ open, onOpenChange, activityId, onUpdated }:
   const [notes, setNotes] = useState('');
   const [detailsOpen, setDetailsOpen] = useState(true);
 
+  // Linked entities (editable)
+  const [leadId, setLeadId] = useState<string | null>(null);
+  const [leadName, setLeadName] = useState<string | null>(null);
+  const [caseId, setCaseId] = useState<string | null>(null);
+  const [caseTitle, setCaseTitle] = useState<string | null>(null);
+  const [processId, setProcessId] = useState<string | null>(null);
+  const [processTitle, setProcessTitle] = useState<string | null>(null);
+  const [processNumber, setProcessNumber] = useState<string>('');
+
+  const [leadSearch, setLeadSearch] = useState('');
+  const [leadResults, setLeadResults] = useState<{ id: string; lead_name: string | null }[]>([]);
+  const [caseResults, setCaseResults] = useState<{ id: string; case_number: string | null; title: string | null }[]>([]);
+  const [processResults, setProcessResults] = useState<{ id: string; title: string | null; process_number: string | null }[]>([]);
+  const [leadOpen, setLeadOpen] = useState(false);
+  const [caseOpen, setCaseOpen] = useState(false);
+  const [processOpen, setProcessOpen] = useState(false);
+
   const { types: activityTypes } = useActivityTypes();
   const profiles = useProfilesList();
 
@@ -125,8 +144,49 @@ export function ActivityEditSheet({ open, onOpenChange, activityId, onUpdated }:
     setCurrentStatus(act.current_status_notes || '');
     setNextSteps(act.next_steps || '');
     setNotes(act.notes || '');
+    setLeadId(act.lead_id || null);
+    setLeadName(act.lead_name || null);
+    setCaseId(act.case_id || null);
+    setCaseTitle(act.case_title || null);
+    setProcessId(act.process_id || null);
+    setProcessTitle(act.process_title || null);
+    // Fetch process_number if we have a process
+    if (act.process_id) {
+      supabase.from('lead_processes').select('process_number').eq('id', act.process_id).maybeSingle()
+        .then(({ data }) => setProcessNumber((data as any)?.process_number || ''));
+    } else {
+      setProcessNumber('');
+    }
     setLoading(false);
   }, [activityId]);
+
+  // Search leads
+  useEffect(() => {
+    if (!leadOpen) return;
+    const timer = setTimeout(async () => {
+      const q = supabase.from('leads').select('id, lead_name').is('deleted_at', null).order('created_at', { ascending: false }).limit(30);
+      const { data } = leadSearch.trim()
+        ? await q.ilike('lead_name', `%${leadSearch.trim()}%`)
+        : await q;
+      setLeadResults((data || []) as any);
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [leadSearch, leadOpen]);
+
+  // Fetch cases when lead changes / case popover opens
+  useEffect(() => {
+    if (!leadId) { setCaseResults([]); return; }
+    supabase.from('legal_cases').select('id, case_number, title').eq('lead_id', leadId).is('deleted_at', null).order('created_at', { ascending: false })
+      .then(({ data }) => setCaseResults((data || []) as any));
+  }, [leadId]);
+
+  // Fetch processes when case changes
+  useEffect(() => {
+    if (!caseId) { setProcessResults([]); return; }
+    supabase.from('lead_processes').select('id, title, process_number').eq('case_id', caseId).order('created_at', { ascending: false })
+      .then(({ data }) => setProcessResults((data || []) as any));
+  }, [caseId]);
+
 
   useEffect(() => {
     if (open && activityId) {
@@ -153,9 +213,20 @@ export function ActivityEditSheet({ open, onOpenChange, activityId, onUpdated }:
         current_status_notes: currentStatus || null,
         next_steps: nextSteps || null,
         notes: notes || null,
+        lead_id: leadId || null,
+        lead_name: leadName || null,
+        case_id: caseId || null,
+        case_title: caseTitle || null,
+        process_id: processId || null,
+        process_title: processTitle || null,
         completed_at: status === 'concluida' && !activity?.completed_at ? new Date().toISOString() : activity?.completed_at,
       } as any)
       .eq('id', activityId);
+
+    // Persist process_number back to lead_processes if it changed
+    if (processId) {
+      await supabase.from('lead_processes').update({ process_number: processNumber || null } as any).eq('id', processId);
+    }
 
     setSaving(false);
     if (error) {
@@ -323,6 +394,159 @@ export function ActivityEditSheet({ open, onOpenChange, activityId, onUpdated }:
                   <Input type="datetime-local" value={notificationDate} onChange={e => setNotificationDate(e.target.value)} className="h-8 text-sm" />
                 </div>
               </div>
+
+              {/* Linked entities: Lead / Caso / Processo */}
+              <div className="space-y-2 border-t pt-3">
+                <Label className="text-xs font-semibold">Vínculos</Label>
+
+                {/* Lead */}
+                <div>
+                  <Label className="text-[10px] text-muted-foreground">Lead</Label>
+                  <div className="flex gap-1">
+                    <Popover open={leadOpen} onOpenChange={setLeadOpen}>
+                      <PopoverTrigger asChild>
+                        <Button variant="outline" size="sm" className="h-8 text-xs flex-1 justify-between">
+                          <span className="truncate">{leadName || 'Selecionar lead...'}</span>
+                          <Search className="h-3 w-3 opacity-50 shrink-0" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="p-0 w-[320px]" align="start">
+                        <Command shouldFilter={false}>
+                          <CommandInput placeholder="Buscar lead..." value={leadSearch} onValueChange={setLeadSearch} className="h-8 text-xs" />
+                          <CommandList>
+                            <CommandEmpty className="text-xs py-4 text-center">Nenhum lead</CommandEmpty>
+                            <CommandGroup>
+                              {leadResults.map(l => (
+                                <CommandItem key={l.id} value={l.id} onSelect={() => {
+                                  setLeadId(l.id);
+                                  setLeadName(l.lead_name);
+                                  setCaseId(null); setCaseTitle(null);
+                                  setProcessId(null); setProcessTitle(null); setProcessNumber('');
+                                  setLeadOpen(false);
+                                }} className="text-xs">
+                                  {l.lead_name || '(sem nome)'}
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+                    {leadId && (
+                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => {
+                        setLeadId(null); setLeadName(null);
+                        setCaseId(null); setCaseTitle(null);
+                        setProcessId(null); setProcessTitle(null); setProcessNumber('');
+                      }} title="Remover">
+                        <X className="h-3 w-3" />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Caso */}
+                <div>
+                  <Label className="text-[10px] text-muted-foreground">Caso</Label>
+                  <div className="flex gap-1">
+                    <Popover open={caseOpen} onOpenChange={setCaseOpen}>
+                      <PopoverTrigger asChild>
+                        <Button variant="outline" size="sm" className="h-8 text-xs flex-1 justify-between" disabled={!leadId && caseResults.length === 0}>
+                          <span className="truncate">{caseTitle || (leadId ? 'Selecionar caso...' : 'Selecione um lead primeiro')}</span>
+                          <Search className="h-3 w-3 opacity-50 shrink-0" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="p-0 w-[320px]" align="start">
+                        <Command>
+                          <CommandInput placeholder="Buscar caso..." className="h-8 text-xs" />
+                          <CommandList>
+                            <CommandEmpty className="text-xs py-4 text-center">Nenhum caso</CommandEmpty>
+                            <CommandGroup>
+                              {caseResults.map(c => {
+                                const label = [c.case_number, c.title].filter(Boolean).join(' — ');
+                                return (
+                                  <CommandItem key={c.id} value={c.id} onSelect={() => {
+                                    setCaseId(c.id);
+                                    setCaseTitle(label || c.title);
+                                    setProcessId(null); setProcessTitle(null); setProcessNumber('');
+                                    setCaseOpen(false);
+                                  }} className="text-xs">
+                                    {label}
+                                  </CommandItem>
+                                );
+                              })}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+                    {caseId && (
+                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => {
+                        setCaseId(null); setCaseTitle(null);
+                        setProcessId(null); setProcessTitle(null); setProcessNumber('');
+                      }} title="Remover">
+                        <X className="h-3 w-3" />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Processo */}
+                <div>
+                  <Label className="text-[10px] text-muted-foreground">Processo</Label>
+                  <div className="flex gap-1">
+                    <Popover open={processOpen} onOpenChange={setProcessOpen}>
+                      <PopoverTrigger asChild>
+                        <Button variant="outline" size="sm" className="h-8 text-xs flex-1 justify-between" disabled={!caseId && processResults.length === 0}>
+                          <span className="truncate">{processTitle || (caseId ? 'Selecionar processo...' : 'Selecione um caso primeiro')}</span>
+                          <Search className="h-3 w-3 opacity-50 shrink-0" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="p-0 w-[320px]" align="start">
+                        <Command>
+                          <CommandInput placeholder="Buscar processo..." className="h-8 text-xs" />
+                          <CommandList>
+                            <CommandEmpty className="text-xs py-4 text-center">Nenhum processo</CommandEmpty>
+                            <CommandGroup>
+                              {processResults.map(p => {
+                                const label = [p.process_number, p.title].filter(Boolean).join(' — ');
+                                return (
+                                  <CommandItem key={p.id} value={p.id} onSelect={() => {
+                                    setProcessId(p.id);
+                                    setProcessTitle(label || p.title);
+                                    setProcessNumber(p.process_number || '');
+                                    setProcessOpen(false);
+                                  }} className="text-xs">
+                                    {label}
+                                  </CommandItem>
+                                );
+                              })}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+                    {processId && (
+                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => {
+                        setProcessId(null); setProcessTitle(null); setProcessNumber('');
+                      }} title="Remover">
+                        <X className="h-3 w-3" />
+                      </Button>
+                    )}
+                  </div>
+                  {/* Número do Processo (editável) */}
+                  <div className="mt-1">
+                    <Label className="text-[10px] text-muted-foreground">Nº do Processo</Label>
+                    <Input
+                      value={processNumber}
+                      onChange={e => setProcessNumber(e.target.value)}
+                      placeholder={processId ? 'Ex: 0000000-00.0000.0.00.0000' : 'Selecione um processo para editar'}
+                      disabled={!processId}
+                      className="h-8 text-xs"
+                    />
+                  </div>
+                </div>
+              </div>
+
 
               {/* Details section (collapsible) */}
               <Collapsible open={detailsOpen} onOpenChange={setDetailsOpen}>
