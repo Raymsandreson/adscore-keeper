@@ -122,6 +122,74 @@ export function BpcStageLeadsSheet({
     const term = q.trim().toLowerCase();
     const afterFilters = base.filter((l) => {
       if (!skipAcolhFilter && !leadMatchesFilter(l.lead_phone, bpcFilter)) return false;
+  type UnifiedRow = {
+    key: string;
+    source: "kanban" | "sheet";
+    id: string | null;
+    lead_name: string | null;
+    lead_phone: string | null;
+    acolhedor: string | null;
+    created_at: string | null;
+    updated_at: string | null;
+    city: string | null;
+    state: string | null;
+    sheet_status?: string | null;
+    sheet_ad?: string | null;
+  };
+
+  const filtered = useMemo<UnifiedRow[]>(() => {
+    const base = rows || [];
+    const skipAcolhFilter = filterPending || !bpcFilter.phoneKeys;
+    const term = q.trim().toLowerCase();
+
+    const kanbanRows: UnifiedRow[] = base
+      .filter((l) => (skipAcolhFilter ? true : leadMatchesFilter(l.lead_phone, bpcFilter)))
+      .map((l) => ({
+        key: `k:${l.id}`,
+        source: "kanban" as const,
+        id: l.id,
+        lead_name: l.lead_name,
+        lead_phone: l.lead_phone,
+        acolhedor: l.acolhedor,
+        created_at: l.created_at,
+        updated_at: l.updated_at,
+        city: l.city,
+        state: l.state,
+      }));
+
+    // Última-8 dígitos das leads já no kanban → usadas para deduplicar contra a planilha.
+    const kanbanPhoneKeys = new Set(
+      kanbanRows
+        .map((l) => (l.lead_phone || "").replace(/\D/g, "").slice(-8))
+        .filter((p) => p.length === 8),
+    );
+
+    const sheetRows: UnifiedRow[] = (isInboxStage && sheetLeads?.length)
+      ? sheetLeads
+        .filter((s) => {
+          const last8 = (s.phone_normalized || "").slice(-8);
+          if (last8.length !== 8) return false;
+          return !kanbanPhoneKeys.has(last8);
+        })
+        .map((s) => ({
+          key: `s:${s.form_lead_id || s.phone_normalized}`,
+          source: "sheet" as const,
+          id: null,
+          lead_name: s.name || null,
+          lead_phone: s.phone_normalized || s.phone_raw || null,
+          acolhedor: s.operator || null,
+          created_at: s.created_at || null,
+          updated_at: null,
+          city: null,
+          state: null,
+          sheet_status: s.lead_status || null,
+          sheet_ad: s.ad_name || s.campaign_name || null,
+        }))
+      : [];
+
+    const merged = [...kanbanRows, ...sheetRows];
+
+    const afterSearch = merged.filter((l) => {
       if (!term) return true;
       return (
         (l.lead_name || "").toLowerCase().includes(term) ||
@@ -129,18 +197,19 @@ export function BpcStageLeadsSheet({
         (l.acolhedor || "").toLowerCase().includes(term)
       );
     });
-    // Dedupe por telefone (mantém o mais recente conforme ordenação já aplicada).
+
+    // Dedup por telefone: kanban sempre vence porque aparece antes.
     const seen = new Set<string>();
-    const deduped: typeof afterFilters = [];
-    for (const l of afterFilters) {
+    const deduped: UnifiedRow[] = [];
+    for (const l of afterSearch) {
       const digits = (l.lead_phone || "").replace(/\D/g, "");
-      const key = digits || `id:${l.id}`;
+      const key = digits.slice(-8) || `id:${l.id ?? l.key}`;
       if (seen.has(key)) continue;
       seen.add(key);
       deduped.push(l);
     }
     return deduped;
-  }, [rows, q, bpcFilter, filterPending]);
+  }, [rows, q, bpcFilter, filterPending, sheetLeads, isInboxStage]);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
