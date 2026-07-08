@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Collapsible, CollapsibleContent } from '@/components/ui/collapsible';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronDown, ChevronUp, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useChecklists } from '@/hooks/useChecklists';
@@ -342,6 +342,15 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
                   aria-label="Próxima fase"
                 >
                   <ChevronDown className="h-4 w-4 -rotate-90" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setExpanded(false)}
+                  className="p-1 rounded hover:bg-background text-muted-foreground hover:text-foreground transition-colors"
+                  aria-label="Minimizar detalhes do fluxo"
+                  title="Minimizar"
+                >
+                  <X className="h-4 w-4" />
                 </button>
               </div>
             );
