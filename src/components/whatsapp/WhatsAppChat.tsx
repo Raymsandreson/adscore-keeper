@@ -39,6 +39,8 @@ import { db } from '@/integrations/supabase';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { toast } from 'sonner';
 import { useAuthContext } from '@/contexts/AuthContext';
+import { getMyAllowedInstanceIds } from '@/integrations/supabase/permissions';
+import { supabase as cloudSupabase } from '@/integrations/supabase/client';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { logGroupAudit } from '@/lib/groupAuditLog';
