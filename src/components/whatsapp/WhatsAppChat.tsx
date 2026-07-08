@@ -40,6 +40,7 @@ import { externalSupabase } from '@/integrations/supabase/external-client';
 import { toast } from 'sonner';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { getMyAllowedInstanceIds } from '@/integrations/supabase/permissions';
+import { useUserRole } from '@/hooks/useUserRole';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { logGroupAudit } from '@/lib/groupAuditLog';
