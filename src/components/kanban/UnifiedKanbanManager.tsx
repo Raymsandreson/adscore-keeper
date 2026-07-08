@@ -49,6 +49,7 @@ import { useChecklists } from '@/hooks/useChecklists';
 import { useConversionAlerts } from '@/hooks/useConversionAlerts';
 import { KanbanBoardSelector } from '@/components/kanban/KanbanBoardSelector';
 import { DynamicKanbanBoard } from '@/components/kanban/DynamicKanbanBoard';
+import { useVirtualSheetLeadsForBoard } from '@/components/kanban/SheetVirtualLeads';
 import { ImportInstagramProspects } from '@/components/kanban/ImportInstagramProspects';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { StageTimeMetrics } from '@/components/kanban/StageTimeMetrics';
