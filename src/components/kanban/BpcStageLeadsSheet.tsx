@@ -290,8 +290,6 @@ export function BpcStageLeadsSheet({
                         <div className="text-[11px] text-muted-foreground mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
                           {l.acolhedor && <span>👤 {l.acolhedor}</span>}
                           {(l.city || l.state) && <span>📍 {[l.city, l.state].filter(Boolean).join("/")}</span>}
-                          {isSheet && l.sheet_ad && <span>📢 {l.sheet_ad}</span>}
-                          {isSheet && l.sheet_status && <span>🏷️ {l.sheet_status}</span>}
                           <span>
                             {dateField === "created_at" ? "Cadastro" : "Atualizado"}:{" "}
                             {fmtDateBR(isSheet ? l.created_at : l[dateField])}
