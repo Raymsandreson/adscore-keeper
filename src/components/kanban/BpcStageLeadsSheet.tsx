@@ -162,8 +162,7 @@ export function BpcStageLeadsSheet({
       ? sheetLeads
         .filter((s) => {
           const last8 = (s.phone_normalized || "").slice(-8);
-          if (last8.length !== 8) return false;
-          return !kanbanPhoneKeys.has(last8);
+          return last8.length === 8;
         })
         .map((s) => ({
           key: `s:${s.form_lead_id || s.phone_normalized}`,
@@ -181,7 +180,8 @@ export function BpcStageLeadsSheet({
         }))
       : [];
 
-    const merged = [...kanbanRows, ...sheetRows];
+    // Na etapa Recepção exibimos APENAS os leads vindos da planilha.
+    const merged = isInboxStage ? sheetRows : kanbanRows;
 
     const afterSearch = merged.filter((l) => {
       if (!term) return true;
