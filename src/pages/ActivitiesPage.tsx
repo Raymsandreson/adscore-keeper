@@ -51,6 +51,7 @@ import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { TeamChatButton } from '@/components/chat/TeamChatButton';
 import { TeamChatSheet } from '@/components/chat/TeamChatSheet';
 import { ActivityNotesField, type Attachment } from '@/components/activities/ActivityNotesField';
+import { AssessorSummaryShareDialog } from '@/components/activities/AssessorSummaryShareDialog';
 import { TimeBlockSettingsDialog, TimeBlockConfig } from '@/components/activities/TimeBlockSettingsDialog';
 import { ActivityCreatedDialog, randomChurchillQuote } from '@/components/activities/ActivityCreatedDialog';
 import { TrafficActivityPanel } from '@/components/traffic/TrafficActivityPanel';
@@ -262,6 +263,7 @@ const ActivitiesPage = () => {
     setNoteAttachmentsUploading(uploading);
   }, []);
   const [createdDialog, setCreatedDialog] = useState<{ open: boolean; title: string; activity: LeadActivity | null }>({ open: false, title: '', activity: null });
+  const [shareSummaryOpen, setShareSummaryOpen] = useState(false);
   const [leads, setLeads] = useState<LeadOption[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [calendarMonth, setCalendarMonth] = useState(new Date());
@@ -3241,9 +3243,20 @@ const ActivitiesPage = () => {
                     <PopoverContent align="end" className="w-[420px] max-w-[calc(100vw-2rem)] p-0">
                       <div className="px-3 pt-3 pb-2 border-b flex items-center justify-between">
                         <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Resumo por assessor</p>
-                        <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                          <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-destructive" />Abertas</span>
-                          <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-green-600" />Concluídas</span>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-[11px] gap-1 px-2 text-primary hover:text-primary hover:bg-primary/10"
+                            onClick={() => setShareSummaryOpen(true)}
+                          >
+                            <Share2 className="h-3.5 w-3.5" />
+                            Compartilhar imagem
+                          </Button>
+                          <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                            <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-destructive" />Abertas</span>
+                            <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-green-600" />Concluídas</span>
+                          </div>
                         </div>
                       </div>
                       <div className="max-h-[400px] overflow-y-auto p-2">
@@ -4408,6 +4421,16 @@ const ActivitiesPage = () => {
         hasContact={false}
         wasResponded={false}
         responseTimeMinutes={null}
+      />
+
+      <AssessorSummaryShareDialog
+        open={shareSummaryOpen}
+        onOpenChange={setShareSummaryOpen}
+        activities={displayedActivities}
+        teamMembers={teamMembers}
+        filterAssignee={filterAssignee}
+        selectedCalDays={selectedCalDays}
+        allKnownActivityTypes={allKnownActivityTypes}
       />
 
       {/* Busca de grupos do contato (mesmo dialog usado dentro do Lead) */}
