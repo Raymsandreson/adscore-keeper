@@ -53,6 +53,19 @@ function fmtDateBR(iso?: string | null) {
   }
 }
 
+function uniqueAcolhedorValue(operator?: string | null, tab?: string | null): string | null {
+  const values = [operator, tab].filter((v): v is string => !!v?.trim());
+  const seen = new Set<string>();
+  const unique: string[] = [];
+  for (const v of values) {
+    const key = v.trim().toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(v.trim());
+  }
+  return unique.join(" — ") || null;
+}
+
 export function BpcStageLeadsSheet({
   open,
   onOpenChange,
@@ -342,7 +355,7 @@ export function BpcStageLeadsSheet({
           {detailLead && (
             <div className="text-sm space-y-2">
               <DetailRow label="Telefone" value={fmtPhone(detailLead.phone_normalized || detailLead.phone_raw)} />
-              <DetailRow label="Acolhedor / Aba" value={[detailLead.operator, detailLead.tab].filter(Boolean).join(" — ") || "—"} />
+              <DetailRow label="Acolhedor" value={uniqueAcolhedorValue(detailLead.operator, detailLead.tab) || "—"} />
               <DetailRow label="Status na planilha" value={detailLead.lead_status || "—"} />
               <DetailRow label="Campanha" value={detailLead.campaign_name || "—"} />
               <DetailRow label="Anúncio" value={detailLead.ad_name || "—"} />
