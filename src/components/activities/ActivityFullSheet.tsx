@@ -148,6 +148,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     setFormCaseTitle(act.case_title || '');
     setFormProcessId(act.process_id || '');
     setFormProcessTitle(act.process_title || '');
+    setFormWorkflowId((act as any).workflow_id || '');
     setFormIsSystem(!!act.is_system);
     setFormWhatWasDone(act.what_was_done || '');
     setFormCurrentStatus(act.current_status_notes || '');
