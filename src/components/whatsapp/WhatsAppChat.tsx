@@ -4110,6 +4110,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                 />
               )}
             </>
+          )}
           {inputMode === 'message' && availableInstances.length > 0 && !shareInfo && (
             <Select
               value={effectiveInstanceName || '__default__'}
