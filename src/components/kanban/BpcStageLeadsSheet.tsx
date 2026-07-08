@@ -180,6 +180,7 @@ export function BpcStageLeadsSheet({
           state: null,
           sheet_status: s.lead_status || null,
           sheet_ad: s.ad_name || s.campaign_name || null,
+          raw: s,
         }))
       : [];
 
