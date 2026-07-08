@@ -74,7 +74,7 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
   const [editingLeadId, setEditingLeadId] = usePageState<string | null>('kanban_editingLeadId', null);
   const [showExtractor, setShowExtractor] = useState(false);
   const [advancedFilters, setAdvancedFilters] = usePageState<LeadFilters>('kanban_advFilters', emptyFilters);
-  const [todayOnly, setTodayOnly] = usePageState<boolean>('kanban_todayOnly', false);
+  const [acolhedorFilter, setAcolhedorFilter] = usePageState<string>('kanban_acolhedorFilter', '');
   const [checklistFilteredIds, setChecklistFilteredIds] = useState<Set<string> | null>(null);
 
   // Handle URL param to auto-open a lead
@@ -199,6 +199,25 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
     sheetLabel: sheetVirtualLabel,
   } = useVirtualSheetLeadsForBoard(selectedBoard, boardLeads);
 
+  // Filtered virtual cards (apply acolhedor filter using the sheet's `operator` field).
+  const displayedVirtualCards = useMemo(() => {
+    if (!acolhedorFilter) return sheetVirtualCards;
+    return sheetVirtualCards.filter((c) => (c.operator || '') === acolhedorFilter);
+  }, [sheetVirtualCards, acolhedorFilter]);
+
+  // Union de acolhedores (kanban) + operadores (planilha) pro dropdown.
+  const acolhedorOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const l of boardLeads) {
+      const v = (l as any).acolhedor;
+      if (v) set.add(String(v));
+    }
+    for (const c of sheetVirtualCards) {
+      if (c.operator) set.add(c.operator);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [boardLeads, sheetVirtualCards]);
+
   // Filter leads by search query, checklist filter, and advanced filters
   const filteredLeads = useMemo(() => {
     let result = boardLeads;
@@ -208,15 +227,9 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
       result = result.filter(lead => checklistFilteredIds.has(lead.id));
     }
     
-    // Apply "today only" filter (leads created hoje)
-    if (todayOnly) {
-      const start = new Date(); start.setHours(0, 0, 0, 0);
-      const end = new Date(); end.setHours(23, 59, 59, 999);
-      const s = start.getTime(); const e = end.getTime();
-      result = result.filter(lead => {
-        const t = lead.created_at ? new Date(lead.created_at).getTime() : 0;
-        return t >= s && t <= e;
-      });
+    // Apply acolhedor filter
+    if (acolhedorFilter) {
+      result = result.filter(lead => ((lead as any).acolhedor || '') === acolhedorFilter);
     }
     
     // Apply search filter — busca por nome, telefone ou número do caso
@@ -240,7 +253,7 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
     }
     
     return result;
-  }, [boardLeads, searchQuery, checklistFilteredIds, advancedFilters, todayOnly]);
+  }, [boardLeads, searchQuery, checklistFilteredIds, advancedFilters, acolhedorFilter]);
 
   // Derive available filter options from all leads in the board
   const filterOptions = useMemo(() => {
@@ -265,8 +278,8 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
 
   // Check if any filter is active
   const hasActiveFilters = useMemo(() => {
-    return !!searchQuery || checklistFilteredIds !== null || todayOnly || Object.values(advancedFilters).some(v => v !== '');
-  }, [searchQuery, checklistFilteredIds, advancedFilters, todayOnly]);
+    return !!searchQuery || checklistFilteredIds !== null || !!acolhedorFilter || Object.values(advancedFilters).some(v => v !== '');
+  }, [searchQuery, checklistFilteredIds, advancedFilters, acolhedorFilter]);
 
   // Stats for selected board using stage type classification
   const stats = useMemo(() => {
@@ -640,14 +653,22 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
             />
           </div>
           
-          <Button
-            variant={todayOnly ? "default" : "outline"}
-            size="sm"
-            onClick={() => setTodayOnly(!todayOnly)}
-            title="Mostrar apenas leads criados hoje"
+          <Select
+            value={acolhedorFilter || '__all__'}
+            onValueChange={(v) => setAcolhedorFilter(v === '__all__' ? '' : v)}
           >
-            Hoje
-          </Button>
+            <SelectTrigger className="w-[180px] h-9" title="Filtrar por acolhedor">
+              <SelectValue placeholder="Acolhedor" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all__">Todos os acolhedores</SelectItem>
+              {acolhedorOptions.map((name) => (
+                <SelectItem key={name} value={name}>
+                  {name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
           <Button variant="outline" size="icon" onClick={() => fetchLeads()}>
             <RefreshCw className="h-4 w-4" />
@@ -773,7 +794,7 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
           }}
           onEditLead={(lead) => setEditingLeadId(lead.id)}
           availableBoards={boards}
-          virtualCards={sheetVirtualCards}
+          virtualCards={displayedVirtualCards}
           virtualStageId={sheetVirtualStageId}
           virtualSheetLabel={sheetVirtualLabel}
           onChangeLeadStatus={async (leadId, newStatus) => {
