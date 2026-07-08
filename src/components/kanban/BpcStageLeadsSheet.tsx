@@ -252,7 +252,10 @@ export function BpcStageLeadsSheet({
                 return (
                   <div
                     key={l.key}
-                    className="border rounded-lg p-3 hover:bg-muted/40 transition-colors"
+                    className={`border rounded-lg p-3 hover:bg-muted/40 transition-colors ${isSheet ? "cursor-pointer" : ""}`}
+                    onClick={() => {
+                      if (isSheet && l.raw) setDetailLead(l.raw);
+                    }}
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0 flex-1">
@@ -282,7 +285,7 @@ export function BpcStageLeadsSheet({
                           </span>
                         </div>
                       </div>
-                      <div className="flex flex-col gap-1 shrink-0">
+                      <div className="flex flex-col gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
                         {!isSheet && l.id && (
                           <Button
                             size="sm"
@@ -292,6 +295,16 @@ export function BpcStageLeadsSheet({
                           >
                             <ExternalLink className="h-3 w-3 mr-1" />
                             Abrir
+                          </Button>
+                        )}
+                        {isSheet && l.raw && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 px-2 text-xs"
+                            onClick={() => setDetailLead(l.raw!)}
+                          >
+                            Detalhes
                           </Button>
                         )}
                         {phoneDigits && (
