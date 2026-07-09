@@ -46,6 +46,12 @@ export default function GenericFunnelDashboard({ boardMatcher, title }: Props) {
   const [matchedBoard, setMatchedBoard] = useState<KanbanBoard | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [barsReady, setBarsReady] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [stageFilter, setStageFilter] = useState<FunnelStageFilter | null>(null);
+  const openPanel = (stage: FunnelStageFilter | null) => {
+    setStageFilter(stage);
+    setPanelOpen(true);
+  };
   const sheetCfg = useMemo(() => getFunnelSheetConfig(matchedBoard?.name), [matchedBoard?.name]);
   const sheetRange = useMemo(
     () => ({ from: new Date("2020-01-01T00:00:00Z"), to: new Date() }),
