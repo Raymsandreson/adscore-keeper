@@ -96,7 +96,7 @@ export function RelatorioDiarioUsuariosSheet({ open, onOpenChange }: Props) {
 
   const rows = useMemo(() => {
     return [...productivity]
-      .filter((u) => u.userName || u.email)
+      .filter((u) => u.userName || u.email || u.totalActions > 0 || u.activitiesCompleted > 0 || u.activitiesOverdue > 0)
       .map((u) => {
         const my = toMyProductivity(u);
         const progress = computeProgress(my, DEFAULT_GOALS);
