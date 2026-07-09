@@ -242,6 +242,9 @@ export function FunnelLeadsSidePanel({
     const range = computeRange(dateKey);
     const term = search.trim().toLowerCase();
     const list = allLeads.filter((l) => {
+      if (stageFilter?.id) {
+        if ((l.status || "") !== stageFilter.id) return false;
+      }
       if (range.from || range.to) {
         const t = new Date(l.created_at).getTime();
         if (Number.isNaN(t)) return false;
@@ -262,26 +265,41 @@ export function FunnelLeadsSidePanel({
       (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
     );
     return list;
-  }, [allLeads, dateKey, acolhedor, search]);
+  }, [allLeads, dateKey, acolhedor, search, stageFilter?.id]);
 
-  const loading = sheetCfg ? sheetLoading : dbLoading;
+  const loading = sheetCfg ? sheetLoading || dbLoading : dbLoading;
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
-      <SheetTrigger asChild>
-        <Button size="sm" variant="outline">
-          <List className="h-3.5 w-3.5 mr-2" />
-          {triggerLabel}
-        </Button>
-      </SheetTrigger>
+      {!hideTrigger && (
+        <SheetTrigger asChild>
+          <Button size="sm" variant="outline">
+            <List className="h-3.5 w-3.5 mr-2" />
+            {triggerLabel}
+          </Button>
+        </SheetTrigger>
+      )}
       <SheetContent
         side="right"
         className="w-full sm:max-w-md p-0 flex flex-col"
       >
         <SheetHeader className="px-4 py-3 border-b space-y-1">
-          <SheetTitle className="text-base">Leads — {board?.name || "Funil"}</SheetTitle>
+          <SheetTitle className="text-base flex items-center gap-2 flex-wrap">
+            <span>Leads — {board?.name || "Funil"}</span>
+            {stageFilter && (
+              <Badge
+                variant="secondary"
+                className="text-[10px] h-5 px-1.5 gap-1"
+                style={stageFilter.color ? { borderLeft: `3px solid ${stageFilter.color}` } : undefined}
+              >
+                {stageFilter.name}
+              </Badge>
+            )}
+          </SheetTitle>
           <SheetDescription className="text-xs">
-            Ordem de chegada (do primeiro ao último).
+            {stageFilter
+              ? `Leads na etapa "${stageFilter.name}" — ordem de chegada.`
+              : "Ordem de chegada (do primeiro ao último)."}
           </SheetDescription>
         </SheetHeader>
 
