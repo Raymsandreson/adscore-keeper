@@ -159,11 +159,11 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
           .gte('created_at', startDate).lte('created_at', endDate)
           .not('contacted_by', 'is', null),
         // Lead activities - completed (External DB)
-        (db as any).from('lead_activities').select('id, assigned_to, status, deadline, completed_at, completed_by')
+        (db as any).from('lead_activities').select('id, assigned_to, assigned_to_name, status, deadline, completed_at, completed_by')
           .eq('status', 'concluida')
           .gte('completed_at', startDate).lte('completed_at', endDate),
         // Lead activities - overdue (External DB)
-        (db as any).from('lead_activities').select('id, assigned_to, status, deadline')
+        (db as any).from('lead_activities').select('id, assigned_to, assigned_to_name, status, deadline')
           .eq('status', 'pendente')
           .lt('deadline', format(new Date(), 'yyyy-MM-dd'))
           .not('deadline', 'is', null),
