@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Phone, Mic, MicOff, Square, Loader2, PhoneOff, PhoneCall, FileText, Save, Sparkles, User, BookOpen } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Phone, Mic, MicOff, Square, Loader2, PhoneOff, PhoneCall, FileText, Save, Sparkles, User, BookOpen, Volume2, Info } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
@@ -23,9 +24,30 @@ interface Props {
 
 type CallPhase = 'idle' | 'calling' | 'post-call';
 
+/** Fonte de captura: microfone (externo), áudio interno do PC, ou os dois mixados. */
+type AudioSource = 'mic' | 'system' | 'both';
+
+/**
+ * Áudio interno depende de getDisplayMedia (compartilhar tela/aba com áudio).
+ * Disponível em Chrome/Edge de desktop; navegadores mobile não expõem essa API.
+ */
+const supportsSystemAudio =
+  typeof navigator !== 'undefined' &&
+  !!navigator.mediaDevices &&
+  typeof (navigator.mediaDevices as any).getDisplayMedia === 'function';
+
+const SOURCE_LABELS: Record<AudioSource, string> = {
+  mic: 'Microfone',
+  system: 'Áudio interno',
+  both: 'Microfone + interno',
+};
+
 export function WhatsAppCallRecorder({ phone, contactName, contactId, leadId, leadName, instanceId, instanceName }: Props) {
   const { user } = useAuthContext();
   const [phase, setPhase] = useState<CallPhase>('idle');
+  // Padrão "Ambos" no PC (capta os dois lados mesmo com fone de ouvido); só mic quando não há suporte.
+  const [source, setSource] = useState<AudioSource>(supportsSystemAudio ? 'both' : 'mic');
+  const [sourcePickerOpen, setSourcePickerOpen] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [processing, setProcessing] = useState(false);
   const [callRecordId, setCallRecordId] = useState<string | null>(null);
@@ -45,11 +67,19 @@ export function WhatsAppCallRecorder({ phone, contactName, contactId, leadId, le
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  // Stream do getDisplayMedia (áudio interno) — parado separadamente (inclui track de vídeo).
+  const displayStreamRef = useRef<MediaStream | null>(null);
+  // AudioContext usado pra mixar mic + áudio interno num único stream gravável.
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  // Handler de "parou de compartilhar a tela" chama o stopRecording mais recente.
+  const stopRecordingRef = useRef<((callResult?: string) => void) | null>(null);
 
   useEffect(() => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
       if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
+      displayStreamRef.current?.getTracks().forEach(t => t.stop());
+      try { audioCtxRef.current?.close(); } catch {}
       recognitionRef.current?.stop();
     };
   }, []);
@@ -144,26 +174,84 @@ export function WhatsAppCallRecorder({ phone, contactName, contactId, leadId, le
   }, [phone, contactName, contactId, leadId, leadName, instanceId, instanceName]);
 
   const startRecording = useCallback(async () => {
+    setSourcePickerOpen(false);
+
+    // Captura os streams ANTES de discar: getDisplayMedia exige gesto recente do usuário,
+    // e assim a ligação não sai se a captura de áudio interno for cancelada.
+    let micStream: MediaStream | null = null;
+    let displayStream: MediaStream | null = null;
+    let recordStream: MediaStream | null = null;
+
+    try {
+      if (source !== 'mic') {
+        displayStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+        if (displayStream.getAudioTracks().length === 0) {
+          displayStream.getTracks().forEach(t => t.stop());
+          toast.error('Nenhum áudio interno compartilhado. Na janela de seleção, escolha a aba/tela e marque "Compartilhar áudio". A ligação não foi iniciada.');
+          return;
+        }
+      }
+    } catch (err: any) {
+      console.error('Display capture error:', err);
+      toast.error('Compartilhamento de tela/áudio cancelado. A ligação não foi iniciada.');
+      return;
+    }
+
+    try {
+      if (source !== 'system') {
+        micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      }
+    } catch (err) {
+      console.error('Mic access error:', err);
+      if (source === 'both') {
+        // Sem mic, segue só com o áudio interno já capturado.
+        toast.info('Microfone negado — gravando apenas o áudio interno.');
+      }
+    }
+
+    if (micStream || displayStream) {
+      try {
+        if (displayStream) {
+          const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
+          const audioCtx = new AudioCtx();
+          audioCtxRef.current = audioCtx;
+          const dest = audioCtx.createMediaStreamDestination();
+          if (micStream) audioCtx.createMediaStreamSource(micStream).connect(dest);
+          audioCtx.createMediaStreamSource(new MediaStream(displayStream.getAudioTracks())).connect(dest);
+          recordStream = dest.stream;
+        } else {
+          recordStream = micStream;
+        }
+      } catch (err) {
+        console.error('Audio mix error:', err);
+        recordStream = micStream; // fallback: pelo menos o microfone
+      }
+    }
+
+    streamRef.current = micStream;
+    displayStreamRef.current = displayStream;
+    // Se o usuário encerrar o compartilhamento pela UI do navegador, finaliza a gravação.
+    displayStream?.getTracks().forEach(t => {
+      t.onended = () => { stopRecordingRef.current?.('atendeu'); };
+    });
+
     const recordId = await makeCall();
     setCallRecordId(recordId);
     setLiveTranscript('');
     setSummary('');
     setPhase('calling');
 
-    // Start real-time transcription
+    // Start real-time transcription (Web Speech capta só o microfone)
     startSpeechRecognition();
 
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
-
+    if (recordStream) {
       const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
         ? 'audio/webm;codecs=opus'
         : MediaRecorder.isTypeSupported('audio/webm')
           ? 'audio/webm'
           : 'audio/mp4';
 
-      const recorder = new MediaRecorder(stream, { mimeType });
+      const recorder = new MediaRecorder(recordStream, { mimeType });
       mediaRecorderRef.current = recorder;
       chunksRef.current = [];
 
@@ -174,14 +262,13 @@ export function WhatsAppCallRecorder({ phone, contactName, contactId, leadId, le
       recorder.start(1000);
       setRecordingTime(0);
       timerRef.current = setInterval(() => setRecordingTime(prev => prev + 1), 1000);
-      toast.success('Ligação iniciada! Gravação e transcrição ativas.');
-    } catch (err) {
-      console.error('Mic access error:', err);
+      toast.success(`Ligação iniciada! Gravando: ${SOURCE_LABELS[source]}.`);
+    } else {
       setRecordingTime(0);
       timerRef.current = setInterval(() => setRecordingTime(prev => prev + 1), 1000);
       toast.info('Ligação iniciada. Gravação indisponível (microfone negado).');
     }
-  }, [makeCall, startSpeechRecognition]);
+  }, [makeCall, startSpeechRecognition, source]);
 
   const stopRecording = useCallback(async (callResult: string = 'atendeu') => {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -211,6 +298,10 @@ export function WhatsAppCallRecorder({ phone, contactName, contactId, leadId, le
 
       recorder.onstop = async () => {
         streamRef.current?.getTracks().forEach(t => t.stop());
+        displayStreamRef.current?.getTracks().forEach(t => t.stop());
+        displayStreamRef.current = null;
+        try { audioCtxRef.current?.close(); } catch {}
+        audioCtxRef.current = null;
 
         const blob = new Blob(chunksRef.current, { type: currentMime });
         const ext = currentMime.includes('webm') ? 'webm' : 'mp4';
@@ -243,6 +334,10 @@ export function WhatsAppCallRecorder({ phone, contactName, contactId, leadId, le
       try { recorder.stop(); } catch {}
     } else {
       streamRef.current?.getTracks().forEach(t => t.stop());
+      displayStreamRef.current?.getTracks().forEach(t => t.stop());
+      displayStreamRef.current = null;
+      try { audioCtxRef.current?.close(); } catch {}
+      audioCtxRef.current = null;
     }
 
     // Move to post-call phase if we have transcript
@@ -254,6 +349,10 @@ export function WhatsAppCallRecorder({ phone, contactName, contactId, leadId, le
       if (callRecordId) toast.success('Ligação registrada!');
     }
   }, [user, phone, recordingTime, callRecordId, liveTranscript, stopSpeechRecognition]);
+
+  useEffect(() => {
+    stopRecordingRef.current = stopRecording;
+  }, [stopRecording]);
 
   // AI Summary
   const handleSummarize = useCallback(async () => {
@@ -443,15 +542,84 @@ export function WhatsAppCallRecorder({ phone, contactName, contactId, leadId, le
 
   // IDLE PHASE
   return (
-    <Button
-      variant="outline"
-      size="sm"
-      className="text-xs gap-1 text-green-600 border-green-200 hover:bg-green-50 dark:hover:bg-green-900/20"
-      onClick={startRecording}
-      title="Ligar e gravar"
-    >
-      <Phone className="h-3 w-3" />
-      <Mic className="h-3 w-3" />
-    </Button>
+    <Popover open={sourcePickerOpen} onOpenChange={setSourcePickerOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          className="text-xs gap-1 text-green-600 border-green-200 hover:bg-green-50 dark:hover:bg-green-900/20"
+          title="Ligar e gravar"
+        >
+          <Phone className="h-3 w-3" />
+          <Mic className="h-3 w-3" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-72 p-3 space-y-2.5">
+        <p className="text-[11px] font-medium text-muted-foreground">O que gravar na ligação?</p>
+        <div className="grid grid-cols-3 gap-1">
+          <Button
+            type="button"
+            variant={source === 'mic' ? 'default' : 'outline'}
+            size="sm"
+            className="h-auto flex-col gap-0.5 py-1.5 text-[10px]"
+            onClick={() => setSource('mic')}
+          >
+            <Mic className="h-3.5 w-3.5" /> Microfone
+          </Button>
+          <Button
+            type="button"
+            variant={source === 'system' ? 'default' : 'outline'}
+            size="sm"
+            className="h-auto flex-col gap-0.5 py-1.5 text-[10px]"
+            disabled={!supportsSystemAudio}
+            onClick={() => setSource('system')}
+          >
+            <Volume2 className="h-3.5 w-3.5" /> Áudio interno
+          </Button>
+          <Button
+            type="button"
+            variant={source === 'both' ? 'default' : 'outline'}
+            size="sm"
+            className="h-auto flex-col gap-0.5 py-1.5 text-[10px]"
+            disabled={!supportsSystemAudio}
+            onClick={() => setSource('both')}
+          >
+            <span className="flex items-center gap-0.5"><Mic className="h-3 w-3" /><Volume2 className="h-3 w-3" /></span>
+            Ambos
+          </Button>
+        </div>
+
+        {!supportsSystemAudio ? (
+          <div className="flex items-start gap-1.5 rounded-md bg-muted/60 border p-2">
+            <Info className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
+            <span className="text-[11px] text-muted-foreground">
+              <strong>Áudio interno</strong> só está disponível no navegador do computador (Chrome/Edge).
+              No celular, use o viva-voz.
+            </span>
+          </div>
+        ) : source !== 'mic' ? (
+          <div className="flex items-start gap-1.5 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 p-2">
+            <Info className="h-3.5 w-3.5 text-amber-600 shrink-0 mt-0.5" />
+            <span className="text-[11px] text-amber-700 dark:text-amber-300">
+              O navegador vai pedir para <strong>compartilhar a tela/aba</strong> onde a chamada toca —
+              marque <strong>"Compartilhar áudio"</strong>. Assim os dois lados são gravados mesmo com fone de ouvido.
+              A transcrição ao vivo continua captando só o microfone; o áudio salvo inclui os dois lados.
+            </span>
+          </div>
+        ) : (
+          <div className="flex items-start gap-1.5 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 p-2">
+            <Info className="h-3.5 w-3.5 text-amber-600 shrink-0 mt-0.5" />
+            <span className="text-[11px] text-amber-700 dark:text-amber-300">
+              Só o microfone: use o <strong>viva-voz</strong> para captar os dois lados. Com fone de ouvido,
+              a voz do interlocutor não é gravada.
+            </span>
+          </div>
+        )}
+
+        <Button className="w-full gap-2" size="sm" onClick={startRecording}>
+          <PhoneCall className="h-4 w-4" /> Ligar e gravar ({SOURCE_LABELS[source]})
+        </Button>
+      </PopoverContent>
+    </Popover>
   );
 }
