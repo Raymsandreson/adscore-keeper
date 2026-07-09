@@ -148,12 +148,13 @@ export function FunnelLeadsSidePanel({
     spreadsheetId: sheetCfg?.spreadsheetId,
   });
 
-  // Leads do banco (fallback para funis sem planilha)
+  // Leads do banco (sempre carregado quando o painel abre; para funis com planilha,
+  // é usado para descobrir em qual etapa cada lead está.)
   const [dbLeads, setDbLeads] = useState<UnifiedLead[]>([]);
   const [dbLoading, setDbLoading] = useState(false);
 
   useEffect(() => {
-    if (!open || sheetCfg || !board?.id) return;
+    if (!open || !board?.id) return;
     let cancelled = false;
     (async () => {
       setDbLoading(true);
@@ -163,7 +164,7 @@ export function FunnelLeadsSidePanel({
         for (let from = 0; ; from += PAGE) {
           const { data, error } = await db
             .from("leads")
-            .select("id, lead_name, lead_phone, acolhedor, created_at")
+            .select("id, lead_name, lead_phone, acolhedor, created_at, status")
             .eq("board_id", board.id)
             .order("created_at", { ascending: true })
             .range(from, from + PAGE - 1);
@@ -174,6 +175,7 @@ export function FunnelLeadsSidePanel({
             lead_phone: string | null;
             acolhedor: string | null;
             created_at: string;
+            status: string | null;
           }>;
           for (const r of rows) {
             collected.push({
@@ -182,6 +184,7 @@ export function FunnelLeadsSidePanel({
               phone: r.lead_phone,
               acolhedor: r.acolhedor,
               created_at: r.created_at,
+              status: r.status,
             });
           }
           if (rows.length < PAGE) break;
@@ -197,20 +200,34 @@ export function FunnelLeadsSidePanel({
     return () => {
       cancelled = true;
     };
-  }, [open, sheetCfg, board?.id]);
+  }, [open, board?.id]);
+
+  const firstStageId = board?.stages?.[0]?.id;
 
   const allLeads: UnifiedLead[] = useMemo(() => {
     if (sheetCfg) {
-      return sheetLeads.map((l) => ({
-        id: l.form_lead_id || `${l.phone_normalized}-${l.created_at}`,
-        name: l.name || null,
-        phone: l.phone_normalized || l.phone_raw || null,
-        acolhedor: l.operator || null,
-        created_at: l.created_at,
-      }));
+      // Index leads do DB por chave de telefone (últimos 8 dígitos) para descobrir
+      // em qual etapa cada lead da planilha está.
+      const dbByPhone = new Map<string, UnifiedLead>();
+      for (const l of dbLeads) {
+        const key = (l.phone || "").replace(/\D/g, "").slice(-8);
+        if (key.length === 8) dbByPhone.set(key, l);
+      }
+      return sheetLeads.map((l) => {
+        const key = (l.phone_normalized || l.phone_raw || "").replace(/\D/g, "").slice(-8);
+        const matched = key.length === 8 ? dbByPhone.get(key) : undefined;
+        return {
+          id: l.form_lead_id || `${l.phone_normalized}-${l.created_at}`,
+          name: l.name || matched?.name || null,
+          phone: l.phone_normalized || l.phone_raw || null,
+          acolhedor: matched?.acolhedor || l.operator || null,
+          created_at: l.created_at,
+          status: matched?.status || firstStageId || null,
+        };
+      });
     }
     return dbLeads;
-  }, [sheetCfg, sheetLeads, dbLeads]);
+  }, [sheetCfg, sheetLeads, dbLeads, firstStageId]);
 
   const acolhedores = useMemo(() => {
     const set = new Set<string>();
