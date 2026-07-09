@@ -282,10 +282,17 @@ export default function GenericFunnelDashboard({ boardMatcher, title }: Props) {
                   const pct = (s.count / maxCount) * 100;
                   const sharePct = total > 0 ? Math.round((s.count / total) * 1000) / 10 : 0;
                   const barHeight = barsReady ? `${Math.max(pct, 2)}%` : "0%";
+                  const handleClick = () =>
+                    openPanel({ id: s.id, name: s.name, color: s.color });
                   return (
                     <Tooltip key={s.id}>
                       <TooltipTrigger asChild>
-                        <div className="h-full flex flex-col items-center justify-end gap-2 min-w-0 cursor-default">
+                        <button
+                          type="button"
+                          onClick={handleClick}
+                          className="h-full flex flex-col items-center justify-end gap-2 min-w-0 cursor-pointer bg-transparent border-0 p-0 rounded-md hover:bg-muted/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 transition-colors"
+                          title={`Ver leads na etapa "${s.name}"`}
+                        >
                           <div className="text-xs font-semibold tabular-nums">{s.count}</div>
                           <div className="w-full flex-1 flex items-end">
                             <div
@@ -311,13 +318,14 @@ export default function GenericFunnelDashboard({ boardMatcher, title }: Props) {
                               {sharePct}%
                             </span>
                           </div>
-                        </div>
+                        </button>
                       </TooltipTrigger>
                       <TooltipContent side="top" sideOffset={6} className="space-y-1">
                         <div className="font-medium text-sm">{s.name}</div>
                         <div className="text-xs text-muted-foreground">
                           {s.count} leads ({sharePct}% do total)
                         </div>
+                        <div className="text-[10px] text-primary">Clique para listar</div>
                       </TooltipContent>
                     </Tooltip>
                   );
