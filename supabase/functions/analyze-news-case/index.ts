@@ -34,7 +34,7 @@ const EXTRACTION_SCHEMA = {
     damage: { type: 'string', description: 'Dano principal, curto (ex: "Morte", "Amputação de mão", "Queimaduras graves", "Fratura").' },
     dynamics_summary: { type: 'string', description: 'Dinâmica do acidente resumida em poucas palavras (ex: "Esmagamento por perda de freio", "Queda de andaime de 8m").' },
     case_type: { type: 'string', enum: CASE_TYPES, description: 'Tipo de caso mais próximo da dinâmica.' },
-    damage_description: { type: 'string', description: 'Descrição completa das lesões/danos e da dinâmica do acidente, em 2-4 frases.' },
+    damage_description: { type: 'string', description: 'Descrição completa do caso em 2-4 frases. OBRIGATÓRIO citar explicitamente: (1) nome da vítima [ou "Vítima não identificada" se ausente], (2) idade da vítima [ou "idade não informada"], (3) tipo de lesão/dano sofrido, e (4) breve dinâmica do acidente. Exemplo: "João da Silva, 42 anos, sofreu amputação de braço em tombamento de caminhão na BR-277. O acidente ocorreu quando o veículo perdeu o controle..."' },
     city: { type: 'string', description: 'Cidade onde ocorreu o acidente.' },
     state: { type: 'string', description: 'UF de 2 letras (ex: MG, SP).' },
     accident_address: { type: 'string', description: 'Endereço ou local do acidente (obra, planta, rodovia, bairro), o mais específico possível.' },
@@ -46,13 +46,17 @@ const EXTRACTION_SCHEMA = {
     liability_justification: { type: 'string', description: 'Justificativa jurídica resumida do tipo de responsabilidade indicado.' },
     news_link: { type: 'string', description: 'URL da notícia, se aparecer no texto colado. Vazio caso contrário.' },
   },
-  required: ['damage', 'dynamics_summary', 'damage_description'],
+  required: ['damage', 'dynamics_summary', 'damage_description', 'case_type', 'victim_name', 'victim_age', 'city', 'state', 'accident_date'],
 }
 
 const SYSTEM_PROMPT = `Você é um assistente jurídico de um escritório de advocacia trabalhista brasileiro especializado em acidentes de trabalho.
 Sua tarefa: ler o texto de uma notícia sobre acidente de trabalho e extrair os dados estruturados do caso chamando a ferramenta extract_case.
 Regras:
-- Extraia SOMENTE o que estiver no texto ou for dedução direta e segura dele. Campo desconhecido = string vazia (ou 0 para idade).
+- Extraia SOMENTE o que estiver no texto ou for dedução direta e segura dele. Campo desconhecido = string vazia (ou 0 para idade). NUNCA invente nome ou idade.
+- Se o nome da vítima não estiver claro no texto, use "Vítima não identificada" (ainda assim, preencha o campo — não deixe em branco).
+- Se a idade não for informada, use 0.
+- Se cidade/UF não forem informadas, deduza pela localização citada (rodovia, bairro, empresa local) — não deixe em branco quando houver qualquer pista geográfica.
+- damage_description DEVE ser um parágrafo narrativo que menciona explicitamente: nome (ou "Vítima não identificada"), idade (ou "idade não informada"), tipo de lesão e dinâmica. Nunca é uma lista.
 - Distinga empresa TOMADORA (dona da obra/atividade) de TERCEIRIZADA (empregadora direta da vítima).
 - Datas sempre em ISO YYYY-MM-DD.
 - UF sempre com 2 letras maiúsculas.
