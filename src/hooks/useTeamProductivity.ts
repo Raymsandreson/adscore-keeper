@@ -159,11 +159,11 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
           .gte('created_at', startDate).lte('created_at', endDate)
           .not('contacted_by', 'is', null),
         // Lead activities - completed (External DB)
-        (db as any).from('lead_activities').select('id, assigned_to, status, deadline, completed_at, completed_by')
+        (db as any).from('lead_activities').select('id, assigned_to, assigned_to_name, status, deadline, completed_at, completed_by')
           .eq('status', 'concluida')
           .gte('completed_at', startDate).lte('completed_at', endDate),
         // Lead activities - overdue (External DB)
-        (db as any).from('lead_activities').select('id, assigned_to, status, deadline')
+        (db as any).from('lead_activities').select('id, assigned_to, assigned_to_name, status, deadline')
           .eq('status', 'pendente')
           .lt('deadline', format(new Date(), 'yyyy-MM-dd'))
           .not('deadline', 'is', null),
@@ -201,13 +201,45 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
       overdueActivities.forEach((a: any) => { const at = remapToCloudSync(a.assigned_to); if (at) { a.assigned_to = at; allUserIds.add(at); } });
       metaDailyMetrics.forEach(m => m.user_id && allUserIds.add(m.user_id));
 
-      // Fetch profiles
+      // Fetch profiles (Cloud primary + External fallback for users not mapped in auth_uuid_mapping)
       let profileMap = new Map<string, { full_name: string | null; email: string | null }>();
       if (allUserIds.size > 0) {
+        const ids = Array.from(allUserIds);
         const { data: profiles } = await authClient.from('profiles')
           .select('user_id, full_name, email')
-          .in('user_id', Array.from(allUserIds));
+          .in('user_id', ids);
         profileMap = new Map(profiles?.map(p => [p.user_id, { full_name: p.full_name, email: p.email }]) || []);
+
+        // Fallback: some IDs may be External UUIDs (user missing from auth_uuid_mapping).
+        // Look them up in the External `profiles` table so they still appear in the report.
+        const missing = ids.filter(id => !profileMap.has(id));
+        if (missing.length > 0) {
+          const { data: extProfiles } = await (db as any).from('profiles')
+            .select('user_id, full_name, email')
+            .in('user_id', missing);
+          (extProfiles || []).forEach((p: any) => {
+            profileMap.set(p.user_id, { full_name: p.full_name, email: p.email });
+          });
+
+          // Enrich from denormalized names on lead_activities as last resort
+          const stillMissing = missing.filter(id => !profileMap.has(id));
+          if (stillMissing.length > 0) {
+            const nameFromActivity = new Map<string, string>();
+            completedActivities.forEach((a: any) => {
+              if (a.completed_by && stillMissing.includes(a.completed_by) && a.assigned_to_name) {
+                nameFromActivity.set(a.completed_by, a.assigned_to_name);
+              }
+            });
+            overdueActivities.forEach((a: any) => {
+              if (a.assigned_to && stillMissing.includes(a.assigned_to) && a.assigned_to_name) {
+                nameFromActivity.set(a.assigned_to, a.assigned_to_name);
+              }
+            });
+            nameFromActivity.forEach((name, id) => {
+              profileMap.set(id, { full_name: name, email: null });
+            });
+          }
+        }
       }
 
       // Build per-user map

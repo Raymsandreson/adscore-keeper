@@ -96,7 +96,7 @@ export function RelatorioDiarioUsuariosSheet({ open, onOpenChange }: Props) {
 
   const rows = useMemo(() => {
     return [...productivity]
-      .filter((u) => u.userName || u.email)
+      .filter((u) => u.userName || u.email || u.totalActions > 0 || u.activitiesCompleted > 0 || u.activitiesOverdue > 0)
       .map((u) => {
         const my = toMyProductivity(u);
         const progress = computeProgress(my, DEFAULT_GOALS);
@@ -156,10 +156,10 @@ export function RelatorioDiarioUsuariosSheet({ open, onOpenChange }: Props) {
                     >
                       <div className="min-w-0 flex-1">
                         <div className="truncate text-sm font-medium">
-                          {u.userName || u.email}
+                          {u.userName || u.email || `Usuário ${u.userId.slice(0, 8)}`}
                         </div>
                         <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
-                          {u.email}
+                          {u.email || (u.userName ? '' : 'Perfil não vinculado')}
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
