@@ -9,6 +9,7 @@ import { useKanbanBoards, type KanbanBoard } from "@/hooks/useKanbanBoards";
 import { Link } from "react-router-dom";
 import { useBpcFormLeads } from "@/hooks/useBpcFormLeads";
 import { getFunnelSheetConfig } from "@/lib/funnelSheetConfig";
+import { FunnelLeadsSidePanel } from "./FunnelLeadsSidePanel";
 import {
   Tooltip,
   TooltipContent,
@@ -224,6 +225,7 @@ export default function GenericFunnelDashboard({ boardMatcher, title }: Props) {
           <h2 className="text-xl font-semibold">{matchedBoard.name}</h2>
         </div>
         <div className="flex items-center gap-2">
+          <FunnelLeadsSidePanel board={matchedBoard} />
           <Button size="sm" variant="outline" onClick={() => setReloadKey((k) => k + 1)}>
             <RefreshCw className="h-3.5 w-3.5 mr-2" /> Atualizar
           </Button>
