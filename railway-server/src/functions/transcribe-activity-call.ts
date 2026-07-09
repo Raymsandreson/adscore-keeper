@@ -1,9 +1,11 @@
 // Transcreve a gravação de uma ligação e preenche os campos da atividade,
 // de forma FIEL ao que foi dito (sem inventar). Retorna { success, transcript, fields }.
 //
-// Body: { audio_url: string, activity_context?: {...} }
+// Body: { audio_url?: string, transcript?: string, activity_context?: {...} }
 // - audio_url: URL pública do áudio (subido pelo front no bucket activity-chat).
 //   O áudio é baixado aqui no servidor (o body fica pequeno).
+// - transcript: quando fornecido, pula download + STT e só refaz o preenchimento
+//   dos campos (usado pelo botão "Tentar preencher novamente" do front).
 //
 // STT: ElevenLabs Scribe v2 → fallback Gemini (lib/stt). IA: Gemini (lib/gemini).
 import type { RequestHandler } from 'express';
@@ -98,28 +100,33 @@ const EMPTY_FIELDS = {
 export const handler: RequestHandler = async (req, res) => {
   const ok = (b: Record<string, unknown>) => res.status(200).json(b);
   try {
-    const { audio_url, activity_context } = (req.body || {}) as {
+    const { audio_url, transcript: providedTranscript, activity_context } = (req.body || {}) as {
       audio_url?: string;
+      transcript?: string;
       activity_context?: ActivityContext;
     };
 
-    if (!audio_url) return ok({ success: false, error: 'audio_url obrigatório' });
+    let transcript = (providedTranscript || '').trim();
 
-    // 1) Baixa o áudio a partir da URL pública (mantém o payload do request pequeno).
-    //    Erros de rede caem no try/catch externo do handler.
-    const resp = await fetch(audio_url);
-    if (!resp.ok) return ok({ success: false, error: `Falha ao baixar áudio (${resp.status})` });
-    const buffer = await resp.arrayBuffer();
-    const mime = resp.headers.get('content-type') || 'audio/webm';
+    if (!transcript) {
+      if (!audio_url) return ok({ success: false, error: 'audio_url ou transcript obrigatório' });
 
-    // 2) Transcrição fiel (ElevenLabs Scribe v2 → fallback Gemini).
-    const transcript = await transcribeAudio(buffer, mime);
-    if (!transcript || transcript === '[áudio inaudível]') {
-      return ok({
-        success: false,
-        error: 'Não foi possível transcrever o áudio (inaudível ou vazio).',
-        transcript: transcript || '',
-      });
+      // 1) Baixa o áudio a partir da URL pública (mantém o payload do request pequeno).
+      //    Erros de rede caem no try/catch externo do handler.
+      const resp = await fetch(audio_url);
+      if (!resp.ok) return ok({ success: false, error: `Falha ao baixar áudio (${resp.status})` });
+      const buffer = await resp.arrayBuffer();
+      const mime = resp.headers.get('content-type') || 'audio/webm';
+
+      // 2) Transcrição fiel (ElevenLabs Scribe v2 → fallback Gemini).
+      transcript = await transcribeAudio(buffer, mime);
+      if (!transcript || transcript === '[áudio inaudível]') {
+        return ok({
+          success: false,
+          error: 'Não foi possível transcrever o áudio (inaudível ou vazio).',
+          transcript: transcript || '',
+        });
+      }
     }
 
     // 3) IA preenche os campos da atividade com base SÓ no que foi dito.
@@ -148,8 +155,12 @@ Sua tarefa: ATUALIZAR os campos da atividade COMBINANDO o contexto existente com
 - Seja fiel e objetivo. NÃO invente fatos, nomes, datas ou prazos que não estejam na transcrição ou no contexto fornecido. Se um campo não tiver informação, retorne string vazia.
 - Escreva em português do Brasil, linguagem simples e nada rebuscada. Exemplo de tom: "Cobramos o devido andamento do processo" ou "Solicitamos que a Secretaria/Gabinete proceda com o impulso para seguirmos com os próximos passos".`;
 
+    // Até 2 tentativas: erros transitórios do Gemini (429/503) ou resposta sem
+    // tool_call não podem virar silenciosamente "nenhum campo identificado".
     let fields = { ...EMPTY_FIELDS };
-    try {
+    let fillError: string | null = null;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
       const fillData = await geminiChat({
         model: MODEL,
         messages: [
@@ -179,18 +190,23 @@ Sua tarefa: ATUALIZAR os campos da atividade COMBINANDO o contexto existente com
         tool_choice: { type: 'function', function: { name: 'fill_activity_fields_from_call' } },
       });
 
-      const toolCall = fillData?.choices?.[0]?.message?.tool_calls?.[0];
-      if (toolCall?.function?.arguments) {
-        const parsed = JSON.parse(toolCall.function.arguments);
-        fields = { ...fields, ...parsed };
+        const toolCall = fillData?.choices?.[0]?.message?.tool_calls?.[0];
+        if (toolCall?.function?.arguments) {
+          const parsed = JSON.parse(toolCall.function.arguments);
+          fields = { ...fields, ...parsed };
+          fillError = null;
+          break;
+        }
+        fillError = 'A IA respondeu sem retornar os campos (resposta vazia).';
+        console.warn(`[transcribe-activity-call] tentativa ${attempt}: sem tool_call na resposta`);
+      } catch (e: any) {
+        fillError = e?.message || String(e);
+        console.error(`[transcribe-activity-call] fill error (tentativa ${attempt}):`, e);
       }
-    } catch (e: any) {
-      // Mesmo se o preenchimento falhar, devolvemos a transcrição para o usuário aproveitar.
-      console.error('[transcribe-activity-call] fill error:', e);
-      return ok({ success: true, transcript, fields, fill_error: e?.message || String(e) });
     }
 
-    return ok({ success: true, transcript, fields });
+    // Mesmo se o preenchimento falhar, devolvemos a transcrição para o usuário aproveitar.
+    return ok({ success: true, transcript, fields, ...(fillError ? { fill_error: fillError } : {}) });
   } catch (e: any) {
     console.error('[transcribe-activity-call] error:', e);
     return ok({ success: false, error: e?.message || String(e) });

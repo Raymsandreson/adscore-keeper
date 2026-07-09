@@ -136,6 +136,12 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
   const [recordingUrl, setRecordingUrl] = useState<string | null>(null);
   const [sendingToWa, setSendingToWa] = useState(false);
   const [sentToWa, setSentToWa] = useState(false);
+  // Falha na etapa de preenchimento pela IA (a transcrição em si deu certo).
+  const [fillError, setFillError] = useState<string | null>(null);
+  const [appliedCount, setAppliedCount] = useState(0);
+  const [refilling, setRefilling] = useState(false);
+  // Contexto enviado à IA, guardado pra reusar no "Tentar preencher novamente".
+  const lastContextRef = useRef<Record<string, unknown> | null>(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -388,6 +394,7 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
       }
 
       const fullContext = { ...context, previous_activities: previousActivities, chat_messages: chatMessages };
+      lastContextRef.current = fullContext;
 
       const { data, error: fnErr } = await cloudFunctions.invoke('transcribe-activity-call', {
         body: { audio_url, activity_context: fullContext },
@@ -407,11 +414,17 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
 
       setPhase('done');
       const count = Object.keys(applied).length;
-      toast.success(
-        count > 0
-          ? `IA preencheu ${count} campo(s) com base na ligação — revise antes de salvar.`
-          : 'Transcrição pronta, mas a IA não identificou campos para preencher.'
-      );
+      setAppliedCount(count);
+      setFillError(data.fill_error || null);
+      if (data.fill_error) {
+        toast.error('Transcrição pronta, mas o preenchimento automático falhou. Use "Tentar preencher novamente".');
+      } else {
+        toast.success(
+          count > 0
+            ? `IA preencheu ${count} campo(s) com base na ligação — revise antes de salvar.`
+            : 'Transcrição pronta, mas a IA não identificou campos para preencher.'
+        );
+      }
     } catch (e: any) {
       console.error('processAudio error', e);
       setError(e?.message || 'Erro ao processar a ligação');
@@ -445,6 +458,45 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
     stopRecordingRef.current = stopRecording;
   }, [stopRecording]);
 
+  // Refaz só o preenchimento dos campos reaproveitando a transcrição já pronta
+  // (envia audio_url junto por compatibilidade com o servidor antigo).
+  const retryFill = useCallback(async () => {
+    if (!transcript) return;
+    setRefilling(true);
+    try {
+      const { data, error: fnErr } = await cloudFunctions.invoke('transcribe-activity-call', {
+        body: { transcript, audio_url: recordingUrl, activity_context: lastContextRef.current || context },
+      });
+      if (fnErr) throw fnErr;
+      if (!data?.success) throw new Error(data?.error || 'Falha ao preencher os campos');
+
+      const raw = data.fields || {};
+      const applied: ActivityCallFields = {};
+      for (const k of CALL_FIELD_KEYS) {
+        const v = raw[k];
+        if (v && String(v).trim()) applied[k] = String(v).trim();
+      }
+      onFields(applied);
+      const count = Object.keys(applied).length;
+      setAppliedCount(count);
+      setFillError(data.fill_error || null);
+      if (data.fill_error) {
+        toast.error(`Preenchimento falhou de novo: ${data.fill_error}`);
+      } else {
+        toast.success(
+          count > 0
+            ? `IA preencheu ${count} campo(s) — revise antes de salvar.`
+            : 'A IA não identificou campos para preencher nesta transcrição.'
+        );
+      }
+    } catch (e: any) {
+      console.error('retryFill error', e);
+      toast.error(e?.message || 'Erro ao preencher os campos');
+    } finally {
+      setRefilling(false);
+    }
+  }, [transcript, recordingUrl, context, onFields]);
+
   const reset = useCallback(() => {
     teardownAudio();
     setPhase('idle');
@@ -455,6 +507,8 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
     silentRef.current = false;
     setRecordingUrl(null);
     setSentToWa(false);
+    setFillError(null);
+    setAppliedCount(0);
     onRecordingReady?.(null);
   }, [teardownAudio, onRecordingReady]);
 
@@ -612,10 +666,36 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
           <>
             {error ? (
               <p className="text-xs text-destructive">{error}</p>
-            ) : (
+            ) : fillError ? (
+              <div className="flex items-start gap-1.5 rounded-md bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/50 p-2">
+                <Info className="h-3.5 w-3.5 text-red-600 shrink-0 mt-0.5" />
+                <span className="text-[11px] text-red-700 dark:text-red-300">
+                  Transcrição pronta, mas o preenchimento automático falhou: {fillError}
+                </span>
+              </div>
+            ) : appliedCount > 0 ? (
               <div className="flex items-center gap-1.5 text-xs text-green-700 dark:text-green-400">
                 <Sparkles className="h-3.5 w-3.5" /> Campos preenchidos — revise antes de salvar.
               </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                A IA não identificou campos para preencher nesta transcrição.
+              </p>
+            )}
+            {!error && transcript && (fillError || appliedCount === 0) && (
+              <Button
+                variant="default"
+                className="w-full gap-2"
+                size="sm"
+                onClick={retryFill}
+                disabled={refilling}
+              >
+                {refilling ? (
+                  <><Loader2 className="h-4 w-4 animate-spin" /> Preenchendo…</>
+                ) : (
+                  <><Sparkles className="h-4 w-4" /> Tentar preencher novamente</>
+                )}
+              </Button>
             )}
             {transcript && (
               <div>
