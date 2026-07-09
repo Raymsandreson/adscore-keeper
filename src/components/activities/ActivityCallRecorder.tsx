@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Phone, Mic, Square, Loader2, Sparkles, Info, RotateCcw, Download, Send } from 'lucide-react';
+import { Phone, Mic, Square, Loader2, Sparkles, Info, RotateCcw, Download, Send, Volume2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
@@ -61,6 +61,24 @@ interface Props {
 
 type Phase = 'idle' | 'recording' | 'processing' | 'done';
 
+/** Fonte de captura: microfone (externo), áudio interno do dispositivo, ou os dois mixados. */
+type AudioSource = 'mic' | 'system' | 'both';
+
+/**
+ * Áudio interno depende de getDisplayMedia (compartilhar tela/aba com áudio).
+ * Disponível em Chrome/Edge de desktop; navegadores mobile não expõem essa API.
+ */
+const supportsSystemAudio =
+  typeof navigator !== 'undefined' &&
+  !!navigator.mediaDevices &&
+  typeof (navigator.mediaDevices as any).getDisplayMedia === 'function';
+
+const SOURCE_LABELS: Record<AudioSource, string> = {
+  mic: 'Microfone',
+  system: 'Áudio interno',
+  both: 'Microfone + interno',
+};
+
 const CALL_FIELD_KEYS: (keyof ActivityCallFields)[] = [
   'what_was_done', 'current_status', 'next_steps', 'solicitacao', 'resposta_juizo', 'notes',
 ];
@@ -110,6 +128,7 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
     onOpenChange?.(v);
   };
   const [phase, setPhase] = useState<Phase>('idle');
+  const [source, setSource] = useState<AudioSource>('mic');
   const [seconds, setSeconds] = useState(0);
   const [transcript, setTranscript] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -121,6 +140,10 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
+  // Stream do getDisplayMedia (áudio interno) — precisa ser parado separadamente (inclui track de vídeo).
+  const displayStreamRef = useRef<MediaStream | null>(null);
+  // Permite que o handler de "parou de compartilhar" (registrado no start) chame o stop mais recente.
+  const stopRecordingRef = useRef<(() => void) | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // Visualizador de áudio (Web Audio API) — mostra a "frequência da voz" ao gravar.
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -141,6 +164,7 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
       streamRef.current?.getTracks().forEach((t) => t.stop());
+      displayStreamRef.current?.getTracks().forEach((t) => t.stop());
       try { mediaRecorderRef.current?.stop(); } catch { /* noop */ }
       teardownAudio();
     };
@@ -152,19 +176,54 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
   const startRecording = useCallback(async () => {
     setError(null);
     setTranscript('');
+    let micStream: MediaStream | null = null;
+    let displayStream: MediaStream | null = null;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
+      if (source !== 'system') {
+        micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      }
+      if (source !== 'mic') {
+        // Áudio interno: o navegador só entrega junto de uma captura de tela/aba.
+        // O usuário PRECISA marcar "Compartilhar áudio" na janela de seleção.
+        displayStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+        if (displayStream.getAudioTracks().length === 0) {
+          displayStream.getTracks().forEach((t) => t.stop());
+          throw new Error('NO_SYSTEM_AUDIO');
+        }
+        displayStreamRef.current = displayStream;
+        // Se o usuário encerrar o compartilhamento pela UI do navegador, finaliza a gravação.
+        displayStream.getTracks().forEach((t) => {
+          t.onended = () => { stopRecordingRef.current?.(); };
+        });
+      }
+      streamRef.current = micStream;
+
+      // Stream que vai pro MediaRecorder: mic direto, ou mix via Web Audio API.
+      let recordStream: MediaStream;
+      if (source === 'mic') {
+        recordStream = micStream!;
+      } else {
+        const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
+        const audioCtx = new AudioCtx();
+        audioCtxRef.current = audioCtx;
+        const dest = audioCtx.createMediaStreamDestination();
+        if (micStream) audioCtx.createMediaStreamSource(micStream).connect(dest);
+        audioCtx
+          .createMediaStreamSource(new MediaStream(displayStream!.getAudioTracks()))
+          .connect(dest);
+        recordStream = dest.stream;
+      }
 
       // Medidor de nível de áudio (opcional — só feedback visual).
       try {
-        const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
-        const audioCtx = new AudioCtx();
-        const source = audioCtx.createMediaStreamSource(stream);
+        if (!audioCtxRef.current) {
+          const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
+          audioCtxRef.current = new AudioCtx();
+        }
+        const audioCtx = audioCtxRef.current!;
         const analyser = audioCtx.createAnalyser();
         analyser.fftSize = 256;
-        source.connect(analyser);
-        audioCtxRef.current = audioCtx;
+        audioCtx.createMediaStreamSource(recordStream).connect(analyser);
         analyserRef.current = analyser;
         setSilent(false);
         silentRef.current = false;
@@ -176,7 +235,7 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
         : MediaRecorder.isTypeSupported('audio/webm')
           ? 'audio/webm'
           : 'audio/mp4';
-      const recorder = new MediaRecorder(stream, { mimeType });
+      const recorder = new MediaRecorder(recordStream, { mimeType });
       mediaRecorderRef.current = recorder;
       chunksRef.current = [];
       recorder.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
@@ -184,11 +243,22 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
       setSeconds(0);
       timerRef.current = setInterval(() => setSeconds((p) => p + 1), 1000);
       setPhase('recording');
-    } catch (e) {
-      console.error('Mic access error', e);
-      toast.error('Não foi possível acessar o microfone. Verifique a permissão do navegador.');
+    } catch (e: any) {
+      micStream?.getTracks().forEach((t) => t.stop());
+      displayStream?.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+      displayStreamRef.current = null;
+      teardownAudio();
+      console.error('Recording start error', e);
+      if (e?.message === 'NO_SYSTEM_AUDIO') {
+        toast.error('Nenhum áudio interno compartilhado. Na janela de seleção, escolha a aba/tela e marque "Compartilhar áudio".');
+      } else if (e?.name === 'NotAllowedError' && source !== 'mic') {
+        toast.error('Compartilhamento de tela/áudio cancelado ou negado.');
+      } else {
+        toast.error('Não foi possível acessar o microfone. Verifique a permissão do navegador.');
+      }
     }
-  }, []);
+  }, [source, teardownAudio]);
 
   // Desenha as barras de frequência enquanto grava e detecta ausência de som.
   useEffect(() => {
@@ -357,6 +427,8 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
     const mime = recorder.mimeType;
     recorder.onstop = () => {
       streamRef.current?.getTracks().forEach((t) => t.stop());
+      displayStreamRef.current?.getTracks().forEach((t) => t.stop());
+      displayStreamRef.current = null;
       teardownAudio();
       const blob = new Blob(chunksRef.current, { type: mime });
       if (blob.size < 1000) {
@@ -368,6 +440,10 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
     };
     try { recorder.stop(); } catch { /* noop */ }
   }, [processAudio, teardownAudio]);
+
+  useEffect(() => {
+    stopRecordingRef.current = stopRecording;
+  }, [stopRecording]);
 
   const reset = useCallback(() => {
     teardownAudio();
@@ -422,15 +498,73 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
 
         {phase === 'idle' && (
           <>
-            <div className="flex items-start gap-1.5 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 p-2">
-              <Info className="h-3.5 w-3.5 text-amber-600 shrink-0 mt-0.5" />
-              <span className="text-[11px] text-amber-700 dark:text-amber-300">
-                Deixe a ligação no <strong>viva-voz</strong> perto do microfone para captar os dois lados.
-                Informe o interlocutor de que a conversa será registrada.
-              </span>
+            <div>
+              <p className="text-[11px] font-medium text-muted-foreground mb-1">O que gravar?</p>
+              <div className="grid grid-cols-3 gap-1">
+                <Button
+                  type="button"
+                  variant={source === 'mic' ? 'default' : 'outline'}
+                  size="sm"
+                  className="h-auto flex-col gap-0.5 py-1.5 text-[10px]"
+                  onClick={() => setSource('mic')}
+                >
+                  <Mic className="h-3.5 w-3.5" /> Microfone
+                </Button>
+                <Button
+                  type="button"
+                  variant={source === 'system' ? 'default' : 'outline'}
+                  size="sm"
+                  className="h-auto flex-col gap-0.5 py-1.5 text-[10px]"
+                  disabled={!supportsSystemAudio}
+                  onClick={() => setSource('system')}
+                >
+                  <Volume2 className="h-3.5 w-3.5" /> Áudio interno
+                </Button>
+                <Button
+                  type="button"
+                  variant={source === 'both' ? 'default' : 'outline'}
+                  size="sm"
+                  className="h-auto flex-col gap-0.5 py-1.5 text-[10px]"
+                  disabled={!supportsSystemAudio}
+                  onClick={() => setSource('both')}
+                >
+                  <span className="flex items-center gap-0.5"><Mic className="h-3 w-3" /><Volume2 className="h-3 w-3" /></span>
+                  Ambos
+                </Button>
+              </div>
             </div>
+
+            {!supportsSystemAudio && (
+              <div className="flex items-start gap-1.5 rounded-md bg-muted/60 border p-2">
+                <Info className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
+                <span className="text-[11px] text-muted-foreground">
+                  <strong>Áudio interno</strong> só está disponível no navegador do computador (Chrome/Edge).
+                  No celular, o sistema não permite capturar o som interno — use o viva-voz.
+                </span>
+              </div>
+            )}
+
+            {source === 'mic' ? (
+              <div className="flex items-start gap-1.5 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 p-2">
+                <Info className="h-3.5 w-3.5 text-amber-600 shrink-0 mt-0.5" />
+                <span className="text-[11px] text-amber-700 dark:text-amber-300">
+                  Deixe a ligação no <strong>viva-voz</strong> perto do microfone para captar os dois lados.
+                  Informe o interlocutor de que a conversa será registrada.
+                </span>
+              </div>
+            ) : (
+              <div className="flex items-start gap-1.5 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 p-2">
+                <Info className="h-3.5 w-3.5 text-amber-600 shrink-0 mt-0.5" />
+                <span className="text-[11px] text-amber-700 dark:text-amber-300">
+                  O navegador vai pedir para <strong>compartilhar uma aba ou a tela</strong> — selecione onde o som
+                  está tocando e marque <strong>"Compartilhar áudio"</strong>, senão nada será captado.
+                  Informe o interlocutor de que a conversa será registrada.
+                </span>
+              </div>
+            )}
+
             <Button className="w-full gap-2" size="sm" onClick={startRecording}>
-              <Mic className="h-4 w-4" /> Iniciar gravação
+              <Mic className="h-4 w-4" /> Iniciar gravação ({SOURCE_LABELS[source]})
             </Button>
           </>
         )}
@@ -440,6 +574,7 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
             <div className="flex items-center justify-center gap-2 py-2">
               <span className="h-2.5 w-2.5 rounded-full bg-red-500 animate-pulse" />
               <span className="font-mono text-lg">{fmt(seconds)}</span>
+              <span className="text-[10px] text-muted-foreground">({SOURCE_LABELS[source]})</span>
             </div>
             {/* Visualizador da frequência da voz — confirma que o microfone está captando. */}
             <canvas
@@ -452,7 +587,9 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
               <div className="flex items-start gap-1.5 rounded-md bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/50 p-2">
                 <Info className="h-3.5 w-3.5 text-red-600 shrink-0 mt-0.5" />
                 <span className="text-[11px] text-red-700 dark:text-red-300">
-                  Nenhum som detectado. Aproxime o microfone, aumente o volume do viva-voz ou fale mais alto.
+                  {source === 'mic'
+                    ? 'Nenhum som detectado. Aproxime o microfone, aumente o volume do viva-voz ou fale mais alto.'
+                    : 'Nenhum som detectado. Confira se marcou "Compartilhar áudio" na aba/tela certa e se o som está tocando.'}
                 </span>
               </div>
             ) : (
