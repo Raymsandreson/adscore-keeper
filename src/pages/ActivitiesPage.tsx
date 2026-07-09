@@ -3724,6 +3724,12 @@ const ActivitiesPage = () => {
                           solicitacao: stripHtmlToText(formSolicitacao),
                           resposta_juizo: stripHtmlToText(formRespostaJuizo),
                           notes: stripHtmlToText(formNotes),
+                          deadline: formDeadline || undefined,
+                          notification_date: formNotificationDate || undefined,
+                          priority: formPriority || undefined,
+                          status: formStatus || undefined,
+                          assessor_name: formAssignedToName || undefined,
+                          team_members: teamMembers.map((m) => m.full_name).filter(Boolean) as string[],
                           workflow: stepContext ? {
                             step_label: stepContext.stepLabel,
                             phase_label: stepContext.phaseLabel || undefined,
@@ -3737,12 +3743,33 @@ const ActivitiesPage = () => {
                           } : undefined,
                         }}
                         onFields={(f) => {
-                          if (f.what_was_done) setFormWhatWasDone(callFieldTextToHtml(f.what_was_done));
-                          if (f.current_status) setFormCurrentStatus(callFieldTextToHtml(f.current_status));
-                          if (f.next_steps) setFormNextSteps(callFieldTextToHtml(f.next_steps));
-                          if (f.solicitacao) setFormSolicitacao(callFieldTextToHtml(f.solicitacao));
-                          if (f.resposta_juizo) setFormRespostaJuizo(callFieldTextToHtml(f.resposta_juizo));
-                          if (f.notes) setFormNotes(callFieldTextToHtml(f.notes));
+                          // Campos de texto: '' significa "o áudio mandou apagar" — limpa o campo.
+                          if (f.what_was_done !== undefined) setFormWhatWasDone(f.what_was_done ? callFieldTextToHtml(f.what_was_done) : '');
+                          if (f.current_status !== undefined) setFormCurrentStatus(f.current_status ? callFieldTextToHtml(f.current_status) : '');
+                          if (f.next_steps !== undefined) setFormNextSteps(f.next_steps ? callFieldTextToHtml(f.next_steps) : '');
+                          if (f.solicitacao !== undefined) setFormSolicitacao(f.solicitacao ? callFieldTextToHtml(f.solicitacao) : '');
+                          if (f.resposta_juizo !== undefined) setFormRespostaJuizo(f.resposta_juizo ? callFieldTextToHtml(f.resposta_juizo) : '');
+                          if (f.notes !== undefined) setFormNotes(f.notes ? callFieldTextToHtml(f.notes) : '');
+                          // Metadados ditados no áudio (prazo, prioridade, situação, assessor, título).
+                          if (f.title) setFormTitle(f.title);
+                          if (f.deadline && /^\d{4}-\d{2}-\d{2}$/.test(f.deadline)) handleDeadlineChange(f.deadline);
+                          if (f.notification_date && /^\d{4}-\d{2}-\d{2}$/.test(f.notification_date)) setFormNotificationDate(f.notification_date);
+                          if (f.priority && ['baixa', 'normal', 'alta', 'urgente'].includes(f.priority)) setFormPriority(f.priority);
+                          if (f.status && ['pendente', 'em_andamento', 'concluida'].includes(f.status)) setFormStatus(f.status);
+                          if (f.assessor_name) {
+                            const norm = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+                            const spoken = norm(f.assessor_name);
+                            const member = teamMembers.find((m) => {
+                              const full = norm(m.full_name || '');
+                              return full && (full.includes(spoken) || spoken.includes(full) || full.split(' ')[0] === spoken.split(' ')[0]);
+                            });
+                            if (member) {
+                              setFormAssignedTo(member.user_id);
+                              setFormAssignedToName(member.full_name || '');
+                            } else {
+                              toast.error(`Assessor "${f.assessor_name}" citado no áudio não foi encontrado na equipe.`);
+                            }
+                          }
                         }}
                       />
                       <ActivityDocumentUpload

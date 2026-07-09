@@ -43,6 +43,13 @@ interface ActivityContext {
   solicitacao?: string;
   resposta_juizo?: string;
   notes?: string;
+  // Metadados atuais da atividade (para a IA poder atualizá-los quando o áudio pedir):
+  deadline?: string;
+  notification_date?: string;
+  priority?: string;
+  status?: string;
+  assessor_name?: string;
+  team_members?: string[];
   // Contexto extra para a IA COMBINAR (não só substituir):
   workflow?: { step_label?: string; phase_label?: string; objective_label?: string; next_step?: string };
   previous_activities?: PreviousActivity[];
@@ -131,12 +138,25 @@ export const handler: RequestHandler = async (req, res) => {
 
     // 3) IA preenche os campos da atividade com base SÓ no que foi dito.
     const ctx = activity_context || {};
-    const ctxText = `Contexto da atividade:
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+    const weekday = new Date().toLocaleDateString('pt-BR', { weekday: 'long', timeZone: 'America/Sao_Paulo' });
+    const teamList = Array.isArray(ctx.team_members) && ctx.team_members.length > 0
+      ? ctx.team_members.slice(0, 50).join(', ')
+      : '—';
+    const ctxText = `Data de HOJE: ${today} (${weekday}) — use para resolver datas relativas ("amanhã", "sexta-feira", "dia 15").
+
+Contexto da atividade:
 - Título: ${ctx.title || '—'}
 - Tipo: ${ctx.type || '—'}
 - Cliente/Lead: ${ctx.lead_name || '—'}
 - Contato: ${ctx.contact_name || '—'}
 - Processo: ${ctx.process_title || '—'}
+- Prazo atual: ${ctx.deadline || '—'}
+- Notificação atual: ${ctx.notification_date || '—'}
+- Prioridade atual: ${ctx.priority || '—'}
+- Situação atual: ${ctx.status || '—'}
+- Assessor responsável atual: ${ctx.assessor_name || '—'}
+- Assessores da equipe (nomes válidos para assessor_name): ${teamList}
 
 Conteúdo ATUAL dos campos (preserve o que ainda for válido e complemente com a ligação):
 - Como está: ${ctx.current_status || '(vazio)'}
@@ -153,6 +173,12 @@ Sua tarefa: ATUALIZAR os campos da atividade COMBINANDO o contexto existente com
 - Use o histórico de atividades anteriores e as mensagens internas apenas como contexto para escrever de forma coerente com o andamento do processo — NÃO copie esse histórico para dentro dos campos.
 - Para "Próximo passo", considere o próximo passo do fluxo de trabalho quando fizer sentido com o que foi dito na ligação.
 - Seja fiel e objetivo. NÃO invente fatos, nomes, datas ou prazos que não estejam na transcrição ou no contexto fornecido. Se um campo não tiver informação, retorne string vazia.
+- COMANDOS DE EDIÇÃO: o áudio pode conter instruções diretas de edição (ex.: "apaga as observações", "pode limpar tudo que estava no próximo passo", "troca o que foi feito por X", "corrige o prazo pra sexta-feira", "muda a prioridade pra urgente", "passa essa atividade pro assessor Fulano", "marca como concluída", "renomeia a atividade para Y"). EXECUTE essas instruções: elas prevalecem sobre a regra de preservar o conteúdo atual.
+  - Para APAGAR um campo de texto, inclua o nome dele em clear_fields (não basta retornar vazio — vazio significa "sem novidade").
+  - Para SUBSTITUIR, retorne o novo conteúdo no campo (sem misturar com o antigo).
+- METADADOS (deadline, notification_date, priority, status, assessor_name, title): preencha SOMENTE quando o áudio mencionar explicitamente prazo/data, prioridade, situação, responsável ou título. Caso contrário retorne string vazia (o valor atual é mantido).
+  - Datas SEMPRE no formato YYYY-MM-DD, resolvendo termos relativos com a data de hoje.
+  - assessor_name deve ser EXATAMENTE um dos nomes da equipe listados no contexto; se o nome falado não corresponder a nenhum, deixe vazio.
 - Escreva em português do Brasil, linguagem simples e nada rebuscada. Exemplo de tom: "Cobramos o devido andamento do processo" ou "Solicitamos que a Secretaria/Gabinete proceda com o impulso para seguirmos com os próximos passos".`;
 
     // Até 2 tentativas: erros transitórios do Gemini (429/503) ou resposta sem
@@ -181,6 +207,17 @@ Sua tarefa: ATUALIZAR os campos da atividade COMBINANDO o contexto existente com
                 solicitacao: { type: 'string', description: 'O que foi solicitado/pedido durante a ligação, se houver.' },
                 resposta_juizo: { type: 'string', description: 'Resposta ou posição da vara/cartório/juízo/órgão (o que o servidor respondeu), se houver.' },
                 notes: { type: 'string', description: 'Observações adicionais relevantes mencionadas na ligação.' },
+                title: { type: 'string', description: 'Novo título da atividade — apenas se o áudio pedir explicitamente para nomear/renomear. Senão, vazio.' },
+                deadline: { type: 'string', description: 'Prazo da atividade em YYYY-MM-DD — apenas se o áudio mencionar prazo/data. Resolva datas relativas com a data de hoje. Senão, vazio.' },
+                notification_date: { type: 'string', description: 'Data de notificação/lembrete em YYYY-MM-DD — apenas se mencionada. Senão, vazio.' },
+                priority: { type: 'string', enum: ['', 'baixa', 'normal', 'alta', 'urgente'], description: 'Prioridade — apenas se o áudio mencionar. Senão, vazio.' },
+                status: { type: 'string', enum: ['', 'pendente', 'em_andamento', 'concluida'], description: 'Situação da atividade — apenas se o áudio mencionar (ex.: "marca como concluída"). Senão, vazio.' },
+                assessor_name: { type: 'string', description: 'Assessor responsável — apenas se o áudio mencionar, e EXATAMENTE um dos nomes da equipe do contexto. Senão, vazio.' },
+                clear_fields: {
+                  type: 'array',
+                  items: { type: 'string', enum: ['what_was_done', 'current_status', 'next_steps', 'solicitacao', 'resposta_juizo', 'notes'] },
+                  description: 'Campos de texto que o áudio mandou APAGAR/limpar explicitamente.',
+                },
               },
               required: ['what_was_done', 'current_status', 'next_steps', 'solicitacao', 'resposta_juizo', 'notes'],
               additionalProperties: false,

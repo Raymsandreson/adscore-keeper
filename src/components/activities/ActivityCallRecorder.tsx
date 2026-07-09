@@ -22,6 +22,14 @@ export interface ActivityCallContext {
   solicitacao?: string;
   resposta_juizo?: string;
   notes?: string;
+  /** Metadados atuais — permitem que o áudio os corrija ("muda o prazo pra sexta"). */
+  deadline?: string;
+  notification_date?: string;
+  priority?: string;
+  status?: string;
+  assessor_name?: string;
+  /** Nomes dos assessores da equipe (para a IA mapear "passa pro Fulano"). */
+  team_members?: string[];
   workflow?: { step_label?: string; phase_label?: string; objective_label?: string; next_step?: string };
 }
 
@@ -32,6 +40,13 @@ export interface ActivityCallFields {
   solicitacao?: string;
   resposta_juizo?: string;
   notes?: string;
+  // Campos de texto podem vir como '' quando o áudio mandou APAGAR o conteúdo.
+  title?: string;
+  deadline?: string;
+  notification_date?: string;
+  priority?: string;
+  status?: string;
+  assessor_name?: string;
 }
 
 interface Props {
@@ -81,6 +96,10 @@ const SOURCE_LABELS: Record<AudioSource, string> = {
 
 const CALL_FIELD_KEYS: (keyof ActivityCallFields)[] = [
   'what_was_done', 'current_status', 'next_steps', 'solicitacao', 'resposta_juizo', 'notes',
+];
+
+const META_FIELD_KEYS: (keyof ActivityCallFields)[] = [
+  'title', 'deadline', 'notification_date', 'priority', 'status', 'assessor_name',
 ];
 
 /** Força o download de um arquivo (cross-origin via blob; fallback abre em nova aba). */
@@ -142,6 +161,8 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
   const [refilling, setRefilling] = useState(false);
   // Contexto enviado à IA, guardado pra reusar no "Tentar preencher novamente".
   const lastContextRef = useRef<Record<string, unknown> | null>(null);
+  // Gravações de áudio já anexadas à atividade (permitem reprocessar sem gravar de novo).
+  const [pastRecordings, setPastRecordings] = useState<{ id: string; file_url: string; file_name: string | null; created_at: string | null }[]>([]);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -314,39 +335,30 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
     };
   }, [phase]);
 
-  const processAudio = useCallback(async (blob: Blob, mime: string) => {
+  /** Aplica os campos retornados pela IA (textos, apagamentos e metadados). Retorna quantos mudaram. */
+  const applyResponseFields = useCallback((raw: Record<string, unknown>): number => {
+    const applied: ActivityCallFields = {};
+    for (const k of CALL_FIELD_KEYS) {
+      const v = raw?.[k];
+      if (v && String(v).trim()) applied[k] = String(v).trim();
+    }
+    // Comandos de "apagar campo" ditos no áudio chegam em clear_fields e viram '' (o pai limpa).
+    const toClear = Array.isArray((raw as any)?.clear_fields) ? (raw as any).clear_fields : [];
+    for (const k of CALL_FIELD_KEYS) {
+      if (toClear.includes(k) && applied[k] === undefined) applied[k] = '';
+    }
+    for (const k of META_FIELD_KEYS) {
+      const v = raw?.[k];
+      if (v && String(v).trim()) applied[k] = String(v).trim();
+    }
+    onFields(applied);
+    return Object.keys(applied).length;
+  }, [onFields]);
+
+  /** Transcreve (no servidor) e preenche os campos a partir de uma URL de áudio já no storage. */
+  const runFill = useCallback(async (audio_url: string) => {
     setPhase('processing');
     try {
-      const ext = mime.includes('webm') ? 'webm' : 'mp4';
-      const path = `call-recordings/activity_call_${Date.now()}.${ext}`;
-      const { error: upErr } = await supabase.storage
-        .from('activity-chat')
-        .upload(path, blob, { contentType: mime });
-      if (upErr) throw upErr;
-
-      const { data: urlData } = supabase.storage.from('activity-chat').getPublicUrl(path);
-      const audio_url = urlData.publicUrl;
-      setRecordingUrl(audio_url);
-      onRecordingReady?.({ url: audio_url, seconds });
-
-      // Guarda a gravação como anexo de áudio da atividade (consulta/análise posterior).
-      if (activityId) {
-        try {
-          const { data: { user } } = await supabase.auth.getUser();
-          const extUserId = await remapToExternal(user?.id || null);
-          await externalSupabase.from('activity_attachments').insert({
-            activity_id: activityId,
-            file_url: audio_url,
-            file_name: `Gravação da ligação.${ext}`,
-            file_type: mime,
-            attachment_type: 'audio',
-            created_by: extUserId,
-          });
-        } catch (attErr) {
-          console.warn('[ActivityCallRecorder] não foi possível anexar a gravação:', attErr);
-        }
-      }
-
       // Busca contexto extra para a IA combinar (histórico do processo + mensagens da atividade).
       let previousActivities: any[] = [];
       let chatMessages: any[] = [];
@@ -404,16 +416,9 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
 
       setTranscript(data.transcript || '');
 
-      const raw = data.fields || {};
-      const applied: ActivityCallFields = {};
-      for (const k of CALL_FIELD_KEYS) {
-        const v = raw[k];
-        if (v && String(v).trim()) applied[k] = String(v).trim();
-      }
-      onFields(applied);
+      const count = applyResponseFields(data.fields || {});
 
       setPhase('done');
-      const count = Object.keys(applied).length;
       setAppliedCount(count);
       setFillError(data.fill_error || null);
       if (data.fill_error) {
@@ -426,12 +431,54 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
         );
       }
     } catch (e: any) {
+      console.error('runFill error', e);
+      setError(e?.message || 'Erro ao processar a ligação');
+      setPhase('done');
+      toast.error(e?.message || 'Erro ao processar a ligação');
+    }
+  }, [context, activityId, leadId, caseId, processId, applyResponseFields]);
+
+  const processAudio = useCallback(async (blob: Blob, mime: string) => {
+    setPhase('processing');
+    try {
+      const ext = mime.includes('webm') ? 'webm' : 'mp4';
+      const path = `call-recordings/activity_call_${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage
+        .from('activity-chat')
+        .upload(path, blob, { contentType: mime });
+      if (upErr) throw upErr;
+
+      const { data: urlData } = supabase.storage.from('activity-chat').getPublicUrl(path);
+      const audio_url = urlData.publicUrl;
+      setRecordingUrl(audio_url);
+      onRecordingReady?.({ url: audio_url, seconds });
+
+      // Guarda a gravação como anexo de áudio da atividade (consulta/análise posterior).
+      if (activityId) {
+        try {
+          const { data: { user } } = await supabase.auth.getUser();
+          const extUserId = await remapToExternal(user?.id || null);
+          await externalSupabase.from('activity_attachments').insert({
+            activity_id: activityId,
+            file_url: audio_url,
+            file_name: `Gravação da ligação.${ext}`,
+            file_type: mime,
+            attachment_type: 'audio',
+            created_by: extUserId,
+          });
+        } catch (attErr) {
+          console.warn('[ActivityCallRecorder] não foi possível anexar a gravação:', attErr);
+        }
+      }
+
+      await runFill(audio_url);
+    } catch (e: any) {
       console.error('processAudio error', e);
       setError(e?.message || 'Erro ao processar a ligação');
       setPhase('done');
       toast.error(e?.message || 'Erro ao processar a ligação');
     }
-  }, [context, onFields, activityId, leadId, caseId, processId, onRecordingReady, seconds]);
+  }, [activityId, onRecordingReady, seconds, runFill]);
 
   const stopRecording = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -458,6 +505,25 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
     stopRecordingRef.current = stopRecording;
   }, [stopRecording]);
 
+  // Carrega as gravações anteriores da atividade quando o popover abre.
+  useEffect(() => {
+    if (!open || !activityId) { setPastRecordings([]); return; }
+    (async () => {
+      try {
+        const { data } = await externalSupabase
+          .from('activity_attachments')
+          .select('id, file_url, file_name, created_at')
+          .eq('activity_id', activityId)
+          .eq('attachment_type', 'audio')
+          .order('created_at', { ascending: false })
+          .limit(5);
+        setPastRecordings((data as any[]) || []);
+      } catch {
+        setPastRecordings([]);
+      }
+    })();
+  }, [open, activityId]);
+
   // Refaz só o preenchimento dos campos reaproveitando a transcrição já pronta
   // (envia audio_url junto por compatibilidade com o servidor antigo).
   const retryFill = useCallback(async () => {
@@ -470,14 +536,7 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
       if (fnErr) throw fnErr;
       if (!data?.success) throw new Error(data?.error || 'Falha ao preencher os campos');
 
-      const raw = data.fields || {};
-      const applied: ActivityCallFields = {};
-      for (const k of CALL_FIELD_KEYS) {
-        const v = raw[k];
-        if (v && String(v).trim()) applied[k] = String(v).trim();
-      }
-      onFields(applied);
-      const count = Object.keys(applied).length;
+      const count = applyResponseFields(data.fields || {});
       setAppliedCount(count);
       setFillError(data.fill_error || null);
       if (data.fill_error) {
@@ -495,7 +554,7 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
     } finally {
       setRefilling(false);
     }
-  }, [transcript, recordingUrl, context, onFields]);
+  }, [transcript, recordingUrl, context, applyResponseFields]);
 
   const reset = useCallback(() => {
     teardownAudio();
@@ -620,6 +679,29 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
             <Button className="w-full gap-2" size="sm" onClick={startRecording}>
               <Mic className="h-4 w-4" /> Iniciar gravação ({SOURCE_LABELS[source]})
             </Button>
+
+            {pastRecordings.length > 0 && (
+              <div className="space-y-1 pt-2 border-t">
+                <p className="text-[11px] font-medium text-muted-foreground">
+                  Ou reaproveite uma gravação desta atividade (você pode ditar correções e depois usar esta opção):
+                </p>
+                {pastRecordings.map((r) => (
+                  <Button
+                    key={r.id}
+                    variant="outline"
+                    size="sm"
+                    className="w-full justify-start gap-2 h-8 text-xs"
+                    onClick={() => { setRecordingUrl(r.file_url); runFill(r.file_url); }}
+                  >
+                    <Phone className="h-3.5 w-3.5 shrink-0 text-green-600" />
+                    <span className="truncate">
+                      {r.file_name || 'Gravação'}
+                      {r.created_at ? ` — ${new Date(r.created_at).toLocaleDateString('pt-BR')} ${new Date(r.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : ''}
+                    </span>
+                  </Button>
+                ))}
+              </div>
+            )}
           </>
         )}
 
