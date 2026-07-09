@@ -39,6 +39,13 @@ interface UnifiedLead {
   phone: string | null;
   acolhedor: string | null;
   created_at: string;
+  status?: string | null;
+}
+
+export interface FunnelStageFilter {
+  id: string;
+  name: string;
+  color?: string;
 }
 
 function startOfDay(d: Date) {
