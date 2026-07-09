@@ -39,6 +39,13 @@ interface UnifiedLead {
   phone: string | null;
   acolhedor: string | null;
   created_at: string;
+  status?: string | null;
+}
+
+export interface FunnelStageFilter {
+  id: string;
+  name: string;
+  color?: string;
 }
 
 function startOfDay(d: Date) {
@@ -102,10 +109,26 @@ function fmtDateTime(iso: string) {
 interface Props {
   board: KanbanBoard | null;
   triggerLabel?: string;
+  open?: boolean;
+  onOpenChange?: (v: boolean) => void;
+  stageFilter?: FunnelStageFilter | null;
+  hideTrigger?: boolean;
 }
 
-export function FunnelLeadsSidePanel({ board, triggerLabel = "Ver leads" }: Props) {
-  const [open, setOpen] = useState(false);
+export function FunnelLeadsSidePanel({
+  board,
+  triggerLabel = "Ver leads",
+  open: openProp,
+  onOpenChange,
+  stageFilter,
+  hideTrigger,
+}: Props) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = openProp !== undefined ? openProp : internalOpen;
+  const setOpen = (v: boolean) => {
+    if (onOpenChange) onOpenChange(v);
+    else setInternalOpen(v);
+  };
   const [dateKey, setDateKey] = useState<DateKey>("tudo");
   const [acolhedor, setAcolhedor] = useState<string>("todos");
   const [search, setSearch] = useState("");
@@ -125,12 +148,13 @@ export function FunnelLeadsSidePanel({ board, triggerLabel = "Ver leads" }: Prop
     spreadsheetId: sheetCfg?.spreadsheetId,
   });
 
-  // Leads do banco (fallback para funis sem planilha)
+  // Leads do banco (sempre carregado quando o painel abre; para funis com planilha,
+  // é usado para descobrir em qual etapa cada lead está.)
   const [dbLeads, setDbLeads] = useState<UnifiedLead[]>([]);
   const [dbLoading, setDbLoading] = useState(false);
 
   useEffect(() => {
-    if (!open || sheetCfg || !board?.id) return;
+    if (!open || !board?.id) return;
     let cancelled = false;
     (async () => {
       setDbLoading(true);
@@ -140,7 +164,7 @@ export function FunnelLeadsSidePanel({ board, triggerLabel = "Ver leads" }: Prop
         for (let from = 0; ; from += PAGE) {
           const { data, error } = await db
             .from("leads")
-            .select("id, lead_name, lead_phone, acolhedor, created_at")
+            .select("id, lead_name, lead_phone, acolhedor, created_at, status")
             .eq("board_id", board.id)
             .order("created_at", { ascending: true })
             .range(from, from + PAGE - 1);
@@ -151,6 +175,7 @@ export function FunnelLeadsSidePanel({ board, triggerLabel = "Ver leads" }: Prop
             lead_phone: string | null;
             acolhedor: string | null;
             created_at: string;
+            status: string | null;
           }>;
           for (const r of rows) {
             collected.push({
@@ -159,6 +184,7 @@ export function FunnelLeadsSidePanel({ board, triggerLabel = "Ver leads" }: Prop
               phone: r.lead_phone,
               acolhedor: r.acolhedor,
               created_at: r.created_at,
+              status: r.status,
             });
           }
           if (rows.length < PAGE) break;
@@ -174,20 +200,34 @@ export function FunnelLeadsSidePanel({ board, triggerLabel = "Ver leads" }: Prop
     return () => {
       cancelled = true;
     };
-  }, [open, sheetCfg, board?.id]);
+  }, [open, board?.id]);
+
+  const firstStageId = board?.stages?.[0]?.id;
 
   const allLeads: UnifiedLead[] = useMemo(() => {
     if (sheetCfg) {
-      return sheetLeads.map((l) => ({
-        id: l.form_lead_id || `${l.phone_normalized}-${l.created_at}`,
-        name: l.name || null,
-        phone: l.phone_normalized || l.phone_raw || null,
-        acolhedor: l.operator || null,
-        created_at: l.created_at,
-      }));
+      // Index leads do DB por chave de telefone (últimos 8 dígitos) para descobrir
+      // em qual etapa cada lead da planilha está.
+      const dbByPhone = new Map<string, UnifiedLead>();
+      for (const l of dbLeads) {
+        const key = (l.phone || "").replace(/\D/g, "").slice(-8);
+        if (key.length === 8) dbByPhone.set(key, l);
+      }
+      return sheetLeads.map((l) => {
+        const key = (l.phone_normalized || l.phone_raw || "").replace(/\D/g, "").slice(-8);
+        const matched = key.length === 8 ? dbByPhone.get(key) : undefined;
+        return {
+          id: l.form_lead_id || `${l.phone_normalized}-${l.created_at}`,
+          name: l.name || matched?.name || null,
+          phone: l.phone_normalized || l.phone_raw || null,
+          acolhedor: matched?.acolhedor || l.operator || null,
+          created_at: l.created_at,
+          status: matched?.status || firstStageId || null,
+        };
+      });
     }
     return dbLeads;
-  }, [sheetCfg, sheetLeads, dbLeads]);
+  }, [sheetCfg, sheetLeads, dbLeads, firstStageId]);
 
   const acolhedores = useMemo(() => {
     const set = new Set<string>();
@@ -202,6 +242,9 @@ export function FunnelLeadsSidePanel({ board, triggerLabel = "Ver leads" }: Prop
     const range = computeRange(dateKey);
     const term = search.trim().toLowerCase();
     const list = allLeads.filter((l) => {
+      if (stageFilter?.id) {
+        if ((l.status || "") !== stageFilter.id) return false;
+      }
       if (range.from || range.to) {
         const t = new Date(l.created_at).getTime();
         if (Number.isNaN(t)) return false;
@@ -222,26 +265,41 @@ export function FunnelLeadsSidePanel({ board, triggerLabel = "Ver leads" }: Prop
       (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
     );
     return list;
-  }, [allLeads, dateKey, acolhedor, search]);
+  }, [allLeads, dateKey, acolhedor, search, stageFilter?.id]);
 
-  const loading = sheetCfg ? sheetLoading : dbLoading;
+  const loading = sheetCfg ? sheetLoading || dbLoading : dbLoading;
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
-      <SheetTrigger asChild>
-        <Button size="sm" variant="outline">
-          <List className="h-3.5 w-3.5 mr-2" />
-          {triggerLabel}
-        </Button>
-      </SheetTrigger>
+      {!hideTrigger && (
+        <SheetTrigger asChild>
+          <Button size="sm" variant="outline">
+            <List className="h-3.5 w-3.5 mr-2" />
+            {triggerLabel}
+          </Button>
+        </SheetTrigger>
+      )}
       <SheetContent
         side="right"
         className="w-full sm:max-w-md p-0 flex flex-col"
       >
         <SheetHeader className="px-4 py-3 border-b space-y-1">
-          <SheetTitle className="text-base">Leads — {board?.name || "Funil"}</SheetTitle>
+          <SheetTitle className="text-base flex items-center gap-2 flex-wrap">
+            <span>Leads — {board?.name || "Funil"}</span>
+            {stageFilter && (
+              <Badge
+                variant="secondary"
+                className="text-[10px] h-5 px-1.5 gap-1"
+                style={stageFilter.color ? { borderLeft: `3px solid ${stageFilter.color}` } : undefined}
+              >
+                {stageFilter.name}
+              </Badge>
+            )}
+          </SheetTitle>
           <SheetDescription className="text-xs">
-            Ordem de chegada (do primeiro ao último).
+            {stageFilter
+              ? `Leads na etapa "${stageFilter.name}" — ordem de chegada.`
+              : "Ordem de chegada (do primeiro ao último)."}
           </SheetDescription>
         </SheetHeader>
 

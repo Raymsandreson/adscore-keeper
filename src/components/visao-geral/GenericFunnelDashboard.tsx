@@ -9,7 +9,7 @@ import { useKanbanBoards, type KanbanBoard } from "@/hooks/useKanbanBoards";
 import { Link } from "react-router-dom";
 import { useBpcFormLeads } from "@/hooks/useBpcFormLeads";
 import { getFunnelSheetConfig } from "@/lib/funnelSheetConfig";
-import { FunnelLeadsSidePanel } from "./FunnelLeadsSidePanel";
+import { FunnelLeadsSidePanel, type FunnelStageFilter } from "./FunnelLeadsSidePanel";
 import {
   Tooltip,
   TooltipContent,
@@ -46,6 +46,12 @@ export default function GenericFunnelDashboard({ boardMatcher, title }: Props) {
   const [matchedBoard, setMatchedBoard] = useState<KanbanBoard | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [barsReady, setBarsReady] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [stageFilter, setStageFilter] = useState<FunnelStageFilter | null>(null);
+  const openPanel = (stage: FunnelStageFilter | null) => {
+    setStageFilter(stage);
+    setPanelOpen(true);
+  };
   const sheetCfg = useMemo(() => getFunnelSheetConfig(matchedBoard?.name), [matchedBoard?.name]);
   const sheetRange = useMemo(
     () => ({ from: new Date("2020-01-01T00:00:00Z"), to: new Date() }),
@@ -225,7 +231,19 @@ export default function GenericFunnelDashboard({ boardMatcher, title }: Props) {
           <h2 className="text-xl font-semibold">{matchedBoard.name}</h2>
         </div>
         <div className="flex items-center gap-2">
-          <FunnelLeadsSidePanel board={matchedBoard} />
+          <Button size="sm" variant="outline" onClick={() => openPanel(null)}>
+            <ExternalLink className="h-3.5 w-3.5 mr-2" /> Ver leads
+          </Button>
+          <FunnelLeadsSidePanel
+            board={matchedBoard}
+            open={panelOpen}
+            onOpenChange={(v) => {
+              setPanelOpen(v);
+              if (!v) setStageFilter(null);
+            }}
+            stageFilter={stageFilter}
+            hideTrigger
+          />
           <Button size="sm" variant="outline" onClick={() => setReloadKey((k) => k + 1)}>
             <RefreshCw className="h-3.5 w-3.5 mr-2" /> Atualizar
           </Button>
@@ -264,10 +282,17 @@ export default function GenericFunnelDashboard({ boardMatcher, title }: Props) {
                   const pct = (s.count / maxCount) * 100;
                   const sharePct = total > 0 ? Math.round((s.count / total) * 1000) / 10 : 0;
                   const barHeight = barsReady ? `${Math.max(pct, 2)}%` : "0%";
+                  const handleClick = () =>
+                    openPanel({ id: s.id, name: s.name, color: s.color });
                   return (
                     <Tooltip key={s.id}>
                       <TooltipTrigger asChild>
-                        <div className="h-full flex flex-col items-center justify-end gap-2 min-w-0 cursor-default">
+                        <button
+                          type="button"
+                          onClick={handleClick}
+                          className="h-full flex flex-col items-center justify-end gap-2 min-w-0 cursor-pointer bg-transparent border-0 p-0 rounded-md hover:bg-muted/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 transition-colors"
+                          title={`Ver leads na etapa "${s.name}"`}
+                        >
                           <div className="text-xs font-semibold tabular-nums">{s.count}</div>
                           <div className="w-full flex-1 flex items-end">
                             <div
@@ -293,13 +318,14 @@ export default function GenericFunnelDashboard({ boardMatcher, title }: Props) {
                               {sharePct}%
                             </span>
                           </div>
-                        </div>
+                        </button>
                       </TooltipTrigger>
                       <TooltipContent side="top" sideOffset={6} className="space-y-1">
                         <div className="font-medium text-sm">{s.name}</div>
                         <div className="text-xs text-muted-foreground">
                           {s.count} leads ({sharePct}% do total)
                         </div>
+                        <div className="text-[10px] text-primary">Clique para listar</div>
                       </TooltipContent>
                     </Tooltip>
                   );
