@@ -109,10 +109,26 @@ function fmtDateTime(iso: string) {
 interface Props {
   board: KanbanBoard | null;
   triggerLabel?: string;
+  open?: boolean;
+  onOpenChange?: (v: boolean) => void;
+  stageFilter?: FunnelStageFilter | null;
+  hideTrigger?: boolean;
 }
 
-export function FunnelLeadsSidePanel({ board, triggerLabel = "Ver leads" }: Props) {
-  const [open, setOpen] = useState(false);
+export function FunnelLeadsSidePanel({
+  board,
+  triggerLabel = "Ver leads",
+  open: openProp,
+  onOpenChange,
+  stageFilter,
+  hideTrigger,
+}: Props) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = openProp !== undefined ? openProp : internalOpen;
+  const setOpen = (v: boolean) => {
+    if (onOpenChange) onOpenChange(v);
+    else setInternalOpen(v);
+  };
   const [dateKey, setDateKey] = useState<DateKey>("tudo");
   const [acolhedor, setAcolhedor] = useState<string>("todos");
   const [search, setSearch] = useState("");
