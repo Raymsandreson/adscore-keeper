@@ -9,7 +9,7 @@ import { useKanbanBoards, type KanbanBoard } from "@/hooks/useKanbanBoards";
 import { Link } from "react-router-dom";
 import { useBpcFormLeads } from "@/hooks/useBpcFormLeads";
 import { getFunnelSheetConfig } from "@/lib/funnelSheetConfig";
-import { FunnelLeadsSidePanel } from "./FunnelLeadsSidePanel";
+import { FunnelLeadsSidePanel, type FunnelStageFilter } from "./FunnelLeadsSidePanel";
 import {
   Tooltip,
   TooltipContent,
