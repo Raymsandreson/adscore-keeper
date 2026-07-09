@@ -82,7 +82,7 @@ Se a resposta for **não** → deletar o trecho.
 
 ### 2.1 Endereçamento
 
-Escolher a comarca/vara onde a decisão tende a ser mais favorável (pesquisar os últimos julgamentos do juiz e ligar para advogados da comarca: acessível? pró ou contra trabalhador? julga rápido?). Opções:
+Escolher a comarca/vara onde a decisão tende a ser mais favorável — usar **Data Lawyer** (jurimetria: como o juiz/vara vem julgando) e ligar para advogados da comarca (acessível? pró ou contra trabalhador? julga rápido?). Opções:
 
 1. Local do acidente.
 2. Local da contratação.
@@ -99,7 +99,7 @@ Escolher a comarca/vara onde a decisão tende a ser mais favorável (pesquisar o
 
 **Primeira decisão: a responsabilidade é objetiva ou subjetiva?**
 
-- **Objetiva** (atividade de risco): narrar só que o acidente aconteceu, **sem esmiuçar** os fatos — o ônus da prova é da empresa; ela junta os documentos e nós atacamos na réplica.
+- **Objetiva** (atividade de risco): narrar só que o acidente aconteceu, **sem esmiuçar** os fatos. Fundamento: quem tem o ônus de provar culpa exclusiva da vítima ou fato de terceiro é a **empresa**; ela junta os documentos e nós atacamos na réplica.
 - **Subjetiva**: o ônus é nosso — esmiuçar os fatos para provar a culpa da empresa.
 
 Conferências obrigatórias:
@@ -124,7 +124,7 @@ Informações mínimas que a narrativa precisa conter:
 
 **Jurisprudência:**
 
-1. Sempre atualizada — do mesmo ano do protocolo e, se possível, do mesmo mês (ferramenta oficial do escritório: http://www.lex.com.br/SeusProdutos.aspx).
+1. Sempre atualizada — do mesmo ano do protocolo e, se possível, do mesmo mês (ferramenta oficial do escritório: **Jus IA**; o Lex foi descontinuado).
 2. Identidade de fatos: perdeu um braço → jurisprudência de quem perdeu um braço; eletricidade → não usar caso de queimadura ou queda, e vice-versa.
 3. Uma jurisprudência do TST por tese — no máximo duas, se houver também do tribunal onde tramita o processo.
 
