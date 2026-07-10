@@ -16,6 +16,7 @@ import {
   Users,
 } from "lucide-react";
 import { RelatorioDiarioUsuariosSheet } from "@/components/processual/RelatorioDiarioUsuariosSheet";
+import { OverdueActivitiesToday } from "@/components/processual/OverdueActivitiesToday";
 import {
   Bar,
   BarChart,
