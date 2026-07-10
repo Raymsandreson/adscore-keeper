@@ -154,8 +154,8 @@ function composeGroupIntroMessage(f: CasoForm, groupLink: string): string {
 
 type StepState = 'idle' | 'running' | 'done' | 'error';
 
-// Extrai o nº de nomes tipo "LEAD 94", "LEAD169", "LEAD132/jun.26".
-// Números com zero à esquerda ("LEAD 0656") são de outro funil (INSS/BPC) e são ignorados.
+// Extrai o nº de nomes tipo "LEAD94", "LEAD169", "LEAD132/jun.26".
+// Números com zero à esquerda ("LEAD0656") são de outro funil (INSS/BPC) e são ignorados.
 function parseLeadSeq(name: string | null | undefined): number {
   const m = String(name || '').match(/^\s*(?:✅\s*)?LEAD\s*[-|:]?\s*(\d{1,6})\b/i);
   if (!m || /^0/.test(m[1])) return 0;
@@ -326,7 +326,7 @@ export function CadastrarCasoViavelDialog({ lead, open, onOpenChange, saveLead, 
 
   const groupNamePreview = useMemo(() => {
     const local = [form.city.trim(), form.state.trim()].filter(Boolean).join('/');
-    const parts = [`LEAD ${seqNumber || '?'}`];
+    const parts = [`LEAD${seqNumber || '?'}`];
     if (local) parts.push(local);
     const vs = [form.victim_name.trim(), form.main_company.trim()].filter(Boolean).join(' x ');
     if (vs) parts.push(vs);
