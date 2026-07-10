@@ -28,6 +28,7 @@ interface OverdueActivity {
 
 export function OverdueActivitiesToday() {
   const navigate = useNavigate();
+  const profiles = useProfilesList();
   const [items, setItems] = useState<OverdueActivity[]>([]);
   const [loading, setLoading] = useState(false);
   const [author, setAuthor] = useState<string>('all');
