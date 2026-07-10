@@ -1,11 +1,11 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-
+// Self-contained (sem imports): o deploy via Management API sobe arquivo único.
+// Roda no Supabase EXTERNO (kmedldlepwiityjsdahz). Deploy: SUPABASE_PAT=sbp_... node _deploy_scrape_news.mjs
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-request-id, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -47,6 +47,7 @@ serve(async (req) => {
         url: formattedUrl,
         formats: ['markdown', 'screenshot'],
         onlyMainContent: true, // Extrai apenas o conteúdo principal, ignora menus/ads
+        proxy: 'auto', // Re-tenta com proxy stealth se o site bloquear o request básico (anti-bot)
       }),
     });
 
@@ -67,6 +68,22 @@ serve(async (req) => {
     const markdown = data.data?.markdown || data.markdown || '';
     const title = data.data?.metadata?.title || data.metadata?.title || '';
     const screenshot = data.data?.screenshot || data.screenshot || null;
+    const statusCode = data.data?.metadata?.statusCode || data.metadata?.statusCode || 200;
+
+    // Sites atrás de Cloudflare/anti-bot devolvem a página de bloqueio como HTML 200.
+    // Sem essa detecção, o texto de bloqueio segue pro analyze-news-case como se fosse a notícia.
+    const BLOCK_PATTERNS = /you have been blocked|você foi bloqueado|cloudflare ray id|please enable cookies|just a moment|attention required|access denied|verify you are a human|enable javascript and cookies to continue/i;
+    const looksBlocked = BLOCK_PATTERNS.test(`${title}\n${markdown.slice(0, 3000)}`) || statusCode === 403 || statusCode === 503;
+    if (looksBlocked) {
+      console.warn('Scrape blocked by anti-bot page. statusCode:', statusCode, 'url:', formattedUrl);
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'O site bloqueou a leitura automática da página. Abra o link no navegador, copie o texto da notícia e cole manualmente no campo de texto.',
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     console.log('Scrape successful, content length:', markdown.length, 'has screenshot:', !!screenshot);
 

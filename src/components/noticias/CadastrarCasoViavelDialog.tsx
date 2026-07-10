@@ -154,8 +154,8 @@ function composeGroupIntroMessage(f: CasoForm, groupLink: string): string {
 
 type StepState = 'idle' | 'running' | 'done' | 'error';
 
-// Extrai o nº de nomes tipo "LEAD 94", "LEAD169", "LEAD132/jun.26".
-// Números com zero à esquerda ("LEAD 0656") são de outro funil (INSS/BPC) e são ignorados.
+// Extrai o nº de nomes tipo "LEAD94", "LEAD169", "LEAD132/jun.26".
+// Números com zero à esquerda ("LEAD0656") são de outro funil (INSS/BPC) e são ignorados.
 function parseLeadSeq(name: string | null | undefined): number {
   const m = String(name || '').match(/^\s*(?:✅\s*)?LEAD\s*[-|:]?\s*(\d{1,6})\b/i);
   if (!m || /^0/.test(m[1])) return 0;
@@ -326,7 +326,7 @@ export function CadastrarCasoViavelDialog({ lead, open, onOpenChange, saveLead, 
 
   const groupNamePreview = useMemo(() => {
     const local = [form.city.trim(), form.state.trim()].filter(Boolean).join('/');
-    const parts = [`LEAD ${seqNumber || '?'}`];
+    const parts = [`LEAD${seqNumber || '?'}`];
     if (local) parts.push(local);
     const vs = [form.victim_name.trim(), form.main_company.trim()].filter(Boolean).join(' x ');
     if (vs) parts.push(vs);
@@ -402,6 +402,21 @@ export function CadastrarCasoViavelDialog({ lead, open, onOpenChange, saveLead, 
       toast.error('Lead título é obrigatório.');
       return;
     }
+    // Guarda-rails: sem esses campos o nome do grupo sai como "LEAD N | | x |"
+    // e a descrição perde as linhas essenciais (vítima, idade, dano, cidade/UF).
+    const faltando: string[] = [];
+    if (!form.victim_name.trim()) faltando.push('Nome da Vítima');
+    if (!form.main_company.trim() && !form.contractor_company.trim()) faltando.push('Empresa (Tomadora ou Terceirizada)');
+    if (!form.city.trim() || !form.state.trim()) faltando.push('Cidade/UF do acidente');
+    if (!form.accident_date) faltando.push('Data do Acidente');
+    if (!form.damage.trim()) faltando.push('Dano');
+    if (faltando.length > 0) {
+      toast.error('Preencha antes de cadastrar', {
+        description: `Sem esses campos o grupo sai com título/descrição incompletos: ${faltando.join(', ')}.`,
+        duration: 8000,
+      });
+      return;
+    }
     setRegistering(true);
     setSteps({ save: 'running', group: 'idle', link: 'idle' });
 
@@ -455,16 +470,24 @@ export function CadastrarCasoViavelDialog({ lead, open, onOpenChange, saveLead, 
       } catch (e: any) {
         const msg = String(e?.message || '');
         const isDup = /leads_product_lead_number_uniq|duplicate key/i.test(msg);
-        if (isDup && attempt < 3 && resolvedSeq > 0) {
-          const free = await nextFreeLeadNumber(resolvedSeq + 1);
-          resolvedSeq = free;
-          setSeqNumber(String(free));
-          (updates as any).lead_number = free;
+        if (isDup && attempt < 8) {
+          // Relê a sequência real da base a cada colisão — o "+1 local" não basta
+          // quando várias abas / operadores cadastram em paralelo.
+          let next = resolvedSeq + 1;
+          try {
+            const suggested = await suggestNextSequence();
+            if (suggested && suggested > next) next = suggested;
+            next = await nextFreeLeadNumber(next);
+          } catch { /* segue com next simples */ }
+          resolvedSeq = next;
+          setSeqNumber(String(next));
+          (updates as any).lead_number = next;
           return trySave(attempt + 1);
         }
         throw e;
       }
     };
+
 
     try {
       await trySave(1);

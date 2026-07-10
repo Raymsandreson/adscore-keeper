@@ -55,6 +55,8 @@ export function DailyReportDialog({
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  // Overrides a single-day reportDateRange when the user picks another day in the calendar
+  const [overrideDate, setOverrideDate] = useState<Date | null>(null);
   const [datePopoverOpen, setDatePopoverOpen] = useState(false);
   const [leadMovements, setLeadMovements] = useState<LeadMovement[]>([]);
   const [contactsCreated, setContactsCreated] = useState<DetailEntry[]>([]);
@@ -64,10 +66,17 @@ export function DailyReportDialog({
   const [activitiesCompleted, setActivitiesCompleted] = useState<DetailEntry[]>([]);
   const [callsMade, setCallsMade] = useState<DetailEntry[]>([]);
 
-  const activeRange = useMemo(() => ({
-    start: startOfDay(reportDateRange?.start ?? selectedDate),
-    end: endOfDay(reportDateRange?.end ?? selectedDate),
-  }), [reportDateRange?.start, reportDateRange?.end, selectedDate]);
+  const rangeIsSingleDay = !reportDateRange || isSameDay(reportDateRange.start, reportDateRange.end);
+
+  const activeRange = useMemo(() => {
+    if (overrideDate && rangeIsSingleDay) {
+      return { start: startOfDay(overrideDate), end: endOfDay(overrideDate) };
+    }
+    return {
+      start: startOfDay(reportDateRange?.start ?? selectedDate),
+      end: endOfDay(reportDateRange?.end ?? selectedDate),
+    };
+  }, [overrideDate, rangeIsSingleDay, reportDateRange?.start, reportDateRange?.end, selectedDate]);
 
   const isSingleDayRange = isSameDay(activeRange.start, activeRange.end);
   const isToday = isSingleDayRange && isSameDay(activeRange.start, new Date());
@@ -83,6 +92,7 @@ export function DailyReportDialog({
   // Reset date to today whenever dialog opens for a (possibly different) user
   useEffect(() => {
     if (open && !reportDateRange) setSelectedDate(new Date());
+    if (open) setOverrideDate(null);
   }, [open, userId, reportDateRange]);
 
   useEffect(() => {
@@ -451,7 +461,7 @@ export function DailyReportDialog({
 
         {/* Action buttons */}
         <div className="flex flex-wrap gap-2 mt-3 mb-4">
-          {reportDateRange ? (
+          {!rangeIsSingleDay ? (
             <Button size="sm" variant="outline" className="gap-1.5" disabled>
               <CalendarIcon className="h-3.5 w-3.5" />
               {rangeLabel}
@@ -461,14 +471,19 @@ export function DailyReportDialog({
               <PopoverTrigger asChild>
                 <Button size="sm" variant="outline" className="gap-1.5">
                   <CalendarIcon className="h-3.5 w-3.5" />
-                  {format(selectedDate, "dd/MM/yyyy", { locale: ptBR })}
+                  {rangeLabel}
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-auto p-0" align="start">
                 <Calendar
                   mode="single"
-                  selected={selectedDate}
-                  onSelect={(d) => { if (d) { setSelectedDate(d); setDatePopoverOpen(false); } }}
+                  selected={activeRange.start}
+                  onSelect={(d) => {
+                    if (!d) return;
+                    if (reportDateRange) setOverrideDate(d);
+                    else setSelectedDate(d);
+                    setDatePopoverOpen(false);
+                  }}
                   disabled={(d) => d > new Date()}
                   initialFocus
                   locale={ptBR}
@@ -477,8 +492,13 @@ export function DailyReportDialog({
               </PopoverContent>
             </Popover>
           )}
-          {!reportDateRange && !isToday && (
-            <Button size="sm" variant="ghost" onClick={() => setSelectedDate(new Date())} className="gap-1.5">
+          {rangeIsSingleDay && !isToday && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => (reportDateRange ? setOverrideDate(new Date()) : setSelectedDate(new Date()))}
+              className="gap-1.5"
+            >
               Hoje
             </Button>
           )}

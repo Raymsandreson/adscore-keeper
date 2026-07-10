@@ -138,7 +138,7 @@ function extractExistingSequenceFromName(name: string | null | undefined, prefix
   const trimmedName = name?.trim()
   if (!trimmedPrefix || !trimmedName) return null
 
-  const match = trimmedName.match(new RegExp(`^${escapeRegExp(trimmedPrefix)}\\s+(\\d+)\\b`, 'i'))
+  const match = trimmedName.match(new RegExp(`^${escapeRegExp(trimmedPrefix)}\\s*[-|:]?\\s*(\\d+)\\b`, 'i'))
   if (!match) return null
 
   const sequence = Number(match[1])
@@ -151,7 +151,7 @@ function stripExistingSequenceFromName(name: string | null | undefined, prefix: 
   if (!trimmedPrefix || !trimmedName) return trimmedName
 
   return trimmedName
-    .replace(new RegExp(`^${escapeRegExp(trimmedPrefix)}\\s+\\d+\\b\\s*(?:[|\u2013\u2014-]\s*)?`, 'i'), '')
+    .replace(new RegExp(`^${escapeRegExp(trimmedPrefix)}\\s*[-|:]?\\s*\\d+\\b\\s*(?:[|\u2013\u2014-]\s*)?`, 'i'), '')
     .trim()
 }
 
@@ -837,11 +837,15 @@ Deno.serve(async (req) => {
 
       // Build name parts
       const parts: string[] = []
-      if (activePrefix) parts.push(activePrefix)
 
       const leadFields = settings.lead_fields || ['lead_name']
       const hasSeqToken = leadFields.includes('closed_seq') || leadFields.includes('case_number')
-      if (!hasSeqToken) parts.push(String(nextSeq))
+      // Prefixo grudado no número: "LEAD324" em vez de "LEAD 324".
+      if (activePrefix) {
+        parts.push(`${activePrefix}${nextSeq}`)
+      } else if (!hasSeqToken) {
+        parts.push(String(nextSeq))
+      }
 
       const targetLeadId = lead_id || leadData?.id
       const cfIds: string[] = (leadFields as string[])
@@ -865,7 +869,9 @@ Deno.serve(async (req) => {
       }
       for (const field of leadFields) {
         if (field === 'closed_seq' || field === 'case_number') {
-          parts.push(String(nextSeq))
+          // Quando há prefixo, o número já foi embutido em "LEAD324" no início;
+          // adicionar novamente aqui duplicaria a sequência.
+          if (!activePrefix) parts.push(String(nextSeq))
         } else if (typeof field === 'string' && field.startsWith('text:')) {
           try { parts.push(decodeURIComponent(field.slice(5))) } catch { parts.push(field.slice(5)) }
         } else if (field === 'board_name' && boardName) {
