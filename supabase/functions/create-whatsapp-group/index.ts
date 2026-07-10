@@ -895,6 +895,13 @@ Deno.serve(async (req) => {
       groupName = parts.join(' ')
     }
 
+    // Override do nome: quando o chamador passa `group_name_override`, esse valor
+    // vira o ÚNICO parâmetro pro nome do grupo (a UI de Notícias controla isso).
+    const groupNameOverride = typeof body?.group_name_override === 'string' ? body.group_name_override.trim() : ''
+    if (groupNameOverride) {
+      groupName = groupNameOverride
+    }
+
     groupName = normalizeGroupName(groupName)
 
     // Build participant list
