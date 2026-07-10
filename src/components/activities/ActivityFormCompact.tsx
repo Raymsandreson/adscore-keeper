@@ -13,7 +13,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { Search, X, ChevronDown, Copy, Loader2, UserPlus, Building2, Briefcase, Send, Info, Settings2, FileText, Plus, Mic, Check } from 'lucide-react';
+import { Search, X, ChevronDown, Copy, Loader2, UserPlus, Building2, Briefcase, Send, Info, Settings2, FileText, Plus, Mic, Check, Star } from 'lucide-react';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { filterAssignableMembers } from '@/lib/assigneeBlocklist';
 import { ActivityTTSButton } from '@/components/voice/ActivityTTSButton';
@@ -399,6 +399,33 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
   const hasLead = !!leadId;
   const buttonLabel = compactLabel ? 'Enviar' : (hasLead ? 'Enviar ao Grupo' : 'Enviar ao Assessor');
 
+  const [generatingRating, setGeneratingRating] = useState(false);
+  // Gera um link público de avaliação (0–5 estrelas) e copia pra área de transferência,
+  // pronto pra colar na mensagem ao cliente. Cada clique gera um link novo (uso único).
+  const handleGenerateRatingLink = async () => {
+    if (!leadId) { toast.error('Vincule um lead para pedir avaliação do cliente.'); return; }
+    setGeneratingRating(true);
+    try {
+      const { data, error } = await cloudFunctions.invoke('service-rating', {
+        body: {
+          action: 'create',
+          lead_id: leadId,
+          activity_id: activityId || null,
+          assessor_id: formAssignedTo || null,
+          created_by: user?.id || null,
+        },
+      });
+      if (error || !data?.success || !data?.token) throw new Error(data?.error || 'Falha ao gerar link');
+      const link = `${window.location.origin}/avaliar/${data.token}`;
+      const ok = await copyTextToClipboard(`Avalie nosso atendimento (leva 10s): ${link}`);
+      toast.success(ok ? 'Link de avaliação copiado — cole na mensagem ao cliente.' : `Link: ${link}`, { duration: 6000 });
+    } catch (e: any) {
+      toast.error(e?.message || 'Não foi possível gerar o link de avaliação.');
+    } finally {
+      setGeneratingRating(false);
+    }
+  };
+
 
   return (
     <div className="flex items-center gap-1.5 flex-wrap">
@@ -423,6 +450,20 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
       >
         <Copy className="h-3.5 w-3.5" /> Copiar
       </Button>
+      {hasLead && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="gap-1 h-8 text-xs text-amber-600 border-amber-200 hover:bg-amber-50 dark:text-amber-400 dark:border-amber-800"
+          onClick={handleGenerateRatingLink}
+          disabled={generatingRating}
+          title="Gera um link de avaliação (0–5 estrelas) para enviar ao cliente"
+        >
+          {generatingRating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Star className="h-3.5 w-3.5" />}
+          Avaliação
+        </Button>
+      )}
       {instances.length > 0 && (
         <Select value={selectedInstanceId} onValueChange={setSelectedInstanceId}>
           <SelectTrigger className="h-8 text-xs w-[120px]">
