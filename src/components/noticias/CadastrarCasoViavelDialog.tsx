@@ -154,8 +154,8 @@ function composeGroupIntroMessage(f: CasoForm, groupLink: string): string {
 
 type StepState = 'idle' | 'running' | 'done' | 'error';
 
-// Extrai o nº de nomes tipo "LEAD 94", "LEAD169", "LEAD132/jun.26".
-// Números com zero à esquerda ("LEAD 0656") são de outro funil (INSS/BPC) e são ignorados.
+// Extrai o nº de nomes tipo "LEAD94", "LEAD169", "LEAD132/jun.26".
+// Números com zero à esquerda ("LEAD0656") são de outro funil (INSS/BPC) e são ignorados.
 function parseLeadSeq(name: string | null | undefined): number {
   const m = String(name || '').match(/^\s*(?:✅\s*)?LEAD\s*[-|:]?\s*(\d{1,6})\b/i);
   if (!m || /^0/.test(m[1])) return 0;
