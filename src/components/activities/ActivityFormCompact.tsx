@@ -977,6 +977,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
                       onPendingChange={props.onNotesPendingChange}
                       onCommitCandidatesChange={props.onNotesCommitCandidatesChange}
                       onUploadStateChange={props.onNotesUploadStateChange}
+                      onExpand={() => setExpandedFieldKey('notes')}
                     />
                   </div>
                 );
