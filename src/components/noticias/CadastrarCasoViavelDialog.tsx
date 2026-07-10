@@ -337,6 +337,12 @@ export function CadastrarCasoViavelDialog({ lead, open, onOpenChange, saveLead, 
     return parts.join(' | ');
   }, [form, seqNumber]);
 
+  // Enquanto o usuário não editar o nome do grupo, mantemos ele sincronizado
+  // com a prévia. Depois de qualquer edição manual, o input passa a mandar.
+  useEffect(() => {
+    if (!groupNameTouched.current) setGroupNameInput(groupNamePreview);
+  }, [groupNamePreview]);
+
   const handleAnalyze = async () => {
     let text = newsText.trim();
     let sourceUrl = newsUrl.trim();
