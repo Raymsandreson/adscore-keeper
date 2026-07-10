@@ -19,12 +19,22 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { title } = await req.json();
+    const { title, context } = await req.json();
     if (!title || title.trim().length < 3) {
       return new Response(JSON.stringify({ suggested_type: null }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    // Contexto opcional dos campos da atividade — melhora a classificação
+    // (ex.: "prazo para impugnar" no 'como está' indica tipo Prazo, não Tarefa).
+    const ctx = context || {};
+    const ctxLines = [
+      ctx.current_status ? `Como está: ${String(ctx.current_status).slice(0, 400)}` : null,
+      ctx.what_was_done ? `O que foi feito: ${String(ctx.what_was_done).slice(0, 400)}` : null,
+      ctx.next_steps ? `Próximo passo: ${String(ctx.next_steps).slice(0, 400)}` : null,
+    ].filter(Boolean).join("\n");
+    const userContent = ctxLines ? `Assunto: ${title}\n\n${ctxLines}` : title;
 
     const supabaseUrl = RESOLVED_SUPABASE_URL;
     const supabaseKey = RESOLVED_SERVICE_ROLE_KEY;
@@ -47,9 +57,9 @@ serve(async (req) => {
 Tipos disponíveis:
 ${typesList}
 
-Responda APENAS com a key do tipo mais adequado, sem explicação.`,
+Considere o assunto e, quando houver, o conteúdo dos campos da atividade. Palavras como "prazo", "impugnar", "recorrer", "contestar", "cumprir até", datas-limite indicam PRAZO; "audiência", "sessão" indicam Audiência; "reunião", "alinhamento" indicam Reunião. Responda APENAS com a key do tipo mais adequado, sem explicação.`,
         },
-        { role: "user", content: title },
+        { role: "user", content: userContent },
       ],
       tools: [
         {

@@ -365,6 +365,9 @@ const ActivitiesPage = () => {
   const [formMatrixQuadrant, setFormMatrixQuadrant] = useState<string>('');
   const [dragOverQuadrant, setDragOverQuadrant] = useState<string | null>(null);
   const [aiSuggestingType, setAiSuggestingType] = useState(false);
+  // Alerta de tipo incoerente com o contexto (ex.: título fala em "prazo" mas tipo = Tarefa).
+  const [typeMismatch, setTypeMismatch] = useState<{ suggested: string; label: string } | null>(null);
+  const typeCheckTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const aiSuggestTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [calendarExpanded, setCalendarExpanded] = useState(true);
   const [deadlineDateCount, setDeadlineDateCount] = useState<number | null>(null);
@@ -1863,6 +1866,48 @@ const ActivitiesPage = () => {
     }
   }, [sheetMode, suggestActivityType]);
 
+  // Verifica se o tipo escolhido bate com o contexto (assunto + campos). Se a IA
+  // sugerir um tipo diferente do atual, mostra um alerta com botão de aplicar —
+  // nunca troca sozinho (diferente do auto-sugerir do modo criar).
+  const checkTypeMismatch = useCallback(async () => {
+    const title = (formTitle || '').trim();
+    if (title.length < 5 || !formType) { setTypeMismatch(null); return; }
+    try {
+      const { data, error } = await cloudFunctions.invoke('suggest-activity-type', {
+        body: {
+          title,
+          context: {
+            current_status: stripHtml(formCurrentStatus).slice(0, 400),
+            what_was_done: stripHtml(formWhatWasDone).slice(0, 400),
+            next_steps: stripHtml(formNextSteps).slice(0, 400),
+          },
+        },
+      });
+      const suggested = data?.suggested_type;
+      if (error || !suggested || suggested === formType) { setTypeMismatch(null); return; }
+      const match = routineActivityTypes.find(t => t.value === suggested)
+        || allKnownActivityTypes.find(t => t.value === suggested);
+      setTypeMismatch(match ? { suggested: match.value, label: match.label } : null);
+    } catch {
+      setTypeMismatch(null);
+    }
+  }, [formTitle, formType, formCurrentStatus, formWhatWasDone, formNextSteps, routineActivityTypes, allKnownActivityTypes]);
+
+  // Dispara a checagem (debounced) enquanto o formulário está aberto.
+  useEffect(() => {
+    if (!sheetMode) { setTypeMismatch(null); return; }
+    if (typeCheckTimer.current) clearTimeout(typeCheckTimer.current);
+    typeCheckTimer.current = setTimeout(() => { checkTypeMismatch(); }, 900);
+    return () => { if (typeCheckTimer.current) clearTimeout(typeCheckTimer.current); };
+  }, [sheetMode, checkTypeMismatch]);
+
+  const applySuggestedType = useCallback(() => {
+    if (!typeMismatch) return;
+    setFormType(typeMismatch.suggested);
+    setTypeMismatch(null);
+    toast.success(`Tipo alterado para ${typeMismatch.label}.`);
+  }, [typeMismatch]);
+
   // Countdown timer effect
   useEffect(() => {
     if (!countdownBlock) return;
@@ -2162,6 +2207,9 @@ const ActivitiesPage = () => {
       reorderFields={reorderFields}
       selectedActivity={selectedActivity}
       aiSuggestingType={aiSuggestingType}
+      typeMismatch={typeMismatch}
+      onApplySuggestedType={applySuggestedType}
+      onDismissTypeMismatch={() => setTypeMismatch(null)}
       activeRoutine={activeRoutine}
       buildMsg={buildMsg}
       formAssignedToName={formAssignedToName}
