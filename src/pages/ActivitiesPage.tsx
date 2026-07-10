@@ -2012,6 +2012,45 @@ const ActivitiesPage = () => {
         ].filter(Boolean).join('\n')
       : '';
 
+    // Progresso em 3 níveis a partir do checklist do fluxo:
+    //   Fase (stage do kanban) → Objetivo (template de checklist) → Passo (item).
+    // % geral = passos concluídos / total; + quebra por fase, objetivos da fase
+    // atual e passos do objetivo atual. Vazio quando não há checklist.
+    const progressInfo = (() => {
+      const steps = stepContext?.allSteps || [];
+      if (steps.length === 0) return '';
+      const pct = (done: number, total: number) => (total > 0 ? Math.round((done / total) * 100) : 0);
+
+      const totalSteps = steps.length;
+      const doneSteps = steps.filter((s) => s.checked).length;
+      const overallPct = pct(doneSteps, totalSteps);
+
+      const phaseIds = [...new Set(steps.map((s) => s.phaseId))];
+      const phasesDone = phaseIds.filter((pid) => {
+        const ps = steps.filter((s) => s.phaseId === pid);
+        return ps.length > 0 && ps.every((s) => s.checked);
+      }).length;
+
+      const curPhase = stepContext?.stageId;
+      const phaseSteps = steps.filter((s) => s.phaseId === curPhase);
+      const objIds = [...new Set(phaseSteps.map((s) => s.templateId))];
+      const objDone = objIds.filter((tid) => {
+        const os = phaseSteps.filter((s) => s.templateId === tid);
+        return os.length > 0 && os.every((s) => s.checked);
+      }).length;
+
+      const curObj = stepContext?.templateId;
+      const objSteps = phaseSteps.filter((s) => s.templateId === curObj);
+      const objStepsDone = objSteps.filter((s) => s.checked).length;
+
+      return [
+        `*📊 Progresso do caso: ${overallPct}% concluído*`,
+        `• Fases: ${pct(phasesDone, phaseIds.length)}% (${phasesDone}/${phaseIds.length})`,
+        `• Objetivos (fase atual): ${pct(objDone, objIds.length)}% (${objDone}/${objIds.length})`,
+        `• Passos (objetivo atual): ${pct(objStepsDone, objSteps.length)}% (${objStepsDone}/${objSteps.length})`,
+      ].join('\n');
+    })();
+
     // Mensagem endereçada ao(s) ASSESSOR(es) responsável(is) — não usa template de cliente.
     if (audience === 'assessor') {
       const allAssessorNames = [formAssignedToName, ...formCoAssignees.map(c => c.full_name)].filter(Boolean);
@@ -2030,6 +2069,7 @@ const ActivitiesPage = () => {
         fieldLines,
         [prazoLine, notifLine].filter(Boolean).join('\n'),
         workflowInfo,
+        progressInfo,
         tempoStr,
         activityLink,
       ].filter(Boolean).join('\n\n').replace(/\n{3,}/g, '\n\n').trim();
@@ -2121,6 +2161,16 @@ const ActivitiesPage = () => {
         result = lines.join('\n');
       }
 
+      // Progresso (3 níveis): auto-injeta após o workflow/processo quando o
+      // template não referencia {{progresso}} e há checklist.
+      if (progressInfo && !template.includes('progresso') && !result.includes('Progresso do caso')) {
+        const lines = result.split('\n');
+        const anchor = lines.findIndex(line => line.includes('*Passo atual:*') || line.includes('Referente ao processo'));
+        const at = anchor >= 0 ? anchor + 1 : (() => { for (let i = 0; i < lines.length; i++) if (lines[i].trim()) return i + 1; return 0; })();
+        lines.splice(at, 0, '', progressInfo);
+        result = lines.join('\n');
+      }
+
       // Link da atividade: auto-injeta antes de "Estamos à disposição" quando a
       // atividade já existe e o template não referencia {{link_atividade}}.
       if (activityLink && !template.includes('link_atividade') && !result.includes('openActivity=')) {
@@ -2166,8 +2216,9 @@ const ActivitiesPage = () => {
       : `*${saudacaoFb}*`;
     const linkLineFb = activityLink ? `\n\n${activityLink}` : '';
     const workflowLineFb = workflowInfo ? `\n\n${workflowInfo}` : '';
+    const progressLineFb = progressInfo ? `\n\n${progressInfo}` : '';
     const signatureFb = createdByName ? `\n\nCom carinho,\n${createdByName} 💚` : '';
-    return `${greetingLine}${processInfo ? `\n\n${processInfo}` : ''}${workflowLineFb}\n\n*Assunto da atividade:* ${formTitle.toUpperCase()}\n\n${fieldLines}\n\n${buildReturnDateLine(responsavelDrFb)}\n${tempoStr}${linkLineFb}\n\nEstamos à disposição para quaisquer dúvidas.\n\n🚀Avante!${signatureFb}\n\nTem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se tudo está claro, digite 2.`;
+    return `${greetingLine}${processInfo ? `\n\n${processInfo}` : ''}${workflowLineFb}${progressLineFb}\n\n*Assunto da atividade:* ${formTitle.toUpperCase()}\n\n${fieldLines}\n\n${buildReturnDateLine(responsavelDrFb)}\n${tempoStr}${linkLineFb}\n\nEstamos à disposição para quaisquer dúvidas.\n\n🚀Avante!${signatureFb}\n\nTem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se tudo está claro, digite 2.`;
   };
 
   // Active step context — process workflow > lead's funnel board.
