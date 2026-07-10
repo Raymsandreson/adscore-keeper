@@ -30,7 +30,7 @@ export default function ServiceRatingsPage() {
   useEffect(() => {
     (async () => {
       try {
-        const { data } = await externalSupabase
+        const { data } = await (externalSupabase as any)
           .from('service_ratings')
           .select('id, assessor_id, assessor_name, lead_name, rating, reason, status, created_at, submitted_at')
           .order('created_at', { ascending: false })
