@@ -2014,16 +2014,15 @@ const ActivitiesPage = () => {
 
     // Progresso em 3 níveis a partir do checklist do fluxo:
     //   Fase (stage do kanban) → Objetivo (template de checklist) → Passo (item).
-    // % geral = passos concluídos / total; + quebra por fase, objetivos da fase
-    // atual e passos do objetivo atual. Vazio quando não há checklist.
-    const progressInfo = (() => {
+    // headline = só a % geral (mensagem do CLIENTE — evita jargão interno).
+    // full = quebra completa (mensagem ao ASSESSOR e painel). Vazio sem checklist.
+    const progress = (() => {
       const steps = stepContext?.allSteps || [];
-      if (steps.length === 0) return '';
+      if (steps.length === 0) return { headline: '', full: '' };
       const pct = (done: number, total: number) => (total > 0 ? Math.round((done / total) * 100) : 0);
 
-      const totalSteps = steps.length;
       const doneSteps = steps.filter((s) => s.checked).length;
-      const overallPct = pct(doneSteps, totalSteps);
+      const overallPct = pct(doneSteps, steps.length);
 
       const phaseIds = [...new Set(steps.map((s) => s.phaseId))];
       const phasesDone = phaseIds.filter((pid) => {
@@ -2043,13 +2042,18 @@ const ActivitiesPage = () => {
       const objSteps = phaseSteps.filter((s) => s.templateId === curObj);
       const objStepsDone = objSteps.filter((s) => s.checked).length;
 
-      return [
-        `*📊 Progresso do caso: ${overallPct}% concluído*`,
+      const headline = `*📊 Progresso do caso: ${overallPct}% concluído*`;
+      const full = [
+        headline,
         `• Fases: ${pct(phasesDone, phaseIds.length)}% (${phasesDone}/${phaseIds.length})`,
         `• Objetivos (fase atual): ${pct(objDone, objIds.length)}% (${objDone}/${objIds.length})`,
         `• Passos (objetivo atual): ${pct(objStepsDone, objSteps.length)}% (${objStepsDone}/${objSteps.length})`,
       ].join('\n');
+      return { headline, full };
     })();
+    // Cliente vê só a manchete; assessor/painel veem o detalhe completo.
+    const progressInfo = progress.headline;      // usado nas mensagens do cliente
+    const progressDetail = progress.full;        // usado na mensagem ao assessor
 
     // Mensagem endereçada ao(s) ASSESSOR(es) responsável(is) — não usa template de cliente.
     if (audience === 'assessor') {
@@ -2069,7 +2073,7 @@ const ActivitiesPage = () => {
         fieldLines,
         [prazoLine, notifLine].filter(Boolean).join('\n'),
         workflowInfo,
-        progressInfo,
+        progressDetail,
         tempoStr,
         activityLink,
       ].filter(Boolean).join('\n\n').replace(/\n{3,}/g, '\n\n').trim();
