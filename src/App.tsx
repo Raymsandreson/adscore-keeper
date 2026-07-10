@@ -183,6 +183,7 @@ const GroupAuditLogPage = lazyRetry(() => import("./pages/GroupAuditLogPage"), "
 const DbDriftPage = lazyRetry(() => import("./pages/DbDriftPage"), "DbDriftPage");
 const RecoverPhone55Page = lazyRetry(() => import("./pages/RecoverPhone55Page"), "RecoverPhone55Page");
 const DocumentReviewPage = lazyRetry(() => import("./pages/DocumentReviewPage"), "DocumentReviewPage");
+const AvaliacaoPage = lazyRetry(() => import("./pages/AvaliacaoPage"), "AvaliacaoPage");
 const LeadsMapPage = lazyRetry(() => import("./pages/LeadsMapPage"), "LeadsMapPage");
 
 
@@ -256,6 +257,7 @@ function AppRoutes() {
         <Route path="/booking/:configId" element={<BookingPage />} />
         <Route path="/booking/:configId/:token" element={<BookingPage />} />
         <Route path="/revisar/:token" element={<DocumentReviewPage />} />
+        <Route path="/avaliar/:token" element={<AvaliacaoPage />} />
 
         {/* All other routes with sidebar layout */}
         <Route path="*" element={<SidebarLayout />} />

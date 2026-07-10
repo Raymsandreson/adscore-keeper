@@ -10,6 +10,10 @@ import { Loader2, LogIn, UserPlus, Eye, EyeOff, Scale, CheckCircle2, BarChart3, 
 
 const UF_OPTIONS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
 
+// Cadastro público desativado: novas contas são criadas pela equipe (admin/convite).
+// Flip para true reabre a aba "Criar Conta". Mantido reversível de propósito.
+const PUBLIC_SIGNUP_ENABLED = false;
+
 const PasswordInput = ({ id, value, onChange, show, onToggle, placeholder = '••••••••' }: {
   id: string; value: string; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   show: boolean; onToggle: () => void; placeholder?: string;
@@ -182,18 +186,28 @@ export const AuthForm = ({ loginOnly = false }: { loginOnly?: boolean }) => {
             <div className="space-y-6">
               <div className="hidden lg:block">
                 <h2 className="text-2xl font-bold text-foreground">
-                  {loginOnly ? 'Acesse sua conta' : activeTab === 'login' ? 'Bem-vindo de volta' : 'Crie sua conta'}
+                  {(loginOnly || !PUBLIC_SIGNUP_ENABLED) ? 'Acesse sua conta' : activeTab === 'login' ? 'Bem-vindo de volta' : 'Crie sua conta'}
                 </h2>
                 <p className="text-muted-foreground text-sm mt-1">
-                  {loginOnly
+                  {(loginOnly || !PUBLIC_SIGNUP_ENABLED)
                     ? 'Faça login com sua conta para acessar o conteúdo.'
                     : activeTab === 'login' ? 'Faça login para acessar a plataforma' : 'Cadastre-se gratuitamente'}
                 </p>
               </div>
 
-              {/* Tab switcher — oculto quando o acesso veio de um link protegido
-                  (login-only: quem já tem conta acessa; sem auto-cadastro). */}
-              {!loginOnly && (
+              {/* Aviso ao cliente que abriu o link do acompanhamento e não tem acesso —
+                  evita que ele ache que precisa criar conta ou que errou algo. */}
+              {loginOnly && (
+                <div className="rounded-xl border border-primary/30 bg-primary/5 p-3 text-sm text-muted-foreground">
+                  <p className="font-medium text-foreground mb-0.5">É cliente do escritório?</p>
+                  Este link é o acompanhamento interno da sua atividade, usado pela nossa equipe.
+                  Você <strong>não precisa criar conta</strong> — seu caso já está sendo cuidado.
+                  Em caso de dúvida, fale conosco pelo WhatsApp. O acesso abaixo é apenas para a equipe.
+                </div>
+              )}
+
+              {/* Tab switcher — só quando o cadastro público está ativo e não é link protegido. */}
+              {PUBLIC_SIGNUP_ENABLED && !loginOnly && (
                 <div className="flex bg-muted rounded-xl p-1">
                   <button
                     onClick={() => setActiveTab('login')}
@@ -218,7 +232,7 @@ export const AuthForm = ({ loginOnly = false }: { loginOnly?: boolean }) => {
                 </div>
               )}
 
-              {loginOnly || activeTab === 'login' ? (
+              {(!PUBLIC_SIGNUP_ENABLED || loginOnly || activeTab === 'login') ? (
                 <form onSubmit={handleLogin} className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="login-email">Email</Label>
