@@ -49,7 +49,7 @@ const features = [
   { icon: Shield, title: 'Seguro e confiável', desc: 'Seus dados protegidos com criptografia de ponta' },
 ];
 
-export const AuthForm = () => {
+export const AuthForm = ({ loginOnly = false }: { loginOnly?: boolean }) => {
   const [activeTab, setActiveTab] = useState<'login' | 'signup'>('login');
   const [isLoading, setIsLoading] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
@@ -182,38 +182,43 @@ export const AuthForm = () => {
             <div className="space-y-6">
               <div className="hidden lg:block">
                 <h2 className="text-2xl font-bold text-foreground">
-                  {activeTab === 'login' ? 'Bem-vindo de volta' : 'Crie sua conta'}
+                  {loginOnly ? 'Acesse sua conta' : activeTab === 'login' ? 'Bem-vindo de volta' : 'Crie sua conta'}
                 </h2>
                 <p className="text-muted-foreground text-sm mt-1">
-                  {activeTab === 'login' ? 'Faça login para acessar a plataforma' : 'Cadastre-se gratuitamente'}
+                  {loginOnly
+                    ? 'Faça login com sua conta para acessar o conteúdo.'
+                    : activeTab === 'login' ? 'Faça login para acessar a plataforma' : 'Cadastre-se gratuitamente'}
                 </p>
               </div>
 
-              {/* Tab switcher */}
-              <div className="flex bg-muted rounded-xl p-1">
-                <button
-                  onClick={() => setActiveTab('login')}
-                  className={`flex-1 py-2.5 px-4 rounded-lg text-sm font-medium transition-all ${
-                    activeTab === 'login' 
-                      ? 'bg-background text-foreground shadow-sm' 
-                      : 'text-muted-foreground hover:text-foreground'
-                  }`}
-                >
-                  Entrar
-                </button>
-                <button
-                  onClick={() => setActiveTab('signup')}
-                  className={`flex-1 py-2.5 px-4 rounded-lg text-sm font-medium transition-all ${
-                    activeTab === 'signup' 
-                      ? 'bg-background text-foreground shadow-sm' 
-                      : 'text-muted-foreground hover:text-foreground'
-                  }`}
-                >
-                  Criar Conta
-                </button>
-              </div>
+              {/* Tab switcher — oculto quando o acesso veio de um link protegido
+                  (login-only: quem já tem conta acessa; sem auto-cadastro). */}
+              {!loginOnly && (
+                <div className="flex bg-muted rounded-xl p-1">
+                  <button
+                    onClick={() => setActiveTab('login')}
+                    className={`flex-1 py-2.5 px-4 rounded-lg text-sm font-medium transition-all ${
+                      activeTab === 'login'
+                        ? 'bg-background text-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    Entrar
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('signup')}
+                    className={`flex-1 py-2.5 px-4 rounded-lg text-sm font-medium transition-all ${
+                      activeTab === 'signup'
+                        ? 'bg-background text-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    Criar Conta
+                  </button>
+                </div>
+              )}
 
-              {activeTab === 'login' ? (
+              {loginOnly || activeTab === 'login' ? (
                 <form onSubmit={handleLogin} className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="login-email">Email</Label>

@@ -50,7 +50,8 @@ const Index = () => {
   }
 
   if (!isAuthenticated) {
-    return <AuthForm />;
+    // Chegou por link protegido (ex.: link da atividade): só login, sem cadastro.
+    return <AuthForm loginOnly={!!returnTo} />;
   }
 
   return <VisaoGeralPortal />;

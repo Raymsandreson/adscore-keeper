@@ -25,7 +25,10 @@ export function ProtectedRoute({ children, requiredModule }: ProtectedRouteProps
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/dashboard" state={{ returnTo: location.pathname }} replace />;
+    // Preserva pathname + querystring (ex.: ?openActivity=ID) para restaurar o
+    // destino após o login. returnTo também sinaliza "veio de link protegido" →
+    // a tela de auth mostra só login (sem auto-cadastro).
+    return <Navigate to="/dashboard" state={{ returnTo: location.pathname + location.search }} replace />;
   }
 
   // Auto-detect module from route if not explicitly provided
