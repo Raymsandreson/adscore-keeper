@@ -300,6 +300,10 @@ const ActivitiesPage = () => {
   const [formClientNameOverride, setFormClientNameOverride] = useState('');
   const [formAssignedTo, setFormAssignedTo] = useState('');
   const [formAssignedToName, setFormAssignedToName] = useState('');
+  // Co-assessores (além do principal). Cloud UUIDs.
+  const [formCoAssignees, setFormCoAssignees] = useState<{ user_id: string; full_name: string }[]>([]);
+  // A atividade carregada já tinha co-assessores? (permite limpar os arrays no update)
+  const [loadedHadCoAssignees, setLoadedHadCoAssignees] = useState(false);
   const [formDeadline, setFormDeadline] = useState('');
   const [formNotificationDate, setFormNotificationDate] = useState('');
   const [formNotes, setFormNotes] = useState('');
@@ -652,6 +656,8 @@ const ActivitiesPage = () => {
     const currentUser = teamMembers.find(m => m.user_id === user?.id);
     setFormAssignedTo(user?.id || '');
     setFormAssignedToName(currentUser?.full_name || '');
+    setFormCoAssignees([]);
+    setLoadedHadCoAssignees(false);
     const todayStr = format(new Date(), 'yyyy-MM-dd');
     setFormDeadline(todayStr);
     setFormNotificationDate(todayStr);
@@ -857,6 +863,7 @@ const ActivitiesPage = () => {
       workflow_id: formWorkflowId || null,
       is_system: formIsSystem,
       client_name_override: formClientNameOverride || null,
+      ...buildAssigneesPayload(),
     };
 
     let createdActivityId: string | null = null;
@@ -928,6 +935,7 @@ const ActivitiesPage = () => {
     setFormLeadName(activity.lead_name || '');
     setFormAssignedTo(((await remapToCloud(activity.assigned_to)) as string) || '');
     setFormAssignedToName(activity.assigned_to_name || '');
+    await hydrateCoAssignees(activity);
     setFormDeadline(activity.deadline || '');
     setFormNotificationDate(activity.notification_date || '');
     setFormNotes(activity.notes || '');
@@ -1080,6 +1088,7 @@ const ActivitiesPage = () => {
       process_title: formProcessTitle || null,
       matrix_quadrant: formMatrixQuadrant || null,
       client_name_override: formClientNameOverride || null,
+      ...buildAssigneesPayload(),
     } as any);
     closeSheet();
     fetchActivities(getFilterParams());
@@ -1172,6 +1181,7 @@ const ActivitiesPage = () => {
         matrix_quadrant: formMatrixQuadrant || null,
         is_system: formIsSystem,
         client_name_override: formClientNameOverride || null,
+        ...buildAssigneesPayload(),
       };
 
       // Conclude the current activity without overwriting its existing data
@@ -1342,6 +1352,7 @@ const ActivitiesPage = () => {
     setFormLeadName(activity.lead_name || '');
     setFormAssignedTo(((await remapToCloud(activity.assigned_to)) as string) || '');
     setFormAssignedToName(activity.assigned_to_name || '');
+    await hydrateCoAssignees(activity);
     setFormDeadline(activity.deadline || '');
     setFormNotificationDate(activity.notification_date || '');
     setFormNotes(activity.notes || '');
@@ -1417,6 +1428,7 @@ const ActivitiesPage = () => {
       notification_date: formNotificationDate || null, notes: formNotes || null,
       status: formStatus, contact_id: formContactId || null, contact_name: formContactName || null,
       client_name_override: formClientNameOverride || null,
+      ...buildAssigneesPayload(),
     } as any);
     await completeActivity(selectedActivity.id);
     toast.success('Atividade concluída! 🎉', {
@@ -1555,10 +1567,53 @@ const ActivitiesPage = () => {
     setAvailableContacts(data || []);
   };
 
+  // Carrega os co-assessores da atividade (colunas de array do Externo → Cloud UUIDs).
+  const hydrateCoAssignees = async (activity: any) => {
+    const extIds = (activity.assigned_to_ids as string[] | null) || [];
+    const names = (activity.assigned_to_names as string[] | null) || [];
+    if (extIds.length > 1) {
+      const primaryCloud = ((await remapToCloud(activity.assigned_to)) as string) || '';
+      const cloudIds = await Promise.all(extIds.map((id) => remapToCloud(id)));
+      const co = cloudIds
+        .map((cid, i) => ({ user_id: (cid as string) || '', full_name: names[i] || '' }))
+        .filter((c) => c.user_id && c.user_id !== primaryCloud);
+      setFormCoAssignees(co);
+      setLoadedHadCoAssignees(true);
+    } else {
+      setFormCoAssignees([]);
+      setLoadedHadCoAssignees(false);
+    }
+  };
+
+  // Seleção multi: 1º clique define o principal; cliques seguintes alternam co-assessores.
+  // Clicar no principal o desmarca (o 1º co-assessor, se houver, vira o principal).
   const handleSelectAssignee = (userId: string) => {
     const member = teamMembers.find(m => m.user_id === userId);
-    setFormAssignedTo(userId);
-    setFormAssignedToName(member?.full_name || '');
+    const name = member?.full_name || '';
+    if (formAssignedTo === userId) {
+      const [next, ...rest] = formCoAssignees;
+      setFormAssignedTo(next?.user_id || '');
+      setFormAssignedToName(next?.full_name || '');
+      setFormCoAssignees(rest);
+    } else if (formCoAssignees.some(c => c.user_id === userId)) {
+      setFormCoAssignees(prev => prev.filter(c => c.user_id !== userId));
+    } else if (!formAssignedTo) {
+      setFormAssignedTo(userId);
+      setFormAssignedToName(name);
+    } else {
+      setFormCoAssignees(prev => [...prev, { user_id: userId, full_name: name }]);
+    }
+  };
+
+  // Colunas de array (multi-assessor) só entram no payload quando há co-assessor
+  // (ou quando a atividade carregada já tinha — para permitir limpar). Assim, banco
+  // ainda sem a migração de assigned_to_ids/assigned_to_names continua funcionando.
+  const buildAssigneesPayload = () => {
+    if (formCoAssignees.length === 0 && !loadedHadCoAssignees) return {};
+    return {
+      assigned_to_ids: [formAssignedTo, ...formCoAssignees.map(c => c.user_id)].filter(Boolean),
+      assigned_to_names: [formAssignedToName, ...formCoAssignees.map(c => c.full_name)].filter(Boolean),
+    };
   };
 
   const handleDeadlineChange = (value: string) => {
@@ -1847,7 +1902,11 @@ const ActivitiesPage = () => {
       .trim();
   };
 
-  const buildMsg = () => {
+  // audience: 'client' (grupo do lead — padrão) ou 'assessor' (mensagem interna,
+  // endereçada ao(s) assessor(es) responsável(is) — usado quando não há lead).
+  const buildMsg = (audience: 'client' | 'assessor' = 'client') => {
+    const joinNames = (names: string[]) =>
+      names.length <= 1 ? (names[0] || '') : `${names.slice(0, -1).join(', ')} e ${names[names.length - 1]}`;
     const notifDate = formNotificationDate ? (() => {
       const d = parseISO(formNotificationDate);
       const dias = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
@@ -1883,6 +1942,18 @@ const ActivitiesPage = () => {
       ? `Referente ao processo n° "${procNumberForMsg || '—'}" de "${procTitleForMsg || '—'}"`
       : '';
 
+    // Clientes do processo vinculado = envolvidos do polo ATIVO (quem o escritório representa).
+    const processClientNames: string[] = ((linkedProcessForMsg?.envolvidos as any[]) || [])
+      .filter((e: any) => e && e.polo === 'ATIVO' && e.nome)
+      .map((e: any) => String(e.nome));
+
+    // Nome exibido na saudação ao CLIENTE: override manual > clientes do processo > nome do lead.
+    const clientDisplayName = formClientNameOverride
+      ? extractClientFirstName(formClientNameOverride)
+      : processClientNames.length > 0
+        ? joinNames(processClientNames.map((n) => extractClientFirstName(n)))
+        : extractClientFirstName(formLeadName || '');
+
     // Workflow do processo (etapa / objetivo / passo atual) — vem do checklist do lead (stepContext).
     const wfPhase = stepContext?.phaseLabel || '';
     const wfObjective = stepContext?.objectiveLabel || '';
@@ -1894,6 +1965,29 @@ const ActivitiesPage = () => {
           wfStep && `*Passo atual:* ${wfStep}`,
         ].filter(Boolean).join('\n')
       : '';
+
+    // Mensagem endereçada ao(s) ASSESSOR(es) responsável(is) — não usa template de cliente.
+    if (audience === 'assessor') {
+      const allAssessorNames = [formAssignedToName, ...formCoAssignees.map(c => c.full_name)].filter(Boolean);
+      const assessorGreet = joinNames(allAssessorNames.map(n => `Dr(a). ${String(n).split(' ').slice(0, 2).join(' ')}`));
+      const hourA = new Date().getHours();
+      const saudA = hourA < 12 ? 'Bom dia' : hourA < 18 ? 'Boa tarde' : 'Boa noite';
+      const header = `*${saudA}${assessorGreet ? `, ${assessorGreet}` : ''}!*`;
+      const sysTag = formIsSystem ? '🤖 *Atividade do sistema* — sob sua responsabilidade.' : '';
+      const prazoLine = formDeadline ? `*Prazo:* ${format(parseISO(formDeadline), 'dd/MM/yyyy')}` : '';
+      const notifLine = notifDate ? `*Notificação:* ${notifDate}` : '';
+      return [
+        header,
+        sysTag,
+        processInfo,
+        `*Assunto da atividade:* ${formTitle.toUpperCase()}`,
+        fieldLines,
+        [prazoLine, notifLine].filter(Boolean).join('\n'),
+        workflowInfo,
+        tempoStr,
+        activityLink,
+      ].filter(Boolean).join('\n\n').replace(/\n{3,}/g, '\n\n').trim();
+    }
 
     // Try to use a saved template for this board/workflow
     const boardId = leadPreview?.board_id || undefined;
@@ -1911,9 +2005,10 @@ const ActivitiesPage = () => {
       const tplVars: Record<string, string> = {
         saudacao,
         titulo: formTitle.toUpperCase(),
-        lead_name: extractClientFirstName(formClientNameOverride || formLeadName || ''),
+        lead_name: clientDisplayName,
+        clientes_processo: processClientNames.join(', '),
         campos_dinamicos: fieldLines,
-        responsavel: formAssignedToName || '',
+        responsavel: [formAssignedToName, ...formCoAssignees.map(c => c.full_name)].filter(Boolean).join(', '),
         responsavel_dr: responsavelDr,
         data_retorno: notifDate,
         linha_retorno: returnDateLine,
@@ -1987,7 +2082,7 @@ const ActivitiesPage = () => {
 
     // Fallback: hardcoded default
     const responsavelDrFb = formAssignedToName ? `Dr. ${formAssignedToName.split(' ').slice(0, 2).join(' ')}` : '';
-    const clientFirstName = extractClientFirstName(formClientNameOverride || formLeadName || '');
+    const clientFirstName = clientDisplayName;
     const hourFb = new Date().getHours();
     const saudacaoFb = hourFb < 12 ? 'Bom dia' : hourFb < 18 ? 'Boa tarde' : 'Boa noite';
     const greetingLine = clientFirstName
@@ -2015,6 +2110,7 @@ const ActivitiesPage = () => {
       setSelectedStepId={setSelectedStepId}
       formTitle={formTitle} setFormTitle={setFormTitle}
       formAssignedTo={formAssignedTo} handleSelectAssignee={handleSelectAssignee}
+      formCoAssignees={formCoAssignees}
       formType={formType} setFormType={setFormType}
       formStatus={formStatus} setFormStatus={setFormStatus}
       formPriority={formPriority} setFormPriority={setFormPriority}
@@ -4313,6 +4409,7 @@ const ActivitiesPage = () => {
                               deadline: formDeadline || null,
                               notification_date: formNotificationDate || null,
                               client_name_override: formClientNameOverride || null,
+                              ...buildAssigneesPayload(),
                             });
                             if (result) {
                               const createdActivity = result as LeadActivity;

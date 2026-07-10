@@ -53,6 +53,7 @@ interface ActivityFormCompactProps {
   // Form values
   formTitle: string; setFormTitle: (v: string) => void;
   formAssignedTo: string; handleSelectAssignee: (v: string) => void;
+  formCoAssignees?: { user_id: string; full_name: string }[];
   formType: string; setFormType: (v: string) => void;
   formStatus: string; setFormStatus: (v: string) => void;
   formPriority: string; setFormPriority: (v: string) => void;
@@ -142,7 +143,7 @@ const MATRIX_OPTIONS = [
 ];
 
 export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFieldSetting, reorderFields, formLeadIdForTTS, formContactIdForTTS, formAssignedTo, activityId, compactLabel }: {
-  buildMsg: () => string;
+  buildMsg: (audience?: 'client' | 'assessor') => string;
   leadId: string;
   fieldSettings: any[];
   updateFieldSetting: any;
@@ -253,7 +254,8 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
           .eq('user_id', formAssignedTo)
           .maybeSingle();
 
-        const message = buildMsg();
+        // Sem lead: a mensagem vai pro assessor — saudação e formato endereçados a ele.
+        const message = buildMsg('assessor');
         const hasWhatsApp = !!profile?.phone && !!profile?.default_instance_id;
 
         if (hasWhatsApp) {
@@ -397,7 +399,7 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
 
   return (
     <div className="flex items-center gap-1.5 flex-wrap">
-      <Button type="button" variant="outline" size="sm" className="gap-1 h-8 text-xs" onClick={() => { navigator.clipboard.writeText(buildMsg()); toast.success('Mensagem copiada!'); }}>
+      <Button type="button" variant="outline" size="sm" className="gap-1 h-8 text-xs" onClick={() => { navigator.clipboard.writeText(buildMsg(hasLead ? 'client' : 'assessor')); toast.success('Mensagem copiada!'); }}>
         <Copy className="h-3.5 w-3.5" /> Copiar
       </Button>
       {instances.length > 0 && (
@@ -614,6 +616,11 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
             const assignable = filterAssignableMembers(props.teamMembers)
               .slice().sort((a, b) => (a.full_name || '').localeCompare(b.full_name || '', 'pt-BR', { sensitivity: 'base' }));
             const selected = assignable.find(m => m.user_id === props.formAssignedTo);
+            const coAssignees = props.formCoAssignees || [];
+            const isCo = (id: string) => coAssignees.some(c => c.user_id === id);
+            const triggerLabel = selected
+              ? `${selected.full_name || 'Sem nome'}${coAssignees.length > 0 ? ` +${coAssignees.length}` : ''}`
+              : '—';
             return (
               <Popover>
                 <PopoverTrigger asChild>
@@ -622,9 +629,10 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
                     variant="outline"
                     role="combobox"
                     className="h-8 mt-0.5 w-full justify-between text-xs font-normal px-2"
+                    title={coAssignees.length > 0 ? [selected?.full_name, ...coAssignees.map(c => c.full_name)].filter(Boolean).join(', ') : undefined}
                   >
                     <span className={cn("truncate", !selected && "text-muted-foreground")}>
-                      {selected?.full_name || '—'}
+                      {triggerLabel}
                     </span>
                     <ChevronDown className="h-3 w-3 opacity-50 shrink-0 ml-1" />
                   </Button>
@@ -642,12 +650,18 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
                             onSelect={() => props.handleSelectAssignee(m.user_id)}
                             className="text-xs"
                           >
-                            <Check className={cn("mr-2 h-3 w-3", props.formAssignedTo === m.user_id ? "opacity-100" : "opacity-0")} />
-                            {m.full_name || 'Sem nome'}
+                            <Check className={cn("mr-2 h-3 w-3", (props.formAssignedTo === m.user_id || isCo(m.user_id)) ? "opacity-100" : "opacity-0")} />
+                            <span className="truncate">{m.full_name || 'Sem nome'}</span>
+                            {props.formAssignedTo === m.user_id && (
+                              <span className="ml-auto text-[9px] uppercase tracking-wider text-primary shrink-0">Principal</span>
+                            )}
                           </CommandItem>
                         ))}
                       </CommandGroup>
                     </CommandList>
+                    <p className="text-[10px] text-muted-foreground px-2 py-1.5 border-t">
+                      Clique para adicionar/remover. O primeiro selecionado é o principal.
+                    </p>
                   </Command>
                 </PopoverContent>
               </Popover>
