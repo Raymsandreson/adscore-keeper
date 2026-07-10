@@ -1826,7 +1826,10 @@ const ActivitiesPage = () => {
 
   // Only show activity types that are in the assignee's routine for form selection
   const routineActivityTypes = useMemo(() => {
-    if (activeRoutine.length === 0) return allKnownActivityTypes;
+    // Sem rotina do assessor: mostra só os tipos base (jurídicos padrão), não
+    // todos os tipos custom do sistema (ex.: tipos de marketing). Assessores com
+    // rotina configurada continuam vendo exatamente os tipos da rotina deles.
+    if (activeRoutine.length === 0) return ACTIVITY_TYPES.map(t => ({ value: t.value, label: t.label }));
     const routineKeys = new Set(activeRoutine.map(c => c.activityType));
     return allKnownActivityTypes.filter(t => routineKeys.has(t.value));
   }, [activeRoutine, allKnownActivityTypes]);
@@ -1835,28 +1838,23 @@ const ActivitiesPage = () => {
     if (!title || title.trim().length < 5) return;
     setAiSuggestingType(true);
     try {
-      const { data, error } = await cloudFunctions.invoke('suggest-activity-type', { body: { title } });
+      const { data, error } = await cloudFunctions.invoke('suggest-activity-type', {
+        body: {
+          title,
+          // Sugere só entre os tipos disponíveis no seletor (rotina/base).
+          allowed_types: routineActivityTypes.map(t => ({ key: t.value, label: t.label })),
+        },
+      });
       if (!error && data?.suggested_type) {
-        // Check against all known types (hardcoded + DB custom)
-        const allTypes = [...ACTIVITY_TYPES];
-        for (const dbType of dbActivityTypes) {
-          if (!allTypes.some(t => t.value === dbType.key)) {
-            allTypes.push({ value: dbType.key, label: dbType.label, bg: '', border: '', header: '', dot: '' });
-          }
-        }
-        const match = allTypes.find(t => t.value === data.suggested_type);
+        const match = routineActivityTypes.find(t => t.value === data.suggested_type);
         if (match) {
-          // Only set if it's in the routine (or no routine configured)
-          const routineKeys = activeRoutine.length > 0 ? new Set(activeRoutine.map(c => c.activityType)) : null;
-          if (!routineKeys || routineKeys.has(match.value)) {
-            setFormType(match.value);
-            toast.info(`Tipo sugerido pela IA: ${match.label}`, { duration: 2000 });
-          }
+          setFormType(match.value);
+          toast.info(`Tipo sugerido pela IA: ${match.label}`, { duration: 2000 });
         }
       }
     } catch { /* silent */ }
     setAiSuggestingType(false);
-  }, [dbActivityTypes, activeRoutine]);
+  }, [routineActivityTypes]);
 
   const handleTitleChange = useCallback((value: string) => {
     setFormTitle(value);
@@ -1881,17 +1879,19 @@ const ActivitiesPage = () => {
             what_was_done: stripHtml(formWhatWasDone).slice(0, 400),
             next_steps: stripHtml(formNextSteps).slice(0, 400),
           },
+          // Restringe a sugestão aos tipos válidos deste contexto (rotina/base).
+          allowed_types: routineActivityTypes.map(t => ({ key: t.value, label: t.label })),
         },
       });
       const suggested = data?.suggested_type;
       if (error || !suggested || suggested === formType) { setTypeMismatch(null); return; }
-      const match = routineActivityTypes.find(t => t.value === suggested)
-        || allKnownActivityTypes.find(t => t.value === suggested);
+      // Só alerta se a sugestão for um tipo realmente disponível no seletor.
+      const match = routineActivityTypes.find(t => t.value === suggested);
       setTypeMismatch(match ? { suggested: match.value, label: match.label } : null);
     } catch {
       setTypeMismatch(null);
     }
-  }, [formTitle, formType, formCurrentStatus, formWhatWasDone, formNextSteps, routineActivityTypes, allKnownActivityTypes]);
+  }, [formTitle, formType, formCurrentStatus, formWhatWasDone, formNextSteps, routineActivityTypes]);
 
   // Dispara a checagem (debounced) enquanto o formulário está aberto.
   useEffect(() => {

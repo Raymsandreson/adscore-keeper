@@ -19,12 +19,20 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { title, context } = await req.json();
+    const { title, context, allowed_types } = await req.json();
     if (!title || title.trim().length < 3) {
       return new Response(JSON.stringify({ suggested_type: null }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    // Conjunto permitido (ex.: tipos da rotina do assessor). Quando fornecido,
+    // o classificador só pode escolher entre eles — evita sugerir tipo custom
+    // fora de contexto (ex.: um tipo de marketing pra uma atividade jurídica).
+    const allowedList: { key: string; label?: string }[] = Array.isArray(allowed_types)
+      ? allowed_types.filter((t: any) => t && typeof t.key === 'string')
+      : [];
+    const allowedKeys = new Set(allowedList.map((t) => t.key));
 
     // Contexto opcional dos campos da atividade — melhora a classificação
     // (ex.: "prazo para impugnar" no 'como está' indica tipo Prazo, não Tarefa).
@@ -40,7 +48,11 @@ serve(async (req) => {
     const supabaseKey = RESOLVED_SERVICE_ROLE_KEY;
     const sb = createClient(supabaseUrl, supabaseKey);
 
-    const { data: types } = await sb.from("activity_types").select("key, label, description").eq("is_active", true).order("display_order");
+    const { data: dbTypes } = await sb.from("activity_types").select("key, label, description").eq("is_active", true).order("display_order");
+    // Se veio allowed_types, usa só eles; senão, todos os ativos do banco.
+    const types = allowedKeys.size > 0
+      ? (dbTypes || []).filter((t: any) => allowedKeys.has(t.key))
+      : (dbTypes || []);
     const typesList = (types || []).map((t: any) => {
       let line = `- "${t.key}" = ${t.label}`;
       if (t.description) line += ` — ${t.description}`;
@@ -94,6 +106,11 @@ Considere o assunto e, quando houver, o conteúdo dos campos da atividade. Palav
         const content = result.choices?.[0]?.message?.content?.trim();
         if (content) suggestedType = content;
       }
+    }
+
+    // Blindagem: nunca devolver uma key fora do conjunto permitido.
+    if (allowedKeys.size > 0 && suggestedType && !allowedKeys.has(suggestedType)) {
+      suggestedType = null;
     }
 
     return new Response(JSON.stringify({ suggested_type: suggestedType }), {
