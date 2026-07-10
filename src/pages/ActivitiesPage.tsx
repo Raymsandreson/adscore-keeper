@@ -2108,8 +2108,17 @@ const ActivitiesPage = () => {
         result = lines.join('\n');
       }
 
-      // Workflow (etapa/objetivo/passo atual) e link da atividade só entram
-      // se o template referenciá-los explicitamente — sem auto-injeção.
+      // Workflow (etapa/objetivo/passo atual) só entra se o template referenciar.
+
+      // Link da atividade: auto-injeta antes de "Estamos à disposição" quando a
+      // atividade já existe e o template não referencia {{link_atividade}}.
+      if (activityLink && !template.includes('link_atividade') && !result.includes('openActivity=')) {
+        const lines = result.split('\n');
+        const beforeSupport = lines.findIndex(line => line.includes('Estamos à disposição'));
+        if (beforeSupport >= 0) lines.splice(beforeSupport, 0, activityLink, '');
+        else lines.push('', activityLink);
+        result = lines.join('\n');
+      }
 
       // Templates antigos escondiam a data quando o responsável estava vazio.
       // Se o modelo tentou usar data_retorno, garante que o cliente veja a data.
@@ -2134,7 +2143,8 @@ const ActivitiesPage = () => {
     const greetingLine = clientFirstName
       ? `*${saudacaoFb} Sr(a). ${clientFirstName}*`
       : `*${saudacaoFb}*`;
-    return `${greetingLine}${processInfo ? `\n\n${processInfo}` : ''}\n\n*Assunto da atividade:* ${formTitle.toUpperCase()}\n\n${fieldLines}\n\n${buildReturnDateLine(responsavelDrFb)}\n${tempoStr}\n\nEstamos à disposição para quaisquer dúvidas.\n\n🚀Avante!\n\nTem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se tudo está claro, digite 2.`;
+    const linkLineFb = activityLink ? `\n\n${activityLink}` : '';
+    return `${greetingLine}${processInfo ? `\n\n${processInfo}` : ''}\n\n*Assunto da atividade:* ${formTitle.toUpperCase()}\n\n${fieldLines}\n\n${buildReturnDateLine(responsavelDrFb)}\n${tempoStr}${linkLineFb}\n\nEstamos à disposição para quaisquer dúvidas.\n\n🚀Avante!\n\nTem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se tudo está claro, digite 2.`;
   };
 
   // Active step context — process workflow > lead's funnel board.
