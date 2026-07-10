@@ -20,6 +20,9 @@ export interface LeadActivity {
   priority: string | null;
   assigned_to: string | null;
   assigned_to_name: string | null;
+  /** Todos os assessores (principal primeiro). Requer as colunas de array no Externo. */
+  assigned_to_ids?: string[] | null;
+  assigned_to_names?: string[] | null;
   deadline: string | null;
   notification_date: string | null;
   completed_at: string | null;
@@ -162,6 +165,14 @@ export function useLeadActivities() {
       const extUserId = await remapToExternal(cloudUserId);
       const extAssignedTo = await remapToExternal(activity.assigned_to || cloudUserId);
 
+      // Multi-assessor: remapeia cada Cloud UUID pro Externo. Só entra no insert
+      // quando informado — banco sem a migração das colunas continua funcionando.
+      let extAssignedToIds: string[] | null = null;
+      if (Array.isArray(activity.assigned_to_ids) && activity.assigned_to_ids.length > 0) {
+        const mapped = await Promise.all(activity.assigned_to_ids.map((id) => remapToExternal(id)));
+        extAssignedToIds = mapped.filter(Boolean) as string[];
+      }
+
       const { data, error } = await externalSupabase
         .from('lead_activities')
         .insert({
@@ -191,6 +202,10 @@ export function useLeadActivities() {
           is_system: activity.is_system ?? false,
           client_name_override: activity.client_name_override || null,
           workflow_id: activity.workflow_id || null,
+          ...(extAssignedToIds ? {
+            assigned_to_ids: extAssignedToIds,
+            assigned_to_names: activity.assigned_to_names || null,
+          } : {}),
         } as any)
         .select()
         .single();
@@ -270,6 +285,10 @@ export function useLeadActivities() {
       const patch: any = { ...updates, updated_by: extUserId };
       if ('assigned_to' in updates) {
         patch.assigned_to = await remapToExternal(updates.assigned_to || null);
+      }
+      if ('assigned_to_ids' in updates && Array.isArray(updates.assigned_to_ids)) {
+        const mapped = await Promise.all(updates.assigned_to_ids.map((id) => remapToExternal(id)));
+        patch.assigned_to_ids = mapped.filter(Boolean);
       }
 
       const { error } = await externalSupabase

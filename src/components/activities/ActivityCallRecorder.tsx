@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Phone, Mic, Square, Loader2, Sparkles, Info, RotateCcw, Download, Send } from 'lucide-react';
+import { Phone, Mic, Square, Loader2, Sparkles, Info, RotateCcw, Download, Send, Volume2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
@@ -22,6 +22,14 @@ export interface ActivityCallContext {
   solicitacao?: string;
   resposta_juizo?: string;
   notes?: string;
+  /** Metadados atuais — permitem que o áudio os corrija ("muda o prazo pra sexta"). */
+  deadline?: string;
+  notification_date?: string;
+  priority?: string;
+  status?: string;
+  assessor_name?: string;
+  /** Nomes dos assessores da equipe (para a IA mapear "passa pro Fulano"). */
+  team_members?: string[];
   workflow?: { step_label?: string; phase_label?: string; objective_label?: string; next_step?: string };
 }
 
@@ -32,6 +40,13 @@ export interface ActivityCallFields {
   solicitacao?: string;
   resposta_juizo?: string;
   notes?: string;
+  // Campos de texto podem vir como '' quando o áudio mandou APAGAR o conteúdo.
+  title?: string;
+  deadline?: string;
+  notification_date?: string;
+  priority?: string;
+  status?: string;
+  assessor_name?: string;
 }
 
 interface Props {
@@ -61,8 +76,30 @@ interface Props {
 
 type Phase = 'idle' | 'recording' | 'processing' | 'done';
 
+/** Fonte de captura: microfone (externo), áudio interno do dispositivo, ou os dois mixados. */
+type AudioSource = 'mic' | 'system' | 'both';
+
+/**
+ * Áudio interno depende de getDisplayMedia (compartilhar tela/aba com áudio).
+ * Disponível em Chrome/Edge de desktop; navegadores mobile não expõem essa API.
+ */
+const supportsSystemAudio =
+  typeof navigator !== 'undefined' &&
+  !!navigator.mediaDevices &&
+  typeof (navigator.mediaDevices as any).getDisplayMedia === 'function';
+
+const SOURCE_LABELS: Record<AudioSource, string> = {
+  mic: 'Microfone',
+  system: 'Áudio interno',
+  both: 'Microfone + interno',
+};
+
 const CALL_FIELD_KEYS: (keyof ActivityCallFields)[] = [
   'what_was_done', 'current_status', 'next_steps', 'solicitacao', 'resposta_juizo', 'notes',
+];
+
+const META_FIELD_KEYS: (keyof ActivityCallFields)[] = [
+  'title', 'deadline', 'notification_date', 'priority', 'status', 'assessor_name',
 ];
 
 /** Força o download de um arquivo (cross-origin via blob; fallback abre em nova aba). */
@@ -110,6 +147,7 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
     onOpenChange?.(v);
   };
   const [phase, setPhase] = useState<Phase>('idle');
+  const [source, setSource] = useState<AudioSource>('mic');
   const [seconds, setSeconds] = useState(0);
   const [transcript, setTranscript] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -117,10 +155,22 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
   const [recordingUrl, setRecordingUrl] = useState<string | null>(null);
   const [sendingToWa, setSendingToWa] = useState(false);
   const [sentToWa, setSentToWa] = useState(false);
+  // Falha na etapa de preenchimento pela IA (a transcrição em si deu certo).
+  const [fillError, setFillError] = useState<string | null>(null);
+  const [appliedCount, setAppliedCount] = useState(0);
+  const [refilling, setRefilling] = useState(false);
+  // Contexto enviado à IA, guardado pra reusar no "Tentar preencher novamente".
+  const lastContextRef = useRef<Record<string, unknown> | null>(null);
+  // Gravações de áudio já anexadas à atividade (permitem reprocessar sem gravar de novo).
+  const [pastRecordings, setPastRecordings] = useState<{ id: string; file_url: string; file_name: string | null; created_at: string | null }[]>([]);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
+  // Stream do getDisplayMedia (áudio interno) — precisa ser parado separadamente (inclui track de vídeo).
+  const displayStreamRef = useRef<MediaStream | null>(null);
+  // Permite que o handler de "parou de compartilhar" (registrado no start) chame o stop mais recente.
+  const stopRecordingRef = useRef<(() => void) | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // Visualizador de áudio (Web Audio API) — mostra a "frequência da voz" ao gravar.
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -141,6 +191,7 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
       streamRef.current?.getTracks().forEach((t) => t.stop());
+      displayStreamRef.current?.getTracks().forEach((t) => t.stop());
       try { mediaRecorderRef.current?.stop(); } catch { /* noop */ }
       teardownAudio();
     };
@@ -152,19 +203,54 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
   const startRecording = useCallback(async () => {
     setError(null);
     setTranscript('');
+    let micStream: MediaStream | null = null;
+    let displayStream: MediaStream | null = null;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
+      if (source !== 'system') {
+        micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      }
+      if (source !== 'mic') {
+        // Áudio interno: o navegador só entrega junto de uma captura de tela/aba.
+        // O usuário PRECISA marcar "Compartilhar áudio" na janela de seleção.
+        displayStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+        if (displayStream.getAudioTracks().length === 0) {
+          displayStream.getTracks().forEach((t) => t.stop());
+          throw new Error('NO_SYSTEM_AUDIO');
+        }
+        displayStreamRef.current = displayStream;
+        // Se o usuário encerrar o compartilhamento pela UI do navegador, finaliza a gravação.
+        displayStream.getTracks().forEach((t) => {
+          t.onended = () => { stopRecordingRef.current?.(); };
+        });
+      }
+      streamRef.current = micStream;
+
+      // Stream que vai pro MediaRecorder: mic direto, ou mix via Web Audio API.
+      let recordStream: MediaStream;
+      if (source === 'mic') {
+        recordStream = micStream!;
+      } else {
+        const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
+        const audioCtx = new AudioCtx();
+        audioCtxRef.current = audioCtx;
+        const dest = audioCtx.createMediaStreamDestination();
+        if (micStream) audioCtx.createMediaStreamSource(micStream).connect(dest);
+        audioCtx
+          .createMediaStreamSource(new MediaStream(displayStream!.getAudioTracks()))
+          .connect(dest);
+        recordStream = dest.stream;
+      }
 
       // Medidor de nível de áudio (opcional — só feedback visual).
       try {
-        const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
-        const audioCtx = new AudioCtx();
-        const source = audioCtx.createMediaStreamSource(stream);
+        if (!audioCtxRef.current) {
+          const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
+          audioCtxRef.current = new AudioCtx();
+        }
+        const audioCtx = audioCtxRef.current!;
         const analyser = audioCtx.createAnalyser();
         analyser.fftSize = 256;
-        source.connect(analyser);
-        audioCtxRef.current = audioCtx;
+        audioCtx.createMediaStreamSource(recordStream).connect(analyser);
         analyserRef.current = analyser;
         setSilent(false);
         silentRef.current = false;
@@ -176,7 +262,7 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
         : MediaRecorder.isTypeSupported('audio/webm')
           ? 'audio/webm'
           : 'audio/mp4';
-      const recorder = new MediaRecorder(stream, { mimeType });
+      const recorder = new MediaRecorder(recordStream, { mimeType });
       mediaRecorderRef.current = recorder;
       chunksRef.current = [];
       recorder.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
@@ -184,11 +270,22 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
       setSeconds(0);
       timerRef.current = setInterval(() => setSeconds((p) => p + 1), 1000);
       setPhase('recording');
-    } catch (e) {
-      console.error('Mic access error', e);
-      toast.error('Não foi possível acessar o microfone. Verifique a permissão do navegador.');
+    } catch (e: any) {
+      micStream?.getTracks().forEach((t) => t.stop());
+      displayStream?.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+      displayStreamRef.current = null;
+      teardownAudio();
+      console.error('Recording start error', e);
+      if (e?.message === 'NO_SYSTEM_AUDIO') {
+        toast.error('Nenhum áudio interno compartilhado. Na janela de seleção, escolha a aba/tela e marque "Compartilhar áudio".');
+      } else if (e?.name === 'NotAllowedError' && source !== 'mic') {
+        toast.error('Compartilhamento de tela/áudio cancelado ou negado.');
+      } else {
+        toast.error('Não foi possível acessar o microfone. Verifique a permissão do navegador.');
+      }
     }
-  }, []);
+  }, [source, teardownAudio]);
 
   // Desenha as barras de frequência enquanto grava e detecta ausência de som.
   useEffect(() => {
@@ -238,39 +335,30 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
     };
   }, [phase]);
 
-  const processAudio = useCallback(async (blob: Blob, mime: string) => {
+  /** Aplica os campos retornados pela IA (textos, apagamentos e metadados). Retorna quantos mudaram. */
+  const applyResponseFields = useCallback((raw: Record<string, unknown>): number => {
+    const applied: ActivityCallFields = {};
+    for (const k of CALL_FIELD_KEYS) {
+      const v = raw?.[k];
+      if (v && String(v).trim()) applied[k] = String(v).trim();
+    }
+    // Comandos de "apagar campo" ditos no áudio chegam em clear_fields e viram '' (o pai limpa).
+    const toClear = Array.isArray((raw as any)?.clear_fields) ? (raw as any).clear_fields : [];
+    for (const k of CALL_FIELD_KEYS) {
+      if (toClear.includes(k) && applied[k] === undefined) applied[k] = '';
+    }
+    for (const k of META_FIELD_KEYS) {
+      const v = raw?.[k];
+      if (v && String(v).trim()) applied[k] = String(v).trim();
+    }
+    onFields(applied);
+    return Object.keys(applied).length;
+  }, [onFields]);
+
+  /** Transcreve (no servidor) e preenche os campos a partir de uma URL de áudio já no storage. */
+  const runFill = useCallback(async (audio_url: string) => {
     setPhase('processing');
     try {
-      const ext = mime.includes('webm') ? 'webm' : 'mp4';
-      const path = `call-recordings/activity_call_${Date.now()}.${ext}`;
-      const { error: upErr } = await supabase.storage
-        .from('activity-chat')
-        .upload(path, blob, { contentType: mime });
-      if (upErr) throw upErr;
-
-      const { data: urlData } = supabase.storage.from('activity-chat').getPublicUrl(path);
-      const audio_url = urlData.publicUrl;
-      setRecordingUrl(audio_url);
-      onRecordingReady?.({ url: audio_url, seconds });
-
-      // Guarda a gravação como anexo de áudio da atividade (consulta/análise posterior).
-      if (activityId) {
-        try {
-          const { data: { user } } = await supabase.auth.getUser();
-          const extUserId = await remapToExternal(user?.id || null);
-          await externalSupabase.from('activity_attachments').insert({
-            activity_id: activityId,
-            file_url: audio_url,
-            file_name: `Gravação da ligação.${ext}`,
-            file_type: mime,
-            attachment_type: 'audio',
-            created_by: extUserId,
-          });
-        } catch (attErr) {
-          console.warn('[ActivityCallRecorder] não foi possível anexar a gravação:', attErr);
-        }
-      }
-
       // Busca contexto extra para a IA combinar (histórico do processo + mensagens da atividade).
       let previousActivities: any[] = [];
       let chatMessages: any[] = [];
@@ -318,6 +406,7 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
       }
 
       const fullContext = { ...context, previous_activities: previousActivities, chat_messages: chatMessages };
+      lastContextRef.current = fullContext;
 
       const { data, error: fnErr } = await cloudFunctions.invoke('transcribe-activity-call', {
         body: { audio_url, activity_context: fullContext },
@@ -327,28 +416,69 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
 
       setTranscript(data.transcript || '');
 
-      const raw = data.fields || {};
-      const applied: ActivityCallFields = {};
-      for (const k of CALL_FIELD_KEYS) {
-        const v = raw[k];
-        if (v && String(v).trim()) applied[k] = String(v).trim();
-      }
-      onFields(applied);
+      const count = applyResponseFields(data.fields || {});
 
       setPhase('done');
-      const count = Object.keys(applied).length;
-      toast.success(
-        count > 0
-          ? `IA preencheu ${count} campo(s) com base na ligação — revise antes de salvar.`
-          : 'Transcrição pronta, mas a IA não identificou campos para preencher.'
-      );
+      setAppliedCount(count);
+      setFillError(data.fill_error || null);
+      if (data.fill_error) {
+        toast.error('Transcrição pronta, mas o preenchimento automático falhou. Use "Tentar preencher novamente".');
+      } else {
+        toast.success(
+          count > 0
+            ? `IA preencheu ${count} campo(s) com base na ligação — revise antes de salvar.`
+            : 'Transcrição pronta, mas a IA não identificou campos para preencher.'
+        );
+      }
+    } catch (e: any) {
+      console.error('runFill error', e);
+      setError(e?.message || 'Erro ao processar a ligação');
+      setPhase('done');
+      toast.error(e?.message || 'Erro ao processar a ligação');
+    }
+  }, [context, activityId, leadId, caseId, processId, applyResponseFields]);
+
+  const processAudio = useCallback(async (blob: Blob, mime: string) => {
+    setPhase('processing');
+    try {
+      const ext = mime.includes('webm') ? 'webm' : 'mp4';
+      const path = `call-recordings/activity_call_${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage
+        .from('activity-chat')
+        .upload(path, blob, { contentType: mime });
+      if (upErr) throw upErr;
+
+      const { data: urlData } = supabase.storage.from('activity-chat').getPublicUrl(path);
+      const audio_url = urlData.publicUrl;
+      setRecordingUrl(audio_url);
+      onRecordingReady?.({ url: audio_url, seconds });
+
+      // Guarda a gravação como anexo de áudio da atividade (consulta/análise posterior).
+      if (activityId) {
+        try {
+          const { data: { user } } = await supabase.auth.getUser();
+          const extUserId = await remapToExternal(user?.id || null);
+          await externalSupabase.from('activity_attachments').insert({
+            activity_id: activityId,
+            file_url: audio_url,
+            file_name: `Gravação da ligação.${ext}`,
+            file_type: mime,
+            attachment_type: 'audio',
+            created_by: extUserId,
+          });
+        } catch (attErr) {
+          console.warn('[ActivityCallRecorder] não foi possível anexar a gravação:', attErr);
+        }
+      }
+
+      await runFill(audio_url);
     } catch (e: any) {
       console.error('processAudio error', e);
       setError(e?.message || 'Erro ao processar a ligação');
       setPhase('done');
       toast.error(e?.message || 'Erro ao processar a ligação');
     }
-  }, [context, onFields, activityId, leadId, caseId, processId, onRecordingReady, seconds]);
+  }, [activityId, onRecordingReady, seconds, runFill]);
 
   const stopRecording = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -357,6 +487,8 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
     const mime = recorder.mimeType;
     recorder.onstop = () => {
       streamRef.current?.getTracks().forEach((t) => t.stop());
+      displayStreamRef.current?.getTracks().forEach((t) => t.stop());
+      displayStreamRef.current = null;
       teardownAudio();
       const blob = new Blob(chunksRef.current, { type: mime });
       if (blob.size < 1000) {
@@ -369,6 +501,61 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
     try { recorder.stop(); } catch { /* noop */ }
   }, [processAudio, teardownAudio]);
 
+  useEffect(() => {
+    stopRecordingRef.current = stopRecording;
+  }, [stopRecording]);
+
+  // Carrega as gravações anteriores da atividade quando o popover abre.
+  useEffect(() => {
+    if (!open || !activityId) { setPastRecordings([]); return; }
+    (async () => {
+      try {
+        const { data } = await externalSupabase
+          .from('activity_attachments')
+          .select('id, file_url, file_name, created_at')
+          .eq('activity_id', activityId)
+          .eq('attachment_type', 'audio')
+          .order('created_at', { ascending: false })
+          .limit(5);
+        setPastRecordings((data as any[]) || []);
+      } catch {
+        setPastRecordings([]);
+      }
+    })();
+  }, [open, activityId]);
+
+  // Refaz só o preenchimento dos campos reaproveitando a transcrição já pronta
+  // (envia audio_url junto por compatibilidade com o servidor antigo).
+  const retryFill = useCallback(async () => {
+    if (!transcript) return;
+    setRefilling(true);
+    try {
+      const { data, error: fnErr } = await cloudFunctions.invoke('transcribe-activity-call', {
+        body: { transcript, audio_url: recordingUrl, activity_context: lastContextRef.current || context },
+      });
+      if (fnErr) throw fnErr;
+      if (!data?.success) throw new Error(data?.error || 'Falha ao preencher os campos');
+
+      const count = applyResponseFields(data.fields || {});
+      setAppliedCount(count);
+      setFillError(data.fill_error || null);
+      if (data.fill_error) {
+        toast.error(`Preenchimento falhou de novo: ${data.fill_error}`);
+      } else {
+        toast.success(
+          count > 0
+            ? `IA preencheu ${count} campo(s) — revise antes de salvar.`
+            : 'A IA não identificou campos para preencher nesta transcrição.'
+        );
+      }
+    } catch (e: any) {
+      console.error('retryFill error', e);
+      toast.error(e?.message || 'Erro ao preencher os campos');
+    } finally {
+      setRefilling(false);
+    }
+  }, [transcript, recordingUrl, context, applyResponseFields]);
+
   const reset = useCallback(() => {
     teardownAudio();
     setPhase('idle');
@@ -379,6 +566,8 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
     silentRef.current = false;
     setRecordingUrl(null);
     setSentToWa(false);
+    setFillError(null);
+    setAppliedCount(0);
     onRecordingReady?.(null);
   }, [teardownAudio, onRecordingReady]);
 
@@ -422,16 +611,97 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
 
         {phase === 'idle' && (
           <>
-            <div className="flex items-start gap-1.5 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 p-2">
-              <Info className="h-3.5 w-3.5 text-amber-600 shrink-0 mt-0.5" />
-              <span className="text-[11px] text-amber-700 dark:text-amber-300">
-                Deixe a ligação no <strong>viva-voz</strong> perto do microfone para captar os dois lados.
-                Informe o interlocutor de que a conversa será registrada.
-              </span>
+            <div>
+              <p className="text-[11px] font-medium text-muted-foreground mb-1">O que gravar?</p>
+              <div className="grid grid-cols-3 gap-1">
+                <Button
+                  type="button"
+                  variant={source === 'mic' ? 'default' : 'outline'}
+                  size="sm"
+                  className="h-auto flex-col gap-0.5 py-1.5 text-[10px]"
+                  onClick={() => setSource('mic')}
+                >
+                  <Mic className="h-3.5 w-3.5" /> Microfone
+                </Button>
+                <Button
+                  type="button"
+                  variant={source === 'system' ? 'default' : 'outline'}
+                  size="sm"
+                  className="h-auto flex-col gap-0.5 py-1.5 text-[10px]"
+                  disabled={!supportsSystemAudio}
+                  onClick={() => setSource('system')}
+                >
+                  <Volume2 className="h-3.5 w-3.5" /> Áudio interno
+                </Button>
+                <Button
+                  type="button"
+                  variant={source === 'both' ? 'default' : 'outline'}
+                  size="sm"
+                  className="h-auto flex-col gap-0.5 py-1.5 text-[10px]"
+                  disabled={!supportsSystemAudio}
+                  onClick={() => setSource('both')}
+                >
+                  <span className="flex items-center gap-0.5"><Mic className="h-3 w-3" /><Volume2 className="h-3 w-3" /></span>
+                  Ambos
+                </Button>
+              </div>
             </div>
+
+            {!supportsSystemAudio && (
+              <div className="flex items-start gap-1.5 rounded-md bg-muted/60 border p-2">
+                <Info className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
+                <span className="text-[11px] text-muted-foreground">
+                  <strong>Áudio interno</strong> só está disponível no navegador do computador (Chrome/Edge).
+                  No celular, o sistema não permite capturar o som interno — use o viva-voz.
+                </span>
+              </div>
+            )}
+
+            {source === 'mic' ? (
+              <div className="flex items-start gap-1.5 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 p-2">
+                <Info className="h-3.5 w-3.5 text-amber-600 shrink-0 mt-0.5" />
+                <span className="text-[11px] text-amber-700 dark:text-amber-300">
+                  Deixe a ligação no <strong>viva-voz</strong> perto do microfone para captar os dois lados.
+                  Informe o interlocutor de que a conversa será registrada.
+                </span>
+              </div>
+            ) : (
+              <div className="flex items-start gap-1.5 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 p-2">
+                <Info className="h-3.5 w-3.5 text-amber-600 shrink-0 mt-0.5" />
+                <span className="text-[11px] text-amber-700 dark:text-amber-300">
+                  O navegador vai pedir para <strong>compartilhar uma aba ou a tela</strong> — selecione onde o som
+                  está tocando e marque <strong>"Compartilhar áudio"</strong>, senão nada será captado.
+                  Informe o interlocutor de que a conversa será registrada.
+                </span>
+              </div>
+            )}
+
             <Button className="w-full gap-2" size="sm" onClick={startRecording}>
-              <Mic className="h-4 w-4" /> Iniciar gravação
+              <Mic className="h-4 w-4" /> Iniciar gravação ({SOURCE_LABELS[source]})
             </Button>
+
+            {pastRecordings.length > 0 && (
+              <div className="space-y-1 pt-2 border-t">
+                <p className="text-[11px] font-medium text-muted-foreground">
+                  Ou reaproveite uma gravação desta atividade (você pode ditar correções e depois usar esta opção):
+                </p>
+                {pastRecordings.map((r) => (
+                  <Button
+                    key={r.id}
+                    variant="outline"
+                    size="sm"
+                    className="w-full justify-start gap-2 h-8 text-xs"
+                    onClick={() => { setRecordingUrl(r.file_url); runFill(r.file_url); }}
+                  >
+                    <Phone className="h-3.5 w-3.5 shrink-0 text-green-600" />
+                    <span className="truncate">
+                      {r.file_name || 'Gravação'}
+                      {r.created_at ? ` — ${new Date(r.created_at).toLocaleDateString('pt-BR')} ${new Date(r.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : ''}
+                    </span>
+                  </Button>
+                ))}
+              </div>
+            )}
           </>
         )}
 
@@ -440,6 +710,7 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
             <div className="flex items-center justify-center gap-2 py-2">
               <span className="h-2.5 w-2.5 rounded-full bg-red-500 animate-pulse" />
               <span className="font-mono text-lg">{fmt(seconds)}</span>
+              <span className="text-[10px] text-muted-foreground">({SOURCE_LABELS[source]})</span>
             </div>
             {/* Visualizador da frequência da voz — confirma que o microfone está captando. */}
             <canvas
@@ -452,7 +723,9 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
               <div className="flex items-start gap-1.5 rounded-md bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/50 p-2">
                 <Info className="h-3.5 w-3.5 text-red-600 shrink-0 mt-0.5" />
                 <span className="text-[11px] text-red-700 dark:text-red-300">
-                  Nenhum som detectado. Aproxime o microfone, aumente o volume do viva-voz ou fale mais alto.
+                  {source === 'mic'
+                    ? 'Nenhum som detectado. Aproxime o microfone, aumente o volume do viva-voz ou fale mais alto.'
+                    : 'Nenhum som detectado. Confira se marcou "Compartilhar áudio" na aba/tela certa e se o som está tocando.'}
                 </span>
               </div>
             ) : (
@@ -475,10 +748,36 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
           <>
             {error ? (
               <p className="text-xs text-destructive">{error}</p>
-            ) : (
+            ) : fillError ? (
+              <div className="flex items-start gap-1.5 rounded-md bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/50 p-2">
+                <Info className="h-3.5 w-3.5 text-red-600 shrink-0 mt-0.5" />
+                <span className="text-[11px] text-red-700 dark:text-red-300">
+                  Transcrição pronta, mas o preenchimento automático falhou: {fillError}
+                </span>
+              </div>
+            ) : appliedCount > 0 ? (
               <div className="flex items-center gap-1.5 text-xs text-green-700 dark:text-green-400">
                 <Sparkles className="h-3.5 w-3.5" /> Campos preenchidos — revise antes de salvar.
               </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                A IA não identificou campos para preencher nesta transcrição.
+              </p>
+            )}
+            {!error && transcript && (fillError || appliedCount === 0) && (
+              <Button
+                variant="default"
+                className="w-full gap-2"
+                size="sm"
+                onClick={retryFill}
+                disabled={refilling}
+              >
+                {refilling ? (
+                  <><Loader2 className="h-4 w-4 animate-spin" /> Preenchendo…</>
+                ) : (
+                  <><Sparkles className="h-4 w-4" /> Tentar preencher novamente</>
+                )}
+              </Button>
             )}
             {transcript && (
               <div>
