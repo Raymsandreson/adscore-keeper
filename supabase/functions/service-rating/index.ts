@@ -37,11 +37,17 @@ serve(async (req) => {
       if (!lead_id && !case_id && !process_id) {
         return json({ success: false, error: "Informe ao menos lead_id, case_id ou process_id." });
       }
+      // Resolve o nome do assessor pelo id quando não veio pronto (assessor = quem envia).
+      let resolvedAssessorName = assessor_name || null;
+      if (!resolvedAssessorName && assessor_id) {
+        const { data: prof } = await supabase.from("profiles").select("full_name").eq("user_id", assessor_id).maybeSingle();
+        resolvedAssessorName = prof?.full_name || null;
+      }
       const token = randomToken();
       const { error } = await supabase.from("service_ratings").insert({
         token, lead_id: lead_id || null, lead_name: lead_name || null,
         case_id: case_id || null, process_id: process_id || null, activity_id: activity_id || null,
-        assessor_id: assessor_id || null, assessor_name: assessor_name || null,
+        assessor_id: assessor_id || null, assessor_name: resolvedAssessorName,
         created_by: created_by || null, status: "pending",
       });
       if (error) return json({ success: false, error: error.message });

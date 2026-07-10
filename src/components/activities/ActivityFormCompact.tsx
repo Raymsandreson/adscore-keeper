@@ -411,7 +411,9 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
           action: 'create',
           lead_id: leadId,
           activity_id: activityId || null,
-          assessor_id: formAssignedTo || null,
+          // Avaliação é do assessor que ESTÁ ENVIANDO a mensagem (usuário atual),
+          // não necessariamente o responsável pela atividade.
+          assessor_id: user?.id || null,
           created_by: user?.id || null,
         },
       });

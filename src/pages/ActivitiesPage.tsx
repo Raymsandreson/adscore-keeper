@@ -2108,7 +2108,18 @@ const ActivitiesPage = () => {
         result = lines.join('\n');
       }
 
-      // Workflow (etapa/objetivo/passo atual) só entra se o template referenciar.
+      // Workflow (fase/objetivo/passo atual — o passo logo após o último concluído):
+      // auto-injeta após o "Referente ao processo" quando o template não o referencia.
+      if (workflowInfo && !template.includes('workflow_info') && !result.includes('*Passo atual:*')) {
+        const lines = result.split('\n');
+        const afterProc = lines.findIndex(line => line.includes('Referente ao processo'));
+        const at = afterProc >= 0 ? afterProc + 1 : (() => {
+          for (let i = 0; i < lines.length; i++) if (lines[i].trim()) return i + 1;
+          return 0;
+        })();
+        lines.splice(at, 0, '', workflowInfo);
+        result = lines.join('\n');
+      }
 
       // Link da atividade: auto-injeta antes de "Estamos à disposição" quando a
       // atividade já existe e o template não referencia {{link_atividade}}.
@@ -2117,6 +2128,16 @@ const ActivitiesPage = () => {
         const beforeSupport = lines.findIndex(line => line.includes('Estamos à disposição'));
         if (beforeSupport >= 0) lines.splice(beforeSupport, 0, activityLink, '');
         else lines.push('', activityLink);
+        result = lines.join('\n');
+      }
+
+      // Assinatura carinhosa com o nome de quem CRIOU a atividade, ao final.
+      if (createdByName && !result.includes('Com carinho')) {
+        const lines = result.split('\n');
+        const digiteIdx = lines.findIndex(line => line.includes('Digite 1'));
+        const sig = `Com carinho,\n${createdByName} 💚`;
+        if (digiteIdx >= 0) lines.splice(digiteIdx, 0, sig, '');
+        else lines.push('', sig);
         result = lines.join('\n');
       }
 
@@ -2144,7 +2165,9 @@ const ActivitiesPage = () => {
       ? `*${saudacaoFb} Sr(a). ${clientFirstName}*`
       : `*${saudacaoFb}*`;
     const linkLineFb = activityLink ? `\n\n${activityLink}` : '';
-    return `${greetingLine}${processInfo ? `\n\n${processInfo}` : ''}\n\n*Assunto da atividade:* ${formTitle.toUpperCase()}\n\n${fieldLines}\n\n${buildReturnDateLine(responsavelDrFb)}\n${tempoStr}${linkLineFb}\n\nEstamos à disposição para quaisquer dúvidas.\n\n🚀Avante!\n\nTem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se tudo está claro, digite 2.`;
+    const workflowLineFb = workflowInfo ? `\n\n${workflowInfo}` : '';
+    const signatureFb = createdByName ? `\n\nCom carinho,\n${createdByName} 💚` : '';
+    return `${greetingLine}${processInfo ? `\n\n${processInfo}` : ''}${workflowLineFb}\n\n*Assunto da atividade:* ${formTitle.toUpperCase()}\n\n${fieldLines}\n\n${buildReturnDateLine(responsavelDrFb)}\n${tempoStr}${linkLineFb}\n\nEstamos à disposição para quaisquer dúvidas.\n\n🚀Avante!${signatureFb}\n\nTem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se tudo está claro, digite 2.`;
   };
 
   // Active step context — process workflow > lead's funnel board.
