@@ -403,6 +403,11 @@ export default function AcompanhamentoProcessualPage() {
           </div>
         </section>
 
+        {/* 3.5 Atividades atrasadas do dia */}
+        <section>
+          <OverdueActivitiesToday />
+        </section>
+
         {/* 4. Insights rodapé */}
         <section className="grid gap-3 md:grid-cols-3">
           <InsightCard
