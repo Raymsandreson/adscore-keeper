@@ -18,6 +18,8 @@ import { ActivityCallRecorder, callFieldTextToHtml, stripHtmlToText } from '@/co
 import { ActivityDocumentUpload } from '@/components/activities/ActivityDocumentUpload';
 import { sendVoiceToWa } from '@/lib/whatsappVoiceSend';
 import { copyTextToClipboard } from '@/lib/clipboard';
+import { useSystemOabs } from '@/hooks/useSystemOabs';
+import { detectClientPolo } from '@/utils/clientPoloDetection';
 import { ActivityNextStepsAgent } from '@/components/activities/ActivityNextStepsAgent';
 import { CompleteAndNotifyDialog } from '@/components/activities/CompleteAndNotifyDialog';
 import { DashboardChatPreview } from '@/components/whatsapp/DashboardChatPreview';
@@ -322,6 +324,8 @@ const ActivitiesPage = () => {
   const [caseSearch, setCaseSearch] = useState('');
   const [leadCases, setLeadCases] = useState<{id: string; case_number: string; title: string}[]>([]);
   const [caseProcesses, setCaseProcesses] = useState<{id: string; title: string; process_number: string | null; polo_ativo?: string | null; polo_passivo: string | null; cliente_polo?: string | null; tribunal: string | null; area: string | null; assuntos: string[] | null; workflow_id: string | null; envolvidos: any[] | null}[]>([]);
+  // OABs dos usuários do escritório — para auto-detectar o polo do cliente.
+  const systemOabs = useSystemOabs();
   const applyUpdatedCaseProcess = useCallback((updatedProcess?: any) => {
     if (!updatedProcess?.id) return;
     setCaseProcesses(prev => prev.map(proc => (
@@ -1988,11 +1992,14 @@ const ActivitiesPage = () => {
       ? `Referente ao processo n° "${procNumberForMsg || '—'}" de "${procTitleForMsg || '—'}"`
       : '';
 
-    // Qual polo é o NOSSO cliente: marcado no cadastro (cliente_polo); se não
-    // marcado, assume ATIVO (autor) — o caso mais comum. Quando o escritório atua
-    // na defesa, basta marcar PASSIVO no cadastro do processo.
-    const clientePolo = (linkedProcessForMsg as any)?.cliente_polo || 'ATIVO';
     const envolvidos = (linkedProcessForMsg?.envolvidos as any[]) || [];
+    // Qual polo é o NOSSO cliente:
+    //   1) marcação manual no cadastro (cliente_polo)
+    //   2) auto-detecção: advogado de uma parte tem OAB de um usuário do sistema
+    //   3) padrão ATIVO (autor) — caso mais comum.
+    const clientePolo = (linkedProcessForMsg as any)?.cliente_polo
+      || detectClientPolo(envolvidos, systemOabs)
+      || 'ATIVO';
     // Nomes das PARTES (não advogados) do polo do cliente.
     const isParte = (e: any) => e && e.nome && !/advog/i.test(String(e.tipo || e.tipo_normalizado || ''));
     let processClientNames: string[] = envolvidos

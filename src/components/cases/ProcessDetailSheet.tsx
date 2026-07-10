@@ -21,6 +21,8 @@ import {
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { LeadFunnelProgressBar } from '@/components/activities/LeadFunnelProgressBar';
 import { ResponsibleUserSelect } from './ResponsibleUserSelect';
+import { useSystemOabs } from '@/hooks/useSystemOabs';
+import { detectClientPolo } from '@/utils/clientPoloDetection';
 import { ProcessMovementsTimeline } from './ProcessMovementsTimeline';
 import { syncProcessMarcos } from '@/utils/escavadorMovementUtils';
 
@@ -181,6 +183,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
   const [form, setForm] = useState<Record<string, any>>({});
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const systemOabs = useSystemOabs();
   const [activeTab, setActiveTab] = useState<TabId>(defaultTab ?? 'partes');
   const [marcosRefreshKey, setMarcosRefreshKey] = useState(0);
   const [activities, setActivities] = useState<ProcessActivity[]>([]);
@@ -544,6 +547,9 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
   if (!process) return null;
 
   const envolvidos = Array.isArray(form.envolvidos) ? form.envolvidos : [];
+  // Polo do cliente detectado automaticamente pela OAB do advogado (usuário do sistema).
+  const detectedClientePolo = detectClientPolo(envolvidos, systemOabs);
+  const effectiveClientePolo = form.cliente_polo || detectedClientePolo || '';
   const audiencias = Array.isArray(form.audiencias) ? form.audiencias : [];
   const processosRelacionados = Array.isArray(form.processos_relacionados) ? form.processos_relacionados : [];
 
@@ -707,7 +713,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
                   <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
                     Nosso cliente (parte que representamos)
                   </label>
-                  <Select value={form.cliente_polo || 'none'} onValueChange={v => set('cliente_polo', v === 'none' ? null : v)}>
+                  <Select value={effectiveClientePolo || 'none'} onValueChange={v => set('cliente_polo', v === 'none' ? null : v)}>
                     <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Não definido" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">Não definido</SelectItem>
@@ -715,9 +721,15 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
                       <SelectItem value="PASSIVO">Polo Passivo (Réu){form.polo_passivo ? ` — ${form.polo_passivo}` : ''}</SelectItem>
                     </SelectContent>
                   </Select>
-                  <p className="text-[10px] text-muted-foreground">
-                    Define de quem é o nome usado na saudação da mensagem ao cliente.
-                  </p>
+                  {!form.cliente_polo && detectedClientePolo ? (
+                    <p className="text-[10px] text-green-600 dark:text-green-400">
+                      ✓ Detectado automaticamente pela OAB do advogado do escritório (Polo {detectedClientePolo}). Salve para confirmar.
+                    </p>
+                  ) : (
+                    <p className="text-[10px] text-muted-foreground">
+                      Define de quem é o nome usado na saudação da mensagem ao cliente. Detecta sozinho pela OAB quando o processo vem da API.
+                    </p>
+                  )}
                 </div>
               </>
             )}
