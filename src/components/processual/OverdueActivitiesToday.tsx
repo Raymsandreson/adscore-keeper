@@ -57,9 +57,15 @@ export function OverdueActivitiesToday() {
 
   const authors = useMemo(() => {
     const set = new Set<string>();
+    // Todos os perfis do time (Cloud)
+    profiles.forEach((p) => {
+      const name = p.full_name?.trim() || p.email?.split('@')[0]?.trim();
+      if (name) set.add(name);
+    });
+    // Também inclui nomes que aparecem nas atividades (dados legados / externos)
     items.forEach((i) => { if (i.assigned_to_name) set.add(i.assigned_to_name); });
-    return Array.from(set).sort();
-  }, [items]);
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [items, profiles]);
 
   const filtered = useMemo(() => {
     if (author === 'all') return items;
