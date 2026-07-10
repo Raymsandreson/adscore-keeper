@@ -24,7 +24,7 @@ import { ResponsibleUserSelect } from './ResponsibleUserSelect';
 import { useSystemOabs } from '@/hooks/useSystemOabs';
 import { detectClientPolo } from '@/utils/clientPoloDetection';
 import { ProcessMovementsTimeline } from './ProcessMovementsTimeline';
-import { syncProcessMarcos } from '@/utils/escavadorMovementUtils';
+import { syncProcessMarcos, syncProcessCompromissos } from '@/utils/escavadorMovementUtils';
 
 interface ProcessDetailSheetProps {
   open: boolean;
@@ -445,6 +445,16 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
         setMarcosRefreshKey((k) => k + 1); // faz a timeline re-buscar
       } catch (mErr) {
         console.error('Error syncing process marcos (re-extract):', mErr);
+      }
+
+      // Detector de compromissos: cria atividades de audiência/perícia/prazo a
+      // partir das movimentações (dedupe + roteamento por ramo ficam na edge).
+      try {
+        const freshMovs = Array.isArray(raw.movimentacoes_detalhadas) ? raw.movimentacoes_detalhadas : [];
+        const criados = await syncProcessCompromissos({ processId: process.id, movimentacoes: freshMovs });
+        if (criados > 0) toast.success(`${criados} compromisso(s) do processo viraram atividade(s)`);
+      } catch (cErr) {
+        console.error('Error syncing process compromissos (re-extract):', cErr);
       }
     } catch (err: any) {
       toast.error('Erro: ' + (err.message || ''));

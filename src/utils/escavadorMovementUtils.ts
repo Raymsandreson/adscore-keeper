@@ -86,3 +86,36 @@ export const syncProcessMarcos = async (params: SyncMarcosParams): Promise<numbe
   console.log(`Synced ${rows.length} marcos for process ${processId} (${numeroCnj})`);
   return rows.length;
 };
+
+export interface SyncCompromissosParams {
+  processId: string;
+  /** Se já temos as movimentações no client, passa direto (evita refetch no Escavador). */
+  movimentacoes?: unknown[];
+}
+
+/**
+ * Detecta compromissos (audiência/perícia/prazo) nas movimentações do Escavador
+ * e cria as atividades correspondentes em lead_activities — roteamento por ramo
+ * da Justiça e dedupe ficam na edge sync-process-compromissos (idempotente).
+ * Retorna a quantidade de atividades criadas.
+ */
+export const syncProcessCompromissos = async (params: SyncCompromissosParams): Promise<number> => {
+  const { processId, movimentacoes } = params;
+  if (!processId) return 0;
+
+  const { data, error } = await cloudFunctions.invoke('sync-process-compromissos', {
+    body: {
+      process_id: processId,
+      movimentacoes: movimentacoes && movimentacoes.length ? movimentacoes : undefined,
+    },
+  });
+
+  if (error || !data?.success) {
+    console.error('Error syncing compromissos:', error || data?.error);
+    return 0;
+  }
+
+  const criados = Number(data.criados) || 0;
+  if (criados > 0) console.log(`Synced ${criados} compromissos → atividades for process ${processId}`);
+  return criados;
+};

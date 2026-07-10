@@ -22,7 +22,7 @@ import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { toast } from 'sonner';
 import { KanbanBoard } from '@/hooks/useKanbanBoards';
 import { autoCreatePartiesFromEnvolvidos } from '@/utils/escavadorPartyUtils';
-import { syncProcessMarcos } from '@/utils/escavadorMovementUtils';
+import { syncProcessMarcos, syncProcessCompromissos } from '@/utils/escavadorMovementUtils';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { ResponsibleUserSelect } from './ResponsibleUserSelect';
 
@@ -393,6 +393,16 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
               });
             } catch (mErr) {
               console.error('Error syncing process marcos:', mErr);
+            }
+
+            // Detector de compromissos: audiência/perícia/prazo → atividades
+            // (dedupe + roteamento por ramo da Justiça ficam na edge).
+            try {
+              const fonteMovs = (fonte as { movimentacoes?: unknown[] } | undefined)?.movimentacoes || [];
+              const allMovs = movimentacoes.length > 0 ? movimentacoes : fonteMovs;
+              await syncProcessCompromissos({ processId: insertedProcess.id, movimentacoes: allMovs });
+            } catch (cErr) {
+              console.error('Error syncing process compromissos:', cErr);
             }
           }
           

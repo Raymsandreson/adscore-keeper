@@ -169,6 +169,21 @@ serve(async (req) => {
               .from('lead_processes')
               .update({ movimentacoes: movements })
               .eq('id', monitor.process_id);
+
+            // Detector de compromissos: audiência/perícia/prazo → atividades
+            // (dedupe + roteamento por ramo da Justiça ficam na edge).
+            try {
+              await fetch(`${cloudFunctionsUrl}/functions/v1/sync-process-compromissos`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${cloudAnonKey}`,
+                },
+                body: JSON.stringify({ process_id: monitor.process_id, movimentacoes: movements }),
+              });
+            } catch (cErr) {
+              console.error(`Error syncing compromissos for ${processNumber}:`, cErr);
+            }
           }
         }
       } catch (procErr) {
