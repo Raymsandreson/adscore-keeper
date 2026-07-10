@@ -795,8 +795,16 @@ export function CadastrarCasoViavelDialog({ lead, open, onOpenChange, saveLead, 
 
         {/* Preview do grupo + progresso */}
         <div className="rounded-lg border p-3 bg-muted/30 space-y-2 text-sm">
-          <div className="text-muted-foreground">
-            Nome do grupo (prévia): <span className="font-medium text-foreground">{groupNamePreview}</span>
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">Nome do grupo (editável)</Label>
+            <Input
+              value={groupNameInput}
+              onChange={(e) => { groupNameTouched.current = true; setGroupNameInput(e.target.value); }}
+              placeholder="Nome exato do grupo do WhatsApp"
+            />
+            <p className="text-[11px] text-muted-foreground">
+              Este é o único parâmetro usado ao criar o grupo. Pré-preenchido com os dados do lead — edite se quiser.
+            </p>
           </div>
           <div className="flex gap-2 flex-wrap">
             {stepBadge(steps.save, 'Salvar lead', <CheckCircle2 className="h-3 w-3 mr-1" />)}
