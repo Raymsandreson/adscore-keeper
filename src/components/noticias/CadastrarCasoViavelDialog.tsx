@@ -519,6 +519,7 @@ export function CadastrarCasoViavelDialog({ lead, open, onOpenChange, saveLead, 
           creation_origin: 'noticia_viavel',
           phase: 'open',
           ...(resolvedSeq > 0 ? { forced_sequence: resolvedSeq } : {}),
+          ...(groupNameInput.trim() ? { group_name_override: groupNameInput.trim() } : {}),
         },
       });
       if (error) throw error;
