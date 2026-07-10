@@ -16,6 +16,7 @@ import {
   Users,
 } from "lucide-react";
 import { RelatorioDiarioUsuariosSheet } from "@/components/processual/RelatorioDiarioUsuariosSheet";
+import { OverdueActivitiesToday } from "@/components/processual/OverdueActivitiesToday";
 import {
   Bar,
   BarChart,
@@ -400,6 +401,11 @@ export default function AcompanhamentoProcessualPage() {
               </CardContent>
             </Card>
           </div>
+        </section>
+
+        {/* 3.5 Atividades atrasadas do dia */}
+        <section>
+          <OverdueActivitiesToday />
         </section>
 
         {/* 4. Insights rodapé */}
