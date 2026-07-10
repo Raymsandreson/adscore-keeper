@@ -52,6 +52,7 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
   // Fallback automático → Cloud (código legado) se o externo falhar.
   'search-escavador': 'external',
   'analyze-news-case': 'external',
+  'scrape-news': 'external', // fix anti-bot (proxy stealth + detecção de página de bloqueio); Cloud mantém versão legada como fallback
 
   // --- Todas as demais ficam no Cloud por padrão ---
 };
