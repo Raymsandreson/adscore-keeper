@@ -138,7 +138,7 @@ function extractExistingSequenceFromName(name: string | null | undefined, prefix
   const trimmedName = name?.trim()
   if (!trimmedPrefix || !trimmedName) return null
 
-  const match = trimmedName.match(new RegExp(`^${escapeRegExp(trimmedPrefix)}\\s+(\\d+)\\b`, 'i'))
+  const match = trimmedName.match(new RegExp(`^${escapeRegExp(trimmedPrefix)}\\s*[-|:]?\\s*(\\d+)\\b`, 'i'))
   if (!match) return null
 
   const sequence = Number(match[1])
@@ -151,7 +151,7 @@ function stripExistingSequenceFromName(name: string | null | undefined, prefix: 
   if (!trimmedPrefix || !trimmedName) return trimmedName
 
   return trimmedName
-    .replace(new RegExp(`^${escapeRegExp(trimmedPrefix)}\\s+\\d+\\b\\s*(?:[|\u2013\u2014-]\s*)?`, 'i'), '')
+    .replace(new RegExp(`^${escapeRegExp(trimmedPrefix)}\\s*[-|:]?\\s*\\d+\\b\\s*(?:[|\u2013\u2014-]\s*)?`, 'i'), '')
     .trim()
 }
 
@@ -837,11 +837,15 @@ Deno.serve(async (req) => {
 
       // Build name parts
       const parts: string[] = []
-      if (activePrefix) parts.push(activePrefix)
 
       const leadFields = settings.lead_fields || ['lead_name']
       const hasSeqToken = leadFields.includes('closed_seq') || leadFields.includes('case_number')
-      if (!hasSeqToken) parts.push(String(nextSeq))
+      // Prefixo grudado no número: "LEAD324" em vez de "LEAD 324".
+      if (activePrefix) {
+        parts.push(`${activePrefix}${nextSeq}`)
+      } else if (!hasSeqToken) {
+        parts.push(String(nextSeq))
+      }
 
       const targetLeadId = lead_id || leadData?.id
       const cfIds: string[] = (leadFields as string[])

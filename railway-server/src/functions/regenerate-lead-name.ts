@@ -177,8 +177,8 @@ export const handler: RequestHandler = async (req, res) => {
           .maybeSingle();
         const pfx = ((prod as any)?.case_prefix || '').trim().toUpperCase();
         prefixToken = pfx
-          ? `LEAD-${lead.lead_number}(${pfx})`
-          : `LEAD-${lead.lead_number}`;
+          ? `LEAD${lead.lead_number}(${pfx})`
+          : `LEAD${lead.lead_number}`;
       }
 
     }

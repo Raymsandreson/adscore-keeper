@@ -326,7 +326,7 @@ export function CadastrarCasoViavelDialog({ lead, open, onOpenChange, saveLead, 
 
   const groupNamePreview = useMemo(() => {
     const local = [form.city.trim(), form.state.trim()].filter(Boolean).join('/');
-    const parts = [`LEAD ${seqNumber || '?'}`];
+    const parts = [`LEAD${seqNumber || '?'}`];
     if (local) parts.push(local);
     const vs = [form.victim_name.trim(), form.main_company.trim()].filter(Boolean).join(' x ');
     if (vs) parts.push(vs);
