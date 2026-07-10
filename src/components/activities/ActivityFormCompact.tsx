@@ -36,13 +36,13 @@ import { useLeads } from '@/hooks/useLeads';
 import { useLegalCases } from '@/hooks/useLegalCases';
 import { useSpecializedNuclei } from '@/hooks/useSpecializedNuclei';
 import { toast } from 'sonner';
+import { copyTextToClipboard } from '@/lib/clipboard';
 
 function copyField(text: string | null | undefined) {
   if (!text) return;
-  navigator.clipboard.writeText(text).then(() => {
-    toast.success(`"${text.length > 40 ? text.slice(0, 37) + '...' : text}" copiado!`, { duration: 1500 });
-  }).catch(() => {
-    toast.error('Falha ao copiar');
+  copyTextToClipboard(text).then((ok) => {
+    if (ok) toast.success(`"${text.length > 40 ? text.slice(0, 37) + '...' : text}" copiado!`, { duration: 1500 });
+    else toast.error('Falha ao copiar');
   });
 }
 
@@ -399,7 +399,25 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
 
   return (
     <div className="flex items-center gap-1.5 flex-wrap">
-      <Button type="button" variant="outline" size="sm" className="gap-1 h-8 text-xs" onClick={() => { navigator.clipboard.writeText(buildMsg(hasLead ? 'client' : 'assessor')); toast.success('Mensagem copiada!'); }}>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="gap-1 h-8 text-xs"
+        onClick={async () => {
+          let msg = '';
+          try {
+            msg = buildMsg(hasLead ? 'client' : 'assessor');
+          } catch (e) {
+            console.error('[Copiar] buildMsg falhou:', e);
+            toast.error('Erro ao montar a mensagem.');
+            return;
+          }
+          const ok = await copyTextToClipboard(msg);
+          if (ok) toast.success('Mensagem copiada!');
+          else toast.error('Não foi possível copiar automaticamente. Use "Enviar" ou copie pelo WhatsApp.');
+        }}
+      >
         <Copy className="h-3.5 w-3.5" /> Copiar
       </Button>
       {instances.length > 0 && (

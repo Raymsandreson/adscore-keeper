@@ -17,6 +17,7 @@ import { CobrarVaraSection } from '@/components/activities/CobrarVaraSection';
 import { ActivityCallRecorder, callFieldTextToHtml, stripHtmlToText } from '@/components/activities/ActivityCallRecorder';
 import { ActivityDocumentUpload } from '@/components/activities/ActivityDocumentUpload';
 import { sendVoiceToWa } from '@/lib/whatsappVoiceSend';
+import { copyTextToClipboard } from '@/lib/clipboard';
 import { ActivityNextStepsAgent } from '@/components/activities/ActivityNextStepsAgent';
 import { CompleteAndNotifyDialog } from '@/components/activities/CompleteAndNotifyDialog';
 import { DashboardChatPreview } from '@/components/whatsapp/DashboardChatPreview';
@@ -3662,10 +3663,11 @@ const ActivitiesPage = () => {
                         </ContextMenuItem>
                       )}
                       <ContextMenuItem
-                        onClick={() => {
+                        onClick={async () => {
                           const url = `${window.location.origin}/?openActivity=${activity.id}`;
-                          navigator.clipboard.writeText(url);
-                          toast.success('Link copiado!');
+                          const ok = await copyTextToClipboard(url);
+                          if (ok) toast.success('Link copiado!');
+                          else toast.error('Não foi possível copiar o link.');
                         }}
                       >
                         <Share2 className="h-3.5 w-3.5 mr-2" />
@@ -3726,9 +3728,10 @@ const ActivitiesPage = () => {
                       <div className="flex items-center gap-1 text-xs text-muted-foreground">
                         <button
                           type="button"
-                          onClick={() => {
-                            navigator.clipboard.writeText(formLeadName);
-                            toast.success('Lead copiado');
+                          onClick={async () => {
+                            const ok = await copyTextToClipboard(formLeadName);
+                            if (ok) toast.success('Lead copiado');
+                            else toast.error('Não foi possível copiar.');
                           }}
                           className="truncate hover:text-primary text-left"
                           title="Clique para copiar"
@@ -4043,9 +4046,10 @@ const ActivitiesPage = () => {
                       <Briefcase className="h-3 w-3 shrink-0" />
                       <button
                         type="button"
-                        onClick={() => {
-                          navigator.clipboard.writeText(formCaseTitle);
-                          toast.success('Caso copiado');
+                        onClick={async () => {
+                          const ok = await copyTextToClipboard(formCaseTitle);
+                          if (ok) toast.success('Caso copiado');
+                          else toast.error('Não foi possível copiar.');
                         }}
                         className="truncate hover:text-primary text-left"
                         title="Clique para copiar"
@@ -4072,9 +4076,10 @@ const ActivitiesPage = () => {
                         <FileText className="h-3 w-3 shrink-0" />
                         <button
                           type="button"
-                          onClick={() => {
-                            navigator.clipboard.writeText(procNumber);
-                            toast.success('Nº do processo copiado');
+                          onClick={async () => {
+                            const ok = await copyTextToClipboard(procNumber);
+                            if (ok) toast.success('Nº do processo copiado');
+                            else toast.error('Não foi possível copiar.');
                           }}
                           className="truncate hover:text-primary text-left"
                           title="Clique para copiar o nº"
