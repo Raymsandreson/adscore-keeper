@@ -33,6 +33,7 @@ import { useUnreadMentionsCount } from "@/hooks/useTeamChat";
 import { useChangelogAcknowledgments } from "@/hooks/useChangelogAcknowledgments";
 import { onUpdateAvailable, applyUpdate, checkForUpdates } from "@/lib/pwaUpdater";
 import { UpdateNotesDialog } from "@/components/updates/UpdateNotesDialog";
+import { ProcessUpdatesBell } from "@/components/notifications/ProcessUpdatesBell";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   ContextMenu,
@@ -200,7 +201,10 @@ export function AppSidebar() {
     <>
       <Sidebar collapsible="icon">
         <SidebarHeader className="p-2 flex flex-col gap-2">
-          <SidebarTrigger className="w-full flex items-center justify-center" />
+          <div className={cn('flex items-center gap-1', collapsed ? 'flex-col' : 'justify-between')}>
+            <SidebarTrigger className={cn('flex items-center justify-center', collapsed ? 'w-full' : 'flex-1')} />
+            <ProcessUpdatesBell compact />
+          </div>
           {!collapsed && (
             <button
               onClick={openCommandPalette}

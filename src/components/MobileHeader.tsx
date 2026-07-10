@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { Menu, PanelLeftOpen } from "lucide-react";
 import { useAuthContext } from "@/contexts/AuthContext";
+import { ProcessUpdatesBell } from "@/components/notifications/ProcessUpdatesBell";
 
 export function MobileHeader() {
   const { user } = useAuthContext();
@@ -45,6 +46,9 @@ export function MobileHeader() {
           <Menu className="!h-6 !w-6" />
         </SidebarTrigger>
         <span className="text-sm font-semibold tracking-tight">WhatsJUD</span>
+        <div className="ml-auto">
+          <ProcessUpdatesBell />
+        </div>
       </div>
     );
   }

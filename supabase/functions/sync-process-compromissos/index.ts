@@ -18,6 +18,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { getExternalClient } from "../_shared/external-client.ts";
 import { extractCompromissos, type CompromissoExtraido } from "../_shared/escavadorCompromissos.ts";
+import { classifyUpdates } from "../_shared/processUpdateClassifier.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -73,6 +74,7 @@ interface SyncCounts {
   duplicados: number;
   vencidos: number;
   sem_responsavel: number;
+  feed: number;
 }
 
 async function fetchMovsFromEscavador(numeroCnj: string): Promise<unknown[]> {
@@ -166,6 +168,45 @@ function buildActivityRow(
   };
 }
 
+/** Alimenta o feed do sino (process_updates) com toda movimentação da janela, classificada. */
+async function syncFeed(
+  ext: ReturnType<typeof getExternalClient>,
+  process: ProcessRow,
+  movs: unknown[],
+  desde: string,
+): Promise<number> {
+  // deno-lint-ignore no-explicit-any
+  const updates = classifyUpdates(movs as any, {
+    numeroCnj: process.process_number || process.id,
+    desde,
+  });
+  if (!updates.length) return 0;
+
+  const rows = updates.map((u) => ({
+    process_id: process.id,
+    lead_id: process.lead_id,
+    case_id: process.case_id,
+    numero_cnj: process.process_number,
+    processo_titulo: process.title || process.leads?.lead_name || process.process_number,
+    categoria: u.categoria,
+    titulo: u.titulo,
+    descricao: u.descricao,
+    data_movimentacao: u.data_movimentacao,
+    escavador_movimentacao_id: u.escavador_movimentacao_id,
+    conteudo_hash: u.conteudo_hash,
+  }));
+
+  const { error } = await ext
+    .from('process_updates')
+    .upsert(rows, { onConflict: 'process_id,conteudo_hash', ignoreDuplicates: true });
+  if (error) {
+    // Tabela pode ainda não existir (migration pendente) — não derruba os compromissos.
+    console.error(`Feed upsert error for process ${process.id}:`, error.message);
+    return 0;
+  }
+  return rows.length;
+}
+
 async function syncProcess(
   ext: ReturnType<typeof getExternalClient>,
   process: ProcessRow,
@@ -173,13 +214,15 @@ async function syncProcess(
   desde: string,
   hoje: string,
 ): Promise<SyncCounts> {
-  const counts: SyncCounts = { extraidos: 0, criados: 0, duplicados: 0, vencidos: 0, sem_responsavel: 0 };
+  const counts: SyncCounts = { extraidos: 0, criados: 0, duplicados: 0, vencidos: 0, sem_responsavel: 0, feed: 0 };
 
   let movs: unknown[] = Array.isArray(movsIn) && movsIn.length ? movsIn : (process.movimentacoes || []);
   if (!movs.length && process.process_number) {
     movs = await fetchMovsFromEscavador(process.process_number);
   }
   if (!movs.length) return counts;
+
+  counts.feed = await syncFeed(ext, process, movs, desde);
 
   // deno-lint-ignore no-explicit-any
   const compromissos = extractCompromissos(movs as any, {
@@ -241,7 +284,7 @@ serve(async (req) => {
     const hoje = hojeBrasilia();
     const desde = typeof desdeIn === 'string' && desdeIn ? desdeIn : addDays(hoje, -DEFAULT_DESDE_DIAS);
 
-    const total: SyncCounts = { extraidos: 0, criados: 0, duplicados: 0, vencidos: 0, sem_responsavel: 0 };
+    const total: SyncCounts = { extraidos: 0, criados: 0, duplicados: 0, vencidos: 0, sem_responsavel: 0, feed: 0 };
     let processos = 0;
 
     if (sweep) {
@@ -260,6 +303,7 @@ serve(async (req) => {
         total.duplicados += c.duplicados;
         total.vencidos += c.vencidos;
         total.sem_responsavel += c.sem_responsavel;
+        total.feed += c.feed;
       }
     } else {
       if (!process_id) throw new Error('process_id é obrigatório (ou use sweep: true)');
