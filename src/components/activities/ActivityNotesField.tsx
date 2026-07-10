@@ -69,9 +69,11 @@ interface ActivityNotesFieldProps {
   onCommitCandidatesChange?: (attachments: Attachment[]) => void;
   /** Informa o pai que há upload/insert de anexo em andamento, para impedir concluir antes de salvar. */
   onUploadStateChange?: (uploading: boolean) => void;
+  /** Abre o campo em aba lateral (sheet) para edição em tela maior. */
+  onExpand?: () => void;
 }
 
-export function ActivityNotesField({ value, onChange, activityId, placeholder, label, editorHeight = 'clamp(110px, 20vh, 220px)', onPendingChange, onCommitCandidatesChange, onUploadStateChange }: ActivityNotesFieldProps) {
+export function ActivityNotesField({ value, onChange, activityId, placeholder, label, editorHeight = 'clamp(110px, 20vh, 220px)', onPendingChange, onCommitCandidatesChange, onUploadStateChange, onExpand }: ActivityNotesFieldProps) {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [uploading, setUploading] = useState(false);
   const activeUploadsRef = useRef(0);
@@ -343,8 +345,7 @@ export function ActivityNotesField({ value, onChange, activityId, placeholder, l
         minHeight={editorHeight}
         height={editorHeight}
         maxHeight={editorHeight}
-
-
+        onExpand={onExpand}
       />
 
       {isDragging && (
