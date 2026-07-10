@@ -869,7 +869,9 @@ Deno.serve(async (req) => {
       }
       for (const field of leadFields) {
         if (field === 'closed_seq' || field === 'case_number') {
-          parts.push(String(nextSeq))
+          // Quando há prefixo, o número já foi embutido em "LEAD324" no início;
+          // adicionar novamente aqui duplicaria a sequência.
+          if (!activePrefix) parts.push(String(nextSeq))
         } else if (typeof field === 'string' && field.startsWith('text:')) {
           try { parts.push(decodeURIComponent(field.slice(5))) } catch { parts.push(field.slice(5)) }
         } else if (field === 'board_name' && boardName) {
