@@ -345,8 +345,7 @@ export function ActivityNotesField({ value, onChange, activityId, placeholder, l
         minHeight={editorHeight}
         height={editorHeight}
         maxHeight={editorHeight}
-
-
+        onExpand={onExpand}
       />
 
       {isDragging && (
