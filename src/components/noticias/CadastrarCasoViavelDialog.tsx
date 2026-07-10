@@ -282,6 +282,7 @@ export function CadastrarCasoViavelDialog({ lead, open, onOpenChange, saveLead, 
   useEffect(() => {
     if (!open || !lead) return;
     titleTouched.current = false;
+    groupNameTouched.current = false;
     setNewsText('');
     setNewsUrl(String((lead as any).news_link || (lead as any).news_links?.[0] || ''));
     setGroupLink(String((lead as any).group_link || ''));
