@@ -108,6 +108,9 @@ interface ActivityFormCompactProps {
   reorderFields: any;
   selectedActivity: any;
   aiSuggestingType: boolean;
+  typeMismatch?: { suggested: string; label: string } | null;
+  onApplySuggestedType?: () => void;
+  onDismissTypeMismatch?: () => void;
   activeRoutine: any[];
   // WhatsApp message
   buildMsg?: () => string;
@@ -691,13 +694,31 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
             <span>Tipo *</span>{props.aiSuggestingType && <Loader2 className="h-2.5 w-2.5 animate-spin" />}
           </span>
           <Select value={props.formType} onValueChange={props.setFormType}>
-            <SelectTrigger className="h-8 text-xs mt-0.5"><SelectValue /></SelectTrigger>
+            <SelectTrigger className={cn("h-8 text-xs mt-0.5", props.typeMismatch && "border-amber-400 ring-1 ring-amber-300 dark:border-amber-600")}><SelectValue /></SelectTrigger>
             <SelectContent>
               {props.routineActivityTypes.map(t => (
                 <SelectItem key={t.value} value={t.value} className="text-xs">{t.label}</SelectItem>
               ))}
             </SelectContent>
           </Select>
+          {props.typeMismatch && (
+            <div className="mt-1 flex items-start gap-1.5 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 p-1.5">
+              <Info className="h-3 w-3 text-amber-600 shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <p className="text-[10px] text-amber-700 dark:text-amber-300 leading-tight">
+                  Pelo contexto, parece ser <strong>{props.typeMismatch.label}</strong>, não {props.routineActivityTypes.find(t => t.value === props.formType)?.label || props.formType}.
+                </p>
+                <div className="flex gap-2 mt-1">
+                  <button type="button" onClick={props.onApplySuggestedType} className="text-[10px] font-medium text-amber-800 dark:text-amber-200 underline underline-offset-2">
+                    Alterar para {props.typeMismatch.label}
+                  </button>
+                  <button type="button" onClick={props.onDismissTypeMismatch} className="text-[10px] text-muted-foreground">
+                    Manter
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
         <div className="col-span-full">
           <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
