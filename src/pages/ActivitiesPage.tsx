@@ -321,7 +321,7 @@ const ActivitiesPage = () => {
   const [availableCases, setAvailableCases] = useState<{id: string; case_number: string; title: string; lead_id: string | null}[]>([]);
   const [caseSearch, setCaseSearch] = useState('');
   const [leadCases, setLeadCases] = useState<{id: string; case_number: string; title: string}[]>([]);
-  const [caseProcesses, setCaseProcesses] = useState<{id: string; title: string; process_number: string | null; polo_passivo: string | null; tribunal: string | null; area: string | null; assuntos: string[] | null; workflow_id: string | null; envolvidos: any[] | null}[]>([]);
+  const [caseProcesses, setCaseProcesses] = useState<{id: string; title: string; process_number: string | null; polo_ativo?: string | null; polo_passivo: string | null; cliente_polo?: string | null; tribunal: string | null; area: string | null; assuntos: string[] | null; workflow_id: string | null; envolvidos: any[] | null}[]>([]);
   const applyUpdatedCaseProcess = useCallback((updatedProcess?: any) => {
     if (!updatedProcess?.id) return;
     setCaseProcesses(prev => prev.map(proc => (
@@ -991,8 +991,8 @@ const ActivitiesPage = () => {
 
     if ((activity as any).case_id) {
       promises.push(
-        Promise.resolve(externalSupabase.from('lead_processes').select('id, title, process_number, polo_passivo, tribunal, area, assuntos, workflow_id, workflow_name, envolvidos').eq('case_id', (activity as any).case_id)).then(({ data }) => {
-          setCaseProcesses((data || []).map((p: any) => ({ id: p.id, title: p.title, process_number: p.process_number, polo_passivo: p.polo_passivo, tribunal: p.tribunal, area: p.area, assuntos: p.assuntos, workflow_id: p.workflow_id, workflow_name: p.workflow_name, envolvidos: p.envolvidos })));
+        Promise.resolve(externalSupabase.from('lead_processes').select('id, title, process_number, polo_ativo, polo_passivo, cliente_polo, tribunal, area, assuntos, workflow_id, workflow_name, envolvidos').eq('case_id', (activity as any).case_id)).then(({ data }) => {
+          setCaseProcesses((data || []).map((p: any) => ({ id: p.id, title: p.title, process_number: p.process_number, polo_ativo: p.polo_ativo, polo_passivo: p.polo_passivo, cliente_polo: p.cliente_polo, tribunal: p.tribunal, area: p.area, assuntos: p.assuntos, workflow_id: p.workflow_id, workflow_name: p.workflow_name, envolvidos: p.envolvidos })));
         })
       );
     }
@@ -1988,16 +1988,30 @@ const ActivitiesPage = () => {
       ? `Referente ao processo n° "${procNumberForMsg || '—'}" de "${procTitleForMsg || '—'}"`
       : '';
 
-    // Clientes do processo vinculado = envolvidos do polo ATIVO (quem o escritório representa).
-    const processClientNames: string[] = ((linkedProcessForMsg?.envolvidos as any[]) || [])
-      .filter((e: any) => e && e.polo === 'ATIVO' && e.nome)
+    // Qual polo é o NOSSO cliente: marcado no cadastro (cliente_polo); se não
+    // marcado, assume ATIVO (autor) — o caso mais comum. Quando o escritório atua
+    // na defesa, basta marcar PASSIVO no cadastro do processo.
+    const clientePolo = (linkedProcessForMsg as any)?.cliente_polo || 'ATIVO';
+    const envolvidos = (linkedProcessForMsg?.envolvidos as any[]) || [];
+    // Nomes das PARTES (não advogados) do polo do cliente.
+    const isParte = (e: any) => e && e.nome && !/advog/i.test(String(e.tipo || e.tipo_normalizado || ''));
+    let processClientNames: string[] = envolvidos
+      .filter((e: any) => isParte(e) && e.polo === clientePolo)
       .map((e: any) => String(e.nome));
+    // Sem envolvidos estruturados: cai para o título do polo (polo_ativo/polo_passivo).
+    if (processClientNames.length === 0) {
+      const poloTitle = clientePolo === 'PASSIVO'
+        ? (linkedProcessForMsg as any)?.polo_passivo
+        : (linkedProcessForMsg as any)?.polo_ativo;
+      if (poloTitle) processClientNames = [String(poloTitle)];
+    }
 
-    // Nome exibido na saudação ao CLIENTE: override manual > clientes do processo > nome do lead.
+    // Nome exibido na saudação ao CLIENTE: só o PRIMEIRO NOME da parte cliente.
+    // Prioridade: override manual > 1ª parte do polo do cliente > nome do lead.
     const clientDisplayName = formClientNameOverride
       ? extractClientFirstName(formClientNameOverride)
       : processClientNames.length > 0
-        ? joinNames(processClientNames.map((n) => extractClientFirstName(n)))
+        ? extractClientFirstName(processClientNames[0])
         : extractClientFirstName(formLeadName || '');
 
     // Workflow do processo (etapa / objetivo / passo atual) — vem do checklist do lead (stepContext).

@@ -500,6 +500,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
         'quantidade_movimentacoes', 'segredo_justica', 'arquivado', 'fisico',
         'status_predito', 'situacao', 'moeda', 'description', 'notes',
         'workflow_id', 'workflow_name', 'workflow_stage_id', 'responsible_user_id',
+        'cliente_polo',
       ];
 
       for (const key of editableKeys) {
@@ -702,6 +703,22 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
               <>
                 <EditableField label="Polo Ativo (Autor)" value={form.polo_ativo || ''} onChange={v => set('polo_ativo', v)} />
                 <EditableField label="Polo Passivo (Réu)" value={form.polo_passivo || ''} onChange={v => set('polo_passivo', v)} />
+                <div className="space-y-1">
+                  <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+                    Nosso cliente (parte que representamos)
+                  </label>
+                  <Select value={form.cliente_polo || 'none'} onValueChange={v => set('cliente_polo', v === 'none' ? null : v)}>
+                    <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Não definido" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Não definido</SelectItem>
+                      <SelectItem value="ATIVO">Polo Ativo (Autor){form.polo_ativo ? ` — ${form.polo_ativo}` : ''}</SelectItem>
+                      <SelectItem value="PASSIVO">Polo Passivo (Réu){form.polo_passivo ? ` — ${form.polo_passivo}` : ''}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[10px] text-muted-foreground">
+                    Define de quem é o nome usado na saudação da mensagem ao cliente.
+                  </p>
+                </div>
               </>
             )}
 
