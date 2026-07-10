@@ -268,6 +268,8 @@ export function CadastrarCasoViavelDialog({ lead, open, onOpenChange, saveLead, 
   const [seqNumber, setSeqNumber] = useState('');
   const [seqLoading, setSeqLoading] = useState(false);
   const titleTouched = useRef(false);
+  const [groupNameInput, setGroupNameInput] = useState('');
+  const groupNameTouched = useRef(false);
 
   const set = (patch: Partial<CasoForm>) => setForm((prev) => {
     const next = { ...prev, ...patch };
