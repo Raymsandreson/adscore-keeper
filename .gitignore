@@ -23,5 +23,7 @@ dist-ssr
 *.sln
 *.sw?
 
-# Claude Code local workspace
-.claude/
+# Claude Code local workspace (conteúdo local-only)
+.claude/*
+# ...exceto as skills do projeto, que são versionadas e compartilhadas
+!.claude/skills/
