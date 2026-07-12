@@ -16,9 +16,27 @@
 //   { sweep: true, limit? }         → varre processos com movimentações salvas
 // =============================================================================
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { getExternalClient } from "../_shared/external-client.ts";
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { extractCompromissos, type CompromissoExtraido } from "../_shared/escavadorCompromissos.ts";
 import { classifyUpdates } from "../_shared/processUpdateClassifier.ts";
+
+const EXTERNAL_URL_DEFAULT = "https://kmedldlepwiityjsdahz.supabase.co";
+
+/**
+ * Client do banco Externo. Funciona nos dois runtimes:
+ * - Cloud (Lovable): usa EXTERNAL_SUPABASE_URL/EXTERNAL_SUPABASE_SERVICE_ROLE_KEY
+ * - Externo (deploy consolidado, padrão do functionRouter): a service key
+ *   injetada pelo runtime (SUPABASE_SERVICE_ROLE_KEY) já é a do Externo.
+ */
+function getDbClient(): SupabaseClient {
+  const url = (Deno.env.get("EXTERNAL_SUPABASE_URL") || EXTERNAL_URL_DEFAULT).trim();
+  let key = (Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY") || "").trim();
+  if (!key && (Deno.env.get("SUPABASE_URL") || "").includes("kmedldlepwiityjsdahz")) {
+    key = (Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "").trim();
+  }
+  if (!key) throw new Error("Service role key do Supabase Externo indisponível no runtime");
+  return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+}
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -90,7 +108,7 @@ async function fetchMovsFromEscavador(numeroCnj: string): Promise<unknown[]> {
 }
 
 async function resolveAssignee(
-  ext: ReturnType<typeof getExternalClient>,
+  ext: SupabaseClient,
   process: ProcessRow,
 ): Promise<{ id: string; name: string } | null> {
   const ramo = ramoFromCnj(process.process_number);
@@ -170,7 +188,7 @@ function buildActivityRow(
 
 /** Alimenta o feed do sino (process_updates) com toda movimentação da janela, classificada. */
 async function syncFeed(
-  ext: ReturnType<typeof getExternalClient>,
+  ext: SupabaseClient,
   process: ProcessRow,
   movs: unknown[],
   desde: string,
@@ -208,7 +226,7 @@ async function syncFeed(
 }
 
 async function syncProcess(
-  ext: ReturnType<typeof getExternalClient>,
+  ext: SupabaseClient,
   process: ProcessRow,
   movsIn: unknown[] | undefined,
   desde: string,
@@ -260,13 +278,18 @@ async function syncProcess(
     rows.push(row);
   }
 
-  if (rows.length) {
-    const { error } = await ext.from('lead_activities').insert(rows);
-    if (error) {
+  // Insert linha a linha: o índice único do sistema (lead_activities_dedup_pending_idx,
+  // única atividade pendente por lead+título+tipo) pode rejeitar UMA linha sem
+  // derrubar as irmãs do mesmo processo. Violação dele = duplicada, não erro.
+  for (const row of rows) {
+    const { error } = await ext.from('lead_activities').insert(row);
+    if (!error) {
+      counts.criados++;
+    } else if (error.code === '23505') {
+      counts.duplicados++;
+    } else {
       console.error(`Insert error for process ${process.id}:`, error.message);
-      return counts;
     }
-    counts.criados = rows.length;
   }
   return counts;
 }
@@ -280,7 +303,7 @@ serve(async (req) => {
 
   try {
     const { process_id, movimentacoes, desde: desdeIn, sweep, limit } = await req.json();
-    const ext = getExternalClient();
+    const ext = getDbClient();
     const hoje = hojeBrasilia();
     const desde = typeof desdeIn === 'string' && desdeIn ? desdeIn : addDays(hoje, -DEFAULT_DESDE_DIAS);
 

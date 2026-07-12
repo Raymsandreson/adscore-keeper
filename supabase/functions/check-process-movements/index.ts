@@ -171,13 +171,14 @@ serve(async (req) => {
               .eq('id', monitor.process_id);
 
             // Detector de compromissos: audiência/perícia/prazo → atividades
-            // (dedupe + roteamento por ramo da Justiça ficam na edge).
+            // (dedupe + roteamento por ramo da Justiça ficam na edge). A função
+            // roda consolidada no Externo (functionRouter), não no Cloud.
             try {
-              await fetch(`${cloudFunctionsUrl}/functions/v1/sync-process-compromissos`, {
+              await fetch(`${RESOLVED_SUPABASE_URL}/functions/v1/sync-process-compromissos`, {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${cloudAnonKey}`,
+                  'Authorization': `Bearer ${RESOLVED_SERVICE_ROLE_KEY}`,
                 },
                 body: JSON.stringify({ process_id: monitor.process_id, movimentacoes: movements }),
               });
