@@ -2,16 +2,23 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Bell, CheckCheck, Gavel, CalendarClock, Stethoscope, Timer, FileText, CircleDot,
-  ExternalLink, ClipboardPlus, MessageCircle,
+  ExternalLink, ClipboardPlus, MessageCircle, Loader2,
 } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { format, parseISO } from 'date-fns';
+import { db, authClient } from '@/integrations/supabase';
+import { cloudFunctions } from '@/lib/functionRouter';
 import { copyTextToClipboard } from '@/lib/clipboard';
+import { useAuthContext } from '@/contexts/AuthContext';
 import { useProcessUpdates, type UpdateCategoria, type ProcessUpdate } from '@/hooks/useProcessUpdates';
 import { useLeadActivities } from '@/hooks/useLeadActivities';
 
@@ -69,6 +76,14 @@ const FILTER_ORDER: Array<UpdateCategoria | 'todas'> = [
   'todas', 'decisao_merito', 'audiencia', 'pericia', 'prazo', 'despacho', 'movimentacao',
 ];
 
+type Periodo = 'hoje' | '7d' | '30d' | 'tudo';
+const PERIODOS: Array<{ value: Periodo; label: string; dias: number | null }> = [
+  { value: 'hoje', label: 'Hoje', dias: 0 },
+  { value: '7d', label: '7 dias', dias: 7 },
+  { value: '30d', label: '30 dias', dias: 30 },
+  { value: 'tudo', label: 'Tudo', dias: null },
+];
+
 const TIPO_ATV: Partial<Record<UpdateCategoria, string>> = {
   audiencia: 'audiencia',
   pericia: 'audiencia',
@@ -84,28 +99,42 @@ function fmtData(iso: string | null): string | null {
   }
 }
 
-function buildClientMessage(u: ProcessUpdate): string {
+/** Mensagem no formato das notificações de atividade: saudação + corpo + assinatura. */
+function buildGroupMessage(u: ProcessUpdate, clienteNome: string | null, remetenteNome: string | null): string {
   const style = CATEGORIAS[u.categoria] || CATEGORIAS.movimentacao;
+  const primeiroNome = (clienteNome || '').trim().split(' ')[0] || null;
   const linhas = [
+    primeiroNome ? `Olá, ${primeiroNome}! 😊` : 'Olá! 😊',
+    '',
     '⚖️ *Atualização no seu processo*',
     u.numero_cnj ? `📌 Processo: ${u.numero_cnj}` : null,
-    u.processo_titulo ? `📁 ${u.processo_titulo}` : null,
     `🗂️ ${style.label}${u.data_movimentacao ? ` — ${fmtData(u.data_movimentacao)}` : ''}`,
     u.descricao ? `\n${u.descricao}` : null,
-    '\nQualquer dúvida, estamos à disposição. 💚',
+    '',
+    'Qualquer dúvida, estamos à disposição.',
+    '',
+    `Com carinho, ${(remetenteNome || '').trim().split(' ')[0] || 'Equipe'} 💚`,
   ];
-  return linhas.filter(Boolean).join('\n');
+  return linhas.filter((l) => l !== null).join('\n');
+}
+
+interface EnvioPendente {
+  update: ProcessUpdate;
+  groupJid: string;
+  leadName: string | null;
+  message: string;
 }
 
 function UpdateRow({
-  update, unread, onOpenProcess, onCreateActivity, onCopyMessage, onMarkRead,
+  update, unread, onOpenLead, onCreateActivity, onSendGroup, onMarkRead, sending,
 }: {
   update: ProcessUpdate;
   unread: boolean;
-  onOpenProcess: (u: ProcessUpdate) => void;
+  onOpenLead: (u: ProcessUpdate) => void;
   onCreateActivity: (u: ProcessUpdate) => void;
-  onCopyMessage: (u: ProcessUpdate) => void;
+  onSendGroup: (u: ProcessUpdate) => void;
   onMarkRead: (u: ProcessUpdate) => void;
+  sending: boolean;
 }) {
   const style = CATEGORIAS[update.categoria] || CATEGORIAS.movimentacao;
   const Icon = style.icon;
@@ -149,10 +178,10 @@ function UpdateRow({
           <div className="flex gap-1 mt-1.5">
             <Button
               variant="outline" size="sm" className="h-6 px-2 text-[10px] gap-1"
-              onClick={(e) => { e.stopPropagation(); onOpenProcess(update); }}
+              onClick={(e) => { e.stopPropagation(); onOpenLead(update); }}
             >
               <ExternalLink className="h-3 w-3" />
-              Processo
+              Abrir lead
             </Button>
             <Button
               variant="outline" size="sm" className="h-6 px-2 text-[10px] gap-1"
@@ -163,10 +192,11 @@ function UpdateRow({
             </Button>
             <Button
               variant="outline" size="sm" className="h-6 px-2 text-[10px] gap-1"
-              onClick={(e) => { e.stopPropagation(); onCopyMessage(update); }}
+              disabled={sending}
+              onClick={(e) => { e.stopPropagation(); onSendGroup(update); }}
             >
-              <MessageCircle className="h-3 w-3" />
-              Msg cliente
+              {sending ? <Loader2 className="h-3 w-3 animate-spin" /> : <MessageCircle className="h-3 w-3" />}
+              Msg grupo
             </Button>
           </div>
         </div>
@@ -178,14 +208,25 @@ function UpdateRow({
 export function ProcessUpdatesBell({ compact = false }: { compact?: boolean }) {
   const { updates, loading, unreadCount, readIds, markRead, markAllRead } = useProcessUpdates();
   const { createActivity } = useLeadActivities();
+  const { user, profile } = useAuthContext();
   const navigate = useNavigate();
   const [filtro, setFiltro] = useState<UpdateCategoria | 'todas'>('todas');
+  const [periodo, setPeriodo] = useState<Periodo>('30d');
   const [open, setOpen] = useState(false);
+  const [envioPendente, setEnvioPendente] = useState<EnvioPendente | null>(null);
+  const [sendingId, setSendingId] = useState<string | null>(null);
 
-  const filtered = useMemo(
-    () => (filtro === 'todas' ? updates : updates.filter((u) => u.categoria === filtro)),
-    [updates, filtro],
-  );
+  const filtered = useMemo(() => {
+    let list = filtro === 'todas' ? updates : updates.filter((u) => u.categoria === filtro);
+    const dias = PERIODOS.find((p) => p.value === periodo)?.dias;
+    if (dias !== null && dias !== undefined) {
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - dias);
+      const cutoffIso = cutoff.toISOString().slice(0, 10);
+      list = list.filter((u) => (u.data_movimentacao || u.created_at).slice(0, 10) >= cutoffIso);
+    }
+    return list;
+  }, [updates, filtro, periodo]);
 
   const countByCategoria = useMemo(() => {
     const acc = {} as Record<string, number>;
@@ -193,10 +234,15 @@ export function ProcessUpdatesBell({ compact = false }: { compact?: boolean }) {
     return acc;
   }, [updates]);
 
-  const handleOpenProcess = (u: ProcessUpdate) => {
+  const handleOpenLead = (u: ProcessUpdate) => {
     markRead(u.id);
     setOpen(false);
-    navigate(`/processes?openProcess=${u.process_id}`);
+    if (u.lead_id) {
+      navigate(`/leads?openLead=${u.lead_id}`);
+    } else {
+      toast.info('Atualização sem lead vinculado — abrindo o processo');
+      navigate(`/processes?openProcess=${u.process_id}`);
+    }
   };
 
   const handleCreateActivity = async (u: ProcessUpdate) => {
@@ -225,17 +271,80 @@ export function ProcessUpdatesBell({ compact = false }: { compact?: boolean }) {
     }
   };
 
-  const handleCopyMessage = async (u: ProcessUpdate) => {
-    const ok = await copyTextToClipboard(buildClientMessage(u));
-    if (ok) {
-      markRead(u.id);
-      toast.success('Mensagem copiada — cole no WhatsApp do cliente ou grupo');
-    } else {
-      toast.error('Não foi possível copiar a mensagem');
+  /** Prepara o envio pro grupo do lead: busca grupo + nome e abre a confirmação. */
+  const handleSendGroup = async (u: ProcessUpdate) => {
+    if (!u.lead_id) {
+      const ok = await copyTextToClipboard(buildGroupMessage(u, null, profile?.full_name || null));
+      toast.info(ok ? 'Sem lead vinculado — mensagem copiada pra envio manual' : 'Atualização sem lead vinculado');
+      return;
+    }
+    setSendingId(u.id);
+    try {
+      const { data: lead, error } = await db
+        .from('leads')
+        .select('lead_name, whatsapp_group_id')
+        .eq('id', u.lead_id)
+        .maybeSingle();
+      if (error) throw error;
+
+      const message = buildGroupMessage(u, lead?.lead_name || null, profile?.full_name || null);
+      if (!lead?.whatsapp_group_id) {
+        const ok = await copyTextToClipboard(message);
+        toast.info(ok ? 'Lead sem grupo vinculado — mensagem copiada pra envio manual' : 'Lead sem grupo de WhatsApp vinculado');
+        return;
+      }
+      setEnvioPendente({ update: u, groupJid: lead.whatsapp_group_id, leadName: lead.lead_name || null, message });
+    } catch (err) {
+      console.error('Error preparing group message:', err);
+      toast.error('Erro ao buscar o grupo do lead');
+    } finally {
+      setSendingId(null);
+    }
+  };
+
+  /** Envia de fato (mesmo padrão do sendGroupNotification das atividades). */
+  const confirmSendGroup = async () => {
+    const pending = envioPendente;
+    if (!pending) return;
+    setEnvioPendente(null);
+    setSendingId(pending.update.id);
+    try {
+      let instanceId: string | undefined;
+      if (user?.id) {
+        const { data: cloudProfile } = await authClient
+          .from('profiles')
+          .select('default_instance_id')
+          .eq('user_id', user.id)
+          .maybeSingle();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        instanceId = (cloudProfile as any)?.default_instance_id || undefined;
+      }
+
+      const sendBody: Record<string, unknown> = {
+        phone: pending.groupJid,
+        chat_id: pending.groupJid,
+        message: pending.message,
+        lead_id: pending.update.lead_id,
+      };
+      if (instanceId) sendBody.instance_id = instanceId;
+
+      const { data, error } = await cloudFunctions.invoke('send-whatsapp', { body: sendBody });
+      if (error || !data?.success) {
+        toast.error(data?.error || 'Erro ao enviar mensagem ao grupo');
+      } else {
+        markRead(pending.update.id);
+        toast.success(`Mensagem enviada ao grupo${pending.leadName ? ` de ${pending.leadName}` : ''}!`);
+      }
+    } catch (err) {
+      console.error('Error sending group message:', err);
+      toast.error('Erro ao enviar mensagem ao grupo');
+    } finally {
+      setSendingId(null);
     }
   };
 
   return (
+    <>
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
         <Button
@@ -285,12 +394,27 @@ export function ProcessUpdatesBell({ compact = false }: { compact?: boolean }) {
             );
           })}
         </div>
+        <div className="flex gap-1 px-2 py-1.5 border-b overflow-x-auto shrink-0 items-center">
+          <span className="text-[10px] text-muted-foreground pr-1">Período:</span>
+          {PERIODOS.map((p) => (
+            <button
+              key={p.value}
+              onClick={() => setPeriodo(p.value)}
+              className={cn(
+                'text-[11px] px-2 py-0.5 rounded-full border whitespace-nowrap transition-colors',
+                periodo === p.value ? 'bg-primary text-primary-foreground border-primary' : 'bg-background hover:bg-accent',
+              )}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
         <ScrollArea className="flex-1">
           {loading ? (
             <p className="text-xs text-muted-foreground text-center py-8">Carregando...</p>
           ) : filtered.length === 0 ? (
             <p className="text-xs text-muted-foreground text-center py-8">
-              Nenhuma atualização{filtro !== 'todas' ? ' nessa categoria' : ''}.
+              Nenhuma atualização nesse período{filtro !== 'todas' ? ' e categoria' : ''}.
             </p>
           ) : (
             filtered.map((u) => (
@@ -298,15 +422,34 @@ export function ProcessUpdatesBell({ compact = false }: { compact?: boolean }) {
                 key={u.id}
                 update={u}
                 unread={!readIds.has(u.id)}
-                onOpenProcess={handleOpenProcess}
+                onOpenLead={handleOpenLead}
                 onCreateActivity={handleCreateActivity}
-                onCopyMessage={handleCopyMessage}
+                onSendGroup={handleSendGroup}
                 onMarkRead={(upd) => markRead(upd.id)}
+                sending={sendingId === u.id}
               />
             ))
           )}
         </ScrollArea>
       </SheetContent>
     </Sheet>
+
+    <AlertDialog open={!!envioPendente} onOpenChange={(o) => !o && setEnvioPendente(null)}>
+      <AlertDialogContent className="max-w-md">
+        <AlertDialogHeader>
+          <AlertDialogTitle>Enviar ao grupo{envioPendente?.leadName ? ` de ${envioPendente.leadName}` : ''}?</AlertDialogTitle>
+          <AlertDialogDescription asChild>
+            <div className="text-xs whitespace-pre-wrap bg-muted rounded-md p-3 max-h-64 overflow-y-auto text-left">
+              {envioPendente?.message}
+            </div>
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+          <AlertDialogAction onClick={confirmSendGroup}>Enviar</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   );
 }
