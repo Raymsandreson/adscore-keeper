@@ -1,5 +1,5 @@
 import { useState, useRef, type KeyboardEvent, type ReactNode, type TouchEvent } from 'react';
-import { Loader2, Send, Clock } from 'lucide-react';
+import { Loader2, Send, Clock, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
