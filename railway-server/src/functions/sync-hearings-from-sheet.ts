@@ -135,6 +135,7 @@ function parseTime(raw: string): string | null {
   const h = parseInt(m[1], 10);
   if (h > 23) return null;
   const min = m[2] ? parseInt(m[2], 10) : 0;
+  if (min > 59) return null; // typo na planilha (ex.: "15:60h") — melhor sem hora que hora inválida
   return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}:00`;
 }
 
