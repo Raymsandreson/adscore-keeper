@@ -1,8 +1,19 @@
 /**
- * Shared Google Gemini AI helper for all edge functions.
- * Converts OpenAI-compatible format to Google Generative Language API format.
- * Uses GOOGLE_AI_API_KEY for direct API calls (cost savings).
+ * Shared AI helper for all edge functions.
+ * Default path converts OpenAI-compatible format to the Google Generative
+ * Language API. Models prefixed with `anthropic/` (or `claude-`) are routed
+ * to the Anthropic Messages API instead, so Gemini and Claude run side by side
+ * per-agent — switching an agent is just changing its stored `model` string.
+ * Uses GOOGLE_AI_API_KEY / ANTHROPIC_API_KEY for direct API calls.
  */
+
+import { callAnthropic, parseAnthropicResponse } from "./anthropic.ts";
+
+/** True when the model string should be routed to Anthropic instead of Google. */
+function isAnthropicModel(model?: string): boolean {
+  const m = model || "";
+  return m.startsWith("anthropic/") || m.startsWith("claude-") || m.startsWith("claude/");
+}
 
 const MODEL_MAP: Record<string, string> = {
   "google/gemini-2.5-flash": "gemini-2.5-flash",
@@ -89,6 +100,8 @@ export interface GeminiCallOptions {
  * Returns the raw fetch Response.
  */
 export async function callGemini(options: GeminiCallOptions): Promise<Response> {
+  if (isAnthropicModel(options.model)) return callAnthropic(options);
+
   const GOOGLE_AI_API_KEY = Deno.env.get("GOOGLE_AI_API_KEY");
   if (!GOOGLE_AI_API_KEY) throw new Error("GOOGLE_AI_API_KEY not configured");
 
@@ -235,20 +248,25 @@ export function parseGeminiResponse(data: any): any {
  * Throws on HTTP errors.
  */
 export async function geminiChat(options: GeminiCallOptions): Promise<any> {
+  const isAnthropic = isAnthropicModel(options.model);
   const response = await callGemini({ ...options, stream: false });
 
   if (!response.ok) {
     const errText = await response.text();
-    console.error("Gemini API error:", response.status, errText);
-    // Propaga o motivo real do Google (ex.: "enum[0]: cannot be empty") em vez de
+    const provider = isAnthropic ? "Anthropic" : "Gemini";
+    console.error(`${provider} API error:`, response.status, errText);
+    // Propaga o motivo real do provider (ex.: "enum[0]: cannot be empty") em vez de
     // só o status — sem isso o chamador/usuário fica com um "400" opaco.
     const detail = errText.replace(/\s+/g, " ").trim().slice(0, 300);
-    throw new GeminiError(`Gemini API error: ${response.status}${detail ? ` — ${detail}` : ""}`, response.status);
+    throw new GeminiError(`${provider} API error: ${response.status}${detail ? ` — ${detail}` : ""}`, response.status);
   }
 
   const data = await response.json();
-  return parseGeminiResponse(data);
+  return isAnthropic ? parseAnthropicResponse(data) : parseGeminiResponse(data);
 }
+
+/** Provider-agnostic alias for geminiChat — routes by the model's prefix. */
+export const aiChat = geminiChat;
 
 /**
  * Transform a Google SSE stream into an OpenAI-compatible SSE stream.
@@ -282,8 +300,12 @@ export function transformGeminiStream(googleStream: ReadableStream<Uint8Array>):
 
             try {
               const parsed = JSON.parse(jsonStr);
+              // Auto-detect provider shape: Gemini sends `candidates`,
+              // Anthropic sends content_block_delta events with text_delta.
               const text =
-                parsed.candidates?.[0]?.content?.parts?.[0]?.text || "";
+                parsed.candidates?.[0]?.content?.parts?.[0]?.text ||
+                (parsed.type === "content_block_delta" ? (parsed.delta?.text || "") : "") ||
+                "";
               if (text) {
                 const openAiChunk = {
                   choices: [{ delta: { content: text } }],
