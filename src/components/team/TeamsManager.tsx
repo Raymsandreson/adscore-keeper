@@ -42,6 +42,7 @@ import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { toast } from 'sonner';
 import { TeamActivityTypesPicker } from './TeamActivityTypesPicker';
+import { TeamManagerPicker } from './TeamManagerPicker';
 
 const ALL_METRICS = [
   { key: 'replies', label: 'Respostas' },
@@ -556,6 +557,9 @@ export function TeamsManager() {
                       onAdd={handleAddMember}
                     />
                   )}
+
+                  {/* Gestor do time — recebe o relatório diário */}
+                  <TeamManagerPicker teamId={team.id} teamName={team.name} members={members} />
 
                   {/* Activity types exclusive to this team */}
                   <TeamActivityTypesPicker teamId={team.id} />

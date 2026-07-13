@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import {
   Send, Users, MessageCircle, ArrowLeft, Loader2, Plus, Hash,
   Mic, Square, Paperclip, Image, FileText, Briefcase, ClipboardList,
-  Play, Pause, Check, CheckCheck, Reply, X, AlertTriangle,
+  Play, Pause, Check, CheckCheck, Reply, X, AlertTriangle, Search,
 } from 'lucide-react';
 import { setActiveTeamChatConversation } from '@/lib/teamChatActiveConversation';
 import { cn } from '@/lib/utils';
@@ -38,6 +38,8 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
   const profiles = useProfilesList();
   const [messageText, setMessageText] = useState('');
   const [showNewChat, setShowNewChat] = useState(false);
+  const [convSearch, setConvSearch] = useState('');
+  const [newChatSearch, setNewChatSearch] = useState('');
   const [showEntityMention, setShowEntityMention] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
@@ -714,17 +716,37 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
 
   // New chat selection
   if (showNewChat) {
-    const otherProfiles = profiles.filter(p => p.user_id !== user?.id);
+    const newChatQuery = newChatSearch.trim().toLowerCase();
+    const otherProfiles = profiles
+      .filter(p => p.user_id !== user?.id)
+      .filter(p => !newChatQuery
+        || (p.full_name || '').toLowerCase().includes(newChatQuery)
+        || (p.email || '').toLowerCase().includes(newChatQuery));
     return (
       <div className="flex flex-col h-full">
         <div className="shrink-0 flex items-center gap-2 px-3 py-2 border-b bg-muted/30">
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setShowNewChat(false)}>
+          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setShowNewChat(false); setNewChatSearch(''); }}>
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <span className="text-sm font-medium">Nova Conversa</span>
         </div>
+        <div className="shrink-0 px-3 py-2 border-b">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <Input
+              value={newChatSearch}
+              onChange={e => setNewChatSearch(e.target.value)}
+              placeholder="Buscar pessoa por nome..."
+              className="h-8 pl-8 text-sm"
+              autoFocus
+            />
+          </div>
+        </div>
         <ScrollArea className="flex-1">
           <div className="divide-y">
+            {otherProfiles.length === 0 && (
+              <p className="text-xs text-muted-foreground text-center py-6">Ninguém encontrado com esse nome.</p>
+            )}
             {otherProfiles.map(p => (
               <button
                 key={p.user_id}
@@ -754,6 +776,14 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
   }
 
   // Conversation list
+  const convQuery = convSearch.trim().toLowerCase();
+  const filteredConversations = conversations.filter(conv => {
+    if (!convQuery) return true;
+    const title = conv.type === 'group' ? (conv.name || 'Grupo') : (conv.otherMemberName || '');
+    return title.toLowerCase().includes(convQuery)
+      || (conv.lastMessage || '').toLowerCase().includes(convQuery);
+  });
+
   return (
     <div className="flex flex-col h-full">
       <div className="shrink-0 flex items-center justify-between px-3 py-2 border-b bg-muted/30">
@@ -768,6 +798,18 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
         </div>
       </div>
 
+      <div className="shrink-0 px-3 py-2 border-b">
+        <div className="relative">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+          <Input
+            value={convSearch}
+            onChange={e => setConvSearch(e.target.value)}
+            placeholder="Buscar conversa por nome..."
+            className="h-8 pl-8 text-sm"
+          />
+        </div>
+      </div>
+
       <ScrollArea className="flex-1">
         {loading ? (
           <div className="flex items-center justify-center h-32">
@@ -778,9 +820,11 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
             <MessageCircle className="h-8 w-8 opacity-30" />
             <p>Nenhuma conversa ainda.<br/>Clique em <b>"Geral"</b> para o chat da equipe ou <b>"Nova"</b> para conversa direta.</p>
           </div>
+        ) : filteredConversations.length === 0 ? (
+          <p className="text-xs text-muted-foreground text-center py-6">Nenhuma conversa com esse nome.</p>
         ) : (
           <div className="divide-y">
-            {conversations.map(conv => {
+            {filteredConversations.map(conv => {
               const title = conv.type === 'group' ? (conv.name || 'Grupo') : (conv.otherMemberName || 'Chat');
               const hasUnread = (conv.unreadCount || 0) > 0;
               return (

@@ -58,6 +58,7 @@ import { handler as wipeInstanceAgentLabels } from './functions/wipe-instance-ag
 import { handler as transcodeAudioOpus } from './functions/transcode-audio-opus';
 import { handler as extractActivityFromDocument } from './functions/extract-activity-from-document';
 import { handler as nearbyEstablishments } from './functions/nearby-establishments';
+import { handler as dailyTeamReport } from './functions/daily-team-report';
 
 
 
@@ -110,6 +111,7 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'transcode-audio-opus': transcodeAudioOpus,
   'extract-activity-from-document': extractActivityFromDocument,
   'nearby-establishments': nearbyEstablishments,
+  'daily-team-report': dailyTeamReport,
 };
 
 const app = express();
@@ -305,3 +307,31 @@ async function runOrphanScan() {
 // Primeira execução 60s após start, depois a cada 15 min
 setTimeout(runOrphanScan, 60_000);
 setInterval(runOrphanScan, ORPHAN_SCAN_INTERVAL_MS);
+
+// ============================================================
+// CRON: relatório diário de gestão por time — roda todo dia às
+// REPORT_HOUR_BRT (padrão 18h, horário de Brasília). A função é
+// idempotente por dia, então checagem a cada 10 min é segura.
+// ============================================================
+const REPORT_HOUR_BRT = Number(process.env.REPORT_HOUR_BRT || 18);
+let lastReportDate = '';
+async function runDailyTeamReport() {
+  try {
+    const now = new Date();
+    const spHour = Number(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Sao_Paulo', hour: 'numeric', hour12: false }).format(now));
+    const spDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(now);
+    if (spHour !== REPORT_HOUR_BRT || lastReportDate === spDate) return;
+    lastReportDate = spDate;
+
+    const resp = await fetch(`http://127.0.0.1:${PORT}/functions/daily-team-report`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': API_KEY },
+      body: '{}',
+    });
+    const json: any = await resp.json().catch(() => ({}));
+    console.log(`[cron:daily-team-report] status=${resp.status}`, JSON.stringify(json?.results || {}));
+  } catch (err) {
+    console.warn('[cron:daily-team-report] failed:', err instanceof Error ? err.message : err);
+  }
+}
+setInterval(runDailyTeamReport, 10 * 60 * 1000);
