@@ -1,7 +1,8 @@
 import { useState, useMemo, useEffect } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ExternalLink, Loader2, Milestone, Filter } from 'lucide-react';
+import { ExternalLink, Loader2, Milestone, Filter, TrainFront } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { useProcessMovements, type MarcoTipo } from '@/hooks/useProcessMovements';
 
 const MARCO_LABEL: Record<MarcoTipo, string> = {
@@ -34,6 +35,166 @@ function formatDate(v: string): string {
 function formatValor(v: number | null): string | null {
   if (v == null) return null;
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+// Ordem canônica das "estações" no ciclo de vida do processo.
+const ESTACOES: MarcoTipo[] = [
+  'peticao_inicial', 'sentenca_1grau', 'acordo', 'acordao_2grau',
+  'acordao_superior', 'transito_julgado', 'pagamento',
+];
+
+// Estações que nem todo processo percorre (acordo/recursos) — quando o trem já
+// passou do ponto sem parar nelas, mostram "não houve" em vez de "falta".
+const ESTACOES_OPCIONAIS = new Set<MarcoTipo>(['acordo', 'acordao_2grau', 'acordao_superior']);
+
+function parseDate(v: string | null | undefined): Date | null {
+  if (!v) return null;
+  const d = new Date(v.length <= 10 ? `${v}T00:00:00` : v);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+/** "3 dias", "2 meses e 10 dias", "1 ano e 4 meses" */
+function humanizeDias(dias: number): string {
+  if (dias < 1) return 'mesmo dia';
+  if (dias < 60) return `${dias} dia${dias > 1 ? 's' : ''}`;
+  const meses = Math.floor(dias / 30);
+  if (meses < 12) {
+    const resto = dias % 30;
+    return resto >= 5 ? `${meses} meses e ${resto} dias` : `${meses} meses`;
+  }
+  const anos = Math.floor(meses / 12);
+  const mesesResto = meses % 12;
+  return mesesResto > 0
+    ? `${anos} ano${anos > 1 ? 's' : ''} e ${mesesResto} ${mesesResto > 1 ? 'meses' : 'mês'}`
+    : `${anos} ano${anos > 1 ? 's' : ''}`;
+}
+
+interface Estacao {
+  tipo: MarcoTipo;
+  status: 'concluida' | 'atual' | 'pulada' | 'futura';
+  data: Date | null;
+  valor: string | null;
+}
+
+/**
+ * Linha do trem: as 7 estações do ciclo de vida, com o trem na estação atual,
+ * o trecho percorrido preenchido (com o tempo entre estações), o futuro
+ * tracejado e as estações puladas (acordo/recursos que não houve) atenuadas.
+ */
+function MarcosTrainLine({ movements }: { movements: ReturnType<typeof useProcessMovements>['movements'] }) {
+  const estacoes = useMemo<Estacao[]>(() => {
+    // Primeira data e valor de cada marco alcançado.
+    const porTipo = new Map<MarcoTipo, { data: Date | null; valor: string | null }>();
+    for (const m of movements) {
+      const tipo = m.tipo_movimentacao as MarcoTipo;
+      const data = parseDate(m.data_movimentacao);
+      const atual = porTipo.get(tipo);
+      if (!atual || (data && atual.data && data < atual.data)) {
+        porTipo.set(tipo, { data, valor: formatValor(m.valor_indenizacao_fixado) || atual?.valor || null });
+      } else if (atual && !atual.valor) {
+        atual.valor = formatValor(m.valor_indenizacao_fixado);
+      }
+    }
+
+    const idxAtual = ESTACOES.reduce((acc, t, i) => (porTipo.has(t) ? i : acc), -1);
+
+    return ESTACOES.map((tipo, i) => {
+      const alcancada = porTipo.get(tipo);
+      const status: Estacao['status'] = alcancada
+        ? (i === idxAtual ? 'atual' : 'concluida')
+        : (i < idxAtual ? 'pulada' : 'futura');
+      return { tipo, status, data: alcancada?.data ?? null, valor: alcancada?.valor ?? null };
+    });
+  }, [movements]);
+
+  // Duração entre uma estação alcançada e a PRÓXIMA alcançada (pra rotular o trecho).
+  const duracaoAposEstacao = (i: number): string | null => {
+    const de = estacoes[i];
+    if (!de.data || (de.status !== 'concluida' && de.status !== 'atual')) return null;
+    for (let j = i + 1; j < estacoes.length; j++) {
+      const ate = estacoes[j];
+      if (ate.data && (ate.status === 'concluida' || ate.status === 'atual')) {
+        const dias = Math.round((ate.data.getTime() - de.data.getTime()) / 86400000);
+        return humanizeDias(Math.max(0, dias));
+      }
+    }
+    return null;
+  };
+
+  const diasNaAtual = useMemo(() => {
+    const atual = estacoes.find((e) => e.status === 'atual');
+    if (!atual?.data) return null;
+    return humanizeDias(Math.max(0, Math.round((Date.now() - atual.data.getTime()) / 86400000)));
+  }, [estacoes]);
+
+  const idxAtual = estacoes.findIndex((e) => e.status === 'atual');
+
+  return (
+    <div className="border rounded-lg p-3 bg-muted/20">
+      {estacoes.map((e, i) => {
+        const isUltima = i === estacoes.length - 1;
+        const duracao = duracaoAposEstacao(i);
+        // Trilho sólido = o trem já passou por este trecho (está antes da estação atual).
+        const trechoPercorrido = idxAtual >= 0 && i < idxAtual;
+        return (
+          <div key={e.tipo}>
+            <div className="flex items-center gap-2.5">
+              {/* estação */}
+              <div className="w-5 flex justify-center shrink-0">
+                {e.status === 'atual' ? (
+                  <span className="relative flex h-5 w-5 items-center justify-center">
+                    <span className="absolute inline-flex h-full w-full rounded-full bg-primary/30 animate-ping" />
+                    <span className="relative flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                      <TrainFront className="h-3 w-3" />
+                    </span>
+                  </span>
+                ) : e.status === 'concluida' ? (
+                  <span className="h-3.5 w-3.5 rounded-full bg-primary border-2 border-primary" />
+                ) : e.status === 'pulada' ? (
+                  <span className="h-2.5 w-2.5 rounded-full border-2 border-muted-foreground/30 bg-background" />
+                ) : (
+                  <span className="h-3.5 w-3.5 rounded-full border-2 border-dashed border-muted-foreground/40 bg-background" />
+                )}
+              </div>
+              <div className="flex items-baseline justify-between gap-2 flex-1 min-w-0">
+                <span className={cn(
+                  'text-xs',
+                  e.status === 'atual' && 'font-semibold text-primary',
+                  e.status === 'concluida' && 'font-medium',
+                  e.status === 'pulada' && 'text-muted-foreground/50 text-[11px]',
+                  e.status === 'futura' && 'text-muted-foreground/70',
+                )}>
+                  {MARCO_LABEL[e.tipo]}
+                  {e.status === 'pulada' && <span className="text-[9px] ml-1">(não houve)</span>}
+                  {e.status === 'atual' && diasNaAtual && (
+                    <span className="block text-[9px] font-normal text-muted-foreground">há {diasNaAtual} nesta fase</span>
+                  )}
+                  {e.valor && <span className="block text-[10px] font-medium text-green-700 dark:text-green-400">{e.valor}</span>}
+                </span>
+                <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                  {e.data ? e.data.toLocaleDateString('pt-BR') : e.status === 'futura' ? 'falta' : ''}
+                </span>
+              </div>
+            </div>
+            {/* trecho até a próxima estação */}
+            {!isUltima && (
+              <div className="flex items-center gap-2.5">
+                <div className="w-5 flex justify-center shrink-0">
+                  <div className={cn(
+                    'w-0.5 min-h-5',
+                    trechoPercorrido ? 'bg-primary' : 'border-l-2 border-dashed border-muted-foreground/30',
+                  )} />
+                </div>
+                {duracao && (
+                  <span className="text-[9px] text-muted-foreground italic py-0.5">⏱ {duracao}</span>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 /**
@@ -80,10 +241,12 @@ export function ProcessMovementsTimeline({ processId, refreshKey }: { processId:
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-between">
+      <MarcosTrainLine movements={movements} />
+
+      <div className="flex items-center justify-between pt-1">
         <h4 className="text-xs font-semibold flex items-center gap-1.5">
           <Milestone className="h-3.5 w-3.5 text-primary" />
-          {onlyCurrent ? 'Status atual' : `Histórico completo (${movements.length})`}
+          {onlyCurrent ? 'Detalhe do status atual' : `Histórico completo (${movements.length})`}
         </h4>
         {movements.length > 1 && (
           <Button
