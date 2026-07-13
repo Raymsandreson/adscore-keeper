@@ -13,7 +13,7 @@ const GATEWAY = "https://connector-gateway.lovable.dev/google_drive/drive/v3";
 const UPLOAD_GATEWAY = "https://connector-gateway.lovable.dev/google_drive/upload/drive/v3";
 const ROOT_FOLDER_NAME = "AdScore Keeper - Leads";
 const MAX_ANALYZE_BYTES = 8 * 1024 * 1024;
-const FUNCTION_VERSION = 2;
+const FUNCTION_VERSION = 3; // v3: dedup drive-wide (dedup_key/content_hash+lead_id) — arquivo organizado em subpasta não é repuxado
 
 function gwHeaders(extra: Record<string, string> = {}) {
   return {
@@ -351,18 +351,25 @@ Deno.serve(async (req) => {
       const finalMime = mime_type || dl.headers.get("content-type") || "application/octet-stream";
       const finalHash = content_hash || await sha256Hex(binary);
 
+      // Dedup por dedup_key/content_hash procura no Drive INTEIRO (sem escopo de
+      // pasta): arquivo que o usuário moveu pra subpasta continua encontrado e
+      // NÃO é repuxado. dedup_key já embute o lead; content_hash é escopado por
+      // lead via appProperties.lead_id. Só o fallback name+size fica na pasta.
+      const leadScope = lead_id
+        ? ` and appProperties has { key='lead_id' and value='${driveQ(String(lead_id))}' }`
+        : "";
       const dedupQueries = [
-        ...(dedup_key ? [`appProperties has { key='dedup_key' and value='${driveQ(String(dedup_key))}' }`] : []),
-        ...(finalHash ? [`appProperties has { key='content_hash' and value='${driveQ(String(finalHash))}' }`] : []),
-        `name = '${driveQ(file_name)}'`,
+        ...(dedup_key ? [`trashed = false and appProperties has { key='dedup_key' and value='${driveQ(String(dedup_key))}' }`] : []),
+        ...(finalHash ? [`trashed = false and appProperties has { key='content_hash' and value='${driveQ(String(finalHash))}' }${leadScope}`] : []),
+        `'${folderId}' in parents and trashed = false and name = '${driveQ(file_name)}'`,
       ];
       for (const condition of dedupQueries) {
-        const q = encodeURIComponent(`'${folderId}' in parents and trashed = false and ${condition}`);
+        const q = encodeURIComponent(condition);
         const listRes = await fetch(`${GATEWAY}/files?q=${q}&fields=files(id,name,size,mimeType,webViewLink,modifiedTime)&pageSize=20`, { headers: gwHeaders() });
         if (!listRes.ok) continue;
         const listJson = await listRes.json();
         const existing = (listJson.files || []).find((f: any) =>
-          condition.startsWith("name =") ? String(f.size || "") === String(binary.length) : true,
+          condition.includes("name =") ? String(f.size || "") === String(binary.length) : true,
         );
         if (existing) {
           return new Response(
@@ -375,6 +382,7 @@ Deno.serve(async (req) => {
       const boundary = "----lovable-boundary-" + crypto.randomUUID();
       const appProperties: Record<string, string> = { content_hash: String(finalHash) };
       if (dedup_key) appProperties.dedup_key = String(dedup_key);
+      if (lead_id) appProperties.lead_id = String(lead_id);
       const metadata = JSON.stringify({ name: file_name, parents: [folderId], appProperties });
       const head = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n--${boundary}\r\nContent-Type: ${finalMime}\r\n\r\n`;
       const tail = `\r\n--${boundary}--`;
@@ -849,10 +857,16 @@ Deno.serve(async (req) => {
       const leadFolderId = await getOrCreateLeadFolder(lead_id, lead_name, ext);
       const subFolderId = leadFolderId; // arquivos vão direto na pasta do lead
 
+      // Dedup no Drive INTEIRO (sem escopo de pasta): arquivo movido pra
+      // subpasta pelo usuário continua encontrado e NÃO é repuxado. dedup_key
+      // já embute o lead; content_hash é escopado via appProperties.lead_id.
       for (const [key, value] of [["dedup_key", dedup_key], ["content_hash", content_hash]] as const) {
         if (!value) continue;
+        const scope = key === "content_hash" && lead_id
+          ? ` and appProperties has { key='lead_id' and value='${driveQ(String(lead_id))}' }`
+          : "";
         const q = encodeURIComponent(
-          `'${subFolderId}' in parents and trashed = false and appProperties has { key='${key}' and value='${driveQ(String(value))}' }`,
+          `trashed = false and appProperties has { key='${key}' and value='${driveQ(String(value))}' }${scope}`,
         );
         const listRes = await fetch(
           `${GATEWAY}/files?q=${q}&fields=files(id,name,size,mimeType,webViewLink,modifiedTime)&pageSize=1`,
@@ -903,6 +917,7 @@ Deno.serve(async (req) => {
       const appProperties: Record<string, string> = {};
       if (dedup_key) appProperties.dedup_key = String(dedup_key);
       if (content_hash) appProperties.content_hash = String(content_hash);
+      if (lead_id) appProperties.lead_id = String(lead_id);
       const metadata = JSON.stringify({
         name: file_name,
         parents: [subFolderId],

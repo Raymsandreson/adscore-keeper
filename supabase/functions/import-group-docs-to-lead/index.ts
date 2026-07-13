@@ -43,6 +43,15 @@ const MEDIA_TYPE_INFO: Record<string, string> = {
   audio: "WhatsApp Audio Keys",
 };
 
+// A mesma mensagem de grupo existe N vezes em whatsapp_messages (1 linha por
+// instância do escritório no grupo), com prefixos diferentes no
+// external_message_id — o sufixo após ':' é o id real da mensagem no WhatsApp.
+// Toda dedup deve usar o sufixo, senão cada instância "parece" uma mídia nova.
+function waMsgSuffix(id: string): string {
+  const i = id.indexOf(":");
+  return i >= 0 ? id.slice(i + 1) : id;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -123,12 +132,13 @@ Deno.serve(async (req) => {
         }
 
         // --- Early skip: this message was already imported for this lead ---
+        // Match pelo SUFIXO do id (igual entre as N linhas por instância).
         try {
           const { data: existingDoc } = await cloud
             .from("process_documents")
             .select("id, file_url")
             .eq("lead_id", body.lead_id)
-            .eq("metadata->>external_message_id", msg.external_message_id)
+            .like("metadata->>external_message_id", `%${waMsgSuffix(msg.external_message_id)}`)
             .limit(1)
             .maybeSingle();
           if (existingDoc?.id) {
@@ -282,7 +292,7 @@ Deno.serve(async (req) => {
               source_url: pub.publicUrl,
               mime_type: mimeType,
               document_type: documentType,
-              dedup_key: `wa:${body.lead_id}:${msg.external_message_id}`,
+              dedup_key: `wa:${body.lead_id}:${waMsgSuffix(msg.external_message_id)}`,
               content_hash: contentHash,
             }),
           });
