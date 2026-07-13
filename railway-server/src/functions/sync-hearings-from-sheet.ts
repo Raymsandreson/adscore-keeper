@@ -55,12 +55,19 @@ async function fetchRows(tabTitle: string): Promise<string[][]> {
 // ---------------------------------------------------------------------------
 
 const PROCESS_RE = /\d{7}-?\d{2}\.?\d{4}\.?\d\.?\d{2}\.?\d{4}/;
-const CASE_RE = /\b(CASO|PREV|CÍVEL|CIVEL|CRIM)\s*\.?\s*(\d+)/i;
+const PROCESS_RE_G = /\d{7}-?\d{2}\.?\d{4}\.?\d\.?\d{2}\.?\d{4}/g;
+const CASE_RE = /\b(CASO|PREV|CÍVEL|CIVEL|CRIM)\s*\.?\s*(\d+(?:\.\d+)?)/i;
 const TIME_RE = /\b(\d{1,2})[:hH](\d{2})?\b/;
 const DATE_RE = /\b(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\b/;
+const CONTROL_RE = /^(SEMANA\s*\d|RECESSO|SUSPENS|FERIADO|LEGENDA|DATA:?$|SEGUNDA|TERÇA|TERCA|QUARTA|QUINTA|SEXTA|SÁBADO|SABADO|DOMINGO)/i;
+const MONTH_HEADER_RE = /AUDI[EÊ]NCIAS\s+([A-ZÇ]+)\s*\/?\s*(\d{2,4})?/i;
+const MONTHS: Record<string, number> = {
+  JANEIRO: 1, FEVEREIRO: 2, MARÇO: 3, MARCO: 3, ABRIL: 4, MAIO: 5, JUNHO: 6,
+  JULHO: 7, AGOSTO: 8, SETEMBRO: 9, OUTUBRO: 10, NOVEMBRO: 11, DEZEMBRO: 12,
+};
 
 interface ParsedHearing {
-  process_number: string;
+  process_number: string | null;
   hearing_date: string; // YYYY-MM-DD
   hearing_time: string | null;
   case_ref: string | null;
@@ -92,13 +99,13 @@ function inferStatus(text: string): string {
 
 function inferType(text: string): string | null {
   const t = text.toUpperCase();
-  if (t.includes('UNA')) return 'UNA';
+  if (t.includes('ENCERRAMENTO')) return 'Encerramento de Instrução';
+  if (/\bUNA\b/.test(t)) return 'UNA';
   if (t.includes('INSTRU')) return 'Instrução';
-  if (t.includes('INICIAL')) return 'Inicial';
+  if (t.includes('INICIAL') || t.includes('INCIAL')) return 'Inicial';
   if (t.includes('PERÍCIA') || t.includes('PERICIA')) return 'Perícia Médica';
   if (t.includes('JULGAMENTO')) return 'Julgamento';
   if (t.includes('CONCILIA')) return 'Conciliação';
-  if (t.includes('ENCERRAMENTO')) return 'Encerramento de Instrução';
   return null;
 }
 
@@ -109,19 +116,14 @@ function inferLocation(text: string): string | null {
   return null;
 }
 
-function parseDate(raw: string, today: Date): string | null {
+function parseDate(raw: string, yearCtx: number): string | null {
   const m = raw.match(DATE_RE);
   if (!m) return null;
   const day = parseInt(m[1], 10);
   const month = parseInt(m[2], 10);
   if (day < 1 || day > 31 || month < 1 || month > 12) return null;
-  let year = m[3] ? parseInt(m[3], 10) : today.getFullYear();
+  let year = m[3] ? parseInt(m[3], 10) : yearCtx;
   if (year < 100) year += 2000;
-  // Sem ano na planilha: se a data ficar >6 meses no passado, assume ano seguinte
-  if (!m[3]) {
-    const candidate = new Date(year, month - 1, day);
-    if (candidate.getTime() < today.getTime() - 180 * 86400000) year += 1;
-  }
   return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
@@ -134,58 +136,103 @@ function parseTime(raw: string): string | null {
   return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}:00`;
 }
 
+/** Extrai uma audiência de um trecho de texto de célula (uma célula = um dia). */
+function parseCellSegment(seg: string, date: string, rowIndex: number): ParsedHearing | null {
+  const procMatch = seg.match(PROCESS_RE);
+  const caseMatch = seg.match(CASE_RE);
+  if (!procMatch && !caseMatch) return null;
+  const processNumber = procMatch ? procMatch[0] : null;
+  return {
+    process_number: processNumber,
+    hearing_date: date,
+    hearing_time: parseTime(seg.replace(PROCESS_RE_G, '')),
+    case_ref: caseMatch ? `${caseMatch[1].toUpperCase()} ${caseMatch[2]}` : null,
+    hearing_type: inferType(seg),
+    category: processNumber ? inferCategory(processNumber) : 'outro',
+    location: inferLocation(seg),
+    status: inferStatus(seg),
+    raw: seg.replace(/\s+/g, ' ').trim().slice(0, 300),
+    row_index: rowIndex,
+  };
+}
+
 /**
- * Converte as linhas da aba em audiências. Estratégia:
- * - Se houver cabeçalho com colunas reconhecíveis (DATA + PROCESSO), usa colunas.
- * - Senão, trata cada linha como texto livre: junta as células e extrai por regex.
- *   Linhas sem número de processo ou sem data são reportadas como `skipped`.
+ * Parser da GRADE de calendário da planilha:
+ * - "AUDIÊNCIAS <MÊS>/<AA>" define o ano corrente.
+ * - Linha "DATA:" tem os dias da semana em colunas; a linha SEGUINTE tem dd/mm
+ *   nas mesmas colunas → mapa coluna→data, válido até o próximo bloco.
+ * - Abaixo, cada célula numa coluna datada é uma audiência daquele dia
+ *   (células podem ter 2+ processos → viram registros separados).
+ * - Células sem processo e sem "CASO n" viram `skipped` (a menos que sejam
+ *   texto de controle: SEMANA/RECESSO/SUSPENSÃO/etc).
  */
-function parseSheet(rows: string[][], today: Date): { parsed: ParsedHearing[]; skipped: { row_index: number; reason: string; raw: string }[] } {
+function parseSheet(rows: string[][], defaultYear: number): { parsed: ParsedHearing[]; skipped: { row_index: number; reason: string; raw: string }[] } {
   const parsed: ParsedHearing[] = [];
   const skipped: { row_index: number; reason: string; raw: string }[] = [];
+  let yearCtx = defaultYear;
+  let colDates = new Map<number, string>();
+  let dateRowIdx = -1;
 
-  const header = (rows[0] || []).map((h) => h.toUpperCase());
-  const dateCol = header.findIndex((h) => h.includes('DATA') || h === 'DIA');
-  const procCol = header.findIndex((h) => h.includes('PROCESSO'));
-  const columnar = dateCol !== -1 && procCol !== -1;
-  const start = columnar ? 1 : 0;
-  let lastDate: string | null = null;
-
-  for (let i = start; i < rows.length; i++) {
+  for (let i = 0; i < rows.length; i++) {
+    if (i === dateRowIdx) continue; // linha dd/mm já consumida pelo bloco DATA:
     const cells = rows[i];
     if (!cells || cells.every((c) => !c)) continue;
-    const raw = cells.filter(Boolean).join(' - ');
 
-    const procMatch = raw.match(PROCESS_RE);
-    const dateSource = columnar ? cells[dateCol] || '' : raw;
-    const date = parseDate(dateSource, today);
-    if (date) lastDate = date;
-
-    if (!procMatch) {
-      // Linha só de data (agrupadora) não é erro — vira contexto das próximas
-      if (!date) skipped.push({ row_index: i + 1, reason: 'sem número de processo', raw: raw.slice(0, 120) });
-      continue;
-    }
-    const effectiveDate = date || lastDate;
-    if (!effectiveDate) {
-      skipped.push({ row_index: i + 1, reason: 'sem data', raw: raw.slice(0, 120) });
+    const joined = cells.filter(Boolean).join(' ');
+    const mh = joined.toUpperCase().match(MONTH_HEADER_RE);
+    if (mh && MONTHS[mh[1]]) {
+      if (mh[2]) yearCtx = mh[2].length === 2 ? 2000 + parseInt(mh[2], 10) : parseInt(mh[2], 10);
       continue;
     }
 
-    const processNumber = procMatch[0];
-    const caseMatch = raw.match(CASE_RE);
-    parsed.push({
-      process_number: processNumber,
-      hearing_date: effectiveDate,
-      hearing_time: parseTime(raw.replace(PROCESS_RE, '')),
-      case_ref: caseMatch ? `${caseMatch[1].toUpperCase()} ${caseMatch[2]}` : null,
-      hearing_type: inferType(raw),
-      category: inferCategory(processNumber),
-      location: inferLocation(raw),
-      status: inferStatus(raw),
-      raw: raw.slice(0, 300),
-      row_index: i + 1,
-    });
+    if (cells.some((c) => /^DATA:?\s*$/i.test(c))) {
+      colDates = new Map();
+      dateRowIdx = i + 1;
+      const dateRow = rows[i + 1] || [];
+      const maxCols = Math.max(cells.length, dateRow.length);
+      for (let c = 0; c < maxCols; c++) {
+        // dd/mm normalmente na linha de baixo; às vezes embutido na própria célula do dia
+        const d = parseDate(dateRow[c] || '', yearCtx) || parseDate(cells[c] || '', yearCtx);
+        if (d) colDates.set(c, d);
+        else if ((dateRow[c] || '').trim() && !CONTROL_RE.test(dateRow[c]) && /\d/.test(dateRow[c])) {
+          skipped.push({ row_index: i + 2, reason: `data ilegível na coluna ${c}`, raw: dateRow[c].slice(0, 60) });
+        }
+      }
+      continue;
+    }
+
+    for (let c = 0; c < cells.length; c++) {
+      const cell = cells[c];
+      if (!cell) continue;
+      const date = colDates.get(c);
+      if (!date) {
+        // Coluna sem data (legenda, rótulos) — só reporta se parecer audiência perdida
+        if (PROCESS_RE.test(cell)) {
+          skipped.push({ row_index: i + 1, reason: `processo em coluna ${c} sem data mapeada`, raw: cell.replace(/\s+/g, ' ').slice(0, 120) });
+        }
+        continue;
+      }
+      if (CONTROL_RE.test(cell.trim())) continue;
+
+      // Célula com 2+ processos = audiências distintas: segmenta a partir de cada processo
+      const matches = [...cell.matchAll(PROCESS_RE_G)];
+      const segments: string[] = [];
+      if (matches.length > 1) {
+        for (let m = 0; m < matches.length; m++) {
+          const start = m === 0 ? 0 : matches[m].index!;
+          const end = m + 1 < matches.length ? matches[m + 1].index! : cell.length;
+          segments.push(cell.slice(start, end));
+        }
+      } else {
+        segments.push(cell);
+      }
+
+      for (const seg of segments) {
+        const h = parseCellSegment(seg, date, i + 1);
+        if (h) parsed.push(h);
+        else skipped.push({ row_index: i + 1, reason: 'sem processo nem CASO', raw: seg.replace(/\s+/g, ' ').slice(0, 120) });
+      }
+    }
   }
   return { parsed, skipped };
 }
@@ -204,7 +251,12 @@ interface DbHearing {
   location: string | null;
 }
 
-const keyOf = (p: string, d: string) => `${p.replace(/\D/g, '')}|${d}`;
+// Chave de match: nº do processo (só dígitos) ou, sem processo, o "CASO n" — sempre + data
+const keyOf = (proc: string | null, caseRef: string | null, d: string): string | null => {
+  if (proc) return `${proc.replace(/\D/g, '')}|${d}`;
+  if (caseRef) return `c:${caseRef.toUpperCase().replace(/\s+/g, '')}|${d}`;
+  return null;
+};
 
 export const handler: RequestHandler = async (req, res) => {
   try {
@@ -223,7 +275,9 @@ export const handler: RequestHandler = async (req, res) => {
       const to = Math.min(rows.length, Number(req.body.raw_to) || from + 40);
       return res.json({ ok: true, tab: title, sheet_rows: rows.length, raw: rows.slice(from, to).map((r, i) => ({ n: from + i + 1, cells: r })) });
     }
-    const { parsed, skipped } = parseSheet(rows, today);
+    // Ano padrão vem do título da aba ("AUD 2026"); cabeçalhos de mês refinam
+    const yearFromTab = parseInt((title.match(/\b(20\d{2})\b/) || [])[1] || '', 10) || today.getFullYear();
+    const { parsed, skipped } = parseSheet(rows, yearFromTab);
 
     const { data: dbRows, error: dbErr } = await ext
       .from('hearings')
@@ -233,7 +287,8 @@ export const handler: RequestHandler = async (req, res) => {
 
     const dbByKey = new Map<string, DbHearing>();
     for (const h of (dbRows || []) as DbHearing[]) {
-      if (h.process_number) dbByKey.set(keyOf(h.process_number, h.hearing_date), h);
+      const k = keyOf(h.process_number, h.case_ref, h.hearing_date);
+      if (k) dbByKey.set(k, h);
     }
 
     const toInsert: ParsedHearing[] = [];
@@ -241,8 +296,8 @@ export const handler: RequestHandler = async (req, res) => {
     const sheetKeys = new Set<string>();
 
     for (const p of parsed) {
-      const key = keyOf(p.process_number, p.hearing_date);
-      if (sheetKeys.has(key)) continue; // duplicata na própria planilha
+      const key = keyOf(p.process_number, p.case_ref, p.hearing_date);
+      if (!key || sheetKeys.has(key)) continue; // duplicata na própria planilha
       sheetKeys.add(key);
       const existing = dbByKey.get(key);
       if (!existing) {
@@ -262,8 +317,10 @@ export const handler: RequestHandler = async (req, res) => {
     // Audiências futuras no banco que não estão (mais) na planilha — só reporta
     const todayISO = today.toISOString().slice(0, 10);
     const dbOnly = ((dbRows || []) as DbHearing[])
-      .filter((h) => h.process_number && h.hearing_date >= todayISO && h.status === 'ativa'
-        && !sheetKeys.has(keyOf(h.process_number, h.hearing_date)))
+      .filter((h) => {
+        const k = keyOf(h.process_number, h.case_ref, h.hearing_date);
+        return k && h.hearing_date >= todayISO && h.status === 'ativa' && !sheetKeys.has(k);
+      })
       .map((h) => ({ process_number: h.process_number, hearing_date: h.hearing_date, case_ref: h.case_ref }));
 
     const summary = {
