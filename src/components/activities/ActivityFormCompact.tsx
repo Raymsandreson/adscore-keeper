@@ -477,39 +477,98 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
           Avaliação
         </Button>
       )}
-      {instances.length > 0 && (
-        <Select value={selectedInstanceId} onValueChange={setSelectedInstanceId}>
-          <SelectTrigger className="h-8 text-xs w-[120px]">
-            <SelectValue placeholder="Instância" />
-          </SelectTrigger>
-          <SelectContent>
-            {instances.map((i) => (
-              <SelectItem key={i.id} value={i.id} className="text-xs">{i.instance_name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      )}
-      {recordingUrl && (
-        <label
-          className="flex items-center gap-1 h-8 px-2 rounded-md border text-xs cursor-pointer select-none"
-          title="Enviar também a gravação da ligação junto com a mensagem"
-        >
-          <input
-            type="checkbox"
-            checked={includeRecording}
-            onChange={(e) => setIncludeRecording(e.target.checked)}
-            className="h-3.5 w-3.5 accent-primary"
-          />
-          <Mic className="h-3.5 w-3.5 text-red-500" /> Gravação
-        </label>
-      )}
-      <Button type="button" variant="default" size="sm" className="gap-1 h-8 text-xs" onClick={handleSendToGroup} disabled={sending}>
+      <Button type="button" variant="default" size="sm" className="gap-1 h-8 text-xs" onClick={openPreview} disabled={sending}>
         {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
         {buttonLabel}
       </Button>
       <ActivityTTSButton messageText={buildMsg()} leadId={formLeadIdForTTS} contactId={formContactIdForTTS} />
       <ActivityFieldSettingsDialog fields={fieldSettings} onUpdateField={updateFieldSetting} onReorder={reorderFields} />
       <ActivityMessageTemplateSettings />
+
+      <Dialog open={previewOpen} onOpenChange={(v) => !sending && setPreviewOpen(v)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Revisar e enviar mensagem</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label className="text-xs text-muted-foreground mb-1 block">Mensagem (editável)</Label>
+              <Textarea
+                value={previewText}
+                onChange={(e) => setPreviewText(e.target.value)}
+                rows={10}
+                className="text-sm font-mono"
+              />
+            </div>
+
+            <div>
+              <Label className="text-xs text-muted-foreground mb-1.5 block">Destino</Label>
+              <div className="space-y-2">
+                <label className={cn("flex items-start gap-2 text-sm", !hasGroup && "opacity-50")}>
+                  <Checkbox
+                    checked={destGroup}
+                    onCheckedChange={(v) => setDestGroup(!!v)}
+                    disabled={!hasGroup}
+                    className="mt-0.5"
+                  />
+                  <div>
+                    <div>Grupo do lead</div>
+                    {!hasGroup && <div className="text-[11px] text-muted-foreground">Lead não tem grupo WhatsApp vinculado</div>}
+                  </div>
+                </label>
+                <label className={cn("flex items-start gap-2 text-sm", !formAssignedTo && "opacity-50")}>
+                  <Checkbox
+                    checked={destAssessor}
+                    onCheckedChange={(v) => setDestAssessor(!!v)}
+                    disabled={!formAssignedTo}
+                    className="mt-0.5"
+                  />
+                  <div>
+                    <div>Assessor (WhatsApp privado + Chat da Equipe)</div>
+                    {!formAssignedTo && <div className="text-[11px] text-muted-foreground">Nenhum assessor responsável selecionado</div>}
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            {instances.length > 0 && (
+              <div>
+                <Label className="text-xs text-muted-foreground mb-1 block">Instância do WhatsApp</Label>
+                <Select value={selectedInstanceId} onValueChange={setSelectedInstanceId}>
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue placeholder="Instância" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {instances.map((i) => (
+                      <SelectItem key={i.id} value={i.id} className="text-xs">{i.instance_name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {recordingUrl && (
+              <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+                <Checkbox
+                  checked={includeRecording}
+                  onCheckedChange={(v) => setIncludeRecording(!!v)}
+                />
+                <Mic className="h-3.5 w-3.5 text-red-500" />
+                Incluir gravação da ligação
+              </label>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setPreviewOpen(false)} disabled={sending}>
+              Cancelar
+            </Button>
+            <Button size="sm" onClick={confirmSend} disabled={sending || (!destGroup && !destAssessor)}>
+              {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Send className="h-3.5 w-3.5 mr-1" />}
+              Enviar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
