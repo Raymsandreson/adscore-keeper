@@ -17,7 +17,8 @@ import { Request, Response } from 'express';
 import { supabase } from '../lib/supabase';
 import { anthropicChat } from '../lib/anthropic';
 
-const DIRECTOR_USER_ID = process.env.REPORT_DIRECTOR_USER_ID || '79c5c9d1-8629-4831-83cf-c86a7178521c';
+// Fallback se org_directors estiver vazia
+const FALLBACK_DIRECTOR_ID = process.env.REPORT_DIRECTOR_USER_ID || '79c5c9d1-8629-4831-83cf-c86a7178521c';
 const REPORT_SENDER_NAME = '🤖 Relatório Diário';
 const REPORT_MODEL = process.env.REPORT_MODEL || 'claude-sonnet-4-6';
 const MAX_MSGS_PER_TEAM = 120;
@@ -80,10 +81,10 @@ async function alreadyPostedToday(convId: string): Promise<boolean> {
   return (count || 0) > 0;
 }
 
-async function postReport(convId: string, content: string) {
+async function postReport(convId: string, senderId: string, content: string) {
   const { error } = await supabase.from('team_messages').insert({
     conversation_id: convId,
-    sender_id: DIRECTOR_USER_ID,
+    sender_id: senderId,
     sender_name: REPORT_SENDER_NAME,
     content,
     message_type: 'text',
@@ -134,6 +135,12 @@ export const handler = async (req: Request, res: Response) => {
     if (!managers?.length) {
       return res.json({ success: true, message: 'Nenhum time com gestor definido em team_managers.' });
     }
+
+    // Diretoria — gere os gestores; entra em todos os grupos de relatório
+    const { data: directorRows } = await supabase.from('org_directors').select('user_id, name');
+    const directorIds = (directorRows || []).map((d) => d.user_id);
+    if (!directorIds.length) directorIds.push(FALLBACK_DIRECTOR_ID);
+    const reportSenderId = directorIds[0];
 
     const { data: teams } = await supabase.from('teams').select('id, name, description');
     const { data: allTeamMembers } = await supabase.from('team_members').select('team_id, user_id');
@@ -204,13 +211,13 @@ export const handler = async (req: Request, res: Response) => {
 
         const convId = await ensureGroupConversation(
           `📊 ${teamLabel}`,
-          [mgr.manager_user_id, DIRECTOR_USER_ID],
+          [mgr.manager_user_id, ...directorIds],
         );
 
         if (!force && (await alreadyPostedToday(convId))) {
           results[teamLabel] = 'já postado hoje (use force pra repostar)';
         } else {
-          await postReport(convId, report);
+          await postReport(convId, reportSenderId, report);
           results[teamLabel] = 'ok';
         }
 
@@ -241,9 +248,9 @@ export const handler = async (req: Request, res: Response) => {
       });
       const directorReport = completion?.choices?.[0]?.message?.content?.trim();
       if (directorReport) {
-        const convId = await ensureGroupConversation('📊 Diretoria — Gestores', [DIRECTOR_USER_ID]);
+        const convId = await ensureGroupConversation('📊 Diretoria — Gestores', directorIds);
         if (force || !(await alreadyPostedToday(convId))) {
-          await postReport(convId, directorReport);
+          await postReport(convId, reportSenderId, directorReport);
           results['__diretoria__'] = 'ok';
         } else {
           results['__diretoria__'] = 'já postado hoje';

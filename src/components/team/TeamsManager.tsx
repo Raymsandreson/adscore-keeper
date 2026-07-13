@@ -38,11 +38,12 @@ import {
 } from '@/components/ui/popover';
 import { Plus, Users, Trash2, UserPlus, UserMinus, Loader2, Pencil, LayoutGrid, Settings2, ChevronDown, ChevronUp } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
-import { useTeamMembers } from '@/hooks/useTeamMembers';
+import { useProfilesList } from '@/hooks/useProfilesList';
 import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { toast } from 'sonner';
 import { TeamActivityTypesPicker } from './TeamActivityTypesPicker';
 import { TeamManagerPicker } from './TeamManagerPicker';
+import { DirectorPicker } from './DirectorPicker';
 
 const ALL_METRICS = [
   { key: 'replies', label: 'Respostas' },
@@ -249,7 +250,9 @@ function CollapsibleAddMembers({ available, teamId, onAdd }: {
 }
 
 export function TeamsManager() {
-  const { members } = useTeamMembers();
+  // Fonte de pessoas: profiles (todos com login), não user_roles — usuários sem
+  // papel atribuído (ex.: João Pedro) também precisam aparecer nos times.
+  const profilesList = useProfilesList();
   const { boards } = useKanbanBoards();
   const [teams, setTeams] = useState<Team[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMemberEntry[]>([]);
@@ -381,15 +384,29 @@ export function TeamsManager() {
     }
   };
 
+  // team_members.user_id guarda ora o auth user_id, ora o id do profile
+  // (dados legados) — casar pelos dois pra ninguém sumir da lista.
+  const people = profilesList.map(p => ({ user_id: p.user_id, full_name: p.full_name, email: p.email }));
+
   const getTeamMembers = (teamId: string) => {
-    const memberIds = teamMembers.filter(tm => tm.team_id === teamId).map(tm => tm.user_id);
-    return members.filter(m => memberIds.includes(m.user_id));
+    const storedIds = teamMembers.filter(tm => tm.team_id === teamId).map(tm => tm.user_id);
+    return storedIds.map(storedId => {
+      const p = profilesList.find(pp => pp.user_id === storedId || pp.id === storedId);
+      // user_id = id como está gravado em team_members (chave para remover/métricas)
+      return { user_id: storedId, full_name: p?.full_name || null, email: p?.email || null };
+    });
   };
 
   const getAvailableMembers = (teamId: string) => {
-    const memberIds = teamMembers.filter(tm => tm.team_id === teamId).map(tm => tm.user_id);
-    return members.filter(m => !memberIds.includes(m.user_id));
+    const stored = new Set(teamMembers.filter(tm => tm.team_id === teamId).map(tm => tm.user_id));
+    return profilesList
+      .filter(p => !stored.has(p.user_id) && !stored.has(p.id))
+      .map(p => ({ user_id: p.user_id, full_name: p.full_name, email: p.email }));
   };
+
+  const unassignedPeople = profilesList.filter(
+    p => !teamMembers.some(tm => tm.user_id === p.user_id || tm.user_id === p.id)
+  );
 
   const getMemberMetrics = (teamId: string, userId: string): string[] => {
     const entry = teamMembers.find(tm => tm.team_id === teamId && tm.user_id === userId);
@@ -471,6 +488,32 @@ export function TeamsManager() {
           </DialogContent>
         </Dialog>
       </div>
+
+      {/* Diretoria — gere os gestores */}
+      <DirectorPicker people={people} />
+
+      {/* Pessoas sem time */}
+      {unassignedPeople.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <UserMinus className="h-4 w-4 text-muted-foreground" />
+              Sem time
+              <Badge variant="secondary">{unassignedPeople.length}</Badge>
+            </CardTitle>
+            <CardDescription>Pessoas com login que não estão em nenhum time — adicione pelo card do time.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-1.5">
+              {unassignedPeople.map(p => (
+                <Badge key={p.user_id} variant="outline" className="text-xs font-normal">
+                  {p.full_name || p.email || 'Sem nome'}
+                </Badge>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {teams.length === 0 ? (
         <Card>
@@ -559,7 +602,7 @@ export function TeamsManager() {
                   )}
 
                   {/* Gestor do time — recebe o relatório diário */}
-                  <TeamManagerPicker teamId={team.id} teamName={team.name} members={members} />
+                  <TeamManagerPicker teamId={team.id} teamName={team.name} members={people} />
 
                   {/* Activity types exclusive to this team */}
                   <TeamActivityTypesPicker teamId={team.id} />
