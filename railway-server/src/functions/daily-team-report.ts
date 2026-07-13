@@ -129,12 +129,19 @@ export const handler = async (req: Request, res: Response) => {
   const results: Record<string, string> = {};
 
   try {
-    const { data: managers, error: mgrError } = await supabase
+    const { data: managerRows, error: mgrError } = await supabase
       .from('team_managers').select('*');
     if (mgrError) throw mgrError;
-    if (!managers?.length) {
+    // Linhas podem existir só pelo setor — relatório exige gestor definido
+    const managers = (managerRows || []).filter((m) => m.manager_user_id);
+    if (!managers.length) {
       return res.json({ success: true, message: 'Nenhum time com gestor definido em team_managers.' });
     }
+
+    // Setores — gerente do setor entra no grupo de relatório dos times dele
+    const { data: sectorRows } = await supabase
+      .from('org_sectors').select('name, manager_user_id, manager_name');
+    const sectorByName = new Map((sectorRows || []).map((s) => [s.name, s]));
 
     // Diretoria — gere os gestores; entra em todos os grupos de relatório
     const { data: directorRows } = await supabase.from('org_directors').select('user_id, name');
@@ -209,9 +216,10 @@ export const handler = async (req: Request, res: Response) => {
         const report = completion?.choices?.[0]?.message?.content?.trim();
         if (!report) throw new Error('LLM não retornou conteúdo');
 
+        const sector = mgr.sector_name ? sectorByName.get(mgr.sector_name) : null;
         const convId = await ensureGroupConversation(
           `📊 ${teamLabel}`,
-          [mgr.manager_user_id, ...directorIds],
+          [mgr.manager_user_id, ...(sector?.manager_user_id ? [sector.manager_user_id] : []), ...directorIds],
         );
 
         if (!force && (await alreadyPostedToday(convId))) {
@@ -222,7 +230,7 @@ export const handler = async (req: Request, res: Response) => {
         }
 
         directorSummaries.push(
-          `TIME ${teamLabel} (gestor: ${mgr.manager_name}): ${stats.atrasadas} atividades atrasadas, ` +
+          `SETOR ${mgr.sector_name || 'Sem setor'} | TIME ${teamLabel} (gestor: ${mgr.manager_name}): ${stats.atrasadas} atividades atrasadas, ` +
           `${stats.concluidas24h} concluídas 24h, ${teamMsgs.length} mensagens no chat. ` +
           `Mensagens do gestor: ${teamMsgs.filter((m) => m.includes(mgr.manager_name || '###')).length}.\n${report.slice(0, 800)}`
         );
@@ -241,7 +249,7 @@ export const handler = async (req: Request, res: Response) => {
         messages: [
           {
             role: 'system',
-            content: `Você assessora o diretor de um escritório jurídico brasileiro que gere os gestores de time. Com base nos relatórios de cada time abaixo, escreva o RELATÓRIO DE DIRETORIA do dia, em português do Brasil, texto puro, máximo ~500 palavras:\n📊 DIRETORIA — GESTORES ({data de hoje})\n\n• RANKING DOS GESTORES do dia (melhor → pior, com 1 linha de justificativa cada)\n• ALERTAS (times sem gestão ativa, atrasos crescendo, riscos)\n• ONDE O DIRETOR DEVE AGIR AMANHÃ (máx. 3 itens, específicos)\nSem floreio, sem repetir os relatórios inteiros.`,
+            content: `Você assessora o diretor de um escritório jurídico brasileiro que gere os gestores de time. Com base nos relatórios de cada time abaixo (cada um indica o SETOR a que o time pertence), escreva o RELATÓRIO DE DIRETORIA do dia, em português do Brasil, texto puro, máximo ~500 palavras:\n📊 DIRETORIA — GESTORES ({data de hoje})\n\n• VISÃO POR SETOR (1-2 linhas por setor: situação geral)\n• RANKING DOS GESTORES do dia (melhor → pior, com 1 linha de justificativa cada)\n• ALERTAS (times sem gestão ativa, atrasos crescendo, riscos)\n• ONDE O DIRETOR DEVE AGIR AMANHÃ (máx. 3 itens, específicos)\nSem floreio, sem repetir os relatórios inteiros.`,
           },
           { role: 'user', content: directorSummaries.join('\n\n---\n\n') || 'Nenhum dado de time disponível.' },
         ],

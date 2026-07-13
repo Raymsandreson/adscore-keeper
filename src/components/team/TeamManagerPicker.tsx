@@ -52,9 +52,14 @@ export function TeamManagerPicker({ teamId, teamName, members }: TeamManagerPick
       await ensureExternalSession();
 
       if (value === 'none') {
-        const { error } = await (externalSupabase.from('team_managers') as any)
-          .delete()
-          .eq('team_name', teamName);
+        // Zera o gestor mas preserva a linha (mantém o setor do time)
+        const { error } = await (externalSupabase.from('team_managers') as any).upsert({
+          team_name: teamName,
+          team_id: teamId,
+          manager_user_id: null,
+          manager_name: null,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'team_name' });
         if (error) throw error;
         toast.success('Gestor removido — time sai do relatório diário');
         return;
