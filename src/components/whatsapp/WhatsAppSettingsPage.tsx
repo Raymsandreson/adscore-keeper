@@ -40,6 +40,15 @@ interface Tab {
 
 const tabs: Tab[] = [
   {
+    id: 'organization',
+    label: 'Escritório',
+    icon: <Building2 className="h-5 w-5" />,
+    description: 'Dados, logo e identidade do escritório',
+    badge: '🆕 Novo',
+    badgeVariant: 'default',
+    accentColor: 'text-primary',
+  },
+  {
     id: 'instances',
     label: 'Instâncias',
     icon: <Smartphone className="h-5 w-5" />,
