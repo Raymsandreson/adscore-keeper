@@ -57,7 +57,9 @@ async function fetchRows(tabTitle: string): Promise<string[][]> {
 const PROCESS_RE = /\d{7}-?\d{2}\.?\d{4}\.?\d\.?\d{2}\.?\d{4}/;
 const PROCESS_RE_G = /\d{7}-?\d{2}\.?\d{4}\.?\d\.?\d{2}\.?\d{4}/g;
 const CASE_RE = /\b(CASO|PREV|CÍVEL|CIVEL|CRIM)\s*\.?\s*(\d+(?:\.\d+)?)/i;
-const TIME_RE = /\b(\d{1,2})[:hH](\d{2})?\b/;
+// (?!\d) em vez de \b no fim: "09:40h" tem \w dos dois lados do "h", o \b falharia
+// e o backtrack capturaria só "09:" → 09:00. Só não pode seguir dígito.
+const TIME_RE = /\b(\d{1,2})[:hH](\d{2})?(?!\d)/;
 const DATE_RE = /\b(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\b/;
 const CONTROL_RE = /^(SEMANA\s*\d|RECESSO|SUSPENS|FERIADO|LEGENDA|DATA:?$|SEGUNDA|TERÇA|TERCA|QUARTA|QUINTA|SEXTA|SÁBADO|SABADO|DOMINGO)/i;
 const MONTH_HEADER_RE = /AUDI[EÊ]NCIAS\s+([A-ZÇ]+)\s*\/?\s*(\d{2,4})?/i;
