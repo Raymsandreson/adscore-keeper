@@ -14,22 +14,31 @@ const MODEL_MAP: Record<string, string> = {
 
 function cleanParametersForGoogle(params: any): any {
   if (!params || typeof params !== "object") return params;
-  const cleaned = { ...params };
-  if (cleaned.properties) {
+  const cleaned: any = { ...params };
+
+  // Google não aceita type ["string","null"] — pega o primeiro tipo não-nulo.
+  if (Array.isArray(cleaned.type)) {
+    cleaned.type = cleaned.type.find((t: string) => t !== "null") || "string";
+  }
+  delete cleaned.nullable;
+  delete cleaned.additionalProperties;
+
+  // Gemini recusa enum com valor vazio "" → 400 "enum[...]: cannot be empty".
+  // Remove vazios; se o enum ficar sem valores, descarta o enum (mantém só o type).
+  if (Array.isArray(cleaned.enum)) {
+    const vals = cleaned.enum.filter((v: any) => (typeof v === "string" ? v.trim() !== "" : v != null));
+    if (vals.length > 0) cleaned.enum = vals;
+    else delete cleaned.enum;
+  }
+
+  if (cleaned.properties && typeof cleaned.properties === "object") {
     const newProps: any = {};
     for (const [key, val] of Object.entries(cleaned.properties)) {
-      const prop = { ...(val as any) };
-      if (Array.isArray(prop.type)) {
-        prop.type = prop.type.find((t: string) => t !== "null") || "string";
-      }
-      delete prop.nullable;
-      if (prop.properties) Object.assign(prop, cleanParametersForGoogle(prop));
-      if (prop.items) prop.items = cleanParametersForGoogle(prop.items);
-      newProps[key] = prop;
+      newProps[key] = cleanParametersForGoogle(val);
     }
     cleaned.properties = newProps;
   }
-  delete cleaned.additionalProperties;
+  if (cleaned.items) cleaned.items = cleanParametersForGoogle(cleaned.items);
   return cleaned;
 }
 
@@ -168,7 +177,10 @@ export async function geminiChat(options: GeminiCallOptions): Promise<any> {
   if (!response.ok) {
     const errText = await response.text();
     console.error("Gemini API error:", response.status, errText);
-    throw new Error(`Gemini API error: ${response.status}`);
+    // Propaga o motivo real do Google (ex.: "enum[0]: cannot be empty") em vez de
+    // só o status — sem isso o chamador/usuário fica com um "400" opaco.
+    const detail = errText.replace(/\s+/g, " ").trim().slice(0, 300);
+    throw new Error(`Gemini API error: ${response.status}${detail ? ` — ${detail}` : ""}`);
   }
   const data = await response.json();
   return parseGeminiResponse(data);
