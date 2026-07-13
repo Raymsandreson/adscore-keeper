@@ -16,6 +16,8 @@ interface TeamNotificationToastProps {
   title: string;
   context?: string;
   preview: string;
+  count?: number;
+  urgent?: boolean;
   onOpen: () => void | Promise<void>;
   onMuteForMinutes: (minutes: number | null) => void;
   onReply?: (reply: string) => Promise<void>;
@@ -35,6 +37,8 @@ export function TeamNotificationToast({
   title,
   context,
   preview,
+  count,
+  urgent,
   onOpen,
   onMuteForMinutes,
   onReply,
@@ -120,7 +124,9 @@ export function TeamNotificationToast({
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
-      className="relative w-[min(24rem,calc(100vw-2rem))] rounded-xl border border-border bg-background p-3 shadow-xl"
+      className={`relative w-[min(24rem,calc(100vw-2rem))] rounded-xl border bg-background p-3 shadow-xl ${
+        urgent ? 'border-destructive ring-2 ring-destructive/40' : 'border-border'
+      }`}
     >
       <button
         type="button"
@@ -137,7 +143,19 @@ export function TeamNotificationToast({
       >
         <div className="mt-0.5 shrink-0 text-primary">{icon}</div>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-foreground">{title}</p>
+          <div className="flex items-center gap-1.5">
+            <p className="truncate text-sm font-semibold text-foreground">{title}</p>
+            {(count ?? 0) > 1 && (
+              <span className="shrink-0 min-w-5 h-5 px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center">
+                {count}
+              </span>
+            )}
+            {urgent && (
+              <span className="shrink-0 h-5 px-1.5 rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold flex items-center justify-center animate-pulse">
+                🚨 URGENTE
+              </span>
+            )}
+          </div>
           {context && (
             <p className="truncate text-xs text-muted-foreground">{context}</p>
           )}

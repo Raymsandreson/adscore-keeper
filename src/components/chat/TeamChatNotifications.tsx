@@ -6,6 +6,10 @@ import { toast } from 'sonner';
 import { AtSign, MessageCircle } from 'lucide-react';
 import { TeamNotificationToast } from './TeamNotificationToast';
 import { openTeamChatConversation } from '@/lib/teamChatPanelEvents';
+import {
+  getActiveTeamChatConversation,
+  subscribeActiveTeamChatConversation,
+} from '@/lib/teamChatActiveConversation';
 
 const MUTE_KEY = 'team-chat-notifications-muted';
 const MUTE_UNTIL_KEY = 'team-chat-notifications-muted-until';
@@ -54,20 +58,70 @@ function buildPreview(message: { content?: string | null; message_type?: string 
   }
 }
 
+const NORMAL_TOAST_DURATION_MS = 15000;
+
+// Um popup por conversa (estilo WhatsApp): mensagens novas da mesma pessoa/grupo
+// atualizam o popup existente e incrementam o contador, em vez de empilhar.
+const conversationToastState = new Map<string, { count: number; urgent: boolean }>();
+
+function conversationToastId(conversationId: string) {
+  return `team-chat-conv-${conversationId}`;
+}
+
+function clearConversationToastState(conversationId: string) {
+  conversationToastState.delete(conversationId);
+}
+
+function dismissConversationToast(conversationId: string) {
+  clearConversationToastState(conversationId);
+  toast.dismiss(conversationToastId(conversationId));
+}
+
+function playUrgentSound() {
+  try {
+    const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    [0, 0.25, 0.5].forEach((offset) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.frequency.value = 880;
+      gain.gain.setValueAtTime(0.001, ctx.currentTime + offset);
+      gain.gain.exponentialRampToValueAtTime(0.2, ctx.currentTime + offset + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + offset + 0.18);
+      osc.start(ctx.currentTime + offset);
+      osc.stop(ctx.currentTime + offset + 0.2);
+    });
+    setTimeout(() => void ctx.close(), 1200);
+  } catch {
+    // Navegador pode bloquear áudio antes de interação do usuário
+  }
+}
+
 function showNotificationToast({
+  id,
   icon,
   title,
   context,
   preview,
+  count,
+  urgent,
   onOpen,
   onReply,
+  onClosed,
 }: {
+  id?: string;
   icon: ReactNode;
   title: string;
   context?: string;
   preview: string;
+  count?: number;
+  urgent?: boolean;
   onOpen: () => void | Promise<void>;
   onReply?: (reply: string) => Promise<void>;
+  onClosed?: () => void;
 }) {
   toast.custom((toastId) => (
     <TeamNotificationToast
@@ -76,14 +130,69 @@ function showNotificationToast({
       title={title}
       context={context}
       preview={preview}
+      count={count}
+      urgent={urgent}
       onOpen={onOpen}
       onReply={onReply}
       onMuteForMinutes={muteForMinutes}
     />
   ), {
-    duration: Infinity,
+    ...(id ? { id } : {}),
+    duration: urgent ? Infinity : NORMAL_TOAST_DURATION_MS,
     position: 'top-center',
+    onDismiss: onClosed,
+    onAutoClose: onClosed,
   });
+}
+
+function showConversationToast({
+  conversationId,
+  icon,
+  title,
+  context,
+  preview,
+  urgent,
+  increment,
+  onOpen,
+  onReply,
+}: {
+  conversationId: string;
+  icon: ReactNode;
+  title: string;
+  context?: string;
+  preview: string;
+  urgent?: boolean;
+  increment: boolean;
+  onOpen: () => void | Promise<void>;
+  onReply?: (reply: string) => Promise<void>;
+}) {
+  const state = conversationToastState.get(conversationId) || { count: 0, urgent: false };
+  if (increment || state.count === 0) state.count += 1;
+  state.urgent = state.urgent || !!urgent;
+  conversationToastState.set(conversationId, state);
+
+  showNotificationToast({
+    id: conversationToastId(conversationId),
+    icon,
+    title,
+    context,
+    preview,
+    count: state.count,
+    urgent: state.urgent,
+    onOpen: () => {
+      clearConversationToastState(conversationId);
+      return onOpen();
+    },
+    onReply: onReply
+      ? async (reply) => {
+          await onReply(reply);
+          clearConversationToastState(conversationId);
+        }
+      : undefined,
+    onClosed: () => clearConversationToastState(conversationId),
+  });
+
+  if (urgent) playUrgentSound();
 }
 
 export function TeamChatNotifications() {
@@ -292,20 +401,29 @@ export function TeamChatNotifications() {
         if (mention.conversation_id) {
           const { data: tmsg } = await externalSupabase
             .from('team_messages')
-            .select('content, sender_name, message_type, file_name')
+            .select('content, sender_name, sender_id, message_type, file_name, is_urgent')
             .eq('id', mention.message_id)
             .maybeSingle();
 
           if (!tmsg) return;
+          if ((tmsg as any).sender_id === user.id) return; // nunca notificar mensagem própria
+          if (
+            getActiveTeamChatConversation() === mention.conversation_id &&
+            document.visibilityState === 'visible'
+          ) return; // conversa já aberta na tela
+
           const senderName = tmsg.sender_name || 'Alguém';
           const context = await resolveConversationLabel(mention.conversation_id);
           const preview = buildPreview(tmsg as any).substring(0, 120);
 
-          showNotificationToast({
+          showConversationToast({
+            conversationId: mention.conversation_id,
             icon: <AtSign className="h-4 w-4 text-primary shrink-0" />,
             title: `${senderName} te mencionou`,
             context,
             preview,
+            urgent: Boolean((tmsg as any).is_urgent),
+            increment: false, // o canal de team_messages já conta essa mensagem
             onOpen: () => {
               openTeamChatConversation({
                 conversationId: mention.conversation_id,
@@ -320,17 +438,19 @@ export function TeamChatNotifications() {
         // Branch 2: legacy entity-bound mention (lead/activity/etc)
         const { data: msg } = await externalSupabase
           .from('team_chat_messages')
-          .select('content, sender_name, entity_name, entity_type')
+          .select('content, sender_name, sender_id, entity_name, entity_type')
           .eq('id', mention.message_id)
           .single();
 
         if (!msg) return;
+        if ((msg as any).sender_id === user.id) return; // nunca notificar mensagem própria
 
         const senderName = msg.sender_name || 'Alguém';
         const context = msg.entity_name || msg.entity_type || '';
         const preview = buildPreview(msg).substring(0, 120);
 
         showNotificationToast({
+          id: `team-entity-${mention.entity_type}-${mention.entity_id}`,
           icon: <AtSign className="h-4 w-4 text-primary shrink-0" />,
           title: `${senderName} te mencionou`,
           context: context ? `em ${context}` : undefined,
@@ -367,18 +487,25 @@ export function TeamChatNotifications() {
         if (isMuted()) return;
 
         const msg = payload.new as any;
-        if (msg.sender_id === user.id) return;
+        if (msg.sender_id === user.id) return; // mensagem própria nunca gera popup
+        if (
+          getActiveTeamChatConversation() === msg.conversation_id &&
+          document.visibilityState === 'visible'
+        ) return; // conversa já aberta na tela
         if (!(await isUserConversationMember(msg.conversation_id))) return;
 
         const senderName = msg.sender_name || 'Alguém';
         const context = await resolveConversationLabel(msg.conversation_id);
         const preview = buildPreview(msg).substring(0, 120);
 
-        showNotificationToast({
+        showConversationToast({
+          conversationId: msg.conversation_id,
           icon: <MessageCircle className="h-4 w-4 text-primary shrink-0" />,
           title: senderName,
           context,
           preview,
+          urgent: Boolean(msg.is_urgent),
+          increment: true,
           onOpen: () => {
             openTeamChatConversation({
               conversationId: msg.conversation_id,
@@ -407,10 +534,16 @@ export function TeamChatNotifications() {
         console.log('[TeamChatNotifications] Team memberships channel status:', status);
       });
 
+    // Ao abrir uma conversa no painel, dispensa o popup dela
+    const unsubscribeActiveConversation = subscribeActiveTeamChatConversation((conversationId) => {
+      if (conversationId) dismissConversationToast(conversationId);
+    });
+
     return () => {
       externalSupabase.removeChannel(mentionsChannel);
       externalSupabase.removeChannel(teamMessagesChannel);
       externalSupabase.removeChannel(teamMembershipsChannel);
+      unsubscribeActiveConversation();
     };
   }, [user]);
 

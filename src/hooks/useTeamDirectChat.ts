@@ -31,6 +31,7 @@ export interface TeamMessage {
   file_type?: string | null;
   audio_duration?: number | null;
   reply_to_id?: string | null;
+  is_urgent?: boolean | null;
 }
 
 const GENERAL_CHAT_NAME = '💬 Chat Geral da Equipe';
@@ -272,6 +273,7 @@ export function useTeamDirectChat() {
       audio_duration?: number;
       mentionedUserIds?: string[];
       reply_to_id?: string | null;
+      is_urgent?: boolean;
     }
   ) => {
     if (!activeConversationId || !user?.id) return;
@@ -300,6 +302,8 @@ export function useTeamDirectChat() {
         file_type: options?.file_type || null,
         audio_duration: options?.audio_duration || null,
         reply_to_id: options?.reply_to_id || null,
+        // Só envia a coluna quando true, pra não quebrar caso a migration ainda não tenha sido aplicada
+        ...(options?.is_urgent ? { is_urgent: true } : {}),
       }).select().single();
 
       if (error) {

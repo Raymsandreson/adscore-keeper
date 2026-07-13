@@ -11,8 +11,9 @@ import { Badge } from '@/components/ui/badge';
 import {
   Send, Users, MessageCircle, ArrowLeft, Loader2, Plus, Hash,
   Mic, Square, Paperclip, Image, FileText, Briefcase, ClipboardList,
-  Play, Pause, Check, CheckCheck, Reply, X,
+  Play, Pause, Check, CheckCheck, Reply, X, AlertTriangle,
 } from 'lucide-react';
+import { setActiveTeamChatConversation } from '@/lib/teamChatActiveConversation';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -45,6 +46,7 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentionIndex, setMentionIndex] = useState(0);
   const [replyingTo, setReplyingTo] = useState<TeamMessage | null>(null);
+  const [urgent, setUrgent] = useState(false);
   const [highlightMsgId, setHighlightMsgId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -105,6 +107,13 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
     }
   }, [messages]);
 
+  // Informa o sistema de notificações qual conversa está visível,
+  // pra não mostrar popup do que o usuário já está lendo
+  useEffect(() => {
+    setActiveTeamChatConversation(activeConversationId);
+    return () => setActiveTeamChatConversation(null);
+  }, [activeConversationId]);
+
   useEffect(() => {
     if (!intent?.nonce) return;
 
@@ -130,10 +139,12 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
     await sendMessage(messageText, {
       mentionedUserIds: mentionedIds,
       reply_to_id: replyingTo?.id || null,
+      is_urgent: urgent,
     });
     setMessageText('');
     mentionedUsersRef.current.clear();
     setReplyingTo(null);
+    setUrgent(false);
   };
 
   const scrollToMessage = (msgId: string) => {
@@ -474,12 +485,18 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
                     isMe
                       ? 'bg-primary text-primary-foreground rounded-br-sm'
                       : 'bg-muted rounded-bl-sm',
+                    msg.is_urgent && 'ring-1 ring-destructive',
                     isHighlighted && 'ring-2 ring-yellow-400'
                   )}>
                     {!isMe && (
                       <div className="text-[10px] font-semibold opacity-70 mb-0.5">
                         {msg.sender_name}
                       </div>
+                    )}
+                    {msg.is_urgent && (
+                      <span className="inline-flex items-center gap-1 mb-0.5 px-1.5 py-0.5 rounded-full bg-destructive text-destructive-foreground text-[9px] font-bold">
+                        <AlertTriangle className="h-2.5 w-2.5" /> URGENTE
+                      </span>
                     )}
                     {repliedMsg && (
                       <button
@@ -607,6 +624,16 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
                 className="hidden"
                 onChange={handleFileUpload}
               />
+
+              <Button
+                variant={urgent ? 'destructive' : 'ghost'}
+                size="icon"
+                className="h-8 w-8 shrink-0"
+                onClick={() => setUrgent(v => !v)}
+                title={urgent ? 'Mensagem marcada como URGENTE' : 'Marcar como urgente'}
+              >
+                <AlertTriangle className={cn('h-4 w-4', urgent && 'animate-pulse')} />
+              </Button>
 
               <div className="relative flex-1 min-w-0">
                 {mentionQuery !== null && mentionCandidates.length > 0 && (
