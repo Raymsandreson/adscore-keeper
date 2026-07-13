@@ -30,6 +30,7 @@ export interface TeamMessage {
   file_size?: number | null;
   file_type?: string | null;
   audio_duration?: number | null;
+  reply_to_id?: string | null;
 }
 
 const GENERAL_CHAT_NAME = '💬 Chat Geral da Equipe';
