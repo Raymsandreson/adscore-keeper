@@ -231,6 +231,7 @@ const App = () => (
                 <Sonner />
                 <OfflineBanner />
                 <TeamChatNotifications />
+                <OrgMetaSync />
                 <BrowserRouter>
                   <AppRoutes />
                 </BrowserRouter>
