@@ -27,10 +27,8 @@ export function OrgMetaSync() {
     setMeta('meta[property="og:image"]', 'content');
     setMeta('meta[name="twitter:image"]', 'content');
 
-    if (organization?.name) {
-      document.title = organization.name;
-    }
-  }, [organization?.logo_url, organization?.name]);
+  }, [organization?.logo_url]);
 
   return null;
 }
+
