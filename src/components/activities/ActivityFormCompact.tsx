@@ -266,155 +266,142 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
     return () => { cancelled = true; };
   }, [user?.id, isAdmin]);
 
-  const handleSendToGroup = async () => {
-    if (!leadId) {
-      // No lead: try WhatsApp first; fallback to internal Team Chat
-      if (!formAssignedTo) {
-        toast.error('Vincule um lead ou selecione um assessor para enviar');
-        return;
-      }
-      setSending(true);
-      try {
-        const { data: profile } = await supabase
+  // Envia o texto (já editado) ao grupo do lead.
+  const sendToGroupNow = async (text: string): Promise<void> => {
+    if (!leadId) return;
+    await ensureExternalSession();
+    const [leadRes, profileRes] = await Promise.all([
+      externalSupabase
+        .from('leads')
+        .select('whatsapp_group_id, board_id')
+        .eq('id', leadId)
+        .maybeSingle(),
+      supabase.auth.getUser().then(async ({ data: { user } }) => {
+        if (!user) return null;
+        const { data } = await supabase
           .from('profiles')
-          .select('phone, default_instance_id, full_name')
-          .eq('user_id', formAssignedTo)
+          .select('default_instance_id')
+          .eq('user_id', user.id)
           .maybeSingle();
+        return (data as any)?.default_instance_id || null;
+      }),
+    ]);
+    const lead = leadRes.data as any;
+    const groupId = lead?.whatsapp_group_id;
+    if (!groupId) { toast.error('Este lead não tem grupo WhatsApp vinculado'); return; }
 
-        // Sem lead: a mensagem vai pro assessor — saudação e formato endereçados a ele.
-        const message = buildMsg('assessor');
-        const hasWhatsApp = !!profile?.phone && !!profile?.default_instance_id;
+    let instanceId: string | undefined = selectedInstanceId || profileRes || undefined;
+    if (!instanceId && lead?.board_id) {
+      const { data: boardInstances } = await externalSupabase
+        .from('board_group_instances')
+        .select('instance_id')
+        .eq('board_id', lead.board_id)
+        .limit(1);
+      instanceId = (boardInstances as any)?.[0]?.instance_id;
+    }
 
-        if (hasWhatsApp) {
-          // Send via WhatsApp (assessor has phone + instance configured)
-          const { data, error } = await cloudFunctions.invoke('send-whatsapp', {
-            body: {
-              phone: (profile!.phone as string).replace(/\D/g, ''),
-              message,
-              instance_id: selectedInstanceId || profile!.default_instance_id,
-            },
-          });
+    const sendBody: Record<string, any> = {
+      phone: groupId, chat_id: groupId, message: text, lead_id: leadId,
+    };
+    if (instanceId) sendBody.instance_id = instanceId;
 
-          if (error || !data?.success) {
-            if (!error && isInstanceDisconnectedError(data)) {
-              showInstanceDisconnectedToast(data.instance_id || profile!.default_instance_id, data.instance_name);
-            } else {
-              toast.error(data?.error || 'Erro ao enviar mensagem');
-            }
-          } else {
-            toast.success(`Mensagem enviada para ${profile?.full_name || 'o assessor'} no WhatsApp!`);
-            if (includeRecording && recordingUrl) {
-              await sendRecording((profile!.phone as string).replace(/\D/g, ''), undefined, selectedInstanceId || (profile!.default_instance_id as string));
-            }
-          }
-        } else {
-          // Fallback: send via internal Team Chat
-          await ensureExternalSession();
-          const { data: { user } } = await supabase.auth.getUser();
-          const { data: convId, error: convError } = await (externalSupabase.rpc as any)('start_team_direct_conversation', {
-            _other_user_id: formAssignedTo,
-            _self_user_id: user?.id,
-          });
-
-          if (convError || !convId) {
-            toast.error('Erro ao abrir conversa no Chat da Equipe');
-            setSending(false);
-            return;
-          }
-
-          const { data: senderProfile } = user ? await supabase
-            .from('profiles')
-            .select('full_name')
-            .eq('user_id', user.id)
-            .maybeSingle() : { data: null };
-
-          const { error: msgError } = await externalSupabase.from('team_messages').insert({
-            conversation_id: convId,
-            sender_id: user?.id,
-            sender_name: senderProfile?.full_name || null,
-            content: message,
-            message_type: 'text',
-          });
-
-          if (msgError) {
-            toast.error('Erro ao enviar no Chat da Equipe');
-          } else {
-            toast.success(`Enviado para ${profile?.full_name || 'o assessor'} no Chat da Equipe!`);
-          }
-        }
-      } catch (e: any) {
-        toast.error(e.message || 'Erro ao enviar');
-      } finally {
-        setSending(false);
+    const { data, error } = await cloudFunctions.invoke('send-whatsapp', { body: sendBody });
+    if (error || !data?.success) {
+      if (!error && isInstanceDisconnectedError(data)) {
+        showInstanceDisconnectedToast(data.instance_id || instanceId, data.instance_name);
+      } else {
+        toast.error(data?.error || 'Erro ao enviar ao grupo');
       }
       return;
     }
+    toast.success('Mensagem enviada ao grupo!');
+    if (includeRecording && recordingUrl) {
+      await sendRecording(groupId, groupId, instanceId);
+    }
+  };
 
-    setSending(true);
-    try {
-      await ensureExternalSession();
-      const [leadRes, profileRes] = await Promise.all([
-        externalSupabase
-          .from('leads')
-          .select('whatsapp_group_id, group_link, lead_name, board_id')
-          .eq('id', leadId)
-          .maybeSingle(),
-        supabase.auth.getUser().then(async ({ data: { user } }) => {
-          if (!user) return null;
-          const { data } = await supabase
-            .from('profiles')
-            .select('default_instance_id')
-            .eq('user_id', user.id)
-            .maybeSingle();
-          return (data as any)?.default_instance_id || null;
-        }),
-      ]);
+  // Envia o texto (já editado) ao assessor: WhatsApp privado (se tiver) + Chat da Equipe.
+  const sendToAssessorNow = async (text: string): Promise<void> => {
+    if (!formAssignedTo) { toast.error('Sem assessor responsável'); return; }
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('phone, default_instance_id, full_name')
+      .eq('user_id', formAssignedTo)
+      .maybeSingle();
 
-      const lead = leadRes.data as any;
-      const groupId = lead?.whatsapp_group_id;
-      if (!groupId) {
-        toast.error('Este lead não tem grupo WhatsApp vinculado');
-        setSending(false);
-        return;
-      }
-
-      let instanceId: string | undefined = selectedInstanceId || profileRes || undefined;
-      if (!instanceId && lead?.board_id) {
-        const { data: boardInstances } = await externalSupabase
-          .from('board_group_instances')
-          .select('instance_id')
-          .eq('board_id', lead.board_id)
-          .limit(1);
-        instanceId = (boardInstances as any)?.[0]?.instance_id;
-      }
-
-      const message = buildMsg();
-      const sendBody: Record<string, any> = { 
-        phone: groupId, 
-        chat_id: groupId, 
-        message, 
-        lead_id: leadId,
-      };
-      if (instanceId) sendBody.instance_id = instanceId;
-
+    const hasWhatsApp = !!profile?.phone && !!profile?.default_instance_id;
+    if (hasWhatsApp) {
+      const phone = (profile!.phone as string).replace(/\D/g, '');
+      const instId = selectedInstanceId || (profile!.default_instance_id as string);
       const { data, error } = await cloudFunctions.invoke('send-whatsapp', {
-        body: sendBody,
+        body: { phone, message: text, instance_id: instId },
       });
-
       if (error || !data?.success) {
         if (!error && isInstanceDisconnectedError(data)) {
-          showInstanceDisconnectedToast(data.instance_id || instanceId, data.instance_name);
+          showInstanceDisconnectedToast(data.instance_id || instId, data.instance_name);
         } else {
-          toast.error(data?.error || 'Erro ao enviar mensagem');
+          toast.error(data?.error || 'Erro ao enviar ao assessor no WhatsApp');
         }
       } else {
-        toast.success('Mensagem enviada ao grupo!');
+        toast.success(`WhatsApp enviado para ${profile?.full_name || 'o assessor'}!`);
         if (includeRecording && recordingUrl) {
-          await sendRecording(groupId, groupId, instanceId);
+          await sendRecording(phone, undefined, instId);
         }
       }
+    }
+
+    // Chat da Equipe (sempre, para deixar registro interno)
+    try {
+      await ensureExternalSession();
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      const { data: convId, error: convError } = await (externalSupabase.rpc as any)('start_team_direct_conversation', {
+        _other_user_id: formAssignedTo,
+        _self_user_id: authUser?.id,
+      });
+      if (convError || !convId) { toast.error('Erro ao abrir conversa no Chat da Equipe'); return; }
+
+      const { data: senderProfile } = authUser
+        ? await supabase.from('profiles').select('full_name').eq('user_id', authUser.id).maybeSingle()
+        : { data: null };
+
+      const { error: msgError } = await externalSupabase.from('team_messages').insert({
+        conversation_id: convId,
+        sender_id: authUser?.id,
+        sender_name: (senderProfile as any)?.full_name || null,
+        content: text,
+        message_type: 'text',
+      });
+      if (msgError) toast.error('Erro ao enviar no Chat da Equipe');
+      else toast.success(`Enviado no Chat da Equipe para ${profile?.full_name || 'o assessor'}!`);
     } catch (e: any) {
-      toast.error(e.message || 'Erro ao enviar');
+      toast.error(e.message || 'Erro no Chat da Equipe');
+    }
+  };
+
+  // Abre o preview com a mensagem montada e destinos padrão.
+  const openPreview = () => {
+    let msg = '';
+    try {
+      msg = buildMsg(hasGroup ? 'client' : 'assessor');
+    } catch (e) {
+      console.error('[Preview] buildMsg falhou:', e);
+      toast.error('Erro ao montar a mensagem.');
+      return;
+    }
+    setPreviewText(msg);
+    setDestGroup(hasGroup);
+    setDestAssessor(!hasGroup && !!formAssignedTo);
+    setPreviewOpen(true);
+  };
+
+  const confirmSend = async () => {
+    if (!destGroup && !destAssessor) { toast.error('Escolha ao menos um destino'); return; }
+    if (!previewText.trim()) { toast.error('Mensagem vazia'); return; }
+    setSending(true);
+    try {
+      if (destGroup) await sendToGroupNow(previewText);
+      if (destAssessor) await sendToAssessorNow(previewText);
+      setPreviewOpen(false);
     } finally {
       setSending(false);
     }
