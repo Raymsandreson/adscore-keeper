@@ -118,8 +118,8 @@ export function useAutoImportGroupDocs(
         // 2) Busca o que JÁ está importado (por sufixo do id) — o que já tem
         //    registro NUNCA é reenviado, então apagar/organizar no Drive é
         //    definitivo (não volta na próxima sincronização).
-        const { data: importedRows } = await supabase
-          .from('process_documents')
+        const { data: importedRows } = await (supabase
+          .from('process_documents') as any)
           .select('ext_id:metadata->>external_message_id')
           .eq('lead_id', leadId)
           .eq('source', 'whatsapp_group')
