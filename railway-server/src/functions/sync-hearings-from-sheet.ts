@@ -216,6 +216,13 @@ export const handler: RequestHandler = async (req, res) => {
     const today = new Date();
     const { title, tabs } = await resolveTabTitle();
     const rows = await fetchRows(title);
+
+    // Modo inspeção: devolve a grade crua (célula a célula) pra calibrar o parser
+    if (req.body?.raw_rows) {
+      const from = Math.max(0, Number(req.body.raw_from) || 0);
+      const to = Math.min(rows.length, Number(req.body.raw_to) || from + 40);
+      return res.json({ ok: true, tab: title, sheet_rows: rows.length, raw: rows.slice(from, to).map((r, i) => ({ n: from + i + 1, cells: r })) });
+    }
     const { parsed, skipped } = parseSheet(rows, today);
 
     const { data: dbRows, error: dbErr } = await ext
