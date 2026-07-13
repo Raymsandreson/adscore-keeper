@@ -127,9 +127,22 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
   const handleSend = async () => {
     if (!messageText.trim()) return;
     const mentionedIds = resolveMentionedUserIds(messageText);
-    await sendMessage(messageText, { mentionedUserIds: mentionedIds });
+    await sendMessage(messageText, {
+      mentionedUserIds: mentionedIds,
+      reply_to_id: replyingTo?.id || null,
+    });
     setMessageText('');
     mentionedUsersRef.current.clear();
+    setReplyingTo(null);
+  };
+
+  const scrollToMessage = (msgId: string) => {
+    const el = document.querySelector(`[data-msg-id="${msgId}"]`) as HTMLElement | null;
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setHighlightMsgId(msgId);
+      setTimeout(() => setHighlightMsgId(null), 1600);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
