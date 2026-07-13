@@ -79,10 +79,13 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
 
   // Handle URL param to auto-open a lead
   const [initialLeadTab, setInitialLeadTab] = useState<string | undefined>();
+  // Lead vindo de link/sino abre em painel lateral (sheet), não no dialog central
+  const [leadAsSheet, setLeadAsSheet] = useState(false);
   useEffect(() => {
     const openLeadId = searchParams.get('openLead');
     if (openLeadId) {
       setEditingLeadId(openLeadId);
+      setLeadAsSheet(true);
       const tabParam = searchParams.get('tab');
       if (tabParam) setInitialLeadTab(tabParam);
       // Clean up URL params
@@ -1021,6 +1024,7 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
             if (!open) {
               setEditingLeadId(null);
               setInitialLeadTab(undefined);
+              setLeadAsSheet(false);
             }
           }}
           lead={editingLead}
@@ -1035,6 +1039,7 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
           adAccountId={adAccountId}
           boards={boards}
           initialTab={initialLeadTab}
+          mode={leadAsSheet ? 'sheet' : 'dialog'}
         />
       )}
 

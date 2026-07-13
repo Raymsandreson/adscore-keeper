@@ -16,8 +16,9 @@ import { toast } from 'sonner';
 import {
   FileText, MapPin, Building2, Scale, Users, Calendar, ExternalLink,
   Hash, Info, BookOpen, Landmark, Save, Loader2, Pencil, RefreshCw, ClipboardList, CheckCircle2, Clock,
-  Download, Upload, File, Trash2, FolderOpen, Milestone
+  Download, Upload, File, Trash2, FolderOpen, Milestone, Newspaper
 } from 'lucide-react';
+import { ProcessMovimentacoesTab } from './ProcessMovimentacoesTab';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { LeadFunnelProgressBar } from '@/components/activities/LeadFunnelProgressBar';
 import { ResponsibleUserSelect } from './ResponsibleUserSelect';
@@ -114,7 +115,7 @@ const TABS = [
   { id: 'local', label: 'Local', icon: MapPin },
   { id: 'datas', label: 'Datas', icon: Calendar },
   { id: 'marcos', label: 'Marcos', icon: Milestone },
-
+  { id: 'movimentacoes', label: 'Movimentações', icon: Newspaper },
   { id: 'atividades', label: 'Histórico', icon: ClipboardList },
   { id: 'config', label: 'Config', icon: Info },
   { id: 'notas', label: 'Notas', icon: FileText },
@@ -886,6 +887,10 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
 
             {activeTab === 'marcos' && process?.id && (
               <ProcessMovementsTimeline processId={process.id} refreshKey={marcosRefreshKey} />
+            )}
+
+            {activeTab === 'movimentacoes' && process?.id && (
+              <ProcessMovimentacoesTab processId={process.id} movimentacoes={form.movimentacoes} />
             )}
 
             {activeTab === 'atividades' && (
