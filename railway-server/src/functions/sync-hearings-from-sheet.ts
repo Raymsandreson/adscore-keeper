@@ -16,7 +16,11 @@ const GATEWAY = 'https://connector-gateway.lovable.dev/google_sheets/v4';
 function gatewayHeaders(): Record<string, string> {
   const lovableKey = process.env.LOVABLE_API_KEY || '';
   const gsKey = process.env.GOOGLE_SHEETS_API_KEY || '';
-  if (!lovableKey || !gsKey) throw new Error('Missing connector keys (LOVABLE_API_KEY / GOOGLE_SHEETS_API_KEY)');
+  if (!lovableKey || !gsKey) {
+    throw new Error(
+      `Missing connector keys — LOVABLE_API_KEY: ${lovableKey ? 'ok' : 'AUSENTE'}, GOOGLE_SHEETS_API_KEY: ${gsKey ? 'ok' : 'AUSENTE'}`,
+    );
+  }
   return { Authorization: `Bearer ${lovableKey}`, 'X-Connection-Api-Key': gsKey };
 }
 
