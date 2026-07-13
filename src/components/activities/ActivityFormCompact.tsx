@@ -168,6 +168,28 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
   const [recordingUrl, setRecordingUrl] = useState<string | null>(null);
   const [recordingMime, setRecordingMime] = useState<string>('audio/webm');
   const [includeRecording, setIncludeRecording] = useState(false);
+  // Preview editável + escolha de destino
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewText, setPreviewText] = useState('');
+  const [hasGroup, setHasGroup] = useState(false);
+  const [destGroup, setDestGroup] = useState(false);
+  const [destAssessor, setDestAssessor] = useState(false);
+
+  // Descobre se o lead tem grupo (usado para o preview e destinos padrão).
+  useEffect(() => {
+    let cancelled = false;
+    if (!leadId) { setHasGroup(false); return; }
+    (async () => {
+      await ensureExternalSession();
+      const { data } = await externalSupabase
+        .from('leads')
+        .select('whatsapp_group_id')
+        .eq('id', leadId)
+        .maybeSingle();
+      if (!cancelled) setHasGroup(!!(data as any)?.whatsapp_group_id);
+    })();
+    return () => { cancelled = true; };
+  }, [leadId]);
 
   useEffect(() => {
     let cancelled = false;
