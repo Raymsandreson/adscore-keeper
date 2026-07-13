@@ -1,9 +1,16 @@
 import { useState, useMemo, useEffect } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ExternalLink, Loader2, Milestone, Filter, TrainFront } from 'lucide-react';
+import { ExternalLink, Loader2, Milestone, Filter, TrainFront, GitMerge } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useProcessMovements, type MarcoTipo } from '@/hooks/useProcessMovements';
+
+/** Número CNJ compacto pro chip de origem: "3013153-02…8.06" */
+function shortCnj(numero: string | null): string {
+  if (!numero) return '';
+  const m = numero.match(/^(\d{7}-\d{2})\.\d{4}\.(\d\.\d{2})/);
+  return m ? `${m[1]}…${m[2]}` : numero.slice(0, 14);
+}
 
 const MARCO_LABEL: Record<MarcoTipo, string> = {
   peticao_inicial: 'Petição Inicial',
@@ -74,6 +81,9 @@ interface Estacao {
   status: 'concluida' | 'atual' | 'pulada' | 'futura';
   data: Date | null;
   valor: string | null;
+  /** CNJ do processo de origem do marco (chip "via …" quando não é o processo aberto). */
+  origemCnj: string | null;
+  origemProcessId: string | null;
 }
 
 /**
@@ -81,16 +91,27 @@ interface Estacao {
  * o trecho percorrido preenchido (com o tempo entre estações), o futuro
  * tracejado e as estações puladas (acordo/recursos que não houve) atenuadas.
  */
-function MarcosTrainLine({ movements }: { movements: ReturnType<typeof useProcessMovements>['movements'] }) {
+function MarcosTrainLine({
+  movements,
+  currentProcessId,
+}: {
+  movements: ReturnType<typeof useProcessMovements>['movements'];
+  currentProcessId?: string;
+}) {
   const estacoes = useMemo<Estacao[]>(() => {
-    // Primeira data e valor de cada marco alcançado.
-    const porTipo = new Map<MarcoTipo, { data: Date | null; valor: string | null }>();
+    // Primeira data e valor de cada marco alcançado (+ processo de origem).
+    const porTipo = new Map<MarcoTipo, { data: Date | null; valor: string | null; origemCnj: string | null; origemProcessId: string | null }>();
     for (const m of movements) {
       const tipo = m.tipo_movimentacao as MarcoTipo;
       const data = parseDate(m.data_movimentacao);
       const atual = porTipo.get(tipo);
       if (!atual || (data && atual.data && data < atual.data)) {
-        porTipo.set(tipo, { data, valor: formatValor(m.valor_indenizacao_fixado) || atual?.valor || null });
+        porTipo.set(tipo, {
+          data,
+          valor: formatValor(m.valor_indenizacao_fixado) || atual?.valor || null,
+          origemCnj: m.numero_cnj,
+          origemProcessId: m.process_id,
+        });
       } else if (atual && !atual.valor) {
         atual.valor = formatValor(m.valor_indenizacao_fixado);
       }
@@ -103,7 +124,14 @@ function MarcosTrainLine({ movements }: { movements: ReturnType<typeof useProces
       const status: Estacao['status'] = alcancada
         ? (i === idxAtual ? 'atual' : 'concluida')
         : (i < idxAtual ? 'pulada' : 'futura');
-      return { tipo, status, data: alcancada?.data ?? null, valor: alcancada?.valor ?? null };
+      return {
+        tipo,
+        status,
+        data: alcancada?.data ?? null,
+        valor: alcancada?.valor ?? null,
+        origemCnj: alcancada?.origemCnj ?? null,
+        origemProcessId: alcancada?.origemProcessId ?? null,
+      };
     });
   }, [movements]);
 
@@ -169,6 +197,9 @@ function MarcosTrainLine({ movements }: { movements: ReturnType<typeof useProces
                   {e.status === 'atual' && diasNaAtual && (
                     <span className="block text-[9px] font-normal text-muted-foreground">há {diasNaAtual} nesta fase</span>
                   )}
+                  {e.origemProcessId && currentProcessId && e.origemProcessId !== currentProcessId && (
+                    <span className="block text-[8px] font-mono text-muted-foreground/80">via {shortCnj(e.origemCnj)}</span>
+                  )}
                   {e.valor && <span className="block text-[10px] font-medium text-green-700 dark:text-green-400">{e.valor}</span>}
                 </span>
                 <span className="text-[10px] text-muted-foreground whitespace-nowrap">
@@ -202,8 +233,18 @@ function MarcosTrainLine({ movements }: { movements: ReturnType<typeof useProces
  * Por padrão mostra só o status atual (marco mais recente); o toggle
  * expande pro histórico completo, do mais recente ao mais antigo.
  */
-export function ProcessMovementsTimeline({ processId, refreshKey }: { processId: string; refreshKey?: number }) {
-  const { movements, loading, refetch } = useProcessMovements(processId);
+export function ProcessMovementsTimeline({
+  processId,
+  refreshKey,
+  caseId,
+}: {
+  processId: string;
+  refreshKey?: number;
+  /** Habilita a "Linha do caso": marcos de todos os processos conexos do mesmo caso. */
+  caseId?: string | null;
+}) {
+  const [escopo, setEscopo] = useState<'processo' | 'caso'>('processo');
+  const { movements, loading, refetch } = useProcessMovements(processId, { escopo, caseId });
   const [onlyCurrent, setOnlyCurrent] = useState(true);
 
   // Re-busca quando o pai sinaliza um novo sync (ex.: "buscar no Escavador").
@@ -241,7 +282,21 @@ export function ProcessMovementsTimeline({ processId, refreshKey }: { processId:
 
   return (
     <div className="space-y-2">
-      <MarcosTrainLine movements={movements} />
+      {caseId && (
+        <div className="flex items-center justify-end">
+          <Button
+            size="sm"
+            variant={escopo === 'caso' ? 'default' : 'outline'}
+            className="h-6 text-[10px] gap-1"
+            onClick={() => setEscopo((v) => (v === 'caso' ? 'processo' : 'caso'))}
+            title="Junta os marcos de todos os processos conexos do mesmo caso (principal, agravos, recursos, execução)"
+          >
+            <GitMerge className="h-3 w-3" />
+            {escopo === 'caso' ? 'Linha do caso (conexos)' : 'Ver linha do caso'}
+          </Button>
+        </div>
+      )}
+      <MarcosTrainLine movements={movements} currentProcessId={processId} />
 
       <div className="flex items-center justify-between pt-1">
         <h4 className="text-xs font-semibold flex items-center gap-1.5">
@@ -275,6 +330,9 @@ export function ProcessMovementsTimeline({ processId, refreshKey }: { processId:
                   {MARCO_LABEL[tipo] ?? tipo}
                 </Badge>
                 {idx === 0 && <span className="text-[9px] text-primary font-medium">atual</span>}
+                {escopo === 'caso' && m.process_id !== processId && (
+                  <span className="text-[8px] font-mono text-muted-foreground/80">via {shortCnj(m.numero_cnj)}</span>
+                )}
               </div>
               <span className="text-[10px] text-muted-foreground whitespace-nowrap">
                 {formatDate(m.data_movimentacao)}

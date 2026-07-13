@@ -886,7 +886,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
 
 
             {activeTab === 'marcos' && process?.id && (
-              <ProcessMovementsTimeline processId={process.id} refreshKey={marcosRefreshKey} />
+              <ProcessMovementsTimeline processId={process.id} refreshKey={marcosRefreshKey} caseId={process.case_id || form.case_id || null} />
             )}
 
             {activeTab === 'movimentacoes' && process?.id && (

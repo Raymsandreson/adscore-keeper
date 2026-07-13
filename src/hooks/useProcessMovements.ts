@@ -34,10 +34,19 @@ export interface ProcessMovement {
 /**
  * Busca os marcos de um processo, ordenados do mais recente pro mais antigo.
  * O item [0] é o status atual. Histórico completo = lista inteira.
+ *
+ * escopo 'caso' (com caseId): traz os marcos de TODOS os processos do caso —
+ * usado pra linha unificada quando há processos conexos (principal + agravo,
+ * recurso destrancado, execução etc.).
  */
-export function useProcessMovements(processId?: string) {
+export function useProcessMovements(
+  processId?: string,
+  opts?: { escopo?: 'processo' | 'caso'; caseId?: string | null },
+) {
   const [movements, setMovements] = useState<ProcessMovement[]>([]);
   const [loading, setLoading] = useState(false);
+  const escopo = opts?.escopo === 'caso' && opts?.caseId ? 'caso' : 'processo';
+  const caseId = opts?.caseId || null;
 
   const fetchMovements = useCallback(async () => {
     if (!processId) {
@@ -50,10 +59,10 @@ export function useProcessMovements(processId?: string) {
       // (mesmo padrão do escavadorMovementUtils até regenerar os tipos).
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const client = db as any;
-      const { data, error } = await client
-        .from('process_movements')
-        .select('*')
-        .eq('process_id', processId)
+      let query = client.from('process_movements').select('*');
+      if (escopo === 'caso' && caseId) query = query.eq('case_id', caseId);
+      else query = query.eq('process_id', processId);
+      const { data, error } = await query
         .order('data_movimentacao', { ascending: false })
         .order('created_at', { ascending: false });
       if (error) throw error;
@@ -64,7 +73,7 @@ export function useProcessMovements(processId?: string) {
     } finally {
       setLoading(false);
     }
-  }, [processId]);
+  }, [processId, escopo, caseId]);
 
   useEffect(() => {
     fetchMovements();
