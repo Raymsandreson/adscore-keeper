@@ -509,6 +509,26 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
   const [linkLeadOpen, setLinkLeadOpen] = useState(false);
   const [linkContactOpen, setLinkContactOpen] = useState(false);
   const [linkCaseOpen, setLinkCaseOpen] = useState(false);
+  // availableCases traz só os 500 casos mais recentes (há 1500+) — casos antigos
+  // (ex.: CASO 225) não apareciam na busca. Ao digitar, busca também no servidor.
+  const [remoteCases, setRemoteCases] = useState<{ id: string; case_number: string; title: string; lead_id: string | null }[]>([]);
+  useEffect(() => {
+    const q = props.caseSearch.trim().replace(/[%,()]/g, ' ').trim();
+    if (!linkCaseOpen || props.formLeadId || q.length < 2) {
+      setRemoteCases([]);
+      return;
+    }
+    const t = setTimeout(async () => {
+      const { data } = await externalSupabase
+        .from('legal_cases')
+        .select('id, case_number, title, lead_id')
+        .or(`case_number.ilike.%${q}%,title.ilike.%${q}%`)
+        .order('created_at', { ascending: false })
+        .limit(50);
+      setRemoteCases((data as any) || []);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [props.caseSearch, linkCaseOpen, props.formLeadId]);
 
   // Permite que o cabeçalho fixo (fora deste componente) dispare a abertura dos sheets de vínculo
   useEffect(() => {
@@ -1315,8 +1335,12 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
                   let src: { id: string; case_number: string; title: string; lead_id?: string | null }[];
                   if (props.formLeadId) {
                     src = props.leadCases.filter(matches);
+                  } else if (q) {
+                    const local = props.availableCases.filter(matches);
+                    const seen = new Set(local.map(c => c.id));
+                    src = [...local, ...remoteCases.filter(c => !seen.has(c.id))];
                   } else {
-                    src = q ? props.availableCases.filter(matches) : props.availableCases.slice(0, 30);
+                    src = props.availableCases.slice(0, 30);
                   }
                   return src.map(c => (
                     <button
@@ -1332,7 +1356,9 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
                         props.setFormProcessId('');
                         props.setFormProcessTitle('');
                         if (!props.formLeadId) {
-                          const fullCase = props.availableCases.find(ac => ac.id === c.id);
+                          const fullCase = props.availableCases.find(ac => ac.id === c.id)
+                            ?? remoteCases.find(rc => rc.id === c.id)
+                            ?? c;
                           if (fullCase?.lead_id) {
                             const lead = props.leads.find(l => l.id === fullCase.lead_id);
                             if (lead) props.handleSelectLead(lead.id);
