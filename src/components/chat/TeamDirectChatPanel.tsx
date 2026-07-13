@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import {
   Send, Users, MessageCircle, ArrowLeft, Loader2, Plus, Hash,
   Mic, Square, Paperclip, Image, FileText, Briefcase, ClipboardList,
-  Play, Pause, Check, CheckCheck,
+  Play, Pause, Check, CheckCheck, Reply, X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
@@ -44,6 +44,8 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
   const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentionIndex, setMentionIndex] = useState(0);
+  const [replyingTo, setReplyingTo] = useState<TeamMessage | null>(null);
+  const [highlightMsgId, setHighlightMsgId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messageInputRef = useRef<HTMLInputElement>(null);
@@ -125,9 +127,22 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
   const handleSend = async () => {
     if (!messageText.trim()) return;
     const mentionedIds = resolveMentionedUserIds(messageText);
-    await sendMessage(messageText, { mentionedUserIds: mentionedIds });
+    await sendMessage(messageText, {
+      mentionedUserIds: mentionedIds,
+      reply_to_id: replyingTo?.id || null,
+    });
     setMessageText('');
     mentionedUsersRef.current.clear();
+    setReplyingTo(null);
+  };
+
+  const scrollToMessage = (msgId: string) => {
+    const el = document.querySelector(`[data-msg-id="${msgId}"]`) as HTMLElement | null;
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setHighlightMsgId(msgId);
+      setTimeout(() => setHighlightMsgId(null), 1600);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -436,18 +451,54 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
           ) : (
             messages.map((msg) => {
               const isMe = msg.sender_id === user?.id;
+              const repliedMsg = msg.reply_to_id ? messages.find(m => m.id === msg.reply_to_id) : null;
+              const isHighlighted = highlightMsgId === msg.id;
               return (
-                <div key={msg.id} className={cn('flex', isMe ? 'justify-end' : 'justify-start')}>
+                <div
+                  key={msg.id}
+                  data-msg-id={msg.id}
+                  className={cn('group flex items-end gap-1', isMe ? 'justify-end' : 'justify-start')}
+                >
+                  {isMe && (
+                    <button
+                      type="button"
+                      onClick={() => setReplyingTo(msg)}
+                      className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-accent text-muted-foreground"
+                      title="Responder"
+                    >
+                      <Reply className="h-3.5 w-3.5" />
+                    </button>
+                  )}
                   <div className={cn(
-                    'max-w-[85%] rounded-xl px-3 py-1.5',
+                    'max-w-[85%] rounded-xl px-3 py-1.5 transition-shadow',
                     isMe
                       ? 'bg-primary text-primary-foreground rounded-br-sm'
-                      : 'bg-muted rounded-bl-sm'
+                      : 'bg-muted rounded-bl-sm',
+                    isHighlighted && 'ring-2 ring-yellow-400'
                   )}>
                     {!isMe && (
                       <div className="text-[10px] font-semibold opacity-70 mb-0.5">
                         {msg.sender_name}
                       </div>
+                    )}
+                    {repliedMsg && (
+                      <button
+                        type="button"
+                        onClick={() => scrollToMessage(repliedMsg.id)}
+                        className={cn(
+                          'w-full text-left mb-1 pl-2 pr-2 py-1 border-l-2 rounded text-[11px] hover:opacity-80 transition-opacity',
+                          isMe
+                            ? 'border-primary-foreground/60 bg-primary-foreground/10'
+                            : 'border-primary bg-background/60'
+                        )}
+                      >
+                        <div className="font-semibold opacity-80 truncate">
+                          {repliedMsg.sender_name || 'Mensagem'}
+                        </div>
+                        <div className="opacity-70 truncate">
+                          {repliedMsg.content || (repliedMsg.message_type === 'image' ? '📷 Imagem' : repliedMsg.message_type === 'audio' ? '🎤 Áudio' : repliedMsg.message_type === 'file' ? `📎 ${repliedMsg.file_name || 'Arquivo'}` : '...')}
+                        </div>
+                      </button>
                     )}
                     {renderMsgContent(msg, isMe)}
                     <div className={cn('flex items-center gap-0.5 mt-0.5 justify-end', isMe ? 'text-primary-foreground/60' : 'text-muted-foreground')}>
@@ -464,6 +515,16 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
                       })()}
                     </div>
                   </div>
+                  {!isMe && (
+                    <button
+                      type="button"
+                      onClick={() => setReplyingTo(msg)}
+                      className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-accent text-muted-foreground"
+                      title="Responder"
+                    >
+                      <Reply className="h-3.5 w-3.5" />
+                    </button>
+                  )}
                 </div>
               );
             })
@@ -482,6 +543,29 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
             onClose={() => setShowEntityMention(false)}
             onSelect={handleEntitySelect}
           />
+
+          {replyingTo && (
+            <div className="px-3 py-1.5 border-b bg-muted/40 flex items-start gap-2">
+              <Reply className="h-3.5 w-3.5 text-primary mt-0.5 shrink-0" />
+              <div className="min-w-0 flex-1">
+                <div className="text-[10px] font-semibold text-primary">
+                  Respondendo a {replyingTo.sender_name || 'mensagem'}
+                </div>
+                <div className="text-[11px] text-muted-foreground truncate">
+                  {replyingTo.content || (replyingTo.message_type === 'image' ? '📷 Imagem' : replyingTo.message_type === 'audio' ? '🎤 Áudio' : replyingTo.message_type === 'file' ? `📎 ${replyingTo.file_name || 'Arquivo'}` : '...')}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setReplyingTo(null)}
+                className="p-1 rounded hover:bg-accent text-muted-foreground shrink-0"
+                title="Cancelar resposta"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
+
 
           {isRecording ? (
             <div className="px-3 py-2 flex items-center gap-3">

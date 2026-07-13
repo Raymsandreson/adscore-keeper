@@ -30,6 +30,7 @@ export interface TeamMessage {
   file_size?: number | null;
   file_type?: string | null;
   audio_duration?: number | null;
+  reply_to_id?: string | null;
 }
 
 const GENERAL_CHAT_NAME = '💬 Chat Geral da Equipe';
@@ -270,6 +271,7 @@ export function useTeamDirectChat() {
       file_type?: string;
       audio_duration?: number;
       mentionedUserIds?: string[];
+      reply_to_id?: string | null;
     }
   ) => {
     if (!activeConversationId || !user?.id) return;
@@ -286,7 +288,7 @@ export function useTeamDirectChat() {
         .eq('user_id', user.id)
         .maybeSingle();
 
-      const { data: inserted, error } = await externalSupabase.from('team_messages').insert({
+      const { data: inserted, error } = await (externalSupabase.from('team_messages') as any).insert({
         conversation_id: activeConversationId,
         sender_id: user.id,
         sender_name: profile?.full_name || user.email || 'Anônimo',
@@ -297,6 +299,7 @@ export function useTeamDirectChat() {
         file_size: options?.file_size || null,
         file_type: options?.file_type || null,
         audio_duration: options?.audio_duration || null,
+        reply_to_id: options?.reply_to_id || null,
       }).select().single();
 
       if (error) {

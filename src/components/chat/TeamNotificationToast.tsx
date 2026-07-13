@@ -1,5 +1,5 @@
 import { useState, useRef, type KeyboardEvent, type ReactNode, type TouchEvent } from 'react';
-import { Loader2, Send, Clock } from 'lucide-react';
+import { Loader2, Send, Clock, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -120,12 +120,20 @@ export function TeamNotificationToast({
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
-      className="w-[min(24rem,calc(100vw-2rem))] rounded-xl border border-border bg-background p-3 shadow-xl"
+      className="relative w-[min(24rem,calc(100vw-2rem))] rounded-xl border border-border bg-background p-3 shadow-xl"
     >
       <button
         type="button"
+        onClick={() => toast.dismiss(toastId)}
+        className="absolute top-1.5 right-1.5 p-1 rounded-md hover:bg-accent text-muted-foreground z-10"
+        aria-label="Fechar notificação"
+      >
+        <X className="h-3.5 w-3.5" />
+      </button>
+      <button
+        type="button"
         onClick={() => void handleOpen()}
-        className="flex w-full items-start gap-3 text-left"
+        className="flex w-full items-start gap-3 text-left pr-6"
       >
         <div className="mt-0.5 shrink-0 text-primary">{icon}</div>
         <div className="min-w-0 flex-1">
