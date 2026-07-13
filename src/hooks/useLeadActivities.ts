@@ -61,82 +61,107 @@ export function useLeadActivities() {
     contact_id?: string | string[];
     workflow_id?: string | string[];
     limit?: number;
+    /** Busca também TODAS as atrasadas (prazo vencido, não concluídas), paginando sem teto de linhas. */
+    overdue?: boolean;
   }) => {
     setLoading(true);
     try {
       await ensureRemapCache();
 
-      let query = externalSupabase
-        .from('lead_activities')
-        .select('*')
-        .is('deleted_at', null)
-        .order('created_at', { ascending: false });
+      const toVals = (v?: string | string[]) =>
+        v ? (Array.isArray(v) ? v : [v]).filter(x => x !== 'all') : [];
 
-      if (filters?.status) {
-        const vals = Array.isArray(filters.status) ? filters.status : [filters.status];
-        const filtered = vals.filter(v => v !== 'all');
-        if (filtered.length === 1) query = query.eq('status', filtered[0]);
-        else if (filtered.length > 1) query = query.in('status', filtered);
-      }
-      if (filters?.activity_type) {
-        const vals = Array.isArray(filters.activity_type) ? filters.activity_type : [filters.activity_type];
-        const filtered = vals.filter(v => v !== 'all');
-        if (filtered.length === 1) query = query.eq('activity_type', filtered[0]);
-        else if (filtered.length > 1) query = query.in('activity_type', filtered);
-      }
-      if (filters?.assigned_to) {
-        const vals = Array.isArray(filters.assigned_to) ? filters.assigned_to : [filters.assigned_to];
-        const filtered = vals.filter(v => v !== 'all');
-        const hasUnassigned = filtered.includes('__unassigned__');
-        const cloudUserIds = filtered.filter(v => v !== '__unassigned__');
-        // Remapear cloud → ext para casar com o que está no Externo
-        const userIds = await Promise.all(cloudUserIds.map(id => remapToExternal(id)));
-        const validIds = userIds.filter(Boolean) as string[];
+      const statusVals = toVals(filters?.status);
+      const typeVals = toVals(filters?.activity_type);
+      const leadVals = toVals(filters?.lead_id);
+      const contactVals = toVals(filters?.contact_id);
+      const workflowVals = toVals(filters?.workflow_id);
 
-        if (hasUnassigned && validIds.length > 0) {
-          query = query.or(`assigned_to.in.(${validIds.join(',')}),assigned_to.is.null`);
+      const assigneeVals = toVals(filters?.assigned_to);
+      const hasUnassigned = assigneeVals.includes('__unassigned__');
+      const cloudUserIds = assigneeVals.filter(v => v !== '__unassigned__');
+      // Remapear cloud → ext para casar com o que está no Externo
+      const remapped = await Promise.all(cloudUserIds.map(id => remapToExternal(id)));
+      const assigneeExtIds = remapped.filter(Boolean) as string[];
+
+      // Filtros comuns (tudo exceto status/ordenação) — usados na busca normal e na de atrasadas
+      const buildQuery = () => {
+        let q = externalSupabase
+          .from('lead_activities')
+          .select('*')
+          .is('deleted_at', null);
+
+        if (typeVals.length === 1) q = q.eq('activity_type', typeVals[0]);
+        else if (typeVals.length > 1) q = q.in('activity_type', typeVals);
+
+        if (hasUnassigned && assigneeExtIds.length > 0) {
+          q = q.or(`assigned_to.in.(${assigneeExtIds.join(',')}),assigned_to.is.null`);
         } else if (hasUnassigned) {
-          query = query.is('assigned_to', null);
-        } else if (validIds.length === 1) {
-          query = query.eq('assigned_to', validIds[0]);
-        } else if (validIds.length > 1) {
-          query = query.in('assigned_to', validIds);
+          q = q.is('assigned_to', null);
+        } else if (assigneeExtIds.length === 1) {
+          q = q.eq('assigned_to', assigneeExtIds[0]);
+        } else if (assigneeExtIds.length > 1) {
+          q = q.in('assigned_to', assigneeExtIds);
         }
-      }
-      if (filters?.lead_id) {
-        const vals = Array.isArray(filters.lead_id) ? filters.lead_id : [filters.lead_id];
-        const filtered = vals.filter(v => v !== 'all');
-        if (filtered.length === 1) query = query.eq('lead_id', filtered[0]);
-        else if (filtered.length > 1) query = query.in('lead_id', filtered);
-      }
-      if (filters?.contact_id) {
-        const vals = Array.isArray(filters.contact_id) ? filters.contact_id : [filters.contact_id];
-        const filtered = vals.filter(v => v !== 'all');
-        if (filtered.length === 1) query = query.eq('contact_id', filtered[0]);
-        else if (filtered.length > 1) query = query.in('contact_id', filtered);
-      }
-      if (filters?.workflow_id) {
-        const vals = Array.isArray(filters.workflow_id) ? filters.workflow_id : [filters.workflow_id];
-        const filtered = vals.filter(v => v !== 'all');
-        const hasNull = filtered.includes('__unassigned__');
-        const validIds = filtered.filter(v => v !== '__unassigned__');
-        if (hasNull && validIds.length > 0) {
-          query = (query as any).or(`workflow_id.in.(${validIds.join(',')}),workflow_id.is.null`);
-        } else if (hasNull) {
-          query = query.is('workflow_id', null);
-        } else if (validIds.length === 1) {
-          query = (query as any).eq('workflow_id', validIds[0]);
-        } else if (validIds.length > 1) {
-          query = (query as any).in('workflow_id', validIds);
+
+        if (leadVals.length === 1) q = q.eq('lead_id', leadVals[0]);
+        else if (leadVals.length > 1) q = q.in('lead_id', leadVals);
+
+        if (contactVals.length === 1) q = q.eq('contact_id', contactVals[0]);
+        else if (contactVals.length > 1) q = q.in('contact_id', contactVals);
+
+        const hasNullWorkflow = workflowVals.includes('__unassigned__');
+        const workflowIds = workflowVals.filter(v => v !== '__unassigned__');
+        if (hasNullWorkflow && workflowIds.length > 0) {
+          q = (q as any).or(`workflow_id.in.(${workflowIds.join(',')}),workflow_id.is.null`);
+        } else if (hasNullWorkflow) {
+          q = q.is('workflow_id', null);
+        } else if (workflowIds.length === 1) {
+          q = (q as any).eq('workflow_id', workflowIds[0]);
+        } else if (workflowIds.length > 1) {
+          q = (q as any).in('workflow_id', workflowIds);
         }
+
+        return q;
+      };
+
+      // Busca normal (limitada). Com overdue ativo e nenhum status real selecionado, ela é
+      // dispensável — as atrasadas já cobrem tudo que a tela vai exibir.
+      let rows: LeadActivity[] = [];
+      if (!filters?.overdue || statusVals.length > 0) {
+        let query = buildQuery().order('created_at', { ascending: false });
+        if (statusVals.length === 1) query = query.eq('status', statusVals[0]);
+        else if (statusVals.length > 1) query = query.in('status', statusVals);
+        query = query.limit(filters?.limit ?? 500);
+
+        const { data, error } = await query;
+        if (error) throw error;
+        rows = (data || []) as LeadActivity[];
       }
 
-      const maxRows = filters?.limit ?? 500;
-      query = query.limit(maxRows);
+      if (filters?.overdue) {
+        // Todas as vencidas não concluídas, em blocos de 1000 (PostgREST corta acima disso).
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        const PAGE = 1000;
+        const overdueRows: LeadActivity[] = [];
+        for (let from = 0; ; from += PAGE) {
+          const { data, error } = await buildQuery()
+            .neq('status', 'concluida')
+            .not('deadline', 'is', null)
+            .lt('deadline', todayStart.toISOString())
+            .order('deadline', { ascending: true })
+            .range(from, from + PAGE - 1);
+          if (error) throw error;
+          const chunk = (data || []) as LeadActivity[];
+          overdueRows.push(...chunk);
+          if (chunk.length < PAGE) break;
+        }
+        const seen = new Set(rows.map(r => r.id));
+        rows = [...rows, ...overdueRows.filter(r => !seen.has(r.id))];
+      }
 
-      const { data, error } = await query;
-      if (error) throw error;
-      setActivities((data || []) as LeadActivity[]);
+      setActivities(rows);
     } catch (error) {
       console.error('Error fetching activities:', error);
       toast.error('Erro ao carregar atividades');

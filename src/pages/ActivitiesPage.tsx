@@ -415,10 +415,13 @@ const ActivitiesPage = () => {
 
   const getFilterParams = () => ({
     // 'atrasada' é situação derivada (prazo vencido), não um status do banco.
-    // Quando está selecionada, busca tudo no backend e filtra no client (displayedActivities).
-    status: filterStatus.includes('atrasada')
-      ? 'all'
-      : (filterStatus.length > 0 ? filterStatus : 'all'),
+    // Quando está selecionada, o hook busca TODAS as vencidas não concluídas no servidor,
+    // paginando sem teto, e mescla com os demais status selecionados (OR do multi-select).
+    status: (() => {
+      const real = filterStatus.filter(s => s !== 'atrasada');
+      return real.length > 0 ? real : 'all';
+    })(),
+    overdue: filterStatus.includes('atrasada'),
     activity_type: filterType.length > 0 ? filterType : 'all',
     assigned_to: filterAssignee.length > 0 ? filterAssignee : 'all',
     lead_id: filterLead.length > 0 ? filterLead : 'all',
@@ -1735,6 +1738,14 @@ const ActivitiesPage = () => {
       return ra - rb;
     });
   }, [activities, selectedCalDays, filterCase, viewMode, calendarMonth, filterStatus, filterHasDocs, activityIdsWithDocs]);
+
+  // A busca sem teto (filtro Atrasada) pode trazer milhares de linhas; o DOM não aguenta
+  // todos os cards de uma vez — renderiza em lotes e revela o resto sob demanda.
+  const RENDER_BATCH = 200;
+  const [renderLimit, setRenderLimit] = useState(RENDER_BATCH);
+  useEffect(() => {
+    setRenderLimit(RENDER_BATCH);
+  }, [filterStatus, filterType, filterAssignee, filterLead, filterContact, filterWorkflow, filterCase, selectedCalDays, calendarMonth, viewMode]);
 
   const resolveUserName = (userId: string | null) => {
     if (!userId) return null;
@@ -3693,7 +3704,7 @@ const ActivitiesPage = () => {
                   </Button>
                 </div>
               ) : (
-                displayedActivities.map(activity => (
+                displayedActivities.slice(0, renderLimit).map(activity => (
                   <ContextMenu key={activity.id}>
                     <ContextMenuTrigger asChild>
                   <div
@@ -3843,6 +3854,15 @@ const ActivitiesPage = () => {
                     </ContextMenuContent>
                   </ContextMenu>
                 ))
+              )}
+              {displayedActivities.length > renderLimit && (
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => setRenderLimit(l => l + RENDER_BATCH)}
+                >
+                  Mostrar mais ({(displayedActivities.length - renderLimit).toLocaleString('pt-BR')} restantes)
+                </Button>
               )}
             </div>
           </div>
