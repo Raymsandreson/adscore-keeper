@@ -16,9 +16,13 @@ interface TeamNotificationToastProps {
   title: string;
   context?: string;
   preview: string;
+  count?: number;
+  urgent?: boolean;
   onOpen: () => void | Promise<void>;
   onMuteForMinutes: (minutes: number | null) => void;
   onReply?: (reply: string) => Promise<void>;
+  /** Chamado quando o usuário fecha o popup deliberadamente (X ou swipe) sem responder */
+  onManualDismiss?: () => void;
 }
 
 const MUTE_OPTIONS = [
@@ -35,9 +39,12 @@ export function TeamNotificationToast({
   title,
   context,
   preview,
+  count,
+  urgent,
   onOpen,
   onMuteForMinutes,
   onReply,
+  onManualDismiss,
 }: TeamNotificationToastProps) {
   const [reply, setReply] = useState('');
   const [sending, setSending] = useState(false);
@@ -73,6 +80,7 @@ export function TeamNotificationToast({
         containerRef.current.style.transform = `translateX(${dir})`;
         containerRef.current.style.opacity = '0';
       }
+      onManualDismiss?.();
       setTimeout(() => toast.dismiss(toastId), 200);
     } else {
       // Snap back
@@ -120,11 +128,16 @@ export function TeamNotificationToast({
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
-      className="relative w-[min(24rem,calc(100vw-2rem))] rounded-xl border border-border bg-background p-3 shadow-xl"
+      className={`relative w-[min(24rem,calc(100vw-2rem))] rounded-xl border bg-background p-3 shadow-xl ${
+        urgent ? 'border-destructive ring-2 ring-destructive/40' : 'border-border'
+      }`}
     >
       <button
         type="button"
-        onClick={() => toast.dismiss(toastId)}
+        onClick={() => {
+          onManualDismiss?.();
+          toast.dismiss(toastId);
+        }}
         className="absolute top-1.5 right-1.5 p-1 rounded-md hover:bg-accent text-muted-foreground z-10"
         aria-label="Fechar notificação"
       >
@@ -137,7 +150,19 @@ export function TeamNotificationToast({
       >
         <div className="mt-0.5 shrink-0 text-primary">{icon}</div>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-foreground">{title}</p>
+          <div className="flex items-center gap-1.5">
+            <p className="truncate text-sm font-semibold text-foreground">{title}</p>
+            {(count ?? 0) > 1 && (
+              <span className="shrink-0 min-w-5 h-5 px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center">
+                {count}
+              </span>
+            )}
+            {urgent && (
+              <span className="shrink-0 h-5 px-1.5 rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold flex items-center justify-center animate-pulse">
+                🚨 URGENTE
+              </span>
+            )}
+          </div>
           {context && (
             <p className="truncate text-xs text-muted-foreground">{context}</p>
           )}

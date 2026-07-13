@@ -6,8 +6,9 @@ import { ResizableSide } from '@/components/ui/resizable-side';
 
 import { 
   Webhook, BarChart3, Megaphone, ArrowLeft, 
-  ChevronRight, Shield, Zap, ScrollText, Sparkles, Smartphone, Bell, Volume2, Users, Network, Brain, ClipboardCheck, Tag
+  ChevronRight, Shield, Zap, ScrollText, Sparkles, Smartphone, Bell, Volume2, Users, Network, Brain, ClipboardCheck, Tag, Building2
 } from 'lucide-react';
+import { OrganizationSettings } from '@/components/settings/OrganizationSettings';
 
 import { OnboardingConfig } from './OnboardingConfig';
 
@@ -38,6 +39,15 @@ interface Tab {
 }
 
 const tabs: Tab[] = [
+  {
+    id: 'organization',
+    label: 'Escritório',
+    icon: <Building2 className="h-5 w-5" />,
+    description: 'Dados, logo e identidade do escritório',
+    badge: '🆕 Novo',
+    badgeVariant: 'default',
+    accentColor: 'text-primary',
+  },
   {
     id: 'instances',
     label: 'Instâncias',
@@ -269,6 +279,7 @@ export function WhatsAppSettingsPage({ onBack, initialTab = 'instances' }: Props
               </p>
             </div>
 
+            {activeTab === 'organization' && <OrganizationSettings />}
             {activeTab === 'instances' && <WhatsAppInstanceManager />}
             
             {activeTab === 'commands' && <WhatsAppCommandConfig />}
