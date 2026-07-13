@@ -44,6 +44,8 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
   const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentionIndex, setMentionIndex] = useState(0);
+  const [replyingTo, setReplyingTo] = useState<TeamMessage | null>(null);
+  const [highlightMsgId, setHighlightMsgId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messageInputRef = useRef<HTMLInputElement>(null);
