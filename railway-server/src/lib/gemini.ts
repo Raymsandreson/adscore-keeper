@@ -1,7 +1,18 @@
 /**
- * Shared Google Gemini AI helper — ported from supabase/functions/_shared/gemini.ts
- * Uses GOOGLE_AI_API_KEY for direct API calls.
+ * Shared AI helper — ported from supabase/functions/_shared/gemini.ts
+ * Default path uses Google Gemini; models prefixed with `anthropic/` (or
+ * `claude-`) are routed to the Anthropic Messages API, so both providers run
+ * side by side per-agent (switching = changing the stored `model` string).
+ * Uses GOOGLE_AI_API_KEY / ANTHROPIC_API_KEY for direct API calls.
  */
+
+import { callAnthropic, parseAnthropicResponse } from "./anthropic";
+
+/** True when the model string should be routed to Anthropic instead of Google. */
+function isAnthropicModel(model?: string): boolean {
+  const m = model || "";
+  return m.startsWith("anthropic/") || m.startsWith("claude-") || m.startsWith("claude/");
+}
 
 const MODEL_MAP: Record<string, string> = {
   "google/gemini-2.5-flash": "gemini-2.5-flash",
@@ -14,22 +25,31 @@ const MODEL_MAP: Record<string, string> = {
 
 function cleanParametersForGoogle(params: any): any {
   if (!params || typeof params !== "object") return params;
-  const cleaned = { ...params };
-  if (cleaned.properties) {
+  const cleaned: any = { ...params };
+
+  // Google não aceita type ["string","null"] — pega o primeiro tipo não-nulo.
+  if (Array.isArray(cleaned.type)) {
+    cleaned.type = cleaned.type.find((t: string) => t !== "null") || "string";
+  }
+  delete cleaned.nullable;
+  delete cleaned.additionalProperties;
+
+  // Gemini recusa enum com valor vazio "" → 400 "enum[...]: cannot be empty".
+  // Remove vazios; se o enum ficar sem valores, descarta o enum (mantém só o type).
+  if (Array.isArray(cleaned.enum)) {
+    const vals = cleaned.enum.filter((v: any) => (typeof v === "string" ? v.trim() !== "" : v != null));
+    if (vals.length > 0) cleaned.enum = vals;
+    else delete cleaned.enum;
+  }
+
+  if (cleaned.properties && typeof cleaned.properties === "object") {
     const newProps: any = {};
     for (const [key, val] of Object.entries(cleaned.properties)) {
-      const prop = { ...(val as any) };
-      if (Array.isArray(prop.type)) {
-        prop.type = prop.type.find((t: string) => t !== "null") || "string";
-      }
-      delete prop.nullable;
-      if (prop.properties) Object.assign(prop, cleanParametersForGoogle(prop));
-      if (prop.items) prop.items = cleanParametersForGoogle(prop.items);
-      newProps[key] = prop;
+      newProps[key] = cleanParametersForGoogle(val);
     }
     cleaned.properties = newProps;
   }
-  delete cleaned.additionalProperties;
+  if (cleaned.items) cleaned.items = cleanParametersForGoogle(cleaned.items);
   return cleaned;
 }
 
@@ -69,6 +89,8 @@ export interface GeminiCallOptions {
 }
 
 export async function callGemini(options: GeminiCallOptions): Promise<Response> {
+  if (isAnthropicModel(options.model)) return callAnthropic(options);
+
   const GOOGLE_AI_API_KEY = process.env.GOOGLE_AI_API_KEY;
   if (!GOOGLE_AI_API_KEY) throw new Error("GOOGLE_AI_API_KEY not configured");
 
@@ -164,12 +186,20 @@ export function parseGeminiResponse(data: any): any {
 }
 
 export async function geminiChat(options: GeminiCallOptions): Promise<any> {
+  const isAnthropic = isAnthropicModel(options.model);
   const response = await callGemini({ ...options, stream: false });
   if (!response.ok) {
     const errText = await response.text();
-    console.error("Gemini API error:", response.status, errText);
-    throw new Error(`Gemini API error: ${response.status}`);
+    const provider = isAnthropic ? "Anthropic" : "Gemini";
+    console.error(`${provider} API error:`, response.status, errText);
+    // Propaga o motivo real do provider (ex.: "enum[0]: cannot be empty") em vez de
+    // só o status — sem isso o chamador/usuário fica com um "400" opaco.
+    const detail = errText.replace(/\s+/g, " ").trim().slice(0, 300);
+    throw new Error(`${provider} API error: ${response.status}${detail ? ` — ${detail}` : ""}`);
   }
   const data = await response.json();
-  return parseGeminiResponse(data);
+  return isAnthropic ? parseAnthropicResponse(data) : parseGeminiResponse(data);
 }
+
+/** Provider-agnostic alias for geminiChat — routes by the model's prefix. */
+export const aiChat = geminiChat;

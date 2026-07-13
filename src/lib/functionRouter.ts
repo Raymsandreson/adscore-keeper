@@ -46,6 +46,7 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
   'suggest-step-actions': 'railway',
   'wipe-instance-agent-labels': 'railway',
   'bpc-sheet-sync': 'railway',
+  'sync-hearings-from-sheet': 'railway', // credenciais do Google Sheets (gateway Lovable) só existem no Railway
 
   // --- Consolidação no Supabase Externo (kmedldlepwiityjsdahz) ---
   // Deploy: supabase functions deploy <slug> --project-ref kmedldlepwiityjsdahz --no-verify-jwt

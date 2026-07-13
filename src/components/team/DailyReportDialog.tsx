@@ -488,6 +488,7 @@ export function DailyReportDialog({
                   initialFocus
                   locale={ptBR}
                   className={cn("p-3 pointer-events-auto")}
+                  classNames={{ day_today: "ring-1 ring-primary/50 font-medium" }}
                 />
               </PopoverContent>
             </Popover>

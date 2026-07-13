@@ -1,6 +1,4 @@
-// send-whatsapp v23 (projeto externo kmedldlepwiityjsdahz)
-// FIX v23: send_media respeita body.ptt/is_voice → UazAPI type 'ptt' (nota de voz).
-// Opus/ogg enviado como 'audio' comum não toca no WhatsApp iOS. Rollback: index.v22.rollback.ts
+// send-whatsapp v22 (projeto externo kmedldlepwiityjsdahz)
 // FIX v22: envio 1:1 (não-grupo) com instância explícita que NÃO resolve agora FALHA
 // com erro claro, em vez de rerotear calado pra outra instância (mandava do número
 // errado quando o instance_name da conversa não casava com o cadastro). Grupos e
@@ -375,9 +373,7 @@ Deno.serve(async (req)=>{
       };
       let mtype = 'image';
       if (mt.startsWith('audio')) {
-        // ptt/is_voice → nota de voz (type 'ptt' na UazAPI). Opus/ogg enviado como
-        // 'audio' comum não toca no WhatsApp iOS ("áudio não está mais disponível").
-        sb.type = (body.ptt === true || body.is_voice === true) ? 'ptt' : 'audio';
+        sb.type = 'audio';
         mtype = 'audio';
       } else if (mt.startsWith('video')) {
         sb.type = 'video';
