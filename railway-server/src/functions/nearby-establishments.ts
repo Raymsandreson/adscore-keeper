@@ -51,7 +51,8 @@ export const handler: RequestHandler = async (req, res) => {
     const LOVABLE_API_KEY = process.env.LOVABLE_API_KEY;
     const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY;
     if (!LOVABLE_API_KEY || !GOOGLE_MAPS_API_KEY) {
-      res.json({ success: false, error: 'Missing Google Maps gateway credentials (LOVABLE_API_KEY / GOOGLE_MAPS_API_KEY)' });
+      const missing = [!LOVABLE_API_KEY && 'LOVABLE_API_KEY', !GOOGLE_MAPS_API_KEY && 'GOOGLE_MAPS_API_KEY'].filter(Boolean).join(', ');
+      res.json({ success: false, error: `Missing Google Maps gateway credentials: ${missing}` });
       return;
     }
 
