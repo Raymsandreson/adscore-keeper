@@ -91,44 +91,71 @@ export function useAutoImportGroupDocs(
         const { data: mediaMsgs, error: mediaErr } = await mediaQuery;
         if (cancelled || mediaErr) return;
 
-        const documents = (mediaMsgs || [])
-          .map((m: any) => {
-            const messageId = String(m.external_message_id || '').trim();
-            if (!messageId) return null;
-            return { message_id: messageId, document_type: 'Outro' };
-          })
-          .filter(Boolean) as { message_id: string; document_type: string }[];
+        // A MESMA mensagem de grupo existe N vezes em whatsapp_messages (uma
+        // linha por instância do escritório no grupo), cada uma com um
+        // external_message_id diferente — mas o sufixo após ':' (id real da
+        // mensagem no WhatsApp) é idêntico. Sem essa dedup, `total` infla
+        // (ex.: 81 linhas pra 19 mídias) e o import redisparava pra sempre,
+        // repuxando tudo pro Drive a cada sincronização.
+        const waMsgId = (id: string) => {
+          const i = id.indexOf(':');
+          return i >= 0 ? id.slice(i + 1) : id;
+        };
 
-        const total = documents.length;
+        const bySuffix = new Map<string, string>(); // sufixo -> external_message_id escolhido
+        [...(mediaMsgs || [])]
+          .map((m: any) => String(m.external_message_id || '').trim())
+          .filter(Boolean)
+          .sort() // determinístico: mesma linha escolhida em toda execução
+          .forEach((id) => {
+            const key = waMsgId(id);
+            if (key && !bySuffix.has(key)) bySuffix.set(key, id);
+          });
+
+        const total = bySuffix.size;
         if (total === 0) return;
 
-        // 2) Conta quantas já estão no Drive (process_documents do lead).
-        const { count: doneCount } = await supabase
+        // 2) Busca o que JÁ está importado (por sufixo do id) — o que já tem
+        //    registro NUNCA é reenviado, então apagar/organizar no Drive é
+        //    definitivo (não volta na próxima sincronização).
+        const { data: importedRows } = await supabase
           .from('process_documents')
-          .select('id', { count: 'exact', head: true })
+          .select('ext_id:metadata->>external_message_id')
           .eq('lead_id', leadId)
-          .eq('source', 'whatsapp_group');
+          .eq('source', 'whatsapp_group')
+          .limit(1000);
+        const importedSuffixes = new Set(
+          (importedRows || [])
+            .map((r: any) => waMsgId(String(r.ext_id || '').trim()))
+            .filter(Boolean),
+        );
 
-        const done = Math.min(doneCount || 0, total);
+        const documents = Array.from(bySuffix.entries())
+          .filter(([suffix]) => !importedSuffixes.has(suffix))
+          .map(([, id]) => ({ message_id: id, document_type: 'Outro' }));
+
+        const done = total - documents.length;
         setProgress({ total, done, running: false, newlyImported: 0 });
 
         // 3) Já tudo importado? Só mostra badge verde.
-        if (done >= total) {
-          sessionStorage.setItem(`auto-import-docs:v5:${leadId}:done`, '1');
+        if (documents.length === 0) {
+          sessionStorage.setItem(`auto-import-docs:v6:${leadId}:done`, '1');
           return;
         }
 
-        // 4) Guarda só bloqueia quando o lead JÁ está 100% importado.
-        //    Se ainda falta mídia, sempre tenta de novo a cada montagem,
-        //    pegando só o que falta (a edge dedup por external_message_id).
-        const doneKey = `auto-import-docs:v5:${leadId}:done`;
+        // 4) Guardas de sessão: lead 100% importado, importação já tentada
+        //    nesta sessão (mídia que falha sempre não fica em loop), ou corrida
+        //    concorrente de outro componente com o mesmo hook.
+        const doneKey = `auto-import-docs:v6:${leadId}:done`;
         if (sessionStorage.getItem(doneKey)) return;
 
-        // Dentro da mesma sessão, evita disparar 2 corridas simultâneas pro
-        // mesmo lead (ex: dois componentes que usam o hook ao mesmo tempo).
-        const runningKey = `auto-import-docs:v5:${leadId}:running`;
+        const attemptedKey = `auto-import-docs:v6:${leadId}:attempted`;
+        if (sessionStorage.getItem(attemptedKey)) return;
+
+        const runningKey = `auto-import-docs:v6:${leadId}:running`;
         if (sessionStorage.getItem(runningKey)) return;
         sessionStorage.setItem(runningKey, '1');
+        sessionStorage.setItem(attemptedKey, '1');
 
         setProgress({ total, done, running: true, newlyImported: 0 });
 
