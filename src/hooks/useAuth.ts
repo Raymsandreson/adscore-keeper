@@ -15,6 +15,17 @@ interface Profile {
 
 const AUTH_STORAGE_KEY = 'sb-gliigkupoebmlbwyvijp-auth-token';
 
+// O cache 'auth_profile' é um só no navegador (não é por usuário). Num
+// computador compartilhado, se o sync de perfil falhar no login, o cache pode
+// conter o perfil de OUTRA pessoa (incidente 13/07/2026: perfil da Thaíres
+// exibido na conta do João). O user_id do perfil vem do banco Externo (uuid
+// diferente do cloud), então a checagem de dono é pelo e-mail.
+const profileBelongsTo = (p: Profile | null | undefined, u: User | null | undefined): boolean => {
+  const pe = (p?.email || '').trim().toLowerCase();
+  const ue = (u?.email || '').trim().toLowerCase();
+  return !!pe && !!ue && pe === ue;
+};
+
 const isInvalidAuthError = (err: unknown) => {
   const message = err instanceof Error ? err.message : String((err as any)?.message || err || '');
   const code = (err as any)?.code;
@@ -155,7 +166,9 @@ export const useAuth = () => {
             console.log('[AUTH] ⚡ Restaurando sessão do cache offline');
             setUser(cachedSession.data.user);
             setSession(cachedSession.data.session);
-            if (cachedProfile?.data) setProfile(cachedProfile.data);
+            if (cachedProfile?.data && profileBelongsTo(cachedProfile.data, cachedSession.data.user)) {
+              setProfile(cachedProfile.data);
+            }
             setIsOfflineMode(true);
             setConnectionError(null);
           } else {
@@ -213,12 +226,12 @@ export const useAuth = () => {
 
           setTimeout(async () => {
             const syncedProfile = await syncUserToExternal(session.user);
-            if (syncedProfile) {
+            if (syncedProfile && profileBelongsTo(syncedProfile, session.user)) {
               setProfile(syncedProfile);
               cacheSet('auth_profile', syncedProfile, CACHE_TTL.PROFILE);
             } else {
               const cached = cacheGet<Profile>('auth_profile');
-              if (cached?.data) setProfile(cached.data);
+              if (cached?.data && profileBelongsTo(cached.data, session.user)) setProfile(cached.data);
             }
           }, 0);
         } else {
@@ -237,12 +250,12 @@ export const useAuth = () => {
         cacheSet('auth_session', { user: session.user, session }, CACHE_TTL.SESSION);
 
         const syncedProfile = await syncUserToExternal(session.user);
-        if (syncedProfile) {
+        if (syncedProfile && profileBelongsTo(syncedProfile, session.user)) {
           setProfile(syncedProfile);
           cacheSet('auth_profile', syncedProfile, CACHE_TTL.PROFILE);
         } else {
           const cached = cacheGet<Profile>('auth_profile');
-          if (cached?.data) setProfile(cached.data);
+          if (cached?.data && profileBelongsTo(cached.data, session.user)) setProfile(cached.data);
         }
       }
       settle();
