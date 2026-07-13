@@ -23,6 +23,7 @@ import { FloatingWhatsAppCall } from "@/components/FloatingWhatsAppCall";
 import { PWAInstallBanner } from "@/components/PWAInstallBanner";
 import { MobileHeader } from "@/components/MobileHeader";
 import { MobileSwipeHandler } from "@/components/MobileSwipeHandler";
+import { OrgMetaSync } from "@/components/OrgMetaSync";
 import WhatsAppPage from "@/pages/WhatsAppPage";
 
 // Helper: retry dynamic import once per module on failure (stale chunk after deploy)
