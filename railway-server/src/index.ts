@@ -39,6 +39,7 @@ import { handler as checkWhatsappCloudToken } from './functions/check-whatsapp-c
 import { handler as metaCallQueueProcessor } from './functions/meta-call-queue-processor';
 import { handler as sheetLeadIngest } from './functions/sheet-lead-ingest';
 import { handler as bpcSheetSync } from './functions/bpc-sheet-sync';
+import { handler as syncHearingsFromSheet } from './functions/sync-hearings-from-sheet';
 import { handler as gmailInssSync } from './functions/gmail-inss-sync';
 import { handler as notifyInssUpdate } from './functions/notify-inss-update';
 import { handler as gmailMessageBody } from './functions/gmail-message-body';
@@ -104,6 +105,7 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'suggest-step-actions': suggestStepActions,
   'wipe-instance-agent-labels': wipeInstanceAgentLabels,
   'bpc-sheet-sync': bpcSheetSync,
+  'sync-hearings-from-sheet': syncHearingsFromSheet,
   'transcode-audio-opus': transcodeAudioOpus,
   'extract-activity-from-document': extractActivityFromDocument,
 };

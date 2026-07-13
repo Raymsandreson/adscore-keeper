@@ -1,7 +1,10 @@
 import { useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { addMonths, format, subMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { CalendarDays, ChevronLeft, ChevronRight, List, Plus, Search } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, List, Plus, RefreshCw, Search } from 'lucide-react';
+import { toast } from 'sonner';
+import { cloudFunctions } from '@/lib/functionRouter';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -26,6 +29,27 @@ export default function HearingsModule() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Hearing | null>(null);
   const [defaultDate, setDefaultDate] = useState<string | undefined>();
+  const [syncing, setSyncing] = useState(false);
+  const qc = useQueryClient();
+
+  const syncFromSheet = async () => {
+    setSyncing(true);
+    try {
+      const { data, error } = await cloudFunctions.invoke('sync-hearings-from-sheet', {
+        body: { apply: true, confirm: 'SYNC' },
+      });
+      if (error || !data?.ok) throw error || new Error(data?.error || 'falha na sincronização');
+      qc.invalidateQueries({ queryKey: ['hearings'] });
+      const extra = data.db_only_future > 0
+        ? ` — ${data.db_only_future} existe(m) só no sistema (não removidas)`
+        : '';
+      toast.success(`Planilha sincronizada: ${data.inserted} nova(s), ${data.updated} atualizada(s)${extra}`);
+    } catch (e: any) {
+      toast.error('Erro ao sincronizar: ' + (e?.message || 'desconhecido'));
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -89,9 +113,15 @@ export default function HearingsModule() {
             </SelectContent>
           </Select>
         </div>
-        <Button onClick={() => openCreate()} className="gap-1.5">
-          <Plus className="h-4 w-4" /> Nova audiência
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={syncFromSheet} disabled={syncing} className="gap-1.5">
+            <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
+            {syncing ? 'Sincronizando...' : 'Sincronizar planilha'}
+          </Button>
+          <Button onClick={() => openCreate()} className="gap-1.5">
+            <Plus className="h-4 w-4" /> Nova audiência
+          </Button>
+        </div>
       </div>
 
       <Tabs value={view} onValueChange={(v) => setView(v as any)} className="space-y-4">
