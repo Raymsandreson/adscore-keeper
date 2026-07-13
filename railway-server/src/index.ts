@@ -57,6 +57,7 @@ import { handler as suggestStepActions } from './functions/suggest-step-actions'
 import { handler as wipeInstanceAgentLabels } from './functions/wipe-instance-agent-labels';
 import { handler as transcodeAudioOpus } from './functions/transcode-audio-opus';
 import { handler as extractActivityFromDocument } from './functions/extract-activity-from-document';
+import { handler as nearbyEstablishments } from './functions/nearby-establishments';
 
 
 
@@ -108,6 +109,7 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'sync-hearings-from-sheet': syncHearingsFromSheet,
   'transcode-audio-opus': transcodeAudioOpus,
   'extract-activity-from-document': extractActivityFromDocument,
+  'nearby-establishments': nearbyEstablishments,
 };
 
 const app = express();
