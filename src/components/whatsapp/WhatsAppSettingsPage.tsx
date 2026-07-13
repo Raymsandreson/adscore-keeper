@@ -279,6 +279,7 @@ export function WhatsAppSettingsPage({ onBack, initialTab = 'instances' }: Props
               </p>
             </div>
 
+            {activeTab === 'organization' && <OrganizationSettings />}
             {activeTab === 'instances' && <WhatsAppInstanceManager />}
             
             {activeTab === 'commands' && <WhatsAppCommandConfig />}
