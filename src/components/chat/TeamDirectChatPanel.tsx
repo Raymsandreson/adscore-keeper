@@ -544,6 +544,29 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
             onSelect={handleEntitySelect}
           />
 
+          {replyingTo && (
+            <div className="px-3 py-1.5 border-b bg-muted/40 flex items-start gap-2">
+              <Reply className="h-3.5 w-3.5 text-primary mt-0.5 shrink-0" />
+              <div className="min-w-0 flex-1">
+                <div className="text-[10px] font-semibold text-primary">
+                  Respondendo a {replyingTo.sender_name || 'mensagem'}
+                </div>
+                <div className="text-[11px] text-muted-foreground truncate">
+                  {replyingTo.content || (replyingTo.message_type === 'image' ? '📷 Imagem' : replyingTo.message_type === 'audio' ? '🎤 Áudio' : replyingTo.message_type === 'file' ? `📎 ${replyingTo.file_name || 'Arquivo'}` : '...')}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setReplyingTo(null)}
+                className="p-1 rounded hover:bg-accent text-muted-foreground shrink-0"
+                title="Cancelar resposta"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
+
+
           {isRecording ? (
             <div className="px-3 py-2 flex items-center gap-3">
               <span className="w-2.5 h-2.5 rounded-full bg-destructive animate-pulse" />
