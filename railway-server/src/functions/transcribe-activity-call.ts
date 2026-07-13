@@ -176,7 +176,7 @@ Sua tarefa: ATUALIZAR os campos da atividade COMBINANDO o contexto existente com
 - COMANDOS DE EDIÇÃO: o áudio pode conter instruções diretas de edição (ex.: "apaga as observações", "pode limpar tudo que estava no próximo passo", "troca o que foi feito por X", "corrige o prazo pra sexta-feira", "muda a prioridade pra urgente", "passa essa atividade pro assessor Fulano", "marca como concluída", "renomeia a atividade para Y"). EXECUTE essas instruções: elas prevalecem sobre a regra de preservar o conteúdo atual.
   - Para APAGAR um campo de texto, inclua o nome dele em clear_fields (não basta retornar vazio — vazio significa "sem novidade").
   - Para SUBSTITUIR, retorne o novo conteúdo no campo (sem misturar com o antigo).
-- METADADOS (deadline, notification_date, priority, status, assessor_name, title): preencha SOMENTE quando o áudio mencionar explicitamente prazo/data, prioridade, situação, responsável ou título. Caso contrário retorne string vazia (o valor atual é mantido).
+- METADADOS (deadline, notification_date, priority, status, assessor_name, title): preencha SOMENTE quando o áudio mencionar explicitamente prazo/data, prioridade, situação, responsável ou título. Caso contrário, OMITA o campo (não o inclua na resposta) — o valor atual é mantido. Para priority e status use exatamente um dos valores permitidos; nunca retorne string vazia nesses dois.
   - Datas SEMPRE no formato YYYY-MM-DD, resolvendo termos relativos com a data de hoje.
   - assessor_name deve ser EXATAMENTE um dos nomes da equipe listados no contexto; se o nome falado não corresponder a nenhum, deixe vazio.
 - Escreva em português do Brasil, linguagem simples e nada rebuscada. Exemplo de tom: "Cobramos o devido andamento do processo" ou "Solicitamos que a Secretaria/Gabinete proceda com o impulso para seguirmos com os próximos passos".`;
@@ -210,8 +210,8 @@ Sua tarefa: ATUALIZAR os campos da atividade COMBINANDO o contexto existente com
                 title: { type: 'string', description: 'Novo título da atividade — apenas se o áudio pedir explicitamente para nomear/renomear. Senão, vazio.' },
                 deadline: { type: 'string', description: 'Prazo da atividade em YYYY-MM-DD — apenas se o áudio mencionar prazo/data. Resolva datas relativas com a data de hoje. Senão, vazio.' },
                 notification_date: { type: 'string', description: 'Data de notificação/lembrete em YYYY-MM-DD — apenas se mencionada. Senão, vazio.' },
-                priority: { type: 'string', enum: ['', 'baixa', 'normal', 'alta', 'urgente'], description: 'Prioridade — apenas se o áudio mencionar. Senão, vazio.' },
-                status: { type: 'string', enum: ['', 'pendente', 'em_andamento', 'concluida'], description: 'Situação da atividade — apenas se o áudio mencionar (ex.: "marca como concluída"). Senão, vazio.' },
+                priority: { type: 'string', enum: ['baixa', 'normal', 'alta', 'urgente'], description: 'Prioridade — apenas se o áudio mencionar. Senão, OMITA este campo (não retorne vazio).' },
+                status: { type: 'string', enum: ['pendente', 'em_andamento', 'concluida'], description: 'Situação da atividade — apenas se o áudio mencionar (ex.: "marca como concluída"). Senão, OMITA este campo (não retorne vazio).' },
                 assessor_name: { type: 'string', description: 'Assessor responsável — apenas se o áudio mencionar, e EXATAMENTE um dos nomes da equipe do contexto. Senão, vazio.' },
                 clear_fields: {
                   type: 'array',

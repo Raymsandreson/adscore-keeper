@@ -15,31 +15,36 @@ const MODEL_MAP: Record<string, string> = {
 
 function cleanParametersForGoogle(params: any): any {
   if (!params || typeof params !== "object") return params;
-  const cleaned = { ...params };
-  if (cleaned.properties) {
+  const cleaned: any = { ...params };
+
+  // Google doesn't support ["string", "null"] type arrays — pick the non-null type
+  if (Array.isArray(cleaned.type)) {
+    cleaned.type = cleaned.type.find((t: string) => t !== "null") || "string";
+  }
+  // Remove 'nullable' as Google uses a different approach
+  delete cleaned.nullable;
+  // Remove additionalProperties — Google Gemini rejects it
+  delete cleaned.additionalProperties;
+
+  // Gemini rejects empty-string "" enum values → 400 "enum[...]: cannot be empty".
+  // Drop empties; if the enum ends up empty, remove it entirely (keep just the type).
+  if (Array.isArray(cleaned.enum)) {
+    const vals = cleaned.enum.filter((v: any) => (typeof v === "string" ? v.trim() !== "" : v != null));
+    if (vals.length > 0) cleaned.enum = vals;
+    else delete cleaned.enum;
+  }
+
+  // Recursively clean nested objects and array items
+  if (cleaned.properties && typeof cleaned.properties === "object") {
     const newProps: any = {};
     for (const [key, val] of Object.entries(cleaned.properties)) {
-      const prop = { ...(val as any) };
-      // Google doesn't support ["string", "null"] type arrays
-      if (Array.isArray(prop.type)) {
-        prop.type = prop.type.find((t: string) => t !== "null") || "string";
-      }
-      // Remove 'nullable' as Google uses different approach
-      delete prop.nullable;
-      // Recursively clean nested objects
-      if (prop.properties) {
-        const nested = cleanParametersForGoogle(prop);
-        Object.assign(prop, nested);
-      }
-      if (prop.items) {
-        prop.items = cleanParametersForGoogle(prop.items);
-      }
-      newProps[key] = prop;
+      newProps[key] = cleanParametersForGoogle(val);
     }
     cleaned.properties = newProps;
   }
-  // Remove additionalProperties — Google Gemini rejects it
-  delete cleaned.additionalProperties;
+  if (cleaned.items) {
+    cleaned.items = cleanParametersForGoogle(cleaned.items);
+  }
   return cleaned;
 }
 
@@ -235,7 +240,10 @@ export async function geminiChat(options: GeminiCallOptions): Promise<any> {
   if (!response.ok) {
     const errText = await response.text();
     console.error("Gemini API error:", response.status, errText);
-    throw new GeminiError(`Gemini API error: ${response.status}`, response.status);
+    // Propaga o motivo real do Google (ex.: "enum[0]: cannot be empty") em vez de
+    // só o status — sem isso o chamador/usuário fica com um "400" opaco.
+    const detail = errText.replace(/\s+/g, " ").trim().slice(0, 300);
+    throw new GeminiError(`Gemini API error: ${response.status}${detail ? ` — ${detail}` : ""}`, response.status);
   }
 
   const data = await response.json();
