@@ -12,6 +12,7 @@ import { SessionProvider } from "@/contexts/SessionContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { TeamChatNotifications } from "@/components/chat/TeamChatNotifications";
+import { UserStatusGuard } from "@/components/auth/UserStatusGuard";
 import { PageTracker } from "@/components/PageTracker";
 import { AppSidebar } from "@/components/AppSidebar";
 import { SidebarProvider } from "@/components/ui/sidebar";
@@ -232,6 +233,7 @@ const App = () => (
                 <Sonner />
                 <OfflineBanner />
                 <TeamChatNotifications />
+                <UserStatusGuard />
                 <OrgMetaSync />
                 <BrowserRouter>
                   <AppRoutes />

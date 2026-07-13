@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Switch } from '@/components/ui/switch';
 import {
   Dialog,
   DialogContent,
@@ -286,6 +287,7 @@ export function TeamsManager() {
   const [nucleos, setNucleos] = useState<OrgNucleo[]>([]);
   const [teamSectors, setTeamSectors] = useState<Record<string, string | null>>({});
   const [cargos, setCargos] = useState<Record<string, string>>({}); // `${team_name}|${user_id}` -> cargo
+  const [inactiveIds, setInactiveIds] = useState<Set<string>>(new Set());
   const [syncing, setSyncing] = useState(false);
   const { user } = useAuthContext();
 
@@ -293,12 +295,14 @@ export function TeamsManager() {
   const fetchOrg = useCallback(async () => {
     try {
       await ensureExternalSession();
-      const [{ data: secs }, { data: nucs }, { data: orgRows }, { data: cargoRows }] = await Promise.all([
+      const [{ data: secs }, { data: nucs }, { data: orgRows }, { data: cargoRows }, { data: statusRows }] = await Promise.all([
         (externalSupabase.from('org_sectors') as any).select('name, manager_user_id, manager_name, nucleo_name').order('name'),
         (externalSupabase.from('org_nucleos') as any).select('name, manager_user_id, manager_name').order('name'),
         (externalSupabase.from('team_managers') as any).select('team_name, sector_name'),
         (externalSupabase.from('team_member_cargos') as any).select('team_name, user_id, cargo'),
+        (externalSupabase.from('org_user_status') as any).select('user_id, active'),
       ]);
+      setInactiveIds(new Set(((statusRows as any[]) || []).filter(r => r.active === false).map(r => r.user_id)));
       setSectors((secs as OrgSector[]) || []);
       setNucleos((nucs as OrgNucleo[]) || []);
       const map: Record<string, string | null> = {};
@@ -309,6 +313,30 @@ export function TeamsManager() {
       setCargos(cargoMap);
     } catch (e) {
       console.error('[TeamsManager] Failed to load org data:', e);
+    }
+  }, []);
+
+  const toggleActive = useCallback(async (person: { user_id: string; full_name: string | null; email: string | null }, active: boolean) => {
+    try {
+      await ensureExternalSession();
+      const { error } = await (externalSupabase.from('org_user_status') as any).upsert({
+        user_id: person.user_id,
+        name: person.full_name || person.email || null,
+        active,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'user_id' });
+      if (error) throw error;
+      setInactiveIds(prev => {
+        const next = new Set(prev);
+        if (active) next.delete(person.user_id); else next.add(person.user_id);
+        return next;
+      });
+      toast.success(active
+        ? `${person.full_name || person.email} reativado`
+        : `${person.full_name || person.email} desativado — será deslogado ao abrir o sistema`);
+    } catch (e) {
+      console.error('[TeamsManager] Failed to toggle status:', e);
+      toast.error('Erro ao alterar status de acesso');
     }
   }, []);
 
@@ -629,7 +657,7 @@ export function TeamsManager() {
         </Button>
       </div>
 
-      {/* Pessoas sem time */}
+      {/* Pessoas sem time + status de acesso */}
       {unassignedPeople.length > 0 && (
         <Card>
           <CardHeader className="pb-3">
@@ -637,16 +665,32 @@ export function TeamsManager() {
               <UserMinus className="h-4 w-4 text-muted-foreground" />
               Sem time
               <Badge variant="secondary">{unassignedPeople.length}</Badge>
+              {inactiveIds.size > 0 && (
+                <Badge variant="destructive" className="text-[10px]">{inactiveIds.size} desativado{inactiveIds.size !== 1 ? 's' : ''}</Badge>
+              )}
             </CardTitle>
-            <CardDescription>Pessoas com login que não estão em nenhum time — adicione pelo card do time.</CardDescription>
+            <CardDescription>
+              Pessoas com login que não estão em nenhum time. Desative quem saiu da equipe — a pessoa é deslogada ao abrir o sistema.
+            </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="flex flex-wrap gap-1.5">
-              {unassignedPeople.map(p => (
-                <Badge key={p.user_id} variant="outline" className="text-xs font-normal">
-                  {p.full_name || p.email || 'Sem nome'}
-                </Badge>
-              ))}
+            <div className="grid gap-1.5 sm:grid-cols-2">
+              {unassignedPeople.map(p => {
+                const active = !inactiveIds.has(p.user_id);
+                return (
+                  <div key={p.user_id} className={cn('flex items-center justify-between gap-2 p-2 rounded-md bg-muted/50', !active && 'opacity-60')}>
+                    <span className="text-sm truncate">
+                      {p.full_name || p.email || 'Sem nome'}
+                      {!active && <Badge variant="destructive" className="ml-2 text-[9px] h-4 px-1">inativo</Badge>}
+                    </span>
+                    <Switch
+                      checked={active}
+                      onCheckedChange={(checked) => toggleActive(p, checked)}
+                      title={active ? 'Desativar acesso' : 'Reativar acesso'}
+                    />
+                  </div>
+                );
+              })}
             </div>
           </CardContent>
         </Card>
