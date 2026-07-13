@@ -47,6 +47,8 @@ import { TeamManagerPicker } from './TeamManagerPicker';
 import { DirectorPicker } from './DirectorPicker';
 import { SectorManager, type OrgSector } from './SectorManager';
 import { TeamSectorPicker } from './TeamSectorPicker';
+import { NucleoManager, type OrgNucleo } from './NucleoManager';
+import { useAuthContext } from '@/contexts/AuthContext';
 
 const ALL_METRICS = [
   { key: 'replies', label: 'Respostas' },
@@ -78,9 +80,12 @@ interface TeamMemberEntry {
   created_at: string;
 }
 
-function CollapsibleMembers({ members: currentMembers, teamId, getMemberMetrics, handleToggleMetric, handleRemoveMember, teamMembers, setTeamMembers, teamColor }: {
+function CollapsibleMembers({ members: currentMembers, teamId, teamName, cargos, onCargoSave, getMemberMetrics, handleToggleMetric, handleRemoveMember, teamMembers, setTeamMembers, teamColor }: {
   members: { user_id: string; full_name: string | null; email: string | null }[];
   teamId: string;
+  teamName: string;
+  cargos: Record<string, string>;
+  onCargoSave: (teamName: string, userId: string, cargo: string) => void;
   getMemberMetrics: (teamId: string, userId: string) => string[];
   handleToggleMetric: (teamId: string, userId: string, metricKey: string) => void;
   handleRemoveMember: (teamId: string, userId: string) => void;
@@ -116,8 +121,17 @@ function CollapsibleMembers({ members: currentMembers, teamId, getMemberMetrics,
                   <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
                     <Users className="h-3.5 w-3.5 text-primary" />
                   </div>
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <span className="text-sm font-medium block truncate">{m.full_name || m.email || 'Sem nome'}</span>
+                    <Input
+                      defaultValue={cargos[`${teamName}|${m.user_id}`] || ''}
+                      placeholder="Cargo (quem faz o quê)..."
+                      className="h-6 text-[11px] mt-0.5 max-w-[220px]"
+                      onBlur={(e) => {
+                        const v = e.target.value;
+                        if (v !== (cargos[`${teamName}|${m.user_id}`] || '')) onCargoSave(teamName, m.user_id, v);
+                      }}
+                    />
                     {memberMetrics.length > 0 && memberMetrics.length < ALL_METRICS.length && (
                       <span className="text-[10px] text-muted-foreground">
                         {memberMetrics.length} métrica{memberMetrics.length !== 1 ? 's' : ''}
@@ -269,24 +283,109 @@ export function TeamsManager() {
   const [saving, setSaving] = useState(false);
 
   const [sectors, setSectors] = useState<OrgSector[]>([]);
+  const [nucleos, setNucleos] = useState<OrgNucleo[]>([]);
   const [teamSectors, setTeamSectors] = useState<Record<string, string | null>>({});
+  const [cargos, setCargos] = useState<Record<string, string>>({}); // `${team_name}|${user_id}` -> cargo
+  const [syncing, setSyncing] = useState(false);
+  const { user } = useAuthContext();
 
-  // Setores e vínculo time→setor moram no Supabase Externo
+  // Setores, núcleos, vínculo time→setor e cargos moram no Supabase Externo
   const fetchOrg = useCallback(async () => {
     try {
       await ensureExternalSession();
-      const [{ data: secs }, { data: orgRows }] = await Promise.all([
-        (externalSupabase.from('org_sectors') as any).select('name, manager_user_id, manager_name').order('name'),
+      const [{ data: secs }, { data: nucs }, { data: orgRows }, { data: cargoRows }] = await Promise.all([
+        (externalSupabase.from('org_sectors') as any).select('name, manager_user_id, manager_name, nucleo_name').order('name'),
+        (externalSupabase.from('org_nucleos') as any).select('name, manager_user_id, manager_name').order('name'),
         (externalSupabase.from('team_managers') as any).select('team_name, sector_name'),
+        (externalSupabase.from('team_member_cargos') as any).select('team_name, user_id, cargo'),
       ]);
       setSectors((secs as OrgSector[]) || []);
+      setNucleos((nucs as OrgNucleo[]) || []);
       const map: Record<string, string | null> = {};
       ((orgRows as any[]) || []).forEach(r => { map[r.team_name] = r.sector_name || null; });
       setTeamSectors(map);
+      const cargoMap: Record<string, string> = {};
+      ((cargoRows as any[]) || []).forEach(r => { if (r.cargo) cargoMap[`${r.team_name}|${r.user_id}`] = r.cargo; });
+      setCargos(cargoMap);
     } catch (e) {
-      console.error('[TeamsManager] Failed to load sectors:', e);
+      console.error('[TeamsManager] Failed to load org data:', e);
     }
   }, []);
+
+  const saveCargo = useCallback(async (teamName: string, userId: string, cargo: string) => {
+    try {
+      await ensureExternalSession();
+      const { error } = await (externalSupabase.from('team_member_cargos') as any).upsert({
+        team_name: teamName,
+        user_id: userId,
+        cargo: cargo.trim() || null,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'team_name,user_id' });
+      if (error) throw error;
+      setCargos(prev => ({ ...prev, [`${teamName}|${userId}`]: cargo.trim() }));
+    } catch (e) {
+      console.error('[TeamsManager] Failed to save cargo:', e);
+      toast.error('Erro ao salvar cargo');
+    }
+  }, []);
+
+  // Cria/atualiza o grupo de chat "👥 {time}" com os membros atuais e posta
+  // o "quem faz o quê" (cargos). O relatório diário e o filtro por time do
+  // chat usam esses grupos como fonte da composição do time.
+  const syncChatGroups = async () => {
+    if (!user?.id) return;
+    setSyncing(true);
+    try {
+      await ensureExternalSession();
+      for (const team of teams) {
+        const teamPeople = getTeamMembers(team.id)
+          .map(m => {
+            const p = profilesList.find(pp => pp.user_id === m.user_id || pp.id === m.user_id);
+            return p ? { authId: p.user_id, name: p.full_name || p.email || 'Sem nome', storedId: m.user_id } : null;
+          })
+          .filter(Boolean) as { authId: string; name: string; storedId: string }[];
+        if (teamPeople.length === 0) continue;
+
+        const groupName = `👥 ${team.name}`;
+        const { data: existing } = await (externalSupabase.from('team_conversations') as any)
+          .select('id').eq('type', 'group').eq('name', groupName).maybeSingle();
+        let convId = existing?.id as string | undefined;
+        if (!convId) {
+          const { data: created, error } = await (externalSupabase.from('team_conversations') as any)
+            .insert({ type: 'group', name: groupName }).select('id').single();
+          if (error) throw error;
+          convId = created.id;
+        }
+
+        const wanted = [...new Set([...teamPeople.map(p => p.authId), user.id])];
+        const { data: current } = await (externalSupabase.from('team_conversation_members') as any)
+          .select('user_id').eq('conversation_id', convId);
+        const have = new Set(((current as any[]) || []).map(m => m.user_id));
+        const toAdd = wanted.filter(id => !have.has(id));
+        if (toAdd.length) {
+          await (externalSupabase.from('team_conversation_members') as any)
+            .insert(toAdd.map(uid => ({ conversation_id: convId, user_id: uid })));
+        }
+
+        const roster = teamPeople
+          .map(p => `• ${p.name} — ${cargos[`${team.name}|${p.storedId}`] || 'cargo não definido'}`)
+          .join('\n');
+        await (externalSupabase.from('team_messages') as any).insert({
+          conversation_id: convId,
+          sender_id: user.id,
+          sender_name: '👥 Organização',
+          content: `👥 ${team.name} — quem faz o quê:\n${roster}`,
+          message_type: 'text',
+        });
+      }
+      toast.success('Grupos de chat dos times sincronizados');
+    } catch (e) {
+      console.error('[TeamsManager] Failed to sync chat groups:', e);
+      toast.error('Erro ao sincronizar grupos do chat');
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   useEffect(() => { fetchOrg(); }, [fetchOrg]);
 
@@ -517,8 +616,18 @@ export function TeamsManager() {
       {/* Diretoria — gere os gestores */}
       <DirectorPicker people={people} />
 
+      {/* Núcleos — agrupam setores */}
+      <NucleoManager nucleos={nucleos} people={people} onChanged={fetchOrg} />
+
       {/* Setores — agrupam os times */}
-      <SectorManager sectors={sectors} people={people} onChanged={fetchOrg} />
+      <SectorManager sectors={sectors} people={people} nucleos={nucleos} onChanged={fetchOrg} />
+
+      <div className="flex justify-end">
+        <Button variant="outline" size="sm" onClick={syncChatGroups} disabled={syncing}>
+          {syncing ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Users className="h-3.5 w-3.5 mr-1" />}
+          Sincronizar grupos do chat (👥 por time)
+        </Button>
+      </div>
 
       {/* Pessoas sem time */}
       {unassignedPeople.length > 0 && (
@@ -553,12 +662,14 @@ export function TeamsManager() {
       ) : (
         <div className="space-y-6">
           {[
-            ...sectors.map(s => ({
-              key: s.name,
-              title: s.name,
-              managerName: s.manager_name,
-              list: teams.filter(t => teamSectors[t.name] === s.name),
-            })),
+            ...[...sectors]
+              .sort((a, b) => (a.nucleo_name || '￿').localeCompare(b.nucleo_name || '￿') || a.name.localeCompare(b.name))
+              .map(s => ({
+                key: s.name,
+                title: s.nucleo_name ? `${s.nucleo_name} › ${s.name}` : s.name,
+                managerName: s.manager_name,
+                list: teams.filter(t => teamSectors[t.name] === s.name),
+              })),
             {
               key: '__sem_setor__',
               title: sectors.length > 0 ? 'Sem setor' : null,
@@ -635,6 +746,9 @@ export function TeamsManager() {
                     <CollapsibleMembers
                       members={currentMembers}
                       teamId={team.id}
+                      teamName={team.name}
+                      cargos={cargos}
+                      onCargoSave={saveCargo}
                       getMemberMetrics={getMemberMetrics}
                       handleToggleMetric={handleToggleMetric}
                       handleRemoveMember={handleRemoveMember}

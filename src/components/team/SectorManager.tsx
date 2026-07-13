@@ -18,6 +18,7 @@ export interface OrgSector {
   name: string;
   manager_user_id: string | null;
   manager_name: string | null;
+  nucleo_name?: string | null;
 }
 
 interface Person {
@@ -29,6 +30,7 @@ interface Person {
 interface SectorManagerProps {
   sectors: OrgSector[];
   people: Person[];
+  nucleos?: { name: string }[];
   onChanged: () => void;
 }
 
@@ -37,7 +39,24 @@ interface SectorManagerProps {
  * Grava em org_sectors no Supabase Externo. O gerente do setor entra nos
  * grupos de relatório diário de todos os times do setor.
  */
-export function SectorManager({ sectors, people, onChanged }: SectorManagerProps) {
+export function SectorManager({ sectors, people, nucleos = [], onChanged }: SectorManagerProps) {
+  const setSectorNucleo = async (name: string, nucleoName: string) => {
+    setSaving(true);
+    try {
+      await ensureExternalSession();
+      const { error } = await (externalSupabase.from('org_sectors') as any)
+        .update({ nucleo_name: nucleoName === 'none' ? null : nucleoName })
+        .eq('name', name);
+      if (error) throw error;
+      toast.success(nucleoName === 'none' ? 'Setor sem núcleo' : `Setor no núcleo "${nucleoName}"`);
+      onChanged();
+    } catch (e) {
+      console.error('[SectorManager] Failed to set nucleo:', e);
+      toast.error('Erro ao vincular núcleo');
+    } finally {
+      setSaving(false);
+    }
+  };
   const [newName, setNewName] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -123,8 +142,19 @@ export function SectorManager({ sectors, people, onChanged }: SectorManagerProps
       </CardHeader>
       <CardContent className="space-y-3">
         {sectors.map(s => (
-          <div key={s.name} className="flex items-center gap-2 p-2 rounded-md bg-muted/50">
+          <div key={s.name} className="flex items-center gap-2 p-2 rounded-md bg-muted/50 flex-wrap">
             <span className="text-sm font-medium flex-1 min-w-0 truncate">{s.name}</span>
+            {nucleos.length > 0 && (
+              <Select value={s.nucleo_name || 'none'} onValueChange={(v) => setSectorNucleo(s.name, v)} disabled={saving}>
+                <SelectTrigger className="h-7 text-xs w-44"><SelectValue placeholder="Núcleo" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Sem núcleo</SelectItem>
+                  {nucleos.map(n => (
+                    <SelectItem key={n.name} value={n.name}>{n.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             <Select
               value={s.manager_user_id || 'none'}
               onValueChange={(v) => setSectorManager(s.name, v)}

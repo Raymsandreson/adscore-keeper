@@ -14,6 +14,14 @@ import {
   Play, Pause, Check, CheckCheck, Reply, X, AlertTriangle, Search,
 } from 'lucide-react';
 import { setActiveTeamChatConversation } from '@/lib/teamChatActiveConversation';
+import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -40,6 +48,28 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
   const [showNewChat, setShowNewChat] = useState(false);
   const [convSearch, setConvSearch] = useState('');
   const [newChatSearch, setNewChatSearch] = useState('');
+  const [teamFilter, setTeamFilter] = useState('all');
+  const [teamGroups, setTeamGroups] = useState<{ name: string; memberIds: string[] }[]>([]);
+
+  // Times pro filtro: usa os grupos "👥 {time}" sincronizados na aba Times
+  useEffect(() => {
+    (async () => {
+      try {
+        await ensureExternalSession();
+        const { data: groups } = await (externalSupabase.from('team_conversations') as any)
+          .select('id, name').eq('type', 'group').like('name', '👥 %');
+        if (!groups?.length) return;
+        const { data: mems } = await (externalSupabase.from('team_conversation_members') as any)
+          .select('conversation_id, user_id').in('conversation_id', (groups as any[]).map(g => g.id));
+        setTeamGroups((groups as any[]).map(g => ({
+          name: (g.name as string).replace(/^👥 /, ''),
+          memberIds: ((mems as any[]) || []).filter(m => m.conversation_id === g.id).map(m => m.user_id),
+        })));
+      } catch (e) {
+        console.error('[TeamDirectChatPanel] Failed to load team groups:', e);
+      }
+    })();
+  }, []);
   const [showEntityMention, setShowEntityMention] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
@@ -777,7 +807,14 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
 
   // Conversation list
   const convQuery = convSearch.trim().toLowerCase();
+  const activeTeamGroup = teamFilter === 'all' ? null : teamGroups.find(t => t.name === teamFilter);
   const filteredConversations = conversations.filter(conv => {
+    if (activeTeamGroup) {
+      const inGroupName = conv.type === 'group' && (conv.name || '').includes(activeTeamGroup.name);
+      const otherInTeam = conv.type === 'direct' && !!conv.otherMemberId
+        && activeTeamGroup.memberIds.includes(conv.otherMemberId);
+      if (!inGroupName && !otherInTeam) return false;
+    }
     if (!convQuery) return true;
     const title = conv.type === 'group' ? (conv.name || 'Grupo') : (conv.otherMemberName || '');
     return title.toLowerCase().includes(convQuery)
@@ -798,7 +835,7 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
         </div>
       </div>
 
-      <div className="shrink-0 px-3 py-2 border-b">
+      <div className="shrink-0 px-3 py-2 border-b space-y-1.5">
         <div className="relative">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <Input
@@ -808,6 +845,19 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
             className="h-8 pl-8 text-sm"
           />
         </div>
+        {teamGroups.length > 0 && (
+          <Select value={teamFilter} onValueChange={setTeamFilter}>
+            <SelectTrigger className="h-7 text-xs">
+              <SelectValue placeholder="Filtrar por time" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os times</SelectItem>
+              {teamGroups.map(t => (
+                <SelectItem key={t.name} value={t.name}>{t.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
       </div>
 
       <ScrollArea className="flex-1">

@@ -140,8 +140,11 @@ export const handler = async (req: Request, res: Response) => {
 
     // Setores — gerente do setor entra no grupo de relatório dos times dele
     const { data: sectorRows } = await supabase
-      .from('org_sectors').select('name, manager_user_id, manager_name');
+      .from('org_sectors').select('name, manager_user_id, manager_name, nucleo_name');
     const sectorByName = new Map((sectorRows || []).map((s) => [s.name, s]));
+    const { data: nucleoRows } = await supabase
+      .from('org_nucleos').select('name, manager_user_id, manager_name');
+    const nucleoByName = new Map((nucleoRows || []).map((n) => [n.name, n]));
 
     // Diretoria — gere os gestores; entra em todos os grupos de relatório
     const { data: directorRows } = await supabase.from('org_directors').select('user_id, name');
@@ -172,11 +175,35 @@ export const handler = async (req: Request, res: Response) => {
       const team = (teams || []).find((t) => t.name === mgr.team_name || t.id === mgr.team_id);
       const teamLabel = mgr.team_name;
       try {
-        const rawMemberIds = (allTeamMembers || [])
-          .filter((tm) => team && tm.team_id === team.id)
-          .map((tm) => tm.user_id);
+        // Fonte preferida: grupo "👥 {time}" sincronizado pela aba Times (dados atuais).
+        // Fallback: team_members do Externo (pode estar defasado vs Cloud).
+        let rawMemberIds: string[] = [];
+        const { data: memberConv } = await supabase
+          .from('team_conversations').select('id')
+          .eq('type', 'group').eq('name', `👥 ${teamLabel}`).maybeSingle();
+        if (memberConv?.id) {
+          const { data: convMembers } = await supabase
+            .from('team_conversation_members').select('user_id')
+            .eq('conversation_id', memberConv.id);
+          rawMemberIds = (convMembers || []).map((m) => m.user_id);
+        }
+        if (!rawMemberIds.length) {
+          rawMemberIds = (allTeamMembers || [])
+            .filter((tm) => team && tm.team_id === team.id)
+            .map((tm) => tm.user_id);
+        }
         const members = await resolveMembers([...new Set([...rawMemberIds, mgr.manager_user_id])]);
+
+        // Cargos (quem faz o quê)
+        const { data: cargoRows } = await supabase
+          .from('team_member_cargos').select('user_id, cargo').eq('team_name', teamLabel);
+        const cargoFor = (m: MemberIdentity) =>
+          (cargoRows || []).find((c) => m.anyIds.includes(c.user_id))?.cargo || null;
         const memberNames = members.map((m) => m.name);
+        const memberNamesWithCargo = members.map((m) => {
+          const cargo = cargoFor(m);
+          return cargo ? `${m.name} (${cargo})` : m.name;
+        });
         const anyIds = [...new Set(members.flatMap((m) => m.anyIds))];
         const authIds = [...new Set(members.map((m) => m.authId).filter(Boolean))] as string[];
 
@@ -190,7 +217,7 @@ export const handler = async (req: Request, res: Response) => {
         const prompt = [
           `TIME: ${teamLabel}${team?.description ? ` — ${team.description}` : ''}`,
           `GESTOR: ${mgr.manager_name || mgr.manager_user_id}`,
-          `MEMBROS: ${memberNames.join(', ')}`,
+          `MEMBROS (cargo): ${memberNamesWithCargo.join(', ')}`,
           ``,
           `ATIVIDADES: ${stats.abertas} abertas, ${stats.atrasadas} atrasadas, ${stats.concluidas24h} concluídas nas últimas 24h.`,
           `ATRASADAS MAIS ANTIGAS:`,
@@ -217,9 +244,15 @@ export const handler = async (req: Request, res: Response) => {
         if (!report) throw new Error('LLM não retornou conteúdo');
 
         const sector = mgr.sector_name ? sectorByName.get(mgr.sector_name) : null;
+        const nucleo = sector?.nucleo_name ? nucleoByName.get(sector.nucleo_name) : null;
         const convId = await ensureGroupConversation(
           `📊 ${teamLabel}`,
-          [mgr.manager_user_id, ...(sector?.manager_user_id ? [sector.manager_user_id] : []), ...directorIds],
+          [
+            mgr.manager_user_id,
+            ...(sector?.manager_user_id ? [sector.manager_user_id] : []),
+            ...(nucleo?.manager_user_id ? [nucleo.manager_user_id] : []),
+            ...directorIds,
+          ],
         );
 
         if (!force && (await alreadyPostedToday(convId))) {
@@ -230,7 +263,7 @@ export const handler = async (req: Request, res: Response) => {
         }
 
         directorSummaries.push(
-          `SETOR ${mgr.sector_name || 'Sem setor'} | TIME ${teamLabel} (gestor: ${mgr.manager_name}): ${stats.atrasadas} atividades atrasadas, ` +
+          `NÚCLEO ${sector?.nucleo_name || 'Sem núcleo'} | SETOR ${mgr.sector_name || 'Sem setor'} | TIME ${teamLabel} (gestor: ${mgr.manager_name}): ${stats.atrasadas} atividades atrasadas, ` +
           `${stats.concluidas24h} concluídas 24h, ${teamMsgs.length} mensagens no chat. ` +
           `Mensagens do gestor: ${teamMsgs.filter((m) => m.includes(mgr.manager_name || '###')).length}.\n${report.slice(0, 800)}`
         );
