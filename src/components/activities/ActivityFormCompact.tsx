@@ -14,6 +14,8 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Search, X, ChevronDown, Copy, Loader2, UserPlus, Building2, Briefcase, Send, Info, Settings2, FileText, Plus, Mic, Check, Star } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { filterAssignableMembers } from '@/lib/assigneeBlocklist';
 import { ActivityTTSButton } from '@/components/voice/ActivityTTSButton';
@@ -166,6 +168,28 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
   const [recordingUrl, setRecordingUrl] = useState<string | null>(null);
   const [recordingMime, setRecordingMime] = useState<string>('audio/webm');
   const [includeRecording, setIncludeRecording] = useState(false);
+  // Preview editável + escolha de destino
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewText, setPreviewText] = useState('');
+  const [hasGroup, setHasGroup] = useState(false);
+  const [destGroup, setDestGroup] = useState(false);
+  const [destAssessor, setDestAssessor] = useState(false);
+
+  // Descobre se o lead tem grupo (usado para o preview e destinos padrão).
+  useEffect(() => {
+    let cancelled = false;
+    if (!leadId) { setHasGroup(false); return; }
+    (async () => {
+      await ensureExternalSession();
+      const { data } = await externalSupabase
+        .from('leads')
+        .select('whatsapp_group_id')
+        .eq('id', leadId)
+        .maybeSingle();
+      if (!cancelled) setHasGroup(!!(data as any)?.whatsapp_group_id);
+    })();
+    return () => { cancelled = true; };
+  }, [leadId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -242,155 +266,142 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
     return () => { cancelled = true; };
   }, [user?.id, isAdmin]);
 
-  const handleSendToGroup = async () => {
-    if (!leadId) {
-      // No lead: try WhatsApp first; fallback to internal Team Chat
-      if (!formAssignedTo) {
-        toast.error('Vincule um lead ou selecione um assessor para enviar');
-        return;
-      }
-      setSending(true);
-      try {
-        const { data: profile } = await supabase
+  // Envia o texto (já editado) ao grupo do lead.
+  const sendToGroupNow = async (text: string): Promise<void> => {
+    if (!leadId) return;
+    await ensureExternalSession();
+    const [leadRes, profileRes] = await Promise.all([
+      externalSupabase
+        .from('leads')
+        .select('whatsapp_group_id, board_id')
+        .eq('id', leadId)
+        .maybeSingle(),
+      supabase.auth.getUser().then(async ({ data: { user } }) => {
+        if (!user) return null;
+        const { data } = await supabase
           .from('profiles')
-          .select('phone, default_instance_id, full_name')
-          .eq('user_id', formAssignedTo)
+          .select('default_instance_id')
+          .eq('user_id', user.id)
           .maybeSingle();
+        return (data as any)?.default_instance_id || null;
+      }),
+    ]);
+    const lead = leadRes.data as any;
+    const groupId = lead?.whatsapp_group_id;
+    if (!groupId) { toast.error('Este lead não tem grupo WhatsApp vinculado'); return; }
 
-        // Sem lead: a mensagem vai pro assessor — saudação e formato endereçados a ele.
-        const message = buildMsg('assessor');
-        const hasWhatsApp = !!profile?.phone && !!profile?.default_instance_id;
+    let instanceId: string | undefined = selectedInstanceId || profileRes || undefined;
+    if (!instanceId && lead?.board_id) {
+      const { data: boardInstances } = await externalSupabase
+        .from('board_group_instances')
+        .select('instance_id')
+        .eq('board_id', lead.board_id)
+        .limit(1);
+      instanceId = (boardInstances as any)?.[0]?.instance_id;
+    }
 
-        if (hasWhatsApp) {
-          // Send via WhatsApp (assessor has phone + instance configured)
-          const { data, error } = await cloudFunctions.invoke('send-whatsapp', {
-            body: {
-              phone: (profile!.phone as string).replace(/\D/g, ''),
-              message,
-              instance_id: selectedInstanceId || profile!.default_instance_id,
-            },
-          });
+    const sendBody: Record<string, any> = {
+      phone: groupId, chat_id: groupId, message: text, lead_id: leadId,
+    };
+    if (instanceId) sendBody.instance_id = instanceId;
 
-          if (error || !data?.success) {
-            if (!error && isInstanceDisconnectedError(data)) {
-              showInstanceDisconnectedToast(data.instance_id || profile!.default_instance_id, data.instance_name);
-            } else {
-              toast.error(data?.error || 'Erro ao enviar mensagem');
-            }
-          } else {
-            toast.success(`Mensagem enviada para ${profile?.full_name || 'o assessor'} no WhatsApp!`);
-            if (includeRecording && recordingUrl) {
-              await sendRecording((profile!.phone as string).replace(/\D/g, ''), undefined, selectedInstanceId || (profile!.default_instance_id as string));
-            }
-          }
-        } else {
-          // Fallback: send via internal Team Chat
-          await ensureExternalSession();
-          const { data: { user } } = await supabase.auth.getUser();
-          const { data: convId, error: convError } = await (externalSupabase.rpc as any)('start_team_direct_conversation', {
-            _other_user_id: formAssignedTo,
-            _self_user_id: user?.id,
-          });
-
-          if (convError || !convId) {
-            toast.error('Erro ao abrir conversa no Chat da Equipe');
-            setSending(false);
-            return;
-          }
-
-          const { data: senderProfile } = user ? await supabase
-            .from('profiles')
-            .select('full_name')
-            .eq('user_id', user.id)
-            .maybeSingle() : { data: null };
-
-          const { error: msgError } = await externalSupabase.from('team_messages').insert({
-            conversation_id: convId,
-            sender_id: user?.id,
-            sender_name: senderProfile?.full_name || null,
-            content: message,
-            message_type: 'text',
-          });
-
-          if (msgError) {
-            toast.error('Erro ao enviar no Chat da Equipe');
-          } else {
-            toast.success(`Enviado para ${profile?.full_name || 'o assessor'} no Chat da Equipe!`);
-          }
-        }
-      } catch (e: any) {
-        toast.error(e.message || 'Erro ao enviar');
-      } finally {
-        setSending(false);
+    const { data, error } = await cloudFunctions.invoke('send-whatsapp', { body: sendBody });
+    if (error || !data?.success) {
+      if (!error && isInstanceDisconnectedError(data)) {
+        showInstanceDisconnectedToast(data.instance_id || instanceId, data.instance_name);
+      } else {
+        toast.error(data?.error || 'Erro ao enviar ao grupo');
       }
       return;
     }
+    toast.success('Mensagem enviada ao grupo!');
+    if (includeRecording && recordingUrl) {
+      await sendRecording(groupId, groupId, instanceId);
+    }
+  };
 
-    setSending(true);
-    try {
-      await ensureExternalSession();
-      const [leadRes, profileRes] = await Promise.all([
-        externalSupabase
-          .from('leads')
-          .select('whatsapp_group_id, group_link, lead_name, board_id')
-          .eq('id', leadId)
-          .maybeSingle(),
-        supabase.auth.getUser().then(async ({ data: { user } }) => {
-          if (!user) return null;
-          const { data } = await supabase
-            .from('profiles')
-            .select('default_instance_id')
-            .eq('user_id', user.id)
-            .maybeSingle();
-          return (data as any)?.default_instance_id || null;
-        }),
-      ]);
+  // Envia o texto (já editado) ao assessor: WhatsApp privado (se tiver) + Chat da Equipe.
+  const sendToAssessorNow = async (text: string): Promise<void> => {
+    if (!formAssignedTo) { toast.error('Sem assessor responsável'); return; }
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('phone, default_instance_id, full_name')
+      .eq('user_id', formAssignedTo)
+      .maybeSingle();
 
-      const lead = leadRes.data as any;
-      const groupId = lead?.whatsapp_group_id;
-      if (!groupId) {
-        toast.error('Este lead não tem grupo WhatsApp vinculado');
-        setSending(false);
-        return;
-      }
-
-      let instanceId: string | undefined = selectedInstanceId || profileRes || undefined;
-      if (!instanceId && lead?.board_id) {
-        const { data: boardInstances } = await externalSupabase
-          .from('board_group_instances')
-          .select('instance_id')
-          .eq('board_id', lead.board_id)
-          .limit(1);
-        instanceId = (boardInstances as any)?.[0]?.instance_id;
-      }
-
-      const message = buildMsg();
-      const sendBody: Record<string, any> = { 
-        phone: groupId, 
-        chat_id: groupId, 
-        message, 
-        lead_id: leadId,
-      };
-      if (instanceId) sendBody.instance_id = instanceId;
-
+    const hasWhatsApp = !!profile?.phone && !!profile?.default_instance_id;
+    if (hasWhatsApp) {
+      const phone = (profile!.phone as string).replace(/\D/g, '');
+      const instId = selectedInstanceId || (profile!.default_instance_id as string);
       const { data, error } = await cloudFunctions.invoke('send-whatsapp', {
-        body: sendBody,
+        body: { phone, message: text, instance_id: instId },
       });
-
       if (error || !data?.success) {
         if (!error && isInstanceDisconnectedError(data)) {
-          showInstanceDisconnectedToast(data.instance_id || instanceId, data.instance_name);
+          showInstanceDisconnectedToast(data.instance_id || instId, data.instance_name);
         } else {
-          toast.error(data?.error || 'Erro ao enviar mensagem');
+          toast.error(data?.error || 'Erro ao enviar ao assessor no WhatsApp');
         }
       } else {
-        toast.success('Mensagem enviada ao grupo!');
+        toast.success(`WhatsApp enviado para ${profile?.full_name || 'o assessor'}!`);
         if (includeRecording && recordingUrl) {
-          await sendRecording(groupId, groupId, instanceId);
+          await sendRecording(phone, undefined, instId);
         }
       }
+    }
+
+    // Chat da Equipe (sempre, para deixar registro interno)
+    try {
+      await ensureExternalSession();
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      const { data: convId, error: convError } = await (externalSupabase.rpc as any)('start_team_direct_conversation', {
+        _other_user_id: formAssignedTo,
+        _self_user_id: authUser?.id,
+      });
+      if (convError || !convId) { toast.error('Erro ao abrir conversa no Chat da Equipe'); return; }
+
+      const { data: senderProfile } = authUser
+        ? await supabase.from('profiles').select('full_name').eq('user_id', authUser.id).maybeSingle()
+        : { data: null };
+
+      const { error: msgError } = await externalSupabase.from('team_messages').insert({
+        conversation_id: convId,
+        sender_id: authUser?.id,
+        sender_name: (senderProfile as any)?.full_name || null,
+        content: text,
+        message_type: 'text',
+      });
+      if (msgError) toast.error('Erro ao enviar no Chat da Equipe');
+      else toast.success(`Enviado no Chat da Equipe para ${profile?.full_name || 'o assessor'}!`);
     } catch (e: any) {
-      toast.error(e.message || 'Erro ao enviar');
+      toast.error(e.message || 'Erro no Chat da Equipe');
+    }
+  };
+
+  // Abre o preview com a mensagem montada e destinos padrão.
+  const openPreview = () => {
+    let msg = '';
+    try {
+      msg = buildMsg(hasGroup ? 'client' : 'assessor');
+    } catch (e) {
+      console.error('[Preview] buildMsg falhou:', e);
+      toast.error('Erro ao montar a mensagem.');
+      return;
+    }
+    setPreviewText(msg);
+    setDestGroup(hasGroup);
+    setDestAssessor(!hasGroup && !!formAssignedTo);
+    setPreviewOpen(true);
+  };
+
+  const confirmSend = async () => {
+    if (!destGroup && !destAssessor) { toast.error('Escolha ao menos um destino'); return; }
+    if (!previewText.trim()) { toast.error('Mensagem vazia'); return; }
+    setSending(true);
+    try {
+      if (destGroup) await sendToGroupNow(previewText);
+      if (destAssessor) await sendToAssessorNow(previewText);
+      setPreviewOpen(false);
     } finally {
       setSending(false);
     }
@@ -466,39 +477,98 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
           Avaliação
         </Button>
       )}
-      {instances.length > 0 && (
-        <Select value={selectedInstanceId} onValueChange={setSelectedInstanceId}>
-          <SelectTrigger className="h-8 text-xs w-[120px]">
-            <SelectValue placeholder="Instância" />
-          </SelectTrigger>
-          <SelectContent>
-            {instances.map((i) => (
-              <SelectItem key={i.id} value={i.id} className="text-xs">{i.instance_name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      )}
-      {recordingUrl && (
-        <label
-          className="flex items-center gap-1 h-8 px-2 rounded-md border text-xs cursor-pointer select-none"
-          title="Enviar também a gravação da ligação junto com a mensagem"
-        >
-          <input
-            type="checkbox"
-            checked={includeRecording}
-            onChange={(e) => setIncludeRecording(e.target.checked)}
-            className="h-3.5 w-3.5 accent-primary"
-          />
-          <Mic className="h-3.5 w-3.5 text-red-500" /> Gravação
-        </label>
-      )}
-      <Button type="button" variant="default" size="sm" className="gap-1 h-8 text-xs" onClick={handleSendToGroup} disabled={sending}>
+      <Button type="button" variant="default" size="sm" className="gap-1 h-8 text-xs" onClick={openPreview} disabled={sending}>
         {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
         {buttonLabel}
       </Button>
       <ActivityTTSButton messageText={buildMsg()} leadId={formLeadIdForTTS} contactId={formContactIdForTTS} />
       <ActivityFieldSettingsDialog fields={fieldSettings} onUpdateField={updateFieldSetting} onReorder={reorderFields} />
       <ActivityMessageTemplateSettings />
+
+      <Dialog open={previewOpen} onOpenChange={(v) => !sending && setPreviewOpen(v)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Revisar e enviar mensagem</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label className="text-xs text-muted-foreground mb-1 block">Mensagem (editável)</Label>
+              <Textarea
+                value={previewText}
+                onChange={(e) => setPreviewText(e.target.value)}
+                rows={10}
+                className="text-sm font-mono"
+              />
+            </div>
+
+            <div>
+              <Label className="text-xs text-muted-foreground mb-1.5 block">Destino</Label>
+              <div className="space-y-2">
+                <label className={cn("flex items-start gap-2 text-sm", !hasGroup && "opacity-50")}>
+                  <Checkbox
+                    checked={destGroup}
+                    onCheckedChange={(v) => setDestGroup(!!v)}
+                    disabled={!hasGroup}
+                    className="mt-0.5"
+                  />
+                  <div>
+                    <div>Grupo do lead</div>
+                    {!hasGroup && <div className="text-[11px] text-muted-foreground">Lead não tem grupo WhatsApp vinculado</div>}
+                  </div>
+                </label>
+                <label className={cn("flex items-start gap-2 text-sm", !formAssignedTo && "opacity-50")}>
+                  <Checkbox
+                    checked={destAssessor}
+                    onCheckedChange={(v) => setDestAssessor(!!v)}
+                    disabled={!formAssignedTo}
+                    className="mt-0.5"
+                  />
+                  <div>
+                    <div>Assessor (WhatsApp privado + Chat da Equipe)</div>
+                    {!formAssignedTo && <div className="text-[11px] text-muted-foreground">Nenhum assessor responsável selecionado</div>}
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            {instances.length > 0 && (
+              <div>
+                <Label className="text-xs text-muted-foreground mb-1 block">Instância do WhatsApp</Label>
+                <Select value={selectedInstanceId} onValueChange={setSelectedInstanceId}>
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue placeholder="Instância" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {instances.map((i) => (
+                      <SelectItem key={i.id} value={i.id} className="text-xs">{i.instance_name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {recordingUrl && (
+              <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+                <Checkbox
+                  checked={includeRecording}
+                  onCheckedChange={(v) => setIncludeRecording(!!v)}
+                />
+                <Mic className="h-3.5 w-3.5 text-red-500" />
+                Incluir gravação da ligação
+              </label>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setPreviewOpen(false)} disabled={sending}>
+              Cancelar
+            </Button>
+            <Button size="sm" onClick={confirmSend} disabled={sending || (!destGroup && !destAssessor)}>
+              {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Send className="h-3.5 w-3.5 mr-1" />}
+              Enviar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
