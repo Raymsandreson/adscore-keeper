@@ -14,6 +14,7 @@ import { ActivityFieldSettingsDialog } from '@/components/activities/ActivityFie
 import { ActivityTTSButton } from '@/components/voice/ActivityTTSButton';
 import { ActivityFormCompact, SendToGroupSection } from '@/components/activities/ActivityFormCompact';
 import { CobrarVaraSection } from '@/components/activities/CobrarVaraSection';
+import { CourtContactsSheet } from '@/components/activities/CourtContactsSheet';
 import { ActivityCallRecorder, callFieldTextToHtml, stripHtmlToText } from '@/components/activities/ActivityCallRecorder';
 import { ActivityDocumentUpload } from '@/components/activities/ActivityDocumentUpload';
 import { sendVoiceToWa } from '@/lib/whatsappVoiceSend';
@@ -42,7 +43,7 @@ import {
   Plus, Calendar, CheckCircle2, Clock, AlertTriangle,
   FileText, Loader2, Trash2, Search, X, ChevronLeft, ChevronRight, MessageCircle, Copy, ChevronsUpDown, Check,
   Play, ArrowRight, Trophy, SkipForward, Timer, Share2, User, ExternalLink, RotateCcw, LayoutGrid, List, Layers, Settings2, Sparkles, TrendingUp, Briefcase, MoreVertical,
-  Users, Pin, PinOff, Pencil, UserPlus, Mic, ChevronDown, Link,
+  Users, Pin, PinOff, Pencil, UserPlus, Mic, ChevronDown, Link, Landmark,
 } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { ShareMenu } from '@/components/ShareMenu';
@@ -269,6 +270,7 @@ const ActivitiesPage = () => {
   }, []);
   const [createdDialog, setCreatedDialog] = useState<{ open: boolean; title: string; activity: LeadActivity | null }>({ open: false, title: '', activity: null });
   const [shareSummaryOpen, setShareSummaryOpen] = useState(false);
+  const [courtContactsOpen, setCourtContactsOpen] = useState(false);
   const [leads, setLeads] = useState<LeadOption[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [calendarMonth, setCalendarMonth] = useState(new Date());
@@ -2607,6 +2609,9 @@ const ActivitiesPage = () => {
               Lista
             </button>
           </div>
+          <Button variant="ghost" size="icon" className="h-8 w-8 text-primary-foreground hover:bg-primary-foreground/10" onClick={() => setCourtContactsOpen(true)} title="Varas e Tribunais — contatos">
+            <Landmark className="h-4 w-4" />
+          </Button>
           <Button variant="ghost" size="icon" className="h-8 w-8 text-primary-foreground hover:bg-primary-foreground/10" onClick={startWorkflow} title="Workflow">
             <Play className="h-4 w-4" />
           </Button>
@@ -4170,40 +4175,6 @@ const ActivitiesPage = () => {
                     );
                   })()}
 
-                  {pendingAudio && (leadPreview?.whatsapp_group_id || leadPreview?.lead_phone) && (() => {
-                    const target = leadPreview?.whatsapp_group_id || leadPreview?.lead_phone || '';
-                    const label = leadPreview?.whatsapp_group_id ? 'grupo' : 'contato';
-                    const mm = Math.floor(pendingAudio.seconds / 60).toString().padStart(2, '0');
-                    const ss = (pendingAudio.seconds % 60).toString().padStart(2, '0');
-                    return (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7 text-xs gap-1 border-green-300 text-green-700 hover:bg-green-50 dark:border-green-800 dark:text-green-400 dark:hover:bg-green-950/30"
-                        disabled={sendingPendingAudio}
-                        onClick={async () => {
-                          if (!target || !pendingAudio) return;
-                          setSendingPendingAudio(true);
-                          try {
-                            await sendVoiceToWa(pendingAudio.url, target, formLeadId);
-                            toast.success(`Áudio enviado ao ${label} do WhatsApp!`);
-                            setPendingAudio(null);
-                          } catch (e: any) {
-                            toast.error(e?.message || 'Erro ao enviar áudio no WhatsApp');
-                          } finally {
-                            setSendingPendingAudio(false);
-                          }
-                        }}
-                        title={`Enviar a gravação (${mm}:${ss}) como áudio no WhatsApp do ${label}`}
-                      >
-                        {sendingPendingAudio ? (
-                          <><Loader2 className="h-3 w-3 animate-spin" /> Enviando…</>
-                        ) : (
-                          <><Mic className="h-3 w-3" /> Enviar áudio ({mm}:{ss})</>
-                        )}
-                      </Button>
-                    );
-                  })()}
                   <Button
                     variant="ghost"
                     size="icon"
@@ -4420,6 +4391,42 @@ const ActivitiesPage = () => {
                   {buildMsg && (
                     <SendToGroupSection buildMsg={buildMsg} leadId={formLeadId} fieldSettings={fieldSettings} updateFieldSetting={updateFieldSetting} reorderFields={reorderFields} formLeadIdForTTS={formLeadId || undefined} formContactIdForTTS={formContactId || undefined} formAssignedTo={formAssignedTo || undefined} activityId={selectedActivity?.id} compactLabel />
                   )}
+                  {/* Enviar só o áudio gravado — junto do "Enviar" da mensagem completa, pra ação
+                      de envio ficar toda no mesmo lugar (antes ficava no header, longe do Concluir). */}
+                  {pendingAudio && (leadPreview?.whatsapp_group_id || leadPreview?.lead_phone) && (() => {
+                    const target = leadPreview?.whatsapp_group_id || leadPreview?.lead_phone || '';
+                    const label = leadPreview?.whatsapp_group_id ? 'grupo' : 'contato';
+                    const mm = Math.floor(pendingAudio.seconds / 60).toString().padStart(2, '0');
+                    const ss = (pendingAudio.seconds % 60).toString().padStart(2, '0');
+                    return (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 text-xs gap-1 border-green-300 text-green-700 hover:bg-green-50 dark:border-green-800 dark:text-green-400 dark:hover:bg-green-950/30"
+                        disabled={sendingPendingAudio}
+                        onClick={async () => {
+                          if (!target || !pendingAudio) return;
+                          setSendingPendingAudio(true);
+                          try {
+                            await sendVoiceToWa(pendingAudio.url, target, formLeadId);
+                            toast.success(`Áudio enviado ao ${label} do WhatsApp!`);
+                            setPendingAudio(null);
+                          } catch (e: any) {
+                            toast.error(e?.message || 'Erro ao enviar áudio no WhatsApp');
+                          } finally {
+                            setSendingPendingAudio(false);
+                          }
+                        }}
+                        title={`Enviar a gravação (${mm}:${ss}) como áudio no WhatsApp do ${label}`}
+                      >
+                        {sendingPendingAudio ? (
+                          <><Loader2 className="h-3 w-3 animate-spin" /> Enviando…</>
+                        ) : (
+                          <><Mic className="h-3 w-3" /> Enviar áudio ({mm}:{ss})</>
+                        )}
+                      </Button>
+                    );
+                  })()}
                   {formProcessId && (
                     <CobrarVaraSection processId={formProcessId} activityId={selectedActivity?.id} leadId={formLeadId || null} />
                   )}
@@ -4748,6 +4755,7 @@ const ActivitiesPage = () => {
         </div>
       )}
       <ConfirmDeleteDialog />
+      <CourtContactsSheet open={courtContactsOpen} onOpenChange={setCourtContactsOpen} />
       <ActivityCreatedDialog
         open={createdDialog.open}
         onOpenChange={(open) => setCreatedDialog((prev) => ({ ...prev, open }))}
