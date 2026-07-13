@@ -32,7 +32,7 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
   const navigate = useNavigate();
   const {
     conversations, messages, activeConversationId, setActiveConversationId,
-    loading, sendingMessage, sendMessage, startDirectChat, ensureGeneralChat,
+    loading, sendingMessage, sendMessage, alertMessageAgain, startDirectChat, ensureGeneralChat,
     otherMembersReadAt,
   } = useTeamDirectChat();
   const profiles = useProfilesList();
@@ -471,14 +471,24 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
                   className={cn('group flex items-end gap-1', isMe ? 'justify-end' : 'justify-start')}
                 >
                   {isMe && (
-                    <button
-                      type="button"
-                      onClick={() => setReplyingTo(msg)}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-accent text-muted-foreground"
-                      title="Responder"
-                    >
-                      <Reply className="h-3.5 w-3.5" />
-                    </button>
+                    <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center">
+                      <button
+                        type="button"
+                        onClick={() => alertMessageAgain(msg.id)}
+                        className="p-1 rounded hover:bg-accent text-destructive"
+                        title="Reenviar como urgente (alerta o destinatário de novo)"
+                      >
+                        <AlertTriangle className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setReplyingTo(msg)}
+                        className="p-1 rounded hover:bg-accent text-muted-foreground"
+                        title="Responder"
+                      >
+                        <Reply className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   )}
                   <div className={cn(
                     'max-w-[85%] rounded-xl px-3 py-1.5 transition-shadow',

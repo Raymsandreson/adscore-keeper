@@ -21,6 +21,8 @@ interface TeamNotificationToastProps {
   onOpen: () => void | Promise<void>;
   onMuteForMinutes: (minutes: number | null) => void;
   onReply?: (reply: string) => Promise<void>;
+  /** Chamado quando o usuário fecha o popup deliberadamente (X ou swipe) sem responder */
+  onManualDismiss?: () => void;
 }
 
 const MUTE_OPTIONS = [
@@ -42,6 +44,7 @@ export function TeamNotificationToast({
   onOpen,
   onMuteForMinutes,
   onReply,
+  onManualDismiss,
 }: TeamNotificationToastProps) {
   const [reply, setReply] = useState('');
   const [sending, setSending] = useState(false);
@@ -77,6 +80,7 @@ export function TeamNotificationToast({
         containerRef.current.style.transform = `translateX(${dir})`;
         containerRef.current.style.opacity = '0';
       }
+      onManualDismiss?.();
       setTimeout(() => toast.dismiss(toastId), 200);
     } else {
       // Snap back
@@ -130,7 +134,10 @@ export function TeamNotificationToast({
     >
       <button
         type="button"
-        onClick={() => toast.dismiss(toastId)}
+        onClick={() => {
+          onManualDismiss?.();
+          toast.dismiss(toastId);
+        }}
         className="absolute top-1.5 right-1.5 p-1 rounded-md hover:bg-accent text-muted-foreground z-10"
         aria-label="Fechar notificação"
       >

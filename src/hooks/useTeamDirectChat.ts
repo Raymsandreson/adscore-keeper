@@ -32,6 +32,7 @@ export interface TeamMessage {
   audio_duration?: number | null;
   reply_to_id?: string | null;
   is_urgent?: boolean | null;
+  urgent_alert_at?: string | null;
 }
 
 const GENERAL_CHAT_NAME = '💬 Chat Geral da Equipe';
@@ -340,6 +341,29 @@ export function useTeamDirectChat() {
     }
   }, [activeConversationId, user?.id, user?.email]);
 
+  // Reenvia uma mensagem já enviada como urgente: o destinatário recebe o popup
+  // vermelho com som novamente, mesmo que tenha fechado o anterior
+  const alertMessageAgain = useCallback(async (messageId: string) => {
+    try {
+      await ensureExternalSession();
+
+      const alertAt = new Date().toISOString();
+      const { error } = await (externalSupabase.from('team_messages') as any)
+        .update({ is_urgent: true, urgent_alert_at: alertAt })
+        .eq('id', messageId);
+
+      if (error) throw error;
+
+      setMessages(prev => prev.map(m =>
+        m.id === messageId ? { ...m, is_urgent: true, urgent_alert_at: alertAt } : m
+      ));
+      toast.success('Alerta urgente reenviado');
+    } catch (e) {
+      console.error('Error re-alerting message:', e);
+      toast.error('Não foi possível reenviar o alerta');
+    }
+  }, []);
+
   const startDirectChat = useCallback(async (otherUserId: string) => {
     if (!user?.id) return null;
 
@@ -410,6 +434,7 @@ export function useTeamDirectChat() {
     loading,
     sendingMessage,
     sendMessage,
+    alertMessageAgain,
     startDirectChat,
     ensureGeneralChat,
     fetchConversations,

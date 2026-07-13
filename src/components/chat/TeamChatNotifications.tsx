@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
-import { AtSign, MessageCircle } from 'lucide-react';
+import { AtSign, MessageCircle, EyeOff } from 'lucide-react';
 import { TeamNotificationToast } from './TeamNotificationToast';
 import { openTeamChatConversation } from '@/lib/teamChatPanelEvents';
 import {
@@ -111,6 +111,7 @@ function showNotificationToast({
   onOpen,
   onReply,
   onClosed,
+  onManualDismiss,
 }: {
   id?: string;
   icon: ReactNode;
@@ -122,6 +123,7 @@ function showNotificationToast({
   onOpen: () => void | Promise<void>;
   onReply?: (reply: string) => Promise<void>;
   onClosed?: () => void;
+  onManualDismiss?: () => void;
 }) {
   toast.custom((toastId) => (
     <TeamNotificationToast
@@ -135,6 +137,7 @@ function showNotificationToast({
       onOpen={onOpen}
       onReply={onReply}
       onMuteForMinutes={muteForMinutes}
+      onManualDismiss={onManualDismiss}
     />
   ), {
     ...(id ? { id } : {}),
@@ -155,6 +158,7 @@ function showConversationToast({
   increment,
   onOpen,
   onReply,
+  onManualDismiss,
 }: {
   conversationId: string;
   icon: ReactNode;
@@ -165,6 +169,7 @@ function showConversationToast({
   increment: boolean;
   onOpen: () => void | Promise<void>;
   onReply?: (reply: string) => Promise<void>;
+  onManualDismiss?: () => void;
 }) {
   const state = conversationToastState.get(conversationId) || { count: 0, urgent: false };
   if (increment || state.count === 0) state.count += 1;
@@ -190,6 +195,7 @@ function showConversationToast({
         }
       : undefined,
     onClosed: () => clearConversationToastState(conversationId),
+    onManualDismiss,
   });
 
   if (urgent) playUrgentSound();
@@ -290,6 +296,27 @@ export function TeamChatNotifications() {
     };
 
     const getCurrentUserName = () => currentUserNameRef.current || user.email || 'Usuário';
+
+    // Registra que o usuário viu o popup e fechou sem responder — avisa quem enviou
+    const recordPopupDismissal = async ({
+      conversationId,
+      messageId,
+      senderId,
+    }: {
+      conversationId: string;
+      messageId?: string;
+      senderId?: string;
+    }) => {
+      if (!senderId || senderId === user.id) return;
+      const { error } = await (externalSupabase.from('team_popup_receipts') as any).insert({
+        conversation_id: conversationId,
+        message_id: messageId || null,
+        dismissed_by: user.id,
+        dismissed_by_name: getCurrentUserName(),
+        notify_user_id: senderId,
+      });
+      if (error) console.error('[TeamChatNotifications] Failed to record popup dismissal:', error);
+    };
 
     const replyToEntityChat = async ({
       entityType,
@@ -431,6 +458,13 @@ export function TeamChatNotifications() {
               });
             },
             onReply: (reply) => replyToConversation(mention.conversation_id, reply),
+            onManualDismiss: () => {
+              void recordPopupDismissal({
+                conversationId: mention.conversation_id,
+                messageId: mention.message_id,
+                senderId: (tmsg as any).sender_id,
+              });
+            },
           });
           return;
         }
@@ -513,10 +547,109 @@ export function TeamChatNotifications() {
             });
           },
           onReply: (reply) => replyToConversation(msg.conversation_id, reply),
+          onManualDismiss: () => {
+            void recordPopupDismissal({
+              conversationId: msg.conversation_id,
+              messageId: msg.id,
+              senderId: msg.sender_id,
+            });
+          },
+        });
+      })
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'team_messages',
+      }, async (payload) => {
+        // "Reenviar como urgente": mensagem antiga marcada de novo → popup reaparece
+        if (isMuted()) return;
+
+        const msg = payload.new as any;
+        if (msg.sender_id === user.id) return;
+        if (!msg.is_urgent || !msg.urgent_alert_at) return;
+        // Só reage a re-alertas recentes (evita popup em UPDATEs não relacionados)
+        if (Date.now() - new Date(msg.urgent_alert_at).getTime() > 60_000) return;
+        if (
+          getActiveTeamChatConversation() === msg.conversation_id &&
+          document.visibilityState === 'visible'
+        ) return;
+        if (!(await isUserConversationMember(msg.conversation_id))) return;
+
+        const senderName = msg.sender_name || 'Alguém';
+        const context = await resolveConversationLabel(msg.conversation_id);
+        const preview = buildPreview(msg).substring(0, 120);
+
+        showConversationToast({
+          conversationId: msg.conversation_id,
+          icon: <MessageCircle className="h-4 w-4 text-destructive shrink-0" />,
+          title: `${senderName} está aguardando resposta`,
+          context,
+          preview,
+          urgent: true,
+          increment: false,
+          onOpen: () => {
+            openTeamChatConversation({
+              conversationId: msg.conversation_id,
+              focusComposer: true,
+            });
+          },
+          onReply: (reply) => replyToConversation(msg.conversation_id, reply),
+          onManualDismiss: () => {
+            void recordPopupDismissal({
+              conversationId: msg.conversation_id,
+              messageId: msg.id,
+              senderId: msg.sender_id,
+            });
+          },
         });
       })
       .subscribe((status) => {
         console.log('[TeamChatNotifications] Team messages channel status:', status);
+      });
+
+    // Avisa quem enviou quando o destinatário fecha o popup sem responder
+    const popupReceiptsChannel = externalSupabase
+      .channel('notification-popup-receipts-' + user.id)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'team_popup_receipts',
+        filter: `notify_user_id=eq.${user.id}`,
+      }, async (payload) => {
+        if (isMuted()) return;
+        const receipt = payload.new as any;
+        if (receipt.dismissed_by === user.id) return;
+
+        const dismisserName = receipt.dismissed_by_name || 'Alguém';
+
+        let preview = 'Sua mensagem foi vista, mas ficou sem resposta.';
+        if (receipt.message_id) {
+          const { data: originalMsg } = await externalSupabase
+            .from('team_messages')
+            .select('content, message_type, file_name')
+            .eq('id', receipt.message_id)
+            .maybeSingle();
+          if (originalMsg) {
+            preview = `"${buildPreview(originalMsg as any).substring(0, 100)}" ficou sem resposta.`;
+          }
+        }
+
+        showNotificationToast({
+          id: `team-receipt-${receipt.conversation_id}`,
+          icon: <EyeOff className="h-4 w-4 text-amber-500 shrink-0" />,
+          title: `${dismisserName} viu e fechou sem responder`,
+          context: 'Você pode reenviar a mensagem como urgente',
+          preview,
+          onOpen: () => {
+            openTeamChatConversation({
+              conversationId: receipt.conversation_id,
+              focusComposer: true,
+            });
+          },
+        });
+      })
+      .subscribe((status) => {
+        console.log('[TeamChatNotifications] Popup receipts channel status:', status);
       });
 
     const teamMembershipsChannel = externalSupabase
@@ -542,6 +675,7 @@ export function TeamChatNotifications() {
     return () => {
       externalSupabase.removeChannel(mentionsChannel);
       externalSupabase.removeChannel(teamMessagesChannel);
+      externalSupabase.removeChannel(popupReceiptsChannel);
       externalSupabase.removeChannel(teamMembershipsChannel);
       unsubscribeActiveConversation();
     };
