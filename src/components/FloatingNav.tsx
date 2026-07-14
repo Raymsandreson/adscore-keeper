@@ -496,7 +496,7 @@ export function FloatingNav() {
                 setMentionsOpen(true);
                 setMenuOpen(false);
               }}
-              title="Menções"
+              title="Chat"
               className="h-9 w-9 sm:h-11 sm:w-11 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 shadow-md relative bg-muted text-muted-foreground hover:bg-muted/80"
             >
               <MessageCircle className="h-4 w-4 sm:h-5 sm:w-5" />
