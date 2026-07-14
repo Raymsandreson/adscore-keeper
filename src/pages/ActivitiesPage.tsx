@@ -1197,6 +1197,7 @@ const ActivitiesPage = () => {
         process_title: formProcessTitle || null,
         matrix_quadrant: formMatrixQuadrant || null,
         is_system: formIsSystem,
+        is_management: formIsManagement,
         client_name_override: formClientNameOverride || null,
         ...buildAssigneesPayload(),
       };
