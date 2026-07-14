@@ -16,6 +16,7 @@ const PAGE_SIZE = 25;
 const ProcessDetailSheet = lazy(() => import("@/components/cases/ProcessDetailSheet"));
 const InssAdminProcessesTab = lazy(() => import("@/components/processes/InssAdminProcessesTab"));
 const ProcessualEmailsTab = lazy(() => import("@/components/processes/ProcessualEmailsTab"));
+const StaleProcessesReport = lazy(() => import("@/components/processes/StaleProcessesReport"));
 
 interface Process {
   id: string;
