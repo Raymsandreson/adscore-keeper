@@ -174,10 +174,12 @@ function classify(mov: EscavadorMovimentacao): CompromissoExtraido | null {
  * @param opts.numeroCnj usado no hash pra estabilidade entre re-syncs
  * @param opts.desde só considera movimentações com data >= desde (ISO) — evita
  *        recriar compromissos antigos ao habilitar a feature num processo com histórico.
+ * @param opts.incluirPassados mantém eventos cuja data já passou (uso: marcos/estações
+ *        da linha do processo, onde o histórico importa; tarefas continuam só futuras).
  */
 export function extractCompromissos(
   movimentacoes: EscavadorMovimentacao[],
-  opts: { numeroCnj?: string; desde?: string } = {},
+  opts: { numeroCnj?: string; desde?: string; incluirPassados?: boolean } = {},
 ): CompromissoExtraido[] {
   if (!Array.isArray(movimentacoes)) return [];
   const numeroCnj = opts.numeroCnj || '';
@@ -192,7 +194,7 @@ export function extractCompromissos(
 
     // Descarta eventos (audiência/perícia) cuja data já passou em relação à
     // movimentação — é registro histórico, não compromisso futuro.
-    if (c.tipo !== 'prazo' && c.data_evento && c.data_movimentacao) {
+    if (!opts.incluirPassados && c.tipo !== 'prazo' && c.data_evento && c.data_movimentacao) {
       if (c.data_evento.slice(0, 10) < String(c.data_movimentacao).slice(0, 10)) continue;
     }
 

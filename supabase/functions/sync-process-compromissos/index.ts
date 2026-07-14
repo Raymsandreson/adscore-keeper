@@ -82,8 +82,20 @@ interface ProcessRow {
   case_id: string | null;
   responsible_user_id: string | null;
   movimentacoes: unknown[] | null;
+  audiencias: unknown[] | null;
   leads: { lead_name: string | null } | null;
   legal_cases: { title: string | null } | null;
+}
+
+function stableHash(input: string): string {
+  let h1 = 5381;
+  let h2 = 52711;
+  for (let i = 0; i < input.length; i++) {
+    const c = input.charCodeAt(i);
+    h1 = (h1 * 33) ^ c;
+    h2 = (h2 * 33) ^ (c + 1);
+  }
+  return `${(h1 >>> 0).toString(36)}${(h2 >>> 0).toString(36)}`;
 }
 
 interface SyncCounts {
@@ -225,6 +237,93 @@ async function syncFeed(
   return rows.length;
 }
 
+/**
+ * Grava audiências (conciliação/instrução) e perícias como MARCOS
+ * (process_movements) — estações intermediárias da linha do processo.
+ * Inclui eventos passados (evidência histórica) e futuros (estação "marcada").
+ * Fontes: movimentações (detector de compromissos) + campo audiencias do Escavador.
+ */
+async function syncEstacoesMarcos(
+  ext: SupabaseClient,
+  process: ProcessRow,
+  movs: unknown[],
+): Promise<number> {
+  const numeroCnj = process.process_number || process.id;
+  type MarcoRow = {
+    process_id: string; case_id: string | null; lead_id: string | null; numero_cnj: string | null;
+    tipo_movimentacao: string; marco_ordem: number; data_movimentacao: string;
+    valor_indenizacao_fixado: null; link_decisao: null; descricao: string | null;
+    escavador_movimentacao_id: string | null; conteudo_hash: string; fonte: string;
+  };
+  const rows: MarcoRow[] = [];
+  const base = {
+    process_id: process.id,
+    case_id: process.case_id,
+    lead_id: process.lead_id,
+    numero_cnj: process.process_number,
+    valor_indenizacao_fixado: null as null,
+    link_decisao: null as null,
+  };
+
+  const tipoAudiencia = (texto: string): { tipo: string; ordem: number } =>
+    /instru/i.test(texto)
+      ? { tipo: 'audiencia_instrucao', ordem: 4 }
+      : { tipo: 'audiencia_conciliacao', ordem: 2 };
+
+  // 1) Detector de compromissos, com histórico (audiência/perícia com data).
+  // deno-lint-ignore no-explicit-any
+  const compromissos = extractCompromissos(movs as any, { numeroCnj, incluirPassados: true });
+  for (const c of compromissos) {
+    if (c.tipo === 'prazo' || !c.data_evento) continue;
+    const { tipo, ordem } = c.tipo === 'pericia' ? { tipo: 'pericia', ordem: 3 } : tipoAudiencia(c.titulo);
+    rows.push({
+      ...base,
+      tipo_movimentacao: tipo,
+      marco_ordem: ordem,
+      data_movimentacao: c.data_evento,
+      descricao: c.descricao,
+      escavador_movimentacao_id: c.escavador_movimentacao_id,
+      conteudo_hash: c.conteudo_hash,
+      fonte: 'escavador_compromissos',
+    });
+  }
+
+  // 2) Campo estruturado audiencias do Escavador ({data, tipo, situacao}).
+  if (Array.isArray(process.audiencias)) {
+    for (const a of process.audiencias) {
+      // deno-lint-ignore no-explicit-any
+      const aud = a as any;
+      const data = (aud?.data || '').toString().slice(0, 10);
+      if (!data) continue;
+      const tipoTxt = (aud?.tipo || '').toString();
+      const situacao = (aud?.situacao || '').toString();
+      if (/cancelad/i.test(situacao)) continue;
+      const { tipo, ordem } = tipoAudiencia(tipoTxt);
+      rows.push({
+        ...base,
+        tipo_movimentacao: tipo,
+        marco_ordem: ordem,
+        data_movimentacao: data,
+        descricao: [tipoTxt !== 'Não informado' ? tipoTxt : null, situacao].filter(Boolean).join(' — ') || 'Audiência (Escavador)',
+        escavador_movimentacao_id: null,
+        conteudo_hash: stableHash(`${numeroCnj}|aud-escv|${data}|${tipoTxt}`),
+        fonte: 'escavador_audiencias',
+      });
+    }
+  }
+
+  if (!rows.length) return 0;
+  const { error } = await ext
+    .from('process_movements')
+    .upsert(rows, { onConflict: 'process_id,tipo_movimentacao,conteudo_hash', ignoreDuplicates: true });
+  if (error) {
+    // Constraint antiga (migration pendente) não pode derrubar o resto do sync.
+    console.error(`Estações upsert error for process ${process.id}:`, error.message);
+    return 0;
+  }
+  return rows.length;
+}
+
 async function syncProcess(
   ext: SupabaseClient,
   process: ProcessRow,
@@ -241,6 +340,7 @@ async function syncProcess(
   if (!movs.length) return counts;
 
   counts.feed = await syncFeed(ext, process, movs, desde);
+  await syncEstacoesMarcos(ext, process, movs);
 
   // deno-lint-ignore no-explicit-any
   const compromissos = extractCompromissos(movs as any, {
@@ -294,7 +394,7 @@ async function syncProcess(
   return counts;
 }
 
-const PROCESS_SELECT = 'id, process_number, title, lead_id, case_id, responsible_user_id, movimentacoes, leads(lead_name), legal_cases(title)';
+const PROCESS_SELECT = 'id, process_number, title, lead_id, case_id, responsible_user_id, movimentacoes, audiencias, leads(lead_name), legal_cases(title)';
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {

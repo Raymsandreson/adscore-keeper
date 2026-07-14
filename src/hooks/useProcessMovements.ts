@@ -3,6 +3,9 @@ import { db } from '@/integrations/supabase';
 
 export type MarcoTipo =
   | 'peticao_inicial'
+  | 'audiencia_conciliacao'
+  | 'pericia'
+  | 'audiencia_instrucao'
   | 'sentenca_1grau'
   | 'acordo'
   | 'acordao_2grau'
