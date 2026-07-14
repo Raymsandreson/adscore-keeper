@@ -276,6 +276,12 @@ export default function ProcessesPage() {
           </Suspense>
         </TabsContent>
 
+        <TabsContent value="sem-movimento">
+          <Suspense fallback={<div className="text-center py-12 text-muted-foreground">Carregando...</div>}>
+            <StaleProcessesReport />
+          </Suspense>
+        </TabsContent>
+
       </Tabs>
 
 
