@@ -877,6 +877,7 @@ const ActivitiesPage = () => {
       process_title: formProcessTitle || null,
       workflow_id: formWorkflowId || null,
       is_system: formIsSystem,
+      is_management: formIsManagement,
       client_name_override: formClientNameOverride || null,
       ...buildAssigneesPayload(),
     };
