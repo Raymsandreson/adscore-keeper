@@ -34,7 +34,7 @@ export function NucleoManager({ nucleos, people, onChanged }: NucleoManagerProps
   // Núcleos oficiais vêm do Ecossistema; aqui só gravamos o gerente (upsert por nome)
   const setManager = (name: string, userId: string) => run(async () => {
     const person = userId === 'none' ? null : people.find(p => p.user_id === userId);
-    const { error } = await (externalSupabase.from('org_nucleos') as any).upsert({
+    const { error } = await ((externalSupabase as any).from('org_nucleos') as any).upsert({
       name,
       manager_user_id: userId === 'none' ? null : userId,
       manager_name: person ? (person.full_name || person.email) : null,
