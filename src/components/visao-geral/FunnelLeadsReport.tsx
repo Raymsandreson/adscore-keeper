@@ -41,6 +41,16 @@ interface MovementRow {
   changed_at: string;
 }
 
+/**
+ * Origens que contam como cadastro genuíno de caso trabalhista:
+ *   - "Internet" → lead veio de Notícias e completou o fluxo "Cadastrar Caso Viável".
+ *   - "manual"   → cadastrado diretamente na aba de Leads.
+ * Excluímos "google_alerts" (itens brutos de notícia auto-importados que ficam
+ * parados nas etapas noticias/viavel sem virar cadastro) e demais origens
+ * automáticas (whatsapp, referral, etc.).
+ */
+const CADASTRO_SOURCES = ["Internet", "manual"] as const;
+
 type QuickPeriod = "today" | "week" | "month" | "custom";
 
 const PERIOD_LABELS: Record<QuickPeriod, string> = {
@@ -137,6 +147,7 @@ export default function FunnelLeadsReport({ boardMatcher }: Props) {
           .from("leads")
           .select("id", { count: "exact", head: true })
           .eq("board_id", board.id)
+          .in("source", CADASTRO_SOURCES as unknown as string[])
           .gte("created_at", from.toISOString());
         if (error) throw error;
         return count || 0;
@@ -179,6 +190,7 @@ export default function FunnelLeadsReport({ boardMatcher }: Props) {
           .from("leads")
           .select("id", { count: "exact", head: true })
           .eq("board_id", board.id)
+          .in("source", CADASTRO_SOURCES as unknown as string[])
           .gte("created_at", startISO)
           .lte("created_at", endISO);
         if (newLeadsResp.error) throw newLeadsResp.error;
