@@ -308,7 +308,7 @@ export function TeamChatNotifications() {
       senderId?: string;
     }) => {
       if (!senderId || senderId === user.id) return;
-      const { error } = await (externalSupabase.from('team_popup_receipts') as any).insert({
+      const { error } = await ((externalSupabase as any).from('team_popup_receipts') as any).insert({
         conversation_id: conversationId,
         message_id: messageId || null,
         dismissed_by: user.id,

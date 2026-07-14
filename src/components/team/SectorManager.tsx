@@ -44,7 +44,7 @@ export function SectorManager({ sectors, people, nucleos = [], onChanged }: Sect
     setSaving(true);
     try {
       await ensureExternalSession();
-      const { error } = await (externalSupabase.from('org_sectors') as any)
+      const { error } = await ((externalSupabase as any).from('org_sectors') as any)
         .update({ nucleo_name: nucleoName === 'none' ? null : nucleoName })
         .eq('name', name);
       if (error) throw error;
@@ -70,7 +70,7 @@ export function SectorManager({ sectors, people, nucleos = [], onChanged }: Sect
     setSaving(true);
     try {
       await ensureExternalSession();
-      const { error } = await (externalSupabase.from('org_sectors') as any).insert({ name });
+      const { error } = await ((externalSupabase as any).from('org_sectors') as any).insert({ name });
       if (error) throw error;
       setNewName('');
       toast.success(`Setor "${name}" criado`);
@@ -88,10 +88,10 @@ export function SectorManager({ sectors, people, nucleos = [], onChanged }: Sect
     try {
       await ensureExternalSession();
       // Desvincula os times antes de excluir o setor
-      await (externalSupabase.from('team_managers') as any)
+      await ((externalSupabase as any).from('team_managers') as any)
         .update({ sector_name: null })
         .eq('sector_name', name);
-      const { error } = await (externalSupabase.from('org_sectors') as any)
+      const { error } = await ((externalSupabase as any).from('org_sectors') as any)
         .delete()
         .eq('name', name);
       if (error) throw error;
@@ -110,7 +110,7 @@ export function SectorManager({ sectors, people, nucleos = [], onChanged }: Sect
     try {
       await ensureExternalSession();
       const person = userId === 'none' ? null : people.find(p => p.user_id === userId);
-      const { error } = await (externalSupabase.from('org_sectors') as any)
+      const { error } = await ((externalSupabase as any).from('org_sectors') as any)
         .update({
           manager_user_id: userId === 'none' ? null : userId,
           manager_name: person ? (person.full_name || person.email) : null,
