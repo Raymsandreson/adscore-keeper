@@ -137,6 +137,9 @@ export default function ProcessesPage() {
           <TabsTrigger value="processual" className="gap-2">
             <Mail className="h-4 w-4" /> Processual
           </TabsTrigger>
+          <TabsTrigger value="sem-movimento" className="gap-2">
+            <AlertTriangle className="h-4 w-4" /> Sem movimento
+          </TabsTrigger>
         </TabsList>
 
 
