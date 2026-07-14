@@ -45,6 +45,7 @@ export interface LeadActivity {
   process_id: string | null;
   process_title: string | null;
   is_system: boolean | null;
+  is_management: boolean | null;
   client_name_override?: string | null;
   workflow_id?: string | null;
 }
