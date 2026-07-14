@@ -45,6 +45,7 @@ export interface LeadActivity {
   process_id: string | null;
   process_title: string | null;
   is_system: boolean | null;
+  is_management?: boolean | null;
   client_name_override?: string | null;
   workflow_id?: string | null;
 }
@@ -180,8 +181,8 @@ export function useLeadActivities() {
     setTimeout(() => inflightCreates.delete(dedupKey), 5000);
     try {
       const hasLink = !!(activity.lead_id || activity.case_id || activity.process_id);
-      if (!hasLink && !activity.is_system) {
-        toast.error('Vincule a atividade a um Lead ou Caso, ou marque como "Atividade do Sistema".');
+      if (!hasLink && !activity.is_system && !activity.is_management) {
+        toast.error('Vincule a atividade a um Lead ou Caso, ou marque como "Sistema" / "Gerenciamento".');
         throw new Error('LINK_REQUIRED');
       }
 
@@ -225,6 +226,7 @@ export function useLeadActivities() {
           process_id: activity.process_id || null,
           process_title: activity.process_title || null,
           is_system: activity.is_system ?? false,
+          is_management: activity.is_management ?? false,
           client_name_override: activity.client_name_override || null,
           workflow_id: activity.workflow_id || null,
           ...(extAssignedToIds ? {
