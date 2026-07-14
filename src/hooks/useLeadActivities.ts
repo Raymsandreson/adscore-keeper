@@ -226,6 +226,7 @@ export function useLeadActivities() {
           process_id: activity.process_id || null,
           process_title: activity.process_title || null,
           is_system: activity.is_system ?? false,
+          is_management: activity.is_management ?? false,
           client_name_override: activity.client_name_override || null,
           workflow_id: activity.workflow_id || null,
           ...(extAssignedToIds ? {
