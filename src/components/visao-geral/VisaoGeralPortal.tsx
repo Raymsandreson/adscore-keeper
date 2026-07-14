@@ -22,6 +22,8 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import GenericFunnelDashboard from "./GenericFunnelDashboard";
 
+const FunnelLeadsReport = lazy(() => import("./FunnelLeadsReport"));
+
 const AcompanhamentoProcessualPage = lazy(
   () => import("@/pages/AcompanhamentoProcessualPage"),
 );
@@ -41,6 +43,8 @@ interface SelectorItem {
   accent: string;
   /** If true, renders the same detailed panel used inside Funis de Vendas. */
   useDetailedPanel?: boolean;
+  /** If true, renders the leads report (cadastros + movimentações) below the dashboard. */
+  showLeadsReport?: boolean;
 }
 
 const SELECTORS: SelectorItem[] = [
@@ -52,6 +56,7 @@ const SELECTORS: SelectorItem[] = [
     group: "funnel",
     boardMatcher: /acidente.*trabalho|trabalho.*acidente/i,
     accent: "from-orange-500/15 to-orange-500/0 text-orange-600",
+    showLeadsReport: true,
   },
   {
     id: "bpc-autismo",
@@ -212,10 +217,15 @@ export default function VisaoGeralPortal() {
             </Suspense>
           ) : active.boardMatcher ? (
             <Suspense fallback={<DashboardSkeleton />}>
-              <GenericFunnelDashboard
-                boardMatcher={active.boardMatcher}
-                title={active.label}
-              />
+              <div className="space-y-5">
+                <GenericFunnelDashboard
+                  boardMatcher={active.boardMatcher}
+                  title={active.label}
+                />
+                {active.showLeadsReport && (
+                  <FunnelLeadsReport boardMatcher={active.boardMatcher} />
+                )}
+              </div>
             </Suspense>
           ) : null}
         </div>
