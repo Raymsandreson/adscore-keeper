@@ -4010,7 +4010,9 @@ const ActivitiesPage = () => {
                           priority: formPriority || undefined,
                           status: formStatus || undefined,
                           assessor_name: formAssignedToName || undefined,
+                          co_assessor_names: formCoAssignees.map((c) => c.full_name).filter(Boolean),
                           team_members: teamMembers.map((m) => m.full_name).filter(Boolean) as string[],
+                          activity_types: routineActivityTypes.map((t) => ({ key: t.value, label: t.label })),
                           workflow: stepContext ? {
                             step_label: stepContext.stepLabel,
                             phase_label: stepContext.phaseLabel || undefined,
@@ -4037,18 +4039,42 @@ const ActivitiesPage = () => {
                           if (f.notification_date && /^\d{4}-\d{2}-\d{2}$/.test(f.notification_date)) setFormNotificationDate(f.notification_date);
                           if (f.priority && ['baixa', 'normal', 'alta', 'urgente'].includes(f.priority)) setFormPriority(f.priority);
                           if (f.status && ['pendente', 'em_andamento', 'concluida'].includes(f.status)) setFormStatus(f.status);
-                          if (f.assessor_name) {
+                          // Tipo mais adequado ao conteúdo, sugerido pela IA entre os tipos válidos do seletor.
+                          if (f.activity_type) {
+                            const t = routineActivityTypes.find((x) => x.value === f.activity_type);
+                            if (t && t.value !== formType) {
+                              setFormType(t.value);
+                              setTypeMismatch(null);
+                              toast.info(`Tipo ajustado pela IA para ${t.label}.`, { duration: 2500 });
+                            }
+                          }
+                          // Assessores ditados no áudio: o primeiro vira o principal, os demais co-assessores.
+                          const spokenNames = (f.assessor_names && f.assessor_names.length > 0)
+                            ? f.assessor_names
+                            : (f.assessor_name ? [f.assessor_name] : []);
+                          if (spokenNames.length > 0) {
                             const norm = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
-                            const spoken = norm(f.assessor_name);
-                            const member = teamMembers.find((m) => {
-                              const full = norm(m.full_name || '');
-                              return full && (full.includes(spoken) || spoken.includes(full) || full.split(' ')[0] === spoken.split(' ')[0]);
-                            });
-                            if (member) {
-                              setFormAssignedTo(member.user_id);
-                              setFormAssignedToName(member.full_name || '');
-                            } else {
-                              toast.error(`Assessor "${f.assessor_name}" citado no áudio não foi encontrado na equipe.`);
+                            const matched: { user_id: string; full_name: string }[] = [];
+                            const notFound: string[] = [];
+                            for (const name of spokenNames) {
+                              const spoken = norm(name);
+                              const member = teamMembers.find((m) => {
+                                const full = norm(m.full_name || '');
+                                return full && (full.includes(spoken) || spoken.includes(full) || full.split(' ')[0] === spoken.split(' ')[0]);
+                              });
+                              if (member && !matched.some((x) => x.user_id === member.user_id)) {
+                                matched.push({ user_id: member.user_id, full_name: member.full_name || '' });
+                              } else if (!member) {
+                                notFound.push(name);
+                              }
+                            }
+                            if (matched.length > 0) {
+                              setFormAssignedTo(matched[0].user_id);
+                              setFormAssignedToName(matched[0].full_name);
+                              setFormCoAssignees(matched.slice(1));
+                            }
+                            if (notFound.length > 0) {
+                              toast.error(`Assessor(es) citado(s) no áudio não encontrado(s) na equipe: ${notFound.join(', ')}.`);
                             }
                           }
                         }}

@@ -49,7 +49,11 @@ interface ActivityContext {
   priority?: string;
   status?: string;
   assessor_name?: string;
+  /** Co-assessores atuais da atividade (além do principal). */
+  co_assessor_names?: string[];
   team_members?: string[];
+  /** Tipos de atividade válidos no seletor ({ key, label }) — para a IA escolher o mais adequado. */
+  activity_types?: { key: string; label: string }[];
   // Contexto extra para a IA COMBINAR (não só substituir):
   workflow?: { step_label?: string; phase_label?: string; objective_label?: string; next_step?: string };
   previous_activities?: PreviousActivity[];
@@ -143,6 +147,12 @@ export const handler: RequestHandler = async (req, res) => {
     const teamList = Array.isArray(ctx.team_members) && ctx.team_members.length > 0
       ? ctx.team_members.slice(0, 50).join(', ')
       : '—';
+    const coAssessorList = Array.isArray(ctx.co_assessor_names) && ctx.co_assessor_names.length > 0
+      ? ctx.co_assessor_names.join(', ')
+      : '—';
+    const typesList = Array.isArray(ctx.activity_types) && ctx.activity_types.length > 0
+      ? ctx.activity_types.slice(0, 40).map((t) => `${t.key} (${t.label})`).join(', ')
+      : '';
     const ctxText = `Data de HOJE: ${today} (${weekday}) — use para resolver datas relativas ("amanhã", "sexta-feira", "dia 15").
 
 Contexto da atividade:
@@ -155,8 +165,9 @@ Contexto da atividade:
 - Notificação atual: ${ctx.notification_date || '—'}
 - Prioridade atual: ${ctx.priority || '—'}
 - Situação atual: ${ctx.status || '—'}
-- Assessor responsável atual: ${ctx.assessor_name || '—'}
-- Assessores da equipe (nomes válidos para assessor_name): ${teamList}
+- Assessor responsável atual (principal): ${ctx.assessor_name || '—'}
+- Co-assessores atuais: ${coAssessorList}
+- Assessores da equipe (nomes válidos para assessor_names): ${teamList}${typesList ? `\n- Tipos de atividade válidos (keys para activity_type): ${typesList}` : ''}
 
 Conteúdo ATUAL dos campos (preserve o que ainda for válido e complemente com a ligação):
 - Como está: ${ctx.current_status || '(vazio)'}
@@ -176,9 +187,10 @@ Sua tarefa: ATUALIZAR os campos da atividade COMBINANDO o contexto existente com
 - COMANDOS DE EDIÇÃO: o áudio pode conter instruções diretas de edição (ex.: "apaga as observações", "pode limpar tudo que estava no próximo passo", "troca o que foi feito por X", "corrige o prazo pra sexta-feira", "muda a prioridade pra urgente", "passa essa atividade pro assessor Fulano", "marca como concluída", "renomeia a atividade para Y"). EXECUTE essas instruções: elas prevalecem sobre a regra de preservar o conteúdo atual.
   - Para APAGAR um campo de texto, inclua o nome dele em clear_fields (não basta retornar vazio — vazio significa "sem novidade").
   - Para SUBSTITUIR, retorne o novo conteúdo no campo (sem misturar com o antigo).
-- METADADOS (deadline, notification_date, priority, status, assessor_name, title): preencha SOMENTE quando o áudio mencionar explicitamente prazo/data, prioridade, situação, responsável ou título. Caso contrário, OMITA o campo (não o inclua na resposta) — o valor atual é mantido. Para priority e status use exatamente um dos valores permitidos; nunca retorne string vazia nesses dois.
+- METADADOS (deadline, notification_date, priority, status, assessor_names, title): preencha SOMENTE quando o áudio mencionar explicitamente prazo/data, prioridade, situação, responsável ou título. Caso contrário, OMITA o campo (não o inclua na resposta) — o valor atual é mantido. Para priority e status use exatamente um dos valores permitidos; nunca retorne string vazia nesses dois.
   - Datas SEMPRE no formato YYYY-MM-DD, resolvendo termos relativos com a data de hoje.
-  - assessor_name deve ser EXATAMENTE um dos nomes da equipe listados no contexto; se o nome falado não corresponder a nenhum, deixe vazio.
+  - ASSESSORES: quando o áudio disser quem é/são o(s) responsável(is) (ex.: "os responsáveis são Fulano e Beltrano", "passa pro Fulano junto com a Ciclana"), retorne TODOS em assessor_names, na ordem falada (o PRIMEIRO vira o principal). Cada nome deve ser EXATAMENTE um dos nomes da equipe listados no contexto; ignore nomes que não corresponderem a ninguém da equipe. Se o áudio não falar de responsável, OMITA assessor_names.
+- TIPO DA ATIVIDADE (activity_type): avalie qual dos tipos válidos listados no contexto é o MAIS ADEQUADO ao conteúdo da ligação + contexto (ex.: ligação sobre audiência marcada → audiencia; prazo processual → prazo). Se o tipo mais adequado for DIFERENTE do tipo atual da atividade, retorne a key dele em activity_type. Se o tipo atual já for o adequado (ou não houver como saber), OMITA o campo.
 - Escreva em português do Brasil, linguagem simples e nada rebuscada. Exemplo de tom: "Cobramos o devido andamento do processo" ou "Solicitamos que a Secretaria/Gabinete proceda com o impulso para seguirmos com os próximos passos".`;
 
     // Até 2 tentativas: erros transitórios do Gemini (429/503) ou resposta sem
@@ -212,7 +224,19 @@ Sua tarefa: ATUALIZAR os campos da atividade COMBINANDO o contexto existente com
                 notification_date: { type: 'string', description: 'Data de notificação/lembrete em YYYY-MM-DD — apenas se mencionada. Senão, vazio.' },
                 priority: { type: 'string', enum: ['baixa', 'normal', 'alta', 'urgente'], description: 'Prioridade — apenas se o áudio mencionar. Senão, OMITA este campo (não retorne vazio).' },
                 status: { type: 'string', enum: ['pendente', 'em_andamento', 'concluida'], description: 'Situação da atividade — apenas se o áudio mencionar (ex.: "marca como concluída"). Senão, OMITA este campo (não retorne vazio).' },
-                assessor_name: { type: 'string', description: 'Assessor responsável — apenas se o áudio mencionar, e EXATAMENTE um dos nomes da equipe do contexto. Senão, vazio.' },
+                assessor_name: { type: 'string', description: 'LEGADO — prefira assessor_names. Assessor responsável único, EXATAMENTE um dos nomes da equipe do contexto. Senão, vazio.' },
+                assessor_names: {
+                  type: 'array',
+                  items: { type: 'string' },
+                  description: 'TODOS os assessores responsáveis ditos no áudio, na ordem falada (primeiro = principal). Cada um EXATAMENTE um dos nomes da equipe do contexto. Apenas se o áudio mencionar responsável; senão, OMITA.',
+                },
+                ...(Array.isArray(ctx.activity_types) && ctx.activity_types.length > 0 ? {
+                  activity_type: {
+                    type: 'string',
+                    enum: ctx.activity_types.map((t) => t.key),
+                    description: 'Key do tipo de atividade MAIS ADEQUADO ao conteúdo da ligação, apenas se for diferente do tipo atual. Senão, OMITA.',
+                  },
+                } : {}),
                 clear_fields: {
                   type: 'array',
                   items: { type: 'string', enum: ['what_was_done', 'current_status', 'next_steps', 'solicitacao', 'resposta_juizo', 'notes'] },

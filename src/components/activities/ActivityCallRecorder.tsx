@@ -28,8 +28,12 @@ export interface ActivityCallContext {
   priority?: string;
   status?: string;
   assessor_name?: string;
+  /** Co-assessores atuais da atividade (além do principal). */
+  co_assessor_names?: string[];
   /** Nomes dos assessores da equipe (para a IA mapear "passa pro Fulano"). */
   team_members?: string[];
+  /** Tipos de atividade válidos no seletor ({ key, label }) — a IA escolhe o mais adequado. */
+  activity_types?: { key: string; label: string }[];
   workflow?: { step_label?: string; phase_label?: string; objective_label?: string; next_step?: string };
 }
 
@@ -47,6 +51,10 @@ export interface ActivityCallFields {
   priority?: string;
   status?: string;
   assessor_name?: string;
+  /** Todos os responsáveis ditos no áudio (primeiro = principal). */
+  assessor_names?: string[];
+  /** Tipo mais adequado ao conteúdo, escolhido pela IA entre os tipos válidos. */
+  activity_type?: string;
 }
 
 interface Props {
@@ -94,12 +102,15 @@ const SOURCE_LABELS: Record<AudioSource, string> = {
   both: 'Microfone + interno',
 };
 
-const CALL_FIELD_KEYS: (keyof ActivityCallFields)[] = [
+// assessor_names (array) fica de fora dos loops de string e é tratado à parte.
+type StringCallField = Exclude<keyof ActivityCallFields, 'assessor_names'>;
+
+const CALL_FIELD_KEYS: StringCallField[] = [
   'what_was_done', 'current_status', 'next_steps', 'solicitacao', 'resposta_juizo', 'notes',
 ];
 
-const META_FIELD_KEYS: (keyof ActivityCallFields)[] = [
-  'title', 'deadline', 'notification_date', 'priority', 'status', 'assessor_name',
+const META_FIELD_KEYS: StringCallField[] = [
+  'title', 'deadline', 'notification_date', 'priority', 'status', 'assessor_name', 'activity_type',
 ];
 
 /** Força o download de um arquivo (cross-origin via blob; fallback abre em nova aba). */
@@ -351,6 +362,11 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
       const v = raw?.[k];
       if (v && String(v).trim()) applied[k] = String(v).trim();
     }
+    // Multi-assessor: array de nomes (primeiro = principal).
+    const spokenAssessors = Array.isArray((raw as any)?.assessor_names)
+      ? ((raw as any).assessor_names as unknown[]).map((n) => String(n || '').trim()).filter(Boolean)
+      : [];
+    if (spokenAssessors.length > 0) applied.assessor_names = spokenAssessors;
     onFields(applied);
     return Object.keys(applied).length;
   }, [onFields]);
