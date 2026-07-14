@@ -242,6 +242,8 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     workflow_id: formWorkflowId || null,
     matrix_quadrant: formMatrixQuadrant || null,
     client_name_override: formClientNameOverride || null,
+    is_system: formIsSystem,
+    is_management: formIsManagement,
   });
 
   const handleSave = async () => {
