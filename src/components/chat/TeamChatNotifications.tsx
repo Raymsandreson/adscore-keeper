@@ -426,8 +426,8 @@ export function TeamChatNotifications() {
 
         // Branch 1: mention inside a team conversation (general/direct chat)
         if (mention.conversation_id) {
-          const { data: tmsg } = await externalSupabase
-            .from('team_messages')
+          const { data: tmsg } = await (externalSupabase
+            .from('team_messages') as any)
             .select('content, sender_name, sender_id, message_type, file_name, is_urgent')
             .eq('id', mention.message_id)
             .maybeSingle();
