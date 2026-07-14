@@ -2099,6 +2099,12 @@ const ActivitiesPage = () => {
       const sysTag = formIsSystem ? '🤖 *Atividade do sistema* — sob sua responsabilidade.' : '';
       const prazoLine = formDeadline ? `*Prazo:* ${format(parseISO(formDeadline), 'dd/MM/yyyy')}` : '';
       const notifLine = notifDate ? `*Notificação:* ${notifDate}` : '';
+      // Rastreabilidade: quem criou (e quando), última atualização e assinatura de
+      // quem criou — para o assessor saber de onde veio a atividade.
+      const authoriaLine = createdByName
+        ? `*Atividade criada por:* ${createdByName} em ${createdAtFmt}${updatedInfo}`
+        : (updatedInfo ? updatedInfo.trimStart() : '');
+      const signature = createdByName ? `Com carinho,\n${createdByName} 💚` : '';
       return [
         header,
         sysTag,
@@ -2109,7 +2115,9 @@ const ActivitiesPage = () => {
         workflowInfo,
         progressDetail,
         tempoStr,
+        authoriaLine,
         activityLink,
+        signature,
       ].filter(Boolean).join('\n\n').replace(/\n{3,}/g, '\n\n').trim();
     }
 
@@ -3982,10 +3990,33 @@ const ActivitiesPage = () => {
                         Preencher com <ChevronDown className="h-3 w-3" />
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent align="end" className="w-64 p-1.5 space-y-1">
-                      <ActivityCallRecorder
+                    <PopoverContent align="end" className="w-56 p-1.5 space-y-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="w-full justify-start h-8 text-xs gap-2 text-green-700 dark:text-green-400"
+                        onClick={() => { setPreencherOpen(false); setCallRecorderOpen(true); }}
+                      >
+                        <Mic className="h-3.5 w-3.5" /> Preenchimento por Áudio
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="w-full justify-start h-8 text-xs gap-2 text-blue-700 dark:text-blue-400"
+                        onClick={() => { setPreencherOpen(false); setDocUploadOpen(true); }}
+                      >
+                        <FileText className="h-3.5 w-3.5" /> Preenchimento por Documento
+                      </Button>
+                    </PopoverContent>
+                  </Popover>
+
+                  {/* Painéis controlados pelo menu acima. Ficam FORA do popover, com
+                      gatilho sr-only sempre montado, para o painel não perder a âncora
+                      quando o dropdown fecha (era o que causava o "clicar duas vezes"). */}
+                  <ActivityCallRecorder
+                        triggerClassName="sr-only"
                         open={callRecorderOpen}
-                        onOpenChange={(o) => { setCallRecorderOpen(o); if (o) setPreencherOpen(false); }}
+                        onOpenChange={setCallRecorderOpen}
                         activityId={selectedActivity?.id}
                         leadId={formLeadId}
                         caseId={formCaseId}
@@ -4079,9 +4110,10 @@ const ActivitiesPage = () => {
                           }
                         }}
                       />
-                      <ActivityDocumentUpload
+                  <ActivityDocumentUpload
+                        triggerClassName="sr-only"
                         open={docUploadOpen}
-                        onOpenChange={(o) => { setDocUploadOpen(o); if (o) setPreencherOpen(false); }}
+                        onOpenChange={setDocUploadOpen}
                         activityId={selectedActivity?.id}
                         leadId={formLeadId}
                         caseId={formCaseId}
@@ -4119,8 +4151,6 @@ const ActivitiesPage = () => {
                           if (f.notes) setFormNotes(callFieldTextToHtml(f.notes));
                         }}
                       />
-                    </PopoverContent>
-                  </Popover>
 
                   <ActivityNextStepsAgent
                     open={nextStepsOpen}

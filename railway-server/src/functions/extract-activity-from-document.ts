@@ -108,10 +108,11 @@ function guessMimeFromUrl(url: string, fallback: string): string {
 export const handler: RequestHandler = async (req, res) => {
   const ok = (b: Record<string, unknown>) => res.status(200).json(b);
   try {
-    const { text, file_url, activity_context } = (req.body || {}) as {
+    const { text, file_url, activity_context, user_answer } = (req.body || {}) as {
       text?: string;
       file_url?: string;
       activity_context?: ActivityContext;
+      user_answer?: string;
     };
 
     if (!text && !file_url) {
@@ -165,7 +166,7 @@ Conteúdo ATUAL dos campos (preserve o que ainda for válido e complemente com o
 - Próximo passo: ${ctx.next_steps || '(vazio)'}
 - Solicitação: ${ctx.solicitacao || '(vazio)'}
 - Resposta do juízo: ${ctx.resposta_juizo || '(vazio)'}
-- Observações: ${ctx.notes || '(vazio)'}${buildContextSections(ctx)}`;
+- Observações: ${ctx.notes || '(vazio)'}${buildContextSections(ctx)}${user_answer && user_answer.trim() ? `\n\nRESPOSTA DO USUÁRIO a uma pergunta anterior (use para completar o preenchimento; se ainda faltar algo, pergunte de novo):\n${user_answer.trim()}` : ''}`;
 
     // Prompt: MESMA lógica do preenchimento por áudio, adaptado pra origem "documento/texto".
     const fillSystem = `Você é um assistente jurídico de um escritório de advocacia. Foi anexado um DOCUMENTO (PDF, publicação, despacho, e-mail, ata, laudo) ou TEXTO fornecido pelo usuário, e você recebeu o CONTEÚDO desse documento MAIS o contexto da atividade (campos atuais, fluxo de trabalho, atividades anteriores do processo e mensagens internas).
@@ -175,6 +176,8 @@ Sua tarefa: ATUALIZAR os campos da atividade COMBINANDO o contexto existente com
 - Use o histórico de atividades anteriores e as mensagens internas apenas como contexto para escrever de forma coerente com o andamento do processo — NÃO copie esse histórico para dentro dos campos.
 - Para "Próximo passo", considere o próximo passo do fluxo de trabalho quando fizer sentido com o que consta no documento.
 - Seja fiel e objetivo. NÃO invente fatos, nomes, datas ou prazos que não estejam no documento ou no contexto fornecido. Se um campo não tiver informação, retorne string vazia.
+- NÃO SEJA REDUNDANTE: só preencha um campo se o documento realmente trouxer aquela informação. NÃO repita o mesmo conteúdo em campos diferentes só para não deixá-los vazios; cada campo deve ter uma função distinta (o que foi feito ≠ como está ≠ próximo passo). Deixar um campo vazio é PREFERÍVEL a enchê-lo com repetição ou texto genérico.
+- PERGUNTA quando faltar informação essencial: se o documento for ambíguo, ilegível ou insuficiente para preencher os campos com segurança, retorne uma pergunta objetiva em "clarifying_question" (uma frase, direta ao usuário) e preencha só o que der com segurança. Se estiver tudo claro, OMITA clarifying_question.
 - Escreva em português do Brasil, linguagem simples e nada rebuscada. Exemplo de tom: "Cobramos o devido andamento do processo" ou "Solicitamos que a Secretaria/Gabinete proceda com o impulso para seguirmos com os próximos passos".`;
 
     // 3) Monta a mensagem do usuário: contexto + documento (texto puro ou multimodal).
@@ -188,6 +191,7 @@ Sua tarefa: ATUALIZAR os campos da atividade COMBINANDO o contexto existente com
 
     let fields = { ...EMPTY_FIELDS };
     let fillError: string | undefined;
+    let clarifyingQuestion: string | undefined;
     try {
       const fillData = await geminiChat({
         model: MODEL,
@@ -209,6 +213,7 @@ Sua tarefa: ATUALIZAR os campos da atividade COMBINANDO o contexto existente com
                 solicitacao: { type: 'string', description: 'O que foi solicitado/pedido no documento, se houver.' },
                 resposta_juizo: { type: 'string', description: 'Resposta ou posição da vara/cartório/juízo/órgão (decisão, despacho, sentença), se houver.' },
                 notes: { type: 'string', description: 'Observações adicionais relevantes constantes no documento.' },
+                clarifying_question: { type: 'string', description: 'Pergunta objetiva ao usuário quando o documento for ambíguo/insuficiente para preencher com segurança. OMITA se estiver tudo claro.' },
               },
               required: ['what_was_done', 'current_status', 'next_steps', 'solicitacao', 'resposta_juizo', 'notes'],
               additionalProperties: false,
@@ -221,6 +226,11 @@ Sua tarefa: ATUALIZAR os campos da atividade COMBINANDO o contexto existente com
       const toolCall = fillData?.choices?.[0]?.message?.tool_calls?.[0];
       if (toolCall?.function?.arguments) {
         const parsed = JSON.parse(toolCall.function.arguments);
+        // clarifying_question não é um campo da atividade — sai dos fields e vira top-level.
+        if (parsed.clarifying_question && String(parsed.clarifying_question).trim()) {
+          clarifyingQuestion = String(parsed.clarifying_question).trim();
+        }
+        delete parsed.clarifying_question;
         fields = { ...fields, ...parsed };
       }
     } catch (e: any) {
@@ -237,6 +247,7 @@ Sua tarefa: ATUALIZAR os campos da atividade COMBINANDO o contexto existente com
       success: true,
       extracted_text: preview,
       fields,
+      ...(clarifyingQuestion ? { clarifying_question: clarifyingQuestion } : {}),
       ...(fillError ? { fill_error: fillError } : {}),
     });
   } catch (e: any) {

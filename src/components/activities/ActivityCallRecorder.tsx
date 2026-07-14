@@ -170,6 +170,9 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
   const [fillError, setFillError] = useState<string | null>(null);
   const [appliedCount, setAppliedCount] = useState(0);
   const [refilling, setRefilling] = useState(false);
+  // Pergunta de esclarecimento da IA + resposta do usuário (quando a ligação não basta).
+  const [question, setQuestion] = useState<string | null>(null);
+  const [answerText, setAnswerText] = useState('');
   // Contexto enviado à IA, guardado pra reusar no "Tentar preencher novamente".
   const lastContextRef = useRef<Record<string, unknown> | null>(null);
   // Gravações de áudio já anexadas à atividade (permitem reprocessar sem gravar de novo).
@@ -437,8 +440,11 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
       setPhase('done');
       setAppliedCount(count);
       setFillError(data.fill_error || null);
+      setQuestion(data.clarifying_question || null);
       if (data.fill_error) {
         toast.error('Transcrição pronta, mas o preenchimento automático falhou. Use "Tentar preencher novamente".');
+      } else if (data.clarifying_question) {
+        toast.info('A IA tem uma pergunta antes de concluir — veja no painel.', { duration: 5000 });
       } else {
         toast.success(
           count > 0
@@ -545,9 +551,16 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
   const retryFill = useCallback(async () => {
     if (!transcript) return;
     setRefilling(true);
+    // Se o usuário respondeu à pergunta da IA, envia a resposta como contexto extra.
+    const answer = answerText.trim();
     try {
       const { data, error: fnErr } = await cloudFunctions.invoke('transcribe-activity-call', {
-        body: { transcript, audio_url: recordingUrl, activity_context: lastContextRef.current || context },
+        body: {
+          transcript,
+          audio_url: recordingUrl,
+          activity_context: lastContextRef.current || context,
+          ...(answer ? { user_answer: answer } : {}),
+        },
       });
       if (fnErr) throw fnErr;
       if (!data?.success) throw new Error(data?.error || 'Falha ao preencher os campos');
@@ -555,9 +568,13 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
       const count = applyResponseFields(data.fields || {});
       setAppliedCount(count);
       setFillError(data.fill_error || null);
+      setQuestion(data.clarifying_question || null);
       if (data.fill_error) {
         toast.error(`Preenchimento falhou de novo: ${data.fill_error}`);
+      } else if (data.clarifying_question) {
+        toast.info('A IA ainda tem uma dúvida — veja no painel.', { duration: 5000 });
       } else {
+        if (answer) setAnswerText('');
         toast.success(
           count > 0
             ? `IA preencheu ${count} campo(s) — revise antes de salvar.`
@@ -570,7 +587,7 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
     } finally {
       setRefilling(false);
     }
-  }, [transcript, recordingUrl, context, applyResponseFields]);
+  }, [transcript, recordingUrl, context, applyResponseFields, answerText]);
 
   const reset = useCallback(() => {
     teardownAudio();
@@ -584,6 +601,8 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
     setSentToWa(false);
     setFillError(null);
     setAppliedCount(0);
+    setQuestion(null);
+    setAnswerText('');
     onRecordingReady?.(null);
   }, [teardownAudio, onRecordingReady]);
 
@@ -780,7 +799,31 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
                 A IA não identificou campos para preencher nesta transcrição.
               </p>
             )}
-            {!error && transcript && (fillError || appliedCount === 0) && (
+            {question && (
+              <div className="rounded-md border border-amber-300 bg-amber-50 dark:border-amber-800/60 dark:bg-amber-950/30 p-2.5 space-y-1.5">
+                <div className="flex items-start gap-1.5">
+                  <Info className="h-3.5 w-3.5 text-amber-600 shrink-0 mt-0.5" />
+                  <div className="text-[11px] text-amber-800 dark:text-amber-200">
+                    <strong>A IA precisa de um esclarecimento:</strong>
+                    <p className="mt-0.5">{question}</p>
+                  </div>
+                </div>
+                <textarea
+                  value={answerText}
+                  onChange={(e) => setAnswerText(e.target.value)}
+                  placeholder="Responda aqui e clique em Reenviar…"
+                  className="w-full min-h-[56px] rounded border bg-background p-2 text-xs"
+                />
+                <Button size="sm" className="w-full gap-2" onClick={retryFill} disabled={refilling || !answerText.trim()}>
+                  {refilling ? (
+                    <><Loader2 className="h-4 w-4 animate-spin" /> Reenviando…</>
+                  ) : (
+                    <><Sparkles className="h-4 w-4" /> Reenviar com a resposta</>
+                  )}
+                </Button>
+              </div>
+            )}
+            {!error && !question && transcript && (fillError || appliedCount === 0) && (
               <Button
                 variant="default"
                 className="w-full gap-2"

@@ -111,10 +111,11 @@ const EMPTY_FIELDS = {
 export const handler: RequestHandler = async (req, res) => {
   const ok = (b: Record<string, unknown>) => res.status(200).json(b);
   try {
-    const { audio_url, transcript: providedTranscript, activity_context } = (req.body || {}) as {
+    const { audio_url, transcript: providedTranscript, activity_context, user_answer } = (req.body || {}) as {
       audio_url?: string;
       transcript?: string;
       activity_context?: ActivityContext;
+      user_answer?: string;
     };
 
     let transcript = (providedTranscript || '').trim();
@@ -184,6 +185,8 @@ Sua tarefa: ATUALIZAR os campos da atividade COMBINANDO o contexto existente com
 - Use o histórico de atividades anteriores e as mensagens internas apenas como contexto para escrever de forma coerente com o andamento do processo — NÃO copie esse histórico para dentro dos campos.
 - Para "Próximo passo", considere o próximo passo do fluxo de trabalho quando fizer sentido com o que foi dito na ligação.
 - Seja fiel e objetivo. NÃO invente fatos, nomes, datas ou prazos que não estejam na transcrição ou no contexto fornecido. Se um campo não tiver informação, retorne string vazia.
+- NÃO SEJA REDUNDANTE: só preencha um campo se a ligação realmente trouxer aquela informação. NÃO repita o mesmo conteúdo em campos diferentes só para não deixá-los vazios; cada campo tem função distinta (o que foi feito ≠ como está ≠ próximo passo). Deixar vazio é PREFERÍVEL a repetir ou usar texto genérico.
+- PERGUNTA quando faltar informação essencial: se a ligação for confusa, inaudível em trechos importantes ou insuficiente para preencher com segurança, retorne uma pergunta objetiva em "clarifying_question" (uma frase, direta ao usuário) e preencha só o que der com segurança. Se estiver tudo claro, OMITA clarifying_question.
 - COMANDOS DE EDIÇÃO: o áudio pode conter instruções diretas de edição (ex.: "apaga as observações", "pode limpar tudo que estava no próximo passo", "troca o que foi feito por X", "corrige o prazo pra sexta-feira", "muda a prioridade pra urgente", "passa essa atividade pro assessor Fulano", "marca como concluída", "renomeia a atividade para Y"). EXECUTE essas instruções: elas prevalecem sobre a regra de preservar o conteúdo atual.
   - Para APAGAR um campo de texto, inclua o nome dele em clear_fields (não basta retornar vazio — vazio significa "sem novidade").
   - Para SUBSTITUIR, retorne o novo conteúdo no campo (sem misturar com o antigo).
@@ -197,13 +200,17 @@ Sua tarefa: ATUALIZAR os campos da atividade COMBINANDO o contexto existente com
     // tool_call não podem virar silenciosamente "nenhum campo identificado".
     let fields = { ...EMPTY_FIELDS };
     let fillError: string | null = null;
+    let clarifyingQuestion: string | undefined;
     for (let attempt = 1; attempt <= 2; attempt++) {
       try {
+      const answerBlock = user_answer && user_answer.trim()
+        ? `\n\nRESPOSTA DO USUÁRIO a uma pergunta anterior (use para completar o preenchimento; se ainda faltar algo, pergunte de novo):\n${user_answer.trim()}`
+        : '';
       const fillData = await geminiChat({
         model: MODEL,
         messages: [
           { role: 'system', content: fillSystem },
-          { role: 'user', content: `${ctxText}\n\nTRANSCRIÇÃO DA LIGAÇÃO:\n${transcript}` },
+          { role: 'user', content: `${ctxText}\n\nTRANSCRIÇÃO DA LIGAÇÃO:\n${transcript}${answerBlock}` },
         ],
         tools: [{
           type: 'function',
@@ -242,6 +249,7 @@ Sua tarefa: ATUALIZAR os campos da atividade COMBINANDO o contexto existente com
                   items: { type: 'string', enum: ['what_was_done', 'current_status', 'next_steps', 'solicitacao', 'resposta_juizo', 'notes'] },
                   description: 'Campos de texto que o áudio mandou APAGAR/limpar explicitamente.',
                 },
+                clarifying_question: { type: 'string', description: 'Pergunta objetiva ao usuário quando a ligação for confusa/insuficiente para preencher com segurança. OMITA se estiver tudo claro.' },
               },
               required: ['what_was_done', 'current_status', 'next_steps', 'solicitacao', 'resposta_juizo', 'notes'],
               additionalProperties: false,
@@ -254,6 +262,10 @@ Sua tarefa: ATUALIZAR os campos da atividade COMBINANDO o contexto existente com
         const toolCall = fillData?.choices?.[0]?.message?.tool_calls?.[0];
         if (toolCall?.function?.arguments) {
           const parsed = JSON.parse(toolCall.function.arguments);
+          if (parsed.clarifying_question && String(parsed.clarifying_question).trim()) {
+            clarifyingQuestion = String(parsed.clarifying_question).trim();
+          }
+          delete parsed.clarifying_question;
           fields = { ...fields, ...parsed };
           fillError = null;
           break;
@@ -267,7 +279,13 @@ Sua tarefa: ATUALIZAR os campos da atividade COMBINANDO o contexto existente com
     }
 
     // Mesmo se o preenchimento falhar, devolvemos a transcrição para o usuário aproveitar.
-    return ok({ success: true, transcript, fields, ...(fillError ? { fill_error: fillError } : {}) });
+    return ok({
+      success: true,
+      transcript,
+      fields,
+      ...(clarifyingQuestion ? { clarifying_question: clarifyingQuestion } : {}),
+      ...(fillError ? { fill_error: fillError } : {}),
+    });
   } catch (e: any) {
     console.error('[transcribe-activity-call] error:', e);
     return ok({ success: false, error: e?.message || String(e) });

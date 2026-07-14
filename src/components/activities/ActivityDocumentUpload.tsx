@@ -47,6 +47,12 @@ export function ActivityDocumentUpload({ context, onFields, activityId, leadId, 
   const [pickedFile, setPickedFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
+  const [question, setQuestion] = useState<string | null>(null);
+  // Resposta do usuário à pergunta de esclarecimento da IA (enviada como contexto extra,
+  // sem substituir o documento/texto original).
+  const [answerText, setAnswerText] = useState('');
+  // Guarda a fonte usada na 1ª extração para reaproveitar no "Reenviar com a resposta".
+  const lastSourceRef = useRef<{ file_url?: string; text?: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const reset = useCallback(() => {
@@ -55,6 +61,9 @@ export function ActivityDocumentUpload({ context, onFields, activityId, leadId, 
     setPickedFile(null);
     setError(null);
     setPreview(null);
+    setQuestion(null);
+    setAnswerText('');
+    lastSourceRef.current = null;
     if (fileInputRef.current) fileInputRef.current.value = '';
   }, []);
 
@@ -110,6 +119,37 @@ export function ActivityDocumentUpload({ context, onFields, activityId, leadId, 
   const process = useCallback(async () => {
     setError(null);
     setPreview(null);
+    setQuestion(null);
+
+    // Modo "responder pergunta": reaproveita a fonte da 1ª extração e manda só a resposta.
+    const isAnswering = !!(question && answerText.trim() && lastSourceRef.current);
+    if (isAnswering) {
+      setPhase('processing');
+      try {
+        const { previousActivities, chatMessages } = await collectExtraContext();
+        const fullContext = { ...context, previous_activities: previousActivities, chat_messages: chatMessages };
+        const body: any = { activity_context: fullContext, user_answer: answerText.trim(), ...lastSourceRef.current };
+        const { data, error: fnErr } = await cloudFunctions.invoke('extract-activity-from-document', { body });
+        if (fnErr) throw fnErr;
+        if (!data?.success) throw new Error(data?.error || 'Falha ao processar o documento');
+        setPreview(data.extracted_text || null);
+        setQuestion(data.clarifying_question || null);
+        const raw = data.fields || {};
+        const applied: ActivityCallFields = {};
+        const keys: (keyof ActivityCallFields)[] = ['what_was_done', 'current_status', 'next_steps', 'solicitacao', 'resposta_juizo', 'notes'];
+        for (const k of keys) { const v = raw[k]; if (v && String(v).trim()) applied[k] = String(v).trim(); }
+        onFields(applied);
+        setPhase('done');
+        if (data.clarifying_question) toast.info('A IA ainda tem uma dúvida — veja no painel.', { duration: 5000 });
+        else { setAnswerText(''); toast.success('Campos atualizados com sua resposta — revise antes de salvar.'); }
+      } catch (e: any) {
+        console.error('[ActivityDocumentUpload] answer error:', e);
+        setError(e?.message || 'Erro ao reenviar a resposta');
+        setPhase('done');
+        toast.error(e?.message || 'Erro ao reenviar a resposta');
+      }
+      return;
+    }
 
     const hasFile = !!pickedFile;
     const hasText = pastedText.trim().length > 0;
@@ -166,12 +206,15 @@ export function ActivityDocumentUpload({ context, onFields, activityId, leadId, 
       const body: any = { activity_context: fullContext };
       if (file_url) body.file_url = file_url;
       else body.text = pastedText.trim();
+      // Guarda a fonte para reaproveitar caso a IA faça uma pergunta e o usuário responda.
+      lastSourceRef.current = file_url ? { file_url } : { text: pastedText.trim() };
 
       const { data, error: fnErr } = await cloudFunctions.invoke('extract-activity-from-document', { body });
       if (fnErr) throw fnErr;
       if (!data?.success) throw new Error(data?.error || 'Falha ao processar o documento');
 
       setPreview(data.extracted_text || null);
+      setQuestion(data.clarifying_question || null);
 
       const raw = data.fields || {};
       const applied: ActivityCallFields = {};
@@ -184,18 +227,22 @@ export function ActivityDocumentUpload({ context, onFields, activityId, leadId, 
 
       setPhase('done');
       const count = Object.keys(applied).length;
-      toast.success(
-        count > 0
-          ? `IA preencheu ${count} campo(s) com base no documento — revise antes de salvar.`
-          : 'Documento lido, mas a IA não identificou campos para preencher.'
-      );
+      if (data.clarifying_question) {
+        toast.info('A IA tem uma pergunta antes de concluir — veja no painel.', { duration: 5000 });
+      } else {
+        toast.success(
+          count > 0
+            ? `IA preencheu ${count} campo(s) com base no documento — revise antes de salvar.`
+            : 'Documento lido, mas a IA não identificou campos para preencher.'
+        );
+      }
     } catch (e: any) {
       console.error('[ActivityDocumentUpload] error:', e);
       setError(e?.message || 'Erro ao processar o documento');
       setPhase('done');
       toast.error(e?.message || 'Erro ao processar o documento');
     }
-  }, [pickedFile, pastedText, activityId, collectExtraContext, context, onFields]);
+  }, [pickedFile, pastedText, activityId, collectExtraContext, context, onFields, question, answerText]);
 
   return (
     <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o && phase === 'done') reset(); }}>
@@ -311,9 +358,29 @@ export function ActivityDocumentUpload({ context, onFields, activityId, leadId, 
           <>
             {error ? (
               <p className="text-xs text-destructive">{error}</p>
-            ) : (
+            ) : !question ? (
               <div className="flex items-center gap-1.5 text-xs text-green-700 dark:text-green-400">
                 <Sparkles className="h-3.5 w-3.5" /> Campos preenchidos — revise antes de salvar.
+              </div>
+            ) : null}
+            {question && (
+              <div className="rounded-md border border-amber-300 bg-amber-50 dark:border-amber-800/60 dark:bg-amber-950/30 p-2.5 space-y-1.5">
+                <div className="flex items-start gap-1.5">
+                  <Info className="h-3.5 w-3.5 text-amber-600 shrink-0 mt-0.5" />
+                  <div className="text-[11px] text-amber-800 dark:text-amber-200">
+                    <strong>A IA precisa de um esclarecimento:</strong>
+                    <p className="mt-0.5">{question}</p>
+                  </div>
+                </div>
+                <Textarea
+                  value={answerText}
+                  onChange={(e) => setAnswerText(e.target.value)}
+                  placeholder="Responda aqui (ou cole mais contexto) e clique em Reenviar…"
+                  className="min-h-[60px] text-xs"
+                />
+                <Button size="sm" className="w-full gap-2" onClick={process} disabled={!answerText.trim()}>
+                  <Sparkles className="h-3.5 w-3.5" /> Reenviar com a resposta
+                </Button>
               </div>
             )}
             {preview && (
