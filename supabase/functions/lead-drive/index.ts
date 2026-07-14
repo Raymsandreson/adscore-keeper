@@ -13,7 +13,46 @@ const GATEWAY = "https://connector-gateway.lovable.dev/google_drive/drive/v3";
 const UPLOAD_GATEWAY = "https://connector-gateway.lovable.dev/google_drive/upload/drive/v3";
 const ROOT_FOLDER_NAME = "AdScore Keeper - Leads";
 const MAX_ANALYZE_BYTES = 8 * 1024 * 1024;
-const FUNCTION_VERSION = 3; // v3: dedup drive-wide (dedup_key/content_hash+lead_id) — arquivo organizado em subpasta não é repuxado
+const FUNCTION_VERSION = 4; // v4: retry automático em 5xx/429 do gateway do Drive (503 transitório era engolido silenciosamente)
+
+// Retry automático para falhas transitórias do gateway do Google Drive.
+// Envolvemos o fetch global para não precisar tocar em ~30 call sites.
+// Metáfora: quando o correio (Google Drive) responde "estou ocupado", a gente
+// espera um pouco e bate de novo, em vez de desistir e deixar o pacote no chão.
+const _originalFetch = globalThis.fetch;
+globalThis.fetch = async function retryingFetch(input: any, init?: any): Promise<Response> {
+  const url = typeof input === "string" ? input : (input as Request).url;
+  const isGateway = typeof url === "string" && url.startsWith("https://connector-gateway.lovable.dev/google_drive/");
+  const maxAttempts = isGateway ? 4 : 1;
+  let lastRes: Response | null = null;
+  let lastErr: unknown = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const res = await _originalFetch(input, init);
+      // Retry só em 5xx e 429 (transitórios). 4xx é erro do request e não adianta insistir.
+      if (attempt < maxAttempts && (res.status >= 500 || res.status === 429)) {
+        lastRes = res;
+        const backoff = 300 * Math.pow(2, attempt - 1) + Math.floor(Math.random() * 200);
+        console.warn(`[lead-drive] gateway ${res.status} on attempt ${attempt}/${maxAttempts} → retry em ${backoff}ms (${url})`);
+        try { await res.body?.cancel(); } catch {}
+        await new Promise((r) => setTimeout(r, backoff));
+        continue;
+      }
+      return res;
+    } catch (e) {
+      lastErr = e;
+      if (attempt < maxAttempts && isGateway) {
+        const backoff = 300 * Math.pow(2, attempt - 1) + Math.floor(Math.random() * 200);
+        console.warn(`[lead-drive] gateway network error on attempt ${attempt}/${maxAttempts} → retry em ${backoff}ms`, e);
+        await new Promise((r) => setTimeout(r, backoff));
+        continue;
+      }
+      throw e;
+    }
+  }
+  if (lastRes) return lastRes;
+  throw lastErr ?? new Error("retryingFetch: unknown failure");
+};
 
 function gwHeaders(extra: Record<string, string> = {}) {
   return {
