@@ -71,6 +71,7 @@ interface ActivityFormCompactProps {
   formClientNameOverride?: string;
   setFormClientNameOverride?: (v: string) => void;
   formIsSystem?: boolean; setFormIsSystem?: (v: boolean) => void;
+  formIsManagement?: boolean; setFormIsManagement?: (v: boolean) => void;
   formRepeatWeekDays: number[]; setFormRepeatWeekDays: (v: number[] | ((prev: number[]) => number[])) => void;
   formWhatWasDone: string; setFormWhatWasDone: (v: string) => void;
   formCurrentStatus: string; setFormCurrentStatus: (v: string) => void;
