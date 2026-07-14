@@ -2096,7 +2096,7 @@ const ActivitiesPage = () => {
       const hourA = new Date().getHours();
       const saudA = hourA < 12 ? 'Bom dia' : hourA < 18 ? 'Boa tarde' : 'Boa noite';
       const header = `*${saudA}${assessorGreet ? `, ${assessorGreet}` : ''}!*`;
-      const sysTag = formIsSystem ? '🤖 *Atividade do sistema* — sob sua responsabilidade.' : '';
+      const sysTag = formIsSystem ? '🤖 *Atividade interna (de equipe)* — sob sua responsabilidade.' : '';
       const prazoLine = formDeadline ? `*Prazo:* ${format(parseISO(formDeadline), 'dd/MM/yyyy')}` : '';
       const notifLine = notifDate ? `*Notificação:* ${notifDate}` : '';
       // Rastreabilidade: quem criou (e quando), última atualização e assinatura de
