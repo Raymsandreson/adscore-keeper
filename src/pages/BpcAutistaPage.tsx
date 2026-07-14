@@ -120,6 +120,7 @@ export default function BpcAutistaPage() {
   const [folderId, setFolderId] = useState<string | null>(null);
   const [incluidos, setIncluidos] = useState<Record<string, boolean>>({});
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [manualFolderInput, setManualFolderInput] = useState("");
 
   // Busca casos em legal_cases (debounced)
   useEffect(() => {
@@ -384,7 +385,7 @@ export default function BpcAutistaPage() {
         </CardContent>
       </Card>
 
-      {ambiguous && (
+      {ambiguous && ambiguous.length > 0 && (
         <Card className="border-amber-500/50">
           <CardHeader>
             <CardTitle className="text-base">Encontramos várias pastas — escolha a correta</CardTitle>
@@ -407,6 +408,59 @@ export default function BpcAutistaPage() {
                 {c.name}
               </button>
             ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {ambiguous && ambiguous.length === 0 && (
+        <Card className="border-destructive/50">
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <XCircle className="h-4 w-4 text-destructive" />
+              Pasta do caso não encontrada no Drive
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            <p className="text-muted-foreground">
+              Nada bateu em <span className="font-medium">AdScore Keeper - Leads</span> (conta{" "}
+              <span className="font-mono">processual@rprudencioadv.com</span>) para o termo{" "}
+              <span className="font-mono">
+                {(selected?.title ?? "").replace(/[^0-9]/g, "") || "(sem número)"}
+              </span>
+              . A pasta pode ter outro nome/numeração, estar em subpasta, ou não ter sido criada.
+            </p>
+            <div className="space-y-2">
+              <label className="text-xs font-medium">
+                Cole o link ou o ID da pasta correta (opcional)
+              </label>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="https://drive.google.com/drive/folders/ABC... ou apenas o ID"
+                  value={manualFolderInput}
+                  onChange={(e) => setManualFolderInput(e.target.value)}
+                />
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    const raw = manualFolderInput.trim();
+                    const m = raw.match(/[-\w]{25,}/);
+                    const id = m ? m[0] : "";
+                    if (!id) {
+                      toast.error("Não consegui extrair um ID da pasta. Cole o link completo.");
+                      return;
+                    }
+                    handleAnalisar({
+                      folder_id: id,
+                      lead_id: selected?.lead_id,
+                      case_name: selected?.title,
+                    });
+                  }}
+                  disabled={analisando || !manualFolderInput.trim()}
+                >
+                  Usar pasta
+                </Button>
+              </div>
+            </div>
           </CardContent>
         </Card>
       )}
