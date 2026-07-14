@@ -181,8 +181,8 @@ export function useLeadActivities() {
     setTimeout(() => inflightCreates.delete(dedupKey), 5000);
     try {
       const hasLink = !!(activity.lead_id || activity.case_id || activity.process_id);
-      if (!hasLink && !activity.is_system) {
-        toast.error('Vincule a atividade a um Lead ou Caso, ou marque como "Atividade do Sistema".');
+      if (!hasLink && !activity.is_system && !activity.is_management) {
+        toast.error('Vincule a atividade a um Lead ou Caso, ou marque como "Sistema" / "Gerenciamento".');
         throw new Error('LINK_REQUIRED');
       }
 
