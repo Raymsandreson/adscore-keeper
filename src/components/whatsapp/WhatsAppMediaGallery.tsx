@@ -297,11 +297,16 @@ export function WhatsAppMediaGallery({ messages, leadId, onSendToDrive }: Props)
             </ScrollArea>
           </Tabs>
 
-          {selectionMode && canSendToDrive && (
-            <div className="border-t p-3 bg-background">
+          {selectionMode && (
+            <div className="border-t p-3 bg-background space-y-2">
+              {!canSendToDrive && (
+                <p className="text-xs text-amber-600 dark:text-amber-400">
+                  Este chat não está vinculado a um lead. Vincule um lead para enviar ao Drive.
+                </p>
+              )}
               <Button
                 onClick={handleSend}
-                disabled={sending || selected.size === 0}
+                disabled={sending || selected.size === 0 || !canSendToDrive}
                 className="w-full gap-2"
               >
                 {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Cloud className="h-4 w-4" />}
