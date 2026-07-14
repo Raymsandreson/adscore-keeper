@@ -139,13 +139,6 @@ export default function GenericFunnelDashboard({ boardMatcher, title }: Props) {
           return;
         }
 
-        // total per board (head+count avoids row download)
-        const totalResp = await db
-          .from("leads")
-          .select("id", { count: "exact", head: true })
-          .eq("board_id", board.id);
-        if (totalResp.error) throw totalResp.error;
-
         const closedResp = await db
           .from("leads")
           .select("id", { count: "exact", head: true })
@@ -170,8 +163,13 @@ export default function GenericFunnelDashboard({ boardMatcher, title }: Props) {
             };
           }),
         );
+        // "Leads no funil" = soma dos leads distribuídos nas etapas configuradas.
+        // Não usar a contagem bruta do board: ela inclui leads em status fora do
+        // funil (ex.: google_alerts em noticias/viavel), o que faz o total não
+        // bater com as barras nem com os percentuais por etapa.
+        const totalInStages = perStage.reduce((acc, s) => acc + s.count, 0);
         if (cancelled) return;
-        setTotal(totalResp.count || 0);
+        setTotal(totalInStages);
         setClosedCount(closedResp.count || 0);
         setStages(perStage);
         timeoutId = setTimeout(() => setBarsReady(true), 60);
