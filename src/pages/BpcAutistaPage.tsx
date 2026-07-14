@@ -316,11 +316,12 @@ export default function BpcAutistaPage() {
     <div className="container max-w-4xl mx-auto p-6 space-y-6">
       <header className="space-y-1">
         <h1 className="text-2xl font-bold flex items-center gap-2">
-          <Accessibility className="h-6 w-6" /> BPC – Autista
+          <Accessibility className="h-6 w-6" /> Aux. Acidente
         </h1>
         <p className="text-sm text-muted-foreground">
-          Lê a pasta do Drive, tria cada documento com IA e te deixa escolher o que entra no dossiê único do INSS. O
-          lançamento no portal é manual.
+          Lê a pasta do caso no Drive (<span className="font-medium">AdScore Keeper - Leads</span>, conta
+          processual@rprudencioadv.com), tria cada documento com IA e monta o dossiê em um único PDF.
+          O tipo do caso é herdado do caso jurídico já cadastrado. O lançamento no portal é manual.
         </p>
       </header>
 
