@@ -381,18 +381,13 @@ export function FunnelLeadsSidePanel({
             </div>
           ) : (
             <ol className="divide-y">
-              {filtered.map((l, idx) => {
+              {filtered.map((l) => {
                 const digits = (l.phone || "").replace(/\D/g, "");
                 return (
                   <li
                     key={l.id}
                     className="px-4 py-2.5 flex items-start gap-3 hover:bg-muted/40 transition-colors"
                   >
-                    <div className="flex flex-col items-center pt-0.5 shrink-0">
-                      <span className="text-[10px] text-muted-foreground tabular-nums">
-                        #{idx + 1}
-                      </span>
-                    </div>
                     <div className="min-w-0 flex-1">
                       <div className="text-sm font-medium truncate">
                         {l.name || "Sem nome"}
