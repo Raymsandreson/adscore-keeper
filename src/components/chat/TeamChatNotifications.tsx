@@ -308,7 +308,7 @@ export function TeamChatNotifications() {
       senderId?: string;
     }) => {
       if (!senderId || senderId === user.id) return;
-      const { error } = await (externalSupabase.from('team_popup_receipts') as any).insert({
+      const { error } = await ((externalSupabase as any).from('team_popup_receipts') as any).insert({
         conversation_id: conversationId,
         message_id: messageId || null,
         dismissed_by: user.id,
@@ -426,8 +426,8 @@ export function TeamChatNotifications() {
 
         // Branch 1: mention inside a team conversation (general/direct chat)
         if (mention.conversation_id) {
-          const { data: tmsg } = await externalSupabase
-            .from('team_messages')
+          const { data: tmsg } = await (externalSupabase
+            .from('team_messages') as any)
             .select('content, sender_name, sender_id, message_type, file_name, is_urgent')
             .eq('id', mention.message_id)
             .maybeSingle();
@@ -439,7 +439,7 @@ export function TeamChatNotifications() {
             document.visibilityState === 'visible'
           ) return; // conversa já aberta na tela
 
-          const senderName = tmsg.sender_name || 'Alguém';
+          const senderName = (tmsg as any).sender_name || 'Alguém';
           const context = await resolveConversationLabel(mention.conversation_id);
           const preview = buildPreview(tmsg as any).substring(0, 120);
 

@@ -30,7 +30,7 @@ export function TeamManagerPicker({ teamId, teamName, members }: TeamManagerPick
     (async () => {
       try {
         await ensureExternalSession();
-        const { data } = await (externalSupabase.from('team_managers') as any)
+        const { data } = await ((externalSupabase as any).from('team_managers') as any)
           .select('manager_user_id')
           .eq('team_name', teamName)
           .maybeSingle();
@@ -53,7 +53,7 @@ export function TeamManagerPicker({ teamId, teamName, members }: TeamManagerPick
 
       if (value === 'none') {
         // Zera o gestor mas preserva a linha (mantém o setor do time)
-        const { error } = await (externalSupabase.from('team_managers') as any).upsert({
+        const { error } = await ((externalSupabase as any).from('team_managers') as any).upsert({
           team_name: teamName,
           team_id: teamId,
           manager_user_id: null,
@@ -66,7 +66,7 @@ export function TeamManagerPicker({ teamId, teamName, members }: TeamManagerPick
       }
 
       const member = members.find(m => m.user_id === value);
-      const { error } = await (externalSupabase.from('team_managers') as any).upsert({
+      const { error } = await ((externalSupabase as any).from('team_managers') as any).upsert({
         team_name: teamName,
         team_id: teamId,
         manager_user_id: value,

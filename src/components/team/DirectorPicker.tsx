@@ -43,7 +43,7 @@ export function DirectorPicker({ people }: DirectorPickerProps) {
     (async () => {
       try {
         await ensureExternalSession();
-        const { data } = await (externalSupabase.from('org_directors') as any)
+        const { data } = await ((externalSupabase as any).from('org_directors') as any)
           .select('user_id, name')
           .order('created_at');
         if (!cancelled) setDirectors(data || []);
@@ -63,7 +63,7 @@ export function DirectorPicker({ people }: DirectorPickerProps) {
     setSaving(true);
     try {
       await ensureExternalSession();
-      const { error } = await (externalSupabase.from('org_directors') as any)
+      const { error } = await ((externalSupabase as any).from('org_directors') as any)
         .insert({ user_id: userId, name });
       if (error) throw error;
       setDirectors(prev => [...prev, { user_id: userId, name }]);
@@ -84,7 +84,7 @@ export function DirectorPicker({ people }: DirectorPickerProps) {
     setSaving(true);
     try {
       await ensureExternalSession();
-      const { error } = await (externalSupabase.from('org_directors') as any)
+      const { error } = await ((externalSupabase as any).from('org_directors') as any)
         .delete()
         .eq('user_id', userId);
       if (error) throw error;

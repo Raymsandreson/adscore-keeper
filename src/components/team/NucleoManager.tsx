@@ -39,7 +39,7 @@ export function NucleoManager({ nucleos, people, onChanged }: NucleoManagerProps
     if (!name) return;
     if (nucleos.some(n => n.name.toLowerCase() === name.toLowerCase())) { toast.error('Núcleo já existe'); return; }
     run(async () => {
-      const { error } = await (externalSupabase.from('org_nucleos') as any).insert({ name });
+      const { error } = await ((externalSupabase as any).from('org_nucleos') as any).insert({ name });
       if (error) throw error;
       setNewName('');
       toast.success(`Núcleo "${name}" criado`);
@@ -47,15 +47,15 @@ export function NucleoManager({ nucleos, people, onChanged }: NucleoManagerProps
   };
 
   const deleteNucleo = (name: string) => run(async () => {
-    await (externalSupabase.from('org_sectors') as any).update({ nucleo_name: null }).eq('nucleo_name', name);
-    const { error } = await (externalSupabase.from('org_nucleos') as any).delete().eq('name', name);
+    await ((externalSupabase as any).from('org_sectors') as any).update({ nucleo_name: null }).eq('nucleo_name', name);
+    const { error } = await ((externalSupabase as any).from('org_nucleos') as any).delete().eq('name', name);
     if (error) throw error;
     toast.success(`Núcleo "${name}" excluído — setores ficaram sem núcleo`);
   });
 
   const setManager = (name: string, userId: string) => run(async () => {
     const person = userId === 'none' ? null : people.find(p => p.user_id === userId);
-    const { error } = await (externalSupabase.from('org_nucleos') as any).update({
+    const { error } = await ((externalSupabase as any).from('org_nucleos') as any).update({
       manager_user_id: userId === 'none' ? null : userId,
       manager_name: person ? (person.full_name || person.email) : null,
     }).eq('name', name);
