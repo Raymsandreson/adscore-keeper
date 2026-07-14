@@ -692,6 +692,7 @@ const ActivitiesPage = () => {
     setCaseProcesses([]);
     setFormMatrixQuadrant('');
     setFormIsSystem(false);
+    setFormIsManagement(false);
     handleNotesPendingChange([]);
     handleNotesCommitCandidatesChange([]);
     handleNotesUploadStateChange(false);
