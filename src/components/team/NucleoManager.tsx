@@ -1,11 +1,9 @@
 import { useState } from 'react';
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Landmark, Loader2, Plus, Trash2 } from 'lucide-react';
+import { Landmark, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 export interface OrgNucleo {
@@ -24,7 +22,6 @@ interface NucleoManagerProps {
 
 /** Núcleos — agrupam setores (Diretoria → Núcleo → Setor → Time). */
 export function NucleoManager({ nucleos, people, onChanged }: NucleoManagerProps) {
-  const [newName, setNewName] = useState('');
   const [saving, setSaving] = useState(false);
 
   const run = async (fn: () => Promise<void>) => {
@@ -34,31 +31,14 @@ export function NucleoManager({ nucleos, people, onChanged }: NucleoManagerProps
     finally { setSaving(false); }
   };
 
-  const createNucleo = () => {
-    const name = newName.trim();
-    if (!name) return;
-    if (nucleos.some(n => n.name.toLowerCase() === name.toLowerCase())) { toast.error('Núcleo já existe'); return; }
-    run(async () => {
-      const { error } = await (externalSupabase.from('org_nucleos') as any).insert({ name });
-      if (error) throw error;
-      setNewName('');
-      toast.success(`Núcleo "${name}" criado`);
-    });
-  };
-
-  const deleteNucleo = (name: string) => run(async () => {
-    await (externalSupabase.from('org_sectors') as any).update({ nucleo_name: null }).eq('nucleo_name', name);
-    const { error } = await (externalSupabase.from('org_nucleos') as any).delete().eq('name', name);
-    if (error) throw error;
-    toast.success(`Núcleo "${name}" excluído — setores ficaram sem núcleo`);
-  });
-
+  // Núcleos oficiais vêm do Ecossistema; aqui só gravamos o gerente (upsert por nome)
   const setManager = (name: string, userId: string) => run(async () => {
     const person = userId === 'none' ? null : people.find(p => p.user_id === userId);
-    const { error } = await (externalSupabase.from('org_nucleos') as any).update({
+    const { error } = await ((externalSupabase as any).from('org_nucleos') as any).upsert({
+      name,
       manager_user_id: userId === 'none' ? null : userId,
       manager_name: person ? (person.full_name || person.email) : null,
-    }).eq('name', name);
+    }, { onConflict: 'name' });
     if (error) throw error;
     toast.success(person ? `Gerente do núcleo: ${person.full_name || person.email}` : 'Gerente do núcleo removido');
   });
@@ -73,7 +53,7 @@ export function NucleoManager({ nucleos, people, onChanged }: NucleoManagerProps
           {saving && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
         </CardTitle>
         <CardDescription>
-          Cada núcleo agrupa vários setores (Diretoria → Núcleo → Setor → Time). O gerente do núcleo recebe o relatório de todos os times dele.
+          Núcleos vêm do Ecossistema do Grupo (criar/editar lá). Aqui você define o gerente de cada núcleo — ele recebe o relatório de todos os times dos setores do núcleo.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -89,23 +69,11 @@ export function NucleoManager({ nucleos, people, onChanged }: NucleoManagerProps
                 ))}
               </SelectContent>
             </Select>
-            <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => deleteNucleo(n.name)} disabled={saving} title="Excluir núcleo">
-              <Trash2 className="h-3.5 w-3.5 text-destructive" />
-            </Button>
           </div>
         ))}
-        <div className="flex items-center gap-2">
-          <Input
-            value={newName}
-            onChange={e => setNewName(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') createNucleo(); }}
-            placeholder="Novo núcleo (ex: Jurídico, Comercial)"
-            className="h-8 text-sm"
-          />
-          <Button size="sm" className="h-8 shrink-0" onClick={createNucleo} disabled={saving || !newName.trim()}>
-            <Plus className="h-3.5 w-3.5 mr-1" /> Criar
-          </Button>
-        </div>
+        {nucleos.length === 0 && (
+          <p className="text-xs text-muted-foreground">Nenhum núcleo ativo no Ecossistema do Grupo.</p>
+        )}
       </CardContent>
     </Card>
   );

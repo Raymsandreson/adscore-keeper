@@ -131,6 +131,41 @@ Deno.serve(async (req) => {
       if (error) throw error;
     };
 
+    const deletedAt = new Date().toISOString();
+    // Purga física real (irreversível) só acontece com body.hard === true — ex: apagamento LGPD
+    // deliberado. O padrão é SOFT DELETE: nenhum caller atual passa `hard`, então "Remover" do
+    // kanban/LeadEditDialog/LeadManager apenas arquiva o lead, sem destruir nada.
+    const hardDelete = body?.hard === true;
+
+    // Snapshot completo ANTES de qualquer alteração — devolvido pro caller gravar no audit
+    // (details.snapshot_full). Garante rastro do que foi tocado, mesmo no soft delete.
+    const [{ data: activitiesSnap }, { data: processesSnap }, { data: checklistSnap }] = await Promise.all([
+      ext.from("lead_activities").select("*").eq("lead_id", leadId),
+      ext.from("lead_processes").select("*").eq("lead_id", leadId),
+      ext.from("lead_checklist_instances").select("*").eq("lead_id", leadId),
+    ]);
+    const snapshotFull = {
+      lead: snapshot,
+      activities: activitiesSnap || [],
+      processes: processesSnap || [],
+      checklists: checklistSnap || [],
+    };
+
+    if (!hardDelete) {
+      // SOFT DELETE (padrão): arquiva o lead. NÃO desvincula o caso (legal_cases.lead_id fica
+      // intacto), NÃO apaga atividades/processos/checklists — as atividades continuam iguais.
+      // O lead some dos funis (cards filtram deleted_at) e volta pelo painel Arquivados.
+      const { count: softCount, error: softErr } = await ext
+        .from("leads")
+        .update({ deleted_at: deletedAt }, { count: "exact" })
+        .eq("id", leadId)
+        .is("deleted_at", null);
+      cleanup.push({ action: "soft-delete leads.deleted_at", count: softCount, error: softErr?.message });
+      if (softErr) throw softErr;
+      return json({ success: true, leadId, soft_delete: true, snapshot, snapshot_full: snapshotFull, cleanup });
+    }
+
+    // ————————— HARD DELETE (apenas com body.hard === true) — purga física IRREVERSÍVEL —————————
     const activityIds = await idsFrom("lead_activities");
     const processIds = await idsFrom("lead_processes");
 
@@ -159,7 +194,7 @@ Deno.serve(async (req) => {
     if (deleteLeadError) throw deleteLeadError;
     if (!deletedCount) return json({ success: false, error: "Nenhuma linha de lead foi excluída", cleanup });
 
-    return json({ success: true, leadId, snapshot, cleanup });
+    return json({ success: true, leadId, hard_delete: true, snapshot, snapshot_full: snapshotFull, cleanup });
   } catch (e: any) {
     return json({ success: false, error: String(e?.message || e), cleanup });
   }

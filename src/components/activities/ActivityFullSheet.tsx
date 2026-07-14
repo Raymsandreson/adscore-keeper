@@ -63,6 +63,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
   const [formProcessTitle, setFormProcessTitle] = useState('');
   const [formWorkflowId, setFormWorkflowId] = useState('');
   const [formIsSystem, setFormIsSystem] = useState(false);
+  const [formIsManagement, setFormIsManagement] = useState(false);
   const [formRepeatWeekDays, setFormRepeatWeekDays] = useState<number[]>([]);
   const [formWhatWasDone, setFormWhatWasDone] = useState('');
   const [formCurrentStatus, setFormCurrentStatus] = useState('');
@@ -150,6 +151,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     setFormProcessTitle(act.process_title || '');
     setFormWorkflowId((act as any).workflow_id || '');
     setFormIsSystem(!!act.is_system);
+    setFormIsManagement(!!(act as any).is_management);
     setFormWhatWasDone(act.what_was_done || '');
     setFormCurrentStatus(act.current_status_notes || '');
     setFormNextSteps(act.next_steps || '');
@@ -240,6 +242,8 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     workflow_id: formWorkflowId || null,
     matrix_quadrant: formMatrixQuadrant || null,
     client_name_override: formClientNameOverride || null,
+    is_system: formIsSystem,
+    is_management: formIsManagement,
   });
 
   const handleSave = async () => {
@@ -327,6 +331,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
                 formClientNameOverride={formClientNameOverride}
                 setFormClientNameOverride={setFormClientNameOverride}
                 formIsSystem={formIsSystem} setFormIsSystem={setFormIsSystem}
+                formIsManagement={formIsManagement} setFormIsManagement={setFormIsManagement}
                 formRepeatWeekDays={formRepeatWeekDays} setFormRepeatWeekDays={setFormRepeatWeekDays}
                 formWhatWasDone={formWhatWasDone} setFormWhatWasDone={setFormWhatWasDone}
                 formCurrentStatus={formCurrentStatus} setFormCurrentStatus={setFormCurrentStatus}

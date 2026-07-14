@@ -153,7 +153,7 @@ export function AppSidebar() {
         { id: "acompanhamento-processual", label: "Acompanhamento Processual", icon: <ClipboardList className="h-3.5 w-3.5" />, path: "/processual/acompanhamento", color: "text-indigo-500" },
         { id: "nuclei", label: "Núcleos", icon: <Scale className="h-3.5 w-3.5" />, path: "/nuclei", color: "text-orange-500" },
         { id: "hearings", label: "Audiências", icon: <Gavel className="h-3.5 w-3.5" />, path: "/hearings", color: "text-rose-500" },
-        { id: "bpc-autista", label: "BPC -AUTISTA", icon: <Accessibility className="h-3.5 w-3.5" />, path: "/processual/bpc-autista", color: "text-sky-500" },
+        { id: "bpc-autista", label: "Aux. Acidente", icon: <Accessibility className="h-3.5 w-3.5" />, path: "/processual/bpc-autista", color: "text-sky-500" },
         { id: "workflow-progress", label: "Fluxo de Trabalho", icon: <Zap className="h-3.5 w-3.5" />, path: "/workflow-progress", color: "text-purple-500" },
       ],
     },
@@ -328,7 +328,7 @@ export function AppSidebar() {
             <SidebarMenuItem>
               <SidebarMenuButton
                 onClick={() => setMentionsOpen(true)}
-                tooltip="Menções"
+                tooltip="Chat"
               >
                 <span className="relative">
                   <MessageCircle className="h-4 w-4" />
@@ -338,7 +338,7 @@ export function AppSidebar() {
                     </span>
                   )}
                 </span>
-                <span>Menções</span>
+                <span>Chat</span>
                 {unreadMentions > 0 && !collapsed && (
                   <span className="ml-auto w-5 h-5 rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold flex items-center justify-center">
                     {unreadMentions > 9 ? '9+' : unreadMentions}

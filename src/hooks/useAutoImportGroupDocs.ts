@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 
 export interface AutoImportProgress {
   total: number;
@@ -162,6 +163,8 @@ export function useAutoImportGroupDocs(
         const CHUNK_SIZE = 5;
         let doneAcc = done;
         let newlyAcc = 0;
+        let driveFailAcc = 0;
+        const driveErrorSamples: string[] = [];
 
         try {
           for (let i = 0; i < documents.length; i += CHUNK_SIZE) {
@@ -188,6 +191,11 @@ export function useAutoImportGroupDocs(
             const okAll = results.filter(
               (r: any) => r.status === 'ok' || r.status === 'ok_no_drive',
             ).length;
+            const driveFailedInChunk = results.filter((r: any) => r.status === 'ok_no_drive');
+            driveFailAcc += driveFailedInChunk.length;
+            for (const r of driveFailedInChunk) {
+              if (driveErrorSamples.length < 3 && r.drive_error) driveErrorSamples.push(r.drive_error);
+            }
 
             newlyAcc += okNew;
             doneAcc = Math.min(doneAcc + okAll, total);
@@ -208,6 +216,20 @@ export function useAutoImportGroupDocs(
 
         setProgress((p) => ({ ...p, running: false }));
         if (newlyAcc > 0) onImported?.();
+        if (driveFailAcc > 0 && !cancelled) {
+          const sample = driveErrorSamples[0] || '';
+          const shortSample = sample.length > 80 ? `${sample.slice(0, 80)}…` : sample;
+          console.warn('[useAutoImportGroupDocs] docs sem envio ao Drive:', driveFailAcc, driveErrorSamples);
+          toast.warning(
+            `${driveFailAcc} documento(s) não foi(ram) enviado(s) ao Drive`,
+            {
+              description: shortSample
+                ? `Ex.: ${shortSample}. Toque em "Enviar ao Drive" no card do documento para tentar de novo.`
+                : 'Abra a aba Documentos do lead e reenvie manualmente os que estão sem link do Drive.',
+              duration: 10000,
+            },
+          );
+        }
       } catch (e) {
         console.warn('[useAutoImportGroupDocs] failed', e);
         if (!cancelled) setProgress((p) => ({ ...p, running: false }));

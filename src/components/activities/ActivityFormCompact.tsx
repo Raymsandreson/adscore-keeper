@@ -77,6 +77,7 @@ interface ActivityFormCompactProps {
   formClientNameOverride?: string;
   setFormClientNameOverride?: (v: string) => void;
   formIsSystem?: boolean; setFormIsSystem?: (v: boolean) => void;
+  formIsManagement?: boolean; setFormIsManagement?: (v: boolean) => void;
   formRepeatWeekDays: number[]; setFormRepeatWeekDays: (v: number[] | ((prev: number[]) => number[])) => void;
   formWhatWasDone: string; setFormWhatWasDone: (v: string) => void;
   formCurrentStatus: string; setFormCurrentStatus: (v: string) => void;
@@ -756,7 +757,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
           como atalho inicial. */}
       {!props.formLeadId && !props.formCaseId && !props.formProcessId && !props.formContactId && (
         <div className="flex flex-wrap items-center gap-1.5">
-          {!props.formIsSystem && (
+          {!props.formIsSystem && !props.formIsManagement && (
             <>
               <Button type="button" variant="outline" size="sm" className="h-6 px-2 text-[10px] gap-1" onClick={() => setLinkLeadOpen(true)}>
                 <Building2 className="h-3 w-3" /> Lead
@@ -769,26 +770,48 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
               </Button>
             </>
           )}
-          {props.setFormIsSystem && (
+          {(props.setFormIsSystem || props.setFormIsManagement) && (
             <>
-              {!props.formIsSystem && <span className="text-muted-foreground text-xs">|</span>}
-              <Button
-                type="button"
-                variant={props.formIsSystem ? 'default' : 'outline'}
-                size="sm"
-                className="h-6 px-2 text-[10px] gap-1"
-                onClick={() => props.setFormIsSystem?.(!props.formIsSystem)}
-                title={props.formIsSystem ? 'Desmarcar atividade interna' : 'Marcar como atividade interna (de equipe) — demanda de membro para membro'}
-              >
-                <Settings2 className="h-3 w-3" /> Interna{props.formIsSystem ? ' ✓' : ''}
-              </Button>
+              {!props.formIsSystem && !props.formIsManagement && <span className="text-muted-foreground text-xs">|</span>}
+              {props.setFormIsSystem && (
+                <Button
+                  type="button"
+                  variant={props.formIsSystem ? 'default' : 'outline'}
+                  size="sm"
+                  className="h-6 px-2 text-[10px] gap-1"
+                  onClick={() => {
+                    const next = !props.formIsSystem;
+                    props.setFormIsSystem?.(next);
+                    if (next) props.setFormIsManagement?.(false);
+                  }}
+                  title={props.formIsSystem ? 'Desmarcar atividade interna' : 'Marcar como atividade interna (de equipe) — demanda de membro para membro'}
+                >
+                  <Settings2 className="h-3 w-3" /> Interna{props.formIsSystem ? ' ✓' : ''}
+                </Button>
+              )}
+              {props.setFormIsManagement && (
+                <Button
+                  type="button"
+                  variant={props.formIsManagement ? 'default' : 'outline'}
+                  size="sm"
+                  className="h-6 px-2 text-[10px] gap-1"
+                  onClick={() => {
+                    const next = !props.formIsManagement;
+                    props.setFormIsManagement?.(next);
+                    if (next) props.setFormIsSystem?.(false);
+                  }}
+                  title={props.formIsManagement ? 'Desmarcar atividade de gerenciamento' : 'Marcar como atividade de gerenciamento (sem vínculo obrigatório)'}
+                >
+                  <Settings2 className="h-3 w-3" /> Gerenciamento{props.formIsManagement ? ' ✓' : ''}
+                </Button>
+              )}
             </>
           )}
-          {!props.formIsSystem && (
+          {!props.formIsSystem && !props.formIsManagement && (
             <div className="flex items-start gap-1.5 px-2 py-1.5 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 w-full mt-1">
               <Info className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
               <span className="text-[11px] text-amber-700 dark:text-amber-300">
-                Vincule esta atividade a um <strong>Lead</strong>, <strong>Caso</strong> ou marque como <strong>Interna (de equipe)</strong>.
+                Vincule esta atividade a um <strong>Lead</strong>, <strong>Caso</strong> ou marque como <strong>Interna (de equipe)</strong> ou <strong>Gerenciamento</strong>.
               </span>
             </div>
           )}
@@ -925,13 +948,13 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
         </div>
         <div className="col-span-full">
           <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
-            Fluxo de Trabalho {props.formIsSystem ? '(opcional)' : '*'}
+            Fluxo de Trabalho {(props.formIsSystem || props.formIsManagement) ? '(opcional)' : '*'}
           </span>
           <Select value={props.formWorkflowId || undefined} onValueChange={props.setFormWorkflowId}>
             <SelectTrigger
               className={cn(
                 "h-8 text-xs mt-0.5",
-                !props.formWorkflowId && !props.formIsSystem && "border-destructive/60 ring-1 ring-destructive/20"
+                !props.formWorkflowId && !props.formIsSystem && !props.formIsManagement && "border-destructive/60 ring-1 ring-destructive/20"
               )}
             >
               <SelectValue placeholder="Selecione um fluxo de trabalho" />
@@ -948,7 +971,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
               )}
             </SelectContent>
           </Select>
-          {!props.formWorkflowId && !props.formIsSystem && (
+          {!props.formWorkflowId && !props.formIsSystem && !props.formIsManagement && (
             <p className="text-[10px] text-destructive mt-0.5">Selecione um fluxo de trabalho para continuar</p>
           )}
         </div>

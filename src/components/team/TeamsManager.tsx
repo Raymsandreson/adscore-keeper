@@ -295,16 +295,23 @@ export function TeamsManager() {
   const fetchOrg = useCallback(async () => {
     try {
       await ensureExternalSession();
-      const [{ data: secs }, { data: nucs }, { data: orgRows }, { data: cargoRows }, { data: statusRows }] = await Promise.all([
-        (externalSupabase.from('org_sectors') as any).select('name, manager_user_id, manager_name, nucleo_name').order('name'),
-        (externalSupabase.from('org_nucleos') as any).select('name, manager_user_id, manager_name').order('name'),
-        (externalSupabase.from('team_managers') as any).select('team_name, sector_name'),
-        (externalSupabase.from('team_member_cargos') as any).select('team_name, user_id, cargo'),
-        (externalSupabase.from('org_user_status') as any).select('user_id, active'),
+      const [{ data: secs }, { data: officialNuclei }, { data: nucleoMgrs }, { data: orgRows }, { data: cargoRows }, { data: statusRows }] = await Promise.all([
+        ((externalSupabase as any).from('org_sectors') as any).select('name, manager_user_id, manager_name, nucleo_name').order('name'),
+        // Núcleos oficiais vêm do Ecossistema (specialized_nuclei); org_nucleos guarda só o gerente
+        ((externalSupabase as any).from('specialized_nuclei') as any).select('name, is_active').eq('is_active', true).order('name'),
+        ((externalSupabase as any).from('org_nucleos') as any).select('name, manager_user_id, manager_name'),
+        ((externalSupabase as any).from('team_managers') as any).select('team_name, sector_name'),
+        ((externalSupabase as any).from('team_member_cargos') as any).select('team_name, user_id, cargo'),
+        ((externalSupabase as any).from('org_user_status') as any).select('user_id, active'),
       ]);
       setInactiveIds(new Set(((statusRows as any[]) || []).filter(r => r.active === false).map(r => r.user_id)));
       setSectors((secs as OrgSector[]) || []);
-      setNucleos((nucs as OrgNucleo[]) || []);
+      const mgrByName = new Map(((nucleoMgrs as any[]) || []).map(n => [n.name, n]));
+      setNucleos((((officialNuclei as any[]) || []).map(n => ({
+        name: n.name,
+        manager_user_id: mgrByName.get(n.name)?.manager_user_id || null,
+        manager_name: mgrByName.get(n.name)?.manager_name || null,
+      }))) as OrgNucleo[]);
       const map: Record<string, string | null> = {};
       ((orgRows as any[]) || []).forEach(r => { map[r.team_name] = r.sector_name || null; });
       setTeamSectors(map);
@@ -319,7 +326,7 @@ export function TeamsManager() {
   const toggleActive = useCallback(async (person: { user_id: string; full_name: string | null; email: string | null }, active: boolean) => {
     try {
       await ensureExternalSession();
-      const { error } = await (externalSupabase.from('org_user_status') as any).upsert({
+      const { error } = await ((externalSupabase as any).from('org_user_status') as any).upsert({
         user_id: person.user_id,
         name: person.full_name || person.email || null,
         active,
@@ -343,7 +350,7 @@ export function TeamsManager() {
   const saveCargo = useCallback(async (teamName: string, userId: string, cargo: string) => {
     try {
       await ensureExternalSession();
-      const { error } = await (externalSupabase.from('team_member_cargos') as any).upsert({
+      const { error } = await ((externalSupabase as any).from('team_member_cargos') as any).upsert({
         team_name: teamName,
         user_id: userId,
         cargo: cargo.trim() || null,
@@ -375,30 +382,30 @@ export function TeamsManager() {
         if (teamPeople.length === 0) continue;
 
         const groupName = `👥 ${team.name}`;
-        const { data: existing } = await (externalSupabase.from('team_conversations') as any)
+        const { data: existing } = await ((externalSupabase as any).from('team_conversations') as any)
           .select('id').eq('type', 'group').eq('name', groupName).maybeSingle();
         let convId = existing?.id as string | undefined;
         if (!convId) {
-          const { data: created, error } = await (externalSupabase.from('team_conversations') as any)
+          const { data: created, error } = await ((externalSupabase as any).from('team_conversations') as any)
             .insert({ type: 'group', name: groupName }).select('id').single();
           if (error) throw error;
           convId = created.id;
         }
 
         const wanted = [...new Set([...teamPeople.map(p => p.authId), user.id])];
-        const { data: current } = await (externalSupabase.from('team_conversation_members') as any)
+        const { data: current } = await ((externalSupabase as any).from('team_conversation_members') as any)
           .select('user_id').eq('conversation_id', convId);
         const have = new Set(((current as any[]) || []).map(m => m.user_id));
         const toAdd = wanted.filter(id => !have.has(id));
         if (toAdd.length) {
-          await (externalSupabase.from('team_conversation_members') as any)
+          await ((externalSupabase as any).from('team_conversation_members') as any)
             .insert(toAdd.map(uid => ({ conversation_id: convId, user_id: uid })));
         }
 
         const roster = teamPeople
           .map(p => `• ${p.name} — ${cargos[`${team.name}|${p.storedId}`] || 'cargo não definido'}`)
           .join('\n');
-        await (externalSupabase.from('team_messages') as any).insert({
+        await ((externalSupabase as any).from('team_messages') as any).insert({
           conversation_id: convId,
           sender_id: user.id,
           sender_name: '👥 Organização',

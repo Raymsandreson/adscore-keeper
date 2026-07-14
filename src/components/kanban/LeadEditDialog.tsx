@@ -1396,7 +1396,7 @@ ${scrapeData.content || ''}
              lead_phone: (currentLead as any).lead_phone,
              ctwa_context: (currentLead as any).ctwa_context,
              campaign_id: (currentLead as any).campaign_id,
-             contract_value: (currentLead as any).contract_value,
+             conversion_value: (currentLead as any).conversion_value,
            }, 'closed');
             // Rename WhatsApp group with closed prefix + sync participants/contacts
             if ((currentLead as any).whatsapp_group_id) {

@@ -29,7 +29,7 @@ export function TeamSectorPicker({ teamId, teamName, sectors, currentSector, onC
       await ensureExternalSession();
       const sectorName = value === 'none' ? null : value;
       // Upsert por team_name atualiza só as colunas enviadas — não mexe no gestor
-      const { error } = await (externalSupabase.from('team_managers') as any).upsert({
+      const { error } = await ((externalSupabase as any).from('team_managers') as any).upsert({
         team_name: teamName,
         team_id: teamId,
         sector_name: sectorName,

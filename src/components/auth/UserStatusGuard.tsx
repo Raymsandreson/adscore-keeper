@@ -17,7 +17,7 @@ export function UserStatusGuard() {
     (async () => {
       try {
         await ensureExternalSession();
-        const { data } = await (externalSupabase.from('org_user_status') as any)
+        const { data } = await ((externalSupabase as any).from('org_user_status') as any)
           .select('active')
           .eq('user_id', user.id)
           .maybeSingle();

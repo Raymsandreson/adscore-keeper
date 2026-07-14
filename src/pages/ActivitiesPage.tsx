@@ -331,6 +331,7 @@ const ActivitiesPage = () => {
   const [formProcessTitle, setFormProcessTitle] = useState('');
   const [formWorkflowId, setFormWorkflowId] = useState('');
   const [formIsSystem, setFormIsSystem] = useState(false);
+  const [formIsManagement, setFormIsManagement] = useState(false);
   const [availableCases, setAvailableCases] = useState<{id: string; case_number: string; title: string; lead_id: string | null}[]>([]);
   const [caseSearch, setCaseSearch] = useState('');
   const [leadCases, setLeadCases] = useState<{id: string; case_number: string; title: string}[]>([]);
@@ -704,6 +705,7 @@ const ActivitiesPage = () => {
     setCaseProcesses([]);
     setFormMatrixQuadrant('');
     setFormIsSystem(false);
+    setFormIsManagement(false);
     handleNotesPendingChange([]);
     handleNotesCommitCandidatesChange([]);
     handleNotesUploadStateChange(false);
@@ -847,7 +849,7 @@ const ActivitiesPage = () => {
       toast.error('Informe a data de notificação');
       return;
     }
-    if (!formWorkflowId && !formIsSystem) {
+    if (!formWorkflowId && !formIsSystem && !formIsManagement) {
       toast.error('Selecione um fluxo de trabalho para continuar');
       return;
     }
@@ -900,6 +902,7 @@ const ActivitiesPage = () => {
       process_title: formProcessTitle || null,
       workflow_id: formWorkflowId || null,
       is_system: formIsSystem,
+      is_management: formIsManagement,
       client_name_override: formClientNameOverride || null,
       feedback: formFeedback || null,
       rescheduled_to: formRescheduledTo || null,
@@ -994,6 +997,7 @@ const ActivitiesPage = () => {
     setFormPriority(activity.priority || 'normal');
     setFormLeadId(activity.lead_id || '');
     setFormIsSystem(!!(activity as any).is_system);
+    setFormIsManagement(!!(activity as any).is_management);
     setFormLeadName(activity.lead_name || '');
     setFormAssignedTo(((await remapToCloud(activity.assigned_to)) as string) || '');
     setFormAssignedToName(activity.assigned_to_name || '');
@@ -1277,6 +1281,7 @@ const ActivitiesPage = () => {
         process_title: formProcessTitle || null,
         matrix_quadrant: formMatrixQuadrant || null,
         is_system: formIsSystem,
+        is_management: formIsManagement,
         client_name_override: formClientNameOverride || null,
         ...buildAssigneesPayload(),
       };
@@ -1446,6 +1451,7 @@ const ActivitiesPage = () => {
     setFormPriority(activity.priority || 'normal');
     setFormLeadId(activity.lead_id || '');
     setFormIsSystem(!!(activity as any).is_system);
+    setFormIsManagement(!!(activity as any).is_management);
     setFormLeadName(activity.lead_name || '');
     setFormAssignedTo(((await remapToCloud(activity.assigned_to)) as string) || '');
     setFormAssignedToName(activity.assigned_to_name || '');
@@ -2515,6 +2521,7 @@ const ActivitiesPage = () => {
       formClientNameOverride={formClientNameOverride}
       setFormClientNameOverride={setFormClientNameOverride}
       formIsSystem={formIsSystem} setFormIsSystem={setFormIsSystem}
+      formIsManagement={formIsManagement} setFormIsManagement={setFormIsManagement}
       formRepeatWeekDays={formRepeatWeekDays} setFormRepeatWeekDays={setFormRepeatWeekDays}
       formWhatWasDone={formWhatWasDone} setFormWhatWasDone={setFormWhatWasDone}
       formCurrentStatus={formCurrentStatus} setFormCurrentStatus={setFormCurrentStatus}

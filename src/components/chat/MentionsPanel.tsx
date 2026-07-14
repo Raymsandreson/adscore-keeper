@@ -47,7 +47,7 @@ const entityColors: Record<string, string> = {
 export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
   const { mentions, loading, markAsRead, markAllAsRead } = useMyMentions();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<'mentions' | 'chat'>('mentions');
+  const [activeTab, setActiveTab] = useState<'mentions' | 'chat'>('chat');
   const [chatIntent, setChatIntent] = useState<TeamChatOpenIntent | null>(null);
 
   useEffect(() => {
