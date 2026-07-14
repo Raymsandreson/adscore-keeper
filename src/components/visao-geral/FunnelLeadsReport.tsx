@@ -58,14 +58,16 @@ interface Props {
  * Origens que contam como cadastro genuíno de caso trabalhista:
  *   - "Internet" → lead veio de Notícias e completou o fluxo "Cadastrar Caso Viável".
  *   - "manual"   → cadastrado diretamente na aba de Leads.
+ *   - "whatsapp" → caso captado/registrado pelo fluxo de WhatsApp.
  * Excluímos "google_alerts" (itens brutos de notícia auto-importados) e demais
- * origens automáticas (whatsapp, referral, etc.).
+ * origens automáticas (referral, etc.).
  */
-const CADASTRO_SOURCES = ["Internet", "manual"] as const;
+const CADASTRO_SOURCES = ["Internet", "manual", "whatsapp"] as const;
 
 const SOURCE_LABELS: Record<string, string> = {
   Internet: "Notícias",
   manual: "Manual",
+  whatsapp: "WhatsApp",
 };
 
 /** Status especiais (desfechos) que não são colunas do funil. */
@@ -113,6 +115,10 @@ interface LeadRow {
   source: string | null;
   status: string | null;
   acolhedor: string | null;
+  created_by: string | null;
+  whatsapp_group_id: string | number | null;
+  /** Atribuição resolvida: acolhedor, senão nome de quem criou. */
+  owner: string;
 }
 
 interface Movement {
@@ -122,6 +128,8 @@ interface Movement {
   to_stage: string;
   changed_at: string;
   changed_by: string | null;
+  lead_created_by: string | null;
+  owner: string;
   lead_name: string;
   acolhedor: string | null;
   source: string | null;
@@ -249,7 +257,9 @@ export default function FunnelLeadsReport({ boardMatcher }: Props) {
 
         const { data: leadsData, error: leadsErr } = await db
           .from("leads")
-          .select("id, lead_name, lead_phone, created_at, source, status, acolhedor")
+          .select(
+            "id, lead_name, lead_phone, created_at, source, status, acolhedor, created_by, whatsapp_group_id",
+          )
           .eq("board_id", board.id)
           .in("source", CADASTRO_SOURCES as unknown as string[])
           .gte("created_at", fetchStart.toISOString())
@@ -267,35 +277,52 @@ export default function FunnelLeadsReport({ boardMatcher }: Props) {
           .order("changed_at", { ascending: false });
         if (histErr) throw histErr;
 
+        const rawLeads = (leadsData || []) as Omit<LeadRow, "owner">[];
         const hist = histData || [];
 
-        // Enriquecer movimentações: lead (nome/acolhedor/source) e autor da marcação.
+        // Info dos leads referenciados nas movimentações (nome/acolhedor/source/criador).
         const leadIds = [...new Set(hist.map((h) => h.lead_id).filter(Boolean))];
         const leadInfo: Record<
           string,
-          { name: string; acolhedor: string | null; source: string | null }
+          {
+            name: string;
+            acolhedor: string | null;
+            source: string | null;
+            created_by: string | null;
+          }
         > = {};
         if (leadIds.length > 0) {
           const { data: ml } = await db
             .from("leads")
-            .select("id, lead_name, acolhedor, source")
+            .select("id, lead_name, acolhedor, source, created_by")
             .in("id", leadIds);
           type MlRow = {
             id: string;
             lead_name: string | null;
             acolhedor: string | null;
             source: string | null;
+            created_by: string | null;
           };
           ((ml || []) as MlRow[]).forEach((l) => {
             leadInfo[l.id] = {
               name: l.lead_name || "Sem nome",
               acolhedor: l.acolhedor,
               source: l.source,
+              created_by: l.created_by,
             };
           });
         }
 
-        const userIds = [...new Set(hist.map((h) => h.changed_by).filter(Boolean))] as string[];
+        // Resolver nomes de usuários (criador do lead + autor da movimentação).
+        const userIds = [
+          ...new Set(
+            [
+              ...rawLeads.map((l) => l.created_by),
+              ...hist.map((h) => h.changed_by),
+              ...Object.values(leadInfo).map((i) => i.created_by),
+            ].filter(Boolean),
+          ),
+        ] as string[];
         const userNames: Record<string, string> = {};
         if (userIds.length > 0) {
           const { data: profs } = await authClient
@@ -312,23 +339,48 @@ export default function FunnelLeadsReport({ boardMatcher }: Props) {
           });
         }
 
-        const enriched: Movement[] = hist.map((h) => ({
-          id: h.id,
-          lead_id: h.lead_id,
-          from_stage: h.from_stage,
-          to_stage: h.to_stage,
-          changed_at: h.changed_at,
-          changed_by: h.changed_by,
-          lead_name: leadInfo[h.lead_id]?.name || "Lead removido",
-          acolhedor: leadInfo[h.lead_id]?.acolhedor ?? null,
-          source: leadInfo[h.lead_id]?.source ?? null,
-          changed_by_name: h.changed_by
-            ? userNames[h.changed_by] || "Usuário"
-            : "Sistema",
-        }));
+        // Atribuição: acolhedor (texto) se houver, senão nome de quem criou.
+        const ownerOf = (acolhedor: string | null, createdBy: string | null) => {
+          const a = (acolhedor || "").trim();
+          if (a) return a;
+          if (createdBy && userNames[createdBy]) return userNames[createdBy];
+          return SEM_ACOLHEDOR;
+        };
+
+        // Dedup de cadastros: casos espelhados por instância compartilham o mesmo
+        // whatsapp_group_id (ex.: mesmo caso duplicado). Mantém 1 por grupo.
+        const seen = new Set<string>();
+        const leads: LeadRow[] = [];
+        for (const l of rawLeads) {
+          const key =
+            l.whatsapp_group_id != null ? `g:${l.whatsapp_group_id}` : `i:${l.id}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          leads.push({ ...l, owner: ownerOf(l.acolhedor, l.created_by) });
+        }
+
+        const enriched: Movement[] = hist.map((h) => {
+          const info = leadInfo[h.lead_id];
+          return {
+            id: h.id,
+            lead_id: h.lead_id,
+            from_stage: h.from_stage,
+            to_stage: h.to_stage,
+            changed_at: h.changed_at,
+            changed_by: h.changed_by,
+            lead_created_by: info?.created_by ?? null,
+            owner: ownerOf(info?.acolhedor ?? null, info?.created_by ?? null),
+            lead_name: info?.name || "Lead removido",
+            acolhedor: info?.acolhedor ?? null,
+            source: info?.source ?? null,
+            changed_by_name: h.changed_by
+              ? userNames[h.changed_by] || "Usuário"
+              : "Sistema",
+          };
+        });
 
         if (cancelled) return;
-        setAllLeads((leadsData || []) as LeadRow[]);
+        setAllLeads(leads);
         setMovements(enriched);
       } catch (e) {
         if (cancelled) return;
@@ -343,11 +395,10 @@ export default function FunnelLeadsReport({ boardMatcher }: Props) {
     };
   }, [board, loadingBoards, effectiveRange, anchors, now, reloadKey]);
 
-  // ---- Filtros ----
+  // ---- Filtros (por atribuição/owner e origem) ----
   const passLead = useCallback(
-    (l: { acolhedor: string | null; source: string | null }) => {
-      if (fAcolhedor !== "todos" && (l.acolhedor || SEM_ACOLHEDOR) !== fAcolhedor)
-        return false;
+    (l: { owner: string; source: string | null }) => {
+      if (fAcolhedor !== "todos" && l.owner !== fAcolhedor) return false;
       if (fOrigem !== "todas" && l.source !== fOrigem) return false;
       return true;
     },
@@ -356,8 +407,8 @@ export default function FunnelLeadsReport({ boardMatcher }: Props) {
 
   const acolhedorOptions = useMemo(() => {
     const set = new Set<string>();
-    allLeads.forEach((l) => set.add(l.acolhedor || SEM_ACOLHEDOR));
-    movements.forEach((m) => set.add(m.acolhedor || SEM_ACOLHEDOR));
+    allLeads.forEach((l) => set.add(l.owner));
+    movements.forEach((m) => set.add(m.owner));
     return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
   }, [allLeads, movements]);
 
@@ -395,12 +446,11 @@ export default function FunnelLeadsReport({ boardMatcher }: Props) {
     );
   }, [leadsFiltered, effectiveRange, inWindow]);
 
-  // Cadastros por acolhedor no período.
+  // Cadastros por acolhedor (atribuição) no período.
   const byAcolhedor = useMemo(() => {
     const acc: Record<string, number> = {};
     rangeLeads.forEach((l) => {
-      const k = l.acolhedor || SEM_ACOLHEDOR;
-      acc[k] = (acc[k] || 0) + 1;
+      acc[l.owner] = (acc[l.owner] || 0) + 1;
     });
     return Object.entries(acc)
       .map(([name, count]) => ({ name, count }))
@@ -497,6 +547,9 @@ export default function FunnelLeadsReport({ boardMatcher }: Props) {
                 </SelectItem>
                 <SelectItem value="Internet" className="text-xs">
                   Notícias
+                </SelectItem>
+                <SelectItem value="whatsapp" className="text-xs">
+                  WhatsApp
                 </SelectItem>
               </SelectContent>
             </Select>
@@ -656,9 +709,7 @@ export default function FunnelLeadsReport({ boardMatcher }: Props) {
                         type="button"
                         onClick={() =>
                           openLeadDrill(
-                            rangeLeads.filter(
-                              (l) => (l.acolhedor || SEM_ACOLHEDOR) === a.name,
-                            ),
+                            rangeLeads.filter((l) => l.owner === a.name),
                             `${a.name} · ${rangeLabel}`,
                           )
                         }
@@ -875,9 +926,9 @@ function DrillSheet({
                             {SOURCE_LABELS[l.source] || l.source}
                           </Badge>
                         )}
-                        {l.acolhedor && (
+                        {l.owner && l.owner !== SEM_ACOLHEDOR && (
                           <span className="text-[10px] text-muted-foreground">
-                            👤 {l.acolhedor}
+                            👤 {l.owner}
                           </span>
                         )}
                         <span className="text-[10px] text-muted-foreground">
@@ -917,7 +968,9 @@ function DrillSheet({
                   </div>
                   <div className="flex flex-wrap gap-x-3 text-[10px] text-muted-foreground">
                     <span>✍️ {m.changed_by_name}</span>
-                    {m.acolhedor && <span>👤 {m.acolhedor}</span>}
+                    {m.owner && m.owner !== SEM_ACOLHEDOR && (
+                      <span>👤 {m.owner}</span>
+                    )}
                   </div>
                 </li>
               ))}
