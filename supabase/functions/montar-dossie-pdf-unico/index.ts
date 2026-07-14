@@ -44,12 +44,16 @@ function isAudio(mime: string, name: string): boolean {
 
 function tipoRank(tipo: string, name: string): number {
   const t = `${tipo || ""} ${name || ""}`.toLowerCase();
-  if (/(\brg\b|\bcpf\b|identidade|identif|cnh|rne)/.test(t)) return 1;
-  if (/procura/.test(t)) return 2;
-  if (/(comprovante|resid[eê]ncia|endere[cç]o)/.test(t)) return 3;
-  if (/(cad\s*[uú]nico|cadunico|cad[_\s-]?un)/.test(t)) return 4;
-  if (/(laudo|m[eé]dic|relat[oó]rio|atestado|exame)/.test(t)) return 5;
-  return 6;
+  // Ordem: 1) Procuração, 2) OAB do advogado, 3) CPF/RG (identificação),
+  // 4) Comprovante de residência, 5) CAT, 6) Documentos médicos, 7) Outros
+  if (/procura/.test(t)) return 1;
+  if (/\boab\b|carteira\s*oab|identidade\s*(profissional|advogad)/.test(t)) return 2;
+  if (/(\brg\b|\bcpf\b|identidade|identif|cnh|rne)/.test(t)) return 3;
+  if (/(comprovante|resid[eê]ncia|endere[cç]o)/.test(t)) return 4;
+  if (/\bcat\b|comunica[cç][aã]o.*acidente/.test(t)) return 5;
+  if (/(laudo|m[eé]dic|relat[oó]rio|atestado|exame|raio.?x|rx|ressonan|tomograf|ultrasso|us\b)/.test(t)) return 6;
+  if (/(cad\s*[uú]nico|cadunico|cad[_\s-]?un)/.test(t)) return 7;
+  return 8;
 }
 
 async function downloadDriveFile(fileId: string): Promise<Uint8Array> {
