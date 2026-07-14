@@ -130,7 +130,7 @@ export function WhatsAppMediaGallery({ messages, leadId, onSendToDrive }: Props)
           <SheetHeader className="p-4 pb-2">
             <SheetTitle className="text-base flex items-center justify-between gap-2">
               <span>Mídias, docs e links</span>
-              {canSendToDrive && (
+              {canSelect && (
                 selectionMode ? (
                   <Button size="sm" variant="ghost" onClick={exitSelectionMode} className="h-7 text-xs">
                     Cancelar
