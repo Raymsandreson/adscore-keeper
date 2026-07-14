@@ -166,7 +166,7 @@ export function FunnelLeadsSidePanel({
             .from("leads")
             .select("id, lead_name, lead_phone, acolhedor, created_at, status")
             .eq("board_id", board.id)
-            .order("created_at", { ascending: true })
+            .order("created_at", { ascending: false })
             .range(from, from + PAGE - 1);
           if (error) throw error;
           const rows = (data || []) as Array<{
@@ -260,9 +260,9 @@ export function FunnelLeadsSidePanel({
       }
       return true;
     });
-    // Ordem de chegada: primeiro → último (ascendente por created_at)
+    // Mais recentes primeiro (descendente por created_at)
     list.sort(
-      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
     );
     return list;
   }, [allLeads, dateKey, acolhedor, search, stageFilter?.id]);
@@ -298,8 +298,8 @@ export function FunnelLeadsSidePanel({
           </SheetTitle>
           <SheetDescription className="text-xs">
             {stageFilter
-              ? `Leads na etapa "${stageFilter.name}" — ordem de chegada.`
-              : "Ordem de chegada (do primeiro ao último)."}
+              ? `Leads na etapa "${stageFilter.name}" — mais recentes primeiro.`
+              : "Mais recentes primeiro."}
           </SheetDescription>
         </SheetHeader>
 

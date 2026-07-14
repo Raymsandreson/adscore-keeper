@@ -799,11 +799,26 @@ function DrillSheet({
   resolveName: (id: string | null) => string;
   resolveColor: (id: string | null) => string;
 }) {
+  // Mais recentes primeiro (descendente), independente da ordem de entrada.
+  const leads =
+    drill?.kind === "lead"
+      ? [...drill.leads].sort(
+          (a, b) =>
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+        )
+      : [];
+  const movs =
+    drill?.kind === "movement"
+      ? [...drill.movements].sort(
+          (a, b) =>
+            new Date(b.changed_at).getTime() - new Date(a.changed_at).getTime(),
+        )
+      : [];
   const count =
     drill?.kind === "lead"
-      ? drill.leads.length
+      ? leads.length
       : drill?.kind === "movement"
-        ? drill.movements.length
+        ? movs.length
         : 0;
 
   return (
@@ -824,7 +839,7 @@ function DrillSheet({
             </div>
           ) : drill?.kind === "lead" ? (
             <ol className="divide-y">
-              {drill.leads.map((l, idx) => {
+              {leads.map((l, idx) => {
                 const digits = (l.lead_phone || "").replace(/\D/g, "");
                 const phone = fmtPhone(l.lead_phone);
                 const stageColor = l.status
@@ -887,7 +902,7 @@ function DrillSheet({
             </ol>
           ) : drill?.kind === "movement" ? (
             <ol className="divide-y">
-              {drill.movements.map((m, idx) => (
+              {movs.map((m, idx) => (
                 <li key={m.id || idx} className="px-4 py-2.5 space-y-1">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-sm font-medium truncate">{m.lead_name}</span>
