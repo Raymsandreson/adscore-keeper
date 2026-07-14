@@ -258,8 +258,32 @@ export function useTeamDirectChat() {
       )
       .subscribe();
 
+    // Polling fallback: se Realtime falhar/atrasar, garante que novas mensagens
+    // apareçam sem precisar sair e voltar da conversa.
+    const pollInterval = setInterval(async () => {
+      try {
+        await ensureExternalSession();
+        const { data } = await externalSupabase
+          .from('team_messages')
+          .select('*')
+          .eq('conversation_id', activeConversationId)
+          .order('created_at', { ascending: true })
+          .limit(200);
+        if (!data) return;
+        setMessages((prev) => {
+          if (data.length === prev.length && data.every((m, i) => (m as any).id === prev[i]?.id)) {
+            return prev;
+          }
+          return data as TeamMessage[];
+        });
+      } catch (e) {
+        // silencioso — só fallback
+      }
+    }, 4000);
+
     return () => {
       externalSupabase.removeChannel(channel);
+      clearInterval(pollInterval);
     };
   }, [activeConversationId, user?.id]);
 
