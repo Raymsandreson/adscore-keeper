@@ -58,6 +58,64 @@ async function hashData(data: string): Promise<string> {
 }
 
 /**
+ * Normaliza telefone brasileiro para E.164 (só dígitos, com DDI 55) antes do hash.
+ * Idempotente: não duplica o 55 em números que já vêm no formato internacional.
+ * Meta espera country code no telefone; sem isso o hash não bate e o match cai.
+ * Casos:
+ *  - 13 díg. começando com 55 (55 + DDD + 9 dígitos)  -> mantém
+ *  - 12 díg. começando com 55 (55 + DDD + 8 dígitos)  -> mantém
+ *  - 11 díg. (DDD + 9 dígitos)                        -> prefixa 55
+ *  - 10 díg. (DDD + 8 dígitos)                        -> prefixa 55
+ *  - outro                                            -> mantém (formato desconhecido, não corrompe)
+ */
+function toE164BR(raw: string): string {
+  const digits = (raw || '').replace(/\D/g, '');
+  if (!digits) return digits;
+  if (digits.startsWith('55') && (digits.length === 12 || digits.length === 13)) return digits;
+  if (digits.length === 10 || digits.length === 11) return `55${digits}`;
+  return digits;
+}
+
+/**
+ * POST resiliente para a Graph API: retenta em falha de rede, 429 (rate limit)
+ * e 5xx, com backoff exponencial. Erros 4xx (exceto 429) não são retentados.
+ */
+async function postToMetaWithRetry(
+  url: string,
+  body: string,
+  maxAttempts = 3,
+): Promise<Response> {
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+      });
+      // Retenta apenas rate-limit e erros de servidor
+      if ((resp.status === 429 || resp.status >= 500) && attempt < maxAttempts) {
+        const retryAfter = Number(resp.headers.get('retry-after')) || 0;
+        const backoffMs = Math.max(retryAfter * 1000, 500 * 2 ** (attempt - 1));
+        console.warn(`[CAPI] HTTP ${resp.status}, retry ${attempt}/${maxAttempts} em ${backoffMs}ms`);
+        await new Promise((r) => setTimeout(r, backoffMs));
+        continue;
+      }
+      return resp;
+    } catch (err) {
+      lastErr = err;
+      if (attempt < maxAttempts) {
+        const backoffMs = 500 * 2 ** (attempt - 1);
+        console.warn(`[CAPI] Erro de rede, retry ${attempt}/${maxAttempts} em ${backoffMs}ms:`, err);
+        await new Promise((r) => setTimeout(r, backoffMs));
+        continue;
+      }
+    }
+  }
+  throw lastErr ?? new Error('postToMetaWithRetry: esgotou tentativas');
+}
+
+/**
  * Get or create the dataset_id for a given WABA ID.
  * Caches in meta_capi_config table.
  */
@@ -169,6 +227,7 @@ serve(async (req) => {
       // Build events in official format
       const processedEvents = events.map((event: any) => ({
         event_name: event.event_name,
+        ...(event.event_id && { event_id: event.event_id }),
         event_time: event.event_time || Math.floor(Date.now() / 1000),
         action_source: 'business_messaging',
         messaging_channel: 'whatsapp',
@@ -194,13 +253,9 @@ serve(async (req) => {
 
       console.log(`[CAPI BM] Sending ${validEvents.length} events to dataset ${datasetId}`);
 
-      const response = await fetch(
+      const response = await postToMetaWithRetry(
         `https://graph.facebook.com/v21.0/${datasetId}/events`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        }
+        JSON.stringify(payload),
       );
 
       const result = await response.json();
@@ -231,6 +286,7 @@ serve(async (req) => {
     const processedEvents = await Promise.all(events.map(async (event: any) => {
       const processedEvent: any = {
         event_name: event.event_name,
+        ...(event.event_id && { event_id: event.event_id }),
         event_time: event.event_time || Math.floor(Date.now() / 1000),
         action_source: event.action_source || 'system_generated',
       };
@@ -241,8 +297,9 @@ serve(async (req) => {
         processedEvent.user_data = {};
         if (event.user_data.em) processedEvent.user_data.em = await hashData(event.user_data.em);
         if (event.user_data.ph) {
-          const cleanPhone = event.user_data.ph.replace(/\D/g, '');
-          processedEvent.user_data.ph = await hashData(cleanPhone);
+          // E.164 (com DDI 55) antes do hash — sem isso o match do Meta cai (bug B).
+          const e164Phone = toE164BR(event.user_data.ph);
+          if (e164Phone) processedEvent.user_data.ph = await hashData(e164Phone);
         }
         if (event.user_data.fn) processedEvent.user_data.fn = await hashData(event.user_data.fn);
         if (event.user_data.ln) processedEvent.user_data.ln = await hashData(event.user_data.ln);
@@ -262,13 +319,9 @@ serve(async (req) => {
 
     console.log(`[CAPI Pixel] Sending ${processedEvents.length} events`);
 
-    const response = await fetch(
+    const response = await postToMetaWithRetry(
       `https://graph.facebook.com/v21.0/${PIXEL_ID}/events`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      }
+      JSON.stringify(payload),
     );
 
     const responseText = await response.text();

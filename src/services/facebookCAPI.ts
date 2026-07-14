@@ -40,6 +40,9 @@ class FacebookCAPIService {
     try {
       const formattedEvents = events.map(event => ({
         event_name: event.eventName,
+        // event_id determinístico p/ deduplicação cross-funil no Meta (bug C).
+        // Usa o leadId quando disponível; senão cai no nome do evento.
+        event_id: `${event.customData?.leadId ?? event.userData?.externalId ?? 'na'}:${event.eventName}`,
         event_time: Math.floor(Date.now() / 1000),
         action_source: 'system_generated' as const,
         user_data: event.userData ? {

@@ -25,7 +25,8 @@ export async function sendLeadConversionEvent(lead: {
   lead_phone?: string;
   ctwa_context?: any;
   campaign_id?: string;
-  contract_value?: number;
+  /** Valor do contrato/conversão. Coluna real em `leads` é `conversion_value`. */
+  conversion_value?: number;
 }, newStatus: LeadStatus) {
   // Only send for CTWA leads that have a ctwa_clid
   const ctwaClid = lead.ctwa_context?.ctwa_clid;
@@ -38,10 +39,13 @@ export async function sendLeadConversionEvent(lead: {
   if (!mapping) return;
 
   try {
-    // Get WABA ID from meta_ad_accounts (use raw query to avoid type issues)
+    // Get WABA ID from meta_ad_accounts (use raw query to avoid type issues).
+    // Filtra contas SEM waba_id: pegar uma conta com waba_id nulo enviava o
+    // evento sem destino válido (bug E).
     const { data: adAccounts } = await supabase
       .from('meta_ad_accounts')
       .select('*')
+      .not('waba_id', 'is', null)
       .limit(1);
 
     const wabaId = (adAccounts as any)?.[0]?.waba_id;
@@ -52,6 +56,9 @@ export async function sendLeadConversionEvent(lead: {
 
     const event = {
       event_name: mapping.event_name,
+      // event_id determinístico → Meta deduplica se o mesmo fechamento
+      // for enviado 2x (funil Pipeline vs Kanban) — bug C.
+      event_id: `${lead.id}:${mapping.event_name}`,
       event_time: Math.floor(Date.now() / 1000),
       action_source: 'business_messaging' as const,
       messaging_channel: 'whatsapp' as const,
@@ -63,8 +70,9 @@ export async function sendLeadConversionEvent(lead: {
         content_category: mapping.content_category,
         lead_id: lead.id,
         status: newStatus,
-        ...(newStatus === 'closed' && lead.contract_value && {
-          value: lead.contract_value,
+        // Coluna real é `conversion_value` (não `contract_value`, que não existe) — bug A.
+        ...(newStatus === 'closed' && lead.conversion_value && {
+          value: lead.conversion_value,
           currency: 'BRL',
         }),
       },
