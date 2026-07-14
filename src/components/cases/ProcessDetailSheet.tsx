@@ -240,6 +240,18 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
     }
   }, [activeTab, fetchActivities]);
 
+  // case_type do lead vinculado — refina as estações previstas na aba Marcos.
+  const [leadCaseType, setLeadCaseType] = useState<string | null>(null);
+  useEffect(() => {
+    if (activeTab !== 'marcos' || !process?.lead_id) return;
+    externalSupabase
+      .from('leads')
+      .select('case_type')
+      .eq('id', process.lead_id)
+      .maybeSingle()
+      .then(({ data }) => setLeadCaseType((data as { case_type: string | null } | null)?.case_type ?? null));
+  }, [activeTab, process?.lead_id]);
+
   // Fetch documents when tab is activated
   useEffect(() => {
     if (activeTab !== 'documentos' || !process?.id) return;
@@ -514,7 +526,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
         'quantidade_movimentacoes', 'segredo_justica', 'arquivado', 'fisico',
         'status_predito', 'situacao', 'moeda', 'description', 'notes',
         'workflow_id', 'workflow_name', 'workflow_stage_id', 'responsible_user_id',
-        'cliente_polo',
+        'cliente_polo', 'pericia_prevista',
       ];
 
       for (const key of editableKeys) {
@@ -878,6 +890,37 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
                 <EditableSwitch label="Segredo de Justiça" checked={!!form.segredo_justica} onChange={v => set('segredo_justica', v)} />
                 <EditableSwitch label="Arquivado" checked={!!form.arquivado} onChange={v => set('arquivado', v)} />
                 <EditableSwitch label="Processo Físico" checked={!!form.fisico} onChange={v => set('fisico', v)} />
+
+                <div className="pt-2 space-y-1">
+                  <Label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+                    Perícia na linha do processo
+                  </Label>
+                  <div className="flex gap-1">
+                    {([
+                      { v: null, label: 'Automático' },
+                      { v: true, label: 'Prevista' },
+                      { v: false, label: 'Não há' },
+                    ] as Array<{ v: boolean | null; label: string }>).map((opt) => {
+                      const active = (form.pericia_prevista ?? null) === opt.v;
+                      return (
+                        <button
+                          key={String(opt.v)}
+                          type="button"
+                          onClick={() => set('pericia_prevista', opt.v)}
+                          className={`text-[11px] px-2.5 py-1 rounded-md border transition-colors ${
+                            active ? 'bg-primary text-primary-foreground border-primary' : 'bg-background hover:bg-accent'
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="text-[10px] text-muted-foreground italic">
+                    Automático segue a regra do tipo de caso (fatal não tem perícia; previdenciário tem, salvo pensão/maternidade/rural). Use para corrigir casos específicos.
+                  </p>
+                </div>
+
                 <p className="text-[10px] text-muted-foreground italic pt-2">
                   O fluxo de trabalho vinculado fica em destaque no topo do painel.
                 </p>
@@ -886,7 +929,14 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
 
 
             {activeTab === 'marcos' && process?.id && (
-              <ProcessMovementsTimeline processId={process.id} refreshKey={marcosRefreshKey} caseId={process.case_id || form.case_id || null} />
+              <ProcessMovementsTimeline
+                processId={process.id}
+                refreshKey={marcosRefreshKey}
+                caseId={process.case_id || form.case_id || null}
+                processNumber={form.process_number || process.process_number || null}
+                caseType={leadCaseType}
+                periciaPrevista={form.pericia_prevista ?? null}
+              />
             )}
 
             {activeTab === 'movimentacoes' && process?.id && (

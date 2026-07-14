@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { ExternalLink, Loader2, Milestone, Filter, TrainFront, GitMerge } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useProcessMovements, type MarcoTipo } from '@/hooks/useProcessMovements';
+import { estacoesDoProcesso } from '@/lib/processStations';
 
 /** Número CNJ compacto pro chip de origem: "3013153-02…8.06" */
 function shortCnj(numero: string | null): string {
@@ -14,6 +15,9 @@ function shortCnj(numero: string | null): string {
 
 const MARCO_LABEL: Record<MarcoTipo, string> = {
   peticao_inicial: 'Petição Inicial',
+  audiencia_conciliacao: 'Audiência de Conciliação',
+  pericia: 'Perícia',
+  audiencia_instrucao: 'Audiência de Instrução',
   sentenca_1grau: 'Sentença (1º Grau)',
   acordo: 'Acordo',
   acordao_2grau: 'Acórdão (2º Grau)',
@@ -24,6 +28,9 @@ const MARCO_LABEL: Record<MarcoTipo, string> = {
 
 const MARCO_COLOR: Record<MarcoTipo, string> = {
   peticao_inicial: 'bg-slate-100 text-slate-800 dark:bg-slate-800/40 dark:text-slate-300',
+  audiencia_conciliacao: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300',
+  pericia: 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-300',
+  audiencia_instrucao: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300',
   sentenca_1grau: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
   acordo: 'bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-300',
   acordao_2grau: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300',
@@ -43,16 +50,6 @@ function formatValor(v: number | null): string | null {
   if (v == null) return null;
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
-
-// Ordem canônica das "estações" no ciclo de vida do processo.
-const ESTACOES: MarcoTipo[] = [
-  'peticao_inicial', 'sentenca_1grau', 'acordo', 'acordao_2grau',
-  'acordao_superior', 'transito_julgado', 'pagamento',
-];
-
-// Estações que nem todo processo percorre (acordo/recursos) — quando o trem já
-// passou do ponto sem parar nelas, mostram "não houve" em vez de "falta".
-const ESTACOES_OPCIONAIS = new Set<MarcoTipo>(['acordo', 'acordao_2grau', 'acordao_superior']);
 
 function parseDate(v: string | null | undefined): Date | null {
   if (!v) return null;
@@ -87,16 +84,19 @@ interface Estacao {
 }
 
 /**
- * Linha do trem: as 7 estações do ciclo de vida, com o trem na estação atual,
- * o trecho percorrido preenchido (com o tempo entre estações), o futuro
- * tracejado e as estações puladas (acordo/recursos que não houve) atenuadas.
+ * Linha do trem: estações do ciclo de vida (a lista varia por perfil do caso —
+ * conciliação/perícia/instrução só entram quando previstas ou com evidência),
+ * com o trem na estação atual, o trecho percorrido preenchido (com o tempo
+ * entre estações), o futuro tracejado e as estações puladas atenuadas.
  */
 function MarcosTrainLine({
   movements,
   currentProcessId,
+  estacoesLista,
 }: {
   movements: ReturnType<typeof useProcessMovements>['movements'];
   currentProcessId?: string;
+  estacoesLista: MarcoTipo[];
 }) {
   const estacoes = useMemo<Estacao[]>(() => {
     // Primeira data e valor de cada marco alcançado (+ processo de origem).
@@ -117,9 +117,9 @@ function MarcosTrainLine({
       }
     }
 
-    const idxAtual = ESTACOES.reduce((acc, t, i) => (porTipo.has(t) ? i : acc), -1);
+    const idxAtual = estacoesLista.reduce((acc, t, i) => (porTipo.has(t) ? i : acc), -1);
 
-    return ESTACOES.map((tipo, i) => {
+    return estacoesLista.map((tipo, i) => {
       const alcancada = porTipo.get(tipo);
       const status: Estacao['status'] = alcancada
         ? (i === idxAtual ? 'atual' : 'concluida')
@@ -133,7 +133,7 @@ function MarcosTrainLine({
         origemProcessId: alcancada?.origemProcessId ?? null,
       };
     });
-  }, [movements]);
+  }, [movements, estacoesLista]);
 
   // Duração entre uma estação alcançada e a PRÓXIMA alcançada (pra rotular o trecho).
   const duracaoAposEstacao = (i: number): string | null => {
@@ -237,15 +237,31 @@ export function ProcessMovementsTimeline({
   processId,
   refreshKey,
   caseId,
+  processNumber,
+  caseType,
+  periciaPrevista,
 }: {
   processId: string;
   refreshKey?: number;
   /** Habilita a "Linha do caso": marcos de todos os processos conexos do mesmo caso. */
   caseId?: string | null;
+  /** Nº CNJ — define o ramo (trabalhista/previdenciário) pras estações previstas. */
+  processNumber?: string | null;
+  /** case_type do lead vinculado — refina a previsão (fatal, pensão por morte, rural…). */
+  caseType?: string | null;
+  /** Override manual da perícia (null = automático). */
+  periciaPrevista?: boolean | null;
 }) {
   const [escopo, setEscopo] = useState<'processo' | 'caso'>('processo');
   const { movements, loading, refetch } = useProcessMovements(processId, { escopo, caseId });
   const [onlyCurrent, setOnlyCurrent] = useState(true);
+
+  // Estações a exibir: ordem canônica com as intermediárias (conciliação/
+  // perícia/instrução) entrando por evidência (marco existe) ou previsão (perfil).
+  const estacoesLista = useMemo(() => {
+    const tiposComMarco = new Set(movements.map((m) => m.tipo_movimentacao));
+    return estacoesDoProcesso({ tiposComMarco, processNumber, caseType, periciaPrevista });
+  }, [movements, processNumber, caseType, periciaPrevista]);
 
   // Re-busca quando o pai sinaliza um novo sync (ex.: "buscar no Escavador").
   // refreshKey inicia em 0 (falsy) → não dispara no mount, só após incremento.
@@ -296,7 +312,7 @@ export function ProcessMovementsTimeline({
           </Button>
         </div>
       )}
-      <MarcosTrainLine movements={movements} currentProcessId={processId} />
+      <MarcosTrainLine movements={movements} currentProcessId={processId} estacoesLista={estacoesLista} />
 
       <div className="flex items-center justify-between pt-1">
         <h4 className="text-xs font-semibold flex items-center gap-1.5">
