@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { db } from "@/integrations/supabase";
+import { db, authClient } from "@/integrations/supabase";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
@@ -10,6 +10,13 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Sheet,
   SheetContent,
@@ -26,6 +33,7 @@ import {
   Repeat,
   ChevronRight,
   MessageCircle,
+  Users,
 } from "lucide-react";
 import { useKanbanBoards, type KanbanBoard } from "@/hooks/useKanbanBoards";
 import {
@@ -34,6 +42,8 @@ import {
   startOfWeek,
   startOfMonth,
   subDays,
+  min as minDate,
+  max as maxDate,
   format,
 } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -48,9 +58,8 @@ interface Props {
  * Origens que contam como cadastro genuíno de caso trabalhista:
  *   - "Internet" → lead veio de Notícias e completou o fluxo "Cadastrar Caso Viável".
  *   - "manual"   → cadastrado diretamente na aba de Leads.
- * Excluímos "google_alerts" (itens brutos de notícia auto-importados que ficam
- * parados nas etapas noticias/viavel sem virar cadastro) e demais origens
- * automáticas (whatsapp, referral, etc.).
+ * Excluímos "google_alerts" (itens brutos de notícia auto-importados) e demais
+ * origens automáticas (whatsapp, referral, etc.).
  */
 const CADASTRO_SOURCES = ["Internet", "manual"] as const;
 
@@ -59,11 +68,7 @@ const SOURCE_LABELS: Record<string, string> = {
   manual: "Manual",
 };
 
-/**
- * Status especiais que não são colunas do funil (kanban stages) mas aparecem
- * como origem/destino em lead_stage_history. Reutiliza os rótulos canônicos
- * usados em LeadStageHistoryPanel.
- */
+/** Status especiais (desfechos) que não são colunas do funil. */
 const STATUS_LABELS: Record<string, string> = {
   new: "Novo",
   active: "Ativo",
@@ -94,14 +99,10 @@ const STATUS_COLORS: Record<string, string> = {
   cancelled: "#a855f7",
 };
 
+const SEM_ACOLHEDOR = "— sem acolhedor —";
+
 function humanize(id: string) {
   return id.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
-}
-
-interface MovementRow {
-  from_stage: string | null;
-  to_stage: string;
-  changed_at: string;
 }
 
 interface LeadRow {
@@ -111,6 +112,20 @@ interface LeadRow {
   created_at: string;
   source: string | null;
   status: string | null;
+  acolhedor: string | null;
+}
+
+interface Movement {
+  id: string;
+  lead_id: string;
+  from_stage: string | null;
+  to_stage: string;
+  changed_at: string;
+  changed_by: string | null;
+  lead_name: string;
+  acolhedor: string | null;
+  source: string | null;
+  changed_by_name: string;
 }
 
 type QuickPeriod = "today" | "week" | "month" | "custom";
@@ -122,12 +137,11 @@ const PERIOD_LABELS: Record<QuickPeriod, string> = {
   custom: "Personalizado",
 };
 
-/**
- * Relatório de Leads do funil (Visão Geral → Acidente de Trabalho).
- * - Cadastrados por dia/semana/mês + intervalo no calendário (só cadastros reais).
- * - Clique em qualquer número de cadastro → lista os leads correspondentes.
- * - Movimentações etapa → etapa com destino resolvido (inclui status especiais).
- */
+type DrillState =
+  | { title: string; kind: "lead"; leads: LeadRow[] }
+  | { title: string; kind: "movement"; movements: Movement[] }
+  | null;
+
 export default function FunnelLeadsReport({ boardMatcher }: Props) {
   const { boards, loading: loadingBoards } = useKanbanBoards();
 
@@ -138,30 +152,35 @@ export default function FunnelLeadsReport({ boardMatcher }: Props) {
     return matches.find((b) => (b.stages || []).length > 0) || matches[0] || null;
   }, [boards, boardMatcher]);
 
-  const [quickCounts, setQuickCounts] = useState<{
-    today: number;
-    week: number;
-    month: number;
-  } | null>(null);
-
   const [period, setPeriod] = useState<QuickPeriod>("week");
   const [range, setRange] = useState<DateRange | undefined>();
-  const [rangeNewLeads, setRangeNewLeads] = useState(0);
-  const [movements, setMovements] = useState<MovementRow[]>([]);
+
+  // Filtros (aplicados client-side; não disparam refetch).
+  const [fAcolhedor, setFAcolhedor] = useState<string>("todos");
+  const [fOrigem, setFOrigem] = useState<string>("todas");
+
+  // Dados brutos.
+  const [allLeads, setAllLeads] = useState<LeadRow[]>([]);
+  const [movements, setMovements] = useState<Movement[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [drill, setDrill] = useState<DrillState>(null);
 
-  // Drill-down: lista de leads de um recorte de datas.
-  const [drill, setDrill] = useState<{
-    from: Date;
-    to: Date;
-    label: string;
-  } | null>(null);
+  const now = useMemo(() => {
+    void reloadKey; // re-avalia "agora" ao clicar em atualizar
+    return new Date();
+  }, [reloadKey]);
+
+  const anchors = useMemo(() => {
+    const today = startOfDay(now);
+    const weekStart = startOfWeek(now, { weekStartsOn: 1 });
+    const monthStart = startOfMonth(now);
+    return { today, weekStart, monthStart };
+  }, [now]);
 
   const effectiveRange = useMemo<{ start: Date; end: Date } | null>(() => {
-    const now = new Date();
     switch (period) {
       case "today":
         return { start: startOfDay(now), end: endOfDay(now) };
@@ -178,7 +197,7 @@ export default function FunnelLeadsReport({ boardMatcher }: Props) {
         }
         return null;
     }
-  }, [period, range]);
+  }, [period, range, now]);
 
   const stageMap = useMemo(() => {
     const map: Record<string, { name: string; color: string }> = {};
@@ -188,7 +207,6 @@ export default function FunnelLeadsReport({ boardMatcher }: Props) {
     return map;
   }, [board]);
 
-  // Resolve nome/cor de um id que pode ser uma etapa do funil OU um status especial.
   const resolveName = useCallback(
     (id: string | null) => {
       if (!id) return "Novo";
@@ -204,7 +222,7 @@ export default function FunnelLeadsReport({ boardMatcher }: Props) {
     [stageMap],
   );
 
-  // Contagens fixas de cadastro (dia/semana/mês).
+  // ---- Fetch de dados brutos (cadastros + movimentações) ----
   useEffect(() => {
     if (loadingBoards) return;
     if (!board) {
@@ -212,42 +230,8 @@ export default function FunnelLeadsReport({ boardMatcher }: Props) {
       setError("Funil não encontrado na base. Verifique o nome em Funis de Vendas.");
       return;
     }
-    let cancelled = false;
-    (async () => {
-      const now = new Date();
-      const countCreated = async (from: Date) => {
-        const { count, error } = await db
-          .from("leads")
-          .select("id", { count: "exact", head: true })
-          .eq("board_id", board.id)
-          .in("source", CADASTRO_SOURCES as unknown as string[])
-          .gte("created_at", from.toISOString());
-        if (error) throw error;
-        return count || 0;
-      };
-      try {
-        const [today, week, month] = await Promise.all([
-          countCreated(startOfDay(now)),
-          countCreated(startOfWeek(now, { weekStartsOn: 1 })),
-          countCreated(startOfMonth(now)),
-        ]);
-        if (cancelled) return;
-        setQuickCounts({ today, week, month });
-      } catch (e) {
-        if (cancelled) return;
-        console.error("[FunnelLeadsReport] quick counts", e);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [board, loadingBoards, reloadKey]);
-
-  // Cadastros + movimentações do intervalo selecionado.
-  useEffect(() => {
-    if (loadingBoards) return;
-    if (!board || !effectiveRange) {
-      if (board) setLoading(false);
+    if (!effectiveRange) {
+      setLoading(false);
       return;
     }
     let cancelled = false;
@@ -255,39 +239,100 @@ export default function FunnelLeadsReport({ boardMatcher }: Props) {
       setLoading(true);
       setError(null);
       try {
-        const startISO = effectiveRange.start.toISOString();
-        const endISO = effectiveRange.end.toISOString();
+        // Janela de cadastros = cobre os cards fixos (hoje/semana/mês) e o intervalo.
+        const fetchStart = minDate([
+          anchors.monthStart,
+          anchors.weekStart,
+          effectiveRange.start,
+        ]);
+        const fetchEnd = maxDate([now, effectiveRange.end]);
 
-        const newLeadsResp = await db
+        const { data: leadsData, error: leadsErr } = await db
           .from("leads")
-          .select("id", { count: "exact", head: true })
+          .select("id, lead_name, lead_phone, created_at, source, status, acolhedor")
           .eq("board_id", board.id)
           .in("source", CADASTRO_SOURCES as unknown as string[])
-          .gte("created_at", startISO)
-          .lte("created_at", endISO);
-        if (newLeadsResp.error) throw newLeadsResp.error;
+          .gte("created_at", fetchStart.toISOString())
+          .lte("created_at", fetchEnd.toISOString())
+          .order("created_at", { ascending: false });
+        if (leadsErr) throw leadsErr;
 
-        const { data: histData, error: histError } = await db
+        // Movimentações do board no intervalo.
+        const { data: histData, error: histErr } = await db
           .from("lead_stage_history")
-          .select("from_stage, to_stage, changed_at, from_board_id, to_board_id")
-          .gte("changed_at", startISO)
-          .lte("changed_at", endISO)
+          .select("id, lead_id, from_stage, to_stage, changed_at, changed_by, from_board_id, to_board_id")
+          .gte("changed_at", effectiveRange.start.toISOString())
+          .lte("changed_at", effectiveRange.end.toISOString())
           .or(`to_board_id.eq.${board.id},from_board_id.eq.${board.id}`)
           .order("changed_at", { ascending: false });
-        if (histError) throw histError;
+        if (histErr) throw histErr;
+
+        const hist = histData || [];
+
+        // Enriquecer movimentações: lead (nome/acolhedor/source) e autor da marcação.
+        const leadIds = [...new Set(hist.map((h) => h.lead_id).filter(Boolean))];
+        const leadInfo: Record<
+          string,
+          { name: string; acolhedor: string | null; source: string | null }
+        > = {};
+        if (leadIds.length > 0) {
+          const { data: ml } = await db
+            .from("leads")
+            .select("id, lead_name, acolhedor, source")
+            .in("id", leadIds);
+          type MlRow = {
+            id: string;
+            lead_name: string | null;
+            acolhedor: string | null;
+            source: string | null;
+          };
+          ((ml || []) as MlRow[]).forEach((l) => {
+            leadInfo[l.id] = {
+              name: l.lead_name || "Sem nome",
+              acolhedor: l.acolhedor,
+              source: l.source,
+            };
+          });
+        }
+
+        const userIds = [...new Set(hist.map((h) => h.changed_by).filter(Boolean))] as string[];
+        const userNames: Record<string, string> = {};
+        if (userIds.length > 0) {
+          const { data: profs } = await authClient
+            .from("profiles")
+            .select("user_id, full_name, email")
+            .in("user_id", userIds);
+          type ProfRow = {
+            user_id: string;
+            full_name: string | null;
+            email: string | null;
+          };
+          ((profs || []) as ProfRow[]).forEach((p) => {
+            userNames[p.user_id] = p.full_name || p.email || "Usuário";
+          });
+        }
+
+        const enriched: Movement[] = hist.map((h) => ({
+          id: h.id,
+          lead_id: h.lead_id,
+          from_stage: h.from_stage,
+          to_stage: h.to_stage,
+          changed_at: h.changed_at,
+          changed_by: h.changed_by,
+          lead_name: leadInfo[h.lead_id]?.name || "Lead removido",
+          acolhedor: leadInfo[h.lead_id]?.acolhedor ?? null,
+          source: leadInfo[h.lead_id]?.source ?? null,
+          changed_by_name: h.changed_by
+            ? userNames[h.changed_by] || "Usuário"
+            : "Sistema",
+        }));
 
         if (cancelled) return;
-        setRangeNewLeads(newLeadsResp.count || 0);
-        setMovements(
-          (histData || []).map((h) => ({
-            from_stage: h.from_stage,
-            to_stage: h.to_stage,
-            changed_at: h.changed_at,
-          })),
-        );
+        setAllLeads((leadsData || []) as LeadRow[]);
+        setMovements(enriched);
       } catch (e) {
         if (cancelled) return;
-        console.error("[FunnelLeadsReport] range", e);
+        console.error("[FunnelLeadsReport]", e);
         setError(e instanceof Error ? e.message : "Falha ao carregar relatório");
       } finally {
         if (!cancelled) setLoading(false);
@@ -296,21 +341,85 @@ export default function FunnelLeadsReport({ boardMatcher }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [board, loadingBoards, effectiveRange, reloadKey]);
+  }, [board, loadingBoards, effectiveRange, anchors, now, reloadKey]);
 
-  // Transições agregadas (de → para), maiores primeiro.
+  // ---- Filtros ----
+  const passLead = useCallback(
+    (l: { acolhedor: string | null; source: string | null }) => {
+      if (fAcolhedor !== "todos" && (l.acolhedor || SEM_ACOLHEDOR) !== fAcolhedor)
+        return false;
+      if (fOrigem !== "todas" && l.source !== fOrigem) return false;
+      return true;
+    },
+    [fAcolhedor, fOrigem],
+  );
+
+  const acolhedorOptions = useMemo(() => {
+    const set = new Set<string>();
+    allLeads.forEach((l) => set.add(l.acolhedor || SEM_ACOLHEDOR));
+    movements.forEach((m) => set.add(m.acolhedor || SEM_ACOLHEDOR));
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [allLeads, movements]);
+
+  const leadsFiltered = useMemo(
+    () => allLeads.filter(passLead),
+    [allLeads, passLead],
+  );
+  const movementsFiltered = useMemo(
+    () => movements.filter(passLead),
+    [movements, passLead],
+  );
+
+  const inWindow = useCallback(
+    (l: LeadRow, start: Date, end: Date) => {
+      const t = new Date(l.created_at).getTime();
+      return t >= start.getTime() && t <= end.getTime();
+    },
+    [],
+  );
+
+  const quick = useMemo(() => {
+    const count = (start: Date) =>
+      leadsFiltered.filter((l) => inWindow(l, start, now)).length;
+    return {
+      today: count(anchors.today),
+      week: count(anchors.weekStart),
+      month: count(anchors.monthStart),
+    };
+  }, [leadsFiltered, anchors, now, inWindow]);
+
+  const rangeLeads = useMemo(() => {
+    if (!effectiveRange) return [];
+    return leadsFiltered.filter((l) =>
+      inWindow(l, effectiveRange.start, effectiveRange.end),
+    );
+  }, [leadsFiltered, effectiveRange, inWindow]);
+
+  // Cadastros por acolhedor no período.
+  const byAcolhedor = useMemo(() => {
+    const acc: Record<string, number> = {};
+    rangeLeads.forEach((l) => {
+      const k = l.acolhedor || SEM_ACOLHEDOR;
+      acc[k] = (acc[k] || 0) + 1;
+    });
+    return Object.entries(acc)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count);
+  }, [rangeLeads]);
+
+  // Transições agregadas.
   const transitions = useMemo(() => {
     const acc: Record<
       string,
-      { from: string | null; to: string; count: number }
+      { from: string | null; to: string; items: Movement[] }
     > = {};
-    movements.forEach((m) => {
+    movementsFiltered.forEach((m) => {
       const key = `${m.from_stage ?? "∅"}→${m.to_stage}`;
-      if (!acc[key]) acc[key] = { from: m.from_stage, to: m.to_stage, count: 0 };
-      acc[key].count++;
+      if (!acc[key]) acc[key] = { from: m.from_stage, to: m.to_stage, items: [] };
+      acc[key].items.push(m);
     });
-    return Object.values(acc).sort((a, b) => b.count - a.count);
-  }, [movements]);
+    return Object.values(acc).sort((a, b) => b.items.length - a.items.length);
+  }, [movementsFiltered]);
 
   const rangeLabel = useMemo(() => {
     if (!effectiveRange) return "Selecione um intervalo";
@@ -319,12 +428,12 @@ export default function FunnelLeadsReport({ boardMatcher }: Props) {
     return fmt(start) === fmt(end) ? fmt(start) : `${fmt(start)} — ${fmt(end)}`;
   }, [effectiveRange]);
 
-  const openDrill = (from: Date, to: Date, label: string) =>
-    setDrill({ from, to, label });
+  const openLeadDrill = (leads: LeadRow[], title: string) =>
+    setDrill({ kind: "lead", leads, title });
+  const openMovDrill = (movs: Movement[], title: string) =>
+    setDrill({ kind: "movement", movements: movs, title });
 
-  if (loadingBoards) {
-    return <Skeleton className="h-64 rounded-lg" />;
-  }
+  if (loadingBoards) return <Skeleton className="h-64 rounded-lg" />;
 
   if (error && !board) {
     return (
@@ -337,7 +446,7 @@ export default function FunnelLeadsReport({ boardMatcher }: Props) {
     );
   }
 
-  const now = new Date();
+  const filtersActive = fAcolhedor !== "todos" || fOrigem !== "todas";
 
   return (
     <>
@@ -353,13 +462,59 @@ export default function FunnelLeadsReport({ boardMatcher }: Props) {
             onClick={() => setReloadKey((k) => k + 1)}
             disabled={loading}
           >
-            <RefreshCw
-              className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`}
-            />
+            <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
           </Button>
         </CardHeader>
 
         <CardContent className="space-y-5">
+          {/* Filtros */}
+          <div className="flex flex-wrap items-center gap-2">
+            <Select value={fAcolhedor} onValueChange={setFAcolhedor}>
+              <SelectTrigger className="h-8 w-[190px] text-xs">
+                <SelectValue placeholder="Acolhedor" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos" className="text-xs">
+                  Todos os acolhedores
+                </SelectItem>
+                {acolhedorOptions.map((a) => (
+                  <SelectItem key={a} value={a} className="text-xs">
+                    {a}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={fOrigem} onValueChange={setFOrigem}>
+              <SelectTrigger className="h-8 w-[150px] text-xs">
+                <SelectValue placeholder="Origem" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todas" className="text-xs">
+                  Todas as origens
+                </SelectItem>
+                <SelectItem value="manual" className="text-xs">
+                  Manual (aba)
+                </SelectItem>
+                <SelectItem value="Internet" className="text-xs">
+                  Notícias
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            {filtersActive && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-8 text-xs"
+                onClick={() => {
+                  setFAcolhedor("todos");
+                  setFOrigem("todas");
+                }}
+              >
+                Limpar
+              </Button>
+            )}
+          </div>
+
           {/* Cadastros: dia / semana / mês (clicáveis) */}
           <div>
             <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-2">
@@ -368,29 +523,30 @@ export default function FunnelLeadsReport({ boardMatcher }: Props) {
             <div className="grid grid-cols-3 gap-3">
               <ClickKpi
                 label="Hoje"
-                value={quickCounts?.today}
+                value={loading ? undefined : quick.today}
                 onClick={() =>
-                  openDrill(startOfDay(now), endOfDay(now), "cadastrados hoje")
+                  openLeadDrill(
+                    leadsFiltered.filter((l) => inWindow(l, anchors.today, now)),
+                    "cadastrados hoje",
+                  )
                 }
               />
               <ClickKpi
                 label="Esta semana"
-                value={quickCounts?.week}
+                value={loading ? undefined : quick.week}
                 onClick={() =>
-                  openDrill(
-                    startOfWeek(now, { weekStartsOn: 1 }),
-                    endOfDay(now),
+                  openLeadDrill(
+                    leadsFiltered.filter((l) => inWindow(l, anchors.weekStart, now)),
                     "cadastrados esta semana",
                   )
                 }
               />
               <ClickKpi
                 label="Este mês"
-                value={quickCounts?.month}
+                value={loading ? undefined : quick.month}
                 onClick={() =>
-                  openDrill(
-                    startOfMonth(now),
-                    endOfDay(now),
+                  openLeadDrill(
+                    leadsFiltered.filter((l) => inWindow(l, anchors.monthStart, now)),
                     "cadastrados este mês",
                   )
                 }
@@ -455,14 +611,7 @@ export default function FunnelLeadsReport({ boardMatcher }: Props) {
               <div className="grid grid-cols-2 gap-3">
                 <button
                   type="button"
-                  onClick={() =>
-                    effectiveRange &&
-                    openDrill(
-                      effectiveRange.start,
-                      effectiveRange.end,
-                      `cadastrados · ${rangeLabel}`,
-                    )
-                  }
+                  onClick={() => openLeadDrill(rangeLeads, `cadastrados · ${rangeLabel}`)}
                   className="group text-left rounded-lg border p-4 hover:border-primary/40 hover:bg-muted/40 transition-colors"
                 >
                   <div className="flex items-center gap-2 text-muted-foreground mb-1">
@@ -473,7 +622,7 @@ export default function FunnelLeadsReport({ boardMatcher }: Props) {
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-2xl font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
-                      {rangeNewLeads}
+                      {rangeLeads.length}
                     </span>
                     <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
                   </div>
@@ -486,7 +635,7 @@ export default function FunnelLeadsReport({ boardMatcher }: Props) {
                     </span>
                   </div>
                   <div className="text-2xl font-semibold tabular-nums">
-                    {movements.length}
+                    {movementsFiltered.length}
                   </div>
                 </div>
               </div>
@@ -494,11 +643,47 @@ export default function FunnelLeadsReport({ boardMatcher }: Props) {
                 Período: {rangeLabel}
               </div>
 
-              {/* Transições de → para */}
+              {/* Cadastros por acolhedor */}
+              {byAcolhedor.length > 0 && (
+                <div>
+                  <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-2 flex items-center gap-1.5">
+                    <Users className="h-3.5 w-3.5" /> Cadastros por acolhedor
+                  </div>
+                  <div className="space-y-1.5">
+                    {byAcolhedor.map((a) => (
+                      <button
+                        key={a.name}
+                        type="button"
+                        onClick={() =>
+                          openLeadDrill(
+                            rangeLeads.filter(
+                              (l) => (l.acolhedor || SEM_ACOLHEDOR) === a.name,
+                            ),
+                            `${a.name} · ${rangeLabel}`,
+                          )
+                        }
+                        className="w-full group flex items-center justify-between gap-2 rounded-md border bg-background px-3 py-2 text-sm hover:border-primary/40 hover:bg-muted/40 transition-colors"
+                      >
+                        <span className="truncate text-left">{a.name}</span>
+                        <span className="flex items-center gap-1.5 shrink-0">
+                          <span className="font-semibold tabular-nums">{a.count}</span>
+                          <ChevronRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Transições de → para (clicáveis) */}
               <div>
                 <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-2">
                   Movimentações etapa → etapa
                 </div>
+                <p className="text-[11px] text-muted-foreground mb-2 -mt-1">
+                  Destinos como "Sem resposta", "Fechado" ou "Inviável" são desfechos do
+                  lead, não colunas do funil.
+                </p>
                 {transitions.length === 0 ? (
                   <p className="text-sm text-muted-foreground">
                     Nenhuma movimentação no período selecionado.
@@ -506,25 +691,29 @@ export default function FunnelLeadsReport({ boardMatcher }: Props) {
                 ) : (
                   <div className="space-y-1.5 max-h-72 overflow-y-auto pr-1">
                     {transitions.map((t) => (
-                      <div
+                      <button
                         key={`${t.from ?? "∅"}-${t.to}`}
-                        className="flex items-center justify-between gap-2 rounded-md bg-muted/40 px-3 py-2 text-sm"
+                        type="button"
+                        onClick={() =>
+                          openMovDrill(
+                            t.items,
+                            `${resolveName(t.from)} → ${resolveName(t.to)}`,
+                          )
+                        }
+                        className="w-full group flex items-center justify-between gap-2 rounded-md bg-muted/40 px-3 py-2 text-sm hover:bg-muted transition-colors"
                       >
                         <div className="flex items-center gap-2 min-w-0">
-                          <StageBadge
-                            label={resolveName(t.from)}
-                            color={resolveColor(t.from)}
-                          />
+                          <StageBadge label={resolveName(t.from)} color={resolveColor(t.from)} />
                           <ArrowRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                          <StageBadge
-                            label={resolveName(t.to)}
-                            color={resolveColor(t.to)}
-                          />
+                          <StageBadge label={resolveName(t.to)} color={resolveColor(t.to)} />
                         </div>
-                        <span className="font-semibold tabular-nums shrink-0">
-                          {t.count}
+                        <span className="flex items-center gap-1.5 shrink-0">
+                          <span className="font-semibold tabular-nums">
+                            {t.items.length}
+                          </span>
+                          <ChevronRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
                         </span>
-                      </div>
+                      </button>
                     ))}
                   </div>
                 )}
@@ -534,12 +723,12 @@ export default function FunnelLeadsReport({ boardMatcher }: Props) {
         </CardContent>
       </Card>
 
-      <LeadListSheet
-        board={board}
+      <DrillSheet
         drill={drill}
         onClose={() => setDrill(null)}
         stageMap={stageMap}
         resolveName={resolveName}
+        resolveColor={resolveColor}
       />
     </>
   );
@@ -597,78 +786,45 @@ function fmtPhone(p?: string | null) {
   return p;
 }
 
-function LeadListSheet({
-  board,
+function DrillSheet({
   drill,
   onClose,
   stageMap,
   resolveName,
+  resolveColor,
 }: {
-  board: KanbanBoard | null;
-  drill: { from: Date; to: Date; label: string } | null;
+  drill: DrillState;
   onClose: () => void;
   stageMap: Record<string, { name: string; color: string }>;
   resolveName: (id: string | null) => string;
+  resolveColor: (id: string | null) => string;
 }) {
-  const [leads, setLeads] = useState<LeadRow[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (!drill || !board) return;
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      try {
-        const { data, error } = await db
-          .from("leads")
-          .select("id, lead_name, lead_phone, created_at, source, status")
-          .eq("board_id", board.id)
-          .in("source", CADASTRO_SOURCES as unknown as string[])
-          .gte("created_at", drill.from.toISOString())
-          .lte("created_at", drill.to.toISOString())
-          .order("created_at", { ascending: false });
-        if (error) throw error;
-        if (!cancelled) setLeads((data || []) as LeadRow[]);
-      } catch (e) {
-        console.error("[LeadListSheet]", e);
-        if (!cancelled) setLeads([]);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [drill, board]);
+  const count =
+    drill?.kind === "lead"
+      ? drill.leads.length
+      : drill?.kind === "movement"
+        ? drill.movements.length
+        : 0;
 
   return (
     <Sheet open={!!drill} onOpenChange={(o) => !o && onClose()}>
       <SheetContent side="right" className="w-full sm:max-w-md p-0 flex flex-col">
         <SheetHeader className="px-4 py-3 border-b space-y-1">
-          <SheetTitle className="text-base capitalize">
-            {drill?.label || "Leads"}
-          </SheetTitle>
+          <SheetTitle className="text-base capitalize">{drill?.title || "Detalhe"}</SheetTitle>
           <SheetDescription className="text-xs">
-            {loading
-              ? "Carregando..."
-              : `${leads.length} lead${leads.length === 1 ? "" : "s"} — mais recentes primeiro.`}
+            {count} {drill?.kind === "movement" ? "movimentação" : "lead"}
+            {count === 1 ? "" : "s"} — mais recentes primeiro.
           </SheetDescription>
         </SheetHeader>
 
         <div className="flex-1 overflow-y-auto">
-          {loading && leads.length === 0 ? (
-            <div className="p-4 space-y-2">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="h-14 rounded-md bg-muted/40 animate-pulse" />
-              ))}
-            </div>
-          ) : leads.length === 0 ? (
+          {count === 0 ? (
             <div className="p-6 text-center text-sm text-muted-foreground">
-              Nenhum cadastro nesse período.
+              Nada para exibir.
             </div>
-          ) : (
+          ) : drill?.kind === "lead" ? (
             <ol className="divide-y">
-              {leads.map((l, idx) => {
+              {drill.leads.map((l, idx) => {
                 const digits = (l.lead_phone || "").replace(/\D/g, "");
                 const phone = fmtPhone(l.lead_phone);
                 const stageColor = l.status
@@ -687,9 +843,7 @@ function LeadListSheet({
                         {l.lead_name || "Sem nome"}
                       </div>
                       {phone && (
-                        <div className="text-xs text-muted-foreground truncate">
-                          {phone}
-                        </div>
+                        <div className="text-xs text-muted-foreground truncate">{phone}</div>
                       )}
                       <div className="mt-1 flex flex-wrap items-center gap-1.5">
                         {l.status && (
@@ -706,11 +860,13 @@ function LeadListSheet({
                             {SOURCE_LABELS[l.source] || l.source}
                           </Badge>
                         )}
+                        {l.acolhedor && (
+                          <span className="text-[10px] text-muted-foreground">
+                            👤 {l.acolhedor}
+                          </span>
+                        )}
                         <span className="text-[10px] text-muted-foreground">
-                          🕒{" "}
-                          {format(new Date(l.created_at), "dd/MM HH:mm", {
-                            locale: ptBR,
-                          })}
+                          🕒 {format(new Date(l.created_at), "dd/MM HH:mm", { locale: ptBR })}
                         </span>
                       </div>
                     </div>
@@ -719,9 +875,7 @@ function LeadListSheet({
                         variant="ghost"
                         size="icon"
                         className="h-7 w-7 shrink-0"
-                        onClick={() =>
-                          window.open(`https://wa.me/${digits}`, "_blank")
-                        }
+                        onClick={() => window.open(`https://wa.me/${digits}`, "_blank")}
                         title="Abrir no WhatsApp"
                       >
                         <MessageCircle className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
@@ -731,7 +885,29 @@ function LeadListSheet({
                 );
               })}
             </ol>
-          )}
+          ) : drill?.kind === "movement" ? (
+            <ol className="divide-y">
+              {drill.movements.map((m, idx) => (
+                <li key={m.id || idx} className="px-4 py-2.5 space-y-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-medium truncate">{m.lead_name}</span>
+                    <span className="text-[10px] text-muted-foreground shrink-0">
+                      {format(new Date(m.changed_at), "dd/MM HH:mm", { locale: ptBR })}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs">
+                    <StageBadge label={resolveName(m.from_stage)} color={resolveColor(m.from_stage)} />
+                    <ArrowRight className="h-3 w-3 text-muted-foreground shrink-0" />
+                    <StageBadge label={resolveName(m.to_stage)} color={resolveColor(m.to_stage)} />
+                  </div>
+                  <div className="flex flex-wrap gap-x-3 text-[10px] text-muted-foreground">
+                    <span>✍️ {m.changed_by_name}</span>
+                    {m.acolhedor && <span>👤 {m.acolhedor}</span>}
+                  </div>
+                </li>
+              ))}
+            </ol>
+          ) : null}
         </div>
       </SheetContent>
     </Sheet>
