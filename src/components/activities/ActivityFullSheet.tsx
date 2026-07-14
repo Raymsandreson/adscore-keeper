@@ -331,6 +331,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
                 formClientNameOverride={formClientNameOverride}
                 setFormClientNameOverride={setFormClientNameOverride}
                 formIsSystem={formIsSystem} setFormIsSystem={setFormIsSystem}
+                formIsManagement={formIsManagement} setFormIsManagement={setFormIsManagement}
                 formRepeatWeekDays={formRepeatWeekDays} setFormRepeatWeekDays={setFormRepeatWeekDays}
                 formWhatWasDone={formWhatWasDone} setFormWhatWasDone={setFormWhatWasDone}
                 formCurrentStatus={formCurrentStatus} setFormCurrentStatus={setFormCurrentStatus}
