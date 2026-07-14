@@ -120,6 +120,7 @@ export default function BpcAutistaPage() {
   const [folderId, setFolderId] = useState<string | null>(null);
   const [incluidos, setIncluidos] = useState<Record<string, boolean>>({});
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [manualFolderInput, setManualFolderInput] = useState("");
 
   // Busca casos em legal_cases (debounced)
   useEffect(() => {
