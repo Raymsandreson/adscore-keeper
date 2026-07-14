@@ -246,6 +246,17 @@ const ALLOWED_ACOLHEDOR_IDS = [
   '01f77785-871a-4a2f-b237-2392c2cb7860', // Juliana Clara Santos Pimentel
 ];
 
+// Autor do grupo = instância cujo token chama /group/create no UazAPI, virando
+// criador/dono/admin. Sem isso, o edge escolhe "a primeira conectada" do board
+// (query sem ORDER BY) → autor aleatório. IDs conferidos em whatsapp_instances.
+const GROUP_AUTHOR_OPTIONS = [
+  { label: 'Analyne', instanceId: 'b9ced9ee-4469-4dc9-a7a0-3c0cbdb43508' }, // Analyne Oliveira
+  { label: 'João Manoel', instanceId: '259203a6-d8e7-4638-b700-0a1eb1d29db9' }, // João Manoel- Acolhedor
+  { label: 'Mateus', instanceId: 'f939bac7-bb57-47de-8620-8c6790643ae0' }, // Mateus Atendimento
+  { label: 'Raym', instanceId: '35eefdd1-c554-4883-a7c8-93149723d61c' }, // Raym / Dr. Prudêncio
+];
+const DEFAULT_GROUP_AUTHOR_INSTANCE_ID = 'b9ced9ee-4469-4dc9-a7a0-3c0cbdb43508'; // Analyne
+
 export function CadastrarCasoViavelDialog({ lead, open, onOpenChange, saveLead, onRegistered }: Props) {
   const { profile, user } = useAuth();
   const profiles = useProfilesList();
@@ -270,6 +281,7 @@ export function CadastrarCasoViavelDialog({ lead, open, onOpenChange, saveLead, 
   const titleTouched = useRef(false);
   const [groupNameInput, setGroupNameInput] = useState('');
   const groupNameTouched = useRef(false);
+  const [authorInstanceId, setAuthorInstanceId] = useState(DEFAULT_GROUP_AUTHOR_INSTANCE_ID);
 
   const set = (patch: Partial<CasoForm>) => setForm((prev) => {
     const next = { ...prev, ...patch };
@@ -283,6 +295,7 @@ export function CadastrarCasoViavelDialog({ lead, open, onOpenChange, saveLead, 
     if (!open || !lead) return;
     titleTouched.current = false;
     groupNameTouched.current = false;
+    setAuthorInstanceId(DEFAULT_GROUP_AUTHOR_INSTANCE_ID);
     setNewsText('');
     setNewsUrl(String((lead as any).news_link || (lead as any).news_links?.[0] || ''));
     setGroupLink(String((lead as any).group_link || ''));
@@ -518,6 +531,8 @@ export function CadastrarCasoViavelDialog({ lead, open, onOpenChange, saveLead, 
           board_id: TRABALHISTA_BOARD_ID,
           creation_origin: 'noticia_viavel',
           phase: 'open',
+          // Fixa o criador/dono do grupo escolhido no dropdown (evita autor aleatório).
+          ...(authorInstanceId ? { creator_instance_id: authorInstanceId } : {}),
           ...(resolvedSeq > 0 ? { forced_sequence: resolvedSeq } : {}),
           ...(groupNameInput.trim() ? { group_name_override: groupNameInput.trim() } : {}),
         },
@@ -664,6 +679,17 @@ export function CadastrarCasoViavelDialog({ lead, open, onOpenChange, saveLead, 
             <Input value="Recepção (Cadastrados viáveis)" readOnly className="bg-muted" />
           </div>
 
+          <div>
+            <Label>Autor do grupo</Label>
+            <Select value={authorInstanceId} onValueChange={setAuthorInstanceId}>
+              <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+              <SelectContent>
+                {GROUP_AUTHOR_OPTIONS.map((a) => (
+                  <SelectItem key={a.instanceId} value={a.instanceId}>{a.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <div>
             <Label>Acolhedor</Label>
             {allowedProfiles.length > 0 ? (
