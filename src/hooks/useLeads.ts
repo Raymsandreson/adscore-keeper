@@ -760,7 +760,13 @@ export const useLeads = (adAccountId?: string, options: UseLeadsOptions = {}) =>
             entityType: 'lead',
             entityId: id,
             entityName: (snapshot as any).lead_name || 'Lead',
-            details: { snapshot, permanent_delete: true, cleanup: data.cleanup },
+            details: {
+              snapshot,
+              snapshot_full: data.snapshot_full,
+              soft_delete: data.soft_delete ?? true,
+              permanent_delete: data.hard_delete === true,
+              cleanup: data.cleanup,
+            },
           });
         }
       } catch (auditErr) {
@@ -770,7 +776,7 @@ export const useLeads = (adAccountId?: string, options: UseLeadsOptions = {}) =>
       // Atualiza estado local imediatamente para feedback instantâneo
       setLeads((prev) => prev.filter((l) => l.id !== id));
       window.dispatchEvent(new CustomEvent(LEAD_DELETED_EVENT, { detail: { leadId: id } }));
-      toast.success('Lead excluído permanentemente');
+      toast.success(data.hard_delete ? 'Lead excluído permanentemente' : 'Lead removido — recuperável em Arquivados');
       // Refetch em background para reconciliar
       fetchLeads();
     } catch (error: any) {
