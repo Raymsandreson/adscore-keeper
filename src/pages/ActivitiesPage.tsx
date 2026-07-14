@@ -948,6 +948,7 @@ const ActivitiesPage = () => {
     setFormPriority(activity.priority || 'normal');
     setFormLeadId(activity.lead_id || '');
     setFormIsSystem(!!(activity as any).is_system);
+    setFormIsManagement(!!(activity as any).is_management);
     setFormLeadName(activity.lead_name || '');
     setFormAssignedTo(((await remapToCloud(activity.assigned_to)) as string) || '');
     setFormAssignedToName(activity.assigned_to_name || '');
