@@ -63,6 +63,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
   const [formProcessTitle, setFormProcessTitle] = useState('');
   const [formWorkflowId, setFormWorkflowId] = useState('');
   const [formIsSystem, setFormIsSystem] = useState(false);
+  const [formIsManagement, setFormIsManagement] = useState(false);
   const [formRepeatWeekDays, setFormRepeatWeekDays] = useState<number[]>([]);
   const [formWhatWasDone, setFormWhatWasDone] = useState('');
   const [formCurrentStatus, setFormCurrentStatus] = useState('');
