@@ -94,14 +94,14 @@ export function useLeadActivities() {
         if (typeVals.length === 1) q = q.eq('activity_type', typeVals[0]);
         else if (typeVals.length > 1) q = q.in('activity_type', typeVals);
 
+        // Multi-assessor: além do principal (assigned_to), casa também quem está
+        // como co-assessor no array assigned_to_ids (operador ov = overlap).
         if (hasUnassigned && assigneeExtIds.length > 0) {
-          q = q.or(`assigned_to.in.(${assigneeExtIds.join(',')}),assigned_to.is.null`);
+          q = q.or(`assigned_to.in.(${assigneeExtIds.join(',')}),assigned_to_ids.ov.{${assigneeExtIds.join(',')}},assigned_to.is.null`);
         } else if (hasUnassigned) {
           q = q.is('assigned_to', null);
-        } else if (assigneeExtIds.length === 1) {
-          q = q.eq('assigned_to', assigneeExtIds[0]);
-        } else if (assigneeExtIds.length > 1) {
-          q = q.in('assigned_to', assigneeExtIds);
+        } else if (assigneeExtIds.length > 0) {
+          q = q.or(`assigned_to.in.(${assigneeExtIds.join(',')}),assigned_to_ids.ov.{${assigneeExtIds.join(',')}}`);
         }
 
         if (leadVals.length === 1) q = q.eq('lead_id', leadVals[0]);
@@ -259,29 +259,47 @@ export function useLeadActivities() {
       toast.success('Atividade criada!');
 
       if (data) {
+        const notifyBase = {
+          activity_id: data.id,
+          title: activity.title,
+          description: activity.description,
+          activity_type: activity.activity_type,
+          status: 'pendente',
+          priority: activity.priority,
+          created_by: cloudUserId,
+          deadline: activity.deadline,
+          lead_name: activity.lead_name,
+          lead_id: activity.lead_id,
+          contact_name: activity.contact_name,
+          contact_id: activity.contact_id,
+          what_was_done: activity.what_was_done,
+          next_steps: activity.next_steps,
+          current_status_notes: activity.current_status_notes,
+          notes: activity.notes,
+        };
+        const principalId = activity.assigned_to || cloudUserId;
         cloudFunctions.invoke('notify-activity-created', {
           body: {
-            activity_id: data.id,
-            title: activity.title,
-            description: activity.description,
-            activity_type: activity.activity_type,
-            status: 'pendente',
-            priority: activity.priority,
+            ...notifyBase,
             // Notificações usam Cloud UUID (continuam batendo no Cloud auth)
-            assigned_to: activity.assigned_to || cloudUserId,
+            assigned_to: principalId,
             assigned_to_name: activity.assigned_to_name,
-            created_by: cloudUserId,
-            deadline: activity.deadline,
-            lead_name: activity.lead_name,
-            lead_id: activity.lead_id,
-            contact_name: activity.contact_name,
-            contact_id: activity.contact_id,
-            what_was_done: activity.what_was_done,
-            next_steps: activity.next_steps,
-            current_status_notes: activity.current_status_notes,
-            notes: activity.notes,
           },
         }).catch(() => {});
+        // Multi-assessor: cada co-assessor também é notificado (a edge já ignora
+        // quem for o próprio criador).
+        const allIds = activity.assigned_to_ids || [];
+        const allNames = activity.assigned_to_names || [];
+        allIds.forEach((coId, i) => {
+          if (!coId || coId === principalId) return;
+          cloudFunctions.invoke('notify-activity-created', {
+            body: {
+              ...notifyBase,
+              assigned_to: coId,
+              assigned_to_name: allNames[i] || null,
+            },
+          }).catch(() => {});
+        });
       }
 
       return data;

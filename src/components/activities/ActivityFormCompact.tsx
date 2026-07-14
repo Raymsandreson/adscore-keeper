@@ -147,7 +147,7 @@ const MATRIX_OPTIONS = [
   { value: 'eliminate', emoji: '🗑️', label: 'Retirar', color: 'border-muted bg-muted/50 text-muted-foreground', active: 'border-muted-foreground bg-muted-foreground text-background' },
 ];
 
-export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFieldSetting, reorderFields, formLeadIdForTTS, formContactIdForTTS, formAssignedTo, activityId, compactLabel }: {
+export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFieldSetting, reorderFields, formLeadIdForTTS, formContactIdForTTS, formAssignedTo, formCoAssignees, activityId, compactLabel }: {
   buildMsg: (audience?: 'client' | 'assessor') => string;
   leadId: string;
   fieldSettings: any[];
@@ -156,6 +156,7 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
   formLeadIdForTTS?: string;
   formContactIdForTTS?: string;
   formAssignedTo?: string;
+  formCoAssignees?: { user_id: string; full_name: string }[];
   activityId?: string;
   compactLabel?: boolean;
 }) {
@@ -320,19 +321,26 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
     }
   };
 
-  // Envia o texto (já editado) ao assessor: WhatsApp privado (se tiver) + Chat da Equipe.
+  // Envia o texto (já editado) a TODOS os assessores da atividade (principal +
+  // co-assessores): WhatsApp privado (se tiver) + Chat da Equipe para cada um.
   const sendToAssessorNow = async (text: string): Promise<void> => {
-    if (!formAssignedTo) { toast.error('Sem assessor responsável'); return; }
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('phone, default_instance_id, full_name')
-      .eq('user_id', formAssignedTo)
-      .maybeSingle();
+    const assessorIds = [...new Set([formAssignedTo, ...(formCoAssignees || []).map(c => c.user_id)].filter(Boolean))] as string[];
+    if (assessorIds.length === 0) { toast.error('Sem assessor responsável'); return; }
 
-    const hasWhatsApp = !!profile?.phone && !!profile?.default_instance_id;
-    if (hasWhatsApp) {
-      const phone = (profile!.phone as string).replace(/\D/g, '');
-      const instId = selectedInstanceId || (profile!.default_instance_id as string);
+    // Perfis de todos em uma query só (evita N+1)
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('user_id, phone, default_instance_id, full_name')
+      .in('user_id', assessorIds);
+    const profileByUser = new Map((profiles || []).map((p: any) => [p.user_id, p]));
+
+    const waSent: string[] = [];
+    for (const assessorId of assessorIds) {
+      const profile = profileByUser.get(assessorId);
+      const hasWhatsApp = !!profile?.phone && !!profile?.default_instance_id;
+      if (!hasWhatsApp) continue;
+      const phone = (profile.phone as string).replace(/\D/g, '');
+      const instId = selectedInstanceId || (profile.default_instance_id as string);
       const { data, error } = await cloudFunctions.invoke('send-whatsapp', {
         body: { phone, message: text, instance_id: instId },
       });
@@ -340,39 +348,47 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
         if (!error && isInstanceDisconnectedError(data)) {
           showInstanceDisconnectedToast(data.instance_id || instId, data.instance_name);
         } else {
-          toast.error(data?.error || 'Erro ao enviar ao assessor no WhatsApp');
+          toast.error(`Erro ao enviar no WhatsApp para ${profile?.full_name || 'assessor'}: ${data?.error || 'falha'}`);
         }
       } else {
-        toast.success(`WhatsApp enviado para ${profile?.full_name || 'o assessor'}!`);
+        waSent.push(profile?.full_name || 'assessor');
         if (includeRecording && recordingUrl) {
           await sendRecording(phone, undefined, instId);
         }
       }
     }
+    if (waSent.length > 0) toast.success(`WhatsApp enviado para ${waSent.join(', ')}!`);
 
-    // Chat da Equipe (sempre, para deixar registro interno)
+    // Chat da Equipe (sempre, para deixar registro interno) — um a um
     try {
       await ensureExternalSession();
       const { data: { user: authUser } } = await supabase.auth.getUser();
-      const { data: convId, error: convError } = await (externalSupabase.rpc as any)('start_team_direct_conversation', {
-        _other_user_id: formAssignedTo,
-        _self_user_id: authUser?.id,
-      });
-      if (convError || !convId) { toast.error('Erro ao abrir conversa no Chat da Equipe'); return; }
-
       const { data: senderProfile } = authUser
         ? await supabase.from('profiles').select('full_name').eq('user_id', authUser.id).maybeSingle()
         : { data: null };
 
-      const { error: msgError } = await externalSupabase.from('team_messages').insert({
-        conversation_id: convId,
-        sender_id: authUser?.id,
-        sender_name: (senderProfile as any)?.full_name || null,
-        content: text,
-        message_type: 'text',
-      });
-      if (msgError) toast.error('Erro ao enviar no Chat da Equipe');
-      else toast.success(`Enviado no Chat da Equipe para ${profile?.full_name || 'o assessor'}!`);
+      const chatSent: string[] = [];
+      for (const assessorId of assessorIds) {
+        const profile = profileByUser.get(assessorId);
+        const { data: convId, error: convError } = await (externalSupabase.rpc as any)('start_team_direct_conversation', {
+          _other_user_id: assessorId,
+          _self_user_id: authUser?.id,
+        });
+        if (convError || !convId) {
+          toast.error(`Erro ao abrir conversa no Chat da Equipe com ${profile?.full_name || 'assessor'}`);
+          continue;
+        }
+        const { error: msgError } = await externalSupabase.from('team_messages').insert({
+          conversation_id: convId,
+          sender_id: authUser?.id,
+          sender_name: (senderProfile as any)?.full_name || null,
+          content: text,
+          message_type: 'text',
+        });
+        if (msgError) toast.error(`Erro ao enviar no Chat da Equipe para ${profile?.full_name || 'assessor'}`);
+        else chatSent.push(profile?.full_name || 'assessor');
+      }
+      if (chatSent.length > 0) toast.success(`Enviado no Chat da Equipe para ${chatSent.join(', ')}!`);
     } catch (e: any) {
       toast.error(e.message || 'Erro no Chat da Equipe');
     }
@@ -524,7 +540,11 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
                     className="mt-0.5"
                   />
                   <div>
-                    <div>Assessor (WhatsApp privado + Chat da Equipe)</div>
+                    <div>
+                      {(formCoAssignees?.length || 0) > 0
+                        ? `Assessores (${1 + (formCoAssignees?.length || 0)}) — WhatsApp privado + Chat da Equipe`
+                        : 'Assessor (WhatsApp privado + Chat da Equipe)'}
+                    </div>
                     {!formAssignedTo && <div className="text-[11px] text-muted-foreground">Nenhum assessor responsável selecionado</div>}
                   </div>
                 </label>
@@ -767,11 +787,25 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
         <div>
           <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Assessor *</span>
           {(() => {
-            const assignable = filterAssignableMembers(props.teamMembers)
-              .slice().sort((a, b) => (a.full_name || '').localeCompare(b.full_name || '', 'pt-BR', { sensitivity: 'base' }));
-            const selected = assignable.find(m => m.user_id === props.formAssignedTo);
             const coAssignees = props.formCoAssignees || [];
             const isCo = (id: string) => coAssignees.some(c => c.user_id === id);
+            // Selecionados sobem pro topo (principal primeiro, depois co-assessores na
+            // ordem de escolha); o resto segue em ordem alfabética.
+            const selectedRank = new Map<string, number>();
+            if (props.formAssignedTo) selectedRank.set(props.formAssignedTo, 0);
+            coAssignees.forEach((c, i) => selectedRank.set(c.user_id, i + 1));
+            const assignable = filterAssignableMembers(props.teamMembers)
+              .slice().sort((a, b) => {
+                const ra = selectedRank.get(a.user_id);
+                const rb = selectedRank.get(b.user_id);
+                if (ra !== undefined || rb !== undefined) {
+                  if (ra === undefined) return 1;
+                  if (rb === undefined) return -1;
+                  return ra - rb;
+                }
+                return (a.full_name || '').localeCompare(b.full_name || '', 'pt-BR', { sensitivity: 'base' });
+              });
+            const selected = assignable.find(m => m.user_id === props.formAssignedTo);
             const triggerLabel = selected
               ? `${selected.full_name || 'Sem nome'}${coAssignees.length > 0 ? ` +${coAssignees.length}` : ''}`
               : '—';

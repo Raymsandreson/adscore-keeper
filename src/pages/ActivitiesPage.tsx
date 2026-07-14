@@ -4389,7 +4389,7 @@ const ActivitiesPage = () => {
                 {/* Left group: utilities */}
                 <div className="flex items-center gap-1.5 flex-wrap md:mr-auto">
                   {buildMsg && (
-                    <SendToGroupSection buildMsg={buildMsg} leadId={formLeadId} fieldSettings={fieldSettings} updateFieldSetting={updateFieldSetting} reorderFields={reorderFields} formLeadIdForTTS={formLeadId || undefined} formContactIdForTTS={formContactId || undefined} formAssignedTo={formAssignedTo || undefined} activityId={selectedActivity?.id} compactLabel />
+                    <SendToGroupSection buildMsg={buildMsg} leadId={formLeadId} fieldSettings={fieldSettings} updateFieldSetting={updateFieldSetting} reorderFields={reorderFields} formLeadIdForTTS={formLeadId || undefined} formContactIdForTTS={formContactId || undefined} formAssignedTo={formAssignedTo || undefined} formCoAssignees={formCoAssignees} activityId={selectedActivity?.id} compactLabel />
                   )}
                   {/* Enviar só o áudio gravado — junto do "Enviar" da mensagem completa, pra ação
                       de envio ficar toda no mesmo lugar (antes ficava no header, longe do Concluir). */}
