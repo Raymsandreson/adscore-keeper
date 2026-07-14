@@ -439,7 +439,7 @@ export function TeamChatNotifications() {
             document.visibilityState === 'visible'
           ) return; // conversa já aberta na tela
 
-          const senderName = tmsg.sender_name || 'Alguém';
+          const senderName = (tmsg as any).sender_name || 'Alguém';
           const context = await resolveConversationLabel(mention.conversation_id);
           const preview = buildPreview(tmsg as any).substring(0, 120);
 
