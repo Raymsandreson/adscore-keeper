@@ -2838,7 +2838,33 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
             instanceName={conversation.instance_name}
           />
           <WhatsAppConversationShareDialog phone={conversation.phone} instanceName={conversation.instance_name} />
-          <WhatsAppMediaGallery messages={conversation.messages} />
+          <WhatsAppMediaGallery
+            messages={conversation.messages}
+            leadId={conversation.lead_id}
+            onSendToDrive={async (msgs) => {
+              if (!conversation.lead_id) {
+                toast.error('Este chat não está vinculado a um lead.');
+                return;
+              }
+              const tId = toast.loading(`Enviando ${msgs.length} arquivo(s) para o Drive…`);
+              let ok = 0;
+              let fail = 0;
+              for (const m of msgs) {
+                try {
+                  await runDriveUpload(m, conversation.lead_id, undefined, { silent: true });
+                  ok++;
+                } catch (e) {
+                  console.error('[MediaGallery→Drive] falha:', e);
+                  fail++;
+                }
+              }
+              if (fail === 0) {
+                toast.success(`${ok} arquivo(s) enviado(s) para o Drive`, { id: tId });
+              } else {
+                toast.warning(`${ok} ok, ${fail} falharam — tente novamente nos que restaram`, { id: tId });
+              }
+            }}
+          />
           {(() => {
             const missingCount = (conversation.messages || []).filter((m: any) => isMissingMedia(m) && m.external_message_id).length;
             if (missingCount === 0) return null;
