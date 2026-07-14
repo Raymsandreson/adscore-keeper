@@ -40,6 +40,7 @@ export function WhatsAppMediaGallery({ messages, leadId, onSendToDrive }: Props)
   const totalMedia = images.length + videos.length + audios.length + docs.length;
 
   const canSendToDrive = !!leadId && !!onSendToDrive;
+  const canSelect = !!onSendToDrive; // permite modo seleção mesmo em grupo sem lead vinculado (envio dispara aviso)
   const selectedMessages = useMemo(
     () => messages.filter(m => selected.has(String(m.id))),
     [messages, selected],
