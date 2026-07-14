@@ -1,4 +1,5 @@
-import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -14,6 +15,11 @@ import { OnChangePlugin } from '@lexical/react/LexicalOnChangePlugin';
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
 import { LexicalErrorBoundary } from '@lexical/react/LexicalErrorBoundary';
 import { AutoFocusPlugin } from '@lexical/react/LexicalAutoFocusPlugin';
+import {
+  LexicalTypeaheadMenuPlugin,
+  MenuOption,
+  useBasicTypeaheadTriggerMatch,
+} from '@lexical/react/LexicalTypeaheadMenuPlugin';
 
 import {
   $getRoot,
@@ -26,6 +32,7 @@ import {
   $createTextNode,
   type EditorState,
   type LexicalEditor,
+  type TextNode,
 } from 'lexical';
 
 import { $generateHtmlFromNodes, $generateNodesFromDOM } from '@lexical/html';
@@ -132,6 +139,83 @@ interface RichTextEditorProps {
   maxHeight?: string;
   onExpand?: () => void;
   autoFocus?: boolean;
+  /** Habilita @menções: digite @ para citar um membro (lista de sugestões). */
+  mentionOptions?: { id: string; name: string }[];
+}
+
+// ─── Mentions Plugin (@membro) ───────────────────────────
+const normMention = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+
+class MentionMenuOption extends MenuOption {
+  name: string;
+  constructor(name: string) {
+    super(name);
+    this.name = name;
+  }
+}
+
+function MentionsPlugin({ options }: { options: { id: string; name: string }[] }) {
+  const [editor] = useLexicalComposerContext();
+  const [query, setQuery] = useState<string | null>(null);
+  const triggerFn = useBasicTypeaheadTriggerMatch('@', { minLength: 0 });
+
+  const items = useMemo(() => {
+    const q = normMention(query || '');
+    return options
+      .filter(o => o.name && (!q || normMention(o.name).includes(q)))
+      .slice(0, 6)
+      .map(o => new MentionMenuOption(o.name));
+  }, [options, query]);
+
+  const onSelectOption = useCallback(
+    (option: MentionMenuOption, nodeToReplace: TextNode | null, closeMenu: () => void) => {
+      editor.update(() => {
+        if (!nodeToReplace) { closeMenu(); return; }
+        // Insere "@Nome " em negrito (texto simples — sobrevive à serialização HTML).
+        const mentionNode = $createTextNode(`@${option.name}`);
+        mentionNode.setFormat('bold');
+        const spaceNode = $createTextNode(' ');
+        nodeToReplace.replace(mentionNode);
+        mentionNode.insertAfter(spaceNode);
+        spaceNode.select();
+        closeMenu();
+      });
+    },
+    [editor],
+  );
+
+  return (
+    <LexicalTypeaheadMenuPlugin<MentionMenuOption>
+      onQueryChange={setQuery}
+      onSelectOption={onSelectOption}
+      triggerFn={triggerFn}
+      options={items}
+      menuRenderFn={(anchorElementRef, { selectedIndex, selectOptionAndCleanUp, setHighlightedIndex }) =>
+        anchorElementRef.current && items.length > 0
+          ? createPortal(
+              <div className="z-[9999] mt-1 w-56 rounded-md border bg-popover text-popover-foreground shadow-md overflow-hidden">
+                {items.map((opt, i) => (
+                  <button
+                    key={opt.key}
+                    type="button"
+                    className={cn(
+                      'block w-full text-left px-2.5 py-1.5 text-xs hover:bg-accent',
+                      i === selectedIndex && 'bg-accent',
+                    )}
+                    onMouseEnter={() => setHighlightedIndex(i)}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => selectOptionAndCleanUp(opt)}
+                  >
+                    @{opt.name}
+                  </button>
+                ))}
+              </div>,
+              anchorElementRef.current,
+            )
+          : null
+      }
+    />
+  );
 }
 
 // ─── Toolbar Plugin ──────────────────────────────────────
@@ -529,6 +613,7 @@ function RichTextEditorComponent({
   maxHeight,
   onExpand,
   autoFocus,
+  mentionOptions,
 }: RichTextEditorProps) {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiOptions, setAiOptions] = useState<string[]>([]);
@@ -732,6 +817,7 @@ function RichTextEditorComponent({
         <OnChangePlugin onChange={handleEditorChange} ignoreSelectionChange />
         <SyncPlugin value={value} lastEmittedHtml={lastEmittedHtml} />
         {autoFocus && <AutoFocusPlugin />}
+        {mentionOptions && mentionOptions.length > 0 && <MentionsPlugin options={mentionOptions} />}
         <EditorRefPlugin editorRef={editorRef} />
       </LexicalComposer>
     </div>

@@ -23,6 +23,15 @@ export interface LeadActivity {
   /** Todos os assessores (principal primeiro). Requer as colunas de array no Externo. */
   assigned_to_ids?: string[] | null;
   assigned_to_names?: string[] | null;
+  /** Observadores (criador é o natural; pode haver mais). UUIDs do Externo no banco. */
+  observer_ids?: string[] | null;
+  observer_names?: string[] | null;
+  /** Liga as N cópias criadas quando há N responsáveis. */
+  assignment_group_id?: string | null;
+  /** Feedback preenchido pelo responsável na própria atividade. */
+  feedback?: string | null;
+  /** Data para a qual a atividade foi reagendada (status 'reagendada'). */
+  rescheduled_to?: string | null;
   deadline: string | null;
   notification_date: string | null;
   completed_at: string | null;
@@ -198,6 +207,20 @@ export function useLeadActivities() {
         extAssignedToIds = mapped.filter(Boolean) as string[];
       }
 
+      // Observadores: mesma remapeação Cloud → Externo, mantendo nomes alinhados.
+      let extObserverIds: string[] | null = null;
+      let extObserverNames: string[] | null = null;
+      if (Array.isArray(activity.observer_ids) && activity.observer_ids.length > 0) {
+        const names = activity.observer_names || [];
+        const pairs = await Promise.all(activity.observer_ids.map(async (id, i) => ({
+          ext: await remapToExternal(id),
+          name: names[i] || null,
+        })));
+        const valid = pairs.filter(p => p.ext);
+        extObserverIds = valid.map(p => p.ext as string);
+        extObserverNames = valid.map(p => p.name || '');
+      }
+
       const { data, error } = await externalSupabase
         .from('lead_activities')
         .insert({
@@ -231,11 +254,41 @@ export function useLeadActivities() {
             assigned_to_ids: extAssignedToIds,
             assigned_to_names: activity.assigned_to_names || null,
           } : {}),
+          ...(extObserverIds ? {
+            observer_ids: extObserverIds,
+            observer_names: extObserverNames,
+          } : {}),
+          ...(activity.assignment_group_id ? { assignment_group_id: activity.assignment_group_id } : {}),
+          ...(activity.feedback !== undefined ? { feedback: activity.feedback } : {}),
+          ...(activity.rescheduled_to !== undefined ? { rescheduled_to: activity.rescheduled_to } : {}),
         } as any)
         .select()
         .single();
 
       if (error) throw error;
+
+      // Popup in-app pro responsável quando a atividade foi repassada por outra pessoa
+      // (grava em activity_notifications; o listener realtime mostra o popup).
+      if (data && extAssignedTo && extAssignedTo !== extUserId) {
+        (async () => {
+          try {
+            const { data: prof } = await cloudSupabase
+              .from('profiles').select('full_name').eq('user_id', cloudUserId || '').maybeSingle();
+            await externalSupabase.from('activity_notifications' as any).insert({
+              activity_id: data.id,
+              recipient_id: extAssignedTo,
+              recipient_name: activity.assigned_to_name || null,
+              type: 'assigned',
+              title: 'Atividade repassada para você',
+              body: activity.title || 'Nova Atividade',
+              actor_id: extUserId,
+              actor_name: (prof as any)?.full_name || null,
+            } as any);
+          } catch (e) {
+            console.warn('[createActivity] notificação de atribuição falhou:', e);
+          }
+        })();
+      }
 
       // Auto-sync to Google Calendar (silent, best-effort, only if connected)
       if (data && (activity.deadline || activity.notification_date)) {
@@ -332,6 +385,16 @@ export function useLeadActivities() {
       if ('assigned_to_ids' in updates && Array.isArray(updates.assigned_to_ids)) {
         const mapped = await Promise.all(updates.assigned_to_ids.map((id) => remapToExternal(id)));
         patch.assigned_to_ids = mapped.filter(Boolean);
+      }
+      if ('observer_ids' in updates && Array.isArray(updates.observer_ids)) {
+        const names = updates.observer_names || [];
+        const pairs = await Promise.all(updates.observer_ids.map(async (oid, i) => ({
+          ext: await remapToExternal(oid),
+          name: names[i] || '',
+        })));
+        const valid = pairs.filter(p => p.ext);
+        patch.observer_ids = valid.map(p => p.ext);
+        patch.observer_names = valid.map(p => p.name);
       }
 
       const { error } = await externalSupabase

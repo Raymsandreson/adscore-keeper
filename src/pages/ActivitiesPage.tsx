@@ -85,6 +85,7 @@ const STATUS_OPTIONS = [
   { value: 'atrasada', label: 'Atrasada' },
   { value: 'em_andamento', label: 'Em Andamento' },
   { value: 'concluida', label: 'Concluída' },
+  { value: 'reagendada', label: 'Reagendada' },
 ];
 
 const PRIORITY_OPTIONS = [
@@ -101,6 +102,7 @@ const statusColors: Record<string, string> = {
   pendente: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400',
   em_andamento: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
   concluida: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
+  reagendada: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400',
 };
 
 // Situação temporal derivada (não vem do banco): atrasada = prazo já passou e não concluída.
@@ -309,6 +311,13 @@ const ActivitiesPage = () => {
   const [formCoAssignees, setFormCoAssignees] = useState<{ user_id: string; full_name: string }[]>([]);
   // A atividade carregada já tinha co-assessores? (permite limpar os arrays no update)
   const [loadedHadCoAssignees, setLoadedHadCoAssignees] = useState(false);
+  // Observadores: acompanham a atividade (popup de feedback) sem serem cobrados.
+  // O criador entra como observador natural na criação. Cloud UUIDs.
+  const [formObservers, setFormObservers] = useState<{ user_id: string; full_name: string }[]>([]);
+  const [loadedHadObservers, setLoadedHadObservers] = useState(false);
+  // Feedback da atv (preenchido pelo responsável) + data de reagendamento.
+  const [formFeedback, setFormFeedback] = useState('');
+  const [formRescheduledTo, setFormRescheduledTo] = useState('');
   const [formDeadline, setFormDeadline] = useState('');
   const [formNotificationDate, setFormNotificationDate] = useState('');
   const [formNotes, setFormNotes] = useState('');
@@ -671,6 +680,10 @@ const ActivitiesPage = () => {
     setFormAssignedToName(currentUser?.full_name || '');
     setFormCoAssignees([]);
     setLoadedHadCoAssignees(false);
+    setFormObservers([]);
+    setLoadedHadObservers(false);
+    setFormFeedback('');
+    setFormRescheduledTo('');
     const todayStr = format(new Date(), 'yyyy-MM-dd');
     setFormDeadline(todayStr);
     setFormNotificationDate(todayStr);
@@ -852,6 +865,20 @@ const ActivitiesPage = () => {
       }
     }
 
+    // Responsáveis: cada um recebe a SUA cópia da atividade (status/feedback
+    // independentes), todas ligadas pelo mesmo assignment_group_id.
+    const responsibles = [
+      { user_id: formAssignedTo, full_name: formAssignedToName },
+      ...formCoAssignees,
+    ].filter((r, i, arr) => r.user_id && arr.findIndex(x => x.user_id === r.user_id) === i);
+
+    // Criador é o observador natural (quando não é responsável nem já está na lista).
+    const observers = [...formObservers];
+    if (user?.id && !observers.some(o => o.user_id === user.id) && !responsibles.some(r => r.user_id === user.id)) {
+      observers.push({ user_id: user.id, full_name: resolveUserName(user.id) || '' });
+    }
+    const groupId = responsibles.length > 1 ? crypto.randomUUID() : null;
+
     const baseData = {
       title: titleToUse,
       description: null,
@@ -864,8 +891,6 @@ const ActivitiesPage = () => {
       priority: formPriority,
       lead_id: formLeadId || null,
       lead_name: formLeadName || null,
-      assigned_to: formAssignedTo || null,
-      assigned_to_name: formAssignedToName || null,
       notes: formNotes || null,
       contact_id: formContactId || null,
       contact_name: formContactName || null,
@@ -876,45 +901,69 @@ const ActivitiesPage = () => {
       workflow_id: formWorkflowId || null,
       is_system: formIsSystem,
       client_name_override: formClientNameOverride || null,
-      ...buildAssigneesPayload(),
+      feedback: formFeedback || null,
+      rescheduled_to: formRescheduledTo || null,
+      ...(observers.length > 0 ? {
+        observer_ids: observers.map(o => o.user_id),
+        observer_names: observers.map(o => o.full_name),
+      } : {}),
+      ...(groupId ? { assignment_group_id: groupId } : {}),
     };
+
+    // Variações de data: dias da semana repetidos ou o prazo único do form.
+    const dateVariants: { deadline: string | null; notification_date: string | null }[] = [];
+    if (formRepeatWeekDays.length > 0 && formDeadline) {
+      const baseDate = parseISO(formDeadline);
+      const weekStart = startOfWeek(baseDate, { weekStartsOn: 1 }); // Monday
+      for (const dayIdx of formRepeatWeekDays) {
+        const dateStr = format(addDays(weekStart, dayIdx), 'yyyy-MM-dd');
+        dateVariants.push({ deadline: dateStr, notification_date: dateStr });
+      }
+    } else {
+      dateVariants.push({ deadline: formDeadline || null, notification_date: formNotificationDate || null });
+    }
 
     let createdActivityId: string | null = null;
     let createdActivityFull: any = null;
-    if (formRepeatWeekDays.length > 0 && formDeadline) {
-      // Create one activity per selected day of the week, starting from the deadline week
-      const baseDate = parseISO(formDeadline);
-      const weekStart = startOfWeek(baseDate, { weekStartsOn: 1 }); // Monday
-
-      for (const dayIdx of formRepeatWeekDays) {
-        const targetDate = addDays(weekStart, dayIdx);
-        const dateStr = format(targetDate, 'yyyy-MM-dd');
+    let createdCount = 0;
+    for (const variant of dateVariants) {
+      for (const resp of responsibles) {
         const result = await createActivity({
           ...baseData,
-          deadline: dateStr,
-          notification_date: dateStr,
+          assigned_to: resp.user_id,
+          assigned_to_name: resp.full_name || null,
+          ...variant,
         });
-        if (!createdActivityId && result?.id) {
-          createdActivityId = result.id;
-          createdActivityFull = result;
+        if (result?.id) {
+          createdCount++;
+          if (!createdActivityId) {
+            createdActivityId = result.id;
+            createdActivityFull = result;
+          }
         }
       }
-      toast.success(`${formRepeatWeekDays.length} atividades criadas para a semana!`);
-    } else {
-      const result = await createActivity({
-        ...baseData,
-        deadline: formDeadline || null,
-        notification_date: formNotificationDate || null,
-      });
-      if (result?.id) {
-        createdActivityId = result.id;
-        createdActivityFull = result;
-      }
+    }
+    if (createdCount > 1) {
+      toast.success(
+        responsibles.length > 1
+          ? `${createdCount} atividades criadas — uma para cada responsável.`
+          : `${createdCount} atividades criadas para a semana!`
+      );
     }
 
 
     // Persiste links/anexos adicionados antes da atividade existir
     if (createdActivityId) await flushPendingAttachments(createdActivityId, pendingNoteAttachmentsRef.current);
+
+    // @menções digitadas nos campos → popup para os membros citados
+    if (createdActivityId) {
+      await notifyNewMentions(
+        createdActivityId,
+        titleToUse,
+        [formWhatWasDone, formCurrentStatus, formNextSteps, formSolicitacao, formRespostaJuizo, formNotes, formFeedback],
+        [],
+      );
+    }
 
     // If created for another assignee, add them to the filter so the activities are visible
     if (formAssignedTo && formAssignedTo !== user?.id && !filterAssignee.includes(formAssignedTo)) {
@@ -1101,8 +1150,43 @@ const ActivitiesPage = () => {
       process_title: formProcessTitle || null,
       matrix_quadrant: formMatrixQuadrant || null,
       client_name_override: formClientNameOverride || null,
+      feedback: formFeedback || null,
+      rescheduled_to: formRescheduledTo || null,
       ...buildAssigneesPayload(),
+      ...buildObserversPayload(),
     } as any);
+
+    // Feedback/situação mudou? Avisa os observadores (popup em tempo real).
+    const prevAct = selectedActivity as any;
+    const statusLabels: Record<string, string> = {
+      pendente: 'Pendente', em_andamento: 'Em Andamento', concluida: 'Concluída', reagendada: 'Reagendada',
+    };
+    const feedbackChanged = (formFeedback || '') !== ((prevAct.feedback as string) || '');
+    const statusChanged = formStatus !== (prevAct.status || 'pendente');
+    const reschedChanged = (formRescheduledTo || '') !== ((prevAct.rescheduled_to as string) || '');
+    if (feedbackChanged && formFeedback.trim()) {
+      await notifyActivityChange(prevAct, 'feedback', `Feedback: ${formFeedback.trim().slice(0, 300)}`);
+    }
+    if (statusChanged && formStatus === 'reagendada') {
+      const when = formRescheduledTo ? ` para ${format(parseISO(formRescheduledTo), 'dd/MM/yyyy')}` : '';
+      await notifyActivityChange(prevAct, 'rescheduled', `Atividade reagendada${when}.`);
+    } else if (statusChanged) {
+      await notifyActivityChange(prevAct, 'status', `Situação alterada para ${statusLabels[formStatus] || formStatus}.`);
+    } else if (reschedChanged && formRescheduledTo) {
+      await notifyActivityChange(prevAct, 'rescheduled', `Reagendada para ${format(parseISO(formRescheduledTo), 'dd/MM/yyyy')}.`);
+    }
+
+    // @menções novas nos campos → popup para os membros citados
+    await notifyNewMentions(
+      prevAct.id,
+      formTitle,
+      [formWhatWasDone, formCurrentStatus, formNextSteps, formSolicitacao, formRespostaJuizo, formNotes, formFeedback],
+      [
+        prevAct.what_was_done || '', prevAct.current_status_notes || '', prevAct.next_steps || '',
+        prevAct.solicitacao || '', prevAct.resposta_juizo || '', prevAct.notes || '', prevAct.feedback || '',
+      ],
+    );
+
     closeSheet();
     fetchActivities(getFilterParams());
   };
@@ -1580,7 +1664,7 @@ const ActivitiesPage = () => {
     setAvailableContacts(data || []);
   };
 
-  // Carrega os co-assessores da atividade (colunas de array do Externo → Cloud UUIDs).
+  // Carrega os co-assessores e observadores da atividade (arrays do Externo → Cloud UUIDs).
   const hydrateCoAssignees = async (activity: any) => {
     const extIds = (activity.assigned_to_ids as string[] | null) || [];
     const names = (activity.assigned_to_names as string[] | null) || [];
@@ -1596,13 +1680,31 @@ const ActivitiesPage = () => {
       setFormCoAssignees([]);
       setLoadedHadCoAssignees(false);
     }
+
+    const obsExt = (activity.observer_ids as string[] | null) || [];
+    const obsNames = (activity.observer_names as string[] | null) || [];
+    if (obsExt.length > 0) {
+      const cloudIds = await Promise.all(obsExt.map((id) => remapToCloud(id)));
+      const obs = cloudIds
+        .map((cid, i) => ({ user_id: (cid as string) || '', full_name: obsNames[i] || '' }))
+        .filter((o) => o.user_id);
+      setFormObservers(obs);
+      setLoadedHadObservers(true);
+    } else {
+      setFormObservers([]);
+      setLoadedHadObservers(false);
+    }
+    setFormFeedback((activity.feedback as string) || '');
+    setFormRescheduledTo((activity.rescheduled_to as string) || '');
   };
 
-  // Seleção multi: 1º clique define o principal; cliques seguintes alternam co-assessores.
-  // Clicar no principal o desmarca (o 1º co-assessor, se houver, vira o principal).
+  // Seleção multi: 1º clique define o principal; cliques seguintes alternam co-responsáveis.
+  // Clicar no principal o desmarca (o 1º co-responsável, se houver, vira o principal).
+  // Virar responsável remove a pessoa dos observadores (papéis são exclusivos).
   const handleSelectAssignee = (userId: string) => {
     const member = teamMembers.find(m => m.user_id === userId);
     const name = member?.full_name || '';
+    setFormObservers(prev => prev.filter(o => o.user_id !== userId));
     if (formAssignedTo === userId) {
       const [next, ...rest] = formCoAssignees;
       setFormAssignedTo(next?.user_id || '');
@@ -1618,6 +1720,26 @@ const ActivitiesPage = () => {
     }
   };
 
+  // Alterna a pessoa como OBSERVADORA (acompanha e recebe popups, sem ser cobrada).
+  // Virar observador remove a pessoa dos responsáveis.
+  const handleToggleObserver = (userId: string) => {
+    const member = teamMembers.find(m => m.user_id === userId);
+    const name = member?.full_name || '';
+    if (formObservers.some(o => o.user_id === userId)) {
+      setFormObservers(prev => prev.filter(o => o.user_id !== userId));
+      return;
+    }
+    if (formAssignedTo === userId) {
+      const [next, ...rest] = formCoAssignees;
+      setFormAssignedTo(next?.user_id || '');
+      setFormAssignedToName(next?.full_name || '');
+      setFormCoAssignees(rest);
+    } else if (formCoAssignees.some(c => c.user_id === userId)) {
+      setFormCoAssignees(prev => prev.filter(c => c.user_id !== userId));
+    }
+    setFormObservers(prev => [...prev, { user_id: userId, full_name: name }]);
+  };
+
   // Colunas de array (multi-assessor) só entram no payload quando há co-assessor
   // (ou quando a atividade carregada já tinha — para permitir limpar). Assim, banco
   // ainda sem a migração de assigned_to_ids/assigned_to_names continua funcionando.
@@ -1626,6 +1748,15 @@ const ActivitiesPage = () => {
     return {
       assigned_to_ids: [formAssignedTo, ...formCoAssignees.map(c => c.user_id)].filter(Boolean),
       assigned_to_names: [formAssignedToName, ...formCoAssignees.map(c => c.full_name)].filter(Boolean),
+    };
+  };
+
+  // Observadores no payload (mesma regra: só quando há, ou quando havia — pra limpar).
+  const buildObserversPayload = () => {
+    if (formObservers.length === 0 && !loadedHadObservers) return {};
+    return {
+      observer_ids: formObservers.map(o => o.user_id),
+      observer_names: formObservers.map(o => o.full_name),
     };
   };
 
@@ -1760,6 +1891,85 @@ const ActivitiesPage = () => {
       if (viaRemap) return viaRemap;
     }
     return null;
+  };
+
+  // Notifica os observadores (ou, sem observadores, quem criou) sobre feedback,
+  // mudança de situação ou reagendamento — alimenta os popups em tempo real.
+  // recipient_id/observer_ids/created_by são UUIDs do Externo (como no banco).
+  const notifyActivityChange = async (
+    activity: any,
+    type: 'feedback' | 'status' | 'rescheduled',
+    body: string,
+  ) => {
+    try {
+      const extActor = await remapToExternal(user?.id || null);
+      const recipients = new Set<string>(((activity.observer_ids as string[] | null) || []).filter(Boolean));
+      if (recipients.size === 0 && activity.created_by) recipients.add(activity.created_by);
+      if (extActor) recipients.delete(extActor as string);
+      if (recipients.size === 0) return;
+      const actorName = resolveUserName(user?.id || null);
+      const rows = [...recipients].map((rid) => ({
+        activity_id: activity.id,
+        recipient_id: rid,
+        type,
+        title: activity.title || 'Atividade',
+        body,
+        actor_id: extActor || null,
+        actor_name: actorName,
+      }));
+      await externalSupabase.from('activity_notifications' as any).insert(rows as any);
+    } catch (e) {
+      console.warn('[notifyActivityChange] falhou:', e);
+    }
+  };
+
+  // Detecta @menções nos campos de texto e notifica os citados — só menções NOVAS
+  // em relação ao conteúdo anterior (evita repetir o popup a cada salvamento).
+  // Primeiro nome só vale quando é único na equipe; senão exige o nome completo.
+  const notifyNewMentions = async (
+    activityId: string | null,
+    title: string,
+    texts: string[],
+    prevTexts: string[],
+  ) => {
+    try {
+      const strip = (h: string) => (h || '').replace(/<[^>]+>/g, ' ');
+      const normTx = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+      const now = normTx(strip(texts.join('\n')));
+      if (!now.includes('@')) return;
+      const before = normTx(strip(prevTexts.join('\n')));
+      const firstCount = new Map<string, number>();
+      for (const m of teamMembers) {
+        const f = normTx((m.full_name || '').trim().split(/\s+/)[0] || '');
+        if (f) firstCount.set(f, (firstCount.get(f) || 0) + 1);
+      }
+      const mentioned = teamMembers.filter(m => {
+        const name = (m.full_name || '').trim();
+        if (!name) return false;
+        const pats = [`@${normTx(name)}`];
+        const first = normTx(name.split(/\s+/)[0]);
+        if (first && (firstCount.get(first) || 0) === 1) pats.push(`@${first}`);
+        return pats.some(p => now.includes(p) && !before.includes(p));
+      });
+      if (mentioned.length === 0) return;
+      const extActor = await remapToExternal(user?.id || null);
+      const actorName = resolveUserName(user?.id || null);
+      const rows = (await Promise.all(mentioned.map(async m => ({
+        activity_id: activityId,
+        recipient_id: (await remapToExternal(m.user_id)) as string | null,
+        recipient_name: m.full_name || null,
+        type: 'mention',
+        title: title || 'Atividade',
+        body: 'Você foi mencionado(a) nos campos da atividade.',
+        actor_id: (extActor as string | null) || null,
+        actor_name: actorName,
+      })))).filter(r => r.recipient_id && r.recipient_id !== extActor);
+      if (rows.length > 0) {
+        await externalSupabase.from('activity_notifications' as any).insert(rows as any);
+      }
+    } catch (e) {
+      console.warn('[notifyNewMentions] falhou:', e);
+    }
   };
 
   useEffect(() => {
@@ -2287,6 +2497,9 @@ const ActivitiesPage = () => {
       formTitle={formTitle} setFormTitle={setFormTitle}
       formAssignedTo={formAssignedTo} handleSelectAssignee={handleSelectAssignee}
       formCoAssignees={formCoAssignees}
+      formObservers={formObservers} onToggleObserver={handleToggleObserver}
+      formFeedback={formFeedback} setFormFeedback={setFormFeedback}
+      formRescheduledTo={formRescheduledTo} setFormRescheduledTo={setFormRescheduledTo}
       formType={formType} setFormType={setFormType}
       formStatus={formStatus} setFormStatus={setFormStatus}
       formPriority={formPriority} setFormPriority={setFormPriority}
@@ -3403,7 +3616,7 @@ const ActivitiesPage = () => {
                                 <div className="flex items-center gap-1.5 mt-0.5">
                                   {a.lead_name && <span className="text-[10px] text-muted-foreground truncate max-w-[240px]">📁 {a.lead_name}</span>}
                                   <Badge variant={a.status === 'concluida' ? 'default' : 'outline'} className="text-[9px] px-1 py-0 h-4">
-                                    {a.status === 'concluida' ? '✓' : a.status === 'em_andamento' ? '▶' : '○'}
+                                    {a.status === 'concluida' ? '✓' : a.status === 'em_andamento' ? '▶' : a.status === 'reagendada' ? '↻' : '○'}
                                   </Badge>
                                 </div>
                               </div>

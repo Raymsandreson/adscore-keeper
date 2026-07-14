@@ -1,4 +1,4 @@
-import { useState, useEffect, lazy, Suspense } from 'react';
+import { useState, useEffect, useMemo, lazy, Suspense } from 'react';
 
 const ProcessDetailSheet = lazy(() => import('@/components/cases/ProcessDetailSheet'));
 const AddProcessDialog = lazy(() => import('@/components/cases/AddProcessDialog'));
@@ -13,7 +13,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { Search, X, ChevronDown, Copy, Loader2, UserPlus, Building2, Briefcase, Send, Info, Settings2, FileText, Plus, Mic, Check, Star } from 'lucide-react';
+import { Search, X, ChevronDown, Copy, Loader2, UserPlus, Building2, Briefcase, Send, Info, Settings2, FileText, Plus, Mic, Check, Star, Eye } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
@@ -56,6 +56,12 @@ interface ActivityFormCompactProps {
   formTitle: string; setFormTitle: (v: string) => void;
   formAssignedTo: string; handleSelectAssignee: (v: string) => void;
   formCoAssignees?: { user_id: string; full_name: string }[];
+  // Observadores: acompanham (popup de feedback) sem serem cobrados.
+  formObservers?: { user_id: string; full_name: string }[];
+  onToggleObserver?: (userId: string) => void;
+  // Feedback do responsável + data de reagendamento (status 'reagendada').
+  formFeedback?: string; setFormFeedback?: (v: string) => void;
+  formRescheduledTo?: string; setFormRescheduledTo?: (v: string) => void;
   formType: string; setFormType: (v: string) => void;
   formStatus: string; setFormStatus: (v: string) => void;
   formPriority: string; setFormPriority: (v: string) => void;
@@ -594,6 +600,13 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
 }
 
 export function ActivityFormCompact(props: ActivityFormCompactProps) {
+  // Opções de @menção nos campos de texto (membros atribuíveis da equipe).
+  const mentionOptions = useMemo(
+    () => filterAssignableMembers(props.teamMembers)
+      .map((m: any) => ({ id: m.user_id, name: m.full_name || '' }))
+      .filter((o: { id: string; name: string }) => o.name),
+    [props.teamMembers],
+  );
   const [detailsOpen, setDetailsOpen] = useState(true);
   const [expandedFieldKey, setExpandedFieldKey] = useState<string | null>(null);
   const [linkLeadOpen, setLinkLeadOpen] = useState(false);
@@ -788,12 +801,15 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
           <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Assessor *</span>
           {(() => {
             const coAssignees = props.formCoAssignees || [];
+            const observers = props.formObservers || [];
             const isCo = (id: string) => coAssignees.some(c => c.user_id === id);
-            // Selecionados sobem pro topo (principal primeiro, depois co-assessores na
-            // ordem de escolha); o resto segue em ordem alfabética.
+            const isObserver = (id: string) => observers.some(o => o.user_id === id);
+            // Selecionados sobem pro topo (principal primeiro, depois co-responsáveis
+            // e observadores na ordem de escolha); o resto segue em ordem alfabética.
             const selectedRank = new Map<string, number>();
             if (props.formAssignedTo) selectedRank.set(props.formAssignedTo, 0);
             coAssignees.forEach((c, i) => selectedRank.set(c.user_id, i + 1));
+            observers.forEach((o, i) => selectedRank.set(o.user_id, 100 + i));
             const assignable = filterAssignableMembers(props.teamMembers)
               .slice().sort((a, b) => {
                 const ra = selectedRank.get(a.user_id);
@@ -807,7 +823,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
               });
             const selected = assignable.find(m => m.user_id === props.formAssignedTo);
             const triggerLabel = selected
-              ? `${selected.full_name || 'Sem nome'}${coAssignees.length > 0 ? ` +${coAssignees.length}` : ''}`
+              ? `${selected.full_name || 'Sem nome'}${coAssignees.length > 0 ? ` +${coAssignees.length}` : ''}${observers.length > 0 ? ` · 👁${observers.length}` : ''}`
               : '—';
             return (
               <Popover>
@@ -838,17 +854,37 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
                             onSelect={() => props.handleSelectAssignee(m.user_id)}
                             className="text-xs"
                           >
-                            <Check className={cn("mr-2 h-3 w-3", (props.formAssignedTo === m.user_id || isCo(m.user_id)) ? "opacity-100" : "opacity-0")} />
+                            <Check className={cn("mr-2 h-3 w-3 shrink-0", (props.formAssignedTo === m.user_id || isCo(m.user_id)) ? "opacity-100" : "opacity-0")} />
                             <span className="truncate">{m.full_name || 'Sem nome'}</span>
-                            {props.formAssignedTo === m.user_id && (
-                              <span className="ml-auto text-[9px] uppercase tracking-wider text-primary shrink-0">Principal</span>
-                            )}
+                            <span className="ml-auto flex items-center gap-1 shrink-0">
+                              {props.formAssignedTo === m.user_id && (
+                                <span className="text-[9px] uppercase tracking-wider text-primary">Principal</span>
+                              )}
+                              {isObserver(m.user_id) && (
+                                <span className="text-[9px] uppercase tracking-wider text-amber-600 dark:text-amber-400">Observador</span>
+                              )}
+                              {props.onToggleObserver && (
+                                <button
+                                  type="button"
+                                  title={isObserver(m.user_id) ? 'Remover observador' : 'Marcar como observador (acompanha e recebe o feedback, sem ser cobrado)'}
+                                  className={cn(
+                                    "rounded p-0.5 hover:bg-accent-foreground/10",
+                                    isObserver(m.user_id) ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground/50"
+                                  )}
+                                  onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); props.onToggleObserver?.(m.user_id); }}
+                                >
+                                  <Eye className="h-3.5 w-3.5" />
+                                </button>
+                              )}
+                            </span>
                           </CommandItem>
                         ))}
                       </CommandGroup>
                     </CommandList>
                     <p className="text-[10px] text-muted-foreground px-2 py-1.5 border-t">
-                      Clique para adicionar/remover. O primeiro selecionado é o principal.
+                      Clique no nome = responsável (1º é o principal; cada responsável recebe a própria atividade).
+                      Clique no 👁 = observador (acompanha e recebe o feedback). Quem cria observa automaticamente.
                     </p>
                   </Command>
                 </PopoverContent>
@@ -924,8 +960,20 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
               <SelectItem value="pendente" className="text-xs">Pendente</SelectItem>
               <SelectItem value="em_andamento" className="text-xs">Em Andamento</SelectItem>
               <SelectItem value="concluida" className="text-xs">Concluída</SelectItem>
+              <SelectItem value="reagendada" className="text-xs">Reagendada</SelectItem>
             </SelectContent>
           </Select>
+          {props.formStatus === 'reagendada' && props.setFormRescheduledTo && (
+            <div className="mt-1">
+              <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Reagendada para</span>
+              <Input
+                type="date"
+                value={props.formRescheduledTo || ''}
+                onChange={e => props.setFormRescheduledTo?.(e.target.value)}
+                className="h-8 text-xs mt-0.5"
+              />
+            </div>
+          )}
         </div>
         <div>
           <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Prioridade</span>
@@ -941,6 +989,20 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
       </div>
 
       {/* Matriz Eisenhower e Nome do cliente removidos do form — cliente vive no cabeçalho */}
+
+      {/* Feedback da atv — retorno do responsável; observadores recebem popup ao salvar */}
+      {props.setFormFeedback && (
+        <div>
+          <span className="text-[10px] text-muted-foreground uppercase tracking-wider">💬 Feedback da atv</span>
+          <Textarea
+            value={props.formFeedback || ''}
+            onChange={e => props.setFormFeedback?.(e.target.value)}
+            placeholder="Retorno do responsável: o que foi feito com esta demanda, como ficou..."
+            rows={2}
+            className="text-xs mt-0.5"
+          />
+        </div>
+      )}
 
       {/* === ROW 4: Dates side by side === */}
       <div className="grid grid-cols-2 gap-3">
@@ -1120,6 +1182,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
                       maxHeight={compactEditorHeight}
                       onExpand={() => setExpandedFieldKey(field.field_key)}
                       className="mt-0.5 h-full"
+                      mentionOptions={mentionOptions}
                     />
                   </div>
                 </div>
@@ -1141,6 +1204,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
                       maxHeight={compactEditorHeight}
                       onExpand={() => setExpandedFieldKey(key)}
                       className="mt-0.5 h-full"
+                      mentionOptions={mentionOptions}
                     />
                   </div>
                 </div>
@@ -1220,6 +1284,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
                     placeholder={placeholder}
                     minHeight="300px"
                     autoFocus
+                    mentionOptions={mentionOptions}
                   />
                 </div>
               </>
