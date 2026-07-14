@@ -328,7 +328,7 @@ export function AppSidebar() {
             <SidebarMenuItem>
               <SidebarMenuButton
                 onClick={() => setMentionsOpen(true)}
-                tooltip="Menções"
+                tooltip="Chat"
               >
                 <span className="relative">
                   <MessageCircle className="h-4 w-4" />
@@ -338,7 +338,7 @@ export function AppSidebar() {
                     </span>
                   )}
                 </span>
-                <span>Menções</span>
+                <span>Chat</span>
                 {unreadMentions > 0 && !collapsed && (
                   <span className="ml-auto w-5 h-5 rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold flex items-center justify-center">
                     {unreadMentions > 9 ? '9+' : unreadMentions}
