@@ -5,6 +5,88 @@ import type { TemplateVariation } from './useChecklists';
 import { toast } from 'sonner';
 
 /**
+ * Modelos padrão por campo — carregados automaticamente para TODOS os usuários
+ * quando ainda não têm nenhum modelo próprio para aquele campo. Usam as variáveis
+ * dinâmicas de `useActivityMessageTemplates` para puxar dados do lead/processo
+ * automaticamente. Assim que o usuário cria/edita o primeiro modelo próprio,
+ * os padrões deixam de aparecer (a lista dele passa a mandar).
+ */
+const DEFAULT_FIELD_TEMPLATES: Record<string, TemplateVariation[]> = {
+  current_status: [
+    {
+      id: 'default:current_status:1',
+      name: 'Aguardando análise',
+      content:
+        'O pedido de {{titulo}} foi protocolado{{case_number ? " (Caso nº " + case_number + ")" : ""}}. No momento, está em análise pelo órgão responsável e seguimos monitorando o andamento.',
+    },
+    {
+      id: 'default:current_status:2',
+      name: 'Em andamento no judiciário',
+      content:
+        'O processo{{process_number ? " nº " + process_number : ""}} está em curso. Estamos acompanhando cada movimentação e agiremos assim que houver decisão ou intimação.',
+    },
+  ],
+  what_was_done: [
+    {
+      id: 'default:what_was_done:1',
+      name: 'Protocolo administrativo',
+      content:
+        'Realizamos o protocolo administrativo do pedido{{case_number ? " referente ao caso " + case_number : ""}} e anexamos toda a documentação necessária.',
+    },
+    {
+      id: 'default:what_was_done:2',
+      name: 'Petição enviada',
+      content:
+        'Peticionamento realizado no processo{{process_number ? " nº " + process_number : ""}}. Documento juntado aos autos com sucesso.',
+    },
+  ],
+  next_steps: [
+    {
+      id: 'default:next_steps:1',
+      name: 'Acompanhar movimentação',
+      content:
+        'Seguiremos acompanhando e monitorando o andamento do seu pedido, sempre atentos às novas movimentações. Retornaremos assim que houver novidade.',
+    },
+    {
+      id: 'default:next_steps:2',
+      name: 'Aguardando prazo',
+      content:
+        'Aguardamos o cumprimento do prazo legal{{data_retorno ? " (retorno previsto para " + data_retorno + ")" : ""}}. Assim que houver resposta, entraremos em contato.',
+    },
+  ],
+  solicitacao: [
+    {
+      id: 'default:solicitacao:1',
+      name: 'Envio de documento',
+      content:
+        '{{saudacao}} Sr(a). {{lead_name}}, para dar andamento{{case_number ? " ao caso " + case_number : ""}} precisamos que envie o documento solicitado o quanto antes.',
+    },
+    {
+      id: 'default:solicitacao:2',
+      name: 'Confirmação de dados',
+      content:
+        '{{saudacao}} Sr(a). {{lead_name}}, poderia confirmar os dados cadastrais para prosseguirmos com o pedido? É rápido e nos ajuda a evitar atrasos.',
+    },
+  ],
+  resposta_juizo: [
+    {
+      id: 'default:resposta_juizo:1',
+      name: 'Decisão favorável',
+      content:
+        'O juízo proferiu decisão favorável no processo{{process_number ? " nº " + process_number : ""}}. Já estamos preparando os próximos passos para cumprimento.',
+    },
+    {
+      id: 'default:resposta_juizo:2',
+      name: 'Determinação de diligência',
+      content:
+        'O juízo determinou diligência complementar no processo{{process_number ? " nº " + process_number : ""}}. Vamos providenciar o cumprimento no prazo.',
+    },
+  ],
+};
+
+const isSynthetic = (id: string | undefined | null) => !!id && id.startsWith('default:');
+
+/**
  * Modelos de texto por campo, POR USUÁRIO — independentes de lead/passo/fluxo.
  * Cada usuário vê apenas os modelos que ele mesmo cadastrou, agrupados por field_key.
  * Tabela: public.user_activity_field_templates (External DB).
@@ -16,8 +98,13 @@ export function useUserFieldTemplates(fieldKey: string | null | undefined) {
   const [loading, setLoading] = useState(false);
 
   const reload = useCallback(async () => {
-    if (!userId || !fieldKey) {
+    if (!fieldKey) {
       setVariations([]);
+      return;
+    }
+    if (!userId) {
+      // Usuário não logado — mostra defaults só como preview.
+      setVariations(DEFAULT_FIELD_TEMPLATES[fieldKey] || []);
       return;
     }
     setLoading(true);
@@ -30,16 +117,21 @@ export function useUserFieldTemplates(fieldKey: string | null | undefined) {
         .order('sort_order', { ascending: true })
         .order('created_at', { ascending: true });
       if (error) throw error;
-      setVariations(
-        ((data as any[]) || []).map(r => ({
-          id: r.id,
-          name: r.name || '',
-          content: r.content || '',
-        })),
-      );
+      const userRows = ((data as any[]) || []).map(r => ({
+        id: r.id,
+        name: r.name || '',
+        content: r.content || '',
+      })) as TemplateVariation[];
+
+      if (userRows.length === 0) {
+        // Sem modelos próprios ainda → exibe os padrões do sistema.
+        setVariations(DEFAULT_FIELD_TEMPLATES[fieldKey] || []);
+      } else {
+        setVariations(userRows);
+      }
     } catch (err) {
       console.error('[useUserFieldTemplates:reload]', err);
-      setVariations([]);
+      setVariations(DEFAULT_FIELD_TEMPLATES[fieldKey] || []);
     } finally {
       setLoading(false);
     }
@@ -48,9 +140,9 @@ export function useUserFieldTemplates(fieldKey: string | null | undefined) {
   useEffect(() => { reload(); }, [reload]);
 
   /**
-   * Recebe a lista COMPLETA que deve existir para (user, field). Faz diff:
-   * cria os novos, atualiza os existentes que mudaram, remove os que sumiram.
-   * Retorna true em sucesso.
+   * Recebe a lista COMPLETA que deve existir para (user, field). Faz diff
+   * ignorando entradas sintéticas (id `default:*`), que sempre entram como
+   * novos INSERTs quando o usuário optar por editá-las/salvá-las.
    */
   const persist = useCallback(async (next: TemplateVariation[]): Promise<boolean> => {
     if (!userId || !fieldKey) {
@@ -58,11 +150,13 @@ export function useUserFieldTemplates(fieldKey: string | null | undefined) {
       return false;
     }
     try {
-      const prevById = new Map(variations.map(v => [v.id, v]));
-      const nextIds = new Set(next.map(v => v.id).filter(Boolean));
+      // Só compara com as linhas REAIS que já existem no DB (não com defaults sintéticos).
+      const realPrev = variations.filter(v => !isSynthetic(v.id));
+      const prevById = new Map(realPrev.map(v => [v.id, v]));
+      const nextRealIds = new Set(next.filter(v => !isSynthetic(v.id)).map(v => v.id).filter(Boolean));
 
-      // Deletes
-      const toDelete = variations.filter(v => v.id && !nextIds.has(v.id)).map(v => v.id!);
+      // Deletes: apenas linhas reais que sumiram.
+      const toDelete = realPrev.filter(v => v.id && !nextRealIds.has(v.id)).map(v => v.id!);
       if (toDelete.length > 0) {
         const { error } = await externalSupabase
           .from('user_activity_field_templates' as any)
@@ -72,11 +166,12 @@ export function useUserFieldTemplates(fieldKey: string | null | undefined) {
         if (error) throw error;
       }
 
-      // Inserts (id novo ou não existe no prev) e Updates
+      // Inserts e Updates
       for (let i = 0; i < next.length; i++) {
         const v = next[i];
-        const prev = v.id ? prevById.get(v.id) : undefined;
+        const prev = v.id && !isSynthetic(v.id) ? prevById.get(v.id) : undefined;
         if (!prev) {
+          // Entrada nova (inclui sintéticas que o usuário decidiu salvar).
           const { error } = await externalSupabase
             .from('user_activity_field_templates' as any)
             .insert({
