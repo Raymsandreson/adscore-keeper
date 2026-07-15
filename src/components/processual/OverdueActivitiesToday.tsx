@@ -64,6 +64,7 @@ export function OverdueActivitiesToday() {
   const load = async () => {
     setLoading(true);
     try {
+      await ensureRemapCache();
       const todayStart = new Date();
       todayStart.setHours(0, 0, 0, 0);
 
@@ -73,7 +74,7 @@ export function OverdueActivitiesToday() {
       for (let from = 0; ; from += PAGE) {
         const { data } = await externalSupabase
           .from('lead_activities')
-          .select('id, title, activity_type, status, priority, deadline, updated_at, created_at, assigned_to_name, lead_name, lead_id, current_status_notes')
+          .select('id, title, activity_type, status, priority, deadline, updated_at, created_at, assigned_to, assigned_to_name, lead_name, lead_id, current_status_notes')
           .is('deleted_at', null)
           .neq('status', 'concluida')
           .not('deadline', 'is', null)
@@ -84,7 +85,13 @@ export function OverdueActivitiesToday() {
         all.push(...chunk);
         if (chunk.length < PAGE) break;
       }
-      setItems(all);
+      // Esconde atividades de usuários que também estão fora do seletor de Assessor (blocklist).
+      const filteredAll = all.filter((a) => {
+        if (!a.assigned_to) return true;
+        const cloudId = remapToCloudSync(a.assigned_to) || a.assigned_to;
+        return !ASSIGNEE_BLOCKLIST.has(cloudId);
+      });
+      setItems(filteredAll);
 
       // Mensagens de chat de atividade postadas hoje — servem de "motivo" do atraso
       const { data: msgs } = await externalSupabase
