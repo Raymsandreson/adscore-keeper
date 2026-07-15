@@ -374,9 +374,13 @@ export function StepTemplatesHub({
                 </div>
               ) : variations.length === 0 ? (
                 <div className="p-6 text-center text-xs text-muted-foreground">
-                  Nenhum modelo cadastrado para este passo.<br />
-                  Clique em <strong>Novo</strong> para criar.
+                  {canPersist ? (
+                    <>Nenhum modelo cadastrado para este passo.<br />Clique em <strong>Novo</strong> para criar.</>
+                  ) : (
+                    <>Modelos são salvos por <strong>passo do fluxo</strong>.<br />Vincule esta atividade a um lead/caso com passo do funil para criar modelos.</>
+                  )}
                 </div>
+
               ) : (
                 <ul className="divide-y">
                   {variations.map((v, i) => (
