@@ -7,9 +7,8 @@ import { remapToCloudSync, ensureRemapCache } from '@/integrations/supabase/uuid
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { AlertTriangle, Loader2, RefreshCw, UserRound, CheckCircle2, Clock, MessageSquare } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { AlertTriangle, Loader2, RefreshCw, UserRound, CheckCircle2, Clock, MessageSquare, X } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -55,7 +54,7 @@ export function OverdueActivitiesToday() {
   const [items, setItems] = useState<OverdueActivity[]>([]);
   const [chatToday, setChatToday] = useState<TodayChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
-  const [author, setAuthor] = useState<string>('all');
+  const [author, setAuthor] = useState<string>('');
   // Linhas visíveis por grupo — dados vêm completos, mas grupos gigantes ("Sem responsável"
   // passa de 5 mil) não podem ir todos pro DOM de uma vez.
   const GROUP_BATCH = 30;
@@ -79,7 +78,7 @@ export function OverdueActivitiesToday() {
           .neq('status', 'concluida')
           .not('deadline', 'is', null)
           .lt('deadline', todayStart.toISOString())
-          .order('deadline', { ascending: true })
+          .order('deadline', { ascending: false })
           .range(from, from + PAGE - 1);
         const chunk = (data || []) as OverdueActivity[];
         all.push(...chunk);
@@ -148,9 +147,9 @@ export function OverdueActivitiesToday() {
   }, [items, chatByActivity, todayStart]);
 
   const filtered = useMemo(() => {
-    if (author === 'all') return rows;
-    if (author === '__none__') return rows.filter((i) => !i.assigned_to_name);
-    return rows.filter((i) => i.assigned_to_name === author);
+    const q = author.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter((i) => (i.assigned_to_name || 'sem responsável').toLowerCase().includes(q));
   }, [rows, author]);
 
   // Agrupamento por responsável, maiores ofensores primeiro
@@ -197,19 +196,25 @@ export function OverdueActivitiesToday() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Select value={author} onValueChange={setAuthor}>
-              <SelectTrigger className="h-8 w-[200px] text-xs">
-                <UserRound className="h-3.5 w-3.5 mr-1 text-muted-foreground" />
-                <SelectValue placeholder="Responsável" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all" className="text-xs">Todos os responsáveis</SelectItem>
-                <SelectItem value="__none__" className="text-xs">Sem responsável</SelectItem>
-                {authors.map((a) => (
-                  <SelectItem key={a} value={a} className="text-xs">{a}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="relative">
+              <UserRound className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                value={author}
+                onChange={(e) => setAuthor(e.target.value)}
+                placeholder="Filtrar responsável…"
+                className="h-8 w-[220px] pl-7 pr-7 text-xs"
+              />
+              {author && (
+                <button
+                  type="button"
+                  onClick={() => setAuthor('')}
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  aria-label="Limpar filtro"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={load} disabled={loading}>
               <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
             </Button>
@@ -244,7 +249,7 @@ export function OverdueActivitiesToday() {
             Nenhuma atividade atrasada no filtro atual.
           </div>
         ) : (
-          <ScrollArea type="always" className="h-[560px] [&_[data-radix-scroll-area-thumb]]:bg-muted-foreground/50 [&_[data-radix-scroll-area-scrollbar]]:w-3">
+          <div className="h-[560px] overflow-y-auto overflow-x-hidden">
             {groups.map((g) => (
               <div key={g.name}>
                 <div className="sticky top-0 z-10 flex flex-wrap items-center gap-2 border-y bg-muted/80 px-3 py-1.5 backdrop-blur">
@@ -355,7 +360,7 @@ export function OverdueActivitiesToday() {
                 )}
               </div>
             ))}
-          </ScrollArea>
+          </div>
         )}
       </CardContent>
     </Card>
