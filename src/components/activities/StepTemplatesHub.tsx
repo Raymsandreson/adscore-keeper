@@ -219,7 +219,7 @@ export function StepTemplatesHub({
     <>
       <div className="flex items-center gap-1 mt-0.5 mb-1 flex-wrap">
         {/* Dropdown único: nenhum modelo pré-selecionado; abre lista para escolher */}
-        {variations.length > 0 && (
+        {displayVariations.length > 0 && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -230,12 +230,12 @@ export function StepTemplatesHub({
                 title="Escolher um modelo para aplicar"
               >
                 <Sparkles className="h-2.5 w-2.5 shrink-0" />
-                <span>Modelos ({variations.length})</span>
+                <span>Modelos</span>
                 <ChevronDown className="h-2.5 w-2.5 opacity-70" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="max-w-xs">
-              {variations.map((v, i) => (
+              {displayVariations.map((v, i) => (
                 <DropdownMenuItem
                   key={v.id || i}
                   onSelect={(e) => { e.preventDefault(); handlePick(v); }}
