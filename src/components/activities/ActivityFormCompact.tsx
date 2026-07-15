@@ -789,29 +789,13 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
                   <Settings2 className="h-3 w-3" /> Interna{props.formIsSystem ? ' ✓' : ''}
                 </Button>
               )}
-              {props.setFormIsManagement && (
-                <Button
-                  type="button"
-                  variant={props.formIsManagement ? 'default' : 'outline'}
-                  size="sm"
-                  className="h-6 px-2 text-[10px] gap-1"
-                  onClick={() => {
-                    const next = !props.formIsManagement;
-                    props.setFormIsManagement?.(next);
-                    if (next) props.setFormIsSystem?.(false);
-                  }}
-                  title={props.formIsManagement ? 'Desmarcar atividade de gerenciamento' : 'Marcar como atividade de gerenciamento (sem vínculo obrigatório)'}
-                >
-                  <Settings2 className="h-3 w-3" /> Gerenciamento{props.formIsManagement ? ' ✓' : ''}
-                </Button>
-              )}
             </>
           )}
           {!props.formIsSystem && !props.formIsManagement && (
             <div className="flex items-start gap-1.5 px-2 py-1.5 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 w-full mt-1">
               <Info className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
               <span className="text-[11px] text-amber-700 dark:text-amber-300">
-                Vincule esta atividade a um <strong>Lead</strong>, <strong>Caso</strong> ou marque como <strong>Interna (de equipe)</strong> ou <strong>Gerenciamento</strong>.
+                Vincule esta atividade a um <strong>Lead</strong>, <strong>Caso</strong> ou marque como <strong>Interna (de equipe)</strong>.
               </span>
             </div>
           )}
