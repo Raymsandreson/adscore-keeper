@@ -27,6 +27,7 @@ export const ASSIGNEE_BLOCKLIST: ReadonlySet<string> = new Set<string>([
   '060e53d0-f547-4862-b3fe-5d611ae446aa', // Mariana Vitório
   '16ba558c-1eb4-4128-b31c-9f0f2b804090', // Ana Lígia Santos Cavalcante
   'fc4288d3-9378-48d6-9333-cfdd03dbc626', // Daniel Vieira Oliveira
+  '0015c413-e258-4fad-846c-b63e5b05c443', // Crisley Costa de Oliveira
 ]);
 
 export function filterAssignableMembers<T extends { user_id: string }>(members: T[]): T[] {

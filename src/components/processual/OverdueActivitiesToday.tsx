@@ -86,9 +86,9 @@ export function OverdueActivitiesToday() {
         all.push(...chunk);
         if (chunk.length < PAGE) break;
       }
-      // Esconde atividades de usuários que também estão fora do seletor de Assessor (blocklist).
+      // Esconde atividades sem responsável e de usuários fora do seletor de Assessor (blocklist).
       const filteredAll = all.filter((a) => {
-        if (!a.assigned_to) return true;
+        if (!a.assigned_to) return false;
         const cloudId = remapToCloudSync(a.assigned_to) || a.assigned_to;
         return !ASSIGNEE_BLOCKLIST.has(cloudId);
       });
