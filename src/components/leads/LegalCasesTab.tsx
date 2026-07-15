@@ -44,6 +44,7 @@ import { Switch } from '@/components/ui/switch';
 import { ProcessMonitorDialog } from '@/components/cases/ProcessMonitorDialog';
 import { toast } from 'sonner';
 import AddProcessDialog from '@/components/cases/AddProcessDialog';
+import ProcessDetailSheet from '@/components/cases/ProcessDetailSheet';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 interface LegalCasesTabProps {
@@ -648,68 +649,19 @@ function CaseCard({ legalCase, boards, expanded, onToggle, onEdit, onStatusChang
         </CollapsibleContent>
       </Collapsible>
 
-      {/* Process Dialog - Edit mode (inline) */}
+      {/* Process Detail - Edit mode (painel gerível com abas, reusa ProcessDetailSheet) */}
       {editingProcess && (
-        <Dialog open={showProcessDialog} onOpenChange={setShowProcessDialog}>
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle>Editar Processo</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div>
-                <Label>Tipo *</Label>
-                <Select value={processType} onValueChange={(v) => setProcessType(v as any)}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="judicial"><span className="flex items-center gap-2"><Gavel className="h-3 w-3" /> Judicial</span></SelectItem>
-                    <SelectItem value="administrativo"><span className="flex items-center gap-2"><FileText className="h-3 w-3" /> Administrativo</span></SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label>Título *</Label>
-                <Input value={processTitle} onChange={e => setProcessTitle(e.target.value)} placeholder="Ex: Reclamatória trabalhista" />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>Nº do Processo</Label>
-                  <Input value={processNumber} onChange={e => setProcessNumber(e.target.value)} placeholder="0000000-00.0000.0.00.0000" />
-                </div>
-                <div>
-                  <Label>Honorários (%)</Label>
-                  <Input type="number" min="0" max="100" step="0.1" value={processFeePercentage} onChange={e => setProcessFeePercentage(e.target.value)} placeholder="Ex: 30" />
-                </div>
-              </div>
-              <div>
-                <Label>Fluxo de Trabalho</Label>
-                <Select value={workflowId} onValueChange={setWorkflowId}>
-                  <SelectTrigger><SelectValue placeholder="Selecione um fluxo..." /></SelectTrigger>
-                  <SelectContent>
-                    {boards.filter(b => b.board_type === 'workflow').map(b => (
-                      <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label>Data de Início</Label>
-                <Input type="date" value={startedAt} onChange={e => setStartedAt(e.target.value)} />
-              </div>
-              <div>
-                <Label>Descrição</Label>
-                <Textarea value={processDescription} onChange={e => setProcessDescription(e.target.value)} rows={3} />
-              </div>
-              <div>
-                <Label>Observações</Label>
-                <Textarea value={processNotes} onChange={e => setProcessNotes(e.target.value)} rows={2} />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => { setShowProcessDialog(false); resetProcessForm(); }}>Cancelar</Button>
-              <Button onClick={handleSaveProcess} disabled={!processTitle.trim()}>Salvar</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <ProcessDetailSheet
+          open={showProcessDialog}
+          onOpenChange={(open) => {
+            setShowProcessDialog(open);
+            if (!open) resetProcessForm();
+          }}
+          process={editingProcess}
+          onUpdated={() => fetchProcesses()}
+          mode="sheet"
+          defaultTab="atividades"
+        />
       )}
 
       {/* Process Dialog - New mode (with Escavador) */}
