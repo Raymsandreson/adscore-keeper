@@ -2247,11 +2247,13 @@ const ActivitiesPage = () => {
 
     // Nome exibido na saudação ao CLIENTE: só o PRIMEIRO NOME da parte cliente.
     // Prioridade: override manual > 1ª parte do polo do cliente > nome do lead.
-    const clientDisplayName = formClientNameOverride
-      ? extractClientFirstName(formClientNameOverride)
-      : processClientNames.length > 0
-        ? extractClientFirstName(processClientNames[0])
-        : extractClientFirstName(formLeadName || '');
+    // NUNCA cai no nome do assessor — se nada retornar, deixa vazio e a saudação
+    // renderiza sem nome (evita o bug de "Bom dia, Dr(a). <nome do acolhedor>").
+    const rawClientCandidate = formClientNameOverride
+      || (processClientNames.length > 0 ? processClientNames[0] : '')
+      || formLeadName
+      || '';
+    const clientDisplayName = extractClientFirstName(rawClientCandidate);
 
     // Workflow do processo (etapa / objetivo / passo atual) — vem do checklist do lead (stepContext).
     const wfPhase = stepContext?.phaseLabel || '';
