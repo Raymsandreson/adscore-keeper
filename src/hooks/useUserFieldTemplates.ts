@@ -87,16 +87,19 @@ export function useUserFieldTemplates(fieldKey: string | null | undefined) {
   const { user } = useAuthContext();
   const userId = user?.id || null;
   const [variations, setVariations] = useState<TemplateVariation[]>([]);
+  const [defaults, setDefaults] = useState<TemplateVariation[]>([]);
   const [loading, setLoading] = useState(false);
 
   const reload = useCallback(async () => {
     if (!fieldKey) {
       setVariations([]);
+      setDefaults([]);
       return;
     }
+    // Sempre oferece os padrões do sistema como base, independente de ter modelos próprios.
+    setDefaults(DEFAULT_FIELD_TEMPLATES[fieldKey] || []);
     if (!userId) {
-      // Usuário não logado — mostra defaults só como preview.
-      setVariations(DEFAULT_FIELD_TEMPLATES[fieldKey] || []);
+      setVariations([]);
       return;
     }
     setLoading(true);
@@ -114,16 +117,10 @@ export function useUserFieldTemplates(fieldKey: string | null | undefined) {
         name: r.name || '',
         content: r.content || '',
       })) as TemplateVariation[];
-
-      if (userRows.length === 0) {
-        // Sem modelos próprios ainda → exibe os padrões do sistema.
-        setVariations(DEFAULT_FIELD_TEMPLATES[fieldKey] || []);
-      } else {
-        setVariations(userRows);
-      }
+      setVariations(userRows);
     } catch (err) {
       console.error('[useUserFieldTemplates:reload]', err);
-      setVariations(DEFAULT_FIELD_TEMPLATES[fieldKey] || []);
+      setVariations([]);
     } finally {
       setLoading(false);
     }
@@ -133,8 +130,8 @@ export function useUserFieldTemplates(fieldKey: string | null | undefined) {
 
   /**
    * Recebe a lista COMPLETA que deve existir para (user, field). Faz diff
-   * ignorando entradas sintéticas (id `default:*`), que sempre entram como
-   * novos INSERTs quando o usuário optar por editá-las/salvá-las.
+   * ignorando entradas sintéticas (id `default:*`) e também os padrões do sistema,
+   * que são read-only e sempre exibidos no dropdown separadamente.
    */
   const persist = useCallback(async (next: TemplateVariation[]): Promise<boolean> => {
     if (!userId || !fieldKey) {
@@ -198,5 +195,5 @@ export function useUserFieldTemplates(fieldKey: string | null | undefined) {
     }
   }, [userId, fieldKey, variations, reload]);
 
-  return { variations, loading, persist, canPersist: !!userId, reload };
+  return { variations, defaults, loading, persist, canPersist: !!userId, reload };
 }
