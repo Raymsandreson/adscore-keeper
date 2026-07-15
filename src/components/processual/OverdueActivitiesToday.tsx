@@ -23,6 +23,7 @@ interface OverdueActivity {
   deadline: string | null;
   updated_at: string | null;
   created_at: string;
+  assigned_to: string | null;
   assigned_to_name: string | null;
   lead_name: string | null;
   lead_id: string | null;
