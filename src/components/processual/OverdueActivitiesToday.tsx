@@ -150,15 +150,13 @@ export function OverdueActivitiesToday() {
 
   const filtered = useMemo(() => {
     if (!selectedAuthor) return rows;
-    if (selectedAuthor === SEM_RESPONSAVEL) return rows.filter((i) => !i.assigned_to_name);
     return rows.filter((i) => i.assigned_to_name === selectedAuthor);
   }, [rows, selectedAuthor]);
 
   const authorOptions = useMemo(() => {
     const q = authorQuery.trim().toLowerCase();
-    const base = [SEM_RESPONSAVEL, ...authors];
-    if (!q) return base;
-    return base.filter((n) => n.toLowerCase().includes(q));
+    if (!q) return authors;
+    return authors.filter((n) => n.toLowerCase().includes(q));
   }, [authors, authorQuery]);
 
   // Agrupamento por responsável, maiores ofensores primeiro
