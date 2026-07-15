@@ -2458,12 +2458,18 @@ const ActivitiesPage = () => {
         result = lines.join('\n');
       }
 
-      // Templates antigos escondiam a data quando o responsável estava vazio.
-      // Se o modelo tentou usar data_retorno, garante que o cliente veja a data.
-      if (returnDateLine && template.includes('data_retorno') && !result.includes(notifDate)) {
+      // Linha de retorno ("Dr. X voltará com mais informações no dia Y…"):
+      // se há data de notificação, garante que ela apareça sempre — mesmo que o
+      // template salvo não referencie {{linha_retorno}} nem {{data_retorno}}.
+      // Injeta antes de "Estamos à disposição" (ou da assinatura, se não houver).
+      if (returnDateLine && !result.includes(notifDate)) {
         const lines = result.split('\n');
-        const beforeSupportLine = lines.findIndex(line => line.includes('Estamos à disposição'));
-        if (beforeSupportLine >= 0) lines.splice(beforeSupportLine, 0, '', returnDateLine);
+        const anchorIdx = lines.findIndex(line =>
+          line.includes('Estamos à disposição') ||
+          line.includes('Com carinho') ||
+          line.includes('Digite 1'),
+        );
+        if (anchorIdx >= 0) lines.splice(anchorIdx, 0, '', returnDateLine, '');
         else lines.push('', returnDateLine);
         result = lines.join('\n');
       }
