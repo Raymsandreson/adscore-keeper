@@ -22,7 +22,7 @@ import { ActivityTTSButton } from '@/components/voice/ActivityTTSButton';
 import { ActivityFieldSettingsDialog } from '@/components/activities/ActivityFieldSettingsDialog';
 import { ActivityMessageTemplateSettings } from '@/components/activities/ActivityMessageTemplateSettings';
 import { ActivityNotesField, type Attachment } from '@/components/activities/ActivityNotesField';
-import { StepTemplatesHub } from '@/components/activities/StepTemplatesHub';
+import { UserFieldTemplatesHub } from '@/components/activities/UserFieldTemplatesHub';
 import { StepChecklistButton } from '@/components/activities/StepChecklistButton';
 import type { ActivityStepContext } from '@/hooks/useActivityStepContext';
 import type { TemplateVariation } from '@/hooks/useChecklists';
@@ -1106,22 +1106,15 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
             {(() => {
               const notesField = props.fieldSettings?.find((f: any) => f.field_key === 'notes');
               if (!notesField) return null;
-              const stepVariations = props.stepContext?.messageTemplates?.['notes'] || [];
-              const persistNotes = async (next: TemplateVariation[]) => {
-                if (!props.saveStepFieldTemplates) return false;
-                return props.saveStepFieldTemplates('notes', next);
-              };
               return (
-                <StepTemplatesHub
+                <UserFieldTemplatesHub
+                  fieldKey="notes"
                   fieldLabel={notesField.label}
-                  variations={stepVariations}
                   currentValue={props.formNotes}
                   onApply={props.setFormNotes}
                   stepLabel={props.stepContext?.stepLabel || null}
                   phaseLabel={props.stepContext?.phaseLabel || null}
                   objectiveLabel={props.stepContext?.objectiveLabel || null}
-                  canPersist={!!(props.stepContext?.templateId && props.saveStepFieldTemplates)}
-                  onPersist={persistNotes}
                   allSteps={props.stepContext?.allSteps || []}
                   activeStepId={props.stepContext?.stepId || null}
                   onSelectStep={props.setSelectedStepId}
@@ -1155,28 +1148,21 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
               const entry = valueMap[field.field_key];
               if (!entry) return null;
               const [value, setter] = entry;
-              const stepVariations = props.stepContext?.messageTemplates?.[field.field_key] || [];
-              const persistField = async (next: TemplateVariation[]) => {
-                if (!props.saveStepFieldTemplates) return false;
-                return props.saveStepFieldTemplates(field.field_key, next);
-              };
               const hubProps = {
+                fieldKey: field.field_key,
                 fieldLabel: field.label,
-                variations: stepVariations,
                 currentValue: value,
                 onApply: setter,
                 stepLabel: props.stepContext?.stepLabel || null,
                 phaseLabel: props.stepContext?.phaseLabel || null,
                 objectiveLabel: props.stepContext?.objectiveLabel || null,
-                canPersist: !!(props.stepContext?.templateId && props.saveStepFieldTemplates),
-                onPersist: persistField,
                 allSteps: props.stepContext?.allSteps || [],
                 activeStepId: props.stepContext?.stepId || null,
                 onSelectStep: props.setSelectedStepId,
               };
               if (field.field_key === 'notes') {
                 return (
-                  <div key={field.field_key} className="min-w-0" data-notes-hub-props={JSON.stringify({ has: true })}>
+                  <div key={field.field_key} className="min-w-0">
                     <ActivityNotesField
                       value={value}
                       onChange={setter}
@@ -1195,7 +1181,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
               return (
                 <div key={field.field_key} className="min-w-0 flex flex-col">
                   <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{field.label}</span>
-                  <StepTemplatesHub {...hubProps} />
+                  <UserFieldTemplatesHub {...hubProps} />
                   <div className={cn('flex-1 min-h-0', expandedFieldKey === field.field_key ? 'hidden' : '')}>
                     <RichTextEditor
                       value={value}
