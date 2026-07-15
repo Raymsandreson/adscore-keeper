@@ -147,9 +147,9 @@ export function OverdueActivitiesToday() {
   }, [items, chatByActivity, todayStart]);
 
   const filtered = useMemo(() => {
-    if (author === 'all') return rows;
-    if (author === '__none__') return rows.filter((i) => !i.assigned_to_name);
-    return rows.filter((i) => i.assigned_to_name === author);
+    const q = author.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter((i) => (i.assigned_to_name || 'sem responsável').toLowerCase().includes(q));
   }, [rows, author]);
 
   // Agrupamento por responsável, maiores ofensores primeiro
