@@ -218,7 +218,7 @@ export function ActivityDocumentUpload({ context, onFields, activityId, leadId, 
 
       const raw = data.fields || {};
       const applied: ActivityCallFields = {};
-      const keys: (keyof ActivityCallFields)[] = ['what_was_done', 'current_status', 'next_steps', 'solicitacao', 'resposta_juizo', 'notes'];
+      const keys = ['what_was_done', 'current_status', 'next_steps', 'solicitacao', 'resposta_juizo', 'notes'] as const;
       for (const k of keys) {
         const v = raw[k];
         if (v && String(v).trim()) applied[k] = String(v).trim();
