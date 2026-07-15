@@ -1106,22 +1106,15 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
             {(() => {
               const notesField = props.fieldSettings?.find((f: any) => f.field_key === 'notes');
               if (!notesField) return null;
-              const stepVariations = props.stepContext?.messageTemplates?.['notes'] || [];
-              const persistNotes = async (next: TemplateVariation[]) => {
-                if (!props.saveStepFieldTemplates) return false;
-                return props.saveStepFieldTemplates('notes', next);
-              };
               return (
-                <StepTemplatesHub
+                <UserFieldTemplatesHub
+                  fieldKey="notes"
                   fieldLabel={notesField.label}
-                  variations={stepVariations}
                   currentValue={props.formNotes}
                   onApply={props.setFormNotes}
                   stepLabel={props.stepContext?.stepLabel || null}
                   phaseLabel={props.stepContext?.phaseLabel || null}
                   objectiveLabel={props.stepContext?.objectiveLabel || null}
-                  canPersist={!!(props.stepContext?.templateId && props.saveStepFieldTemplates)}
-                  onPersist={persistNotes}
                   allSteps={props.stepContext?.allSteps || []}
                   activeStepId={props.stepContext?.stepId || null}
                   onSelectStep={props.setSelectedStepId}
