@@ -29,11 +29,12 @@ interface Props {
  * para aquele field_key, e o mesmo conjunto aparece em toda atividade.
  */
 export function UserFieldTemplatesHub(props: Props) {
-  const { variations, persist, canPersist } = useUserFieldTemplates(props.fieldKey);
+  const { variations, defaults, persist, canPersist } = useUserFieldTemplates(props.fieldKey);
   return (
     <StepTemplatesHub
       fieldLabel={props.fieldLabel}
       variations={variations}
+      defaults={defaults}
       currentValue={props.currentValue}
       onApply={props.onApply}
       stepLabel={props.stepLabel || null}
