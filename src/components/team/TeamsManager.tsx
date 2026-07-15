@@ -37,7 +37,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { Plus, Users, Trash2, UserPlus, UserMinus, Loader2, Pencil, LayoutGrid, Settings2, ChevronDown, ChevronUp, Building2 } from 'lucide-react';
+import { Plus, Users, Trash2, UserPlus, UserMinus, Loader2, Pencil, LayoutGrid, Settings2, ChevronDown, ChevronUp } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useProfilesList } from '@/hooks/useProfilesList';
 import { useKanbanBoards } from '@/hooks/useKanbanBoards';
@@ -46,9 +46,6 @@ import { externalSupabase, ensureExternalSession } from '@/integrations/supabase
 import { TeamActivityTypesPicker } from './TeamActivityTypesPicker';
 import { TeamManagerPicker } from './TeamManagerPicker';
 import { DirectorPicker } from './DirectorPicker';
-import { SectorManager, type OrgSector } from './SectorManager';
-import { TeamSectorPicker } from './TeamSectorPicker';
-import { NucleoManager, type OrgNucleo } from './NucleoManager';
 import { useAuthContext } from '@/contexts/AuthContext';
 
 const ALL_METRICS = [
@@ -283,38 +280,21 @@ export function TeamsManager() {
   const [boardId, setBoardId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const [sectors, setSectors] = useState<OrgSector[]>([]);
-  const [nucleos, setNucleos] = useState<OrgNucleo[]>([]);
-  const [teamSectors, setTeamSectors] = useState<Record<string, string | null>>({});
   const [cargos, setCargos] = useState<Record<string, string>>({}); // `${team_name}|${user_id}` -> cargo
   const [inactiveIds, setInactiveIds] = useState<Set<string>>(new Set());
   const [syncing, setSyncing] = useState(false);
   const { user } = useAuthContext();
 
-  // Setores, núcleos, vínculo time→setor e cargos moram no Supabase Externo
+  // Cargos e status de acesso moram no Supabase Externo.
+  // Modelo plano: Diretoria → Time (sem núcleos/setores).
   const fetchOrg = useCallback(async () => {
     try {
       await ensureExternalSession();
-      const [{ data: secs }, { data: officialNuclei }, { data: nucleoMgrs }, { data: orgRows }, { data: cargoRows }, { data: statusRows }] = await Promise.all([
-        ((externalSupabase as any).from('org_sectors') as any).select('name, manager_user_id, manager_name, nucleo_name').order('name'),
-        // Núcleos oficiais vêm do Ecossistema (specialized_nuclei); org_nucleos guarda só o gerente
-        ((externalSupabase as any).from('specialized_nuclei') as any).select('name, is_active').eq('is_active', true).order('name'),
-        ((externalSupabase as any).from('org_nucleos') as any).select('name, manager_user_id, manager_name'),
-        ((externalSupabase as any).from('team_managers') as any).select('team_name, sector_name'),
+      const [{ data: cargoRows }, { data: statusRows }] = await Promise.all([
         ((externalSupabase as any).from('team_member_cargos') as any).select('team_name, user_id, cargo'),
         ((externalSupabase as any).from('org_user_status') as any).select('user_id, active'),
       ]);
       setInactiveIds(new Set(((statusRows as any[]) || []).filter(r => r.active === false).map(r => r.user_id)));
-      setSectors((secs as OrgSector[]) || []);
-      const mgrByName = new Map(((nucleoMgrs as any[]) || []).map(n => [n.name, n]));
-      setNucleos((((officialNuclei as any[]) || []).map(n => ({
-        name: n.name,
-        manager_user_id: mgrByName.get(n.name)?.manager_user_id || null,
-        manager_name: mgrByName.get(n.name)?.manager_name || null,
-      }))) as OrgNucleo[]);
-      const map: Record<string, string | null> = {};
-      ((orgRows as any[]) || []).forEach(r => { map[r.team_name] = r.sector_name || null; });
-      setTeamSectors(map);
       const cargoMap: Record<string, string> = {};
       ((cargoRows as any[]) || []).forEach(r => { if (r.cargo) cargoMap[`${r.team_name}|${r.user_id}`] = r.cargo; });
       setCargos(cargoMap);
@@ -648,14 +628,8 @@ export function TeamsManager() {
         </Dialog>
       </div>
 
-      {/* Diretoria — gere os gestores */}
+      {/* Diretoria — dá a direção aos gestores dos times */}
       <DirectorPicker people={people} />
-
-      {/* Núcleos — agrupam setores */}
-      <NucleoManager nucleos={nucleos} people={people} onChanged={fetchOrg} />
-
-      {/* Setores — agrupam os times */}
-      <SectorManager sectors={sectors} people={people} nucleos={nucleos} onChanged={fetchOrg} />
 
       <div className="flex justify-end">
         <Button variant="outline" size="sm" onClick={syncChatGroups} disabled={syncing}>
@@ -711,36 +685,8 @@ export function TeamsManager() {
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-6">
-          {[
-            ...[...sectors]
-              .sort((a, b) => (a.nucleo_name || '￿').localeCompare(b.nucleo_name || '￿') || a.name.localeCompare(b.name))
-              .map(s => ({
-                key: s.name,
-                title: s.nucleo_name ? `${s.nucleo_name} › ${s.name}` : s.name,
-                managerName: s.manager_name,
-                list: teams.filter(t => teamSectors[t.name] === s.name),
-              })),
-            {
-              key: '__sem_setor__',
-              title: sectors.length > 0 ? 'Sem setor' : null,
-              managerName: null as string | null,
-              list: teams.filter(t => !teamSectors[t.name] || !sectors.some(s => s.name === teamSectors[t.name])),
-            },
-          ].filter(g => g.list.length > 0).map(group => (
-            <div key={group.key}>
-              {group.title && (
-                <div className="flex items-center gap-2 mb-3">
-                  <Building2 className="h-4 w-4 text-primary" />
-                  <h4 className="text-sm font-semibold">{group.title}</h4>
-                  {group.managerName && (
-                    <Badge variant="outline" className="text-[10px]">Gerente: {group.managerName}</Badge>
-                  )}
-                  <Badge variant="secondary" className="text-[10px]">{group.list.length} time{group.list.length !== 1 ? 's' : ''}</Badge>
-                </div>
-              )}
-              <div className="grid gap-4 md:grid-cols-2">
-                {group.list.map(team => {
+        <div className="grid gap-4 md:grid-cols-2">
+          {teams.map(team => {
             const currentMembers = getTeamMembers(team.id);
             const available = getAvailableMembers(team.id);
             const boardName = getBoardName(team.board_id);
@@ -820,27 +766,15 @@ export function TeamsManager() {
                     />
                   )}
 
-                  {/* Setor do time */}
-                  <TeamSectorPicker
-                    teamId={team.id}
-                    teamName={team.name}
-                    sectors={sectors}
-                    currentSector={teamSectors[team.name] || null}
-                    onChanged={fetchOrg}
-                  />
-
-                  {/* Gestor do time — recebe o relatório diário */}
+                  {/* Gestor do time — recebe o relatório diário e a direção da diretoria */}
                   <TeamManagerPicker teamId={team.id} teamName={team.name} members={people} />
 
                   {/* Activity types exclusive to this team */}
                   <TeamActivityTypesPicker teamId={team.id} />
                 </CardContent>
               </Card>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
