@@ -11,75 +11,67 @@ import { toast } from 'sonner';
  * automaticamente. Assim que o usuário cria/edita o primeiro modelo próprio,
  * os padrões deixam de aparecer (a lista dele passa a mandar).
  */
+const p = (s: string) => `<p>${s}</p>`;
+
 const DEFAULT_FIELD_TEMPLATES: Record<string, TemplateVariation[]> = {
   current_status: [
     {
       id: 'default:current_status:1',
       name: 'Aguardando análise',
-      content:
-        'O pedido de {{titulo}} foi protocolado{{case_number ? " (Caso nº " + case_number + ")" : ""}}. No momento, está em análise pelo órgão responsável e seguimos monitorando o andamento.',
+      content: p('O pedido de {{titulo}} foi protocolado{{case_number ? " (Caso nº " + case_number + ")" : ""}}. No momento, está em análise pelo órgão responsável e seguimos monitorando o andamento.'),
     },
     {
       id: 'default:current_status:2',
       name: 'Em andamento no judiciário',
-      content:
-        'O processo{{process_number ? " nº " + process_number : ""}} está em curso. Estamos acompanhando cada movimentação e agiremos assim que houver decisão ou intimação.',
+      content: p('O processo{{process_number ? " nº " + process_number : ""}} está em curso. Estamos acompanhando cada movimentação e agiremos assim que houver decisão ou intimação.'),
     },
   ],
   what_was_done: [
     {
       id: 'default:what_was_done:1',
       name: 'Protocolo administrativo',
-      content:
-        'Realizamos o protocolo administrativo do pedido{{case_number ? " referente ao caso " + case_number : ""}} e anexamos toda a documentação necessária.',
+      content: p('Realizamos o protocolo administrativo do pedido{{case_number ? " referente ao caso " + case_number : ""}} e anexamos toda a documentação necessária.'),
     },
     {
       id: 'default:what_was_done:2',
       name: 'Petição enviada',
-      content:
-        'Peticionamento realizado no processo{{process_number ? " nº " + process_number : ""}}. Documento juntado aos autos com sucesso.',
+      content: p('Peticionamento realizado no processo{{process_number ? " nº " + process_number : ""}}. Documento juntado aos autos com sucesso.'),
     },
   ],
   next_steps: [
     {
       id: 'default:next_steps:1',
       name: 'Acompanhar movimentação',
-      content:
-        'Seguiremos acompanhando e monitorando o andamento do seu pedido, sempre atentos às novas movimentações. Retornaremos assim que houver novidade.',
+      content: p('Seguiremos acompanhando e monitorando o andamento do seu pedido, sempre atentos às novas movimentações. Retornaremos assim que houver novidade.'),
     },
     {
       id: 'default:next_steps:2',
       name: 'Aguardando prazo',
-      content:
-        'Aguardamos o cumprimento do prazo legal{{data_retorno ? " (retorno previsto para " + data_retorno + ")" : ""}}. Assim que houver resposta, entraremos em contato.',
+      content: p('Aguardamos o cumprimento do prazo legal{{data_retorno ? " (retorno previsto para " + data_retorno + ")" : ""}}. Assim que houver resposta, entraremos em contato.'),
     },
   ],
   solicitacao: [
     {
       id: 'default:solicitacao:1',
       name: 'Envio de documento',
-      content:
-        '{{saudacao}} Sr(a). {{lead_name}}, para dar andamento{{case_number ? " ao caso " + case_number : ""}} precisamos que envie o documento solicitado o quanto antes.',
+      content: p('{{saudacao}} Sr(a). {{lead_name}}, para dar andamento{{case_number ? " ao caso " + case_number : ""}} precisamos que envie o documento solicitado o quanto antes.'),
     },
     {
       id: 'default:solicitacao:2',
       name: 'Confirmação de dados',
-      content:
-        '{{saudacao}} Sr(a). {{lead_name}}, poderia confirmar os dados cadastrais para prosseguirmos com o pedido? É rápido e nos ajuda a evitar atrasos.',
+      content: p('{{saudacao}} Sr(a). {{lead_name}}, poderia confirmar os dados cadastrais para prosseguirmos com o pedido? É rápido e nos ajuda a evitar atrasos.'),
     },
   ],
   resposta_juizo: [
     {
       id: 'default:resposta_juizo:1',
       name: 'Decisão favorável',
-      content:
-        'O juízo proferiu decisão favorável no processo{{process_number ? " nº " + process_number : ""}}. Já estamos preparando os próximos passos para cumprimento.',
+      content: p('O juízo proferiu decisão favorável no processo{{process_number ? " nº " + process_number : ""}}. Já estamos preparando os próximos passos para cumprimento.'),
     },
     {
       id: 'default:resposta_juizo:2',
       name: 'Determinação de diligência',
-      content:
-        'O juízo determinou diligência complementar no processo{{process_number ? " nº " + process_number : ""}}. Vamos providenciar o cumprimento no prazo.',
+      content: p('O juízo determinou diligência complementar no processo{{process_number ? " nº " + process_number : ""}}. Vamos providenciar o cumprimento no prazo.'),
     },
   ],
 };
