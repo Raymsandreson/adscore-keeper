@@ -46,7 +46,7 @@ interface ActivityRow extends OverdueActivity {
   motivo: string | null;
 }
 
-const SEM_RESPONSAVEL = 'Sem responsável';
+
 
 export function OverdueActivitiesToday() {
   const navigate = useNavigate();
@@ -304,7 +304,7 @@ export function OverdueActivitiesToday() {
               <div key={g.name}>
                 <div className="sticky top-0 z-10 flex flex-wrap items-center gap-2 border-y bg-muted/80 px-3 py-1.5 backdrop-blur">
                   <UserRound className="h-3.5 w-3.5 text-muted-foreground" />
-                  <span className={cn('text-xs font-semibold', g.name === SEM_RESPONSAVEL && 'italic text-muted-foreground')}>
+                  <span className="text-xs font-semibold">
                     {g.name}
                   </span>
                   <span className="text-[10px] text-muted-foreground">
