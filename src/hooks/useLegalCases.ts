@@ -254,7 +254,7 @@ export function useLegalCases(leadId?: string) {
       // antes eram destruídos por ON DELETE CASCADE). Recuperável via deleted_at.
       const { error } = await externalSupabase
         .from('legal_cases')
-        .update({ deleted_at: new Date().toISOString() })
+        .update({ deleted_at: new Date().toISOString() } as any)
         .eq('id', id);
       if (error) throw error;
       setCases(prev => prev.filter(c => c.id !== id));
