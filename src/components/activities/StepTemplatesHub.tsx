@@ -173,6 +173,10 @@ export function StepTemplatesHub({
   const submitDraft = async () => {
     const content = draftContent.trim();
     if (!content) return;
+    if (!canPersist) {
+      toast.error('Vincule esta atividade a um lead/caso com passo do fluxo para salvar modelos.');
+      return;
+    }
     const name = draftName.trim() || `Modelo ${variations.length + 1}`;
     let next: TemplateVariation[];
     if (creating) {
@@ -182,13 +186,11 @@ export function StepTemplatesHub({
     } else {
       return;
     }
-    if (!canPersist) {
-      cancelDraft();
-      return;
-    }
     const ok = await onPersist(next);
     if (ok) {
       cancelDraft();
+    } else {
+      toast.error('Não foi possível salvar o modelo.');
     }
   };
 
