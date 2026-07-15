@@ -16,6 +16,12 @@ import {
 import { Input } from '@/components/ui/input';
 import { RichTextEditor } from '@/components/ui/RichTextEditor';
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -208,21 +214,39 @@ export function StepTemplatesHub({
   return (
     <>
       <div className="flex items-center gap-1 mt-0.5 mb-1 flex-wrap">
-        {/* Atalhos: clique aplica o modelo direto no campo */}
-        {variations.map((v, i) => (
-          <Button
-            key={v.id || i}
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-6 text-[10px] gap-1 px-2 border-blue-200 dark:border-blue-900 bg-blue-50/50 dark:bg-blue-950/20 hover:bg-blue-100 dark:hover:bg-blue-950/40 text-blue-700 dark:text-blue-300 max-w-[200px]"
-            onClick={() => handlePick(v)}
-            title={stripHtml(v.content).slice(0, 300)}
-          >
-            <Sparkles className="h-2.5 w-2.5 shrink-0" />
-            <span className="truncate">{v.name || `Modelo ${i + 1}`}</span>
-          </Button>
-        ))}
+        {/* Dropdown único: nenhum modelo pré-selecionado; abre lista para escolher */}
+        {variations.length > 0 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-6 text-[10px] gap-1 px-2 border-blue-200 dark:border-blue-900 bg-blue-50/50 dark:bg-blue-950/20 hover:bg-blue-100 dark:hover:bg-blue-950/40 text-blue-700 dark:text-blue-300"
+                title="Escolher um modelo para aplicar"
+              >
+                <Sparkles className="h-2.5 w-2.5 shrink-0" />
+                <span>Modelos ({variations.length})</span>
+                <ChevronDown className="h-2.5 w-2.5 opacity-70" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="max-w-xs">
+              {variations.map((v, i) => (
+                <DropdownMenuItem
+                  key={v.id || i}
+                  onSelect={(e) => { e.preventDefault(); handlePick(v); }}
+                  className="flex flex-col items-start gap-0.5 py-2"
+                >
+                  <div className="text-xs font-medium truncate w-full">{v.name || `Modelo ${i + 1}`}</div>
+                  <div className="text-[10px] text-muted-foreground line-clamp-2 whitespace-normal">
+                    {stripHtml(v.content).slice(0, 120)}{stripHtml(v.content).length > 120 ? '…' : ''}
+                  </div>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+
         <Sheet open={open} onOpenChange={setOpen}>
           <SheetTrigger asChild>
             <Button
