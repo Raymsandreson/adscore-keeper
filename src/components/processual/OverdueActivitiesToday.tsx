@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { useProfilesList } from '@/hooks/useProfilesList';
+import { filterAssignableMembers } from '@/lib/assigneeBlocklist';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -108,15 +109,13 @@ export function OverdueActivitiesToday() {
 
   const authors = useMemo(() => {
     const set = new Set<string>();
-    // Todos os perfis do time (Cloud)
-    profiles.forEach((p) => {
+    // Mesma lista da tela de Atividades: perfis do Cloud filtrados pelo blocklist de assessores.
+    filterAssignableMembers(profiles).forEach((p) => {
       const name = p.full_name?.trim() || p.email?.split('@')[0]?.trim();
       if (name) set.add(name);
     });
-    // Também inclui nomes que aparecem nas atividades (dados legados / externos)
-    items.forEach((i) => { if (i.assigned_to_name) set.add(i.assigned_to_name); });
     return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
-  }, [items, profiles]);
+  }, [profiles]);
 
   // Última mensagem de hoje por atividade (a query já vem ordenada desc)
   const chatByActivity = useMemo(() => {
