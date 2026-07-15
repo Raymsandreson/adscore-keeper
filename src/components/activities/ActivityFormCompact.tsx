@@ -801,15 +801,12 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
           <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Assessor *</span>
           {(() => {
             const coAssignees = props.formCoAssignees || [];
-            const observers = props.formObservers || [];
             const isCo = (id: string) => coAssignees.some(c => c.user_id === id);
-            const isObserver = (id: string) => observers.some(o => o.user_id === id);
             // Selecionados sobem pro topo (principal primeiro, depois co-responsáveis
-            // e observadores na ordem de escolha); o resto segue em ordem alfabética.
+            // na ordem de escolha); o resto segue em ordem alfabética.
             const selectedRank = new Map<string, number>();
             if (props.formAssignedTo) selectedRank.set(props.formAssignedTo, 0);
             coAssignees.forEach((c, i) => selectedRank.set(c.user_id, i + 1));
-            observers.forEach((o, i) => selectedRank.set(o.user_id, 100 + i));
             const assignable = filterAssignableMembers(props.teamMembers)
               .slice().sort((a, b) => {
                 const ra = selectedRank.get(a.user_id);
@@ -823,7 +820,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
               });
             const selected = assignable.find(m => m.user_id === props.formAssignedTo);
             const triggerLabel = selected
-              ? `${selected.full_name || 'Sem nome'}${coAssignees.length > 0 ? ` +${coAssignees.length}` : ''}${observers.length > 0 ? ` · 👁${observers.length}` : ''}`
+              ? `${selected.full_name || 'Sem nome'}${coAssignees.length > 0 ? ` +${coAssignees.length}` : ''}`
               : '—';
             return (
               <Popover>
@@ -856,35 +853,16 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
                           >
                             <Check className={cn("mr-2 h-3 w-3 shrink-0", (props.formAssignedTo === m.user_id || isCo(m.user_id)) ? "opacity-100" : "opacity-0")} />
                             <span className="truncate">{m.full_name || 'Sem nome'}</span>
-                            <span className="ml-auto flex items-center gap-1 shrink-0">
-                              {props.formAssignedTo === m.user_id && (
-                                <span className="text-[9px] uppercase tracking-wider text-primary">Principal</span>
-                              )}
-                              {isObserver(m.user_id) && (
-                                <span className="text-[9px] uppercase tracking-wider text-amber-600 dark:text-amber-400">Observador</span>
-                              )}
-                              {props.onToggleObserver && (
-                                <button
-                                  type="button"
-                                  title={isObserver(m.user_id) ? 'Remover observador' : 'Marcar como observador (acompanha e recebe o feedback, sem ser cobrado)'}
-                                  className={cn(
-                                    "rounded p-0.5 hover:bg-accent-foreground/10",
-                                    isObserver(m.user_id) ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground/50"
-                                  )}
-                                  onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); props.onToggleObserver?.(m.user_id); }}
-                                >
-                                  <Eye className="h-3.5 w-3.5" />
-                                </button>
-                              )}
-                            </span>
+                            {props.formAssignedTo === m.user_id && (
+                              <span className="ml-auto text-[9px] uppercase tracking-wider text-primary shrink-0">Principal</span>
+                            )}
                           </CommandItem>
                         ))}
                       </CommandGroup>
                     </CommandList>
                     <p className="text-[10px] text-muted-foreground px-2 py-1.5 border-t">
-                      Clique no nome = responsável (1º é o principal; cada responsável recebe a própria atividade).
-                      Clique no 👁 = observador (acompanha e recebe o feedback). Quem cria observa automaticamente.
+                      Clique para adicionar/remover responsáveis. O 1º é o principal;
+                      cada responsável recebe a própria atividade.
                     </p>
                   </Command>
                 </PopoverContent>
@@ -952,6 +930,91 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
             <p className="text-[10px] text-destructive mt-0.5">Selecione um fluxo de trabalho para continuar</p>
           )}
         </div>
+
+        {/* Observadores — acompanham a atividade e recebem os popups (feedback, mudança
+            de situação, reagendamento), sem serem cobrados. Campo próprio, separado dos
+            responsáveis. Quem cria a atividade entra como observador automaticamente. */}
+        {props.onToggleObserver && (
+          <div className="col-span-full">
+            <span className="text-[10px] text-muted-foreground uppercase tracking-wider inline-flex items-center gap-1">
+              <Eye className="h-3 w-3" /> Observadores
+            </span>
+            {(() => {
+              const observers = props.formObservers || [];
+              const isObserver = (id: string) => observers.some(o => o.user_id === id);
+              const obsRank = new Map<string, number>();
+              observers.forEach((o, i) => obsRank.set(o.user_id, i));
+              // Não deixa marcar como observador quem já é responsável (papéis exclusivos).
+              const isResponsible = (id: string) =>
+                props.formAssignedTo === id || (props.formCoAssignees || []).some(c => c.user_id === id);
+              const selectable = filterAssignableMembers(props.teamMembers)
+                .slice().sort((a, b) => {
+                  const ra = obsRank.get(a.user_id);
+                  const rb = obsRank.get(b.user_id);
+                  if (ra !== undefined || rb !== undefined) {
+                    if (ra === undefined) return 1;
+                    if (rb === undefined) return -1;
+                    return ra - rb;
+                  }
+                  return (a.full_name || '').localeCompare(b.full_name || '', 'pt-BR', { sensitivity: 'base' });
+                });
+              const triggerLabel = observers.length === 0
+                ? 'Ninguém (só quem criar acompanha)'
+                : observers.map(o => o.full_name).filter(Boolean).join(', ');
+              return (
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      role="combobox"
+                      className="h-8 mt-0.5 w-full justify-between text-xs font-normal px-2"
+                      title={observers.length > 0 ? triggerLabel : undefined}
+                    >
+                      <span className={cn("truncate", observers.length === 0 && "text-muted-foreground")}>
+                        {observers.length > 0 ? `${observers.length} observador(es): ${triggerLabel}` : triggerLabel}
+                      </span>
+                      <ChevronDown className="h-3 w-3 opacity-50 shrink-0 ml-1" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="p-0 w-[280px]" align="start">
+                    <Command>
+                      <CommandInput placeholder="Buscar membro..." className="h-8 text-xs" />
+                      <CommandList>
+                        <CommandEmpty className="text-xs py-4 text-center">Nenhum encontrado</CommandEmpty>
+                        <CommandGroup>
+                          {selectable.map(m => {
+                            const responsible = isResponsible(m.user_id);
+                            return (
+                              <CommandItem
+                                key={m.user_id}
+                                value={`${m.full_name || 'Sem nome'} ${m.user_id}`}
+                                disabled={responsible}
+                                onSelect={() => { if (!responsible) props.onToggleObserver?.(m.user_id); }}
+                                className={cn("text-xs", responsible && "opacity-40")}
+                              >
+                                <Check className={cn("mr-2 h-3 w-3 shrink-0", isObserver(m.user_id) ? "opacity-100" : "opacity-0")} />
+                                <span className="truncate">{m.full_name || 'Sem nome'}</span>
+                                {responsible && (
+                                  <span className="ml-auto text-[9px] uppercase tracking-wider text-primary shrink-0">Responsável</span>
+                                )}
+                              </CommandItem>
+                            );
+                          })}
+                        </CommandGroup>
+                      </CommandList>
+                      <p className="text-[10px] text-muted-foreground px-2 py-1.5 border-t">
+                        Observadores recebem os avisos (feedback, situação, reagendamento) sem
+                        serem cobrados. Quem cria a atividade já observa automaticamente.
+                      </p>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+              );
+            })()}
+          </div>
+        )}
+
         <div>
           <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Situação</span>
           <Select value={props.formStatus} onValueChange={props.setFormStatus}>
