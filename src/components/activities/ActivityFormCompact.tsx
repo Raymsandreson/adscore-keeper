@@ -28,6 +28,7 @@ import type { ActivityStepContext } from '@/hooks/useActivityStepContext';
 import type { TemplateVariation } from '@/hooks/useChecklists';
 import { cn } from '@/lib/utils';
 import { isInstanceDisconnectedError, showInstanceDisconnectedToast } from '@/lib/whatsappReconnectEvent';
+import { sendVoiceToWa } from '@/lib/whatsappVoiceSend';
 import { getMyAllowedInstanceIds } from '@/integrations/supabase/permissions';
 import { useUserRole } from '@/hooks/useUserRole';
 import { useAuthContext } from '@/contexts/AuthContext';
@@ -174,7 +175,6 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
   const [selectedInstanceId, setSelectedInstanceId] = useState<string>('');
   // Gravação de ligação anexada à atividade (para enviar junto, se o usuário quiser).
   const [recordingUrl, setRecordingUrl] = useState<string | null>(null);
-  const [recordingMime, setRecordingMime] = useState<string>('audio/webm');
   const [includeRecording, setIncludeRecording] = useState(false);
   // Preview editável + escolha de destino
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -211,9 +211,8 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
         .order('created_at', { ascending: false })
         .limit(1);
       if (cancelled) return;
-      const rec = (data || [])[0] as { file_url?: string; file_type?: string } | undefined;
+      const rec = (data || [])[0] as { file_url?: string } | undefined;
       setRecordingUrl(rec?.file_url || null);
-      setRecordingMime(rec?.file_type || 'audio/webm');
       if (!rec) setIncludeRecording(false);
     })();
     return () => { cancelled = true; };
@@ -221,17 +220,11 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
 
   const sendRecording = async (phone: string, chatId?: string, instanceId?: string) => {
     if (!recordingUrl) return;
-    const body: Record<string, any> = {
-      action: 'send_media',
-      phone,
-      chat_id: chatId || phone,
-      media_url: recordingUrl,
-      media_type: recordingMime || 'audio/webm',
-      lead_id: leadId || null,
-    };
-    if (instanceId) body.instance_id = instanceId;
+    // Envia como nota de voz (PTT): transcodifica pra ogg/opus e marca ptt/is_voice.
+    // Sem isso a UazAPI manda como type 'audio' de webm cru e o WhatsApp iOS não abre
+    // ("áudio não está mais disponível"). Mesmo pipeline do menu do WhatsApp.
     try {
-      await cloudFunctions.invoke('send-whatsapp', { body });
+      await sendVoiceToWa(recordingUrl, chatId || phone, leadId || null, instanceId || null);
     } catch (e) {
       console.error('Erro ao enviar gravação:', e);
       toast.error('Texto enviado, mas falhou ao enviar a gravação.');

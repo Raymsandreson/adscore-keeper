@@ -8,11 +8,14 @@ import { cloudFunctions } from '@/lib/functionRouter';
  * @param audioUrl URL pública do áudio original (webm/mp4 do MediaRecorder).
  * @param target JID de grupo OU número de telefone/E.164.
  * @param leadId Lead vinculado (para atribuição no chat).
+ * @param instanceIdOverride Instância a usar. Quando informada, pula a leitura do
+ *   default_instance_id do profile (o chamador já escolheu a instância).
  */
 export async function sendVoiceToWa(
   audioUrl: string,
   target: string,
   leadId?: string | null,
+  instanceIdOverride?: string | null,
 ): Promise<void> {
   let mediaUrl = audioUrl;
   let mediaType = 'audio/ogg';
@@ -32,20 +35,22 @@ export async function sendVoiceToWa(
     console.warn('[sendVoiceToWa] transcode exceção, enviando original:', txe);
   }
 
-  // 2) Descobre instância default do usuário logado.
-  let instanceId: string | undefined;
-  try {
-    const { data: { user: authUser } } = await supabase.auth.getUser();
-    if (authUser) {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('default_instance_id')
-        .eq('user_id', authUser.id)
-        .maybeSingle();
-      instanceId = (profile as any)?.default_instance_id || undefined;
+  // 2) Descobre instância: usa o override do chamador, ou o default do profile.
+  let instanceId: string | undefined = instanceIdOverride || undefined;
+  if (!instanceId) {
+    try {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (authUser) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('default_instance_id')
+          .eq('user_id', authUser.id)
+          .maybeSingle();
+        instanceId = (profile as any)?.default_instance_id || undefined;
+      }
+    } catch (e) {
+      console.warn('[sendVoiceToWa] falha lendo profile:', e);
     }
-  } catch (e) {
-    console.warn('[sendVoiceToWa] falha lendo profile:', e);
   }
 
   // 3) Envia via edge send-whatsapp como PTT.
