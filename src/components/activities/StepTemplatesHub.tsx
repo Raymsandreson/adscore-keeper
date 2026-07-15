@@ -45,6 +45,7 @@ interface StepOption {
 interface Props {
   fieldLabel: string;
   variations: TemplateVariation[];
+  defaults?: TemplateVariation[];
   currentValue: string;
   onApply: (content: string) => void;
   // Contexto do passo (para confirmação de vínculo)
