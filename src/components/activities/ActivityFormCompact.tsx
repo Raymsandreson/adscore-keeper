@@ -789,22 +789,6 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
                   <Settings2 className="h-3 w-3" /> Interna{props.formIsSystem ? ' ✓' : ''}
                 </Button>
               )}
-              {props.setFormIsManagement && (
-                <Button
-                  type="button"
-                  variant={props.formIsManagement ? 'default' : 'outline'}
-                  size="sm"
-                  className="h-6 px-2 text-[10px] gap-1"
-                  onClick={() => {
-                    const next = !props.formIsManagement;
-                    props.setFormIsManagement?.(next);
-                    if (next) props.setFormIsSystem?.(false);
-                  }}
-                  title={props.formIsManagement ? 'Desmarcar atividade de gerenciamento' : 'Marcar como atividade de gerenciamento (sem vínculo obrigatório)'}
-                >
-                  <Settings2 className="h-3 w-3" /> Gerenciamento{props.formIsManagement ? ' ✓' : ''}
-                </Button>
-              )}
             </>
           )}
           {!props.formIsSystem && !props.formIsManagement && (
