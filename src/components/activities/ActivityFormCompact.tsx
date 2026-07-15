@@ -22,7 +22,6 @@ import { ActivityTTSButton } from '@/components/voice/ActivityTTSButton';
 import { ActivityFieldSettingsDialog } from '@/components/activities/ActivityFieldSettingsDialog';
 import { ActivityMessageTemplateSettings } from '@/components/activities/ActivityMessageTemplateSettings';
 import { ActivityNotesField, type Attachment } from '@/components/activities/ActivityNotesField';
-import { StepTemplatesHub } from '@/components/activities/StepTemplatesHub';
 import { UserFieldTemplatesHub } from '@/components/activities/UserFieldTemplatesHub';
 import { StepChecklistButton } from '@/components/activities/StepChecklistButton';
 import type { ActivityStepContext } from '@/hooks/useActivityStepContext';
