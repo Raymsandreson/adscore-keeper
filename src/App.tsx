@@ -192,6 +192,7 @@ const RecoverPhone55Page = lazyRetry(() => import("./pages/RecoverPhone55Page"),
 const DocumentReviewPage = lazyRetry(() => import("./pages/DocumentReviewPage"), "DocumentReviewPage");
 const AvaliacaoPage = lazyRetry(() => import("./pages/AvaliacaoPage"), "AvaliacaoPage");
 const LeadsMapPage = lazyRetry(() => import("./pages/LeadsMapPage"), "LeadsMapPage");
+const AcolhimentoPage = lazyRetry(() => import("./pages/AcolhimentoPage"), "AcolhimentoPage");
 
 
 const queryClient = new QueryClient({
