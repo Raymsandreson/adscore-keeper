@@ -2192,8 +2192,11 @@ const ActivitiesPage = () => {
       return `${format(d, 'dd/MM/yyyy')} ${dias[d.getDay()]}`;
     })() : '';
     const valueMap: Record<string, string> = { what_was_done: stripHtml(formWhatWasDone), current_status: stripHtml(formCurrentStatus), next_steps: stripHtml(formNextSteps), solicitacao: stripHtml(formSolicitacao), resposta_juizo: stripHtml(formRespostaJuizo), notes: stripHtml(formNotes) };
+    // Campos que NUNCA vão pra mensagem copiada/enviada, mesmo que o usuário marque include_in_message.
+    // resposta_juizo é conteúdo interno (uso da equipe), não deve ir pro cliente.
+    const EXCLUDED_FROM_MESSAGE = new Set(['resposta_juizo']);
     const fieldLines = fieldSettings
-      .filter(f => f.include_in_message)
+      .filter(f => f.include_in_message && !EXCLUDED_FROM_MESSAGE.has(f.field_key))
       .map(f => ({ label: f.label, value: (valueMap[f.field_key] || '').trim() }))
       .filter(({ value }) => value.length > 0)
       .map(({ label, value }) => `*${label}:* ${value}`)
