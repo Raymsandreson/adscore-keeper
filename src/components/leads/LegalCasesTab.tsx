@@ -660,7 +660,6 @@ function CaseCard({ legalCase, boards, expanded, onToggle, onEdit, onStatusChang
           process={editingProcess}
           onUpdated={() => fetchProcesses()}
           mode="sheet"
-          defaultTab="atividades"
         />
       )}
 
