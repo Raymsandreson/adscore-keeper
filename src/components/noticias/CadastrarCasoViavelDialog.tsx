@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { externalSupabase, ensureExternalSession } from "@/integrations/supabase/external-client";
 import { cloudFunctions } from "@/lib/functionRouter";
 import { useAuth } from "@/hooks/useAuth";
@@ -14,7 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Loader2, Sparkles, CheckCircle2, Users, Link2 } from "lucide-react";
+import { Loader2, Sparkles, CheckCircle2, Users, Link2, WifiOff, RefreshCw } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import type { Lead } from "@/hooks/useLeads";
@@ -250,10 +250,11 @@ const ALLOWED_ACOLHEDOR_IDS = [
 // criador/dono/admin. Sem isso, o edge escolhe "a primeira conectada" do board
 // (query sem ORDER BY) → autor aleatório. IDs conferidos em whatsapp_instances.
 const GROUP_AUTHOR_OPTIONS = [
-  { label: 'Analyne', instanceId: 'b9ced9ee-4469-4dc9-a7a0-3c0cbdb43508' }, // Analyne Oliveira
+  { label: 'Analyne Sousa de Oliveira', instanceId: 'b9ced9ee-4469-4dc9-a7a0-3c0cbdb43508' }, // Analyne Oliveira
   { label: 'João Manoel', instanceId: '259203a6-d8e7-4638-b700-0a1eb1d29db9' }, // João Manoel- Acolhedor
   { label: 'Mateus', instanceId: 'f939bac7-bb57-47de-8620-8c6790643ae0' }, // Mateus Atendimento
   { label: 'Raym', instanceId: '35eefdd1-c554-4883-a7c8-93149723d61c' }, // Raym / Dr. Prudêncio
+  { label: 'Juliana Clara Santos Pimentel', instanceId: '3a282d27-625d-4b3b-bf51-ddde7dd43063' }, // Juliana Pimentel
 ];
 const DEFAULT_GROUP_AUTHOR_INSTANCE_ID = 'b9ced9ee-4469-4dc9-a7a0-3c0cbdb43508'; // Analyne
 
@@ -282,6 +283,33 @@ export function CadastrarCasoViavelDialog({ lead, open, onOpenChange, saveLead, 
   const [groupNameInput, setGroupNameInput] = useState('');
   const groupNameTouched = useRef(false);
   const [authorInstanceId, setAuthorInstanceId] = useState(DEFAULT_GROUP_AUTHOR_INSTANCE_ID);
+  // Status de conexão das instâncias (para bloquear autor offline antes de criar o grupo).
+  const [connList, setConnList] = useState<Array<{ id: string; instance_name: string; connected: boolean }>>([]);
+  const [connLoading, setConnLoading] = useState(false);
+  const [showCreatorPicker, setShowCreatorPicker] = useState(false);
+  const connMap = useMemo(() => {
+    const m: Record<string, boolean> = {};
+    for (const r of connList) m[r.id] = r.connected;
+    return m;
+  }, [connList]);
+
+  // Consulta o status de conexão (WhatsApp) de todas as instâncias via edge
+  // check-whatsapp-status → [{ id, instance_name, connected, status_raw }].
+  const fetchConnStatus = useCallback(async () => {
+    setConnLoading(true);
+    try {
+      const { data, error } = await cloudFunctions.invoke('check-whatsapp-status');
+      if (error) throw error;
+      const rows = (Array.isArray(data) ? data : []) as Array<{ id: string; instance_name: string; connected: boolean }>;
+      setConnList(rows);
+      return rows;
+    } catch (e) {
+      console.warn('[CadastrarCasoViavel] falha ao checar conexão das instâncias', e);
+      return [] as Array<{ id: string; instance_name: string; connected: boolean }>;
+    } finally {
+      setConnLoading(false);
+    }
+  }, []);
 
   const set = (patch: Partial<CasoForm>) => setForm((prev) => {
     const next = { ...prev, ...patch };
@@ -296,6 +324,8 @@ export function CadastrarCasoViavelDialog({ lead, open, onOpenChange, saveLead, 
     titleTouched.current = false;
     groupNameTouched.current = false;
     setAuthorInstanceId(DEFAULT_GROUP_AUTHOR_INSTANCE_ID);
+    setShowCreatorPicker(false);
+    fetchConnStatus();
     setNewsText('');
     setNewsUrl(String((lead as any).news_link || (lead as any).news_links?.[0] || ''));
     setGroupLink(String((lead as any).group_link || ''));
@@ -439,6 +469,23 @@ export function CadastrarCasoViavelDialog({ lead, open, onOpenChange, saveLead, 
       });
       return;
     }
+
+    // Guard de conexão: se a instância-autor escolhida estiver offline, abre o
+    // seletor de outra instância criadora antes de qualquer escrita. Status
+    // desconhecido (fetch falhou) → segue e deixa o backend resolver/enfileirar.
+    let rows = connList;
+    if (!rows.length) rows = await fetchConnStatus();
+    const selected = rows.find((r) => r.id === authorInstanceId);
+    if (selected && !selected.connected) {
+      setShowCreatorPicker(true);
+      return;
+    }
+
+    await proceedRegister(authorInstanceId);
+  };
+
+  const proceedRegister = async (creatorInstanceId: string) => {
+    if (!lead) return;
     setRegistering(true);
     setSteps({ save: 'running', group: 'idle', link: 'idle' });
 
@@ -532,7 +579,7 @@ export function CadastrarCasoViavelDialog({ lead, open, onOpenChange, saveLead, 
           creation_origin: 'noticia_viavel',
           phase: 'open',
           // Fixa o criador/dono do grupo escolhido no dropdown (evita autor aleatório).
-          ...(authorInstanceId ? { creator_instance_id: authorInstanceId } : {}),
+          ...(creatorInstanceId ? { creator_instance_id: creatorInstanceId } : {}),
           ...(resolvedSeq > 0 ? { forced_sequence: resolvedSeq } : {}),
           ...(groupNameInput.trim() ? { group_name_override: groupNameInput.trim() } : {}),
         },
@@ -607,7 +654,14 @@ export function CadastrarCasoViavelDialog({ lead, open, onOpenChange, saveLead, 
     </Badge>
   );
 
+  const selectedAuthorLabel =
+    GROUP_AUTHOR_OPTIONS.find((a) => a.instanceId === authorInstanceId)?.label ||
+    connList.find((r) => r.id === authorInstanceId)?.instance_name ||
+    'Instância selecionada';
+  const connectedInstances = connList.filter((r) => r.connected);
+
   return (
+    <>
     <Dialog open={open} onOpenChange={(v) => !registering && onOpenChange(v)}>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
@@ -684,11 +738,29 @@ export function CadastrarCasoViavelDialog({ lead, open, onOpenChange, saveLead, 
             <Select value={authorInstanceId} onValueChange={setAuthorInstanceId}>
               <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
               <SelectContent>
-                {GROUP_AUTHOR_OPTIONS.map((a) => (
-                  <SelectItem key={a.instanceId} value={a.instanceId}>{a.label}</SelectItem>
-                ))}
+                {GROUP_AUTHOR_OPTIONS.map((a) => {
+                  const conn = connMap[a.instanceId];
+                  return (
+                    <SelectItem key={a.instanceId} value={a.instanceId}>
+                      <span className="flex items-center gap-2">
+                        <span
+                          className={`h-2 w-2 rounded-full shrink-0 ${
+                            conn === true ? 'bg-emerald-500' : conn === false ? 'bg-red-500' : 'bg-muted-foreground/40'
+                          }`}
+                          title={conn === true ? 'Conectada' : conn === false ? 'Desconectada' : 'Status desconhecido'}
+                        />
+                        {a.label}
+                      </span>
+                    </SelectItem>
+                  );
+                })}
               </SelectContent>
             </Select>
+            {connMap[authorInstanceId] === false && (
+              <p className="text-xs text-red-600 mt-1">
+                Instância desconectada — ao cadastrar você escolhe outra criadora do grupo.
+              </p>
+            )}
           </div>
           <div>
             <Label>Acolhedor</Label>
@@ -848,5 +920,63 @@ export function CadastrarCasoViavelDialog({ lead, open, onOpenChange, saveLead, 
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    {/* Seletor de instância criadora — abre quando o autor escolhido está offline */}
+    <Dialog open={showCreatorPicker} onOpenChange={(v) => !registering && setShowCreatorPicker(v)}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <WifiOff className="h-5 w-5 text-red-500" />
+            Instância criadora offline
+          </DialogTitle>
+          <DialogDescription>
+            <span className="font-medium">{selectedAuthorLabel}</span> está desconectada e não pode
+            criar o grupo. Escolha outra instância conectada para ser a criadora/dona do grupo.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-muted-foreground">
+            {connLoading ? 'Verificando conexões...' : `${connectedInstances.length} instância(s) conectada(s)`}
+          </span>
+          <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs" onClick={() => fetchConnStatus()} disabled={connLoading}>
+            <RefreshCw className={`h-3 w-3 ${connLoading ? 'animate-spin' : ''}`} /> Atualizar
+          </Button>
+        </div>
+
+        <div className="space-y-1 max-h-[50vh] overflow-y-auto">
+          {connectedInstances.map((r) => (
+            <button
+              key={r.id}
+              type="button"
+              disabled={registering}
+              onClick={() => { setAuthorInstanceId(r.id); setShowCreatorPicker(false); proceedRegister(r.id); }}
+              className="w-full flex items-center gap-2 rounded-md border px-3 py-2 text-left text-sm hover:bg-muted disabled:opacity-60"
+            >
+              <span className="h-2 w-2 rounded-full bg-emerald-500 shrink-0" />
+              {r.instance_name}
+            </button>
+          ))}
+          {connectedInstances.length === 0 && !connLoading && (
+            <p className="text-sm text-muted-foreground">
+              Nenhuma instância conectada no momento. Ao cadastrar mesmo assim, o grupo entra na fila
+              e é criado automaticamente quando uma instância reconectar.
+            </p>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setShowCreatorPicker(false)} disabled={registering}>Cancelar</Button>
+          <Button
+            variant="secondary"
+            disabled={registering}
+            onClick={() => { setShowCreatorPicker(false); proceedRegister(authorInstanceId); }}
+          >
+            Cadastrar mesmo assim (fila)
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
