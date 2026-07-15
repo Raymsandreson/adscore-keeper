@@ -78,7 +78,7 @@ export function OverdueActivitiesToday() {
           .neq('status', 'concluida')
           .not('deadline', 'is', null)
           .lt('deadline', todayStart.toISOString())
-          .order('deadline', { ascending: true })
+          .order('deadline', { ascending: false })
           .range(from, from + PAGE - 1);
         const chunk = (data || []) as OverdueActivity[];
         all.push(...chunk);
