@@ -185,7 +185,7 @@ function MentionsPlugin({ options }: { options: { id: string; name: string }[] }
   );
 
   return (
-    <LexicalTypeaheadMenuPlugin<MentionMenuOption>
+    <LexicalTypeaheadMenuPlugin
       onQueryChange={setQuery}
       onSelectOption={onSelectOption}
       triggerFn={triggerFn}
