@@ -149,10 +149,17 @@ export function OverdueActivitiesToday() {
   }, [items, chatByActivity, todayStart]);
 
   const filtered = useMemo(() => {
-    const q = author.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter((i) => (i.assigned_to_name || 'sem responsável').toLowerCase().includes(q));
-  }, [rows, author]);
+    if (!selectedAuthor) return rows;
+    if (selectedAuthor === SEM_RESPONSAVEL) return rows.filter((i) => !i.assigned_to_name);
+    return rows.filter((i) => i.assigned_to_name === selectedAuthor);
+  }, [rows, selectedAuthor]);
+
+  const authorOptions = useMemo(() => {
+    const q = authorQuery.trim().toLowerCase();
+    const base = [SEM_RESPONSAVEL, ...authors];
+    if (!q) return base;
+    return base.filter((n) => n.toLowerCase().includes(q));
+  }, [authors, authorQuery]);
 
   // Agrupamento por responsável, maiores ofensores primeiro
   const groups = useMemo(() => {
