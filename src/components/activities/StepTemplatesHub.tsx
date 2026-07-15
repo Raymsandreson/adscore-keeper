@@ -173,6 +173,10 @@ export function StepTemplatesHub({
   const submitDraft = async () => {
     const content = draftContent.trim();
     if (!content) return;
+    if (!canPersist) {
+      toast.error('Vincule esta atividade a um lead/caso com passo do fluxo para salvar modelos.');
+      return;
+    }
     const name = draftName.trim() || `Modelo ${variations.length + 1}`;
     let next: TemplateVariation[];
     if (creating) {
@@ -182,13 +186,11 @@ export function StepTemplatesHub({
     } else {
       return;
     }
-    if (!canPersist) {
-      cancelDraft();
-      return;
-    }
     const ok = await onPersist(next);
     if (ok) {
       cancelDraft();
+    } else {
+      toast.error('Não foi possível salvar o modelo.');
     }
   };
 
@@ -253,13 +255,20 @@ export function StepTemplatesHub({
                       variant="ghost"
                       className="h-7 text-[11px] gap-1 text-blue-600 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/30"
                       onClick={generateWithAI}
-                      disabled={aiLoading}
-                      title="Gerar sugestão de modelo com IA baseado na fase, objetivo e passo"
+                      disabled={aiLoading || !canPersist}
+                      title={canPersist ? 'Gerar sugestão de modelo com IA baseado na fase, objetivo e passo' : 'Vincule a atividade a um passo do fluxo para criar modelos'}
                     >
                       {aiLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wand2 className="h-3 w-3" />}
                       Sugerir com IA
                     </Button>
-                    <Button size="sm" variant="ghost" className="h-7 text-[11px] gap-1" onClick={startCreate}>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 text-[11px] gap-1"
+                      onClick={startCreate}
+                      disabled={!canPersist}
+                      title={canPersist ? 'Criar novo modelo' : 'Vincule a atividade a um passo do fluxo para criar modelos'}
+                    >
                       <Plus className="h-3 w-3" /> Novo
                     </Button>
                   </div>
@@ -365,9 +374,13 @@ export function StepTemplatesHub({
                 </div>
               ) : variations.length === 0 ? (
                 <div className="p-6 text-center text-xs text-muted-foreground">
-                  Nenhum modelo cadastrado para este passo.<br />
-                  Clique em <strong>Novo</strong> para criar.
+                  {canPersist ? (
+                    <>Nenhum modelo cadastrado para este passo.<br />Clique em <strong>Novo</strong> para criar.</>
+                  ) : (
+                    <>Modelos são salvos por <strong>passo do fluxo</strong>.<br />Vincule esta atividade a um lead/caso com passo do funil para criar modelos.</>
+                  )}
                 </div>
+
               ) : (
                 <ul className="divide-y">
                   {variations.map((v, i) => (
