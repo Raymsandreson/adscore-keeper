@@ -121,6 +121,7 @@ export default function CasesPage() {
         let q = externalSupabase
           .from('legal_cases')
           .select('*, specialized_nuclei(name, prefix, color), leads(lead_name)')
+          .is('deleted_at', null)
           .order('created_at', { ascending: false });
         if (statusFilter !== 'all') q = q.eq('status', statusFilter);
         if (nucleusFilter !== 'all') q = q.eq('nucleus_id', nucleusFilter);
@@ -166,6 +167,7 @@ export default function CasesPage() {
           .from('legal_cases')
           .select('*, specialized_nuclei(name, prefix, color), leads!inner(lead_name)')
           .ilike('leads.lead_name', `%${safeFilter(q)}%`)
+          .is('deleted_at', null)
           .limit(500);
         const extra = (leadMatches || []).map((c: any) => ({
           ...c,
@@ -368,7 +370,7 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
     if (!expanded) return;
     setLoadingDetails(true);
     Promise.all([
-      externalSupabase.from('lead_processes').select('*').eq('case_id', legalCase.id).order('created_at'),
+      externalSupabase.from('lead_processes').select('*').eq('case_id', legalCase.id).is('deleted_at', null).order('created_at'),
       legalCase.lead_id
         ? externalSupabase.from('leads').select('id, lead_name, lead_phone, status, board_id, became_client_date').eq('id', legalCase.lead_id).maybeSingle()
         : Promise.resolve({ data: null, error: null }),
@@ -589,7 +591,8 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
   const handleDelete = async () => {
     if (!confirm('Tem certeza que deseja excluir este caso?')) return;
     try {
-      const { error } = await externalSupabase.from('legal_cases').delete().eq('id', legalCase.id);
+      // Soft-delete: não destrói processos/movimentações do caso (antes o CASCADE apagava tudo).
+      const { error } = await externalSupabase.from('legal_cases').update({ deleted_at: new Date().toISOString() }).eq('id', legalCase.id);
       if (error) throw error;
       toast.success('Caso excluído');
       onCaseUpdated();
@@ -734,7 +737,7 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
                           onClick={async (e) => {
                             e.stopPropagation();
                             if (!confirm(`Excluir o processo "${p.title}"?`)) return;
-                            await externalSupabase.from('lead_processes').delete().eq('id', p.id);
+                            await externalSupabase.from('lead_processes').update({ deleted_at: new Date().toISOString() }).eq('id', p.id);
                             toast.success('Processo excluído');
                             loadDetails();
                           }}

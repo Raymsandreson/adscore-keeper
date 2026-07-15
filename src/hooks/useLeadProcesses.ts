@@ -53,6 +53,7 @@ export function useLeadProcesses(caseId?: string) {
         .from('lead_processes')
         .select('*')
         .eq('case_id', targetId)
+        .is('deleted_at', null)
         .order('created_at', { ascending: false });
       if (error) throw error;
       setProcesses((data || []) as LeadProcess[]);
@@ -103,9 +104,10 @@ export function useLeadProcesses(caseId?: string) {
 
   const deleteProcess = useCallback(async (id: string) => {
     try {
+      // Soft-delete (antes era DELETE físico, irreversível).
       const { error } = await externalSupabase
         .from('lead_processes')
-        .delete()
+        .update({ deleted_at: new Date().toISOString() })
         .eq('id', id);
       if (error) throw error;
       setProcesses(prev => prev.filter(p => p.id !== id));
