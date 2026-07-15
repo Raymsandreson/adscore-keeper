@@ -1013,8 +1013,9 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
 
       {/* Matriz Eisenhower e Nome do cliente removidos do form — cliente vive no cabeçalho */}
 
-      {/* Feedback da atv — retorno do responsável; observadores recebem popup ao salvar */}
-      {props.setFormFeedback && (
+      {/* Feedback da atv — só em atividade INTERNA (demanda de membro para membro).
+          Retorno do responsável; observadores recebem popup ao salvar. */}
+      {props.setFormFeedback && props.formIsSystem && (
         <div>
           <span className="text-[10px] text-muted-foreground uppercase tracking-wider">💬 Feedback da atv</span>
           <Textarea
