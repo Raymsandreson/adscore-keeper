@@ -2192,8 +2192,11 @@ const ActivitiesPage = () => {
       return `${format(d, 'dd/MM/yyyy')} ${dias[d.getDay()]}`;
     })() : '';
     const valueMap: Record<string, string> = { what_was_done: stripHtml(formWhatWasDone), current_status: stripHtml(formCurrentStatus), next_steps: stripHtml(formNextSteps), solicitacao: stripHtml(formSolicitacao), resposta_juizo: stripHtml(formRespostaJuizo), notes: stripHtml(formNotes) };
+    // Campos que NUNCA vão pra mensagem copiada/enviada, mesmo que o usuário marque include_in_message.
+    // resposta_juizo é conteúdo interno (uso da equipe), não deve ir pro cliente.
+    const EXCLUDED_FROM_MESSAGE = new Set(['resposta_juizo']);
     const fieldLines = fieldSettings
-      .filter(f => f.include_in_message)
+      .filter(f => f.include_in_message && !EXCLUDED_FROM_MESSAGE.has(f.field_key))
       .map(f => ({ label: f.label, value: (valueMap[f.field_key] || '').trim() }))
       .filter(({ value }) => value.length > 0)
       .map(({ label, value }) => `*${label}:* ${value}`)
@@ -2244,11 +2247,13 @@ const ActivitiesPage = () => {
 
     // Nome exibido na saudação ao CLIENTE: só o PRIMEIRO NOME da parte cliente.
     // Prioridade: override manual > 1ª parte do polo do cliente > nome do lead.
-    const clientDisplayName = formClientNameOverride
-      ? extractClientFirstName(formClientNameOverride)
-      : processClientNames.length > 0
-        ? extractClientFirstName(processClientNames[0])
-        : extractClientFirstName(formLeadName || '');
+    // NUNCA cai no nome do assessor — se nada retornar, deixa vazio e a saudação
+    // renderiza sem nome (evita o bug de "Bom dia, Dr(a). <nome do acolhedor>").
+    const rawClientCandidate = formClientNameOverride
+      || (processClientNames.length > 0 ? processClientNames[0] : '')
+      || formLeadName
+      || '';
+    const clientDisplayName = extractClientFirstName(rawClientCandidate);
 
     // Workflow do processo (etapa / objetivo / passo atual) — vem do checklist do lead (stepContext).
     const wfPhase = stepContext?.phaseLabel || '';
@@ -2453,12 +2458,18 @@ const ActivitiesPage = () => {
         result = lines.join('\n');
       }
 
-      // Templates antigos escondiam a data quando o responsável estava vazio.
-      // Se o modelo tentou usar data_retorno, garante que o cliente veja a data.
-      if (returnDateLine && template.includes('data_retorno') && !result.includes(notifDate)) {
+      // Linha de retorno ("Dr. X voltará com mais informações no dia Y…"):
+      // se há data de notificação, garante que ela apareça sempre — mesmo que o
+      // template salvo não referencie {{linha_retorno}} nem {{data_retorno}}.
+      // Injeta antes de "Estamos à disposição" (ou da assinatura, se não houver).
+      if (returnDateLine && !result.includes(notifDate)) {
         const lines = result.split('\n');
-        const beforeSupportLine = lines.findIndex(line => line.includes('Estamos à disposição'));
-        if (beforeSupportLine >= 0) lines.splice(beforeSupportLine, 0, '', returnDateLine);
+        const anchorIdx = lines.findIndex(line =>
+          line.includes('Estamos à disposição') ||
+          line.includes('Com carinho') ||
+          line.includes('Digite 1'),
+        );
+        if (anchorIdx >= 0) lines.splice(anchorIdx, 0, '', returnDateLine, '');
         else lines.push('', returnDateLine);
         result = lines.join('\n');
       }
