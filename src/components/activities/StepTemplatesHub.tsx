@@ -255,13 +255,20 @@ export function StepTemplatesHub({
                       variant="ghost"
                       className="h-7 text-[11px] gap-1 text-blue-600 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/30"
                       onClick={generateWithAI}
-                      disabled={aiLoading}
-                      title="Gerar sugestão de modelo com IA baseado na fase, objetivo e passo"
+                      disabled={aiLoading || !canPersist}
+                      title={canPersist ? 'Gerar sugestão de modelo com IA baseado na fase, objetivo e passo' : 'Vincule a atividade a um passo do fluxo para criar modelos'}
                     >
                       {aiLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wand2 className="h-3 w-3" />}
                       Sugerir com IA
                     </Button>
-                    <Button size="sm" variant="ghost" className="h-7 text-[11px] gap-1" onClick={startCreate}>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 text-[11px] gap-1"
+                      onClick={startCreate}
+                      disabled={!canPersist}
+                      title={canPersist ? 'Criar novo modelo' : 'Vincule a atividade a um passo do fluxo para criar modelos'}
+                    >
                       <Plus className="h-3 w-3" /> Novo
                     </Button>
                   </div>
