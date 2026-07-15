@@ -107,7 +107,7 @@ export function useLeadProcesses(caseId?: string) {
       // Soft-delete (antes era DELETE físico, irreversível).
       const { error } = await externalSupabase
         .from('lead_processes')
-        .update({ deleted_at: new Date().toISOString() })
+        .update({ deleted_at: new Date().toISOString() } as any)
         .eq('id', id);
       if (error) throw error;
       setProcesses(prev => prev.filter(p => p.id !== id));

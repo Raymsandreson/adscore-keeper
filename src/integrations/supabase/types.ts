@@ -5204,7 +5204,6 @@ export type Database = {
           data_inicio: string | null
           data_ultima_movimentacao: string | null
           data_ultima_verificacao: string | null
-          deleted_at: string | null
           description: string | null
           envolvidos: Json | null
           escavador_raw: Json | null
@@ -5269,7 +5268,6 @@ export type Database = {
           data_inicio?: string | null
           data_ultima_movimentacao?: string | null
           data_ultima_verificacao?: string | null
-          deleted_at?: string | null
           description?: string | null
           envolvidos?: Json | null
           escavador_raw?: Json | null
@@ -5334,7 +5332,6 @@ export type Database = {
           data_inicio?: string | null
           data_ultima_movimentacao?: string | null
           data_ultima_verificacao?: string | null
-          deleted_at?: string | null
           description?: string | null
           envolvidos?: Json | null
           escavador_raw?: Json | null
@@ -5842,7 +5839,6 @@ export type Database = {
           closed_at: string | null
           created_at: string
           created_by: string | null
-          deleted_at: string | null
           description: string | null
           id: string
           lead_id: string | null
@@ -5865,7 +5861,6 @@ export type Database = {
           closed_at?: string | null
           created_at?: string
           created_by?: string | null
-          deleted_at?: string | null
           description?: string | null
           id?: string
           lead_id?: string | null
@@ -5888,7 +5883,6 @@ export type Database = {
           closed_at?: string | null
           created_at?: string
           created_by?: string | null
-          deleted_at?: string | null
           description?: string | null
           id?: string
           lead_id?: string | null

@@ -192,6 +192,7 @@ const RecoverPhone55Page = lazyRetry(() => import("./pages/RecoverPhone55Page"),
 const DocumentReviewPage = lazyRetry(() => import("./pages/DocumentReviewPage"), "DocumentReviewPage");
 const AvaliacaoPage = lazyRetry(() => import("./pages/AvaliacaoPage"), "AvaliacaoPage");
 const LeadsMapPage = lazyRetry(() => import("./pages/LeadsMapPage"), "LeadsMapPage");
+const AcolhimentoPage = lazyRetry(() => import("./pages/AcolhimentoPage"), "AcolhimentoPage");
 
 
 const queryClient = new QueryClient({
@@ -306,6 +307,7 @@ function SidebarLayout() {
                 <Route path="/index" element={<Navigate to="/dashboard" replace />} />
                 <Route path="/dashboard" element={<Index />} />
                 <Route path="/leads" element={<ProtectedRoute><LeadsCenter /></ProtectedRoute>} />
+                <Route path="/acolhimento" element={<ProtectedRoute><AcolhimentoPage /></ProtectedRoute>} />
                 <Route path="/noticias" element={<ProtectedRoute><NoticiasPage /></ProtectedRoute>} />
                 <Route path="/mapa-leads" element={<ProtectedRoute><LeadsMapPage /></ProtectedRoute>} />
                 <Route path="/analytics" element={<ProtectedRoute><AnalyticsPage /></ProtectedRoute>} />

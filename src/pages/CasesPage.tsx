@@ -592,7 +592,7 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
     if (!confirm('Tem certeza que deseja excluir este caso?')) return;
     try {
       // Soft-delete: não destrói processos/movimentações do caso (antes o CASCADE apagava tudo).
-      const { error } = await externalSupabase.from('legal_cases').update({ deleted_at: new Date().toISOString() }).eq('id', legalCase.id);
+      const { error } = await externalSupabase.from('legal_cases').update({ deleted_at: new Date().toISOString() } as any).eq('id', legalCase.id);
       if (error) throw error;
       toast.success('Caso excluído');
       onCaseUpdated();
@@ -737,7 +737,7 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
                           onClick={async (e) => {
                             e.stopPropagation();
                             if (!confirm(`Excluir o processo "${p.title}"?`)) return;
-                            await externalSupabase.from('lead_processes').update({ deleted_at: new Date().toISOString() }).eq('id', p.id);
+                            await externalSupabase.from('lead_processes').update({ deleted_at: new Date().toISOString() } as any).eq('id', p.id);
                             toast.success('Processo excluído');
                             loadDetails();
                           }}

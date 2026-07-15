@@ -111,7 +111,7 @@ export default function ProcessesPage() {
     e.stopPropagation();
     const label = p.process_number || p.title || 'este processo';
     if (!window.confirm(`Excluir "${label}"?\n\nEsta ação remove o processo do caso.`)) return;
-    const { error } = await externalSupabase.from('lead_processes').update({ deleted_at: new Date().toISOString() }).eq('id', p.id);
+    const { error } = await externalSupabase.from('lead_processes').update({ deleted_at: new Date().toISOString() } as any).eq('id', p.id);
     if (error) {
       toast.error('Erro ao excluir: ' + error.message);
       return;
