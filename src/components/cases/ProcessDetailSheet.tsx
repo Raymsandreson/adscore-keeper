@@ -16,9 +16,11 @@ import { toast } from 'sonner';
 import {
   FileText, MapPin, Building2, Scale, Users, Calendar, ExternalLink,
   Hash, Info, BookOpen, Landmark, Save, Loader2, Pencil, RefreshCw, ClipboardList, CheckCircle2, Clock,
-  Download, Upload, File, Trash2, FolderOpen, Milestone, Newspaper
+  Download, Upload, File, Trash2, FolderOpen, Milestone, Newspaper, MessagesSquare, Plus
 } from 'lucide-react';
 import { ProcessMovimentacoesTab } from './ProcessMovimentacoesTab';
+import { TeamChatPanel } from '@/components/chat/TeamChatPanel';
+import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { LeadFunnelProgressBar } from '@/components/activities/LeadFunnelProgressBar';
 import { ResponsibleUserSelect } from './ResponsibleUserSelect';
@@ -116,7 +118,8 @@ const TABS = [
   { id: 'datas', label: 'Datas', icon: Calendar },
   { id: 'marcos', label: 'Marcos', icon: Milestone },
   { id: 'movimentacoes', label: 'Movimentações', icon: Newspaper },
-  { id: 'atividades', label: 'Histórico', icon: ClipboardList },
+  { id: 'atividades', label: 'Atividades', icon: ClipboardList },
+  { id: 'chat', label: 'Chat interno', icon: MessagesSquare },
   { id: 'config', label: 'Config', icon: Info },
   { id: 'notas', label: 'Notas', icon: FileText },
   { id: 'envolvidos', label: 'Envolvidos', icon: Users },
@@ -189,6 +192,9 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
   const [marcosRefreshKey, setMarcosRefreshKey] = useState(0);
   const [activities, setActivities] = useState<ProcessActivity[]>([]);
   const [loadingActivities, setLoadingActivities] = useState(false);
+  const [newActTitle, setNewActTitle] = useState('');
+  const [newActDeadline, setNewActDeadline] = useState('');
+  const [creatingAct, setCreatingAct] = useState(false);
   const [documents, setDocuments] = useState<ProcessDocument[]>([]);
   const [loadingDocuments, setLoadingDocuments] = useState(false);
   const [fetchingEscavadorDocs, setFetchingEscavadorDocs] = useState(false);
@@ -239,6 +245,61 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
       fetchActivities();
     }
   }, [activeTab, fetchActivities]);
+
+  const createActivity = async () => {
+    const title = newActTitle.trim();
+    if (!title || !process?.id) return;
+    setCreatingAct(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const extUserId = await remapToExternal(user?.id);
+      const { data: prof } = await supabase.from('profiles').select('full_name').eq('user_id', user?.id).maybeSingle();
+      const name = prof?.full_name || user?.email || null;
+      const { error } = await externalSupabase.from('lead_activities').insert({
+        lead_id: process.lead_id || null,
+        case_id: process.case_id || null,
+        process_id: process.id,
+        process_title: form.title || null,
+        lead_name: form.title || form.process_number || null,
+        title,
+        activity_type: 'tarefa',
+        status: 'pendente',
+        priority: 'normal',
+        assigned_to: extUserId,
+        assigned_to_name: name,
+        created_by: extUserId,
+        deadline: newActDeadline || null,
+      } as any);
+      if (error) throw error;
+      toast.success('Atividade criada');
+      setNewActTitle('');
+      setNewActDeadline('');
+      fetchActivities();
+    } catch (err: any) {
+      console.error('Error creating process activity:', err);
+      toast.error('Erro ao criar atividade: ' + (err.message || ''));
+    } finally {
+      setCreatingAct(false);
+    }
+  };
+
+  const completeActivity = async (id: string) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const extUserId = await remapToExternal(user?.id);
+      const { error } = await externalSupabase.from('lead_activities').update({
+        status: 'concluida',
+        completed_at: new Date().toISOString(),
+        completed_by: extUserId,
+      } as any).eq('id', id);
+      if (error) throw error;
+      toast.success('Atividade concluída');
+      fetchActivities();
+    } catch (err: any) {
+      console.error('Error completing process activity:', err);
+      toast.error('Erro ao concluir atividade: ' + (err.message || ''));
+    }
+  };
 
   // case_type do lead vinculado — refina as estações previstas na aba Marcos.
   const [leadCaseType, setLeadCaseType] = useState<string | null>(null);
@@ -945,6 +1006,28 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
 
             {activeTab === 'atividades' && (
               <div className="space-y-2">
+                {/* Criar atividade vinculada ao processo */}
+                <div className="flex items-end gap-2 border rounded-lg p-2 bg-muted/20">
+                  <div className="flex-1 space-y-1">
+                    <Label className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Nova atividade</Label>
+                    <Input
+                      value={newActTitle}
+                      onChange={e => setNewActTitle(e.target.value)}
+                      placeholder="Ex: Protocolar recurso"
+                      className="h-8 text-xs"
+                      onKeyDown={e => { if (e.key === 'Enter') createActivity(); }}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Prazo</Label>
+                    <Input type="date" value={newActDeadline} onChange={e => setNewActDeadline(e.target.value)} className="h-8 text-xs w-[130px]" />
+                  </div>
+                  <Button size="sm" className="h-8 text-xs gap-1" onClick={createActivity} disabled={creatingAct || !newActTitle.trim()}>
+                    {creatingAct ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
+                    Criar
+                  </Button>
+                </div>
+
                 {loadingActivities ? (
                   <div className="text-center py-6 text-muted-foreground text-xs">
                     <Loader2 className="h-4 w-4 animate-spin mx-auto mb-1" />
@@ -981,7 +1064,19 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
                             {isDone ? <CheckCircle2 className="h-3.5 w-3.5 text-muted-foreground" /> : <Clock className="h-3.5 w-3.5 text-primary" />}
                             <span className="text-xs font-medium">{act.title}</span>
                           </div>
-                          <Badge className={`text-[9px] ${statusColor}`}>{statusLabel}</Badge>
+                          <div className="flex items-center gap-1.5 shrink-0" onClick={e => e.stopPropagation()}>
+                            {!isDone && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-6 text-[10px] px-1.5 gap-1 text-green-600 hover:text-green-700"
+                                onClick={() => completeActivity(act.id)}
+                              >
+                                <CheckCircle2 className="h-3 w-3" /> Concluir
+                              </Button>
+                            )}
+                            <Badge className={`text-[9px] ${statusColor}`}>{statusLabel}</Badge>
+                          </div>
                         </div>
                         {act.description && <p className="text-[10px] text-muted-foreground pl-5">{act.description}</p>}
                         {duration && <p className="text-[10px] text-muted-foreground pl-5">Tempo: {duration}</p>}
@@ -995,6 +1090,22 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
                     );
                   })
                 )}
+              </div>
+            )}
+
+            {activeTab === 'chat' && process?.id && (
+              <div className="h-[60vh] min-h-[360px] -mx-4 -mb-6 border-t flex flex-col">
+                <div className="px-1 py-2 text-[10px] text-muted-foreground flex items-center gap-1.5 shrink-0">
+                  <MessagesSquare className="h-3 w-3" />
+                  Conversa interna da equipe sobre este processo. Use @nome para mencionar (notifica no WhatsApp).
+                </div>
+                <div className="flex-1 min-h-0">
+                  <TeamChatPanel
+                    entityType="process"
+                    entityId={process.id}
+                    entityName={form.process_number || form.title || 'Processo'}
+                  />
+                </div>
               </div>
             )}
 
