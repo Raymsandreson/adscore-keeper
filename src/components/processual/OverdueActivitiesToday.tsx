@@ -54,7 +54,9 @@ export function OverdueActivitiesToday() {
   const [items, setItems] = useState<OverdueActivity[]>([]);
   const [chatToday, setChatToday] = useState<TodayChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
-  const [author, setAuthor] = useState<string>('');
+  const [authorQuery, setAuthorQuery] = useState<string>('');
+  const [selectedAuthor, setSelectedAuthor] = useState<string>('');
+  const [dropdownOpen, setDropdownOpen] = useState(false);
   // Linhas visíveis por grupo — dados vêm completos, mas grupos gigantes ("Sem responsável"
   // passa de 5 mil) não podem ir todos pro DOM de uma vez.
   const GROUP_BATCH = 30;
