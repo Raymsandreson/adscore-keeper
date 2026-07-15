@@ -48,6 +48,7 @@ import {
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { ShareMenu } from '@/components/ShareMenu';
 import { WorkflowTimer } from '@/components/instagram/WorkflowTimer';
+import { useActivityTimer } from '@/contexts/ActivityTimerContext';
 import { ActivityChatSheet } from '@/components/activities/ActivityChatSheet';
 import { ActivityDetailPanel } from '@/components/activities/ActivityDetailPanel';
 import { LeadFunnelProgressBar } from '@/components/activities/LeadFunnelProgressBar';
@@ -206,6 +207,7 @@ const ActivitiesPage = () => {
   const celebrationInitRef = useRef(false);
   useEffect(() => { celebrationInitRef.current = true; }, []);
   const { activities, loading, fetchActivities: _fetchActivities, createActivity, updateActivity, completeActivity, deleteActivity } = useLeadActivities();
+  const { startTimer: startActivityTimer, pauseAndClose: pauseActivityTimer, stopTimerFor: stopActivityTimerFor } = useActivityTimer();
   const refreshCountsRef = useRef<(() => Promise<void>) | null>(null);
   const fetchActivities = useCallback(async (params?: Parameters<typeof _fetchActivities>[0]) => {
     await _fetchActivities(params);
@@ -984,6 +986,15 @@ const ActivitiesPage = () => {
   };
 
   const handleOpenEdit = async (activity: LeadActivity) => {
+    // Cronômetro / banco de horas: auto-start ao abrir a atividade
+    if (activity.status !== 'concluida') {
+      startActivityTimer({
+        id: activity.id,
+        activity_type: activity.activity_type,
+        title: activity.title,
+        lead_name: activity.lead_name,
+      });
+    }
     // Set all form state synchronously first (instant UI)
     setSelectedActivity(activity);
     setSelectedActivityId(activity.id);
@@ -1064,6 +1075,9 @@ const ActivitiesPage = () => {
 
   // Restore selected activity after activities load (persist across browser tab switches)
   useEffect(() => {
+    // Se há um ?openActivity= na URL, ele tem precedência: não restaura o
+    // último selecionado (localStorage) por cima, senão abre a atividade errada.
+    if (searchParams.get('openActivity')) return;
     if (selectedActivityId && activities.length > 0 && !selectedActivity) {
       const activity = activities.find(a => a.id === selectedActivityId);
       if (activity) {
@@ -1207,6 +1221,7 @@ const ActivitiesPage = () => {
       return;
     }
     await completeActivity(id);
+    await stopActivityTimerFor(id); // concluir encerra o cronômetro da atv
     fetchActivities(getFilterParams());
     toast.success('Atividade concluída! 🎉', {
       description: randomChurchillQuote(),
@@ -1288,6 +1303,7 @@ const ActivitiesPage = () => {
 
       // Conclude the current activity without overwriting its existing data
       await completeActivity(currentActivity.id);
+      await stopActivityTimerFor(currentActivity.id); // concluir encerra o cronômetro
       toast.success('Atividade concluída! 🎉', {
         description: randomChurchillQuote(),
         duration: 6000,
@@ -1440,6 +1456,13 @@ const ActivitiesPage = () => {
   };
 
   const loadActivityIntoForm = async (activity: LeadActivity) => {
+    // Cronômetro / banco de horas: cada atv do workflow gera sua sessão
+    startActivityTimer({
+      id: activity.id,
+      activity_type: activity.activity_type,
+      title: activity.title,
+      lead_name: activity.lead_name,
+    });
     setSelectedActivity(activity);
     setFormTitle(activity.title);
     setFormWhatWasDone(activity.what_was_done || '');
@@ -1555,6 +1578,7 @@ const ActivitiesPage = () => {
   };
 
   const exitWorkflow = () => {
+    pauseActivityTimer(); // salva o tempo da última atv do workflow
     setWorkflowMode(false);
     setWorkflowFinished(false);
     setWorkflowQueue([]);

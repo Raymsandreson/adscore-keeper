@@ -3,17 +3,20 @@ import { externalSupabase } from '@/integrations/supabase/external-client';
 import { remapToCloud } from '@/integrations/supabase/uuid-remap';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
-import { Save, Loader2, CheckCircle2, Trash2, ExternalLink, X } from 'lucide-react';
+import { Save, Loader2, CheckCircle2, Trash2, ExternalLink, X, Plus, Building2, Briefcase, UserPlus, FileText } from 'lucide-react';
 import { ActivityFormCompact } from '@/components/activities/ActivityFormCompact';
+import { LeadFunnelProgressBar } from '@/components/activities/LeadFunnelProgressBar';
 import { useActivityTypes } from '@/hooks/useActivityTypes';
 import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { useProfilesList } from '@/hooks/useProfilesList';
 import { useActivityFieldSettings } from '@/hooks/useActivityFieldSettings';
 import { useActivityStepContext } from '@/hooks/useActivityStepContext';
 import { useLeadActivities, type LeadActivity } from '@/hooks/useLeadActivities';
+import { useActivityTimer } from '@/contexts/ActivityTimerContext';
 
 interface ActivityFullSheetProps {
   open: boolean;
@@ -76,7 +79,9 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
   const [leadCases, setLeadCases] = useState<CaseRow[]>([]);
   const [caseProcesses, setCaseProcesses] = useState<ProcessRow[]>([]);
   const [availableContacts, setAvailableContacts] = useState<{ id: string; full_name: string }[]>([]);
-  const [boardId, setBoardId] = useState<string | null>(null);
+  const [availableCases, setAvailableCases] = useState<{ id: string; case_number: string; title: string; lead_id: string | null }[]>([]);
+  const [leadPreview, setLeadPreview] = useState<{ board_id: string | null; lead_status: string | null } | null>(null);
+  const [searchedLeads, setSearchedLeads] = useState<{ id: string; lead_name: string | null }[]>([]);
   const [leadSearch, setLeadSearch] = useState('');
   const [contactSearch, setContactSearch] = useState('');
   const [caseSearch, setCaseSearch] = useState('');
@@ -87,12 +92,15 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
   const profiles = useProfilesList();
   const { fields: fieldSettings, updateField: updateFieldSetting, reorderFields } = useActivityFieldSettings();
   const { updateActivity, completeActivity, deleteActivity } = useLeadActivities();
-  const { stepContext, saveStepFieldTemplates, selectedStepId, setSelectedStepId } = useActivityStepContext(formLeadId || null, boardId);
+  const { startTimer, requestLeave, pauseAndClose } = useActivityTimer();
+
+  // Board dos "Modelos do passo"/checklist: workflow do processo tem prioridade; senão funil do lead
+  const linkedProcess = formProcessId ? caseProcesses.find(p => p.id === formProcessId) : null;
+  const stepBoardId = linkedProcess?.workflow_id || leadPreview?.board_id || null;
+  const { stepContext, saveStepFieldTemplates, selectedStepId, setSelectedStepId } = useActivityStepContext(formLeadId || null, stepBoardId);
 
   const routineActivityTypes = activityTypes.map(t => ({ value: t.key, label: t.label }));
   const teamMembers = profiles.map(p => ({ user_id: p.user_id, full_name: p.full_name }));
-  const leadOptions = formLeadId ? [{ id: formLeadId, lead_name: formLeadName }] : [];
-  const availableCases = leadCases.map(c => ({ ...c, lead_id: formLeadId || null }));
 
   const loadContactsForLead = useCallback(async (lid: string) => {
     try {
@@ -108,10 +116,34 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     } catch { /* mantém contatos atuais */ }
   }, []);
 
-  const loadBoardId = useCallback(async (lid: string) => {
-    const { data } = await externalSupabase.from('leads').select('board_id').eq('id', lid).maybeSingle();
-    setBoardId(data?.board_id || null);
+  const loadLeadPreview = useCallback(async (lid: string) => {
+    const { data } = await externalSupabase.from('leads').select('board_id, lead_status').eq('id', lid).maybeSingle();
+    setLeadPreview(data ? { board_id: data.board_id, lead_status: data.lead_status } : null);
   }, []);
+
+  // Busca de leads para o sheet "Vincular Lead" (mesma lógica da ActivitiesPage)
+  useEffect(() => {
+    if (!open) return;
+    const timer = setTimeout(async () => {
+      const term = leadSearch.trim();
+      let query = externalSupabase.from('leads').select('id, lead_name').order('lead_name').limit(20);
+      if (term) query = query.ilike('lead_name', `%${term}%`);
+      const { data } = await query;
+      setSearchedLeads(data || []);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [leadSearch, open]);
+
+  // Lista global de casos para o sheet "Vincular Caso"
+  useEffect(() => {
+    if (!open) return;
+    externalSupabase
+      .from('legal_cases')
+      .select('id, case_number, title, lead_id')
+      .order('created_at', { ascending: false })
+      .limit(500)
+      .then(({ data }) => setAvailableCases(data || []));
+  }, [open]);
 
   const fetchActivity = useCallback(async () => {
     if (!activityId) return;
@@ -164,7 +196,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     if (lid) {
       externalSupabase.from('legal_cases').select('id, case_number, title').eq('lead_id', lid).then(({ data }) => setLeadCases((data as CaseRow[]) || []));
       loadContactsForLead(lid);
-      loadBoardId(lid);
+      loadLeadPreview(lid);
     }
     if (act.case_id) {
       externalSupabase
@@ -173,12 +205,28 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
         .eq('case_id', act.case_id)
         .then(({ data }) => setCaseProcesses((data as ProcessRow[]) || []));
     }
-  }, [activityId, leadId, leadName, loadContactsForLead, loadBoardId]);
+  }, [activityId, leadId, leadName, loadContactsForLead, loadLeadPreview]);
 
   useEffect(() => {
     if (open && activityId) fetchActivity();
-    if (!open) { setSelectedActivity(null); setCaseProcesses([]); }
+    if (!open) { setSelectedActivity(null); setCaseProcesses([]); setLeadPreview(null); }
   }, [open, activityId, fetchActivity]);
+
+  // Cronômetro: auto-start ao abrir a atividade (banco de horas)
+  useEffect(() => {
+    if (open && selectedActivity?.id && selectedActivity.status !== 'concluida') {
+      startTimer({
+        id: selectedActivity.id,
+        activity_type: selectedActivity.activity_type,
+        title: selectedActivity.title,
+        lead_name: selectedActivity.lead_name,
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, selectedActivity?.id]);
+
+  // Fechar o sheet → pergunta continuar/pausar (não finaliza sozinho)
+  const handleClose = () => { requestLeave(); onOpenChange(false); };
 
   // ---- Handlers passados ao ActivityFormCompact ----
   const handleTitleChange = (v: string) => setFormTitle(v);
@@ -192,9 +240,13 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     setFormAssignedToName(member?.full_name || '');
   };
   const handleSelectLead = async (lid: string) => {
-    const opt = leadOptions.find(l => l.id === lid);
+    let name = searchedLeads.find(l => l.id === lid)?.lead_name || '';
+    if (!name) {
+      const { data } = await externalSupabase.from('leads').select('lead_name').eq('id', lid).maybeSingle();
+      name = data?.lead_name || '';
+    }
     setFormLeadId(lid);
-    setFormLeadName(opt?.lead_name || '');
+    setFormLeadName(name);
     setFormClientNameOverride('');
     setFormContactId(''); setFormContactName(''); setContactSearch('');
     setFormCaseId(''); setFormCaseTitle('');
@@ -203,7 +255,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     const { data } = await externalSupabase.from('legal_cases').select('id, case_number, title').eq('lead_id', lid);
     setLeadCases((data as CaseRow[]) || []);
     loadContactsForLead(lid);
-    loadBoardId(lid);
+    loadLeadPreview(lid);
   };
   const handleClearLead = async () => {
     setFormLeadId(''); setFormLeadName(''); setFormClientNameOverride('');
@@ -256,12 +308,13 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     await updateActivity(activityId, buildPayload() as Partial<LeadActivity>);
     setSaving(false);
     onUpdated?.();
-    onOpenChange(false);
+    handleClose();
   };
 
   const handleComplete = async () => {
     if (!activityId) return;
     await completeActivity(activityId);
+    await pauseAndClose(); // atividade concluída → salva o tempo e encerra o cronômetro
     onUpdated?.();
     onOpenChange(false);
   };
@@ -269,6 +322,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
   const handleDelete = async () => {
     if (!activityId) return;
     await deleteActivity(activityId);
+    await pauseAndClose(); // atividade excluída → salva o tempo já cronometrado
     onUpdated?.();
     onOpenChange(false);
   };
@@ -278,7 +332,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
   };
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <Sheet open={open} onOpenChange={(o) => { if (!o) handleClose(); else onOpenChange(o); }}>
       <SheetContent className="w-full sm:max-w-2xl flex flex-col p-0">
         <SheetHeader className="px-4 pt-4 pb-2 shrink-0 border-b">
           <div className="flex items-center justify-between gap-2">
@@ -290,7 +344,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => onOpenChange(false)}
+                onClick={handleClose}
                 className="h-8 w-8 shrink-0"
                 title="Fechar atividade"
               >
@@ -298,6 +352,69 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
               </Button>
             </div>
           </div>
+
+          {/* Vínculos: badges do que está vinculado + botões para vincular
+              (os eventos são ouvidos pelo ActivityFormCompact, que abre os sheets) */}
+          <div className="flex flex-wrap items-center gap-1.5 mt-1">
+            {formLeadName ? (
+              <Badge variant="outline" className="text-[10px] gap-1 max-w-[220px]">
+                <Building2 className="h-3 w-3 shrink-0" /><span className="truncate">{formLeadName}</span>
+              </Badge>
+            ) : (
+              <Button variant="outline" size="sm" className="h-6 px-2 text-[10px] gap-1 border-primary/30 text-primary hover:bg-primary/10"
+                onClick={() => window.dispatchEvent(new CustomEvent('activity-form:open-link-lead'))}>
+                <Plus className="h-3 w-3" /> Vincular Lead
+              </Button>
+            )}
+            {formCaseTitle ? (
+              <Badge variant="outline" className="text-[10px] gap-1 max-w-[220px]">
+                <Briefcase className="h-3 w-3 shrink-0" /><span className="truncate">{formCaseTitle}</span>
+              </Badge>
+            ) : (
+              <Button variant="outline" size="sm" className="h-6 px-2 text-[10px] gap-1"
+                onClick={() => window.dispatchEvent(new CustomEvent('activity-form:open-link-case'))}>
+                <Briefcase className="h-3 w-3" /> Vincular Caso
+              </Button>
+            )}
+            {formProcessTitle ? (
+              <Badge variant="outline" className="text-[10px] gap-1 max-w-[220px]">
+                <FileText className="h-3 w-3 shrink-0" /><span className="truncate">{formProcessTitle}</span>
+              </Badge>
+            ) : formCaseId ? (
+              <Button variant="outline" size="sm" className="h-6 px-2 text-[10px] gap-1"
+                onClick={() => window.dispatchEvent(new CustomEvent('activity-form:open-link-process'))}>
+                <FileText className="h-3 w-3" /> Vincular Processo
+              </Button>
+            ) : null}
+            {formContactName ? (
+              <Badge variant="outline" className="text-[10px] gap-1 max-w-[180px]">
+                <UserPlus className="h-3 w-3 shrink-0" /><span className="truncate">{formContactName}</span>
+              </Badge>
+            ) : (
+              <Button variant="outline" size="sm" className="h-6 px-2 text-[10px] gap-1"
+                onClick={() => window.dispatchEvent(new CustomEvent('activity-form:open-link-contact'))}>
+                <UserPlus className="h-3 w-3" /> Vincular Contato
+              </Button>
+            )}
+          </div>
+
+          {/* Fluxo de trabalho: workflow do processo tem prioridade; senão funil do lead */}
+          {formLeadId && (() => {
+            if (formProcessId) {
+              if (linkedProcess?.workflow_id) {
+                return <LeadFunnelProgressBar leadId={formLeadId} boardId={linkedProcess.workflow_id} />;
+              }
+              return (
+                <p className="text-[10px] text-muted-foreground italic">
+                  Processo sem fluxo de trabalho vinculado — cadastre um fluxo no processo para ver o progresso.
+                </p>
+              );
+            }
+            if (leadPreview?.lead_status !== 'closed' && leadPreview?.board_id) {
+              return <LeadFunnelProgressBar leadId={formLeadId} boardId={leadPreview.board_id} />;
+            }
+            return null;
+          })()}
         </SheetHeader>
 
         {loading ? (
@@ -341,7 +458,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
                 formNotes={formNotes} setFormNotes={setFormNotes}
                 teamMembers={teamMembers}
                 routineActivityTypes={routineActivityTypes}
-                filteredLeads={leadOptions}
+                filteredLeads={searchedLeads}
                 availableContacts={availableContacts}
                 availableCases={availableCases}
                 leadCases={leadCases}
@@ -372,7 +489,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
                 formLeadIdForTTS={formLeadId || undefined}
                 formContactIdForTTS={formContactId || undefined}
                 supabase={externalSupabase}
-                leads={leadOptions}
+                leads={searchedLeads}
               />
             </div>
           </ScrollArea>
@@ -390,7 +507,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
               <Trash2 className="h-3 w-3" /> Excluir
             </Button>
             <div className="flex gap-2 ml-auto">
-              <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>Cancelar</Button>
+              <Button variant="outline" size="sm" onClick={handleClose}>Cancelar</Button>
               {selectedActivity?.status !== 'concluida' && (
                 <Button variant="outline" size="sm" onClick={handleComplete} className="gap-1 text-xs bg-success hover:bg-success/90 text-success-foreground border-0">
                   <CheckCircle2 className="h-3 w-3" /> Concluir
