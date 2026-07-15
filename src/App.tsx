@@ -26,6 +26,8 @@ import { PWAInstallBanner } from "@/components/PWAInstallBanner";
 import { MobileHeader } from "@/components/MobileHeader";
 import { MobileSwipeHandler } from "@/components/MobileSwipeHandler";
 import { OrgMetaSync } from "@/components/OrgMetaSync";
+import { ActivityTimerProvider } from "@/contexts/ActivityTimerContext";
+import { ActivityTimerOverlay } from "@/components/activities/ActivityTimerOverlay";
 import WhatsAppPage from "@/pages/WhatsAppPage";
 
 // Helper: retry dynamic import once per module on failure (stale chunk after deploy)
@@ -149,6 +151,7 @@ const FinancePage = lazyRetry(() => import("./pages/FinancePage"), "FinancePage"
 const ExpenseFormPage = lazyRetry(() => import("./pages/ExpenseFormPage"), "ExpenseFormPage");
 const CallsPage = lazyRetry(() => import("./pages/CallsPage"), "CallsPage");
 const ServiceRatingsPage = lazyRetry(() => import("./pages/ServiceRatingsPage"), "ServiceRatingsPage");
+const BancoHorasPage = lazyRetry(() => import("./pages/BancoHorasPage"), "BancoHorasPage");
 
 const WhatsAppCloudPage = lazyRetry(() => import("./pages/WhatsAppCloudPage"), "WhatsAppCloudPage");
 const WhatsAppApiPage = lazyRetry(() => import("./pages/WhatsAppApiPage"), "WhatsAppApiPage");
@@ -237,9 +240,11 @@ const App = () => (
                 <ActivityNotificationsListener />
                 <UserStatusGuard />
                 <OrgMetaSync />
-                <BrowserRouter>
-                  <AppRoutes />
-                </BrowserRouter>
+                <ActivityTimerProvider>
+                  <BrowserRouter>
+                    <AppRoutes />
+                  </BrowserRouter>
+                </ActivityTimerProvider>
               </TooltipProvider>
             </SessionProvider>
           </AuthProvider>
@@ -294,6 +299,7 @@ function SidebarLayout() {
             <CallFieldSuggestionsBanner />
             <FloatingWhatsAppCall />
             <PWAInstallBanner />
+            <ActivityTimerOverlay />
             <Suspense fallback={<PageLoading />}>
               <Routes>
                 <Route path="/" element={<ProtectedRoute><ActivitiesPage /></ProtectedRoute>} />
@@ -313,6 +319,7 @@ function SidebarLayout() {
                 <Route path="/finance" element={<ProtectedRoute><FinancePage /></ProtectedRoute>} />
                 <Route path="/calls" element={<ProtectedRoute><CallsPage /></ProtectedRoute>} />
                 <Route path="/avaliacoes" element={<ProtectedRoute><ServiceRatingsPage /></ProtectedRoute>} />
+                <Route path="/banco-horas" element={<ProtectedRoute><BancoHorasPage /></ProtectedRoute>} />
                 
                 <Route path="/whatsapp" element={<ProtectedRoute><WhatsAppPage /></ProtectedRoute>} />
                 <Route path="/whatsapp/cloud" element={<ProtectedRoute><WhatsAppCloudPage /></ProtectedRoute>} />
