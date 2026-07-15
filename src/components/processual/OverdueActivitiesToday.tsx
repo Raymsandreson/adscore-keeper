@@ -196,19 +196,25 @@ export function OverdueActivitiesToday() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Select value={author} onValueChange={setAuthor}>
-              <SelectTrigger className="h-8 w-[200px] text-xs">
-                <UserRound className="h-3.5 w-3.5 mr-1 text-muted-foreground" />
-                <SelectValue placeholder="Responsável" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all" className="text-xs">Todos os responsáveis</SelectItem>
-                <SelectItem value="__none__" className="text-xs">Sem responsável</SelectItem>
-                {authors.map((a) => (
-                  <SelectItem key={a} value={a} className="text-xs">{a}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="relative">
+              <UserRound className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                value={author}
+                onChange={(e) => setAuthor(e.target.value)}
+                placeholder="Filtrar responsável…"
+                className="h-8 w-[220px] pl-7 pr-7 text-xs"
+              />
+              {author && (
+                <button
+                  type="button"
+                  onClick={() => setAuthor('')}
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  aria-label="Limpar filtro"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={load} disabled={loading}>
               <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
             </Button>
