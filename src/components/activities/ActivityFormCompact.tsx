@@ -1149,28 +1149,21 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
               const entry = valueMap[field.field_key];
               if (!entry) return null;
               const [value, setter] = entry;
-              const stepVariations = props.stepContext?.messageTemplates?.[field.field_key] || [];
-              const persistField = async (next: TemplateVariation[]) => {
-                if (!props.saveStepFieldTemplates) return false;
-                return props.saveStepFieldTemplates(field.field_key, next);
-              };
               const hubProps = {
+                fieldKey: field.field_key,
                 fieldLabel: field.label,
-                variations: stepVariations,
                 currentValue: value,
                 onApply: setter,
                 stepLabel: props.stepContext?.stepLabel || null,
                 phaseLabel: props.stepContext?.phaseLabel || null,
                 objectiveLabel: props.stepContext?.objectiveLabel || null,
-                canPersist: !!(props.stepContext?.templateId && props.saveStepFieldTemplates),
-                onPersist: persistField,
                 allSteps: props.stepContext?.allSteps || [],
                 activeStepId: props.stepContext?.stepId || null,
                 onSelectStep: props.setSelectedStepId,
               };
               if (field.field_key === 'notes') {
                 return (
-                  <div key={field.field_key} className="min-w-0" data-notes-hub-props={JSON.stringify({ has: true })}>
+                  <div key={field.field_key} className="min-w-0">
                     <ActivityNotesField
                       value={value}
                       onChange={setter}
@@ -1189,7 +1182,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
               return (
                 <div key={field.field_key} className="min-w-0 flex flex-col">
                   <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{field.label}</span>
-                  <StepTemplatesHub {...hubProps} />
+                  <UserFieldTemplatesHub {...hubProps} />
                   <div className={cn('flex-1 min-h-0', expandedFieldKey === field.field_key ? 'hidden' : '')}>
                     <RichTextEditor
                       value={value}
