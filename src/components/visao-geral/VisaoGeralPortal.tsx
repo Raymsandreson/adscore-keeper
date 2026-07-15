@@ -120,6 +120,19 @@ const SELECTORS: SelectorItem[] = [
     ),
     accent: "from-slate-500/15 to-slate-500/0 text-slate-600",
   },
+  {
+    id: "gerenciamento-acolhimento",
+    label: "Gerenciamento Acolhimento",
+    description: "Painel de acolhimento do funil de Acidente de Trabalho.",
+    icon: <HeartHandshake className="h-5 w-5" />,
+    group: "process",
+    customRender: () => (
+      <Suspense fallback={<DashboardSkeleton />}>
+        <AcolhimentoPage />
+      </Suspense>
+    ),
+    accent: "from-teal-500/15 to-teal-500/0 text-teal-600",
+  },
 ];
 
 function DashboardSkeleton() {
