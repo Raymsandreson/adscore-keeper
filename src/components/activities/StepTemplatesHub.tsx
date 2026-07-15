@@ -82,6 +82,7 @@ function uid() {
 export function StepTemplatesHub({
   fieldLabel,
   variations,
+  defaults = [],
   currentValue,
   onApply,
   stepLabel,
@@ -104,6 +105,8 @@ export function StepTemplatesHub({
 
   const hasContent = stripHtml(currentValue).length > 0;
   const count = variations.length;
+  // Padrões do sistema + modelos do usuário; usado apenas no dropdown de aplicação.
+  const displayVariations = useMemo(() => [...defaults, ...variations], [defaults, variations]);
 
   // Agrupa passos por fase para o picker
   const phases = useMemo(() => {
