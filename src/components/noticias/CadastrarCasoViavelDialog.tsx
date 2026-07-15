@@ -244,6 +244,7 @@ const ALLOWED_ACOLHEDOR_IDS = [
   'e2de0610-7a9b-44aa-b893-3d91293ed700', // Luiz Ricardo
   '70200def-0910-4399-8a5e-0a27a02c5514', // Bruno Wenner Dantas Nunes
   '01f77785-871a-4a2f-b237-2392c2cb7860', // Juliana Clara Santos Pimentel
+  'fab3461c-d1ca-4276-946a-972bf0c70cd9', // Mateus Santos Saraiva
 ];
 
 // Autor do grupo = instância cujo token chama /group/create no UazAPI, virando
