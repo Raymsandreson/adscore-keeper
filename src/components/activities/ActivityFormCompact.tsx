@@ -795,7 +795,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
             <div className="flex items-start gap-1.5 px-2 py-1.5 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 w-full mt-1">
               <Info className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
               <span className="text-[11px] text-amber-700 dark:text-amber-300">
-                Vincule esta atividade a um <strong>Lead</strong>, <strong>Caso</strong> ou marque como <strong>Interna (de equipe)</strong> ou <strong>Gerenciamento</strong>.
+                Vincule esta atividade a um <strong>Lead</strong>, <strong>Caso</strong> ou marque como <strong>Interna (de equipe)</strong>.
               </span>
             </div>
           )}
