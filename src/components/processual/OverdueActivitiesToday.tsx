@@ -46,7 +46,7 @@ interface ActivityRow extends OverdueActivity {
   motivo: string | null;
 }
 
-const SEM_RESPONSAVEL = 'Sem responsável';
+
 
 export function OverdueActivitiesToday() {
   const navigate = useNavigate();
@@ -86,9 +86,9 @@ export function OverdueActivitiesToday() {
         all.push(...chunk);
         if (chunk.length < PAGE) break;
       }
-      // Esconde atividades de usuários que também estão fora do seletor de Assessor (blocklist).
+      // Esconde atividades sem responsável e de usuários fora do seletor de Assessor (blocklist).
       const filteredAll = all.filter((a) => {
-        if (!a.assigned_to) return true;
+        if (!a.assigned_to) return false;
         const cloudId = remapToCloudSync(a.assigned_to) || a.assigned_to;
         return !ASSIGNEE_BLOCKLIST.has(cloudId);
       });
@@ -150,22 +150,20 @@ export function OverdueActivitiesToday() {
 
   const filtered = useMemo(() => {
     if (!selectedAuthor) return rows;
-    if (selectedAuthor === SEM_RESPONSAVEL) return rows.filter((i) => !i.assigned_to_name);
     return rows.filter((i) => i.assigned_to_name === selectedAuthor);
   }, [rows, selectedAuthor]);
 
   const authorOptions = useMemo(() => {
     const q = authorQuery.trim().toLowerCase();
-    const base = [SEM_RESPONSAVEL, ...authors];
-    if (!q) return base;
-    return base.filter((n) => n.toLowerCase().includes(q));
+    if (!q) return authors;
+    return authors.filter((n) => n.toLowerCase().includes(q));
   }, [authors, authorQuery]);
 
   // Agrupamento por responsável, maiores ofensores primeiro
   const groups = useMemo(() => {
     const map = new Map<string, ActivityRow[]>();
     filtered.forEach((r) => {
-      const key = r.assigned_to_name?.trim() || SEM_RESPONSAVEL;
+      const key = r.assigned_to_name?.trim() || 'Sem responsável';
       const list = map.get(key) || [];
       list.push(r);
       map.set(key, list);
@@ -255,10 +253,7 @@ export function OverdueActivitiesToday() {
                           setAuthorQuery('');
                           setDropdownOpen(false);
                         }}
-                        className={cn(
-                          'block w-full truncate px-3 py-1.5 text-left text-xs hover:bg-muted',
-                          name === SEM_RESPONSAVEL && 'italic text-muted-foreground'
-                        )}
+                        className="block w-full truncate px-3 py-1.5 text-left text-xs hover:bg-muted"
                       >
                         {name}
                       </button>
@@ -306,7 +301,7 @@ export function OverdueActivitiesToday() {
               <div key={g.name}>
                 <div className="sticky top-0 z-10 flex flex-wrap items-center gap-2 border-y bg-muted/80 px-3 py-1.5 backdrop-blur">
                   <UserRound className="h-3.5 w-3.5 text-muted-foreground" />
-                  <span className={cn('text-xs font-semibold', g.name === SEM_RESPONSAVEL && 'italic text-muted-foreground')}>
+                  <span className="text-xs font-semibold">
                     {g.name}
                   </span>
                   <span className="text-[10px] text-muted-foreground">
