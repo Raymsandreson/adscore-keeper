@@ -25,6 +25,8 @@ import GenericFunnelDashboard from "./GenericFunnelDashboard";
 
 const FunnelLeadsReport = lazy(() => import("./FunnelLeadsReport"));
 
+const AcolhimentoPage = lazy(() => import("@/pages/AcolhimentoPage"));
+
 const AcompanhamentoProcessualPage = lazy(
   () => import("@/pages/AcompanhamentoProcessualPage"),
 );
