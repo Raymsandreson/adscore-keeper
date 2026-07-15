@@ -360,7 +360,7 @@ export function OverdueActivitiesToday() {
                 )}
               </div>
             ))}
-          </ScrollArea>
+          </div>
         )}
       </CardContent>
     </Card>
