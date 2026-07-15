@@ -54,7 +54,9 @@ export function OverdueActivitiesToday() {
   const [items, setItems] = useState<OverdueActivity[]>([]);
   const [chatToday, setChatToday] = useState<TodayChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
-  const [author, setAuthor] = useState<string>('');
+  const [authorQuery, setAuthorQuery] = useState<string>('');
+  const [selectedAuthor, setSelectedAuthor] = useState<string>('');
+  const [dropdownOpen, setDropdownOpen] = useState(false);
   // Linhas visíveis por grupo — dados vêm completos, mas grupos gigantes ("Sem responsável"
   // passa de 5 mil) não podem ir todos pro DOM de uma vez.
   const GROUP_BATCH = 30;
@@ -147,10 +149,17 @@ export function OverdueActivitiesToday() {
   }, [items, chatByActivity, todayStart]);
 
   const filtered = useMemo(() => {
-    const q = author.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter((i) => (i.assigned_to_name || 'sem responsável').toLowerCase().includes(q));
-  }, [rows, author]);
+    if (!selectedAuthor) return rows;
+    if (selectedAuthor === SEM_RESPONSAVEL) return rows.filter((i) => !i.assigned_to_name);
+    return rows.filter((i) => i.assigned_to_name === selectedAuthor);
+  }, [rows, selectedAuthor]);
+
+  const authorOptions = useMemo(() => {
+    const q = authorQuery.trim().toLowerCase();
+    const base = [SEM_RESPONSAVEL, ...authors];
+    if (!q) return base;
+    return base.filter((n) => n.toLowerCase().includes(q));
+  }, [authors, authorQuery]);
 
   // Agrupamento por responsável, maiores ofensores primeiro
   const groups = useMemo(() => {
@@ -197,22 +206,65 @@ export function OverdueActivitiesToday() {
           </div>
           <div className="flex items-center gap-2">
             <div className="relative">
-              <UserRound className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <UserRound className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
               <Input
-                value={author}
-                onChange={(e) => setAuthor(e.target.value)}
+                value={selectedAuthor || authorQuery}
+                onChange={(e) => {
+                  setSelectedAuthor('');
+                  setAuthorQuery(e.target.value);
+                  setDropdownOpen(true);
+                }}
+                onFocus={() => {
+                  if (selectedAuthor) {
+                    setAuthorQuery('');
+                    setSelectedAuthor('');
+                  }
+                  setDropdownOpen(true);
+                }}
+                onBlur={() => setTimeout(() => setDropdownOpen(false), 150)}
                 placeholder="Filtrar responsável…"
-                className="h-8 w-[220px] pl-7 pr-7 text-xs"
+                className="h-8 w-[240px] pl-7 pr-7 text-xs"
               />
-              {author && (
+              {(selectedAuthor || authorQuery) && (
                 <button
                   type="button"
-                  onClick={() => setAuthor('')}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    setSelectedAuthor('');
+                    setAuthorQuery('');
+                    setDropdownOpen(false);
+                  }}
                   className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                   aria-label="Limpar filtro"
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>
+              )}
+              {dropdownOpen && !selectedAuthor && (
+                <div className="absolute left-0 top-full z-50 mt-1 w-[240px] max-h-64 overflow-y-auto rounded-md border bg-popover shadow-md">
+                  {authorOptions.length === 0 ? (
+                    <div className="px-3 py-2 text-xs text-muted-foreground">Nenhum responsável</div>
+                  ) : (
+                    authorOptions.map((name) => (
+                      <button
+                        key={name}
+                        type="button"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          setSelectedAuthor(name);
+                          setAuthorQuery('');
+                          setDropdownOpen(false);
+                        }}
+                        className={cn(
+                          'block w-full truncate px-3 py-1.5 text-left text-xs hover:bg-muted',
+                          name === SEM_RESPONSAVEL && 'italic text-muted-foreground'
+                        )}
+                      >
+                        {name}
+                      </button>
+                    ))
+                  )}
+                </div>
               )}
             </div>
             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={load} disabled={loading}>
