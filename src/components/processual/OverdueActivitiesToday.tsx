@@ -163,7 +163,7 @@ export function OverdueActivitiesToday() {
   const groups = useMemo(() => {
     const map = new Map<string, ActivityRow[]>();
     filtered.forEach((r) => {
-      const key = r.assigned_to_name?.trim() || SEM_RESPONSAVEL;
+      const key = r.assigned_to_name?.trim() || 'Sem responsável';
       const list = map.get(key) || [];
       list.push(r);
       map.set(key, list);
@@ -253,10 +253,7 @@ export function OverdueActivitiesToday() {
                           setAuthorQuery('');
                           setDropdownOpen(false);
                         }}
-                        className={cn(
-                          'block w-full truncate px-3 py-1.5 text-left text-xs hover:bg-muted',
-                          name === SEM_RESPONSAVEL && 'italic text-muted-foreground'
-                        )}
+                        className="block w-full truncate px-3 py-1.5 text-left text-xs hover:bg-muted"
                       >
                         {name}
                       </button>
