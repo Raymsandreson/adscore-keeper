@@ -249,7 +249,7 @@ export function OverdueActivitiesToday() {
             Nenhuma atividade atrasada no filtro atual.
           </div>
         ) : (
-          <ScrollArea type="always" className="h-[560px] [&_[data-radix-scroll-area-thumb]]:bg-muted-foreground/50 [&_[data-radix-scroll-area-scrollbar]]:w-3">
+          <div className="h-[560px] overflow-y-auto overflow-x-hidden">
             {groups.map((g) => (
               <div key={g.name}>
                 <div className="sticky top-0 z-10 flex flex-wrap items-center gap-2 border-y bg-muted/80 px-3 py-1.5 backdrop-blur">
