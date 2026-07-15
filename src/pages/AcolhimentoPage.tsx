@@ -84,7 +84,7 @@ function useFunil() {
     queryFn: async () => {
       const { data, error } = await db.from("vw_funil_acolhimento" as any).select("*");
       if (error) throw error;
-      return (data ?? []) as Array<{ ordem: number; nome: string; leads: number; pct: number }>;
+      return (data ?? []) as unknown as Array<{ ordem: number; nome: string; leads: number; pct: number }>;
     },
     refetchInterval: 60_000,
   });
@@ -95,7 +95,7 @@ function useAging() {
     queryFn: async () => {
       const { data, error } = await db.from("vw_aging_etapa" as any).select("*");
       if (error) throw error;
-      return (data ?? []) as Array<{
+      return (data ?? []) as unknown as Array<{
         ordem: number;
         nome: string;
         leads: number;
@@ -121,7 +121,7 @@ function useConversao() {
         .select("convertido")
         .eq("board_id", BOARD_ID);
       if (error) throw error;
-      return (data ?? []) as Array<{ convertido: boolean }>;
+      return (data ?? []) as unknown as Array<{ convertido: boolean }>;
     },
     refetchInterval: 60_000,
   });
@@ -137,7 +137,7 @@ function useMatriz() {
         .is("deleted_at", null)
         .in("status", STAGE_ORDER as any);
       if (error) throw error;
-      const rows = (data ?? []) as Array<{ acolhedor: string | null; status: string }>;
+      const rows = (data ?? []) as unknown as Array<{ acolhedor: string | null; status: string }>;
       const map = new Map<string, Record<string, number>>();
       for (const r of rows) {
         const name = (r.acolhedor || "").trim() || "(sem dono)";
