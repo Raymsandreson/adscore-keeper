@@ -7,9 +7,8 @@ import { remapToCloudSync, ensureRemapCache } from '@/integrations/supabase/uuid
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { AlertTriangle, Loader2, RefreshCw, UserRound, CheckCircle2, Clock, MessageSquare } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { AlertTriangle, Loader2, RefreshCw, UserRound, CheckCircle2, Clock, MessageSquare, X } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
