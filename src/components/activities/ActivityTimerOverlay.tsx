@@ -1,17 +1,85 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Clock, Coffee, Pause, Search, Timer as TimerIcon } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { Clock, Coffee, GripVertical, Pause, Search, Timer as TimerIcon } from 'lucide-react';
 import { db } from '@/integrations/supabase';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useActivityTimer, formatHMS } from '@/contexts/ActivityTimerContext';
 
+const POS_STORAGE_KEY = 'activity-timer-badge-pos';
+
+function useDraggablePosition() {
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(() => {
+    try {
+      const raw = localStorage.getItem(POS_STORAGE_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch { /* ignora */ }
+    return null;
+  });
+  const draggingRef = useRef(false);
+  const movedRef = useRef(false);
+  const offsetRef = useRef({ x: 0, y: 0 });
+  const elRef = useRef<HTMLElement | null>(null);
+
+  const clamp = (x: number, y: number) => {
+    const el = elRef.current;
+    const w = el?.offsetWidth ?? 160;
+    const h = el?.offsetHeight ?? 40;
+    const maxX = window.innerWidth - w - 4;
+    const maxY = window.innerHeight - h - 4;
+    return { x: Math.max(4, Math.min(x, maxX)), y: Math.max(4, Math.min(y, maxY)) };
+  };
+
+  const onPointerDown = useCallback((e: React.PointerEvent<HTMLElement>) => {
+    const el = e.currentTarget;
+    elRef.current = el;
+    const rect = el.getBoundingClientRect();
+    offsetRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    draggingRef.current = true;
+    movedRef.current = false;
+    el.setPointerCapture(e.pointerId);
+  }, []);
+
+  const onPointerMove = useCallback((e: React.PointerEvent<HTMLElement>) => {
+    if (!draggingRef.current) return;
+    const nx = e.clientX - offsetRef.current.x;
+    const ny = e.clientY - offsetRef.current.y;
+    if (!movedRef.current) {
+      const dx = Math.abs(e.movementX);
+      const dy = Math.abs(e.movementY);
+      if (dx + dy > 3) movedRef.current = true;
+    }
+    setPos(clamp(nx, ny));
+  }, []);
+
+  const onPointerUp = useCallback((e: React.PointerEvent<HTMLElement>) => {
+    if (!draggingRef.current) return;
+    draggingRef.current = false;
+    try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* noop */ }
+    if (movedRef.current) {
+      try { localStorage.setItem(POS_STORAGE_KEY, JSON.stringify(pos)); } catch { /* ignora */ }
+    }
+  }, [pos]);
+
+  // Reajusta se a janela encolher
+  useEffect(() => {
+    const onResize = () => setPos((p) => (p ? clamp(p.x, p.y) : p));
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  const wasDragged = () => movedRef.current;
+  const style: React.CSSProperties = pos
+    ? { left: pos.x, top: pos.y, right: 'auto', bottom: 'auto' }
+    : { left: 16, bottom: 16 };
+
+  return { style, onPointerDown, onPointerMove, onPointerUp, wasDragged, setElRef: (el: HTMLElement | null) => { elRef.current = el; } };
+}
+
 /**
  * UI global do cronômetro:
- * - Badge flutuante (visível em qualquer página) enquanto uma atv é cronometrada.
- * - Dialog de ociosidade ("ainda está fazendo X?").
- * - Dialog "continuar ou pausar" ao sair da atividade.
- * - Seletor "qual atividade agora?" após responder "Não" na ociosidade.
+ * - Badge flutuante arrastável (posição salva no localStorage).
+ * - Dialog de ociosidade, prompt continuar/pausar, seletor de troca.
  */
 export function ActivityTimerOverlay() {
   const {
@@ -27,34 +95,52 @@ export function ActivityTimerOverlay() {
     return () => clearInterval(id);
   }, []);
 
+  const drag = useDraggablePosition();
+
   return (
     <>
       {current && current.kind === 'activity' && (
-        <button
-          type="button"
-          onClick={requestLeave}
-          className="fixed bottom-4 left-4 z-[60] flex items-center gap-2 rounded-full border bg-background/95 px-3 py-2 shadow-lg backdrop-blur hover:bg-accent transition-colors"
-          title="Cronômetro em andamento — clique para pausar/continuar"
+        <div
+          ref={drag.setElRef}
+          style={drag.style}
+          onPointerDown={drag.onPointerDown}
+          onPointerMove={drag.onPointerMove}
+          onPointerUp={drag.onPointerUp}
+          className="fixed z-[60] flex items-center gap-1.5 rounded-full border bg-background/95 pl-1.5 pr-3 py-2 shadow-lg backdrop-blur touch-none select-none cursor-grab active:cursor-grabbing"
+          title="Arraste para mover · clique no tempo para pausar/continuar"
         >
+          <GripVertical className="h-3.5 w-3.5 text-muted-foreground/60" />
           <span className="relative flex h-2.5 w-2.5">
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
             <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
           </span>
           <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-          <span className="font-mono text-sm tabular-nums font-semibold">
-            {formatHMS(current.activeSeconds)}
-          </span>
-          <span className="max-w-[160px] truncate text-xs text-muted-foreground hidden sm:inline">
-            {current.activityTitle}
-          </span>
-        </button>
+          <button
+            type="button"
+            onClick={(e) => { if (drag.wasDragged()) { e.preventDefault(); e.stopPropagation(); return; } requestLeave(); }}
+            className="flex items-center gap-1.5 hover:opacity-80"
+          >
+            <span className="font-mono text-sm tabular-nums font-semibold">
+              {formatHMS(current.activeSeconds)}
+            </span>
+            <span className="max-w-[160px] truncate text-xs text-muted-foreground hidden sm:inline">
+              {current.activityTitle}
+            </span>
+          </button>
+        </div>
       )}
 
       {current && current.kind === 'gap' && (
         <div
-          className="fixed bottom-4 left-4 z-[60] flex items-center gap-2 rounded-full border border-amber-300/50 bg-amber-50/95 dark:bg-amber-950/60 px-3 py-2 shadow-lg backdrop-blur"
-          title="Tempo ocioso entre atividades — abra uma atividade para retomar a contagem"
+          ref={drag.setElRef}
+          style={drag.style}
+          onPointerDown={drag.onPointerDown}
+          onPointerMove={drag.onPointerMove}
+          onPointerUp={drag.onPointerUp}
+          className="fixed z-[60] flex items-center gap-1.5 rounded-full border border-amber-300/50 bg-amber-50/95 dark:bg-amber-950/60 pl-1.5 pr-3 py-2 shadow-lg backdrop-blur touch-none select-none cursor-grab active:cursor-grabbing"
+          title="Arraste para mover · tempo ocioso entre atividades"
         >
+          <GripVertical className="h-3.5 w-3.5 text-amber-700/50 dark:text-amber-300/50" />
           <Coffee className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
           <span className="font-mono text-sm tabular-nums font-semibold text-amber-700 dark:text-amber-300">
             {formatHMS(current.idleSeconds)}
@@ -62,6 +148,7 @@ export function ActivityTimerOverlay() {
           <span className="text-xs text-amber-700/80 dark:text-amber-300/80 hidden sm:inline">ocioso</span>
         </div>
       )}
+
 
       {/* Ociosidade */}
       <Dialog open={idlePrompt} onOpenChange={(o) => { if (!o) confirmStillWorking(); }}>
