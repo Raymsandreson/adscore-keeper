@@ -13,7 +13,9 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { Search, X, ChevronDown, Copy, Loader2, UserPlus, Building2, Briefcase, Send, Info, Settings2, FileText, Plus, Mic, Check, Star, Eye } from 'lucide-react';
+import { Search, X, ChevronDown, Copy, Loader2, UserPlus, Building2, Briefcase, Send, Info, Settings2, FileText, Plus, Mic, Check, Star, Eye, Users, Sparkles } from 'lucide-react';
+import { TeamChatPanel } from '@/components/chat/TeamChatPanel';
+import { summarizeActivityConversation } from '@/lib/activityFeedbackSummary';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
@@ -169,6 +171,8 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
   compactLabel?: boolean;
 }) {
   const [sending, setSending] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [summarizing, setSummarizing] = useState(false);
   const { user } = useAuthContext();
   const { isAdmin } = useUserRole();
   const [instances, setInstances] = useState<{ id: string; instance_name: string }[]>([]);
@@ -1053,18 +1057,82 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
 
       {/* Matriz Eisenhower e Nome do cliente removidos do form — cliente vive no cabeçalho */}
 
-      {/* Feedback da atv — só em atividade INTERNA (demanda de membro para membro).
-          Retorno do responsável; observadores recebem popup ao salvar. */}
+      {/* Chat interno da equipe + Feedback — só em atividade INTERNA (demanda de
+          membro para membro). Retorno do responsável; observadores recebem popup ao salvar. */}
       {props.setFormFeedback && props.formIsSystem && (
-        <div>
-          <span className="text-[10px] text-muted-foreground uppercase tracking-wider">💬 Feedback da atv</span>
-          <Textarea
-            value={props.formFeedback || ''}
-            onChange={e => props.setFormFeedback?.(e.target.value)}
-            placeholder="Retorno do responsável: o que foi feito com esta demanda, como ficou..."
-            rows={2}
-            className="text-xs mt-0.5"
-          />
+        <div className="space-y-2">
+          {/* Chat interno da equipe embutido (colapsável). Só após a atv existir. */}
+          {props.selectedActivity?.id && (
+            <div className="rounded-lg border border-primary/20 overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setChatOpen(o => !o)}
+                className="w-full flex items-center justify-between px-2.5 py-1.5 bg-primary/5 hover:bg-primary/10 transition-colors"
+              >
+                <span className="flex items-center gap-1.5 text-[11px] font-medium text-primary">
+                  <Users className="h-3.5 w-3.5" /> Chat interno da equipe
+                </span>
+                <ChevronDown className={cn("h-3.5 w-3.5 text-primary transition-transform", chatOpen && "rotate-180")} />
+              </button>
+              {chatOpen && (
+                <div className="h-64 bg-background border-t">
+                  <TeamChatPanel
+                    entityType="activity"
+                    entityId={props.selectedActivity.id}
+                    entityName={props.formTitle}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Feedback da atv (resumo do que foi dito e feito) */}
+          <div>
+            <div className="flex items-center justify-between mb-0.5">
+              <span className="text-[10px] text-muted-foreground uppercase tracking-wider">💬 Feedback da atv</span>
+              {props.selectedActivity?.id && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={summarizing}
+                  className="h-6 px-2 text-[10px] gap-1 text-primary hover:bg-primary/10"
+                  title="Resumir a conversa da equipe e o que foi feito no campo de feedback"
+                  onClick={async () => {
+                    setSummarizing(true);
+                    try {
+                      const summary = await summarizeActivityConversation({
+                        activityId: props.selectedActivity.id,
+                        whatWasDone: props.formWhatWasDone,
+                        currentStatus: props.formCurrentStatus,
+                        nextSteps: props.formNextSteps,
+                      });
+                      if (summary) {
+                        props.setFormFeedback?.(summary);
+                        toast.success('Resumo gerado no feedback');
+                      } else {
+                        toast.info('Sem conversa ou dados para resumir');
+                      }
+                    } catch {
+                      toast.error('Erro ao gerar o resumo');
+                    } finally {
+                      setSummarizing(false);
+                    }
+                  }}
+                >
+                  {summarizing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                  Resumir conversa
+                </Button>
+              )}
+            </div>
+            <Textarea
+              value={props.formFeedback || ''}
+              onChange={e => props.setFormFeedback?.(e.target.value)}
+              placeholder="Retorno do responsável: o que foi feito com esta demanda, como ficou..."
+              rows={2}
+              className="text-xs"
+            />
+          </div>
         </div>
       )}
 

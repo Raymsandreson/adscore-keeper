@@ -70,6 +70,7 @@ import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameM
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
+import { summarizeActivityConversation } from '@/lib/activityFeedbackSummary';
 import { filterAssignableMembers } from '@/lib/assigneeBlocklist';
 const ACTIVITY_TYPES = [
   { value: 'tarefa', label: 'Tarefa', bg: 'bg-blue-50 dark:bg-blue-950/20', border: 'border-blue-300 dark:border-blue-700', header: 'bg-blue-500', dot: 'bg-blue-500' },
@@ -1220,6 +1221,28 @@ const ActivitiesPage = () => {
       toast.error('Falha ao salvar anexos. A atividade não foi concluída.');
       return;
     }
+
+    // Atividade INTERNA sem feedback preenchido → resume a conversa da equipe +
+    // o que foi feito no campo feedback e avisa os observadores. Não bloqueia a
+    // conclusão se a IA falhar.
+    if (formIsSystem && selectedActivity?.id === id && !formFeedback.trim()) {
+      try {
+        const summary = await summarizeActivityConversation({
+          activityId: id,
+          whatWasDone: formWhatWasDone,
+          currentStatus: formCurrentStatus,
+          nextSteps: formNextSteps,
+        });
+        if (summary) {
+          setFormFeedback(summary);
+          await updateActivity(id, { feedback: summary });
+          await notifyActivityChange(selectedActivity, 'feedback', `Feedback: ${summary.slice(0, 300)}`);
+        }
+      } catch {
+        // resumo é best-effort — segue concluindo
+      }
+    }
+
     await completeActivity(id);
     await stopActivityTimerFor(id); // concluir encerra o cronômetro da atv
     fetchActivities(getFilterParams());
