@@ -1,48 +1,21 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { db } from "@/integrations/supabase";
+import { useKanbanBoards, KanbanStage } from "@/hooks/useKanbanBoards";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { Phone, MessageCircle, ExternalLink, Newspaper, X } from "lucide-react";
 
-const BOARD_ID = "2dcd54b5-502b-413b-b795-5e24a20797d2";
-const BRAND = "#1D9E75";
-
-// -------------------- Decoder de etapas --------------------
-type StageId =
-  | "recepcao"
-  | "aguardando_documentos"
-  | "analise_viabilidade"
-  | "procuracao_enviada"
-  | "documentos_protocolo"
-  | "procuracao_assinada"
-  | "closed";
-
-const STAGES: Record<StageId, { label: string; ordem: number; cor: string }> = {
-  recepcao: { label: "Cadastrados viáveis", ordem: 1, cor: "#378ADD" },
-  aguardando_documentos: { label: "Primeiro contato", ordem: 2, cor: "#7F77DD" },
-  analise_viabilidade: { label: "Visita acolhedor", ordem: 3, cor: "#EF9F27" },
-  procuracao_enviada: { label: "Visita parceiro", ordem: 4, cor: "#1D9E75" },
-  documentos_protocolo: { label: "pós 1º contato online", ordem: 5, cor: "#639922" },
-  procuracao_assinada: { label: "Pós visita", ordem: 6, cor: "#3B6D11" },
-  closed: { label: "Fechado", ordem: 7, cor: "#0F6E56" },
-};
-const STAGE_ORDER: StageId[] = (Object.keys(STAGES) as StageId[]).sort(
-  (a, b) => STAGES[a].ordem - STAGES[b].ordem
-);
-
-// Time trabalhista esperado
-const TEAM = [
-  "Analyne Sousa de Oliveira",
-  "Luiz Ricardo",
-  "Bruno Wenner Dantas Nunes",
-  "Mateus Santos Saraiva",
-  "Juliana Clara Santos Pimentel",
-  "João Manoel Cavalcante Santana",
-  "(sem dono)",
-];
+const DEFAULT_BOARD_ID = "2dcd54b5-502b-413b-b795-5e24a20797d2";
 
 // -------------------- Utils --------------------
 const fmtDate = (s?: string | null) => {
@@ -64,6 +37,12 @@ const maskPhone = (s?: string | null) => {
     return `(${d.slice(-11, -9)}) ${d.slice(-9, -8)} ${d.slice(-8, -4)}-${d.slice(-4)}`;
   return s || "—";
 };
+const daysBetween = (iso?: string | null) => {
+  if (!iso) return 0;
+  const t = new Date(iso).getTime();
+  if (isNaN(t)) return 0;
+  return Math.max(0, Math.floor((Date.now() - t) / 86_400_000));
+};
 
 // Rampa teal (1 cor)
 function tealBg(intensity: number) {
@@ -77,115 +56,62 @@ function tealText(intensity: number) {
   return intensity >= 0.55 ? "#ffffff" : "#0F3B2C";
 }
 
-// -------------------- Hooks de dados --------------------
-function useFunil() {
+// -------------------- Hook único de leads --------------------
+type LeadRow = {
+  id: string;
+  lead_name: string | null;
+  victim_name: string | null;
+  acolhedor: string | null;
+  status: string | null;
+  updated_at: string | null;
+  created_at: string | null;
+  lead_phone: string | null;
+  cpf: string | null;
+  campaign_name: string | null;
+  ad_name: string | null;
+  city: string | null;
+  visit_city: string | null;
+  sector: string | null;
+  contractor_company: string | null;
+  main_company: string | null;
+  victim_age: number | null;
+  accident_date: string | null;
+  accident_address: string | null;
+  legal_viability: string | null;
+  news_link: string | null;
+  news_links: any;
+  case_number: string | null;
+  process_id: string | null;
+};
+
+function useBoardLeads(boardId: string | null) {
   return useQuery({
-    queryKey: ["acolhimento", "funil"],
+    enabled: !!boardId,
+    queryKey: ["acolhimento", "leads", boardId],
     queryFn: async () => {
-      const { data, error } = await db.from("vw_funil_acolhimento" as any).select("*");
-      if (error) throw error;
-      return (data ?? []) as unknown as Array<{ ordem: number; nome: string; leads: number; pct: number }>;
-    },
-    refetchInterval: 60_000,
-  });
-}
-function useAging() {
-  return useQuery({
-    queryKey: ["acolhimento", "aging"],
-    queryFn: async () => {
-      const { data, error } = await db.from("vw_aging_etapa" as any).select("*");
-      if (error) throw error;
-      return (data ?? []) as unknown as Array<{
-        ordem: number;
-        nome: string;
-        leads: number;
-        media_dias: number;
-        mediana: number;
-        p90: number;
-        d_0_3: number;
-        d_4_7: number;
-        d_8_30: number;
-        d_31_90: number;
-        d_90mais: number;
-      }>;
-    },
-    refetchInterval: 60_000,
-  });
-}
-function useConversao() {
-  return useQuery({
-    queryKey: ["acolhimento", "conversao"],
-    queryFn: async () => {
-      const { data, error } = await db
-        .from("vw_conversao_real" as any)
-        .select("convertido")
-        .eq("board_id", BOARD_ID);
-      if (error) throw error;
-      return (data ?? []) as unknown as Array<{ convertido: boolean }>;
-    },
-    refetchInterval: 60_000,
-  });
-}
-function useMatriz() {
-  return useQuery({
-    queryKey: ["acolhimento", "matriz"],
-    queryFn: async () => {
-      const { data, error } = await db
-        .from("leads")
-        .select("acolhedor,status")
-        .eq("board_id", BOARD_ID)
-        .is("deleted_at", null)
-        .in("status", STAGE_ORDER as any);
-      if (error) throw error;
-      const rows = (data ?? []) as unknown as Array<{ acolhedor: string | null; status: string }>;
-      const map = new Map<string, Record<string, number>>();
-      for (const r of rows) {
-        const name = (r.acolhedor || "").trim() || "(sem dono)";
-        if (!map.has(name)) map.set(name, {});
-        const bucket = map.get(name)!;
-        bucket[r.status] = (bucket[r.status] || 0) + 1;
+      const cols =
+        "id, lead_name, victim_name, acolhedor, status, updated_at, created_at, lead_phone, cpf, campaign_name, ad_name, city, visit_city, sector, contractor_company, main_company, victim_age, accident_date, accident_address, legal_viability, news_link, news_links, case_number, process_id";
+      // paginação simples pra ultrapassar o cap de 1000 do PostgREST
+      const pageSize = 1000;
+      let from = 0;
+      const rows: LeadRow[] = [];
+      while (true) {
+        const { data, error } = await db
+          .from("leads")
+          .select(cols as any)
+          .eq("board_id", boardId!)
+          .is("deleted_at", null)
+          .range(from, from + pageSize - 1);
+        if (error) throw error;
+        const chunk = (data || []) as unknown as LeadRow[];
+        rows.push(...chunk);
+        if (chunk.length < pageSize) break;
+        from += pageSize;
+        if (from > 20_000) break; // safety cap
       }
-      return map;
+      return rows;
     },
     refetchInterval: 60_000,
-  });
-}
-function useSemDono() {
-  return useQuery({
-    queryKey: ["acolhimento", "sem-dono"],
-    queryFn: async () => {
-      const { count, error } = await db
-        .from("leads")
-        .select("id", { count: "exact", head: true })
-        .eq("board_id", BOARD_ID)
-        .is("deleted_at", null)
-        .or("acolhedor.is.null,acolhedor.eq.");
-      if (error) throw error;
-      return count ?? 0;
-    },
-    refetchInterval: 60_000,
-  });
-}
-function useLeadsCel(acolhedor: string | null, status: StageId | null) {
-  return useQuery({
-    enabled: !!acolhedor && !!status,
-    queryKey: ["acolhimento", "leads-cel", acolhedor, status],
-    queryFn: async () => {
-      let q = db
-        .from("vw_leads_acolhimento" as any)
-        .select("*")
-        .eq("status", status!)
-        .order("dias_parado", { ascending: false });
-      if (acolhedor === "(sem dono)") {
-        // view já normaliza
-        q = q.eq("acolhedor", "(sem dono)");
-      } else {
-        q = q.eq("acolhedor", acolhedor!);
-      }
-      const { data, error } = await q;
-      if (error) throw error;
-      return (data ?? []) as any[];
-    },
   });
 }
 
@@ -220,64 +146,87 @@ function KpiCard({
   );
 }
 
-function Funil({
-  funil,
-  aging,
-}: {
-  funil: Array<{ ordem: number; nome: string; leads: number; pct: number }>;
-  aging: Array<any>;
-}) {
-  const max = Math.max(...funil.map((f) => f.leads), 1);
-  const agingByOrder = new Map(aging.map((a) => [a.ordem, a]));
+interface FunilRow {
+  id: string;
+  name: string;
+  color: string;
+  leads: number;
+  pct: number;
+  mediana: number;
+}
+
+function Funil({ rows }: { rows: FunilRow[] }) {
+  const max = Math.max(...rows.map((f) => f.leads), 1);
   return (
     <Card>
       <CardContent className="p-4 space-y-2">
         <div className="text-sm font-medium mb-2">Funil</div>
-        {STAGE_ORDER.map((id) => {
-          const s = STAGES[id];
-          const row = funil.find((f) => f.ordem === s.ordem);
-          const leads = row?.leads ?? 0;
-          const pct = row?.pct ?? 0;
-          const mediana = agingByOrder.get(s.ordem)?.mediana ?? 0;
-          const width = (leads / max) * 100;
+        {rows.map((s) => {
+          const width = (s.leads / max) * 100;
+          const label = `${s.leads.toLocaleString("pt-BR")} · ${s.pct.toFixed(1)}%`;
+          const insideThreshold = 22; // % — abaixo disso, número vai pra fora
+          const showInside = width >= insideThreshold;
           return (
-            <div key={id} className="flex items-center gap-3">
-              <div className="w-40 text-xs text-muted-foreground truncate">{s.label}</div>
-              <div className="flex-1 h-7 rounded bg-muted/40 overflow-hidden relative">
+            <div key={s.id} className="flex items-center gap-3">
+              <div className="w-40 text-xs text-muted-foreground truncate" title={s.name}>
+                {s.name}
+              </div>
+              <div className="flex-1 h-7 rounded bg-muted/40 overflow-hidden relative flex items-center">
                 <div
-                  className="h-full flex items-center px-2 text-xs font-medium text-white"
-                  style={{ width: `${Math.max(width, 3)}%`, background: s.cor }}
+                  className="h-full flex items-center px-2 text-xs font-medium text-white transition-[width] duration-500"
+                  style={{
+                    width: `${Math.max(width, 2)}%`,
+                    background: s.color || "#1D9E75",
+                    minWidth: s.leads > 0 ? 6 : 0,
+                  }}
                 >
-                  {leads.toLocaleString("pt-BR")} · {pct?.toFixed?.(1) ?? pct}%
+                  {showInside && <span className="truncate">{label}</span>}
                 </div>
+                {!showInside && s.leads > 0 && (
+                  <span className="ml-2 text-xs font-medium text-foreground tabular-nums whitespace-nowrap">
+                    {label}
+                  </span>
+                )}
               </div>
               <Badge
                 variant="outline"
                 className={cn(
                   "min-w-[70px] justify-center text-xs",
-                  mediana >= 60 ? "border-red-500 text-red-600" : ""
+                  s.mediana >= 60 ? "border-red-500 text-red-600" : ""
                 )}
               >
-                med. {mediana}d
+                med. {s.mediana}d
               </Badge>
             </div>
           );
         })}
+        {rows.length === 0 && (
+          <div className="text-xs text-muted-foreground py-4 text-center">
+            Este funil ainda não tem etapas configuradas.
+          </div>
+        )}
       </CardContent>
     </Card>
   );
 }
 
-function AgingHeat({ aging }: { aging: Array<any> }) {
+interface AgingRow {
+  id: string;
+  name: string;
+  buckets: { d_0_3: number; d_4_7: number; d_8_30: number; d_31_90: number; d_90mais: number };
+}
+
+function AgingHeat({ rows }: { rows: AgingRow[] }) {
   const cols = [
-    { key: "d_0_3", label: "0-3d" },
-    { key: "d_4_7", label: "4-7d" },
-    { key: "d_8_30", label: "8-30d" },
-    { key: "d_31_90", label: "31-90d" },
-    { key: "d_90mais", label: "+90d" },
+    { key: "d_0_3" as const, label: "0-3d" },
+    { key: "d_4_7" as const, label: "4-7d" },
+    { key: "d_8_30" as const, label: "8-30d" },
+    { key: "d_31_90" as const, label: "31-90d" },
+    { key: "d_90mais" as const, label: "+90d" },
   ];
   const maxByCol: Record<string, number> = {};
-  for (const c of cols) maxByCol[c.key] = Math.max(...aging.map((r) => r[c.key] ?? 0), 1);
+  for (const c of cols)
+    maxByCol[c.key] = Math.max(...rows.map((r) => r.buckets[c.key] ?? 0), 1);
 
   return (
     <Card>
@@ -296,32 +245,28 @@ function AgingHeat({ aging }: { aging: Array<any> }) {
               </tr>
             </thead>
             <tbody>
-              {STAGE_ORDER.map((id) => {
-                const s = STAGES[id];
-                const row = aging.find((a) => a.ordem === s.ordem);
-                return (
-                  <tr key={id}>
-                    <td className="pr-2 py-1 whitespace-nowrap">{s.label}</td>
-                    {cols.map((c) => {
-                      const v = row?.[c.key] ?? 0;
-                      const i = v / maxByCol[c.key];
-                      return (
-                        <td
-                          key={c.key}
-                          className="text-center rounded px-2 py-1 tabular-nums"
-                          style={{
-                            background: tealBg(i),
-                            color: v ? tealText(i) : "hsl(var(--muted-foreground))",
-                            minWidth: 44,
-                          }}
-                        >
-                          {v ? v.toLocaleString("pt-BR") : "·"}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                );
-              })}
+              {rows.map((r) => (
+                <tr key={r.id}>
+                  <td className="pr-2 py-1 whitespace-nowrap">{r.name}</td>
+                  {cols.map((c) => {
+                    const v = r.buckets[c.key] ?? 0;
+                    const i = v / maxByCol[c.key];
+                    return (
+                      <td
+                        key={c.key}
+                        className="text-center rounded px-2 py-1 tabular-nums"
+                        style={{
+                          background: tealBg(i),
+                          color: v ? tealText(i) : "hsl(var(--muted-foreground))",
+                          minWidth: 44,
+                        }}
+                      >
+                        {v ? v.toLocaleString("pt-BR") : "·"}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
@@ -331,43 +276,26 @@ function AgingHeat({ aging }: { aging: Array<any> }) {
 }
 
 function Matriz({
+  stages,
   matriz,
   selected,
   onSelect,
 }: {
+  stages: KanbanStage[];
   matriz: Map<string, Record<string, number>>;
-  selected: { acolhedor: string; status: StageId } | null;
-  onSelect: (a: string, s: StageId) => void;
+  selected: { acolhedor: string; status: string } | null;
+  onSelect: (a: string, s: string) => void;
 }) {
-  // Build list of acolhedores: TEAM (na ordem) + "Outros (fora do time)" agregando os demais
-  const known = new Set(TEAM);
-  const outrosBucket: Record<string, number> = {};
-  let hasOutros = false;
-  for (const [name, buckets] of matriz.entries()) {
-    if (!known.has(name)) {
-      hasOutros = true;
-      for (const [st, n] of Object.entries(buckets)) {
-        outrosBucket[st] = (outrosBucket[st] || 0) + n;
-      }
-    }
-  }
-
   const rows: Array<{ name: string; buckets: Record<string, number>; total: number }> = [];
-  for (const name of TEAM) {
-    const b = matriz.get(name) || {};
-    const total = STAGE_ORDER.reduce((s, id) => s + (b[id] || 0), 0);
-    rows.push({ name, buckets: b, total });
-  }
-  if (hasOutros) {
-    const total = STAGE_ORDER.reduce((s, id) => s + (outrosBucket[id] || 0), 0);
-    rows.push({ name: "Outros (fora do time)", buckets: outrosBucket, total });
+  for (const [name, buckets] of matriz.entries()) {
+    const total = stages.reduce((s, st) => s + (buckets[st.id] || 0), 0);
+    rows.push({ name, buckets, total });
   }
   rows.sort((a, b) => b.total - a.total);
 
-  // max por coluna
   const maxByCol: Record<string, number> = {};
-  for (const id of STAGE_ORDER) {
-    maxByCol[id] = Math.max(...rows.map((r) => r.buckets[id] || 0), 1);
+  for (const st of stages) {
+    maxByCol[st.id] = Math.max(...rows.map((r) => r.buckets[st.id] || 0), 1);
   }
 
   return (
@@ -381,18 +309,18 @@ function Matriz({
                 <th className="text-left font-normal text-muted-foreground min-w-[180px]">
                   Acolhedor
                 </th>
-                {STAGE_ORDER.map((id) => (
+                {stages.map((st) => (
                   <th
-                    key={id}
+                    key={st.id}
                     className="text-center font-normal text-muted-foreground px-1"
-                    title={STAGES[id].label}
+                    title={st.name}
                   >
                     <div className="flex flex-col items-center gap-1">
                       <span
                         className="inline-block h-2 w-8 rounded-full"
-                        style={{ background: STAGES[id].cor }}
+                        style={{ background: st.color }}
                       />
-                      <span className="max-w-[80px] leading-tight">{STAGES[id].label}</span>
+                      <span className="max-w-[80px] leading-tight">{st.name}</span>
                     </div>
                   </th>
                 ))}
@@ -405,23 +333,22 @@ function Matriz({
                   <td className="pr-2 py-1 whitespace-nowrap">
                     <span
                       className={cn(
-                        r.name === "(sem dono)" ? "text-amber-600 font-medium" : "",
-                        r.name === "Outros (fora do time)" ? "text-muted-foreground italic" : ""
+                        r.name === "(sem dono)" ? "text-amber-600 font-medium" : ""
                       )}
                     >
                       {r.name}
                     </span>
                   </td>
-                  {STAGE_ORDER.map((id) => {
-                    const v = r.buckets[id] || 0;
-                    const i = v / maxByCol[id];
+                  {stages.map((st) => {
+                    const v = r.buckets[st.id] || 0;
+                    const i = v / maxByCol[st.id];
                     const isSel =
-                      selected?.acolhedor === r.name && selected?.status === id && v > 0;
+                      selected?.acolhedor === r.name && selected?.status === st.id && v > 0;
                     return (
-                      <td key={id} className="p-0">
+                      <td key={st.id} className="p-0">
                         <button
                           disabled={v === 0}
-                          onClick={() => onSelect(r.name, id)}
+                          onClick={() => onSelect(r.name, st.id)}
                           className={cn(
                             "w-full h-8 rounded tabular-nums transition-all",
                             v > 0 ? "cursor-pointer hover:brightness-95" : "cursor-default",
@@ -440,6 +367,16 @@ function Matriz({
                   <td className="text-center font-semibold tabular-nums px-2">{r.total}</td>
                 </tr>
               ))}
+              {rows.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={stages.length + 2}
+                    className="text-center text-muted-foreground py-4"
+                  >
+                    Nenhum lead neste funil.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -448,9 +385,16 @@ function Matriz({
   );
 }
 
-function LeadFicha({ lead, onClose }: { lead: any; onClose: () => void }) {
+function LeadFicha({
+  lead,
+  stage,
+  onClose,
+}: {
+  lead: LeadRow & { dias_parado?: number };
+  stage: KanbanStage | null;
+  onClose: () => void;
+}) {
   const phone = onlyDigits(lead.lead_phone);
-  const stage = STAGES[lead.status as StageId];
   const news = lead.news_link && String(lead.news_link).trim() ? String(lead.news_link) : null;
   const newsExtra = Array.isArray(lead.news_links) ? lead.news_links.length : 0;
   const parado = lead.dias_parado ?? 0;
@@ -465,7 +409,7 @@ function LeadFicha({ lead, onClose }: { lead: any; onClose: () => void }) {
             </div>
             <div className="text-xs text-muted-foreground mt-1 flex flex-wrap items-center gap-2">
               {stage && (
-                <Badge style={{ background: stage.cor, color: "white" }}>{stage.label}</Badge>
+                <Badge style={{ background: stage.color, color: "white" }}>{stage.name}</Badge>
               )}
               <Badge
                 variant="outline"
@@ -475,12 +419,12 @@ function LeadFicha({ lead, onClose }: { lead: any; onClose: () => void }) {
               </Badge>
               <span
                 className={
-                  lead.acolhedor === "(sem dono)"
+                  lead.acolhedor === "(sem dono)" || !lead.acolhedor
                     ? "text-amber-600 font-medium"
                     : "text-muted-foreground"
                 }
               >
-                {lead.acolhedor}
+                {lead.acolhedor || "(sem dono)"}
               </span>
             </div>
           </div>
@@ -543,7 +487,7 @@ function LeadFicha({ lead, onClose }: { lead: any; onClose: () => void }) {
           <Button
             size="sm"
             variant="outline"
-            onClick={() => window.open(`/leads?leadId=${lead.lead_id}`, "_blank")}
+            onClick={() => window.open(`/leads?leadId=${lead.id}`, "_blank")}
           >
             <ExternalLink className="h-3.5 w-3.5 mr-1" /> Abrir no board
           </Button>
@@ -552,6 +496,7 @@ function LeadFicha({ lead, onClose }: { lead: any; onClose: () => void }) {
     </Card>
   );
 }
+
 function Info({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div>
@@ -563,37 +508,169 @@ function Info({ label, value }: { label: string; value: React.ReactNode }) {
 
 // -------------------- Página --------------------
 export default function AcolhimentoPage() {
-  const funilQ = useFunil();
-  const agingQ = useAging();
-  const convQ = useConversao();
-  const matrizQ = useMatriz();
-  const semDonoQ = useSemDono();
+  const { boards, loading: boardsLoading } = useKanbanBoards();
+  const funnelBoards = useMemo(
+    () => boards.filter((b) => b.board_type === "funnel"),
+    [boards]
+  );
 
-  const [sel, setSel] = useState<{ acolhedor: string; status: StageId } | null>(null);
-  const [selLead, setSelLead] = useState<any | null>(null);
-  const leadsCelQ = useLeadsCel(sel?.acolhedor ?? null, sel?.status ?? null);
+  const [boardId, setBoardId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (boardId) return;
+    if (funnelBoards.length === 0) return;
+    const preferred =
+      funnelBoards.find((b) => b.id === DEFAULT_BOARD_ID) ||
+      funnelBoards.find((b) => b.is_default) ||
+      funnelBoards[0];
+    setBoardId(preferred.id);
+  }, [funnelBoards, boardId]);
+
+  const currentBoard = useMemo(
+    () => funnelBoards.find((b) => b.id === boardId) || null,
+    [funnelBoards, boardId]
+  );
+  const stages: KanbanStage[] = useMemo(
+    () => currentBoard?.stages || [],
+    [currentBoard]
+  );
+  const stageById = useMemo(() => {
+    const m = new Map<string, KanbanStage>();
+    for (const s of stages) m.set(s.id, s);
+    return m;
+  }, [stages]);
+
+  const leadsQ = useBoardLeads(boardId);
+  const leadRows = leadsQ.data || [];
+
+  // Reset seleção ao trocar de funil
+  const [sel, setSel] = useState<{ acolhedor: string; status: string } | null>(null);
+  const [selLeadId, setSelLeadId] = useState<string | null>(null);
+  useEffect(() => {
+    setSel(null);
+    setSelLeadId(null);
+  }, [boardId]);
+
+  // Cálculos derivados
+  const stageSet = useMemo(() => new Set(stages.map((s) => s.id)), [stages]);
+
+  const activeLeads = useMemo(
+    () => leadRows.filter((l) => l.status && stageSet.has(l.status)),
+    [leadRows, stageSet]
+  );
+
+  const funilRows: FunilRow[] = useMemo(() => {
+    const total = activeLeads.length;
+    const daysByStage = new Map<string, number[]>();
+    const countByStage = new Map<string, number>();
+    for (const l of activeLeads) {
+      countByStage.set(l.status!, (countByStage.get(l.status!) || 0) + 1);
+      const d = daysBetween(l.updated_at || l.created_at);
+      const arr = daysByStage.get(l.status!) || [];
+      arr.push(d);
+      daysByStage.set(l.status!, arr);
+    }
+    const median = (arr: number[]) => {
+      if (!arr.length) return 0;
+      const s = [...arr].sort((a, b) => a - b);
+      const mid = Math.floor(s.length / 2);
+      return s.length % 2 ? s[mid] : Math.round((s[mid - 1] + s[mid]) / 2);
+    };
+    return stages.map((st) => {
+      const leads = countByStage.get(st.id) || 0;
+      return {
+        id: st.id,
+        name: st.name,
+        color: st.color,
+        leads,
+        pct: total ? (leads / total) * 100 : 0,
+        mediana: median(daysByStage.get(st.id) || []),
+      };
+    });
+  }, [activeLeads, stages]);
+
+  const agingRows: AgingRow[] = useMemo(() => {
+    return stages.map((st) => {
+      const buckets = { d_0_3: 0, d_4_7: 0, d_8_30: 0, d_31_90: 0, d_90mais: 0 };
+      for (const l of activeLeads) {
+        if (l.status !== st.id) continue;
+        const d = daysBetween(l.updated_at || l.created_at);
+        if (d <= 3) buckets.d_0_3++;
+        else if (d <= 7) buckets.d_4_7++;
+        else if (d <= 30) buckets.d_8_30++;
+        else if (d <= 90) buckets.d_31_90++;
+        else buckets.d_90mais++;
+      }
+      return { id: st.id, name: st.name, buckets };
+    });
+  }, [activeLeads, stages]);
+
+  const matriz = useMemo(() => {
+    const map = new Map<string, Record<string, number>>();
+    for (const l of activeLeads) {
+      const name = (l.acolhedor || "").trim() || "(sem dono)";
+      if (!map.has(name)) map.set(name, {});
+      const bucket = map.get(name)!;
+      bucket[l.status!] = (bucket[l.status!] || 0) + 1;
+    }
+    return map;
+  }, [activeLeads]);
 
   const kpis = useMemo(() => {
-    const noFunil = (funilQ.data || []).reduce((s, r) => s + (r.leads || 0), 0);
-    const conv = convQ.data || [];
-    const convertidos = conv.filter((c) => c.convertido).length;
-    const total = conv.length;
+    const noFunil = activeLeads.length;
+    const total = leadRows.length;
+    const convertidos = leadRows.filter((l) => !!l.process_id || !!l.case_number).length;
     const pctConv = total ? (convertidos / total) * 100 : 0;
-    const parados90 = (agingQ.data || []).reduce((s, r) => s + (r.d_90mais || 0), 0);
-    return { noFunil, pctConv, parados90, semDono: semDonoQ.data ?? 0 };
-  }, [funilQ.data, convQ.data, agingQ.data, semDonoQ.data]);
+    const parados90 = activeLeads.filter(
+      (l) => daysBetween(l.updated_at || l.created_at) > 90
+    ).length;
+    const semDono = leadRows.filter((l) => !l.acolhedor || !l.acolhedor.trim()).length;
+    return { noFunil, pctConv, parados90, semDono };
+  }, [activeLeads, leadRows]);
 
-  const anyLoading =
-    funilQ.isLoading || agingQ.isLoading || convQ.isLoading || matrizQ.isLoading;
+  // Drill-down list (célula selecionada)
+  const drillLeads = useMemo(() => {
+    if (!sel) return [] as Array<LeadRow & { dias_parado: number }>;
+    return activeLeads
+      .filter((l) => {
+        const name = (l.acolhedor || "").trim() || "(sem dono)";
+        return name === sel.acolhedor && l.status === sel.status;
+      })
+      .map((l) => ({ ...l, dias_parado: daysBetween(l.updated_at || l.created_at) }))
+      .sort((a, b) => b.dias_parado - a.dias_parado);
+  }, [activeLeads, sel]);
+
+  const selLead = useMemo(
+    () => drillLeads.find((l) => l.id === selLeadId) || null,
+    [drillLeads, selLeadId]
+  );
+
+  const anyLoading = boardsLoading || leadsQ.isLoading;
 
   return (
     <div className="p-4 md:p-6 space-y-4 max-w-[1400px] mx-auto">
       {/* Cabeçalho */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
+        <div className="space-y-2">
           <h1 className="text-2xl font-semibold">Gerenciamento Acolhimento</h1>
-          <div className="text-sm text-muted-foreground">
-            Funil: <span className="font-medium">Acidente de Trabalho</span>
+          <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+            <span>Funil:</span>
+            <Select
+              value={boardId ?? ""}
+              onValueChange={(v) => setBoardId(v)}
+              disabled={funnelBoards.length === 0}
+            >
+              <SelectTrigger className="h-8 min-w-[220px] w-auto">
+                <SelectValue placeholder="Selecione um funil" />
+              </SelectTrigger>
+              <SelectContent>
+                {funnelBoards.map((b) => (
+                  <SelectItem key={b.id} value={b.id}>
+                    {b.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
         <Badge className="bg-[#1D9E75] hover:bg-[#178761] text-white">
@@ -604,7 +681,11 @@ export default function AcolhimentoPage() {
 
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <KpiCard label="No funil" value={kpis.noFunil.toLocaleString("pt-BR")} hint="Leads ativos nas 7 etapas" />
+        <KpiCard
+          label="No funil"
+          value={kpis.noFunil.toLocaleString("pt-BR")}
+          hint={`Leads ativos nas ${stages.length} etapas`}
+        />
         <KpiCard
           label="Conversão real"
           value={`${kpis.pctConv.toFixed(1)}%`}
@@ -625,23 +706,22 @@ export default function AcolhimentoPage() {
         />
       </div>
 
-      {anyLoading && (
-        <div className="text-xs text-muted-foreground">Carregando dados…</div>
-      )}
+      {anyLoading && <div className="text-xs text-muted-foreground">Carregando dados…</div>}
 
       {/* Funil + Aging */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Funil funil={funilQ.data || []} aging={agingQ.data || []} />
-        <AgingHeat aging={agingQ.data || []} />
+        <Funil rows={funilRows} />
+        <AgingHeat rows={agingRows} />
       </div>
 
       {/* Matriz */}
       <Matriz
-        matriz={matrizQ.data || new Map()}
+        stages={stages}
+        matriz={matriz}
         selected={sel}
         onSelect={(a, s) => {
           setSel({ acolhedor: a, status: s });
-          setSelLead(null);
+          setSelLeadId(null);
         }}
       />
 
@@ -655,11 +735,11 @@ export default function AcolhimentoPage() {
                   <div className="text-sm font-medium">
                     {sel.acolhedor}{" "}
                     <span className="text-muted-foreground">
-                      · {STAGES[sel.status].label}
+                      · {stageById.get(sel.status)?.name || sel.status}
                     </span>
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    {leadsCelQ.data?.length ?? 0} leads · ordenado por dias parado
+                    {drillLeads.length} leads · ordenado por dias parado
                   </div>
                 </div>
                 <Button size="sm" variant="ghost" onClick={() => setSel(null)}>
@@ -667,16 +747,14 @@ export default function AcolhimentoPage() {
                 </Button>
               </div>
               <div className="space-y-1 max-h-[520px] overflow-y-auto pr-1">
-                {leadsCelQ.isLoading && (
-                  <div className="text-xs text-muted-foreground">Carregando…</div>
-                )}
-                {(leadsCelQ.data || []).map((l) => {
-                  const parado = l.dias_parado ?? 0;
-                  const isActive = selLead?.lead_id === l.lead_id;
+                {drillLeads.map((l) => {
+                  const parado = l.dias_parado;
+                  const isActive = selLeadId === l.id;
+                  const stage = stageById.get(l.status || "");
                   return (
                     <button
-                      key={l.lead_id}
-                      onClick={() => setSelLead(l)}
+                      key={l.id}
+                      onClick={() => setSelLeadId(l.id)}
                       className={cn(
                         "w-full flex items-center gap-3 px-2 py-2 rounded text-left hover:bg-muted transition-colors",
                         isActive ? "bg-muted" : ""
@@ -684,7 +762,7 @@ export default function AcolhimentoPage() {
                     >
                       <div
                         className="h-8 w-8 rounded-full flex items-center justify-center text-xs font-medium text-white shrink-0"
-                        style={{ background: STAGES[l.status as StageId]?.cor || "#666" }}
+                        style={{ background: stage?.color || "#666" }}
                       >
                         {initials(l.victim_name || l.lead_name)}
                       </div>
@@ -711,7 +789,7 @@ export default function AcolhimentoPage() {
                     </button>
                   );
                 })}
-                {leadsCelQ.data && leadsCelQ.data.length === 0 && (
+                {drillLeads.length === 0 && (
                   <div className="text-xs text-muted-foreground py-4 text-center">
                     Nenhum lead nesta interseção.
                   </div>
@@ -721,7 +799,11 @@ export default function AcolhimentoPage() {
           </Card>
 
           {selLead ? (
-            <LeadFicha lead={selLead} onClose={() => setSelLead(null)} />
+            <LeadFicha
+              lead={selLead}
+              stage={stageById.get(selLead.status || "") || null}
+              onClose={() => setSelLeadId(null)}
+            />
           ) : (
             <Card>
               <CardContent className="p-8 text-center text-sm text-muted-foreground">
