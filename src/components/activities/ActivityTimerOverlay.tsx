@@ -129,6 +129,7 @@ export function ActivityTimerOverlay() {
           </button>
           <button
             type="button"
+            onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => { e.stopPropagation(); hideTimer(); }}
             className="ml-1 rounded-full p-1 hover:bg-accent hover:text-foreground text-muted-foreground"
             title="Ocultar cronômetro (ele reaparece ao abrir/trocar de atividade)"
