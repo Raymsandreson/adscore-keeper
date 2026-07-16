@@ -34,6 +34,7 @@ export const handler: RequestHandler = async (req, res) => {
     const {
       entity_type,
       entity_id,
+      conversation_id,
       sender_id,
       sender_name,
       content,
@@ -42,25 +43,39 @@ export const handler: RequestHandler = async (req, res) => {
       url,
     } = req.body || {};
 
-    if (!entity_id) return res.json({ success: false, error: 'entity_id obrigatório' });
+    if (!entity_id && !conversation_id) {
+      return res.json({ success: false, error: 'entity_id ou conversation_id obrigatório' });
+    }
 
-    // Destinatários: participantes do thread + mencionados, menos o remetente.
+    // Destinatários: mencionados + participantes, menos o remetente.
     const recipients = new Set<string>();
     (Array.isArray(mentioned_user_ids) ? mentioned_user_ids : []).forEach((id: string) => {
       if (id) recipients.add(id);
     });
 
-    const { data: parts } = await supabase
-      .from('team_chat_messages')
-      .select('sender_id')
-      .eq('entity_type', entity_type)
-      .eq('entity_id', entity_id)
-      .is('deleted_at', null)
-      .order('created_at', { ascending: false })
-      .limit(200);
-    (parts || []).forEach((p: { sender_id: string | null }) => {
-      if (p.sender_id) recipients.add(p.sender_id);
-    });
+    if (conversation_id) {
+      // Chat direto/grupo: todos os membros da conversa.
+      const { data: members } = await supabase
+        .from('team_conversation_members')
+        .select('user_id')
+        .eq('conversation_id', conversation_id);
+      (members || []).forEach((m: { user_id: string | null }) => {
+        if (m.user_id) recipients.add(m.user_id);
+      });
+    } else {
+      // Chat de entidade (atv/lead/processo/contato): quem já participou do thread.
+      const { data: parts } = await supabase
+        .from('team_chat_messages')
+        .select('sender_id')
+        .eq('entity_type', entity_type)
+        .eq('entity_id', entity_id)
+        .is('deleted_at', null)
+        .order('created_at', { ascending: false })
+        .limit(200);
+      (parts || []).forEach((p: { sender_id: string | null }) => {
+        if (p.sender_id) recipients.add(p.sender_id);
+      });
+    }
 
     if (sender_id) recipients.delete(sender_id);
     if (recipients.size === 0) return res.json({ success: true, sent: 0 });
@@ -81,7 +96,7 @@ export const handler: RequestHandler = async (req, res) => {
       body,
       url: url || '/',
       urgent: !!is_urgent,
-      tag: `team-${entity_type}-${entity_id}`,
+      tag: conversation_id ? `team-conv-${conversation_id}` : `team-${entity_type}-${entity_id}`,
     });
 
     let sent = 0;
