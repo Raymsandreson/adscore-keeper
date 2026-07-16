@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { Clock, Coffee, GripVertical, Pause, Search, Timer as TimerIcon } from 'lucide-react';
+import { Clock, Coffee, EyeOff, GripVertical, Pause, Search, Timer as TimerIcon } from 'lucide-react';
 import { db } from '@/integrations/supabase';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -83,8 +83,8 @@ function useDraggablePosition() {
  */
 export function ActivityTimerOverlay() {
   const {
-    current, idlePrompt, leavePrompt, switchPrompt,
-    requestLeave, keepRunning, pauseAndClose,
+    current, hidden, idlePrompt, leavePrompt, switchPrompt,
+    requestLeave, keepRunning, pauseAndClose, hideTimer,
     confirmStillWorking, rejectStillWorking, switchTo, dismissSwitch,
   } = useActivityTimer();
 
@@ -99,7 +99,7 @@ export function ActivityTimerOverlay() {
 
   return (
     <>
-      {current && current.kind === 'activity' && (
+      {current && current.kind === 'activity' && !hidden && (
         <div
           ref={drag.setElRef}
           style={drag.style}
@@ -127,10 +127,19 @@ export function ActivityTimerOverlay() {
               {current.activityTitle}
             </span>
           </button>
+          <button
+            type="button"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); hideTimer(); }}
+            className="ml-1 rounded-full p-1 hover:bg-accent hover:text-foreground text-muted-foreground"
+            title="Ocultar cronômetro (ele reaparece ao abrir/trocar de atividade)"
+          >
+            <EyeOff className="h-3.5 w-3.5" />
+          </button>
         </div>
       )}
 
-      {current && current.kind === 'gap' && (
+      {current && current.kind === 'gap' && !hidden && (
         <div
           ref={drag.setElRef}
           style={drag.style}
@@ -146,6 +155,15 @@ export function ActivityTimerOverlay() {
             {formatHMS(current.idleSeconds)}
           </span>
           <span className="text-xs text-amber-700/80 dark:text-amber-300/80 hidden sm:inline">ocioso</span>
+          <button
+            type="button"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); hideTimer(); }}
+            className="ml-1 rounded-full p-1 hover:bg-amber-200/50 dark:hover:bg-amber-800/50 text-amber-700 dark:text-amber-300"
+            title="Ocultar cronômetro (ele reaparece ao abrir/trocar de atividade)"
+          >
+            <EyeOff className="h-3.5 w-3.5" />
+          </button>
         </div>
       )}
 

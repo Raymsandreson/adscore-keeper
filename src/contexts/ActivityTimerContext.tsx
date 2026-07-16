@@ -51,6 +51,7 @@ interface TimerEntry {
 
 interface ActivityTimerCtx {
   current: TimerEntry | null;
+  hidden: boolean;
   idlePrompt: boolean;
   leavePrompt: boolean;
   switchPrompt: boolean;
@@ -65,6 +66,8 @@ interface ActivityTimerCtx {
   rejectStillWorking: () => Promise<void>;
   switchTo: (activity: TimerActivityRef | null) => Promise<void>;
   dismissSwitch: () => void;
+  hideTimer: () => void;
+  showTimer: () => void;
   formatHMS: (totalSeconds: number) => string;
 }
 
@@ -116,6 +119,7 @@ function notifyDesktop(title: string, body: string) {
 
 export function ActivityTimerProvider({ children }: { children: React.ReactNode }) {
   const [current, setCurrent] = useState<TimerEntry | null>(null);
+  const [hidden, setHidden] = useState(false);
   const [idlePrompt, setIdlePrompt] = useState(false);
   const [leavePrompt, setLeavePrompt] = useState(false);
   const [switchPrompt, setSwitchPrompt] = useState(false);
@@ -271,8 +275,14 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
     else sync(null);
   }, [flush, startGap, sync]);
 
+  const showTimer = useCallback(() => setHidden(false), []);
+  const hideTimer = useCallback(() => setHidden(true), []);
+
   const startTimer = useCallback(async (activity: TimerActivityRef) => {
     if (!activity?.id) return;
+
+    // Sempre mostra o badge ao iniciar/trocar de atividade.
+    showTimer();
 
     // Já nesta atv: se pausada, retoma; se rodando, nada.
     if (entryRef.current?.kind === 'activity' && entryRef.current.activityId === activity.id) {
@@ -344,7 +354,7 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
     } finally {
       busyRef.current = false;
     }
-  }, [getUser, sync, flush]);
+  }, [getUser, sync, flush, showTimer]);
 
   const requestLeave = useCallback(() => {
     if (entryRef.current?.kind === 'activity') setLeavePrompt(true);
@@ -375,16 +385,19 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
 
   const switchTo = useCallback(async (activity: TimerActivityRef | null) => {
     setSwitchPrompt(false);
-    if (activity) await startTimer(activity);
-  }, [startTimer]);
+    if (activity) {
+      showTimer();
+      await startTimer(activity);
+    }
+  }, [startTimer, showTimer]);
 
   const dismissSwitch = useCallback(() => setSwitchPrompt(false), []);
 
   const value: ActivityTimerCtx = {
-    current, idlePrompt, leavePrompt, switchPrompt,
+    current, hidden, idlePrompt, leavePrompt, switchPrompt,
     startTimer, requestLeave, keepRunning, pauseAndClose, stopTimerFor,
     confirmStillWorking, rejectStillWorking, switchTo, dismissSwitch,
-    formatHMS,
+    hideTimer, showTimer, formatHMS,
   };
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
