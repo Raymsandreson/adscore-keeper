@@ -12,6 +12,7 @@ import { SessionProvider } from "@/contexts/SessionContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { TeamChatNotifications } from "@/components/chat/TeamChatNotifications";
+import { PushNotificationPrompt } from "@/components/chat/PushNotificationPrompt";
 import { ActivityNotificationsListener } from "@/components/activities/ActivityNotificationsListener";
 import { UserStatusGuard } from "@/components/auth/UserStatusGuard";
 import { PageTracker } from "@/components/PageTracker";
@@ -238,6 +239,7 @@ const App = () => (
                 <Sonner />
                 <OfflineBanner />
                 <TeamChatNotifications />
+                <PushNotificationPrompt />
                 <ActivityNotificationsListener />
                 <UserStatusGuard />
                 <OrgMetaSync />
