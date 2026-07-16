@@ -660,10 +660,17 @@ export default function AcolhimentoPage() {
       .sort((a, b) => b.dias_parado - a.dias_parado);
   }, [activeLeads, sel]);
 
-  const selLead = useMemo(
+  const selLeadLite = useMemo(
     () => drillLeads.find((l) => l.id === selLeadId) || null,
     [drillLeads, selLeadId]
   );
+  const selLeadDetailQ = useLeadDetail(selLeadId);
+  const selLead = useMemo(() => {
+    if (!selLeadLite) return null;
+    const detail = selLeadDetailQ.data;
+    if (detail) return { ...selLeadLite, ...detail, dias_parado: selLeadLite.dias_parado };
+    return selLeadLite;
+  }, [selLeadLite, selLeadDetailQ.data]);
 
   const anyLoading = boardsLoading || leadsQ.isLoading;
 
