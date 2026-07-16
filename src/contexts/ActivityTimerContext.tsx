@@ -33,6 +33,7 @@ export interface TimerActivityRef {
   activity_type?: string | null;
   title?: string | null;
   lead_name?: string | null;
+  estimated_minutes?: number | null;
 }
 
 interface TimerEntry {
@@ -47,6 +48,8 @@ interface TimerEntry {
   activeSeconds: number;
   idleSeconds: number;
   status: 'running' | 'paused';
+  /** Previsão de tempo (min). Gatilho de urgência; null = sem previsão. */
+  estimateMinutes: number | null;
 }
 
 interface ActivityTimerCtx {
@@ -68,6 +71,8 @@ interface ActivityTimerCtx {
   dismissSwitch: () => void;
   hideTimer: () => void;
   showTimer: () => void;
+  /** Define/edita a previsão de tempo (min) da atividade atual. */
+  setEstimate: (minutes: number | null) => Promise<void>;
   formatHMS: (totalSeconds: number) => string;
 }
 
@@ -130,6 +135,8 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
   const lastFlushRef = useRef<number>(0);
   const busyRef = useRef<boolean>(false);
   const userRef = useRef<{ userId: string; userName: string } | null>(null);
+  const nearNotifiedRef = useRef<boolean>(false); // aviso "se aproximando" já disparado
+  const overNotifiedRef = useRef<boolean>(false);  // aviso "passou da previsão" já disparado
 
   const getUser = useCallback(async () => {
     if (userRef.current) return userRef.current;
@@ -207,6 +214,22 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
         notifyDesktop('Cronômetro de atividade', `Ainda está fazendo "${e.activityTitle}"? Confirme para continuar contando.`);
       }
 
+      // Gatilho de urgência da previsão (compara com o tempo ATIVO).
+      if (next.estimateMinutes && next.estimateMinutes > 0) {
+        const estSec = next.estimateMinutes * 60;
+        if (next.activeSeconds >= estSec) {
+          if (!overNotifiedRef.current) {
+            overNotifiedRef.current = true;
+            nearNotifiedRef.current = true;
+            notifyDesktop('⏰ Previsão estourada', `"${e.activityTitle}" passou da previsão de ${next.estimateMinutes} min.`);
+          }
+        } else if (next.activeSeconds >= estSec * 0.8 && !nearNotifiedRef.current) {
+          nearNotifiedRef.current = true;
+          const faltam = Math.max(1, Math.round((estSec - next.activeSeconds) / 60));
+          notifyDesktop('⚠️ Previsão se aproximando', `Faltam ~${faltam} min para a previsão de "${e.activityTitle}".`);
+        }
+      }
+
       sync(next);
       if (now - lastFlushRef.current >= FLUSH_INTERVAL_MS) flush();
     }, 1000);
@@ -259,7 +282,7 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
     sync({
       kind: 'gap', entryId, activityId: null, activityType: '', activityTitle: GAP_TITLE,
       leadName: null, userId: u.userId, userName: u.userName,
-      activeSeconds: 0, idleSeconds, status: 'running',
+      activeSeconds: 0, idleSeconds, status: 'running', estimateMinutes: null,
     });
   }, [getUser, sync]);
 
@@ -310,8 +333,9 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
       let entryId: string;
       let activeSeconds = 0;
       let idleSeconds = 0;
+      let estimateMinutes: number | null = activity.estimated_minutes ?? null;
       const { data: rows } = await dbAny.from('activity_time_entries')
-        .select('id, active_seconds, idle_seconds, started_at')
+        .select('id, active_seconds, idle_seconds, started_at, estimated_minutes')
         .eq('activity_id', activity.id).eq('user_id', u.userId)
         .order('active_seconds', { ascending: false })
         .limit(10);
@@ -321,6 +345,7 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
         entryId = existing.id;
         activeSeconds = existing.active_seconds || 0;
         idleSeconds = existing.idle_seconds || 0;
+        if (existing.estimated_minutes != null) estimateMinutes = existing.estimated_minutes;
         await dbAny.from('activity_time_entries')
           .update({ status: 'running', ended_at: new Date().toISOString() }).eq('id', entryId);
       } else {
@@ -331,6 +356,7 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
           lead_name: activity.lead_name || null,
           user_id: u.userId, user_name: u.userName,
           started_at: new Date().toISOString(), active_seconds: 0, idle_seconds: 0, status: 'running',
+          estimated_minutes: estimateMinutes,
         }).select('id').single();
         if (error || !data) { console.warn('[activity-timer] insert falhou:', error); return; }
         entryId = (data as { id: string }).id;
@@ -339,13 +365,15 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
       lastInteractionRef.current = Date.now();
       awaitingConfirmRef.current = false;
       lastFlushRef.current = Date.now();
+      nearNotifiedRef.current = false;
+      overNotifiedRef.current = false;
       setIdlePrompt(false);
       setLeavePrompt(false);
       sync({
         kind: 'activity', entryId, activityId: activity.id,
         activityType: activity.activity_type || '', activityTitle: activity.title || 'Atividade',
         leadName: activity.lead_name || null, userId: u.userId, userName: u.userName,
-        activeSeconds, idleSeconds, status: 'running',
+        activeSeconds, idleSeconds, status: 'running', estimateMinutes,
       });
 
       if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
@@ -393,11 +421,28 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
 
   const dismissSwitch = useCallback(() => setSwitchPrompt(false), []);
 
+  const setEstimate = useCallback(async (minutes: number | null) => {
+    const e = entryRef.current;
+    if (!e || e.kind !== 'activity') return;
+    const value = minutes && minutes > 0 ? Math.round(minutes) : null;
+    // Reavalia os avisos de urgência com a nova previsão.
+    const estSec = value ? value * 60 : 0;
+    overNotifiedRef.current = !!value && e.activeSeconds >= estSec;
+    nearNotifiedRef.current = !!value && e.activeSeconds >= estSec * 0.8;
+    sync({ ...e, estimateMinutes: value });
+    try {
+      await dbAny.from('activity_time_entries')
+        .update({ estimated_minutes: value }).eq('id', e.entryId);
+    } catch (err) {
+      console.warn('[activity-timer] setEstimate falhou:', err);
+    }
+  }, [sync]);
+
   const value: ActivityTimerCtx = {
     current, hidden, idlePrompt, leavePrompt, switchPrompt,
     startTimer, requestLeave, keepRunning, pauseAndClose, stopTimerFor,
     confirmStillWorking, rejectStillWorking, switchTo, dismissSwitch,
-    hideTimer, showTimer, formatHMS,
+    hideTimer, showTimer, setEstimate, formatHMS,
   };
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

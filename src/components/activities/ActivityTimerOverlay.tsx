@@ -1,10 +1,80 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { Clock, Coffee, EyeOff, GripVertical, Pause, Search, Timer as TimerIcon } from 'lucide-react';
+import { Clock, Coffee, EyeOff, GripVertical, Hourglass, Pause, Search, Timer as TimerIcon } from 'lucide-react';
 import { db } from '@/integrations/supabase';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useActivityTimer, formatHMS } from '@/contexts/ActivityTimerContext';
+
+const ESTIMATE_CHIPS = [15, 30, 45, 60, 90, 120];
+
+/** Segmento de previsão dentro do badge: define/edita e mostra faltam / +além (vermelho). */
+function EstimateControl({
+  estimateMinutes, activeSeconds, onSet,
+}: {
+  estimateMinutes: number | null;
+  activeSeconds: number;
+  onSet: (m: number | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [custom, setCustom] = useState('');
+  const estSec = estimateMinutes ? estimateMinutes * 60 : 0;
+  const over = estimateMinutes ? activeSeconds - estSec : 0;
+  const near = !!estimateMinutes && over < 0 && -over <= estSec * 0.2;
+
+  let label = 'prever';
+  let cls = 'text-muted-foreground';
+  if (estimateMinutes && over >= 0) { label = `+${formatHMS(over)}`; cls = 'text-red-600 dark:text-red-400 font-semibold'; }
+  else if (estimateMinutes) { label = `faltam ${formatHMS(-over)}`; cls = near ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'; }
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+          className={`flex items-center gap-1 text-xs border-l pl-2 ml-0.5 hover:opacity-80 ${cls}`}
+          title="Previsão de tempo (clique para definir)"
+        >
+          <Hourglass className="h-3 w-3" />
+          <span className="tabular-nums">{label}{estimateMinutes ? ` · ${estimateMinutes}m` : ''}</span>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-56 p-2" onPointerDown={(e) => e.stopPropagation()}>
+        <div className="text-xs font-medium mb-1.5">Previsão de tempo</div>
+        <div className="flex flex-wrap gap-1 mb-2">
+          {ESTIMATE_CHIPS.map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => { onSet(m); setOpen(false); }}
+              className={`px-2 py-1 rounded text-xs border hover:bg-accent ${estimateMinutes === m ? 'bg-primary text-primary-foreground border-primary' : ''}`}
+            >
+              {m}m
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-1">
+          <Input
+            type="number" min={1} value={custom}
+            onChange={(e) => setCustom(e.target.value)}
+            placeholder="min" className="h-8 text-xs"
+          />
+          <Button size="sm" className="h-8" onClick={() => { const n = parseInt(custom, 10); if (n > 0) { onSet(n); setOpen(false); setCustom(''); } }}>
+            OK
+          </Button>
+        </div>
+        {estimateMinutes != null && (
+          <button type="button" onClick={() => { onSet(null); setOpen(false); }} className="mt-2 text-xs text-muted-foreground hover:text-destructive">
+            Remover previsão
+          </button>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 const POS_STORAGE_KEY = 'activity-timer-badge-pos';
 
@@ -84,9 +154,14 @@ function useDraggablePosition() {
 export function ActivityTimerOverlay() {
   const {
     current, hidden, idlePrompt, leavePrompt, switchPrompt,
-    requestLeave, keepRunning, pauseAndClose, hideTimer,
+    requestLeave, keepRunning, pauseAndClose, hideTimer, setEstimate,
     confirmStillWorking, rejectStillWorking, switchTo, dismissSwitch,
   } = useActivityTimer();
+
+  const over = current?.kind === 'activity' && current.estimateMinutes
+    ? current.activeSeconds - current.estimateMinutes * 60
+    : -1;
+  const isOver = over >= 0;
 
   // Tick só para re-renderizar o badge a cada segundo.
   const [, force] = useState(0);
@@ -120,13 +195,18 @@ export function ActivityTimerOverlay() {
             onClick={(e) => { if (drag.wasDragged()) { e.preventDefault(); e.stopPropagation(); return; } requestLeave(); }}
             className="flex items-center gap-1.5 hover:opacity-80"
           >
-            <span className="font-mono text-sm tabular-nums font-semibold">
+            <span className={`font-mono text-sm tabular-nums font-semibold ${isOver ? 'text-red-600 dark:text-red-400' : ''}`}>
               {formatHMS(current.activeSeconds)}
             </span>
-            <span className="max-w-[160px] truncate text-xs text-muted-foreground hidden sm:inline">
+            <span className="max-w-[140px] truncate text-xs text-muted-foreground hidden sm:inline">
               {current.activityTitle}
             </span>
           </button>
+          <EstimateControl
+            estimateMinutes={current.estimateMinutes}
+            activeSeconds={current.activeSeconds}
+            onSet={setEstimate}
+          />
           <button
             type="button"
             onPointerDown={(e) => e.stopPropagation()}
