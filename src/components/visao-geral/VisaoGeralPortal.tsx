@@ -183,7 +183,7 @@ function SelectorCard({
 }
 
 export default function VisaoGeralPortal() {
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const [activeId, setActiveId] = useState<string | null>("acidente-trabalho");
   const navigate = useNavigate();
   const { boards } = useKanbanBoards();
   const active = activeId ? SELECTORS.find((s) => s.id === activeId) : null;
