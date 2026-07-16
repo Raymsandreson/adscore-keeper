@@ -477,7 +477,7 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
         }
       }
 
-      const { error } = await externalSupabase
+      const { data: insertedProcess, error } = await externalSupabase
         .from('lead_processes')
         .insert({
           lead_id: leadId,
@@ -488,8 +488,8 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
           description: manualForm.description || null,
           fee_percentage: manualForm.fee_percentage ? parseFloat(manualForm.fee_percentage) : null,
           valor_causa: manualForm.valor_causa ? parseFloat(manualForm.valor_causa) : null,
-          estimated_fee_value: manualForm.estimated_fee_value 
-            ? parseFloat(manualForm.estimated_fee_value) 
+          estimated_fee_value: manualForm.estimated_fee_value
+            ? parseFloat(manualForm.estimated_fee_value)
             : (autoCalculatedFee ? parseFloat(autoCalculatedFee) : null),
           workflow_id: workflowId || null,
           workflow_name: selectedBoard?.name || null,
@@ -498,17 +498,19 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
           notes: manualForm.notes || null,
           status: 'em_andamento',
           created_by: extUserId,
-        } as any);
+        } as any)
+        .select('id')
+        .single();
 
       if (error) throw error;
-      
+
       // Auto-create/attach "Dar andamento" activity via helper central
       try {
         const { extAssignedTo, assignedName } = await resolveAssignment(manualForm.title.trim(), caseId, user?.id);
         const r = await createOrAttachAndamentoActivity({
           leadId,
           caseId,
-          processId: null,
+          processId: insertedProcess?.id || null,
           processTitle: manualForm.title.trim(),
           extAssignedTo: extAssignedTo ?? extUserId,
           assignedName,
