@@ -89,8 +89,10 @@ const WorkflowProgressPage = () => {
   const handleSelectLead = (lead: LeadBasic) => {
     setSelectedLead(lead);
     setSearchParams({ leadId: lead.id });
-    const board = boards.find(b => b.id === lead.board_id);
-    setSelectedBoard(board || boards[0] || null);
+    const board = boards.find(
+      b => b.id === lead.board_id && (b as any).board_type === 'workflow',
+    );
+    setSelectedBoard(board || null);
     setShowLeadPicker(false);
     setSearchQuery('');
   };
