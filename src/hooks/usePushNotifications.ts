@@ -61,7 +61,7 @@ export function usePushNotifications() {
     if (!user?.id) return;
     await ensureExternalSession();
     const json = sub.toJSON();
-    await externalSupabase.from('push_subscriptions').upsert({
+    const { error } = await externalSupabase.from('push_subscriptions').upsert({
       user_id: user.id,
       endpoint: sub.endpoint,
       p256dh: json.keys?.p256dh || '',
@@ -69,6 +69,10 @@ export function usePushNotifications() {
       user_agent: navigator.userAgent,
       updated_at: new Date().toISOString(),
     }, { onConflict: 'endpoint' });
+    if (error) {
+      console.error('[push] falha ao salvar assinatura:', error);
+      throw error;
+    }
   }, [user?.id]);
 
   const getRegistration = useCallback(async () => {
