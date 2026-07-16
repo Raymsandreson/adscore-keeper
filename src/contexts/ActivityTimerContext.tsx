@@ -295,13 +295,17 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
       if (!u) { console.warn('[activity-timer] sem usuário — timer não iniciado'); sync(null); return; }
 
       // Retoma a linha existente desta atv (acumula de onde parou) ou cria nova.
+      // Busca TODAS as linhas dessa atv e usa a com maior active_seconds
+      // (defesa contra linhas duplicadas antigas que zerariam a contagem).
       let entryId: string;
       let activeSeconds = 0;
       let idleSeconds = 0;
-      const { data: existing } = await dbAny.from('activity_time_entries')
-        .select('id, active_seconds, idle_seconds')
+      const { data: rows } = await dbAny.from('activity_time_entries')
+        .select('id, active_seconds, idle_seconds, started_at')
         .eq('activity_id', activity.id).eq('user_id', u.userId)
-        .order('started_at', { ascending: false }).limit(1).maybeSingle();
+        .order('active_seconds', { ascending: false })
+        .limit(10);
+      const existing = Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
 
       if (existing) {
         entryId = existing.id;
