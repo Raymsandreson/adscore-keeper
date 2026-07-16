@@ -173,8 +173,6 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
   compactLabel?: boolean;
 }) {
   const [sending, setSending] = useState(false);
-  const [chatOpen, setChatOpen] = useState(false);
-  const [summarizing, setSummarizing] = useState(false);
   const { user } = useAuthContext();
   const { isAdmin } = useUserRole();
   const [instances, setInstances] = useState<{ id: string; instance_name: string }[]>([]);
@@ -608,6 +606,9 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
     [props.teamMembers],
   );
   const [detailsOpen, setDetailsOpen] = useState(true);
+  // Chat interno da equipe (colapsável) + estado de "Revisar com IA" no feedback.
+  const [chatOpen, setChatOpen] = useState(false);
+  const [summarizing, setSummarizing] = useState(false);
   const [expandedFieldKey, setExpandedFieldKey] = useState<string | null>(null);
   const [linkLeadOpen, setLinkLeadOpen] = useState(false);
   const [linkContactOpen, setLinkContactOpen] = useState(false);
