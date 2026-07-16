@@ -151,6 +151,21 @@ function useDraggablePosition() {
   return { style, onPointerDown, onPointerMove, onPointerUp, wasDragged, setElRef: (el: HTMLElement | null) => { elRef.current = el; } };
 }
 
+/** Linha de totais do dia (produtivo x ocioso) no topo do badge. */
+function DayTotalsRow({ active, idle }: { active: number; idle: number }) {
+  return (
+    <div className="flex items-center justify-center gap-2 text-[10px] leading-none border-b pb-1 mb-0.5">
+      <span className="text-muted-foreground uppercase tracking-wide">Hoje</span>
+      <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-semibold tabular-nums" title="Tempo produtivo do dia">
+        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />{formatHMS(active)}
+      </span>
+      <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400 font-semibold tabular-nums" title="Tempo ocioso do dia">
+        <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />{formatHMS(idle)}
+      </span>
+    </div>
+  );
+}
+
 /**
  * UI global do cronômetro:
  * - Badge flutuante arrastável (posição salva no localStorage).
@@ -158,7 +173,7 @@ function useDraggablePosition() {
  */
 export function ActivityTimerOverlay() {
   const {
-    current, hidden, idlePrompt, leavePrompt, switchPrompt,
+    current, dayTotals, hidden, idlePrompt, leavePrompt, switchPrompt,
     keepRunning, pauseAndClose, hideTimer, setEstimate,
     confirmStillWorking, rejectStillWorking, switchTo, dismissSwitch,
   } = useActivityTimer();
@@ -188,9 +203,11 @@ export function ActivityTimerOverlay() {
           onPointerDown={drag.onPointerDown}
           onPointerMove={drag.onPointerMove}
           onPointerUp={drag.onPointerUp}
-          className="fixed z-[60] flex items-center gap-1.5 rounded-full border bg-background/95 pl-1.5 pr-3 py-2 shadow-lg backdrop-blur touch-none select-none cursor-grab active:cursor-grabbing"
+          className="fixed z-[60] flex flex-col gap-0.5 rounded-2xl border bg-background/95 px-2 py-1.5 shadow-lg backdrop-blur touch-none select-none cursor-grab active:cursor-grabbing"
           title="Arraste para mover · clique no tempo para abrir a atividade"
         >
+          <DayTotalsRow active={dayTotals.active} idle={dayTotals.idle} />
+          <div className="flex items-center gap-1.5">
           <GripVertical className="h-3.5 w-3.5 text-muted-foreground/60" />
           <span className="relative flex h-2.5 w-2.5">
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
@@ -233,6 +250,7 @@ export function ActivityTimerOverlay() {
           >
             <EyeOff className="h-3.5 w-3.5" />
           </button>
+          </div>
         </div>
       )}
 
@@ -254,9 +272,11 @@ export function ActivityTimerOverlay() {
           onPointerDown={drag.onPointerDown}
           onPointerMove={drag.onPointerMove}
           onPointerUp={drag.onPointerUp}
-          className="fixed z-[60] flex items-center gap-1.5 rounded-full border border-amber-300/50 bg-amber-50/95 dark:bg-amber-950/60 pl-1.5 pr-3 py-2 shadow-lg backdrop-blur touch-none select-none cursor-grab active:cursor-grabbing"
+          className="fixed z-[60] flex flex-col gap-0.5 rounded-2xl border border-amber-300/50 bg-amber-50/95 dark:bg-amber-950/60 px-2 py-1.5 shadow-lg backdrop-blur touch-none select-none cursor-grab active:cursor-grabbing"
           title="Arraste para mover · tempo ocioso entre atividades"
         >
+          <DayTotalsRow active={dayTotals.active} idle={dayTotals.idle} />
+          <div className="flex items-center gap-1.5">
           <GripVertical className="h-3.5 w-3.5 text-amber-700/50 dark:text-amber-300/50" />
           <Coffee className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
           <span className="font-mono text-sm tabular-nums font-semibold text-amber-700 dark:text-amber-300">
@@ -272,6 +292,7 @@ export function ActivityTimerOverlay() {
           >
             <EyeOff className="h-3.5 w-3.5" />
           </button>
+          </div>
         </div>
       )}
 

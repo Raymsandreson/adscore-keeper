@@ -54,6 +54,8 @@ interface TimerEntry {
 
 interface ActivityTimerCtx {
   current: TimerEntry | null;
+  /** Totais do dia (do membro): produtivo (ativo) e ocioso, ao vivo. */
+  dayTotals: { active: number; idle: number };
   hidden: boolean;
   idlePrompt: boolean;
   leavePrompt: boolean;
@@ -124,6 +126,7 @@ function notifyDesktop(title: string, body: string) {
 
 export function ActivityTimerProvider({ children }: { children: React.ReactNode }) {
   const [current, setCurrent] = useState<TimerEntry | null>(null);
+  const [dayBase, setDayBase] = useState<{ active: number; idle: number }>({ active: 0, idle: 0 });
   const [hidden, setHidden] = useState(false);
   const [idlePrompt, setIdlePrompt] = useState(false);
   const [leavePrompt, setLeavePrompt] = useState(false);
@@ -165,6 +168,35 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
       console.warn('[activity-timer] flush falhou:', err);
     }
   }, []);
+
+  // Soma todas as sessões de HOJE do membro, exceto a atual (contada ao vivo).
+  const refreshDayBase = useCallback(async () => {
+    const u = await getUser();
+    if (!u) return;
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    try {
+      const { data } = await dbAny.from('activity_time_entries')
+        .select('id, active_seconds, idle_seconds')
+        .eq('user_id', u.userId)
+        .gte('started_at', startOfDay.toISOString());
+      const curId = entryRef.current?.entryId;
+      let active = 0, idle = 0;
+      for (const r of ((data as { id: string; active_seconds: number; idle_seconds: number }[]) || [])) {
+        if (r.id === curId) continue; // a atual entra ao vivo
+        active += r.active_seconds || 0;
+        idle += r.idle_seconds || 0;
+      }
+      setDayBase({ active, idle });
+    } catch { /* mantém o valor atual */ }
+  }, [getUser]);
+
+  // Atualiza a base do dia ao mudar de sessão e periodicamente.
+  useEffect(() => {
+    refreshDayBase();
+    const id = setInterval(refreshDayBase, 60000);
+    return () => clearInterval(id);
+  }, [current?.entryId, refreshDayBase]);
 
   // ---- Registro de interação (global) ----
   useEffect(() => {
@@ -438,8 +470,13 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
     }
   }, [sync]);
 
+  const dayTotals = {
+    active: dayBase.active + (current?.activeSeconds || 0),
+    idle: dayBase.idle + (current?.idleSeconds || 0),
+  };
+
   const value: ActivityTimerCtx = {
-    current, hidden, idlePrompt, leavePrompt, switchPrompt,
+    current, dayTotals, hidden, idlePrompt, leavePrompt, switchPrompt,
     startTimer, requestLeave, keepRunning, pauseAndClose, stopTimerFor,
     confirmStillWorking, rejectStillWorking, switchTo, dismissSwitch,
     hideTimer, showTimer, setEstimate, formatHMS,
