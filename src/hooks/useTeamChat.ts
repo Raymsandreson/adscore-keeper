@@ -182,6 +182,28 @@ export function useTeamChat(entityType: string, entityId: string, entityName?: s
       }).catch(err => console.error('Failed to notify mentions via WhatsApp:', err));
     }
 
+    // Web Push nativo para os participantes do thread (celular/notebook, mesmo com
+    // a aba fechada). Não bloqueia o envio.
+    if (msg) {
+      const url =
+        entityType === 'activity' ? `/?openActivity=${entityId}`
+        : entityType === 'lead' ? `/leads?openLead=${entityId}`
+        : entityType === 'contact' ? `/leads?openContact=${entityId}`
+        : '/';
+      cloudFunctions.invoke('send-team-push', {
+        body: {
+          entity_type: entityType,
+          entity_id: entityId,
+          sender_id: user.id,
+          sender_name: senderName,
+          content,
+          is_urgent: !!extra?.is_urgent,
+          mentioned_user_ids: mentionedUserIds,
+          url,
+        },
+      }).catch(err => console.error('Falha ao enviar Web Push da equipe:', err));
+    }
+
     return (msg as TeamMessage) || null;
   }, [user, entityType, entityId, entityName]);
 

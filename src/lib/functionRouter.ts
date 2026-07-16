@@ -22,6 +22,7 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
   'send-whatsapp': 'cloud',                  // TODO: migrar para 'railway'
 
   // --- Funções já portadas pro Railway ---
+  'send-team-push': 'railway',
   'onboarding-checkpoint-execute': 'railway',
   'onboarding-checkpoint-reprocess': 'railway',
   'regenerate-lead-name': 'railway',

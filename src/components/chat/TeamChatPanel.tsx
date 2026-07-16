@@ -5,7 +5,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Send, Loader2, AtSign, Users, Paperclip, Mic, Square, AlertTriangle, Play, Pause, FileText, Image as ImageIcon, Sparkles } from 'lucide-react';
+import { Send, Loader2, AtSign, Users, Paperclip, Mic, Square, AlertTriangle, Play, Pause, FileText, Image as ImageIcon, Sparkles, Bell, BellRing } from 'lucide-react';
+import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -56,6 +57,7 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
   const { messages, loading, sendMessage, updateMessage } = useTeamChat(entityType, entityId, entityName);
   const members = useTeamMembers();
   const navigate = useNavigate();
+  const push = usePushNotifications();
   const draftKey = `team-chat-draft-${entityType}-${entityId}`;
   const [inputText, setInputText] = useState(() => sessionStorage.getItem(draftKey) || '');
   const [sending, setSending] = useState(false);
@@ -504,6 +506,22 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
           />
 
           <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileUpload} />
+          {push.supported && push.permission !== 'granted' && (
+            <Button
+              type="button" size="icon" variant="ghost"
+              className="h-8 w-8 shrink-0 text-muted-foreground"
+              title="Ativar notificações no celular/notebook (mesmo com a aba fechada)"
+              disabled={push.busy}
+              onClick={push.enable}
+            >
+              {push.busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bell className="h-4 w-4" />}
+            </Button>
+          )}
+          {push.supported && push.permission === 'granted' && push.subscribed && (
+            <span className="shrink-0 text-emerald-600" title="Notificações ativas neste dispositivo">
+              <BellRing className="h-4 w-4" />
+            </span>
+          )}
           <Button
             type="button" size="icon" variant="ghost"
             className="h-8 w-8 shrink-0 text-muted-foreground"
