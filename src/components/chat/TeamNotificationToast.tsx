@@ -1,8 +1,9 @@
 import { useState, useRef, type KeyboardEvent, type ReactNode, type TouchEvent } from 'react';
-import { Loader2, Send, Clock, X } from 'lucide-react';
+import { Loader2, Send, Clock, X, FileText, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { VoiceInputButton } from '@/components/ui/voice-input-button';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -18,6 +19,11 @@ interface TeamNotificationToastProps {
   preview: string;
   count?: number;
   urgent?: boolean;
+  /** Anexo da mensagem (para abrir/ver direto do popup) */
+  fileUrl?: string | null;
+  fileName?: string | null;
+  fileType?: string | null;
+  messageType?: string | null;
   onOpen: () => void | Promise<void>;
   onMuteForMinutes: (minutes: number | null) => void;
   onReply?: (reply: string) => Promise<void>;
@@ -41,6 +47,10 @@ export function TeamNotificationToast({
   preview,
   count,
   urgent,
+  fileUrl,
+  fileName,
+  fileType,
+  messageType,
   onOpen,
   onMuteForMinutes,
   onReply,
@@ -170,15 +180,40 @@ export function TeamNotificationToast({
         </div>
       </button>
 
+      {/* Anexo: abrir/ver direto do popup */}
+      {fileUrl && (
+        <div className="mt-2" onClick={(event) => event.stopPropagation()}>
+          {messageType === 'image' ? (
+            <a href={fileUrl} target="_blank" rel="noopener noreferrer">
+              <img src={fileUrl} alt={fileName || 'Imagem'} className="rounded-lg max-h-32 w-auto object-cover border border-border" />
+            </a>
+          ) : messageType === 'audio' ? (
+            <audio controls preload="none" src={fileUrl} className="w-full h-9" />
+          ) : (
+            <a
+              href={fileUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 rounded-lg border border-border bg-accent/40 px-3 py-2 text-sm hover:bg-accent transition-colors"
+            >
+              <FileText className="h-4 w-4 shrink-0 text-primary" />
+              <span className="truncate flex-1">{fileName || 'Abrir arquivo'}</span>
+              <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            </a>
+          )}
+        </div>
+      )}
+
       {onReply && (
         <div className="mt-3 flex items-center gap-2" onClick={(event) => event.stopPropagation()}>
           <Input
             value={reply}
             onChange={(event) => setReply(event.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Responder por aqui..."
+            placeholder="Responder ou falar (microfone)..."
             className="h-8 text-sm"
           />
+          <VoiceInputButton onResult={(text) => setReply(text)} append={false} />
           <Button
             size="sm"
             className="h-8 shrink-0"
