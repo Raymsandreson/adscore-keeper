@@ -33,7 +33,7 @@ export function ActivityTimerOverlay() {
         <button
           type="button"
           onClick={requestLeave}
-          className="fixed bottom-4 right-4 z-[60] flex items-center gap-2 rounded-full border bg-background/95 px-3 py-2 shadow-lg backdrop-blur hover:bg-accent transition-colors"
+          className="fixed bottom-4 left-4 z-[60] flex items-center gap-2 rounded-full border bg-background/95 px-3 py-2 shadow-lg backdrop-blur hover:bg-accent transition-colors"
           title="Cronômetro em andamento — clique para pausar/continuar"
         >
           <span className="relative flex h-2.5 w-2.5">
@@ -52,7 +52,7 @@ export function ActivityTimerOverlay() {
 
       {current && current.kind === 'gap' && (
         <div
-          className="fixed bottom-4 right-4 z-[60] flex items-center gap-2 rounded-full border border-amber-300/50 bg-amber-50/95 dark:bg-amber-950/60 px-3 py-2 shadow-lg backdrop-blur"
+          className="fixed bottom-4 left-4 z-[60] flex items-center gap-2 rounded-full border border-amber-300/50 bg-amber-50/95 dark:bg-amber-950/60 px-3 py-2 shadow-lg backdrop-blur"
           title="Tempo ocioso entre atividades — abra uma atividade para retomar a contagem"
         >
           <Coffee className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
