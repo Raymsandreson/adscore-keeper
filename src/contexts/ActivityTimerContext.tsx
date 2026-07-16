@@ -170,32 +170,32 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
     };
   }, []);
 
-  // ---- Loop de contagem (1s) ----
+  // ---- Loop de contagem (usa delta de wall-clock p/ sobreviver a throttling em abas ocultas) ----
   useEffect(() => {
+    let lastTick = Date.now();
     const id = setInterval(() => {
       const e = entryRef.current;
-      if (!e || e.status === 'paused') return;
-
       const now = Date.now();
-      const idleFor = now - lastInteractionRef.current;
-      const focused = document.visibilityState === 'visible' && document.hasFocus();
-      const present = focused && idleFor < IDLE_THRESHOLD_MS;
+      const deltaSec = Math.max(0, Math.round((now - lastTick) / 1000));
+      lastTick = now;
+      if (!e || e.status === 'paused' || deltaSec === 0) return;
 
+      const idleFor = now - lastInteractionRef.current;
       const next: TimerEntry = { ...e };
 
       if (e.kind === 'gap') {
-        // Tempo entre atividades: conta ocioso só enquanto presente na tela.
-        // Sem prompt (não há atividade aberta).
-        if (present) next.idleSeconds += 1;
+        // Tempo entre atividades: conta ocioso enquanto não pausado (independe de foco).
+        next.idleSeconds += deltaSec;
         sync(next);
         if (now - lastFlushRef.current >= FLUSH_INTERVAL_MS) flush();
         return;
       }
 
-      // kind === 'activity'
-      const isActive = !awaitingConfirmRef.current && present;
-      if (isActive) next.activeSeconds += 1;
-      else next.idleSeconds += 1;
+      // kind === 'activity': segue contando mesmo com aba oculta.
+      // Só entra em ociosidade se o usuário ficou sem interagir por muito tempo.
+      const isActive = !awaitingConfirmRef.current;
+      if (isActive) next.activeSeconds += deltaSec;
+      else next.idleSeconds += deltaSec;
 
       if (!awaitingConfirmRef.current && idleFor >= IDLE_THRESHOLD_MS) {
         awaitingConfirmRef.current = true;
