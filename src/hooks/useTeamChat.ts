@@ -16,6 +16,27 @@ export interface TeamMessage {
   reply_to_id: string | null;
   created_at: string;
   deleted_at: string | null;
+  // Paridade com o chat direto: áudio (com transcrição), anexos e urgente.
+  message_type?: string | null;
+  file_url?: string | null;
+  file_name?: string | null;
+  file_size?: number | null;
+  file_type?: string | null;
+  audio_duration?: number | null;
+  transcription?: string | null;
+  is_urgent?: boolean | null;
+}
+
+/** Campos extras (mídia/urgente) opcionais ao enviar uma mensagem de equipe. */
+export interface TeamMessageExtra {
+  message_type?: string;
+  file_url?: string;
+  file_name?: string;
+  file_size?: number;
+  file_type?: string;
+  audio_duration?: number;
+  transcription?: string;
+  is_urgent?: boolean;
 }
 
 export interface TeamMention {
@@ -91,7 +112,7 @@ export function useTeamChat(entityType: string, entityId: string, entityName?: s
     return () => { externalSupabase.removeChannel(channel); };
   }, [entityType, entityId, loadMessages]);
 
-  const sendMessage = useCallback(async (content: string, mentionedUserIds: string[]) => {
+  const sendMessage = useCallback(async (content: string, mentionedUserIds: string[], extra?: TeamMessageExtra) => {
     if (!user) return;
 
     await ensureExternalSession();
@@ -113,6 +134,14 @@ export function useTeamChat(entityType: string, entityId: string, entityName?: s
         content,
         sender_id: user.id,
         sender_name: senderName,
+        ...(extra?.message_type ? { message_type: extra.message_type } : {}),
+        ...(extra?.file_url ? { file_url: extra.file_url } : {}),
+        ...(extra?.file_name ? { file_name: extra.file_name } : {}),
+        ...(extra?.file_size ? { file_size: extra.file_size } : {}),
+        ...(extra?.file_type ? { file_type: extra.file_type } : {}),
+        ...(extra?.audio_duration ? { audio_duration: extra.audio_duration } : {}),
+        ...(extra?.transcription ? { transcription: extra.transcription } : {}),
+        ...(extra?.is_urgent ? { is_urgent: true } : {}),
       })
       .select()
       .single();
@@ -152,9 +181,18 @@ export function useTeamChat(entityType: string, entityId: string, entityName?: s
         },
       }).catch(err => console.error('Failed to notify mentions via WhatsApp:', err));
     }
+
+    return (msg as TeamMessage) || null;
   }, [user, entityType, entityId, entityName]);
 
-  return { messages, loading, sendMessage };
+  // Atualiza uma mensagem (ex.: preencher a transcrição do áudio depois de pronta).
+  const updateMessage = useCallback(async (id: string, patch: Partial<TeamMessage>) => {
+    await ensureExternalSession();
+    await externalSupabase.from('team_chat_messages').update(patch).eq('id', id);
+    setMessages(prev => prev.map(m => (m.id === id ? { ...m, ...patch } : m)));
+  }, []);
+
+  return { messages, loading, sendMessage, updateMessage };
 }
 
 export function useUnreadMentionsCount() {
