@@ -15,7 +15,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Label } from '@/components/ui/label';
 import { Search, X, ChevronDown, Copy, Loader2, UserPlus, Building2, Briefcase, Send, Info, Settings2, FileText, Plus, Mic, Check, Star, Eye, Users, Sparkles } from 'lucide-react';
 import { TeamChatPanel } from '@/components/chat/TeamChatPanel';
-import { summarizeActivityConversation } from '@/lib/activityFeedbackSummary';
+import { reviewActivityWithAI, type SuggestedActivity } from '@/lib/activityFeedbackSummary';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
@@ -64,6 +64,8 @@ interface ActivityFormCompactProps {
   onToggleObserver?: (userId: string) => void;
   // Feedback do responsável + data de reagendamento (status 'reagendada').
   formFeedback?: string; setFormFeedback?: (v: string) => void;
+  // IA sugeriu uma próxima atividade a partir da revisão do feedback (abre popup no pai).
+  onSuggestNextActivity?: (s: SuggestedActivity) => void;
   formRescheduledTo?: string; setFormRescheduledTo?: (v: string) => void;
   formType: string; setFormType: (v: string) => void;
   formStatus: string; setFormStatus: (v: string) => void;
@@ -1097,31 +1099,36 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
                   size="sm"
                   disabled={summarizing}
                   className="h-6 px-2 text-[10px] gap-1 text-primary hover:bg-primary/10"
-                  title="Resumir a conversa da equipe e o que foi feito no campo de feedback"
+                  title="Revisar com IA: gera o feedback a partir do chat, funil, movimentações e documentos, e sugere a próxima atividade"
                   onClick={async () => {
                     setSummarizing(true);
                     try {
-                      const summary = await summarizeActivityConversation({
+                      const review = await reviewActivityWithAI({
                         activityId: props.selectedActivity.id,
+                        leadId: props.formLeadId || props.selectedActivity.lead_id || null,
+                        processId: props.formProcessId || props.selectedActivity.process_id || null,
                         whatWasDone: props.formWhatWasDone,
                         currentStatus: props.formCurrentStatus,
                         nextSteps: props.formNextSteps,
                       });
-                      if (summary) {
-                        props.setFormFeedback?.(summary);
-                        toast.success('Resumo gerado no feedback');
+                      if (review?.feedback) {
+                        props.setFormFeedback?.(review.feedback);
+                        toast.success('Feedback gerado pela IA');
                       } else {
-                        toast.info('Sem conversa ou dados para resumir');
+                        toast.info('Sem conversa ou dados para revisar');
+                      }
+                      if (review?.suggestion) {
+                        props.onSuggestNextActivity?.(review.suggestion);
                       }
                     } catch {
-                      toast.error('Erro ao gerar o resumo');
+                      toast.error('Erro ao revisar com IA');
                     } finally {
                       setSummarizing(false);
                     }
                   }}
                 >
                   {summarizing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
-                  Resumir conversa
+                  Revisar com IA
                 </Button>
               )}
             </div>

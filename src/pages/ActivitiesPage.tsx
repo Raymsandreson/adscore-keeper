@@ -70,7 +70,8 @@ import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameM
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
-import { summarizeActivityConversation } from '@/lib/activityFeedbackSummary';
+import { summarizeActivityConversation, type SuggestedActivity } from '@/lib/activityFeedbackSummary';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { filterAssignableMembers } from '@/lib/assigneeBlocklist';
 const ACTIVITY_TYPES = [
   { value: 'tarefa', label: 'Tarefa', bg: 'bg-blue-50 dark:bg-blue-950/20', border: 'border-blue-300 dark:border-blue-700', header: 'bg-blue-500', dot: 'bg-blue-500' },
@@ -320,6 +321,9 @@ const ActivitiesPage = () => {
   const [loadedHadObservers, setLoadedHadObservers] = useState(false);
   // Feedback da atv (preenchido pelo responsável) + data de reagendamento.
   const [formFeedback, setFormFeedback] = useState('');
+  // Próxima atividade sugerida pela IA na "Revisar com IA" (popup de confirmação).
+  const [suggestedActivity, setSuggestedActivity] = useState<SuggestedActivity | null>(null);
+  const [creatingSuggested, setCreatingSuggested] = useState(false);
   const [formRescheduledTo, setFormRescheduledTo] = useState('');
   const [formDeadline, setFormDeadline] = useState('');
   const [formNotificationDate, setFormNotificationDate] = useState('');
@@ -2563,6 +2567,7 @@ const ActivitiesPage = () => {
       formCoAssignees={formCoAssignees}
       formObservers={formObservers} onToggleObserver={handleToggleObserver}
       formFeedback={formFeedback} setFormFeedback={setFormFeedback}
+      onSuggestNextActivity={setSuggestedActivity}
       formRescheduledTo={formRescheduledTo} setFormRescheduledTo={setFormRescheduledTo}
       formType={formType} setFormType={setFormType}
       formStatus={formStatus} setFormStatus={setFormStatus}
@@ -4974,6 +4979,79 @@ const ActivitiesPage = () => {
           entityName={selectedActivity.title}
         />
       )}
+
+      {/* Popup: próxima atividade sugerida pela IA (Revisar com IA no feedback) */}
+      <Dialog open={!!suggestedActivity} onOpenChange={(o) => { if (!o) setSuggestedActivity(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <Sparkles className="h-4 w-4 text-primary" /> Próxima atividade sugerida
+            </DialogTitle>
+          </DialogHeader>
+          {suggestedActivity && (
+            <div className="space-y-2 text-sm">
+              <div>
+                <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Título</span>
+                <p className="font-medium">{suggestedActivity.title}</p>
+              </div>
+              <div className="flex flex-wrap gap-1.5 text-xs">
+                {suggestedActivity.activity_type && <Badge variant="outline" className="text-[10px]">{suggestedActivity.activity_type}</Badge>}
+                {suggestedActivity.priority && <Badge variant="outline" className="text-[10px]">Prioridade: {suggestedActivity.priority}</Badge>}
+                {typeof suggestedActivity.prazo_dias === 'number' && <Badge variant="outline" className="text-[10px]">Prazo: {suggestedActivity.prazo_dias} dia(s)</Badge>}
+              </div>
+              {suggestedActivity.justificativa && (
+                <div>
+                  <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Por quê</span>
+                  <p className="text-muted-foreground text-xs">{suggestedActivity.justificativa}</p>
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter className="gap-2">
+            <Button variant="outline" size="sm" onClick={() => setSuggestedActivity(null)}>Descartar</Button>
+            <Button
+              size="sm"
+              disabled={creatingSuggested}
+              onClick={async () => {
+                if (!suggestedActivity) return;
+                setCreatingSuggested(true);
+                try {
+                  const dias = typeof suggestedActivity.prazo_dias === 'number' ? suggestedActivity.prazo_dias : 3;
+                  const deadline = format(addDays(startOfDay(new Date()), dias), 'yyyy-MM-dd');
+                  await createActivity({
+                    title: suggestedActivity.title,
+                    activity_type: suggestedActivity.activity_type || 'tarefa',
+                    priority: suggestedActivity.priority || 'normal',
+                    lead_id: formLeadId || selectedActivity?.lead_id || null,
+                    lead_name: formLeadName || selectedActivity?.lead_name || null,
+                    case_id: formCaseId || null,
+                    case_title: formCaseTitle || null,
+                    process_id: formProcessId || null,
+                    process_title: formProcessTitle || null,
+                    contact_id: formContactId || null,
+                    contact_name: formContactName || null,
+                    assigned_to: formAssignedTo || null,
+                    assigned_to_name: formAssignedToName || null,
+                    deadline,
+                    notification_date: deadline,
+                    notes: suggestedActivity.justificativa || null,
+                  });
+                  toast.success('Atividade criada a partir da sugestão');
+                  setSuggestedActivity(null);
+                  fetchActivities(getFilterParams());
+                } catch {
+                  toast.error('Erro ao criar a atividade sugerida');
+                } finally {
+                  setCreatingSuggested(false);
+                }
+              }}
+            >
+              {creatingSuggested ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Plus className="h-3.5 w-3.5 mr-1" />}
+              Criar atividade
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <ActivityChatSheet
         open={chatOpen}
