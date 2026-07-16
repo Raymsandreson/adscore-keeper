@@ -209,7 +209,7 @@ const ActivitiesPage = () => {
   const celebrationInitRef = useRef(false);
   useEffect(() => { celebrationInitRef.current = true; }, []);
   const { activities, loading, fetchActivities: _fetchActivities, createActivity, updateActivity, completeActivity, deleteActivity } = useLeadActivities();
-  const { startTimer: startActivityTimer, pauseAndClose: pauseActivityTimer, stopTimerFor: stopActivityTimerFor } = useActivityTimer();
+  const { startTimer: startActivityTimer, pauseAndClose: pauseActivityTimer, stopTimerFor: stopActivityTimerFor, requestLeave: requestLeaveTimer } = useActivityTimer();
   const refreshCountsRef = useRef<(() => Promise<void>) | null>(null);
   const fetchActivities = useCallback(async (params?: Parameters<typeof _fetchActivities>[0]) => {
     await _fetchActivities(params);
@@ -1456,6 +1456,9 @@ const ActivitiesPage = () => {
   };
 
   const closeSheet = () => {
+    // Sair da atividade → pergunta continuar/pausar o cronômetro (no-op se já
+    // não houver atv sendo cronometrada, ex.: após concluir/excluir).
+    requestLeaveTimer();
     setSheetMode(null);
     setSelectedActivity(null);
     setSelectedActivityId(null);

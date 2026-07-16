@@ -1,6 +1,11 @@
-import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback, lazy, Suspense } from 'react';
 import { Clock, Coffee, EyeOff, GripVertical, Hourglass, Pause, Search, Timer as TimerIcon } from 'lucide-react';
 import { db } from '@/integrations/supabase';
+
+// Aba lateral com a atividade cronometrada (carregada sob demanda ao clicar no cronômetro).
+const ActivityFullSheet = lazy(() =>
+  import('@/components/activities/ActivityFullSheet').then((m) => ({ default: m.ActivityFullSheet }))
+);
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
@@ -154,7 +159,7 @@ function useDraggablePosition() {
 export function ActivityTimerOverlay() {
   const {
     current, hidden, idlePrompt, leavePrompt, switchPrompt,
-    requestLeave, keepRunning, pauseAndClose, hideTimer, setEstimate,
+    keepRunning, pauseAndClose, hideTimer, setEstimate,
     confirmStillWorking, rejectStillWorking, switchTo, dismissSwitch,
   } = useActivityTimer();
 
@@ -171,6 +176,8 @@ export function ActivityTimerOverlay() {
   }, []);
 
   const drag = useDraggablePosition();
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const timedActivityId = current?.kind === 'activity' ? current.activityId : null;
 
   return (
     <>
@@ -182,7 +189,7 @@ export function ActivityTimerOverlay() {
           onPointerMove={drag.onPointerMove}
           onPointerUp={drag.onPointerUp}
           className="fixed z-[60] flex items-center gap-1.5 rounded-full border bg-background/95 pl-1.5 pr-3 py-2 shadow-lg backdrop-blur touch-none select-none cursor-grab active:cursor-grabbing"
-          title="Arraste para mover · clique no tempo para pausar/continuar"
+          title="Arraste para mover · clique no tempo para abrir a atividade"
         >
           <GripVertical className="h-3.5 w-3.5 text-muted-foreground/60" />
           <span className="relative flex h-2.5 w-2.5">
@@ -192,8 +199,9 @@ export function ActivityTimerOverlay() {
           <Clock className="h-3.5 w-3.5 text-muted-foreground" />
           <button
             type="button"
-            onClick={(e) => { if (drag.wasDragged()) { e.preventDefault(); e.stopPropagation(); return; } requestLeave(); }}
+            onClick={(e) => { if (drag.wasDragged()) { e.preventDefault(); e.stopPropagation(); return; } setSheetOpen(true); }}
             className="flex items-center gap-1.5 hover:opacity-80"
+            title="Abrir a atividade que está sendo cronometrada"
           >
             <span className={`font-mono text-sm tabular-nums font-semibold ${isOver ? 'text-red-600 dark:text-red-400' : ''}`}>
               {formatHMS(current.activeSeconds)}
@@ -210,13 +218,33 @@ export function ActivityTimerOverlay() {
           <button
             type="button"
             onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); pauseAndClose(); }}
+            className="rounded-full p-1 hover:bg-accent hover:text-foreground text-muted-foreground"
+            title="Pausar e salvar o tempo"
+          >
+            <Pause className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => { e.stopPropagation(); hideTimer(); }}
-            className="ml-1 rounded-full p-1 hover:bg-accent hover:text-foreground text-muted-foreground"
+            className="rounded-full p-1 hover:bg-accent hover:text-foreground text-muted-foreground"
             title="Ocultar cronômetro (ele reaparece ao abrir/trocar de atividade)"
           >
             <EyeOff className="h-3.5 w-3.5" />
           </button>
         </div>
+      )}
+
+      {/* Aba lateral: atividade sendo cronometrada (abre ao clicar no tempo) */}
+      {timedActivityId && (
+        <Suspense fallback={null}>
+          <ActivityFullSheet
+            open={sheetOpen}
+            onOpenChange={setSheetOpen}
+            activityId={timedActivityId}
+          />
+        </Suspense>
       )}
 
       {current && current.kind === 'gap' && !hidden && (
