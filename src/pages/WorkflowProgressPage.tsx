@@ -65,8 +65,13 @@ const WorkflowProgressPage = () => {
         const lead = (leadsRes.data || []).find(l => l.id === leadIdParam);
         if (lead) {
           setSelectedLead(lead);
-          const board = parsedBoards.find(b => b.id === lead.board_id);
-          setSelectedBoard(board || parsedBoards[0] || null);
+          // Só auto-seleciona se o board do lead existir E for workflow.
+          // Evita cair no fallback boards[0] que mostrava fluxo errado
+          // (ex.: caso de Inquérito exibindo tarefas de Acidente de Trabalho).
+          const board = parsedBoards.find(
+            b => b.id === lead.board_id && (b as any).board_type === 'workflow',
+          );
+          setSelectedBoard(board || null);
         }
       }
     } catch (error) {
