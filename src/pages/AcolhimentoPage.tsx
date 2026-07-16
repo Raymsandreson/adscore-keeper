@@ -84,14 +84,15 @@ type LeadRow = {
   process_id: string | null;
 };
 
+// Query leve: só o necessário pra KPIs, funil, aging e matriz.
 function useBoardLeads(boardId: string | null) {
   return useQuery({
     enabled: !!boardId,
-    queryKey: ["acolhimento", "leads", boardId],
+    queryKey: ["acolhimento", "leads-lite", boardId],
+    staleTime: 60_000,
     queryFn: async () => {
       const cols =
-        "id, lead_name, victim_name, acolhedor, status, updated_at, created_at, lead_phone, cpf, campaign_name, ad_name, city, visit_city, sector, contractor_company, main_company, victim_age, accident_date, accident_address, legal_viability, news_link, news_links, case_number, process_id";
-      // paginação simples pra ultrapassar o cap de 1000 do PostgREST
+        "id, lead_name, victim_name, acolhedor, status, updated_at, created_at, city, visit_city, news_link, case_number, process_id";
       const pageSize = 1000;
       let from = 0;
       const rows: LeadRow[] = [];
@@ -107,11 +108,30 @@ function useBoardLeads(boardId: string | null) {
         rows.push(...chunk);
         if (chunk.length < pageSize) break;
         from += pageSize;
-        if (from > 20_000) break; // safety cap
+        if (from > 20_000) break;
       }
       return rows;
     },
-    refetchInterval: 60_000,
+  });
+}
+
+// Query pesada: detalhes da ficha, só quando um lead é selecionado.
+function useLeadDetail(leadId: string | null) {
+  return useQuery({
+    enabled: !!leadId,
+    queryKey: ["acolhimento", "lead-detail", leadId],
+    staleTime: 5 * 60_000,
+    queryFn: async () => {
+      const cols =
+        "id, lead_name, victim_name, acolhedor, status, updated_at, created_at, lead_phone, cpf, campaign_name, ad_name, city, visit_city, sector, contractor_company, main_company, victim_age, accident_date, accident_address, legal_viability, news_link, news_links, case_number, process_id";
+      const { data, error } = await db
+        .from("leads")
+        .select(cols as any)
+        .eq("id", leadId!)
+        .maybeSingle();
+      if (error) throw error;
+      return (data || null) as unknown as LeadRow | null;
+    },
   });
 }
 
@@ -640,10 +660,17 @@ export default function AcolhimentoPage() {
       .sort((a, b) => b.dias_parado - a.dias_parado);
   }, [activeLeads, sel]);
 
-  const selLead = useMemo(
+  const selLeadLite = useMemo(
     () => drillLeads.find((l) => l.id === selLeadId) || null,
     [drillLeads, selLeadId]
   );
+  const selLeadDetailQ = useLeadDetail(selLeadId);
+  const selLead = useMemo(() => {
+    if (!selLeadLite) return null;
+    const detail = selLeadDetailQ.data;
+    if (detail) return { ...selLeadLite, ...detail, dias_parado: selLeadLite.dias_parado };
+    return selLeadLite;
+  }, [selLeadLite, selLeadDetailQ.data]);
 
   const anyLoading = boardsLoading || leadsQ.isLoading;
 
