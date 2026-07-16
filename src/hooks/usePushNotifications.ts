@@ -11,6 +11,7 @@ const VAPID_PUBLIC_KEY =
 
 const SW_URL = '/push-sw.js';
 const SW_SCOPE = '/push-sw/';
+const OPTOUT_KEY = 'push-optout';
 
 function urlBase64ToUint8Array(base64String: string) {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
@@ -97,6 +98,7 @@ export function usePushNotifications() {
       const perm = await Notification.requestPermission();
       setPermission(perm);
       if (perm !== 'granted') { toast.info('Permissão de notificação negada'); return; }
+      localStorage.removeItem(OPTOUT_KEY);
       await subscribeAndSave();
       toast.success('Notificações ativadas neste dispositivo');
     } catch (e) {
@@ -107,13 +109,36 @@ export function usePushNotifications() {
     }
   }, [supported, subscribeAndSave]);
 
-  // Auto-garante a assinatura se a permissão já foi concedida (self-heal se o SW
-  // tiver sido removido por um force-refresh).
+  const disable = useCallback(async () => {
+    setBusy(true);
+    try {
+      localStorage.setItem(OPTOUT_KEY, '1');
+      const reg = await navigator.serviceWorker.getRegistration(SW_SCOPE);
+      const sub = reg ? await reg.pushManager.getSubscription() : null;
+      if (sub) {
+        const endpoint = sub.endpoint;
+        await sub.unsubscribe().catch(() => { /* ignora */ });
+        await ensureExternalSession();
+        await externalSupabase.from('push_subscriptions').delete().eq('endpoint', endpoint);
+      }
+      setSubscribed(false);
+      toast.success('Notificações desativadas neste dispositivo');
+    } catch (e) {
+      console.error('Erro ao desativar push:', e);
+      toast.error('Não foi possível desativar');
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
+  // Auto-garante a assinatura se a permissão já foi concedida e o usuário não
+  // optou por sair (self-heal se o SW tiver sido removido por um force-refresh).
   useEffect(() => {
     if (!supported || !user?.id) return;
     if (Notification.permission !== 'granted') return;
+    if (localStorage.getItem(OPTOUT_KEY) === '1') return;
     subscribeAndSave().catch(() => { /* ignora */ });
   }, [supported, user?.id, subscribeAndSave]);
 
-  return { supported, permission, subscribed, busy, enable };
+  return { supported, permission, subscribed, busy, enable, disable };
 }

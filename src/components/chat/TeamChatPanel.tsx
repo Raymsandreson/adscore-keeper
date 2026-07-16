@@ -326,13 +326,41 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
     else navigate(`/leads?openContact=${id}`);
   }, [navigate]);
 
-  // Realça @nome de membros dentro de um trecho de texto.
+  // Transforma URLs http(s) em links clicáveis dentro de um trecho de texto.
+  const linkify = (text: string, keyBase: string) => {
+    const urlRe = /(https?:\/\/[^\s]+)/g;
+    const out: React.ReactNode[] = [];
+    let last = 0;
+    let m: RegExpExecArray | null;
+    let k = 0;
+    while ((m = urlRe.exec(text)) !== null) {
+      if (m.index > last) out.push(text.slice(last, m.index));
+      const href = m[1];
+      out.push(
+        <a
+          key={`${keyBase}-l${k++}`}
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline break-all"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {href}
+        </a>
+      );
+      last = m.index + m[1].length;
+    }
+    if (last < text.length) out.push(text.slice(last));
+    return out.length ? out : text;
+  };
+
+  // Realça @nome de membros e deixa URLs clicáveis dentro de um trecho de texto.
   const renderMemberMentions = (content: string, isMe: boolean) => {
     const memberNames = members
       .map(m => m.full_name || m.email)
       .filter(Boolean)
       .sort((a, b) => b!.length - a!.length);
-    if (memberNames.length === 0) return <>{content}</>;
+    if (memberNames.length === 0) return <>{linkify(content, 'lo')}</>;
     const escaped = memberNames.map(n => n!.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
     const pattern = new RegExp(`(@(?:${escaped.join('|')}))`, 'gi');
     const parts = content.split(pattern);
@@ -342,7 +370,7 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
           part.startsWith('@') ? (
             <span key={i} className={cn('font-semibold', isMe ? 'text-primary-foreground/90 underline' : 'text-primary')}>{part}</span>
           ) : (
-            <span key={i}>{part}</span>
+            <span key={i}>{linkify(part, `m${i}`)}</span>
           )
         )}
       </>
