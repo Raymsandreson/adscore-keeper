@@ -81,7 +81,6 @@ type LeadRow = {
   news_link: string | null;
   news_links: any;
   case_number: string | null;
-  process_id: string | null;
 };
 
 // Query leve: só o necessário pra KPIs, funil, aging e matriz.
@@ -92,7 +91,7 @@ function useBoardLeads(boardId: string | null) {
     staleTime: 60_000,
     queryFn: async () => {
       const cols =
-        "id, lead_name, victim_name, acolhedor, status, updated_at, created_at, city, visit_city, news_link, case_number, process_id";
+        "id, lead_name, victim_name, acolhedor, status, updated_at, created_at, city, visit_city, news_link, case_number";
       const pageSize = 1000;
       let from = 0;
       const rows: LeadRow[] = [];
@@ -123,7 +122,7 @@ function useLeadDetail(leadId: string | null) {
     staleTime: 5 * 60_000,
     queryFn: async () => {
       const cols =
-        "id, lead_name, victim_name, acolhedor, status, updated_at, created_at, lead_phone, cpf, campaign_name, ad_name, city, visit_city, sector, contractor_company, main_company, victim_age, accident_date, accident_address, legal_viability, news_link, news_links, case_number, process_id";
+        "id, lead_name, victim_name, acolhedor, status, updated_at, created_at, lead_phone, cpf, campaign_name, ad_name, city, visit_city, sector, contractor_company, main_company, victim_age, accident_date, accident_address, legal_viability, news_link, news_links, case_number";
       const { data, error } = await db
         .from("leads")
         .select(cols as any)
@@ -639,7 +638,7 @@ export default function AcolhimentoPage() {
   const kpis = useMemo(() => {
     const noFunil = activeLeads.length;
     const total = leadRows.length;
-    const convertidos = leadRows.filter((l) => !!l.process_id || !!l.case_number).length;
+    const convertidos = leadRows.filter((l) => !!l.case_number).length;
     const pctConv = total ? (convertidos / total) * 100 : 0;
     const parados90 = activeLeads.filter(
       (l) => daysBetween(l.updated_at || l.created_at) > 90
