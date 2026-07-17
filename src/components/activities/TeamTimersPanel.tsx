@@ -3,6 +3,7 @@ import { db, authClient } from '@/integrations/supabase';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { remapToExternal, ensureRemapCache } from '@/integrations/supabase/uuid-remap';
 import { formatHMS } from '@/contexts/ActivityTimerContext';
+import { useActivityTypes } from '@/hooks/useActivityTypes';
 import { ChevronDown, ChevronRight, ExternalLink, Loader2 } from 'lucide-react';
 
 const COLLAPSED_KEY = 'team-timers-collapsed';
@@ -19,6 +20,7 @@ interface MemberStatus {
   name: string;
   state: 'working' | 'idle' | 'off';
   activityTitle: string | null;
+  activityType: string | null; // key do tipo (rotina) — rótulo resolvido na renderização
   activityId: string | null;   // permite o atalho "abrir a atividade"
   currentSecs: number;   // segundos da sessão atual (ativo se working, ocioso se idle)
   dayActive: number;     // total produtivo hoje
@@ -43,6 +45,11 @@ export function TeamTimersPanel() {
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [view, setView] = useState<PanelView>('now');
+  const { types: activityTypes } = useActivityTypes();
+  const typeLabel = useCallback((key: string | null) => {
+    if (!key) return null;
+    return activityTypes.find(t => t.key === key)?.label || key;
+  }, [activityTypes]);
   const [collapsed, setCollapsed] = useState<Set<string>>(() => {
     try {
       const raw = localStorage.getItem(COLLAPSED_KEY);
@@ -81,11 +88,12 @@ export function TeamTimersPanel() {
       startOfDay.setHours(0, 0, 0, 0);
       const iso = startOfDay.toISOString();
       const { data: entries } = await dbAny.from('activity_time_entries')
-        .select('user_id, activity_id, activity_title, active_seconds, idle_seconds, status, ended_at, started_at')
+        .select('user_id, activity_id, activity_title, activity_type, active_seconds, idle_seconds, status, ended_at, started_at')
         .or(`ended_at.gte.${iso},started_at.gte.${iso}`);
 
       type Entry = {
         user_id: string; activity_id: string | null; activity_title: string | null;
+        activity_type: string | null;
         active_seconds: number; idle_seconds: number; status: string;
         ended_at: string | null; started_at: string;
       };
@@ -104,7 +112,7 @@ export function TeamTimersPanel() {
       const statusOf = (extId: string, name: string): MemberStatus => {
         const u = byUser.get(extId);
         const base: MemberStatus = {
-          extUserId: extId, name, state: 'off', activityTitle: null, activityId: null,
+          extUserId: extId, name, state: 'off', activityTitle: null, activityType: null, activityId: null,
           currentSecs: 0, dayActive: u?.dayActive || 0, dayIdle: u?.dayIdle || 0,
         };
         const latest = u?.latest;
@@ -115,6 +123,7 @@ export function TeamTimersPanel() {
           return {
             ...base, state: 'working',
             activityTitle: latest.activity_title || 'Atividade',
+            activityType: latest.activity_type,
             activityId: latest.activity_id,
             currentSecs: latest.active_seconds || 0,
           };
@@ -336,7 +345,7 @@ export function TeamTimersPanel() {
                     key={m.extUserId}
                     className="group flex items-center gap-2 rounded px-1.5 py-1 hover:bg-accent/50"
                     title={m.state === 'working' && m.activityTitle
-                      ? `${m.name}\n${m.activityTitle}`
+                      ? `${m.name}\n${typeLabel(m.activityType) ? `[${typeLabel(m.activityType)}] ` : ''}${m.activityTitle}`
                       : undefined}
                   >
                     {m.state === 'working' ? (
@@ -350,7 +359,14 @@ export function TeamTimersPanel() {
                     <div className="min-w-0 flex-1">
                       <div className="text-xs font-medium truncate">{m.name}</div>
                       <div className="text-[11px] text-muted-foreground truncate">
-                        {m.state === 'working' && (m.activityTitle || 'Atividade')}
+                        {m.state === 'working' && (
+                          <>
+                            {typeLabel(m.activityType) && (
+                              <span className="text-emerald-700 dark:text-emerald-300 font-medium">{typeLabel(m.activityType)} · </span>
+                            )}
+                            {m.activityTitle || 'Atividade'}
+                          </>
+                        )}
                         {m.state === 'idle' && 'Ocioso (entre atividades)'}
                         {m.state === 'off' && (m.dayActive > 0 ? `Hoje: ${formatHMS(m.dayActive)} produtivo` : 'Sem cronômetro hoje')}
                       </div>

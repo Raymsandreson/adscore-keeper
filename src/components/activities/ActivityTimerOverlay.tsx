@@ -156,7 +156,9 @@ function useDraggablePosition() {
 function TeamPanelButton({ className }: { className?: string }) {
   const [open, setOpen] = useState(false);
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    // modal: garante que os cliques dentro do painel funcionem mesmo com
+    // overlays invisíveis por cima (badge é z-60; conteúdo sobe pra z-70).
+    <Popover open={open} onOpenChange={setOpen} modal>
       <PopoverTrigger asChild>
         <button
           type="button"
@@ -168,7 +170,7 @@ function TeamPanelButton({ className }: { className?: string }) {
           <Users className="h-3.5 w-3.5" />
         </button>
       </PopoverTrigger>
-      <PopoverContent align="end" side="top" collisionPadding={8} className="p-0 w-auto overflow-hidden">
+      <PopoverContent align="end" side="top" collisionPadding={8} className="p-0 w-auto overflow-hidden z-[70]">
         {open && <TeamTimersPanel />}
       </PopoverContent>
     </Popover>
