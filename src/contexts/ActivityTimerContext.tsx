@@ -54,6 +54,10 @@ interface TimerEntry {
 
 interface ActivityTimerCtx {
   current: TimerEntry | null;
+  /** Última atividade pausada — permite retomar sem reabrir a atv. */
+  lastActivity: TimerActivityRef | null;
+  /** Retoma o cronômetro da última atividade pausada (acumula de onde parou). */
+  resumeLast: () => Promise<void>;
   /** Totais do dia (do membro): produtivo (ativo) e ocioso, ao vivo. */
   dayTotals: { active: number; idle: number };
   hidden: boolean;
@@ -138,6 +142,23 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
   const lastFlushRef = useRef<number>(0);
   const busyRef = useRef<boolean>(false);
   const userRef = useRef<{ userId: string; userName: string } | null>(null);
+  const lastActivityRef = useRef<TimerActivityRef | null>(null);
+  const [lastActivity, setLastActivity] = useState<TimerActivityRef | null>(null);
+
+  // Guarda a atv que estava rodando como "última" (para o botão Retomar).
+  const rememberLast = useCallback(() => {
+    const e = entryRef.current;
+    if (e?.kind !== 'activity' || !e.activityId) return;
+    const ref: TimerActivityRef = {
+      id: e.activityId,
+      activity_type: e.activityType || null,
+      title: e.activityTitle || null,
+      lead_name: e.leadName,
+      estimated_minutes: e.estimateMinutes,
+    };
+    lastActivityRef.current = ref;
+    setLastActivity(ref);
+  }, []);
   const nearNotifiedRef = useRef<boolean>(false); // aviso "se aproximando" já disparado
   const overNotifiedRef = useRef<boolean>(false);  // aviso "passou da previsão" já disparado
 
@@ -321,6 +342,7 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
   // Finaliza a atv atual (salva) e passa a contar ociosidade entre atividades.
   const finalizeToGap = useCallback(async () => {
     const wasActivity = entryRef.current?.kind === 'activity';
+    rememberLast();
     if (entryRef.current) await flush('paused');
     awaitingConfirmRef.current = false;
     setIdlePrompt(false);
@@ -328,7 +350,7 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
     setSwitchPrompt(false);
     if (wasActivity) await startGap();
     else sync(null);
-  }, [flush, startGap, sync]);
+  }, [flush, startGap, sync, rememberLast]);
 
   const showTimer = useCallback(() => setHidden(false), []);
   const hideTimer = useCallback(() => setHidden(true), []);
@@ -353,6 +375,7 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
     busyRef.current = true;
     try {
       // Encerra o que estava rodando (outra atv ou o gap) salvando o tempo.
+      rememberLast();
       if (entryRef.current) await flush('paused');
 
       await ensureExternalSession().catch(() => {});
@@ -414,7 +437,11 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
     } finally {
       busyRef.current = false;
     }
-  }, [getUser, sync, flush, showTimer]);
+  }, [getUser, sync, flush, showTimer, rememberLast]);
+
+  const resumeLast = useCallback(async () => {
+    if (lastActivityRef.current) await startTimer(lastActivityRef.current);
+  }, [startTimer]);
 
   const requestLeave = useCallback(() => {
     if (entryRef.current?.kind === 'activity') setLeavePrompt(true);
@@ -476,7 +503,7 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
   };
 
   const value: ActivityTimerCtx = {
-    current, dayTotals, hidden, idlePrompt, leavePrompt, switchPrompt,
+    current, lastActivity, resumeLast, dayTotals, hidden, idlePrompt, leavePrompt, switchPrompt,
     startTimer, requestLeave, keepRunning, pauseAndClose, stopTimerFor,
     confirmStillWorking, rejectStillWorking, switchTo, dismissSwitch,
     hideTimer, showTimer, setEstimate, formatHMS,

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useCallback, lazy, Suspense } from 'react';
-import { Clock, Coffee, EyeOff, GripVertical, Hourglass, Pause, Search, Timer as TimerIcon, Users } from 'lucide-react';
+import { Clock, Coffee, EyeOff, GripVertical, Hourglass, Pause, Play, Search, Timer as TimerIcon, Users } from 'lucide-react';
 import { TeamTimersPanel } from '@/components/activities/TeamTimersPanel';
 import { db } from '@/integrations/supabase';
 
@@ -197,7 +197,7 @@ function DayTotalsRow({ active, idle }: { active: number; idle: number }) {
  */
 export function ActivityTimerOverlay() {
   const {
-    current, dayTotals, hidden, idlePrompt, leavePrompt, switchPrompt,
+    current, lastActivity, resumeLast, dayTotals, hidden, idlePrompt, leavePrompt, switchPrompt,
     keepRunning, pauseAndClose, hideTimer, setEstimate,
     confirmStillWorking, rejectStillWorking, switchTo, dismissSwitch,
   } = useActivityTimer();
@@ -308,6 +308,19 @@ export function ActivityTimerOverlay() {
             {formatHMS(current.idleSeconds)}
           </span>
           <span className="text-xs text-amber-700/80 dark:text-amber-300/80 hidden sm:inline">ocioso</span>
+          {lastActivity && (
+            <button
+              type="button"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => { e.stopPropagation(); resumeLast(); }}
+              className="ml-1 flex items-center gap-1 rounded-full border border-emerald-300/60 bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/60"
+              title={`Recomeçar o cronômetro de: ${lastActivity.title || 'última atividade'}`}
+            >
+              <Play className="h-3 w-3" />
+              <span className="max-w-[110px] truncate hidden sm:inline">{lastActivity.title || 'Retomar'}</span>
+              <span className="sm:hidden">Retomar</span>
+            </button>
+          )}
           <TeamPanelButton className="ml-1 rounded-full p-1 hover:bg-amber-200/50 dark:hover:bg-amber-800/50 text-amber-700 dark:text-amber-300" />
           <button
             type="button"
