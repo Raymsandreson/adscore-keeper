@@ -940,6 +940,14 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
           )}
         </div>
 
+        {props.setFormCampaignId && (
+          <div className="col-span-full">
+            <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Campanha (opcional)</span>
+            <CampaignSelect value={props.formCampaignId || ''} onChange={props.setFormCampaignId} />
+          </div>
+        )}
+
+
         {/* Observadores — acompanham a atividade e recebem os popups (feedback, mudança
             de situação, reagendamento), sem serem cobrados. Campo próprio, separado dos
             responsáveis. Quem cria a atividade entra como observador automaticamente. */}
