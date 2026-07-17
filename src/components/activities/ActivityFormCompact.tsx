@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, lazy, Suspense } from 'react';
+import { useCampaigns } from '@/hooks/useCampaigns';
 
 const ProcessDetailSheet = lazy(() => import('@/components/cases/ProcessDetailSheet'));
 const AddProcessDialog = lazy(() => import('@/components/cases/AddProcessDialog'));
