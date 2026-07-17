@@ -267,21 +267,50 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
     sync(null);
   }, [sync]);
 
+  // POSSE DETERMINÍSTICA via banco (funciona entre domínios e dispositivos):
+  // entre as sessões 'running' deste usuário, a de started_at mais recente vence
+  // (desempate por id). As demais cedem. Auto-corrige até sessões que já estavam
+  // rodando antes. Retorna false se ESTA aba deve parar de contar.
+  const ownershipBusyRef = useRef<boolean>(false);
+  const assertOwnership = useCallback(async (): Promise<boolean> => {
+    const e = entryRef.current;
+    if (!e || ownershipBusyRef.current) return true;
+    ownershipBusyRef.current = true;
+    try {
+      const { data: running } = await dbAny.from('activity_time_entries')
+        .select('id, started_at')
+        .eq('user_id', e.userId)
+        .eq('status', 'running');
+      const rows = (running as { id: string; started_at: string }[]) || [];
+      const mine = rows.find(r => r.id === e.entryId);
+      if (!mine) { releaseSilently(); return false; } // fui pausado por outra janela
+      const yieldToNewer = rows.some(r =>
+        r.id !== e.entryId &&
+        (r.started_at > mine.started_at || (r.started_at === mine.started_at && r.id > e.entryId)),
+      );
+      if (yieldToNewer) {
+        await dbAny.from('activity_time_entries')
+          .update({ status: 'paused', ended_at: new Date().toISOString() }).eq('id', e.entryId);
+        releaseSilently();
+        return false;
+      }
+      const olders = rows.filter(r => r.id !== e.entryId).map(r => r.id);
+      if (olders.length) {
+        await dbAny.from('activity_time_entries')
+          .update({ status: 'paused', ended_at: new Date().toISOString() }).in('id', olders);
+      }
+      return true;
+    } catch { return true; } finally { ownershipBusyRef.current = false; }
+  }, [releaseSilently]);
+
   const flush = useCallback(async (statusOverride?: 'running' | 'paused' | 'closed') => {
     const e = entryRef.current;
     if (!e) return;
     lastFlushRef.current = Date.now();
     try {
       if (!statusOverride) {
-        // Heartbeat com verificação de POSSE via banco: funciona entre domínios
-        // diferentes (preview/produção) e até entre computadores. Se outra
-        // sessão assumiu, esta linha foi pausada lá — solta e para de contar.
-        const { data: own } = await dbAny.from('activity_time_entries')
-          .select('status').eq('id', e.entryId).maybeSingle();
-        if (own && (own as { status: string }).status !== 'running') {
-          releaseSilently();
-          return;
-        }
+        const stillMine = await assertOwnership();
+        if (!stillMine) return;
       }
       await dbAny.from('activity_time_entries').update({
         active_seconds: e.activeSeconds,
@@ -292,7 +321,7 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
     } catch (err) {
       console.warn('[activity-timer] flush falhou:', err);
     }
-  }, [releaseSilently]);
+  }, [assertOwnership]);
 
   // Assumir a posse: pausa TODAS as outras sessões rodando deste usuário
   // (outras abas/janelas/dispositivos param no próximo heartbeat, ≤30s).
@@ -494,6 +523,12 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
       if (channel) dbAny.removeChannel(channel);
     };
   }, [getUser]);
+
+  // ---- Verificação de posse dedicada (rápida) — cede em ~8s ----
+  useEffect(() => {
+    const id = setInterval(() => { if (entryRef.current) assertOwnership(); }, 8000);
+    return () => clearInterval(id);
+  }, [assertOwnership]);
 
   // ---- Flush ao esconder a aba ----
   useEffect(() => {
