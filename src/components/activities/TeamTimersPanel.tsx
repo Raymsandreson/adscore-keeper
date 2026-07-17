@@ -7,6 +7,7 @@ import { ChevronDown, ChevronRight, ExternalLink, Loader2 } from 'lucide-react';
 
 const COLLAPSED_KEY = 'team-timers-collapsed';
 type StatusFilter = 'all' | 'working' | 'idle';
+type PanelView = 'now' | 'rank';
 
 const dbAny = db as unknown as SupabaseClient;
 
@@ -41,6 +42,7 @@ export function TeamTimersPanel() {
   const [groups, setGroups] = useState<TeamGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [view, setView] = useState<PanelView>('now');
   const [collapsed, setCollapsed] = useState<Set<string>>(() => {
     try {
       const raw = localStorage.getItem(COLLAPSED_KEY);
@@ -182,6 +184,25 @@ export function TeamTimersPanel() {
       .filter(g => g.members.length > 0);
   }, [groups, statusFilter]);
 
+  // Ranking do dia: membros únicos (podem estar em mais de um time)
+  const allMembers = useMemo(() => {
+    const seen = new Map<string, MemberStatus>();
+    groups.forEach(g => g.members.forEach(m => { if (!seen.has(m.extUserId)) seen.set(m.extUserId, m); }));
+    return Array.from(seen.values());
+  }, [groups]);
+  const topActive = useMemo(
+    () => allMembers.filter(m => m.dayActive > 0).sort((a, b) => b.dayActive - a.dayActive).slice(0, 3),
+    [allMembers],
+  );
+  const topIdle = useMemo(
+    () => allMembers.filter(m => m.dayIdle > 0).sort((a, b) => b.dayIdle - a.dayIdle).slice(0, 3),
+    [allMembers],
+  );
+  const rankedAll = useMemo(
+    () => [...allMembers].sort((a, b) => b.dayActive - a.dayActive || a.dayIdle - b.dayIdle || a.name.localeCompare(b.name)),
+    [allMembers],
+  );
+
   return (
     // Altura limitada ao espaço que o Popover tem na tela (var do Radix);
     // fallback 60vh. O miolo é flex + min-h-0 pra rolagem funcionar sempre.
@@ -191,9 +212,25 @@ export function TeamTimersPanel() {
     >
       <div className="px-3 pt-3 pb-2 border-b shrink-0 space-y-1.5">
         <div className="flex items-baseline justify-between">
-          <span className="text-sm font-semibold">Time agora</span>
-          <span className="text-[11px] text-muted-foreground">{workingCount} em atividade</span>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setView('now')}
+              className={`px-2 py-0.5 rounded text-xs font-semibold transition-colors ${view === 'now' ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+            >
+              Time agora
+            </button>
+            <button
+              type="button"
+              onClick={() => setView('rank')}
+              className={`px-2 py-0.5 rounded text-xs font-semibold transition-colors ${view === 'rank' ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+            >
+              Ranking do dia
+            </button>
+          </div>
+          {view === 'now' && <span className="text-[11px] text-muted-foreground">{workingCount} em atividade</span>}
         </div>
+        {view === 'now' && (
         <div className="flex items-center gap-1">
           {([
             { key: 'all' as const, label: 'Todos' },
@@ -214,6 +251,7 @@ export function TeamTimersPanel() {
             </button>
           ))}
         </div>
+        )}
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
         <div className="px-3 py-2 space-y-3">
@@ -222,13 +260,52 @@ export function TeamTimersPanel() {
               <Loader2 className="h-4 w-4 animate-spin inline mr-2" />Carregando…
             </div>
           )}
-          {!loading && visibleGroups.length === 0 && (
+          {view === 'rank' && !loading && (
+            <div className="space-y-3">
+              <div>
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 mb-1">Top 3 · mais tempo em atividade</div>
+                {topActive.length === 0 && <div className="text-[11px] text-muted-foreground py-1">Sem tempo produtivo hoje.</div>}
+                {topActive.map((m, i) => (
+                  <div key={m.extUserId} className="flex items-center gap-2 px-1.5 py-1 rounded hover:bg-accent/50">
+                    <span className="text-[11px] font-bold w-5 text-muted-foreground shrink-0">{i + 1}º</span>
+                    <span className="text-xs font-medium truncate flex-1">{m.name}</span>
+                    <span className="text-[11px] font-mono tabular-nums text-emerald-600 dark:text-emerald-400 shrink-0">{formatHMS(m.dayActive)}</span>
+                  </div>
+                ))}
+              </div>
+              <div>
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-400 mb-1">Top 3 · mais tempo ocioso</div>
+                {topIdle.length === 0 && <div className="text-[11px] text-muted-foreground py-1">Sem ociosidade registrada hoje.</div>}
+                {topIdle.map((m, i) => (
+                  <div key={m.extUserId} className="flex items-center gap-2 px-1.5 py-1 rounded hover:bg-accent/50">
+                    <span className="text-[11px] font-bold w-5 text-muted-foreground shrink-0">{i + 1}º</span>
+                    <span className="text-xs font-medium truncate flex-1">{m.name}</span>
+                    <span className="text-[11px] font-mono tabular-nums text-amber-600 dark:text-amber-400 shrink-0">{formatHMS(m.dayIdle)}</span>
+                  </div>
+                ))}
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Todos (hoje)</span>
+                  <span className="text-[10px] text-muted-foreground">ativo · ocioso</span>
+                </div>
+                {rankedAll.map(m => (
+                  <div key={m.extUserId} className="flex items-center gap-2 px-1.5 py-1 rounded hover:bg-accent/50">
+                    <span className="text-xs truncate flex-1">{m.name}</span>
+                    <span className="text-[11px] font-mono tabular-nums text-emerald-600 dark:text-emerald-400 shrink-0">{formatHMS(m.dayActive)}</span>
+                    <span className="text-[11px] font-mono tabular-nums text-amber-600 dark:text-amber-400 shrink-0">{formatHMS(m.dayIdle)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {view === 'now' && !loading && visibleGroups.length === 0 && (
             <div className="py-6 text-center text-muted-foreground text-sm">
               {statusFilter === 'all' ? 'Nenhum membro encontrado.'
                 : statusFilter === 'working' ? 'Ninguém em atividade agora.' : 'Ninguém ocioso agora.'}
             </div>
           )}
-          {visibleGroups.map(g => {
+          {view === 'now' && visibleGroups.map(g => {
             const isCollapsed = collapsed.has(g.id);
             const gWorking = g.members.filter(m => m.state === 'working').length;
             const gIdle = g.members.filter(m => m.state === 'idle').length;

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { externalSupabase } from '@/integrations/supabase/external-client';
-import { remapToCloud } from '@/integrations/supabase/uuid-remap';
+import { remapToCloud, remapToExternal } from '@/integrations/supabase/uuid-remap';
+import { authClient } from '@/integrations/supabase';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -92,7 +93,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
   const profiles = useProfilesList();
   const { fields: fieldSettings, updateField: updateFieldSetting, reorderFields } = useActivityFieldSettings();
   const { updateActivity, completeActivity, deleteActivity } = useLeadActivities();
-  const { startTimer, requestLeave, pauseAndClose } = useActivityTimer();
+  const { startTimer, requestLeave, stopTimerFor, current: runningTimer } = useActivityTimer();
 
   // Board dos "Modelos do passo"/checklist: workflow do processo tem prioridade; senão funil do lead
   const linkedProcess = formProcessId ? caseProcesses.find(p => p.id === formProcessId) : null;
@@ -212,21 +213,37 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     if (!open) { setSelectedActivity(null); setCaseProcesses([]); setLeadPreview(null); }
   }, [open, activityId, fetchActivity]);
 
-  // Cronômetro: auto-start ao abrir a atividade (banco de horas)
+  // Cronômetro: auto-start ao abrir a atividade (banco de horas).
+  // Só se a atv for SUA (principal, co-assessor ou sem responsável) —
+  // abrir atv de outro assessor é consulta e não conta tempo.
   useEffect(() => {
-    if (open && selectedActivity?.id && selectedActivity.status !== 'concluida') {
-      startTimer({
-        id: selectedActivity.id,
-        activity_type: selectedActivity.activity_type,
-        title: selectedActivity.title,
-        lead_name: selectedActivity.lead_name,
-      });
-    }
+    if (!open || !selectedActivity?.id || selectedActivity.status === 'concluida') return;
+    let cancelled = false;
+    (async () => {
+      const { data: { user } } = await authClient.auth.getUser();
+      const myExt = await remapToExternal(user?.id || null);
+      const ids = selectedActivity.assigned_to_ids || null;
+      const unassigned = !selectedActivity.assigned_to && !(ids && ids.length > 0);
+      const mine = unassigned || selectedActivity.assigned_to === myExt || !!(myExt && ids?.includes(myExt));
+      if (!cancelled && mine) {
+        startTimer({
+          id: selectedActivity.id,
+          activity_type: selectedActivity.activity_type,
+          title: selectedActivity.title,
+          lead_name: selectedActivity.lead_name,
+        });
+      }
+    })();
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, selectedActivity?.id]);
 
-  // Fechar o sheet → pergunta continuar/pausar (não finaliza sozinho)
-  const handleClose = () => { requestLeave(); onOpenChange(false); };
+  // Fechar o sheet → pergunta continuar/pausar SÓ se esta atv é a cronometrada
+  // (fechar uma atv consultada não mexe no seu cronômetro).
+  const handleClose = () => {
+    if (runningTimer?.kind === 'activity' && runningTimer.activityId === activityId) requestLeave();
+    onOpenChange(false);
+  };
 
   // ---- Handlers passados ao ActivityFormCompact ----
   const handleTitleChange = (v: string) => setFormTitle(v);
@@ -314,7 +331,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
   const handleComplete = async () => {
     if (!activityId) return;
     await completeActivity(activityId);
-    await pauseAndClose(); // atividade concluída → salva o tempo e encerra o cronômetro
+    await stopTimerFor(activityId); // concluiu A ATV CRONOMETRADA → salva e encerra; consulta não mexe no cronômetro
     onUpdated?.();
     onOpenChange(false);
   };
@@ -322,7 +339,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
   const handleDelete = async () => {
     if (!activityId) return;
     await deleteActivity(activityId);
-    await pauseAndClose(); // atividade excluída → salva o tempo já cronometrado
+    await stopTimerFor(activityId); // excluiu a atv cronometrada → salva o tempo; consulta não mexe no cronômetro
     onUpdated?.();
     onOpenChange(false);
   };

@@ -1020,9 +1020,18 @@ const ActivitiesPage = () => {
     }
   };
 
+  // Cronômetro só liga em atividade SUA (principal, co-assessor ou sem responsável).
+  // Abrir atv de outro assessor é consulta — não conta tempo nem rouba o cronômetro.
+  const isMyActivityForTimer = useCallback(async (activity: LeadActivity) => {
+    const myExt = await remapToExternal(user?.id || null);
+    const ids = activity.assigned_to_ids || null;
+    const unassigned = !activity.assigned_to && !(ids && ids.length > 0);
+    return unassigned || activity.assigned_to === myExt || !!(myExt && ids?.includes(myExt));
+  }, [user?.id]);
+
   const handleOpenEdit = async (activity: LeadActivity) => {
-    // Cronômetro / banco de horas: auto-start ao abrir a atividade
-    if (activity.status !== 'concluida') {
+    // Cronômetro / banco de horas: auto-start ao abrir a atividade (se for sua)
+    if (activity.status !== 'concluida' && await isMyActivityForTimer(activity)) {
       startActivityTimer({
         id: activity.id,
         activity_type: activity.activity_type,
@@ -1516,13 +1525,15 @@ const ActivitiesPage = () => {
   };
 
   const loadActivityIntoForm = async (activity: LeadActivity) => {
-    // Cronômetro / banco de horas: cada atv do workflow gera sua sessão
-    startActivityTimer({
-      id: activity.id,
-      activity_type: activity.activity_type,
-      title: activity.title,
-      lead_name: activity.lead_name,
-    });
+    // Cronômetro / banco de horas: cada atv do workflow gera sua sessão (se for sua)
+    if (await isMyActivityForTimer(activity)) {
+      startActivityTimer({
+        id: activity.id,
+        activity_type: activity.activity_type,
+        title: activity.title,
+        lead_name: activity.lead_name,
+      });
+    }
     setSelectedActivity(activity);
     setFormTitle(activity.title);
     setFormWhatWasDone(activity.what_was_done || '');
