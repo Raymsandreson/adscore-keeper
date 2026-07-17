@@ -344,6 +344,7 @@ const ActivitiesPage = () => {
   const [formProcessId, setFormProcessId] = useState('');
   const [formProcessTitle, setFormProcessTitle] = useState('');
   const [formWorkflowId, setFormWorkflowId] = useState('');
+  const [formCampaignId, setFormCampaignId] = useState('');
   const [formIsSystem, setFormIsSystem] = useState(false);
   const [formIsManagement, setFormIsManagement] = useState(false);
   const [availableCases, setAvailableCases] = useState<{id: string; case_number: string; title: string; lead_id: string | null}[]>([]);
