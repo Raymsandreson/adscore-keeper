@@ -194,6 +194,8 @@ const DocumentReviewPage = lazyRetry(() => import("./pages/DocumentReviewPage"),
 const AvaliacaoPage = lazyRetry(() => import("./pages/AvaliacaoPage"), "AvaliacaoPage");
 const LeadsMapPage = lazyRetry(() => import("./pages/LeadsMapPage"), "LeadsMapPage");
 const AcolhimentoPage = lazyRetry(() => import("./pages/AcolhimentoPage"), "AcolhimentoPage");
+const CampaignsPage = lazyRetry(() => import("./pages/CampaignsPage"), "CampaignsPage");
+const CampaignDetailPage = lazyRetry(() => import("./pages/CampaignDetailPage"), "CampaignDetailPage");
 
 
 const queryClient = new QueryClient({
