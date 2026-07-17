@@ -1,64 +1,109 @@
-## Objetivo
 
-Substituir o dataset mockado em `src/lib/processualDashboardData.ts` por dados reais lidos do Supabase Externo, mantendo a UI atual de `/processual/acompanhamento` e respeitando a regra "dashboards leem do Externo via `db`".
+# Campanhas — novo objeto no CRM
 
-## Fontes que vou combinar
+Metáfora: **Campanha = rede de pesca**. Ela custa dinheiro pra jogar na água, gera peixes (leads), que viram peixes no barco (casos), que viram filé (processos), que viram dinheiro (honorários). A campanha precisa saber quanto pescou e quanto gastou pescando.
 
-| Bloco do dashboard | Tabela(s) reais usadas |
-|---|---|
-| Resumo (processos ativos, atualizações, sentenças, trânsitos) | `lead_processes` (status, `movimentacoes`), `legal_cases` (status/outcome_date) |
-| SLA por fase (Sentença, Acórdão, TST, Trânsito) | `lead_processes.movimentacoes[]` — detecto evento por keyword em `tipo_publicacao`/`conteudo`, calculo dias desde `started_at`/`data_distribuicao` |
-| Latência entre atualizações | Diferenças entre `data` consecutivas em `movimentacoes` por processo (somente movimentações processuais — conforme escolha do usuário) |
-| Transições de status | `lead_stage_history` agrupado por par `(from_stage→to_stage)`, média de dias entre eventos consecutivos |
-| Categorias (Onboarding, Relatório de Acidente, INSS, Indenização, Inquérito Policial) | Cruzo `kanban_boards.name`/`lead_activities.title` (regex de classificação) com `lead_activities` (criadas, concluídas) e `lead_processes` (protocolados) |
+## Hierarquia final
 
-## Filtro de período
+```
+Campanha (rede, custo)
+   └── Leads (peixes fisgados)
+         └── Casos (fechados)
+               └── Processos (execução)
+                     └── Honorários (receita)
+```
 
-"Hoje / Esta semana / Este mês" filtram pelo **marco final** do dado (movimentação, conclusão de atividade, mudança de etapa, sentença) caindo dentro da janela — conforme escolha do usuário.
+## 1. Banco (Supabase Externo, via `run-external-migration`)
 
-## Implementação
+### Tabela `campaigns`
+Campos de negócio:
+- `name`, `description`, `status` (rascunho/ativa/pausada/encerrada)
+- `start_date`, `end_date`
+- `board_id` (workflow próprio da campanha — reusa `kanban_boards` tipo `workflow`)
+- `stage_id` (etapa atual no board)
+- `investment_total` (custo do tráfego lançado manualmente)
+- `meta_ad_account_id`, `meta_campaign_id` (opcional, pra sincronizar custo do Meta depois)
+- `product_service_id`, `nucleus_id` (herança pro lead)
+- `created_by`, `assigned_to`
 
-1. **Novo módulo `src/lib/processualDashboardLive.ts`**
-   - Tipos reaproveitados de `processualDashboardData.ts` (`DashboardProcessualData`, `SlaFase`, etc.) — exporto/reuso.
-   - Função `fetchProcessualDashboard(periodo, filtros)` que dispara queries paralelas via `db` (externalSupabase):
-     - `lead_processes` (id, status, started_at, data_distribuicao, movimentacoes, workflow_name)
-     - `legal_cases` (id, status, outcome, outcome_date, closed_at, created_at, workflow_board_id)
-     - `lead_stage_history` (lead_id, from_stage, to_stage, changed_at) limitado à janela
-     - `lead_activities` (title, activity_type, status, created_at, completed_at, case_id) com `deleted_at is null`
-     - `kanban_boards` (id, name) para mapear categorias
-   - Reduções client-side:
-     - **Classificador de categoria**: regex sobre título da atividade / nome do board (já mapeado: ONBOARDING, ACIDENTE, INSS/BENEFÍCIO, INDENIZAÇÃO, INQUÉRITO).
-     - **Classificador de evento processual**: keywords em `tipo_publicacao` (`SENTEN`, `ACÓRDÃO`, `TST`, `TRÂNSITO`).
-     - **Latência**: para cada processo com ≥2 movimentações, calcular gaps em horas, agregar por dia (média) — 30/7/1 pontos.
-     - **Transições**: agrupar `lead_stage_history` ordenado por `lead_id, changed_at`, calcular intervalo entre pares consecutivos, devolver top 7 mais frequentes.
-   - Cache em memória (TTL 60s) por `(periodo, filtros)` para evitar refazer queries pesadas em troca de aba.
+### Vínculo Campanha ↔ Lead
+- Adicionar coluna `campaign_id UUID` em `leads` (referência opcional).
+- Índice em `leads.campaign_id`.
 
-2. **Novo hook `src/hooks/useProcessualDashboard.ts`**
-   - `useProcessualDashboard(periodo, filtros)` → `{ data, loading, error, refresh }`
-   - Internamente chama `fetchProcessualDashboard`, com `useEffect` que reage a `periodo`/`filtros`.
-   - Fallback: se a query falhar (sessão anônima sem RLS), retorna o dataset mock com flag `isMock: true` para o painel sinalizar.
+### Vínculo automático via criativo
+- Adicionar `campaign_id` em `promoted_posts` / `ad_briefings` (o que já bate com criativo Meta).
+- Webhook CTWA (Railway) preenche `leads.campaign_id` quando o `ad_id` bate com criativo vinculado a uma campanha.
 
-3. **`src/pages/AcompanhamentoProcessualPage.tsx`**
-   - Trocar leitura direta de `DATASET_PROC[periodo]` por `useProcessualDashboard(periodo, filtros)`.
-   - Mostrar estado de loading (skeleton) e badge "Dados reais" / "Sem permissão — exibindo amostra" quando cair no fallback.
-   - Filtros `responsavel`/`etiqueta` são aplicados client-side sobre os arrays retornados (já existe a estrutura na page).
+### Atividades da campanha
+- Adicionar `campaign_id UUID` em `lead_activities` (nullable).
+- Atividade pode ser de lead OU de campanha (uma das duas).
 
-4. **Sem alterações de schema** — só leitura.
+### GRANTs padrão (authenticated + service_role).
 
-## O que NÃO vou mexer
+## 2. Cálculo de ROI (view no Externo)
 
-- `src/lib/processualDashboardData.ts` permanece como fonte do fallback/tipos.
-- Rota, sidebar, layout visual, paleta e tipografia do dashboard.
-- Nenhuma migration / nenhuma policy de banco.
-- Outras páginas/dashboards.
+`vw_campaign_metrics`:
+- leads_count, cases_count, processes_count
+- honorarios_total (SUM de `lead_financials.contract_value` dos leads da campanha)
+- investment_total
+- CAC = investment / leads_count
+- ROI = (honorarios - investment) / investment
+- LTV médio por lead
 
-## Validação
+## 3. Frontend
 
-- Build + tsgo da página.
-- `db.from('lead_processes').select('id', { count: 'exact', head: true })` para confirmar que a sessão anônima do Externo retorna linhas. Se voltar 0 com count > 0 no Cloud, ajusto o hook para usar fallback e aviso o usuário que precisamos abrir uma policy no Externo para tornar o painel realmente "live".
+### Hook `useCampaigns.ts`
+CRUD via `db` (barrel Externo). Filtro por status, assigned_to, nucleus.
 
-## Riscos conhecidos
+### Componente único `CampaignForm.tsx`
+Reutilizado em criar/editar (política de forms unificados). Campos: nome, descrição, período, board de workflow, produto, núcleo, investimento inicial, responsável.
 
-- **`movimentacoes` é JSONB livre** — a classificação por keyword pode subestimar sentenças/acórdãos. Vou logar no console o total classificado vs. total de movimentações pra calibrarmos depois.
-- **`lead_stage_history` no Externo** pode estar mais pobre do que no Cloud (bridge assíncrona). Se eu detectar < 100 linhas no período, sinalizo na UI.
-- **Performance**: `movimentacoes` pode ser grande — limito o select às colunas necessárias e processo em streaming (sem `select('*')`).
+### Página `/campanhas` (`CampaignsPage.tsx`)
+- Lista tipo kanban (por status) + toggle tabela.
+- Cada card mostra: nome, período, leads/casos/R$ gerado, ROI colorido.
+- Botão "Nova campanha" abre o form.
+
+### Página `/campanhas/:id` (`CampaignDetailPage.tsx`)
+- Header: nome, status, investimento, ROI.
+- Aba **Fluxo**: reusa `WorkflowProgressPage` apontando pro `board_id` da campanha.
+- Aba **Leads**: lista de leads com `campaign_id = X`, com filtros por etapa/acolhedor.
+- Aba **Atividades**: lista de `lead_activities` com `campaign_id = X` (cronômetro funciona igual).
+- Aba **Financeiro**: investimento (editável), honorários agregados dos processos, CAC/ROI/LTV.
+- Aba **Criativos**: `promoted_posts`/`ad_briefings` vinculados.
+
+### Integração com atividade existente
+No `ActivityFormCompact`: dropdown "Campanha" (opcional, ao lado do dropdown de Lead). Se marcar campanha sem lead, a atividade fica presa à campanha e usa o workflow dela.
+
+### Vínculo manual no Lead
+No `LeadForm` existente: dropdown "Campanha" (busca `campaigns` ativas).
+
+### Sidebar
+Novo item **"Campanhas"** dentro do grupo Marketing (não solto — regra de agrupamento). Se o grupo Marketing não existir, criar.
+
+## 4. Vínculo automático (Railway)
+
+Editar webhook CTWA (`railway-server/src/functions/*ctwa*`):
+- Ao criar lead com `ad_id`, consultar `promoted_posts.campaign_id` correspondente.
+- Se achar, gravar `leads.campaign_id`.
+
+## 5. Migração de dados existentes
+
+Nada retroativo automático — leads antigos ficam sem campanha. Usuário vincula manualmente os que quiser.
+
+## Ordem de execução
+
+1. Migration SQL (tabela + colunas + view + GRANTs) via `run-external-migration`.
+2. Hook `useCampaigns`.
+3. `CampaignForm` + `CampaignsPage` + rota.
+4. `CampaignDetailPage` com abas.
+5. Dropdown de campanha no `LeadForm` e `ActivityFormCompact`.
+6. Item de sidebar em Marketing.
+7. Webhook CTWA (última etapa, quando o resto estiver testado).
+
+## Fora do escopo desta primeira entrega
+
+- Sync automático de custo do Meta (fica manual por enquanto — campo `investment_total` editável).
+- Migração retroativa de leads antigos → campanha.
+- Dashboards comparativos entre campanhas (fica pra fase 2, depois de ter dados).
+
+Confirma que posso executar nessa ordem? Se sim, começo pela migration.

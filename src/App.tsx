@@ -194,6 +194,8 @@ const DocumentReviewPage = lazyRetry(() => import("./pages/DocumentReviewPage"),
 const AvaliacaoPage = lazyRetry(() => import("./pages/AvaliacaoPage"), "AvaliacaoPage");
 const LeadsMapPage = lazyRetry(() => import("./pages/LeadsMapPage"), "LeadsMapPage");
 const AcolhimentoPage = lazyRetry(() => import("./pages/AcolhimentoPage"), "AcolhimentoPage");
+const CampaignsPage = lazyRetry(() => import("./pages/CampaignsPage"), "CampaignsPage");
+const CampaignDetailPage = lazyRetry(() => import("./pages/CampaignDetailPage"), "CampaignDetailPage");
 
 
 const queryClient = new QueryClient({
@@ -310,6 +312,8 @@ function SidebarLayout() {
                 <Route path="/dashboard" element={<Index />} />
                 <Route path="/leads" element={<ProtectedRoute><LeadsCenter /></ProtectedRoute>} />
                 <Route path="/acolhimento" element={<ProtectedRoute><AcolhimentoPage /></ProtectedRoute>} />
+                <Route path="/campanhas" element={<ProtectedRoute><CampaignsPage /></ProtectedRoute>} />
+                <Route path="/campanhas/:id" element={<ProtectedRoute><CampaignDetailPage /></ProtectedRoute>} />
                 <Route path="/noticias" element={<ProtectedRoute><NoticiasPage /></ProtectedRoute>} />
                 <Route path="/mapa-leads" element={<ProtectedRoute><LeadsMapPage /></ProtectedRoute>} />
                 <Route path="/analytics" element={<ProtectedRoute><AnalyticsPage /></ProtectedRoute>} />
