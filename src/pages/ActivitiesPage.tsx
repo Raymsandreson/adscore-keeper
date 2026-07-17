@@ -740,7 +740,7 @@ const ActivitiesPage = () => {
     setCaseSearch('');
     setFormProcessId('');
     setFormProcessTitle('');
-    setFormWorkflowId(''); setFormCampaignId(''); setFormCampaignId('');
+    setFormWorkflowId(''); setFormCampaignId('');
     setLeadCases([]);
     setCaseProcesses([]);
     setFormMatrixQuadrant('');
@@ -1711,7 +1711,7 @@ const ActivitiesPage = () => {
     setFormCaseTitle('');
     setFormProcessId('');
     setFormProcessTitle('');
-    setFormWorkflowId(''); setFormCampaignId(''); setFormCampaignId('');
+    setFormWorkflowId(''); setFormCampaignId('');
     setCaseProcesses([]);
     // Load cases for this lead
     externalSupabase.from('legal_cases').select('id, case_number, title').eq('lead_id', leadId).then(({ data }) => {
@@ -1780,7 +1780,7 @@ const ActivitiesPage = () => {
     setFormCaseTitle('');
     setFormProcessId('');
     setFormProcessTitle('');
-    setFormWorkflowId(''); setFormCampaignId(''); setFormCampaignId('');
+    setFormWorkflowId(''); setFormCampaignId('');
     setLeadCases([]);
     setCaseProcesses([]);
     // Load all contacts
