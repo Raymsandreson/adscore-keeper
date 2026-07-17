@@ -168,7 +168,7 @@ function TeamPanelButton({ className }: { className?: string }) {
           <Users className="h-3.5 w-3.5" />
         </button>
       </PopoverTrigger>
-      <PopoverContent align="end" side="top" className="p-0 w-auto">
+      <PopoverContent align="end" side="top" collisionPadding={8} className="p-0 w-auto overflow-hidden">
         {open && <TeamTimersPanel />}
       </PopoverContent>
     </Popover>

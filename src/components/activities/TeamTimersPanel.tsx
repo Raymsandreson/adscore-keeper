@@ -145,12 +145,17 @@ export function TeamTimersPanel() {
   );
 
   return (
-    <div className="w-80">
-      <div className="flex items-baseline justify-between px-3 pt-3 pb-2 border-b">
+    // Altura limitada ao espaço que o Popover tem na tela (var do Radix);
+    // fallback 60vh. O miolo é flex + min-h-0 pra rolagem funcionar sempre.
+    <div
+      className="w-80 flex flex-col"
+      style={{ maxHeight: 'min(60vh, var(--radix-popover-content-available-height, 60vh))' }}
+    >
+      <div className="flex items-baseline justify-between px-3 pt-3 pb-2 border-b shrink-0">
         <span className="text-sm font-semibold">Time agora</span>
         <span className="text-[11px] text-muted-foreground">{workingCount} em atividade</span>
       </div>
-      <div className="max-h-96 overflow-y-auto overscroll-contain">
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
         <div className="px-3 py-2 space-y-3">
           {loading && groups.length === 0 && (
             <div className="py-6 text-center text-muted-foreground text-sm">
