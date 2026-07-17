@@ -7,6 +7,7 @@ import { externalSupabase } from '@/integrations/supabase/external-client';
 import { useProfilesList } from '@/hooks/useProfilesList';
 import { generateLeadName } from '@/utils/generateLeadName';
 import { findClosedStageId, findRefusedStageId } from '@/utils/kanbanStageTypes';
+import { useCampaigns } from '@/hooks/useCampaigns';
 const LeadLinkedContacts = lazy(() => import('@/components/leads/LeadLinkedContacts').then(m => ({ default: m.LeadLinkedContacts })));
 const LeadLinkedComments = lazy(() => import('@/components/leads/LeadLinkedComments').then(m => ({ default: m.LeadLinkedComments })));
 const LeadNewsLinksManager = lazy(() => import('@/components/leads/LeadNewsLinksManager').then(m => ({ default: m.LeadNewsLinksManager })));
