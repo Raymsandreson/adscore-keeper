@@ -122,7 +122,7 @@ export async function reviewActivityWithAI(params: ReviewParams): Promise<Activi
           .limit(1)
       : Promise.resolve(emptyResult),
     processId
-      ? externalSupabase
+      ? (externalSupabase as any)
           .from('process_movements')
           .select('categoria, titulo, descricao, data_movimentacao')
           .eq('process_id', processId)
