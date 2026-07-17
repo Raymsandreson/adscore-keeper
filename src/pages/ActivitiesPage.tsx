@@ -209,7 +209,7 @@ const ActivitiesPage = () => {
   const celebrationInitRef = useRef(false);
   useEffect(() => { celebrationInitRef.current = true; }, []);
   const { activities, loading, fetchActivities: _fetchActivities, createActivity, updateActivity, completeActivity, deleteActivity } = useLeadActivities();
-  const { startTimer: startActivityTimer, pauseAndClose: pauseActivityTimer, stopTimerFor: stopActivityTimerFor, requestLeave: requestLeaveTimer } = useActivityTimer();
+  const { startTimer: startActivityTimer, pauseAndClose: pauseActivityTimer, stopTimerFor: stopActivityTimerFor, requestLeave: requestLeaveTimer, current: runningTimer } = useActivityTimer();
   const refreshCountsRef = useRef<(() => Promise<void>) | null>(null);
   const fetchActivities = useCallback(async (params?: Parameters<typeof _fetchActivities>[0]) => {
     await _fetchActivities(params);
@@ -254,6 +254,11 @@ const ActivitiesPage = () => {
   const [filterWorkflow, setFilterWorkflow] = usePageState<string[]>('activities_filterWorkflow', []);
   const [filterHasDocs, setFilterHasDocs] = usePageState<boolean>('activities_filterHasDocs', false);
   const [activityIdsWithDocs, setActivityIdsWithDocs] = useState<Set<string>>(new Set());
+  // Atividades executadas HOJE (cronômetro rodou): id -> segundos produtivos do dia
+  const [filterInExecution, setFilterInExecution] = usePageState<boolean>('activities_filterInExecution', false);
+  const [execTodayMap, setExecTodayMap] = useState<Map<string, number>>(new Map());
+  // Busca por texto dentro das atividades já filtradas
+  const [searchText, setSearchText] = usePageState<string>('activities_searchText', '');
   const [sheetMode, setSheetMode] = usePageState<'create' | 'edit' | null>('activities_sheetMode', null);
   const [selectedActivityId, setSelectedActivityId] = usePageState<string | null>('activities_selectedId', null);
   const [selectedActivity, setSelectedActivity] = useState<LeadActivity | null>(null);
@@ -500,6 +505,33 @@ const ActivitiesPage = () => {
     };
     load();
   }, []);
+
+  // Atividades EM EXECUÇÃO hoje: o cronômetro rodou hoje (id -> segundos produtivos).
+  // Usa ended_at (atualizado a cada flush) OU started_at, para pegar também
+  // atividades iniciadas antes e retomadas hoje.
+  useEffect(() => {
+    const load = async () => {
+      const startOfDay = new Date();
+      startOfDay.setHours(0, 0, 0, 0);
+      const iso = startOfDay.toISOString();
+      const dbTimer = externalSupabase as unknown as import('@supabase/supabase-js').SupabaseClient;
+      try {
+        const { data } = await dbTimer.from('activity_time_entries')
+          .select('activity_id, active_seconds')
+          .not('activity_id', 'is', null)
+          .or(`ended_at.gte.${iso},started_at.gte.${iso}`);
+        const m = new Map<string, number>();
+        for (const r of ((data as { activity_id: string | null; active_seconds: number }[]) || [])) {
+          if (!r.activity_id) continue;
+          m.set(r.activity_id, (m.get(r.activity_id) || 0) + (r.active_seconds || 0));
+        }
+        setExecTodayMap(m);
+      } catch (e) { console.warn('[exec-hoje] load falhou', e); }
+    };
+    load();
+    const id = setInterval(load, 60000);
+    return () => clearInterval(id);
+  }, [runningTimer?.activityId]);
 
   const toggleHasDocs = useCallback(async (activityId: string) => {
     const has = activityIdsWithDocs.has(activityId);
@@ -1903,6 +1935,9 @@ const ActivitiesPage = () => {
     if (filterHasDocs) {
       list = list.filter(a => activityIdsWithDocs.has(a.id));
     }
+    if (filterInExecution) {
+      list = list.filter(a => execTodayMap.has(a.id));
+    }
     if (filterCase.length > 0) {
       list = list.filter(a => (a as any).case_id && filterCase.includes((a as any).case_id));
     }
@@ -1912,7 +1947,7 @@ const ActivitiesPage = () => {
         const dateKey = raw ? raw.slice(0, 10) : null;
         return dateKey ? selectedCalDays.includes(dateKey) : false;
       });
-    } else if (viewMode === 'list' && !filterStatus.includes('atrasada')) {
+    } else if (viewMode === 'list' && !filterStatus.includes('atrasada') && !filterInExecution) {
       // Sem dia selecionado: a lista acompanha o mês exibido no calendário.
       // Exceção: com o filtro 'Atrasada' ativo, mostramos vencidas de qualquer mês.
       // Atividades sem nenhuma data continuam visíveis (não têm lugar no calendário).
@@ -1923,6 +1958,18 @@ const ActivitiesPage = () => {
         return !dateKey || dateKey.startsWith(monthPrefix);
       });
     }
+    // Busca por texto: aplicada por último, sobre as atividades já filtradas.
+    const term = searchText.trim().toLowerCase();
+    if (term) {
+      list = list.filter(a =>
+        (a.title || '').toLowerCase().includes(term) ||
+        (a.lead_name || '').toLowerCase().includes(term) ||
+        (a.client_name_override || '').toLowerCase().includes(term) ||
+        (a.case_title || '').toLowerCase().includes(term) ||
+        (a.process_title || '').toLowerCase().includes(term) ||
+        (a.assigned_to_name || '').toLowerCase().includes(term)
+      );
+    }
     // Ordena por prioridade: urgente > alta > normal > baixa (mantém ordem original como tiebreaker)
     const priorityRank: Record<string, number> = { urgente: 0, alta: 1, normal: 2, baixa: 3 };
     return [...list].sort((a, b) => {
@@ -1930,7 +1977,7 @@ const ActivitiesPage = () => {
       const rb = priorityRank[b.priority || 'normal'] ?? 2;
       return ra - rb;
     });
-  }, [activities, selectedCalDays, filterCase, viewMode, calendarMonth, filterStatus, filterHasDocs, activityIdsWithDocs]);
+  }, [activities, selectedCalDays, filterCase, viewMode, calendarMonth, filterStatus, filterHasDocs, activityIdsWithDocs, filterInExecution, execTodayMap, searchText]);
 
   // A busca sem teto (filtro Atrasada) pode trazer milhares de linhas; o DOM não aguenta
   // todos os cards de uma vez — renderiza em lotes e revela o resto sob demanda.
@@ -3278,8 +3325,44 @@ const ActivitiesPage = () => {
           Com documentação
         </Button>
 
-        {(filterStatus.length > 0 || filterType.length > 0 || filterAssignee.length > 0 || filterLead.length > 0 || filterContact.length > 0 || filterCase.length > 0 || filterWorkflow.length > 0 || selectedCalDays.length > 0 || filterHasDocs) && (
-          <Button variant="ghost" size="sm" className="h-7 text-xs text-destructive shrink-0" onClick={() => { setFilterStatus([]); setFilterType([]); setFilterAssignee([]); setFilterLead([]); setFilterContact([]); setFilterCase([]); setFilterWorkflow([]); setSelectedCalDays([]); setFilterHasDocs(false); }}>
+        {/* Só as atividades cujo cronômetro rodou hoje */}
+        <Button
+          variant={filterInExecution ? "default" : "outline"}
+          size="sm"
+          className="h-7 text-xs shrink-0 gap-1"
+          onClick={() => setFilterInExecution(v => !v)}
+          title="Mostrar só as atividades em execução hoje (cronômetro rodou)"
+        >
+          <Play className="h-3 w-3" />
+          Em execução hoje
+          {execTodayMap.size > 0 && (
+            <Badge variant="secondary" className="ml-0.5 h-4 px-1 text-[10px] tabular-nums">{execTodayMap.size}</Badge>
+          )}
+        </Button>
+
+        {/* Busca por texto dentro das atividades já filtradas */}
+        <div className="relative shrink-0">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground pointer-events-none" />
+          <Input
+            value={searchText}
+            onChange={e => setSearchText(e.target.value)}
+            placeholder="Buscar nas atividades..."
+            className="h-7 w-48 pl-7 pr-6 text-xs"
+          />
+          {searchText && (
+            <button
+              type="button"
+              onClick={() => setSearchText('')}
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              title="Limpar busca"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          )}
+        </div>
+
+        {(filterStatus.length > 0 || filterType.length > 0 || filterAssignee.length > 0 || filterLead.length > 0 || filterContact.length > 0 || filterCase.length > 0 || filterWorkflow.length > 0 || selectedCalDays.length > 0 || filterHasDocs || filterInExecution || searchText) && (
+          <Button variant="ghost" size="sm" className="h-7 text-xs text-destructive shrink-0" onClick={() => { setFilterStatus([]); setFilterType([]); setFilterAssignee([]); setFilterLead([]); setFilterContact([]); setFilterCase([]); setFilterWorkflow([]); setSelectedCalDays([]); setFilterHasDocs(false); setFilterInExecution(false); setSearchText(''); }}>
             <X className="h-3 w-3 mr-1" /> Limpar
           </Button>
         )}
@@ -4047,6 +4130,34 @@ const ActivitiesPage = () => {
                             {PRIORITY_OPTIONS.find(p => p.value === activity.priority)?.label}
                           </span>
                         )}
+                        {/* Em execução hoje: cronômetro rodou (verde pulsante = rodando agora) */}
+                        {(() => {
+                          const isRunningNow = runningTimer?.kind === 'activity' && runningTimer.activityId === activity.id;
+                          if (!isRunningNow && !execTodayMap.has(activity.id)) return null;
+                          const secs = isRunningNow ? runningTimer.activeSeconds : (execTodayMap.get(activity.id) || 0);
+                          return (
+                            <span
+                              className={cn(
+                                "flex items-center gap-1 text-[10px] font-medium rounded px-1 py-0.5",
+                                isRunningNow
+                                  ? "text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-900/40"
+                                  : "text-emerald-600 dark:text-emerald-400"
+                              )}
+                              title={isRunningNow ? "Cronômetro rodando agora" : "Tempo produtivo registrado hoje"}
+                            >
+                              {isRunningNow ? (
+                                <span className="relative flex h-1.5 w-1.5">
+                                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                                </span>
+                              ) : (
+                                <Play className="h-2.5 w-2.5" />
+                              )}
+                              <span className="tabular-nums">{formatDuration(secs)}</span>
+                              {isRunningNow && <span>agora</span>}
+                            </span>
+                          );
+                        })()}
                       </div>
                       <div className="flex items-center gap-0.5 shrink-0">
                         {activity.status !== 'concluida' && (
