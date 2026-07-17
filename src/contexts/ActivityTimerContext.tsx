@@ -259,11 +259,30 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
     setCurrent(e ? { ...e } : null);
   }, []);
 
+  // Solta o cronômetro desta aba em silêncio (outra aba/janela assumiu).
+  const releaseSilently = useCallback(() => {
+    otherOwnerRef.current = true;
+    awaitingConfirmRef.current = false;
+    setIdlePrompt(false); setLeavePrompt(false); setSwitchPrompt(false);
+    sync(null);
+  }, [sync]);
+
   const flush = useCallback(async (statusOverride?: 'running' | 'paused' | 'closed') => {
     const e = entryRef.current;
     if (!e) return;
     lastFlushRef.current = Date.now();
     try {
+      if (!statusOverride) {
+        // Heartbeat com verificação de POSSE via banco: funciona entre domínios
+        // diferentes (preview/produção) e até entre computadores. Se outra
+        // sessão assumiu, esta linha foi pausada lá — solta e para de contar.
+        const { data: own } = await dbAny.from('activity_time_entries')
+          .select('status').eq('id', e.entryId).maybeSingle();
+        if (own && (own as { status: string }).status !== 'running') {
+          releaseSilently();
+          return;
+        }
+      }
       await dbAny.from('activity_time_entries').update({
         active_seconds: e.activeSeconds,
         idle_seconds: e.idleSeconds,
@@ -273,6 +292,16 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
     } catch (err) {
       console.warn('[activity-timer] flush falhou:', err);
     }
+  }, [releaseSilently]);
+
+  // Assumir a posse: pausa TODAS as outras sessões rodando deste usuário
+  // (outras abas/janelas/dispositivos param no próximo heartbeat, ≤30s).
+  const pauseOtherSessions = useCallback(async (userId: string, keepId: string) => {
+    try {
+      await dbAny.from('activity_time_entries')
+        .update({ status: 'paused', ended_at: new Date().toISOString() })
+        .eq('user_id', userId).eq('status', 'running').neq('id', keepId);
+    } catch { /* melhor esforço */ }
   }, []);
 
   // Soma todas as sessões de HOJE do membro, exceto a atual (contada ao vivo).
@@ -517,7 +546,8 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
       activeSeconds: 0, idleSeconds, status: 'running', estimateMinutes: null,
     });
     announceTakeover();
-  }, [getUser, sync, announceTakeover]);
+    pauseOtherSessions(u.userId, entryId);
+  }, [getUser, sync, announceTakeover, pauseOtherSessions]);
 
   // Finaliza a atv atual (salva) e passa a contar ociosidade entre atividades.
   const finalizeToGap = useCallback(async () => {
@@ -621,6 +651,7 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
         activeSeconds, idleSeconds, status: 'running', estimateMinutes,
       });
       announceTakeover();
+      pauseOtherSessions(u.userId, entryId);
 
       if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
         Notification.requestPermission().catch(() => {});
@@ -707,7 +738,8 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
       breakType: type, breakNote: note || null,
     });
     announceTakeover();
-  }, [rememberLast, flush, getUser, sync, announceTakeover]);
+    pauseOtherSessions(u.userId, (data as { id: string }).id);
+  }, [rememberLast, flush, getUser, sync, announceTakeover, pauseOtherSessions]);
 
   // Retorno da pausa → salva e volta a contar ociosidade entre atividades.
   const endBreak = useCallback(async () => {
