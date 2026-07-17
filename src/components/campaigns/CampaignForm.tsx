@@ -7,7 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useCreateCampaign, useUpdateCampaign, type Campaign, type CampaignStatus } from '@/hooks/useCampaigns';
 import { useKanbanBoards } from '@/hooks/useKanbanBoards';
-import { useAuth } from '@/contexts/AuthContext';
+import { useAuthContext } from '@/contexts/AuthContext';
 
 interface Props {
   open: boolean;
