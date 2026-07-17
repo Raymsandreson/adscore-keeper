@@ -61,7 +61,7 @@ export function usePushNotifications() {
     if (!user?.id) return;
     await ensureExternalSession();
     const json = sub.toJSON();
-    const { error } = await externalSupabase.from('push_subscriptions').upsert({
+    const { error } = await (externalSupabase as any).from('push_subscriptions').upsert({
       user_id: user.id,
       endpoint: sub.endpoint,
       p256dh: json.keys?.p256dh || '',
