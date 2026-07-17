@@ -135,6 +135,26 @@ export function usePushNotifications() {
     }
   }, []);
 
+  // Notificação de teste LOCAL (via o próprio SW) — não passa pelo servidor.
+  // Serve para o usuário confirmar se o sistema operacional deixa a notificação
+  // aparecer (ex.: no Windows o Chrome precisa estar ligado nas Notificações).
+  const testNotification = useCallback(async () => {
+    if (!supported) { toast.error('Notificações não suportadas neste navegador'); return; }
+    if (Notification.permission !== 'granted') { toast.info('Ative as notificações primeiro'); return; }
+    try {
+      const reg = await getRegistration();
+      await reg.showNotification('WhatsJUD', {
+        body: 'Notificação de teste — se você está vendo isso, está tudo certo! ✅',
+        icon: '/pwa-192x192.png',
+        badge: '/pwa-192x192.png',
+      });
+      toast.success('Teste enviado. Não apareceu? Veja as notificações do Windows/navegador.');
+    } catch (e) {
+      console.error('Erro no teste de notificação:', e);
+      toast.error('Não foi possível exibir a notificação de teste');
+    }
+  }, [supported, getRegistration]);
+
   // Auto-garante a assinatura se a permissão já foi concedida e o usuário não
   // optou por sair (self-heal se o SW tiver sido removido por um force-refresh).
   useEffect(() => {
@@ -144,5 +164,5 @@ export function usePushNotifications() {
     subscribeAndSave().catch(() => { /* ignora */ });
   }, [supported, user?.id, subscribeAndSave]);
 
-  return { supported, permission, subscribed, busy, enable, disable };
+  return { supported, permission, subscribed, busy, enable, disable, testNotification };
 }

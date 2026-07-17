@@ -1,6 +1,6 @@
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { Button } from '@/components/ui/button';
-import { Bell, BellRing, BellOff, Loader2 } from 'lucide-react';
+import { Bell, BellRing, BellOff, Loader2, Send, AlertCircle } from 'lucide-react';
 
 /**
  * Cartão de configuração do Web Push (notificação nativa no dispositivo).
@@ -33,12 +33,17 @@ export function PushNotificationSettings() {
 
       <p className="text-xs text-muted-foreground">{statusText}</p>
 
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         {push.supported && push.subscribed ? (
-          <Button variant="outline" size="sm" disabled={push.busy} onClick={push.disable} className="gap-1.5">
-            {push.busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <BellOff className="h-3.5 w-3.5" />}
-            Desativar neste dispositivo
-          </Button>
+          <>
+            <Button variant="outline" size="sm" disabled={push.busy} onClick={push.testNotification} className="gap-1.5">
+              <Send className="h-3.5 w-3.5" /> Enviar teste
+            </Button>
+            <Button variant="outline" size="sm" disabled={push.busy} onClick={push.disable} className="gap-1.5">
+              {push.busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <BellOff className="h-3.5 w-3.5" />}
+              Desativar neste dispositivo
+            </Button>
+          </>
         ) : (
           <Button
             size="sm"
@@ -52,10 +57,19 @@ export function PushNotificationSettings() {
         )}
       </div>
 
-      <p className="text-[11px] text-muted-foreground">
-        A ativação é por dispositivo. No iPhone, é preciso instalar o WhatsJUD na tela inicial
-        (Compartilhar → Adicionar à Tela de Início) para receber as notificações.
-      </p>
+      {/* Guia: notificação ativada no app mas o SO pode estar bloqueando. */}
+      {push.supported && push.subscribed && (
+        <div className="flex items-start gap-2 rounded-lg border border-amber-300/40 bg-amber-50/60 dark:bg-amber-950/30 p-2.5">
+          <AlertCircle className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+          <div className="text-[11px] text-muted-foreground space-y-1">
+            <p className="font-medium text-foreground">Ativou mas não recebe? Verifique o sistema:</p>
+            <p><b>Windows:</b> Configurações → Sistema → Notificações → ligue o <b>Google Chrome</b> (ou seu navegador) e desligue o <b>Assistente de foco</b>.</p>
+            <p><b>Celular Android:</b> Ajustes → Apps → Chrome → Notificações ativadas.</p>
+            <p><b>iPhone:</b> instale o WhatsJUD na tela inicial (Compartilhar → Adicionar à Tela de Início) — só assim o iOS entrega push.</p>
+            <p>Use o <b>“Enviar teste”</b> acima para confirmar.</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
