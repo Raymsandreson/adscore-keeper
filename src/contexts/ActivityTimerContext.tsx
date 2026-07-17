@@ -261,20 +261,27 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
       if (isActive) next.activeSeconds += deltaSec;
       else next.idleSeconds += deltaSec;
 
-      if (!awaitingConfirmRef.current && idleFor >= IDLE_THRESHOLD_MS) {
+      // Com PREVISÃO definida e ainda dentro dela, não perturba com o check
+      // de 5 min — a pergunta "ainda está fazendo?" só vem quando a previsão acaba.
+      const estSec = next.estimateMinutes && next.estimateMinutes > 0 ? next.estimateMinutes * 60 : 0;
+      const withinEstimate = estSec > 0 && next.activeSeconds < estSec;
+
+      if (!awaitingConfirmRef.current && idleFor >= IDLE_THRESHOLD_MS && !withinEstimate) {
         awaitingConfirmRef.current = true;
         setIdlePrompt(true);
         notifyDesktop('Cronômetro de atividade', `Ainda está fazendo "${e.activityTitle}"? Confirme para continuar contando.`);
       }
 
       // Gatilho de urgência da previsão (compara com o tempo ATIVO).
-      if (next.estimateMinutes && next.estimateMinutes > 0) {
-        const estSec = next.estimateMinutes * 60;
+      if (estSec > 0) {
         if (next.activeSeconds >= estSec) {
           if (!overNotifiedRef.current) {
             overNotifiedRef.current = true;
             nearNotifiedRef.current = true;
-            notifyDesktop('⏰ Previsão estourada', `"${e.activityTitle}" passou da previsão de ${next.estimateMinutes} min.`);
+            notifyDesktop('⏰ Previsão estourada', `"${e.activityTitle}" passou da previsão de ${next.estimateMinutes} min. Ainda está nessa atividade?`);
+            // Fim do tempo previsto → pergunta se continua ou se já era.
+            awaitingConfirmRef.current = true;
+            setIdlePrompt(true);
           }
         } else if (next.activeSeconds >= estSec * 0.8 && !nearNotifiedRef.current) {
           nearNotifiedRef.current = true;
