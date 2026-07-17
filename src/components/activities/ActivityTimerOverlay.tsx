@@ -11,23 +11,89 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { useActivityTimer, formatHMS, BREAK_LABELS, type BreakType } from '@/contexts/ActivityTimerContext';
+import { useActivityTimer, formatHMS, BREAK_LABELS, QUICK_PAUSES, type BreakType } from '@/contexts/ActivityTimerContext';
 
-/** Menu de pausa justificada: almoço, intervalo (com justificativa) e compensação. */
-function BreakMenu({ className, onStart, onEndShift }: { className?: string; onStart: (t: BreakType, note?: string) => void; onEndShift?: () => void }) {
-  const [open, setOpen] = useState(false);
+/** Escolha de pausa: rápidas (café/lanche/descanso com previsão) + longas. */
+function PauseChooser({
+  onStart, onEndShift, onDone,
+}: {
+  onStart: (t: BreakType, note?: string, eta?: number) => void;
+  onEndShift?: () => void;
+  onDone: () => void;
+}) {
   const [mode, setMode] = useState<'menu' | 'intervalo' | 'compensacao'>('menu');
   const [note, setNote] = useState('');
-  const close = () => { setOpen(false); setMode('menu'); setNote(''); };
+  const start = (t: BreakType, n?: string, eta?: number) => { onStart(t, n, eta); onDone(); };
+
+  if (mode !== 'menu') {
+    return (
+      <div className="space-y-2">
+        <div className="text-xs font-medium">
+          {mode === 'intervalo' ? 'Justificativa do intervalo *' : 'Acordo de compensação (opcional)'}
+        </div>
+        <Input
+          autoFocus value={note} onChange={(e) => setNote(e.target.value)}
+          placeholder={mode === 'intervalo' ? 'Ex.: médico, resolver algo pessoal…' : 'Ex.: compensando hora extra de 15/07'}
+          className="h-8 text-xs"
+        />
+        <div className="flex justify-end gap-1.5">
+          <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setMode('menu')}>Voltar</Button>
+          <Button size="sm" className="h-7 text-xs" disabled={mode === 'intervalo' && !note.trim()}
+            onClick={() => start(mode, note.trim() || undefined)}>
+            Iniciar pausa
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <Popover open={open} onOpenChange={(o) => { if (!o) close(); else setOpen(true); }}>
+    <div className="space-y-1.5">
+      <div className="text-xs font-medium">Pausa rápida (previsão de retorno)</div>
+      {QUICK_PAUSES.map((p) => (
+        <div key={p.type} className="flex items-center justify-between gap-2">
+          <span className="text-sm">{p.emoji} {BREAK_LABELS[p.type]}</span>
+          <div className="flex gap-1">
+            {p.etas.map((m) => (
+              <button key={m} type="button" onClick={() => start(p.type, undefined, m)}
+                className="px-2 py-0.5 rounded text-xs border hover:bg-accent tabular-nums">
+                {m}m
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
+      <div className="text-[10px] text-muted-foreground pt-0.5">Vai demorar mais? Use Intervalo ou Almoço.</div>
+      <div className="border-t pt-1.5 space-y-1">
+        <button type="button" onClick={() => start('almoco')}
+          className="w-full text-left text-sm px-2 py-1.5 rounded hover:bg-accent">🍽️ Saída para almoço</button>
+        <button type="button" onClick={() => setMode('intervalo')}
+          className="w-full text-left text-sm px-2 py-1.5 rounded hover:bg-accent">⏸️ Intervalo (justificar)</button>
+        <button type="button" onClick={() => setMode('compensacao')}
+          className="w-full text-left text-sm px-2 py-1.5 rounded hover:bg-accent">🔁 Compensação de banco de horas</button>
+        {onEndShift && (
+          <button type="button" onClick={() => { onEndShift(); onDone(); }}
+            className="w-full text-left text-sm px-2 py-1.5 rounded border-t mt-1 pt-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40">
+            🏁 Encerrar expediente (saída)
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Botão de pausa no badge (abre o PauseChooser num popover). */
+function BreakMenu({ className, onStart, onEndShift }: { className?: string; onStart: (t: BreakType, note?: string, eta?: number) => void; onEndShift?: () => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button
           type="button"
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
           className={className}
-          title="Pausa justificada: almoço, intervalo ou compensação de horas"
+          title="Registrar pausa (café, lanche, descanso, almoço, intervalo…)"
         >
           <UtensilsCrossed className="h-3.5 w-3.5" />
         </button>
@@ -37,51 +103,7 @@ function BreakMenu({ className, onStart, onEndShift }: { className?: string; onS
         onPointerDown={(e) => e.stopPropagation()}
         onPointerUp={(e) => e.stopPropagation()}
       >
-        {mode === 'menu' && (
-          <div className="space-y-1">
-            <div className="text-xs font-medium mb-1.5">Registrar pausa</div>
-            <button type="button" onClick={() => { onStart('almoco'); close(); }}
-              className="w-full text-left text-sm px-2 py-1.5 rounded hover:bg-accent">
-              🍽️ Saída para almoço
-            </button>
-            <button type="button" onClick={() => setMode('intervalo')}
-              className="w-full text-left text-sm px-2 py-1.5 rounded hover:bg-accent">
-              ☕ Intervalo (com justificativa)
-            </button>
-            <button type="button" onClick={() => setMode('compensacao')}
-              className="w-full text-left text-sm px-2 py-1.5 rounded hover:bg-accent">
-              🔁 Compensação de banco de horas
-            </button>
-            {onEndShift && (
-              <button type="button" onClick={() => { onEndShift(); close(); }}
-                className="w-full text-left text-sm px-2 py-1.5 rounded border-t mt-1 pt-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40">
-                🏁 Encerrar expediente (saída)
-              </button>
-            )}
-          </div>
-        )}
-        {mode !== 'menu' && (
-          <div className="space-y-2">
-            <div className="text-xs font-medium">
-              {mode === 'intervalo' ? 'Justificativa do intervalo *' : 'Acordo de compensação (opcional)'}
-            </div>
-            <Input
-              autoFocus value={note} onChange={(e) => setNote(e.target.value)}
-              placeholder={mode === 'intervalo' ? 'Ex.: consulta médica, banco…' : 'Ex.: compensando hora extra de 15/07'}
-              className="h-8 text-xs"
-            />
-            <div className="flex justify-end gap-1.5">
-              <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setMode('menu')}>Voltar</Button>
-              <Button
-                size="sm" className="h-7 text-xs"
-                disabled={mode === 'intervalo' && !note.trim()}
-                onClick={() => { onStart(mode, note.trim() || undefined); close(); }}
-              >
-                Iniciar pausa
-              </Button>
-            </div>
-          </div>
-        )}
+        <PauseChooser onStart={onStart} onEndShift={onEndShift} onDone={() => setOpen(false)} />
       </PopoverContent>
     </Popover>
   );
@@ -290,6 +312,7 @@ export function ActivityTimerOverlay() {
     current, lastActivity, resumeLast, dayTotals, hidden, idlePrompt, leavePrompt, switchPrompt,
     keepRunning, pauseAndClose, hideTimer, setEstimate, managerAlert, dismissManagerAlert,
     confirmStillWorking, rejectStillWorking, switchTo, dismissSwitch, startBreak, endBreak,
+    extendBreak, awayPrompt, dismissAwayPrompt, breakOverdue,
     onShift, startShift, endShift,
   } = useActivityTimer();
 
@@ -470,9 +493,15 @@ export function ActivityTimerOverlay() {
           <div className="flex items-center gap-1.5">
           <GripVertical className="h-3.5 w-3.5 text-sky-700/50 dark:text-sky-300/50" />
           <UtensilsCrossed className="h-3.5 w-3.5 text-sky-700 dark:text-sky-300" />
-          <span className="font-mono text-sm tabular-nums font-bold text-sky-800 dark:text-sky-200">
-            {formatHMS(current.idleSeconds)}
-          </span>
+          {(() => {
+            const eta = current.estimateMinutes || 0;
+            const over = eta > 0 && current.idleSeconds >= eta * 60;
+            return (
+              <span className={`font-mono text-sm tabular-nums font-bold ${over ? 'text-red-600 dark:text-red-400' : 'text-sky-800 dark:text-sky-200'}`}>
+                {formatHMS(current.idleSeconds)}{eta > 0 ? ` / ${eta}m` : ''}
+              </span>
+            );
+          })()}
           <span className="text-xs font-medium text-sky-800 dark:text-sky-200 hidden sm:inline">
             {current.activityTitle}
           </span>
@@ -554,6 +583,46 @@ export function ActivityTimerOverlay() {
           </DialogHeader>
           <DialogFooter>
             <Button onClick={dismissManagerAlert}>Entendi, vou retomar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Ocioso: vai se ausentar? → registrar pausa (com previsão) ou retomar */}
+      <Dialog open={awayPrompt} onOpenChange={(o) => { if (!o) dismissAwayPrompt(); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Coffee className="h-5 w-5 text-amber-500" /> Você está ocioso
+            </DialogTitle>
+            <DialogDescription>
+              Vai se ausentar? Registre uma pausa com previsão de retorno — assim o cronômetro para de avisar até você voltar. Ou retome uma atividade.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-lg border p-2">
+            <PauseChooser onStart={startBreak} onDone={dismissAwayPrompt} />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={dismissAwayPrompt}>Estou aqui, vou retomar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Pausa passou do previsto → voltou? / mais tempo / virar intervalo */}
+      <Dialog open={breakOverdue} onOpenChange={() => { /* fica até responder */ }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+              ⏰ Sua pausa passou do previsto
+            </DialogTitle>
+            <DialogDescription>
+              A pausa <b>{current?.activityTitle}</b> passou da previsão de retorno. Voltou ao trabalho ou precisa de mais tempo?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button variant="outline" onClick={() => extendBreak(5)}>+5 min</Button>
+            <Button variant="outline" onClick={() => extendBreak(10)}>+10 min</Button>
+            <Button variant="outline" onClick={() => startBreak('intervalo')}>Virar intervalo</Button>
+            <Button onClick={endBreak}>Voltei ao trabalho</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

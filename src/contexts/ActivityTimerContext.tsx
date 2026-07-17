@@ -40,12 +40,21 @@ export interface TimerActivityRef {
   estimated_minutes?: number | null;
 }
 
-export type BreakType = 'almoco' | 'intervalo' | 'compensacao';
+export type BreakType = 'almoco' | 'intervalo' | 'compensacao' | 'cafe' | 'lanche' | 'descanso';
 export const BREAK_LABELS: Record<BreakType, string> = {
   almoco: 'Almoço',
   intervalo: 'Intervalo',
   compensacao: 'Compensação de horas',
+  cafe: 'Café',
+  lanche: 'Lanche',
+  descanso: 'Descanso',
 };
+/** Pausas rápidas: opções de previsão de retorno (min). Mais que isso → Intervalo. */
+export const QUICK_PAUSES: { type: BreakType; emoji: string; etas: number[] }[] = [
+  { type: 'cafe', emoji: '☕', etas: [5, 10] },
+  { type: 'lanche', emoji: '🥪', etas: [10, 15] },
+  { type: 'descanso', emoji: '😌', etas: [5, 10] },
+];
 
 interface TimerEntry {
   kind: 'activity' | 'gap' | 'break';
@@ -96,10 +105,17 @@ interface ActivityTimerCtx {
   /** Alerta recebido da gestão ("por que está ocioso?"). */
   managerAlert: { from: string | null; message: string | null } | null;
   dismissManagerAlert: () => void;
-  /** Pausa justificada: saída pro almoço, intervalo (justificado) ou compensação. */
-  startBreak: (type: BreakType, note?: string) => Promise<void>;
+  /** Pausa justificada. etaMinutes = previsão de retorno (sem apito até estourar). */
+  startBreak: (type: BreakType, note?: string, etaMinutes?: number) => Promise<void>;
   /** Retorno da pausa (ex.: retorno do almoço) → volta a contar ocioso. */
   endBreak: () => Promise<void>;
+  /** Estende a previsão de retorno da pausa atual em +N min. */
+  extendBreak: (minutes: number) => Promise<void>;
+  /** Dialog "ocioso — vai se ausentar?" (escolher pausa/justificar/retomar). */
+  awayPrompt: boolean;
+  dismissAwayPrompt: () => void;
+  /** Dialog "sua pausa passou do previsto — voltou?". */
+  breakOverdue: boolean;
   /** Expediente (ponto): null = carregando; false = fora do expediente (nada conta). */
   onShift: boolean | null;
   startShift: () => Promise<void>;
@@ -195,6 +211,10 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
   const lockedRef = useRef<boolean>(false); // tela bloqueada (IdleDetector)
   const lockDetectorRef = useRef<boolean>(false);
   const [onShift, setOnShift] = useState<boolean | null>(null);
+  const [awayPrompt, setAwayPrompt] = useState(false);
+  const [breakOverdue, setBreakOverdue] = useState(false);
+  const breakOverNotifiedRef = useRef<boolean>(false);
+  const lastGapNudgeRef = useRef<number>(0);
   const shiftIdRef = useRef<string | null>(null);
   const ownerChRef = useRef<BroadcastChannel | null>(null);
   const otherOwnerRef = useRef<boolean>(false); // outra aba comanda o cronômetro
@@ -422,21 +442,30 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
       const next: TimerEntry = { ...e };
 
       if (e.kind === 'break') {
-        // Pausa justificada (almoço/intervalo/compensação): conta o tempo,
-        // mas SEM alarmes — a ausência é legítima.
+        // Pausa: conta o tempo SEM apito DURANTE a previsão de retorno.
+        // Só avisa (uma vez) quando estoura o previsto.
         next.idleSeconds += deltaSec;
+        const etaSec = next.estimateMinutes ? next.estimateMinutes * 60 : 0;
+        if (etaSec > 0 && next.idleSeconds >= etaSec && !breakOverNotifiedRef.current) {
+          breakOverNotifiedRef.current = true;
+          setBreakOverdue(true);
+          playAlarmSound();
+          notifyDesktop('⏰ Sua pausa acabou', `A ${next.activityTitle.toLowerCase()} passou da previsão de ${next.estimateMinutes} min. Voltou ao trabalho?`);
+        }
         sync(next);
         if (now - lastFlushRef.current >= FLUSH_INTERVAL_MS) flush();
         return;
       }
 
       if (e.kind === 'gap') {
-        // Tempo entre atividades: conta ocioso enquanto não pausado (independe de foco).
+        // Ocioso entre atividades. Em vez de só apitar, abre o dialog "vai se
+        // ausentar?" (registrar pausa com previsão ou retomar). Nudge a cada 5 min.
         next.idleSeconds += deltaSec;
-        // Alerta automático a cada 5 min de ociosidade (som alto + notificação).
-        if (Math.floor(next.idleSeconds / 300) > Math.floor(e.idleSeconds / 300)) {
+        if (next.idleSeconds - lastGapNudgeRef.current >= 300) {
+          lastGapNudgeRef.current = next.idleSeconds;
+          setAwayPrompt(true);
           playAlarmSound();
-          notifyDesktop('⏰ Você está ocioso', `Ocioso há ${Math.round(next.idleSeconds / 60)} min — abra ou retome uma atividade.`);
+          notifyDesktop('⏰ Você está ocioso', `Ocioso há ${Math.round(next.idleSeconds / 60)} min. Vai se ausentar? Registre uma pausa ou retome uma atividade.`);
         }
         sync(next);
         if (now - lastFlushRef.current >= FLUSH_INTERVAL_MS) flush();
@@ -575,6 +604,7 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
     } catch { sync(null); return; }
 
     lastFlushRef.current = Date.now();
+    lastGapNudgeRef.current = idleSeconds; // não apita imediatamente ao retomar o gap
     sync({
       kind: 'gap', entryId, activityId: null, activityType: '', activityTitle: GAP_TITLE,
       leadName: null, userId: u.userId, userName: u.userName,
@@ -738,11 +768,14 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
   const dismissSwitch = useCallback(() => setSwitchPrompt(false), []);
 
   // Pausa justificada: fecha o que está rodando e abre a sessão de pausa.
-  const startBreak = useCallback(async (type: BreakType, note?: string) => {
+  // etaMinutes = previsão de retorno (sem apito até estourar).
+  const startBreak = useCallback(async (type: BreakType, note?: string, etaMinutes?: number) => {
     rememberLast();
     if (entryRef.current) await flush('paused');
     awaitingConfirmRef.current = false;
+    breakOverNotifiedRef.current = false;
     setIdlePrompt(false); setLeavePrompt(false); setSwitchPrompt(false);
+    setAwayPrompt(false); setBreakOverdue(false);
 
     await ensureExternalSession().catch(() => {});
     const u = await getUser();
@@ -756,12 +789,13 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
       if (ws) { shiftIdRef.current = (ws as { id: string }).id; setOnShift(true); }
     }
 
+    const eta = etaMinutes && etaMinutes > 0 ? Math.round(etaMinutes) : null;
     const { data, error } = await dbAny.from('activity_time_entries').insert({
       activity_id: null, activity_type: null,
       activity_title: BREAK_LABELS[type], lead_name: null,
       user_id: u.userId, user_name: u.userName,
       started_at: new Date().toISOString(), active_seconds: 0, idle_seconds: 0,
-      status: 'running', break_type: type, break_note: note || null,
+      status: 'running', break_type: type, break_note: note || null, estimated_minutes: eta,
     }).select('id').single();
     if (error || !data) { console.warn('[activity-timer] pausa falhou:', error); sync(null); return; }
     lastFlushRef.current = Date.now();
@@ -769,16 +803,32 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
       kind: 'break', entryId: (data as { id: string }).id, activityId: null,
       activityType: '', activityTitle: BREAK_LABELS[type], leadName: null,
       userId: u.userId, userName: u.userName,
-      activeSeconds: 0, idleSeconds: 0, status: 'running', estimateMinutes: null,
+      activeSeconds: 0, idleSeconds: 0, status: 'running', estimateMinutes: eta,
       breakType: type, breakNote: note || null,
     });
     announceTakeover();
     pauseOtherSessions(u.userId, (data as { id: string }).id);
   }, [rememberLast, flush, getUser, sync, announceTakeover, pauseOtherSessions]);
 
+  const extendBreak = useCallback(async (minutes: number) => {
+    const e = entryRef.current;
+    if (e?.kind !== 'break') return;
+    const eta = (e.estimateMinutes || Math.ceil(e.idleSeconds / 60)) + minutes;
+    breakOverNotifiedRef.current = false;
+    setBreakOverdue(false);
+    sync({ ...e, estimateMinutes: eta });
+    try {
+      await dbAny.from('activity_time_entries').update({ estimated_minutes: eta }).eq('id', e.entryId);
+    } catch { /* melhor esforço */ }
+  }, [sync]);
+
+  const dismissAwayPrompt = useCallback(() => setAwayPrompt(false), []);
+
   // Retorno da pausa → salva e volta a contar ociosidade entre atividades.
   const endBreak = useCallback(async () => {
     if (entryRef.current?.kind !== 'break') return;
+    breakOverNotifiedRef.current = false;
+    setBreakOverdue(false);
     await flush('paused');
     await startGap();
   }, [flush, startGap]);
@@ -869,7 +919,8 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
     startTimer, requestLeave, keepRunning, pauseAndClose, stopTimerFor,
     confirmStillWorking, rejectStillWorking, switchTo, dismissSwitch,
     hideTimer, showTimer, setEstimate, managerAlert, dismissManagerAlert,
-    startBreak, endBreak, onShift, startShift, endShift, formatHMS,
+    startBreak, endBreak, extendBreak, awayPrompt, dismissAwayPrompt, breakOverdue,
+    onShift, startShift, endShift, formatHMS,
   };
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
