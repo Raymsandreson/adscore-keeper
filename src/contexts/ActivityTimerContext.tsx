@@ -181,6 +181,35 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
   const lastFlushRef = useRef<number>(0);
   const busyRef = useRef<boolean>(false);
   const userRef = useRef<{ userId: string; userName: string } | null>(null);
+  const lockedRef = useRef<boolean>(false); // tela bloqueada (IdleDetector)
+  const lockDetectorRef = useRef<boolean>(false);
+
+  // Detector de tela bloqueada (Chrome, requer permissão) — enquanto bloqueado,
+  // o tempo conta como OCIOSO. Precisa ser chamado a partir de um gesto do usuário.
+  const startLockDetector = useCallback(async () => {
+    if (lockDetectorRef.current) return;
+    try {
+      type IdleDetectorLike = {
+        screenState: 'locked' | 'unlocked' | null;
+        addEventListener: (t: string, cb: () => void) => void;
+        start: (opts: { threshold: number }) => Promise<void>;
+      };
+      const w = window as unknown as {
+        IdleDetector?: { new (): IdleDetectorLike; requestPermission: () => Promise<string> };
+      };
+      if (!w.IdleDetector) return;
+      const perm = await w.IdleDetector.requestPermission();
+      if (perm !== 'granted') return;
+      const det = new w.IdleDetector();
+      det.addEventListener('change', () => {
+        const locked = det.screenState === 'locked';
+        lockedRef.current = locked;
+        if (!locked) lastInteractionRef.current = Date.now(); // desbloqueou = voltou
+      });
+      await det.start({ threshold: 60000 });
+      lockDetectorRef.current = true;
+    } catch { /* sem suporte ou permissão negada — segue sem */ }
+  }, []);
   const lastActivityRef = useRef<TimerActivityRef | null>(null);
   const [lastActivity, setLastActivity] = useState<TimerActivityRef | null>(null);
   const [managerAlert, setManagerAlert] = useState<{ from: string | null; message: string | null } | null>(null);
@@ -311,10 +340,19 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
       }
 
       // kind === 'activity': segue contando mesmo com aba oculta.
-      // Só entra em ociosidade se o usuário ficou sem interagir por muito tempo.
-      const isActive = !awaitingConfirmRef.current;
+      // Exceções que viram OCIOSO: aguardando confirmação, tela BLOQUEADA,
+      // ou máquina SUSPENSA (gap grande entre ticks = PC dormiu/hibernou).
+      const suspended = deltaSec >= 120;
+      const isActive = !awaitingConfirmRef.current && !lockedRef.current && !suspended;
       if (isActive) next.activeSeconds += deltaSec;
       else next.idleSeconds += deltaSec;
+
+      // Voltou da suspensão → o tempo parado foi pro ocioso; confirma se continua.
+      if (suspended && !awaitingConfirmRef.current) {
+        awaitingConfirmRef.current = true;
+        setIdlePrompt(true);
+        notifyDesktop('Cronômetro de atividade', `O computador ficou suspenso ${Math.round(deltaSec / 60)} min (contado como ocioso). Ainda está fazendo "${e.activityTitle}"?`);
+      }
 
       // Com PREVISÃO definida e ainda dentro dela, não perturba com o check
       // de 5 min — a pergunta "ainda está fazendo?" só vem quando a previsão acaba.
@@ -453,6 +491,8 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
 
     // Sempre mostra o badge ao iniciar/trocar de atividade.
     showTimer();
+    // Detector de tela bloqueada (precisa de gesto do usuário — este clique serve).
+    startLockDetector();
 
     // Já nesta atv: se pausada, retoma; se rodando, nada.
     if (entryRef.current?.kind === 'activity' && entryRef.current.activityId === activity.id) {
@@ -530,7 +570,7 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
     } finally {
       busyRef.current = false;
     }
-  }, [getUser, sync, flush, showTimer, rememberLast]);
+  }, [getUser, sync, flush, showTimer, rememberLast, startLockDetector]);
 
   const resumeLast = useCallback(async () => {
     if (lastActivityRef.current) await startTimer(lastActivityRef.current);
