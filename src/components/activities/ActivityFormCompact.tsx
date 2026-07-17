@@ -79,6 +79,7 @@ interface ActivityFormCompactProps {
   formProcessId: string; formProcessTitle: string;
   formWorkflowId: string; setFormWorkflowId: (v: string) => void;
   workflowOptions: { id: string; name: string }[];
+  formCampaignId?: string; setFormCampaignId?: (v: string) => void;
   formClientNameOverride?: string;
   setFormClientNameOverride?: (v: string) => void;
   formIsSystem?: boolean; setFormIsSystem?: (v: boolean) => void;
