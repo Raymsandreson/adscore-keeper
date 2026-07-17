@@ -344,6 +344,7 @@ const ActivitiesPage = () => {
   const [formProcessId, setFormProcessId] = useState('');
   const [formProcessTitle, setFormProcessTitle] = useState('');
   const [formWorkflowId, setFormWorkflowId] = useState('');
+  const [formCampaignId, setFormCampaignId] = useState('');
   const [formIsSystem, setFormIsSystem] = useState(false);
   const [formIsManagement, setFormIsManagement] = useState(false);
   const [availableCases, setAvailableCases] = useState<{id: string; case_number: string; title: string; lead_id: string | null}[]>([]);
@@ -739,7 +740,7 @@ const ActivitiesPage = () => {
     setCaseSearch('');
     setFormProcessId('');
     setFormProcessTitle('');
-    setFormWorkflowId('');
+    setFormWorkflowId(''); setFormCampaignId('');
     setLeadCases([]);
     setCaseProcesses([]);
     setFormMatrixQuadrant('');
@@ -940,6 +941,7 @@ const ActivitiesPage = () => {
       process_id: formProcessId || null,
       process_title: formProcessTitle || null,
       workflow_id: formWorkflowId || null,
+      crm_campaign_id: formCampaignId || null,
       is_system: formIsSystem,
       is_management: formIsManagement,
       client_name_override: formClientNameOverride || null,
@@ -1079,7 +1081,7 @@ const ActivitiesPage = () => {
     setFormProcessId((activity as any).process_id || '');
     setFormProcessTitle((activity as any).process_title || '');
     setFormMatrixQuadrant((activity as any).matrix_quadrant || '');
-    setFormWorkflowId((activity as any).workflow_id || '');
+    setFormWorkflowId((activity as any).workflow_id || ''); setFormCampaignId((activity as any).crm_campaign_id || '');
     setFormClientNameOverride((activity as any).client_name_override || '');
     setSheetMode('edit');
 
@@ -1223,6 +1225,7 @@ const ActivitiesPage = () => {
       process_id: formProcessId || null,
       process_title: formProcessTitle || null,
       matrix_quadrant: formMatrixQuadrant || null,
+      crm_campaign_id: formCampaignId || null,
       workflow_id: formWorkflowId || null,
       is_system: formIsSystem,
       is_management: formIsManagement,
@@ -1640,6 +1643,7 @@ const ActivitiesPage = () => {
       notification_date: formNotificationDate || null, notes: formNotes || null,
       status: formStatus, contact_id: formContactId || null, contact_name: formContactName || null,
       case_id: formCaseId || null, case_title: formCaseTitle || null,
+      crm_campaign_id: formCampaignId || null,
       process_id: formProcessId || null, process_title: formProcessTitle || null,
       workflow_id: formWorkflowId || null,
       is_system: formIsSystem, is_management: formIsManagement,
@@ -1707,7 +1711,7 @@ const ActivitiesPage = () => {
     setFormCaseTitle('');
     setFormProcessId('');
     setFormProcessTitle('');
-    setFormWorkflowId('');
+    setFormWorkflowId(''); setFormCampaignId('');
     setCaseProcesses([]);
     // Load cases for this lead
     externalSupabase.from('legal_cases').select('id, case_number, title').eq('lead_id', leadId).then(({ data }) => {
@@ -1776,7 +1780,7 @@ const ActivitiesPage = () => {
     setFormCaseTitle('');
     setFormProcessId('');
     setFormProcessTitle('');
-    setFormWorkflowId('');
+    setFormWorkflowId(''); setFormCampaignId('');
     setLeadCases([]);
     setCaseProcesses([]);
     // Load all contacts
@@ -2665,6 +2669,7 @@ const ActivitiesPage = () => {
       formProcessId={formProcessId} formProcessTitle={formProcessTitle}
       formWorkflowId={formWorkflowId} setFormWorkflowId={setFormWorkflowId}
       workflowOptions={workflowOptions}
+      formCampaignId={formCampaignId} setFormCampaignId={setFormCampaignId}
       formClientNameOverride={formClientNameOverride}
       setFormClientNameOverride={setFormClientNameOverride}
       formIsSystem={formIsSystem} setFormIsSystem={setFormIsSystem}

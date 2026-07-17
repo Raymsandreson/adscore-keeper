@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, lazy, Suspense } from 'react';
+import { useCampaigns } from '@/hooks/useCampaigns';
 
 const ProcessDetailSheet = lazy(() => import('@/components/cases/ProcessDetailSheet'));
 const AddProcessDialog = lazy(() => import('@/components/cases/AddProcessDialog'));
@@ -51,6 +52,22 @@ function copyField(text: string | null | undefined) {
   });
 }
 
+function CampaignSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const { data: campaigns = [] } = useCampaigns();
+  const active = campaigns.filter(c => c.status !== 'closed');
+  return (
+    <Select value={value || 'none'} onValueChange={(v) => onChange(v === 'none' ? '' : v)}>
+      <SelectTrigger className="h-8 text-xs mt-0.5"><SelectValue placeholder="Sem campanha" /></SelectTrigger>
+      <SelectContent>
+        <SelectItem value="none" className="text-xs">Sem campanha</SelectItem>
+        {active.map(c => <SelectItem key={c.id} value={c.id} className="text-xs">{c.name}</SelectItem>)}
+      </SelectContent>
+    </Select>
+  );
+}
+
+
+
 interface TeamMember { user_id: string; full_name: string | null; }
 interface LeadOption { id: string; lead_name: string | null; }
 
@@ -79,6 +96,7 @@ interface ActivityFormCompactProps {
   formProcessId: string; formProcessTitle: string;
   formWorkflowId: string; setFormWorkflowId: (v: string) => void;
   workflowOptions: { id: string; name: string }[];
+  formCampaignId?: string; setFormCampaignId?: (v: string) => void;
   formClientNameOverride?: string;
   setFormClientNameOverride?: (v: string) => void;
   formIsSystem?: boolean; setFormIsSystem?: (v: boolean) => void;
@@ -937,6 +955,14 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
             <p className="text-[10px] text-destructive mt-0.5">Selecione um fluxo de trabalho para continuar</p>
           )}
         </div>
+
+        {props.setFormCampaignId && (
+          <div className="col-span-full">
+            <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Campanha (opcional)</span>
+            <CampaignSelect value={props.formCampaignId || ''} onChange={props.setFormCampaignId} />
+          </div>
+        )}
+
 
         {/* Observadores — acompanham a atividade e recebem os popups (feedback, mudança
             de situação, reagendamento), sem serem cobrados. Campo próprio, separado dos
