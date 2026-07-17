@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useCallback, lazy, Suspense } from 'react';
-import { Clock, Coffee, EyeOff, GripVertical, Hourglass, Pause, Search, Timer as TimerIcon } from 'lucide-react';
+import { Clock, Coffee, EyeOff, GripVertical, Hourglass, Pause, Search, Timer as TimerIcon, Users } from 'lucide-react';
+import { TeamTimersPanel } from '@/components/activities/TeamTimersPanel';
 import { db } from '@/integrations/supabase';
 
 // Aba lateral com a atividade cronometrada (carregada sob demanda ao clicar no cronômetro).
@@ -151,6 +152,29 @@ function useDraggablePosition() {
   return { style, onPointerDown, onPointerMove, onPointerUp, wasDragged, setElRef: (el: HTMLElement | null) => { elRef.current = el; } };
 }
 
+/** Botão que expande o painel "Time agora" a partir do badge do cronômetro. */
+function TeamPanelButton({ className }: { className?: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+          className={className}
+          title="Ver o que o time está fazendo agora"
+        >
+          <Users className="h-3.5 w-3.5" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="end" side="top" className="p-0 w-auto">
+        {open && <TeamTimersPanel />}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 /** Linha de totais do dia (produtivo x ocioso) no topo do badge. */
 function DayTotalsRow({ active, idle }: { active: number; idle: number }) {
   return (
@@ -241,6 +265,7 @@ export function ActivityTimerOverlay() {
           >
             <Pause className="h-3.5 w-3.5" />
           </button>
+          <TeamPanelButton className="rounded-full p-1 hover:bg-accent hover:text-foreground text-muted-foreground" />
           <button
             type="button"
             onPointerDown={(e) => e.stopPropagation()}
@@ -283,11 +308,12 @@ export function ActivityTimerOverlay() {
             {formatHMS(current.idleSeconds)}
           </span>
           <span className="text-xs text-amber-700/80 dark:text-amber-300/80 hidden sm:inline">ocioso</span>
+          <TeamPanelButton className="ml-1 rounded-full p-1 hover:bg-amber-200/50 dark:hover:bg-amber-800/50 text-amber-700 dark:text-amber-300" />
           <button
             type="button"
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => { e.stopPropagation(); hideTimer(); }}
-            className="ml-1 rounded-full p-1 hover:bg-amber-200/50 dark:hover:bg-amber-800/50 text-amber-700 dark:text-amber-300"
+            className="rounded-full p-1 hover:bg-amber-200/50 dark:hover:bg-amber-800/50 text-amber-700 dark:text-amber-300"
             title="Ocultar cronômetro (ele reaparece ao abrir/trocar de atividade)"
           >
             <EyeOff className="h-3.5 w-3.5" />

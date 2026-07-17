@@ -254,9 +254,9 @@ const ActivitiesPage = () => {
   const [filterWorkflow, setFilterWorkflow] = usePageState<string[]>('activities_filterWorkflow', []);
   const [filterHasDocs, setFilterHasDocs] = usePageState<boolean>('activities_filterHasDocs', false);
   const [activityIdsWithDocs, setActivityIdsWithDocs] = useState<Set<string>>(new Set());
-  // Atividades executadas HOJE (cronômetro rodou): id -> segundos produtivos do dia
+  // Atividades com cronômetro ATIVO AGORA (heartbeat fresco): id -> { secs, userName }
   const [filterInExecution, setFilterInExecution] = usePageState<boolean>('activities_filterInExecution', false);
-  const [execTodayMap, setExecTodayMap] = useState<Map<string, number>>(new Map());
+  const [execTodayMap, setExecTodayMap] = useState<Map<string, { secs: number; userName: string }>>(new Map());
   // Busca por texto dentro das atividades já filtradas
   const [searchText, setSearchText] = usePageState<string>('activities_searchText', '');
   const [sheetMode, setSheetMode] = usePageState<'create' | 'edit' | null>('activities_sheetMode', null);
@@ -506,30 +506,28 @@ const ActivitiesPage = () => {
     load();
   }, []);
 
-  // Atividades EM EXECUÇÃO hoje: o cronômetro rodou hoje (id -> segundos produtivos).
-  // Usa ended_at (atualizado a cada flush) OU started_at, para pegar também
-  // atividades iniciadas antes e retomadas hoje.
+  // Atividades com cronômetro ATIVO AGORA: status running + heartbeat fresco
+  // (o flush atualiza ended_at a cada 30s; sem batimento em 2min = não está rodando).
   useEffect(() => {
     const load = async () => {
-      const startOfDay = new Date();
-      startOfDay.setHours(0, 0, 0, 0);
-      const iso = startOfDay.toISOString();
+      const heartbeat = new Date(Date.now() - 2 * 60 * 1000).toISOString();
       const dbTimer = externalSupabase as unknown as import('@supabase/supabase-js').SupabaseClient;
       try {
         const { data } = await dbTimer.from('activity_time_entries')
-          .select('activity_id, active_seconds')
+          .select('activity_id, active_seconds, user_name')
           .not('activity_id', 'is', null)
-          .or(`ended_at.gte.${iso},started_at.gte.${iso}`);
-        const m = new Map<string, number>();
-        for (const r of ((data as { activity_id: string | null; active_seconds: number }[]) || [])) {
+          .eq('status', 'running')
+          .gte('ended_at', heartbeat);
+        const m = new Map<string, { secs: number; userName: string }>();
+        for (const r of ((data as { activity_id: string | null; active_seconds: number; user_name: string | null }[]) || [])) {
           if (!r.activity_id) continue;
-          m.set(r.activity_id, (m.get(r.activity_id) || 0) + (r.active_seconds || 0));
+          m.set(r.activity_id, { secs: r.active_seconds || 0, userName: r.user_name || 'Membro' });
         }
         setExecTodayMap(m);
-      } catch (e) { console.warn('[exec-hoje] load falhou', e); }
+      } catch (e) { console.warn('[cronometro-ativo] load falhou', e); }
     };
     load();
-    const id = setInterval(load, 60000);
+    const id = setInterval(load, 30000);
     return () => clearInterval(id);
   }, [runningTimer?.activityId]);
 
@@ -3325,16 +3323,16 @@ const ActivitiesPage = () => {
           Com documentação
         </Button>
 
-        {/* Só as atividades cujo cronômetro rodou hoje */}
+        {/* Só as atividades com cronômetro rodando NESTE momento */}
         <Button
           variant={filterInExecution ? "default" : "outline"}
           size="sm"
           className="h-7 text-xs shrink-0 gap-1"
           onClick={() => setFilterInExecution(v => !v)}
-          title="Mostrar só as atividades em execução hoje (cronômetro rodou)"
+          title="Mostrar só as atividades com cronômetro rodando agora"
         >
           <Play className="h-3 w-3" />
-          Em execução hoje
+          Cronômetro ativo
           {execTodayMap.size > 0 && (
             <Badge variant="secondary" className="ml-0.5 h-4 px-1 text-[10px] tabular-nums">{execTodayMap.size}</Badge>
           )}
@@ -4130,31 +4128,24 @@ const ActivitiesPage = () => {
                             {PRIORITY_OPTIONS.find(p => p.value === activity.priority)?.label}
                           </span>
                         )}
-                        {/* Em execução hoje: cronômetro rodou (verde pulsante = rodando agora) */}
+                        {/* Cronômetro ativo agora: mostra quem está fazendo e há quanto tempo */}
                         {(() => {
-                          const isRunningNow = runningTimer?.kind === 'activity' && runningTimer.activityId === activity.id;
-                          if (!isRunningNow && !execTodayMap.has(activity.id)) return null;
-                          const secs = isRunningNow ? runningTimer.activeSeconds : (execTodayMap.get(activity.id) || 0);
+                          const isMine = runningTimer?.kind === 'activity' && runningTimer.activityId === activity.id;
+                          const remote = execTodayMap.get(activity.id);
+                          if (!isMine && !remote) return null;
+                          const secs = isMine ? runningTimer.activeSeconds : (remote?.secs || 0);
+                          const who = isMine ? 'você' : (remote?.userName?.split(' ')[0] || 'Membro');
                           return (
                             <span
-                              className={cn(
-                                "flex items-center gap-1 text-[10px] font-medium rounded px-1 py-0.5",
-                                isRunningNow
-                                  ? "text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-900/40"
-                                  : "text-emerald-600 dark:text-emerald-400"
-                              )}
-                              title={isRunningNow ? "Cronômetro rodando agora" : "Tempo produtivo registrado hoje"}
+                              className="flex items-center gap-1 text-[10px] font-medium rounded px-1 py-0.5 text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-900/40"
+                              title={`Cronômetro rodando agora — ${isMine ? 'você' : remote?.userName}`}
                             >
-                              {isRunningNow ? (
-                                <span className="relative flex h-1.5 w-1.5">
-                                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-                                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                                </span>
-                              ) : (
-                                <Play className="h-2.5 w-2.5" />
-                              )}
+                              <span className="relative flex h-1.5 w-1.5">
+                                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                              </span>
                               <span className="tabular-nums">{formatDuration(secs)}</span>
-                              {isRunningNow && <span>agora</span>}
+                              <span className="max-w-[80px] truncate">{who}</span>
                             </span>
                           );
                         })()}
