@@ -3,7 +3,10 @@ import { db, authClient } from '@/integrations/supabase';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { remapToExternal, ensureRemapCache } from '@/integrations/supabase/uuid-remap';
 import { formatHMS } from '@/contexts/ActivityTimerContext';
-import { Loader2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, Loader2 } from 'lucide-react';
+
+const COLLAPSED_KEY = 'team-timers-collapsed';
+type StatusFilter = 'all' | 'working' | 'idle';
 
 const dbAny = db as unknown as SupabaseClient;
 
@@ -36,6 +39,23 @@ interface TeamGroup {
 export function TeamTimersPanel() {
   const [groups, setGroups] = useState<TeamGroup[]>([]);
   const [loading, setLoading] = useState(true);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem(COLLAPSED_KEY);
+      if (raw) return new Set(JSON.parse(raw) as string[]);
+    } catch { /* ignora */ }
+    return new Set();
+  });
+
+  const toggleCollapsed = useCallback((teamId: string) => {
+    setCollapsed(prev => {
+      const next = new Set(prev);
+      if (next.has(teamId)) next.delete(teamId); else next.add(teamId);
+      try { localStorage.setItem(COLLAPSED_KEY, JSON.stringify(Array.from(next))); } catch { /* quota */ }
+      return next;
+    });
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -143,6 +163,18 @@ export function TeamTimersPanel() {
     () => groups.reduce((s, g) => s + g.members.filter(m => m.state === 'working').length, 0),
     [groups],
   );
+  const idleCount = useMemo(
+    () => groups.reduce((s, g) => s + g.members.filter(m => m.state === 'idle').length, 0),
+    [groups],
+  );
+
+  // Com filtro ativo, esconde membros fora do status e times que ficarem vazios.
+  const visibleGroups = useMemo(() => {
+    if (statusFilter === 'all') return groups;
+    return groups
+      .map(g => ({ ...g, members: g.members.filter(m => m.state === statusFilter) }))
+      .filter(g => g.members.length > 0);
+  }, [groups, statusFilter]);
 
   return (
     // Altura limitada ao espaço que o Popover tem na tela (var do Radix);
@@ -151,9 +183,31 @@ export function TeamTimersPanel() {
       className="w-80 flex flex-col"
       style={{ maxHeight: 'min(60vh, var(--radix-popover-content-available-height, 60vh))' }}
     >
-      <div className="flex items-baseline justify-between px-3 pt-3 pb-2 border-b shrink-0">
-        <span className="text-sm font-semibold">Time agora</span>
-        <span className="text-[11px] text-muted-foreground">{workingCount} em atividade</span>
+      <div className="px-3 pt-3 pb-2 border-b shrink-0 space-y-1.5">
+        <div className="flex items-baseline justify-between">
+          <span className="text-sm font-semibold">Time agora</span>
+          <span className="text-[11px] text-muted-foreground">{workingCount} em atividade</span>
+        </div>
+        <div className="flex items-center gap-1">
+          {([
+            { key: 'all' as const, label: 'Todos' },
+            { key: 'working' as const, label: `Fazendo${workingCount ? ` ${workingCount}` : ''}` },
+            { key: 'idle' as const, label: `Ocioso${idleCount ? ` ${idleCount}` : ''}` },
+          ]).map(f => (
+            <button
+              key={f.key}
+              type="button"
+              onClick={() => setStatusFilter(f.key)}
+              className={`px-2 py-0.5 rounded-full text-[11px] border transition-colors ${
+                statusFilter === f.key
+                  ? 'bg-primary text-primary-foreground border-primary'
+                  : 'text-muted-foreground hover:bg-accent'
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
         <div className="px-3 py-2 space-y-3">
@@ -162,15 +216,37 @@ export function TeamTimersPanel() {
               <Loader2 className="h-4 w-4 animate-spin inline mr-2" />Carregando…
             </div>
           )}
-          {!loading && groups.length === 0 && (
-            <div className="py-6 text-center text-muted-foreground text-sm">Nenhum membro encontrado.</div>
+          {!loading && visibleGroups.length === 0 && (
+            <div className="py-6 text-center text-muted-foreground text-sm">
+              {statusFilter === 'all' ? 'Nenhum membro encontrado.'
+                : statusFilter === 'working' ? 'Ninguém em atividade agora.' : 'Ninguém ocioso agora.'}
+            </div>
           )}
-          {groups.map(g => (
+          {visibleGroups.map(g => {
+            const isCollapsed = collapsed.has(g.id);
+            const gWorking = g.members.filter(m => m.state === 'working').length;
+            const gIdle = g.members.filter(m => m.state === 'idle').length;
+            return (
             <div key={g.id}>
-              <div className="flex items-center gap-1.5 mb-1">
+              <button
+                type="button"
+                onClick={() => toggleCollapsed(g.id)}
+                className="w-full flex items-center gap-1.5 mb-1 rounded px-0.5 py-0.5 hover:bg-accent/50 text-left"
+                title={isCollapsed ? 'Expandir time' : 'Recolher time'}
+              >
+                {isCollapsed
+                  ? <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />
+                  : <ChevronDown className="h-3 w-3 text-muted-foreground shrink-0" />}
                 {g.color && <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: g.color }} />}
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{g.name}</span>
-              </div>
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground flex-1 truncate">{g.name}</span>
+                <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
+                  {gWorking > 0 && <span className="text-emerald-600 dark:text-emerald-400">{gWorking} fazendo</span>}
+                  {gWorking > 0 && gIdle > 0 && ' · '}
+                  {gIdle > 0 && <span className="text-amber-600 dark:text-amber-400">{gIdle} ocioso</span>}
+                  {gWorking === 0 && gIdle === 0 && `${g.members.length}`}
+                </span>
+              </button>
+              {!isCollapsed && (
               <div className="space-y-0.5">
                 {g.members.map(m => (
                   <div key={m.extUserId} className="flex items-center gap-2 rounded px-1.5 py-1 hover:bg-accent/50">
@@ -198,8 +274,10 @@ export function TeamTimersPanel() {
                   </div>
                 ))}
               </div>
+              )}
             </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>
