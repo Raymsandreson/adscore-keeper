@@ -111,6 +111,7 @@ const NoticiasPage = () => {
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
   const [movingId, setMovingId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectMode, setSelectMode] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [enriching, setEnriching] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
@@ -347,13 +348,15 @@ const NoticiasPage = () => {
           opts.isMember && "bg-muted/20"
         )}
       >
-        <td className="px-3 py-2.5 align-top">
-          <Checkbox
-            checked={someChecked ? "indeterminate" : checked}
-            onCheckedChange={(v) => toggleIds(memberIds, v === true)}
-            aria-label="Selecionar"
-          />
-        </td>
+        {selectMode && (
+          <td className="px-3 py-2.5 align-top">
+            <Checkbox
+              checked={someChecked ? "indeterminate" : checked}
+              onCheckedChange={(v) => toggleIds(memberIds, v === true)}
+              aria-label="Selecionar"
+            />
+          </td>
+        )}
         <td className={cn("px-4 py-2.5 cursor-pointer", opts.isMember && "pl-10")} onClick={() => setOpenLead(l)}>
           <div className="flex items-center gap-2">
             {groupSize > 1 && !opts.isMember && (
@@ -598,6 +601,22 @@ const NoticiasPage = () => {
               </Button>
             )}
 
+            <Button
+              variant={selectMode ? "destructive" : "outline"}
+              size="sm"
+              className="h-9"
+              onClick={() => {
+                setSelectMode((v) => {
+                  if (v) setSelectedIds(new Set());
+                  return !v;
+                });
+              }}
+              title={selectMode ? "Sair do modo de seleção" : "Selecionar vários para descartar"}
+            >
+              <Trash2 className="h-4 w-4" />
+              {selectMode && <span className="ml-1.5">Sair da seleção</span>}
+            </Button>
+
             <div className="ml-auto text-xs text-muted-foreground">
               {filtered.length} de {leads.length}
               {groups.length < filtered.length && ` · ${groups.length} notícias únicas`}
@@ -633,13 +652,15 @@ const NoticiasPage = () => {
             <table className="w-full text-sm">
               <thead className="bg-muted/40 text-muted-foreground text-xs uppercase tracking-wide">
                 <tr>
-                  <th className="w-8 px-3 py-2.5">
-                    <Checkbox
-                      checked={allFilteredSelected}
-                      onCheckedChange={(v) => toggleIds(filtered.map((l) => l.id), v === true)}
-                      aria-label="Selecionar todos"
-                    />
-                  </th>
+                  {selectMode && (
+                    <th className="w-8 px-3 py-2.5">
+                      <Checkbox
+                        checked={allFilteredSelected}
+                        onCheckedChange={(v) => toggleIds(filtered.map((l) => l.id), v === true)}
+                        aria-label="Selecionar todos"
+                      />
+                    </th>
+                  )}
                   <th className="text-left px-4 py-2.5 font-medium">Nome</th>
                   <th className="text-left px-4 py-2.5 font-medium">Vítima</th>
                   <th className="text-left px-4 py-2.5 font-medium">Telefone</th>
@@ -651,12 +672,12 @@ const NoticiasPage = () => {
               </thead>
               <tbody>
                 {loading && (
-                  <tr><td colSpan={8} className="text-center py-12 text-muted-foreground">
+                  <tr><td colSpan={selectMode ? 8 : 7} className="text-center py-12 text-muted-foreground">
                     <Loader2 className="h-5 w-5 animate-spin inline mr-2" /> Carregando...
                   </td></tr>
                 )}
                 {!loading && filtered.length === 0 && (
-                  <tr><td colSpan={8} className="text-center py-12 text-muted-foreground">
+                  <tr><td colSpan={selectMode ? 8 : 7} className="text-center py-12 text-muted-foreground">
                     Nenhum lead encontrado
                   </td></tr>
                 )}
