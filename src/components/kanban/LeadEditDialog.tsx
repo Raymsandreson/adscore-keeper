@@ -7,6 +7,7 @@ import { externalSupabase } from '@/integrations/supabase/external-client';
 import { useProfilesList } from '@/hooks/useProfilesList';
 import { generateLeadName } from '@/utils/generateLeadName';
 import { findClosedStageId, findRefusedStageId } from '@/utils/kanbanStageTypes';
+import { useCampaigns } from '@/hooks/useCampaigns';
 const LeadLinkedContacts = lazy(() => import('@/components/leads/LeadLinkedContacts').then(m => ({ default: m.LeadLinkedContacts })));
 const LeadLinkedComments = lazy(() => import('@/components/leads/LeadLinkedComments').then(m => ({ default: m.LeadLinkedComments })));
 const LeadNewsLinksManager = lazy(() => import('@/components/leads/LeadNewsLinksManager').then(m => ({ default: m.LeadNewsLinksManager })));
@@ -337,6 +338,8 @@ export function LeadEditDialog({
   const [showLinkConfirm, setShowLinkConfirm] = useState(false);
   const [tempNewsLink, setTempNewsLink] = useState('');
   const [selectedBoardId, setSelectedBoardId] = useState('');
+  const [selectedCampaignId, setSelectedCampaignId] = useState('');
+  const { data: campaignsList = [] } = useCampaigns();
 
   const currentLead = lead;
   const autoDrive = useAutoImportGroupDocs(
@@ -430,6 +433,7 @@ export function LeadEditDialog({
     setClientClassification(currentLead.client_classification || '');
     setExpectedBirthDate(leadAny.expected_birth_date || '');
     setSelectedBoardId(leadAny.board_id || '');
+    setSelectedCampaignId(leadAny.crm_campaign_id || '');
     // Outcome
     setCaseNumber(leadAny.case_number || '');
     setLeadOutcomeReason(leadAny.lead_status_reason || '');
@@ -1323,6 +1327,7 @@ ${scrapeData.content || ''}
         news_links: newsLinks.length > 0 ? newsLinks : (newsLink ? [newsLink] : []),
         legal_viability: legalViability || null,
         board_id: selectedBoardId || null,
+        crm_campaign_id: selectedCampaignId || null,
         ...(selectedBoardId && selectedBoardId !== (currentLead as any).board_id ? (() => {
           const newBoard = boards.find(b => b.id === selectedBoardId);
           const firstStage = newBoard?.stages?.[0] as any;
@@ -2770,6 +2775,27 @@ ${scrapeData.content || ''}
                     </Select>
                   </div>
                 )}
+
+                <div className="col-span-2">
+                  <Label>Campanha (opcional)</Label>
+                  <Select
+                    value={selectedCampaignId || '__none__'}
+                    onValueChange={(val) => setSelectedCampaignId(val === '__none__' ? '' : val)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Sem campanha" />
+                    </SelectTrigger>
+                    <SelectContent className="pointer-events-auto z-[9999]" position="popper" sideOffset={4}>
+                      <SelectItem value="__none__">Sem campanha</SelectItem>
+                      {campaignsList.filter(c => c.status !== 'closed').map(c => (
+                        <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    Vincula o lead a uma campanha para consolidar métricas de ROI/CAC.
+                  </p>
+                </div>
               </div>
               <div className="pt-4 border-t">
                 <Suspense fallback={<div className="flex items-center justify-center p-8"><Loader2 className="h-5 w-5 animate-spin" /></div>}>
