@@ -433,6 +433,7 @@ export function LeadEditDialog({
     setClientClassification(currentLead.client_classification || '');
     setExpectedBirthDate(leadAny.expected_birth_date || '');
     setSelectedBoardId(leadAny.board_id || '');
+    setSelectedCampaignId(leadAny.crm_campaign_id || '');
     // Outcome
     setCaseNumber(leadAny.case_number || '');
     setLeadOutcomeReason(leadAny.lead_status_reason || '');
