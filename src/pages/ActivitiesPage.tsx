@@ -2630,6 +2630,9 @@ const ActivitiesPage = () => {
   // Note: also resolves for closed leads (CASO mode) so templates of the
   // checkpoint step where the case was created keep working.
   const activeStepBoardId = (() => {
+    // 1) Fluxo escolhido explicitamente na atividade tem prioridade — inclusive
+    //    para atividades internas/gerenciamento que o usuário plugou num board.
+    if (formWorkflowId) return formWorkflowId;
     const linkedProcess = formProcessId ? caseProcesses.find(p => p.id === formProcessId) : null;
     if (linkedProcess?.workflow_id) return linkedProcess.workflow_id;
     if (leadPreview?.board_id) return leadPreview.board_id;
