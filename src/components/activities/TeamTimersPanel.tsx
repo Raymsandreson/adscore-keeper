@@ -2,8 +2,18 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { db, authClient } from '@/integrations/supabase';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { remapToExternal, ensureRemapCache } from '@/integrations/supabase/uuid-remap';
-import { formatHMS } from '@/contexts/ActivityTimerContext';
+import { formatHMS, BREAK_LABELS, type BreakType } from '@/contexts/ActivityTimerContext';
 import { useActivityTypes } from '@/hooks/useActivityTypes';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+
+const ALERT_PRESETS = [
+  'Por que você está ocioso? Retome uma atividade ou avise o que está fazendo.',
+  'Precisa de ajuda com alguma coisa?',
+  'Podemos falar rapidinho? Me chama.',
+  'Retome as atividades, por favor.',
+];
 import { BellRing, ChevronDown, ChevronRight, ExternalLink, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -19,7 +29,11 @@ const HEARTBEAT_MS = 2 * 60 * 1000;
 interface MemberStatus {
   extUserId: string;
   name: string;
-  state: 'working' | 'idle' | 'off';
+  /** Cargo (só na seção Gestão): "Diretor" ou "Gestor · <times>". */
+  role?: string;
+  state: 'working' | 'idle' | 'break' | 'off';
+  breakType?: BreakType | null;
+  breakNote?: string | null;
   activityTitle: string | null;
   activityType: string | null; // key do tipo (rotina) — rótulo resolvido na renderização
   activityId: string | null;   // permite o atalho "abrir a atividade"
@@ -41,7 +55,7 @@ interface TeamGroup {
  * (Externo). Design propositalmente sóbrio: uma bolinha de status, nome,
  * atividade e tempo — sem competir por atenção com o resto da tela.
  */
-export function TeamTimersPanel() {
+export function TeamTimersPanel({ onOpenActivity }: { onOpenActivity?: (activityId: string) => void }) {
   const [groups, setGroups] = useState<TeamGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
@@ -59,8 +73,8 @@ export function TeamTimersPanel() {
     return new Set();
   });
 
-  // Alerta da gestão pro membro ocioso ("por que está ocioso?")
-  const sendIdleAlert = useCallback(async (m: MemberStatus) => {
+  // Alerta da gestão pro membro ocioso — mensagem escolhida/escrita pelo remetente
+  const sendIdleAlert = useCallback(async (m: MemberStatus, message: string) => {
     try {
       const { data: { user } } = await authClient.auth.getUser();
       const fromExt = await remapToExternal(user?.id || null);
@@ -73,7 +87,7 @@ export function TeamTimersPanel() {
         to_user_id: m.extUserId,
         from_user_id: fromExt,
         from_name: fromName,
-        message: 'Por que você está ocioso? Retome uma atividade ou avise o que está fazendo.',
+        message,
       });
       if (error) throw error;
       toast.success(`Alerta enviado para ${m.name.split(' ')[0]}`);
@@ -94,11 +108,13 @@ export function TeamTimersPanel() {
 
   const load = useCallback(async () => {
     try {
-      // 1) Estrutura (Cloud): times, membros e nomes
-      const [{ data: teams }, { data: teamMembers }, { data: profiles }] = await Promise.all([
+      // 1) Estrutura: times/membros/nomes (Cloud) + gestão (Externo)
+      const [{ data: teams }, { data: teamMembers }, { data: profiles }, { data: managers }, { data: directors }] = await Promise.all([
         authClient.from('teams').select('id, name, color').order('name'),
         authClient.from('team_members').select('team_id, user_id'),
         authClient.from('profiles').select('user_id, full_name'),
+        dbAny.from('team_managers').select('manager_user_id, manager_name, team_name'),
+        dbAny.from('org_directors').select('user_id, name'),
       ]);
 
       // 2) Cloud → Externo (o cronômetro grava ext uid)
@@ -113,7 +129,7 @@ export function TeamTimersPanel() {
       startOfDay.setHours(0, 0, 0, 0);
       const iso = startOfDay.toISOString();
       const { data: entries } = await dbAny.from('activity_time_entries')
-        .select('user_id, activity_id, activity_title, activity_type, active_seconds, idle_seconds, status, ended_at, started_at')
+        .select('user_id, activity_id, activity_title, activity_type, active_seconds, idle_seconds, status, ended_at, started_at, break_type, break_note')
         .or(`ended_at.gte.${iso},started_at.gte.${iso}`);
 
       type Entry = {
@@ -121,13 +137,14 @@ export function TeamTimersPanel() {
         activity_type: string | null;
         active_seconds: number; idle_seconds: number; status: string;
         ended_at: string | null; started_at: string;
+        break_type: BreakType | null; break_note: string | null;
       };
       const byUser = new Map<string, { latest: Entry | null; dayActive: number; dayIdle: number }>();
       for (const r of ((entries as Entry[]) || [])) {
         let u = byUser.get(r.user_id);
         if (!u) { u = { latest: null, dayActive: 0, dayIdle: 0 }; byUser.set(r.user_id, u); }
         u.dayActive += r.active_seconds || 0;
-        u.dayIdle += r.idle_seconds || 0;
+        if (!r.break_type) u.dayIdle += r.idle_seconds || 0; // pausa justificada não é ocioso
         const ts = r.ended_at || r.started_at;
         const prevTs = u.latest ? (u.latest.ended_at || u.latest.started_at) : '';
         if (!u.latest || ts > prevTs) u.latest = r;
@@ -153,6 +170,13 @@ export function TeamTimersPanel() {
             currentSecs: latest.active_seconds || 0,
           };
         }
+        if (latest.break_type) {
+          return {
+            ...base, state: 'break',
+            breakType: latest.break_type, breakNote: latest.break_note,
+            currentSecs: latest.idle_seconds || 0,
+          };
+        }
         return { ...base, state: 'idle', currentSecs: latest.idle_seconds || 0 };
       };
 
@@ -166,8 +190,21 @@ export function TeamTimersPanel() {
         memberCloudIdsByTeam.set(tm.team_id, arr);
       });
 
+      // Gestão: diretores + gestores de time (cloud ids) — seção própria no topo
+      type Mgr = { manager_user_id: string | null; manager_name: string | null; team_name: string | null };
+      type Dir = { user_id: string; name: string | null };
+      const directorIds = new Set(((directors as Dir[]) || []).map(d => d.user_id));
+      const managerTeams = new Map<string, string[]>();
+      for (const m of ((managers as Mgr[]) || [])) {
+        if (!m.manager_user_id) continue;
+        const arr = managerTeams.get(m.manager_user_id) || [];
+        if (m.team_name) arr.push(m.team_name);
+        managerTeams.set(m.manager_user_id, arr);
+      }
+      const leadershipCloudIds = new Set<string>([...directorIds, ...managerTeams.keys()]);
+
       const inSomeTeam = new Set<string>((teamMembers || []).map(tm => tm.user_id));
-      const rank = { working: 0, idle: 1, off: 2 } as const;
+      const rank = { working: 0, idle: 1, break: 2, off: 3 } as const;
       const buildMembers = (cloudIds2: string[]): MemberStatus[] =>
         cloudIds2
           .map(cid => {
@@ -179,13 +216,30 @@ export function TeamTimersPanel() {
           .map(m => m as MemberStatus)
           .sort((a, b) => rank[a.state] - rank[b.state] || a.name.localeCompare(b.name));
 
-      const result: TeamGroup[] = (teams || []).map(t => ({
+      // Gestão em seção própria no topo — diretor/gestor não aparecem nos times
+      const leadership = buildMembers(Array.from(leadershipCloudIds)).map(m => m);
+      const roleByExt = new Map<string, string>();
+      for (const cid of leadershipCloudIds) {
+        const ext = cloudToExt.get(cid);
+        if (!ext) continue;
+        const isDir = directorIds.has(cid);
+        const teamsOf = managerTeams.get(cid) || [];
+        roleByExt.set(ext, isDir ? 'Diretor' : `Gestor · ${teamsOf.join(', ') || 'time'}`);
+      }
+      leadership.forEach(m => { m.role = roleByExt.get(m.extUserId); });
+
+      const result: TeamGroup[] = [];
+      if (leadership.length > 0) {
+        result.push({ id: '__leadership__', name: 'Gestão', color: '#6366f1', members: leadership });
+      }
+
+      result.push(...(teams || []).map(t => ({
         id: t.id, name: t.name, color: t.color || null,
-        members: buildMembers(memberCloudIdsByTeam.get(t.id) || []),
-      })).filter(g => g.members.length > 0);
+        members: buildMembers((memberCloudIdsByTeam.get(t.id) || []).filter(cid => !leadershipCloudIds.has(cid))),
+      })).filter(g => g.members.length > 0));
 
       // "Sem time": só quem tem cronômetro hoje (esconde inativos — contas avulsas poluem)
-      const noTeam = buildMembers(cloudIds.filter(cid => !inSomeTeam.has(cid)))
+      const noTeam = buildMembers(cloudIds.filter(cid => !inSomeTeam.has(cid) && !leadershipCloudIds.has(cid)))
         .filter(m => m.state !== 'off' || m.dayActive > 0 || m.dayIdle > 0);
       if (noTeam.length > 0) result.push({ id: '__none__', name: 'Sem time', color: null, members: noTeam });
 
@@ -381,10 +435,13 @@ export function TeamTimersPanel() {
                         <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
                       </span>
                     ) : (
-                      <span className={`h-2 w-2 rounded-full shrink-0 ${m.state === 'idle' ? 'bg-amber-400' : 'bg-muted-foreground/30'}`} />
+                      <span className={`h-2 w-2 rounded-full shrink-0 ${m.state === 'idle' ? 'bg-amber-400' : m.state === 'break' ? 'bg-sky-400' : 'bg-muted-foreground/30'}`} />
                     )}
                     <div className="min-w-0 flex-1">
-                      <div className="text-xs font-medium truncate">{m.name}</div>
+                      <div className="text-xs font-medium truncate">
+                        {m.name}
+                        {m.role && <span className="ml-1 text-[10px] font-normal text-indigo-600 dark:text-indigo-400">{m.role}</span>}
+                      </div>
                       <div className="text-[11px] text-muted-foreground truncate">
                         {m.state === 'working' && (
                           <>
@@ -395,31 +452,32 @@ export function TeamTimersPanel() {
                           </>
                         )}
                         {m.state === 'idle' && 'Ocioso (entre atividades)'}
+                        {m.state === 'break' && (
+                          <span className="text-sky-700 dark:text-sky-300">
+                            {BREAK_LABELS[m.breakType || 'intervalo']}{m.breakNote ? ` · ${m.breakNote}` : ''}
+                          </span>
+                        )}
                         {m.state === 'off' && (m.dayActive > 0 ? `Hoje: ${formatHMS(m.dayActive)} produtivo` : 'Sem cronômetro hoje')}
                       </div>
                     </div>
                     {m.activityId && (
                       <button
                         type="button"
-                        onClick={() => window.open(`${window.location.origin}/?openActivity=${m.activityId}`, '_blank')}
+                        onClick={() => {
+                          if (onOpenActivity) onOpenActivity(m.activityId!);
+                          else window.open(`${window.location.origin}/?openActivity=${m.activityId}`, '_blank');
+                        }}
                         className="opacity-0 group-hover:opacity-100 transition-opacity rounded p-1 hover:bg-accent text-muted-foreground hover:text-foreground shrink-0"
-                        title="Abrir esta atividade"
+                        title="Abrir esta atividade (aba lateral)"
                       >
                         <ExternalLink className="h-3 w-3" />
                       </button>
                     )}
                     {m.state === 'idle' && (
-                      <button
-                        type="button"
-                        onClick={() => sendIdleAlert(m)}
-                        className="opacity-0 group-hover:opacity-100 transition-opacity rounded p-1 hover:bg-amber-100 dark:hover:bg-amber-900/50 text-amber-600 dark:text-amber-400 shrink-0"
-                        title={`Perguntar a ${m.name.split(' ')[0]} por que está ocioso (alerta com som)`}
-                      >
-                        <BellRing className="h-3 w-3" />
-                      </button>
+                      <IdleAlertButton member={m} onSend={sendIdleAlert} />
                     )}
                     {m.state !== 'off' && (
-                      <span className={`text-[11px] font-mono tabular-nums shrink-0 ${m.state === 'working' ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                      <span className={`text-[11px] font-mono tabular-nums shrink-0 ${m.state === 'working' ? 'text-emerald-600 dark:text-emerald-400' : m.state === 'break' ? 'text-sky-600 dark:text-sky-400' : 'text-amber-600 dark:text-amber-400'}`}>
                         {formatHMS(m.currentSecs)}
                       </span>
                     )}
@@ -433,5 +491,58 @@ export function TeamTimersPanel() {
         </div>
       </div>
     </div>
+  );
+}
+
+/** Sino de alerta pro ocioso: mensagens prontas ou texto livre. */
+function IdleAlertButton({
+  member, onSend,
+}: {
+  member: MemberStatus;
+  onSend: (m: MemberStatus, message: string) => void | Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [custom, setCustom] = useState('');
+  const firstName = member.name.split(' ')[0];
+  const send = (msg: string) => { onSend(member, msg); setOpen(false); setCustom(''); };
+  return (
+    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setCustom(''); }}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="rounded p-1 bg-amber-100 dark:bg-amber-900/40 hover:bg-amber-200 dark:hover:bg-amber-800/60 text-amber-600 dark:text-amber-400 shrink-0"
+          title={`Enviar alerta para ${firstName} (com som)`}
+        >
+          <BellRing className="h-3 w-3" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="end" side="left" className="w-72 p-2">
+        <div className="text-xs font-medium mb-1.5">Alertar {firstName}</div>
+        <div className="space-y-1 mb-2">
+          {ALERT_PRESETS.map((p) => (
+            <button
+              key={p}
+              type="button"
+              onClick={() => send(p)}
+              className="w-full text-left text-xs px-2 py-1.5 rounded border hover:bg-accent leading-snug"
+            >
+              {p}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-1.5">
+          <Input
+            value={custom}
+            onChange={(e) => setCustom(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && custom.trim()) send(custom.trim()); }}
+            placeholder="Ou escreva sua mensagem…"
+            className="h-8 text-xs"
+          />
+          <Button size="sm" className="h-8 shrink-0" disabled={!custom.trim()} onClick={() => send(custom.trim())}>
+            Enviar
+          </Button>
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }

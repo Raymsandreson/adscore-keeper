@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useCallback, lazy, Suspense } from 'react';
-import { Clock, Coffee, EyeOff, GripVertical, Hourglass, Pause, Play, Search, Timer as TimerIcon, Users } from 'lucide-react';
+import { Clock, Coffee, EyeOff, GripVertical, Hourglass, Pause, Play, Search, Timer as TimerIcon, Users, UtensilsCrossed } from 'lucide-react';
 import { TeamTimersPanel } from '@/components/activities/TeamTimersPanel';
 import { db } from '@/integrations/supabase';
 
@@ -11,7 +11,75 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { useActivityTimer, formatHMS } from '@/contexts/ActivityTimerContext';
+import { useActivityTimer, formatHMS, BREAK_LABELS, type BreakType } from '@/contexts/ActivityTimerContext';
+
+/** Menu de pausa justificada: almoço, intervalo (com justificativa) e compensação. */
+function BreakMenu({ className, onStart }: { className?: string; onStart: (t: BreakType, note?: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState<'menu' | 'intervalo' | 'compensacao'>('menu');
+  const [note, setNote] = useState('');
+  const close = () => { setOpen(false); setMode('menu'); setNote(''); };
+  return (
+    <Popover open={open} onOpenChange={(o) => { if (!o) close(); else setOpen(true); }}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+          className={className}
+          title="Pausa justificada: almoço, intervalo ou compensação de horas"
+        >
+          <UtensilsCrossed className="h-3.5 w-3.5" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="end" side="top" className="w-64 p-2"
+        onPointerDown={(e) => e.stopPropagation()}
+        onPointerUp={(e) => e.stopPropagation()}
+      >
+        {mode === 'menu' && (
+          <div className="space-y-1">
+            <div className="text-xs font-medium mb-1.5">Registrar pausa</div>
+            <button type="button" onClick={() => { onStart('almoco'); close(); }}
+              className="w-full text-left text-sm px-2 py-1.5 rounded hover:bg-accent">
+              🍽️ Saída para almoço
+            </button>
+            <button type="button" onClick={() => setMode('intervalo')}
+              className="w-full text-left text-sm px-2 py-1.5 rounded hover:bg-accent">
+              ☕ Intervalo (com justificativa)
+            </button>
+            <button type="button" onClick={() => setMode('compensacao')}
+              className="w-full text-left text-sm px-2 py-1.5 rounded hover:bg-accent">
+              🔁 Compensação de banco de horas
+            </button>
+          </div>
+        )}
+        {mode !== 'menu' && (
+          <div className="space-y-2">
+            <div className="text-xs font-medium">
+              {mode === 'intervalo' ? 'Justificativa do intervalo *' : 'Acordo de compensação (opcional)'}
+            </div>
+            <Input
+              autoFocus value={note} onChange={(e) => setNote(e.target.value)}
+              placeholder={mode === 'intervalo' ? 'Ex.: consulta médica, banco…' : 'Ex.: compensando hora extra de 15/07'}
+              className="h-8 text-xs"
+            />
+            <div className="flex justify-end gap-1.5">
+              <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setMode('menu')}>Voltar</Button>
+              <Button
+                size="sm" className="h-7 text-xs"
+                disabled={mode === 'intervalo' && !note.trim()}
+                onClick={() => { onStart(mode, note.trim() || undefined); close(); }}
+              >
+                Iniciar pausa
+              </Button>
+            </div>
+          </div>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 const ESTIMATE_CHIPS = [15, 30, 45, 60, 90, 120];
 
@@ -153,7 +221,7 @@ function useDraggablePosition() {
 }
 
 /** Botão que expande o painel "Time agora" a partir do badge do cronômetro. */
-function TeamPanelButton({ className }: { className?: string }) {
+function TeamPanelButton({ className, onOpenActivity }: { className?: string; onOpenActivity: (id: string) => void }) {
   const [open, setOpen] = useState(false);
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -181,7 +249,11 @@ function TeamPanelButton({ className }: { className?: string }) {
         onPointerMove={(e) => e.stopPropagation()}
         onPointerUp={(e) => e.stopPropagation()}
       >
-        {open && <TeamTimersPanel />}
+        {open && (
+          <TeamTimersPanel
+            onOpenActivity={(id) => { setOpen(false); onOpenActivity(id); }}
+          />
+        )}
       </PopoverContent>
     </Popover>
   );
@@ -190,13 +262,13 @@ function TeamPanelButton({ className }: { className?: string }) {
 /** Linha de totais do dia (produtivo x ocioso) no topo do badge. */
 function DayTotalsRow({ active, idle }: { active: number; idle: number }) {
   return (
-    <div className="flex items-center justify-center gap-2 text-[10px] leading-none border-b pb-1 mb-0.5">
+    <div className="flex items-center justify-center gap-2 text-[11px] leading-none border-b pb-1 mb-0.5">
       <span className="text-muted-foreground uppercase tracking-wide">Hoje</span>
-      <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-semibold tabular-nums" title="Tempo produtivo do dia">
-        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />{formatHMS(active)}
+      <span className="flex items-center gap-1 text-emerald-700 dark:text-emerald-300 font-bold tabular-nums" title="Tempo produtivo do dia">
+        <span className="h-1.5 w-1.5 rounded-full bg-emerald-600" />{formatHMS(active)}
       </span>
-      <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400 font-semibold tabular-nums" title="Tempo ocioso do dia">
-        <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />{formatHMS(idle)}
+      <span className="flex items-center gap-1 text-amber-700 dark:text-amber-300 font-bold tabular-nums" title="Tempo ocioso do dia">
+        <span className="h-1.5 w-1.5 rounded-full bg-amber-600" />{formatHMS(idle)}
       </span>
     </div>
   );
@@ -211,7 +283,7 @@ export function ActivityTimerOverlay() {
   const {
     current, lastActivity, resumeLast, dayTotals, hidden, idlePrompt, leavePrompt, switchPrompt,
     keepRunning, pauseAndClose, hideTimer, setEstimate, managerAlert, dismissManagerAlert,
-    confirmStillWorking, rejectStillWorking, switchTo, dismissSwitch,
+    confirmStillWorking, rejectStillWorking, switchTo, dismissSwitch, startBreak, endBreak,
   } = useActivityTimer();
 
   const over = current?.kind === 'activity' && current.estimateMinutes
@@ -228,6 +300,9 @@ export function ActivityTimerOverlay() {
 
   const drag = useDraggablePosition();
   const [sheetOpen, setSheetOpen] = useState(false);
+  // Atv de um MEMBRO aberta pelo painel Time agora — sheet fora do badge
+  // (dentro dele o drag sequestraria os cliques via pointer capture).
+  const [teamViewActivityId, setTeamViewActivityId] = useState<string | null>(null);
   const timedActivityId = current?.kind === 'activity' ? current.activityId : null;
 
   return (
@@ -277,7 +352,8 @@ export function ActivityTimerOverlay() {
           >
             <Pause className="h-3.5 w-3.5" />
           </button>
-          <TeamPanelButton className="rounded-full p-1 hover:bg-accent hover:text-foreground text-muted-foreground" />
+          <BreakMenu className="rounded-full p-1 hover:bg-accent hover:text-foreground text-muted-foreground" onStart={startBreak} />
+          <TeamPanelButton className="rounded-full p-1 hover:bg-accent hover:text-foreground text-muted-foreground" onOpenActivity={setTeamViewActivityId} />
           <button
             type="button"
             onPointerDown={(e) => e.stopPropagation()}
@@ -302,6 +378,17 @@ export function ActivityTimerOverlay() {
         </Suspense>
       )}
 
+      {/* Aba lateral: atividade de um membro aberta pelo painel Time agora */}
+      {teamViewActivityId && (
+        <Suspense fallback={null}>
+          <ActivityFullSheet
+            open={!!teamViewActivityId}
+            onOpenChange={(o) => { if (!o) setTeamViewActivityId(null); }}
+            activityId={teamViewActivityId}
+          />
+        </Suspense>
+      )}
+
       {current && current.kind === 'gap' && !hidden && (
         <div
           ref={drag.setElRef}
@@ -315,11 +402,11 @@ export function ActivityTimerOverlay() {
           <DayTotalsRow active={dayTotals.active} idle={dayTotals.idle} />
           <div className="flex items-center gap-1.5">
           <GripVertical className="h-3.5 w-3.5 text-amber-700/50 dark:text-amber-300/50" />
-          <Coffee className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
-          <span className="font-mono text-sm tabular-nums font-semibold text-amber-700 dark:text-amber-300">
+          <Coffee className="h-3.5 w-3.5 text-amber-700 dark:text-amber-300" />
+          <span className="font-mono text-sm tabular-nums font-bold text-amber-800 dark:text-amber-200">
             {formatHMS(current.idleSeconds)}
           </span>
-          <span className="text-xs text-amber-700/80 dark:text-amber-300/80 hidden sm:inline">ocioso</span>
+          <span className="text-xs font-medium text-amber-800 dark:text-amber-200 hidden sm:inline">ocioso</span>
           {lastActivity && (
             <button
               type="button"
@@ -333,7 +420,8 @@ export function ActivityTimerOverlay() {
               <span className="sm:hidden">Retomar</span>
             </button>
           )}
-          <TeamPanelButton className="ml-1 rounded-full p-1 hover:bg-amber-200/50 dark:hover:bg-amber-800/50 text-amber-700 dark:text-amber-300" />
+          <BreakMenu className="ml-1 rounded-full p-1 hover:bg-amber-200/50 dark:hover:bg-amber-800/50 text-amber-700 dark:text-amber-300" onStart={startBreak} />
+          <TeamPanelButton className="rounded-full p-1 hover:bg-amber-200/50 dark:hover:bg-amber-800/50 text-amber-700 dark:text-amber-300" onOpenActivity={setTeamViewActivityId} />
           <button
             type="button"
             onPointerDown={(e) => e.stopPropagation()}
@@ -347,6 +435,49 @@ export function ActivityTimerOverlay() {
         </div>
       )}
 
+
+      {current && current.kind === 'break' && !hidden && (
+        <div
+          ref={drag.setElRef}
+          style={drag.style}
+          onPointerDown={drag.onPointerDown}
+          onPointerMove={drag.onPointerMove}
+          onPointerUp={drag.onPointerUp}
+          className="fixed z-[60] flex flex-col gap-0.5 rounded-2xl border border-sky-300/60 bg-sky-50/95 dark:bg-sky-950/60 px-2 py-1.5 shadow-lg backdrop-blur touch-none select-none cursor-grab active:cursor-grabbing"
+          title={`Pausa: ${current.activityTitle}${current.breakNote ? ` — ${current.breakNote}` : ''}`}
+        >
+          <DayTotalsRow active={dayTotals.active} idle={dayTotals.idle} />
+          <div className="flex items-center gap-1.5">
+          <GripVertical className="h-3.5 w-3.5 text-sky-700/50 dark:text-sky-300/50" />
+          <UtensilsCrossed className="h-3.5 w-3.5 text-sky-700 dark:text-sky-300" />
+          <span className="font-mono text-sm tabular-nums font-bold text-sky-800 dark:text-sky-200">
+            {formatHMS(current.idleSeconds)}
+          </span>
+          <span className="text-xs font-medium text-sky-800 dark:text-sky-200 hidden sm:inline">
+            {current.activityTitle}
+          </span>
+          <button
+            type="button"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); endBreak(); }}
+            className="ml-1 flex items-center gap-1 rounded-full border border-sky-400/60 bg-white dark:bg-sky-900/60 px-2 py-0.5 text-[11px] font-semibold text-sky-700 dark:text-sky-200 hover:bg-sky-100 dark:hover:bg-sky-800/60"
+            title="Encerrar a pausa e voltar"
+          >
+            <Play className="h-3 w-3" />
+            {current.breakType === 'almoco' ? 'Retorno do almoço' : 'Retornar'}
+          </button>
+          <button
+            type="button"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); hideTimer(); }}
+            className="rounded-full p-1 hover:bg-sky-200/50 dark:hover:bg-sky-800/50 text-sky-700 dark:text-sky-300"
+            title="Ocultar cronômetro"
+          >
+            <EyeOff className="h-3.5 w-3.5" />
+          </button>
+          </div>
+        </div>
+      )}
 
       {/* Ociosidade */}
       <Dialog open={idlePrompt} onOpenChange={(o) => { if (!o) confirmStillWorking(); }}>

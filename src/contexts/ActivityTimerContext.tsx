@@ -36,8 +36,15 @@ export interface TimerActivityRef {
   estimated_minutes?: number | null;
 }
 
+export type BreakType = 'almoco' | 'intervalo' | 'compensacao';
+export const BREAK_LABELS: Record<BreakType, string> = {
+  almoco: 'Almoço',
+  intervalo: 'Intervalo',
+  compensacao: 'Compensação de horas',
+};
+
 interface TimerEntry {
-  kind: 'activity' | 'gap';
+  kind: 'activity' | 'gap' | 'break';
   entryId: string;
   activityId: string | null;
   activityType: string;
@@ -50,6 +57,9 @@ interface TimerEntry {
   status: 'running' | 'paused';
   /** Previsão de tempo (min). Gatilho de urgência; null = sem previsão. */
   estimateMinutes: number | null;
+  /** Pausa justificada em andamento (kind === 'break'). */
+  breakType?: BreakType | null;
+  breakNote?: string | null;
 }
 
 interface ActivityTimerCtx {
@@ -82,6 +92,10 @@ interface ActivityTimerCtx {
   /** Alerta recebido da gestão ("por que está ocioso?"). */
   managerAlert: { from: string | null; message: string | null } | null;
   dismissManagerAlert: () => void;
+  /** Pausa justificada: saída pro almoço, intervalo (justificado) ou compensação. */
+  startBreak: (type: BreakType, note?: string) => Promise<void>;
+  /** Retorno da pausa (ex.: retorno do almoço) → volta a contar ocioso. */
+  endBreak: () => Promise<void>;
   formatHMS: (totalSeconds: number) => string;
 }
 
@@ -225,15 +239,15 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
     startOfDay.setHours(0, 0, 0, 0);
     try {
       const { data } = await dbAny.from('activity_time_entries')
-        .select('id, active_seconds, idle_seconds')
+        .select('id, active_seconds, idle_seconds, break_type')
         .eq('user_id', u.userId)
         .gte('started_at', startOfDay.toISOString());
       const curId = entryRef.current?.entryId;
       let active = 0, idle = 0;
-      for (const r of ((data as { id: string; active_seconds: number; idle_seconds: number }[]) || [])) {
+      for (const r of ((data as { id: string; active_seconds: number; idle_seconds: number; break_type: string | null }[]) || [])) {
         if (r.id === curId) continue; // a atual entra ao vivo
         active += r.active_seconds || 0;
-        idle += r.idle_seconds || 0;
+        if (!r.break_type) idle += r.idle_seconds || 0; // pausa justificada não é ocioso
       }
       setDayBase({ active, idle });
     } catch { /* mantém o valor atual */ }
@@ -273,6 +287,15 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
 
       const idleFor = now - lastInteractionRef.current;
       const next: TimerEntry = { ...e };
+
+      if (e.kind === 'break') {
+        // Pausa justificada (almoço/intervalo/compensação): conta o tempo,
+        // mas SEM alarmes — a ausência é legítima.
+        next.idleSeconds += deltaSec;
+        sync(next);
+        if (now - lastFlushRef.current >= FLUSH_INTERVAL_MS) flush();
+        return;
+      }
 
       if (e.kind === 'gap') {
         // Tempo entre atividades: conta ocioso enquanto não pausado (independe de foco).
@@ -550,6 +573,41 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
 
   const dismissSwitch = useCallback(() => setSwitchPrompt(false), []);
 
+  // Pausa justificada: fecha o que está rodando e abre a sessão de pausa.
+  const startBreak = useCallback(async (type: BreakType, note?: string) => {
+    rememberLast();
+    if (entryRef.current) await flush('paused');
+    awaitingConfirmRef.current = false;
+    setIdlePrompt(false); setLeavePrompt(false); setSwitchPrompt(false);
+
+    await ensureExternalSession().catch(() => {});
+    const u = await getUser();
+    if (!u) { sync(null); return; }
+    const { data, error } = await dbAny.from('activity_time_entries').insert({
+      activity_id: null, activity_type: null,
+      activity_title: BREAK_LABELS[type], lead_name: null,
+      user_id: u.userId, user_name: u.userName,
+      started_at: new Date().toISOString(), active_seconds: 0, idle_seconds: 0,
+      status: 'running', break_type: type, break_note: note || null,
+    }).select('id').single();
+    if (error || !data) { console.warn('[activity-timer] pausa falhou:', error); sync(null); return; }
+    lastFlushRef.current = Date.now();
+    sync({
+      kind: 'break', entryId: (data as { id: string }).id, activityId: null,
+      activityType: '', activityTitle: BREAK_LABELS[type], leadName: null,
+      userId: u.userId, userName: u.userName,
+      activeSeconds: 0, idleSeconds: 0, status: 'running', estimateMinutes: null,
+      breakType: type, breakNote: note || null,
+    });
+  }, [rememberLast, flush, getUser, sync]);
+
+  // Retorno da pausa → salva e volta a contar ociosidade entre atividades.
+  const endBreak = useCallback(async () => {
+    if (entryRef.current?.kind !== 'break') return;
+    await flush('paused');
+    await startGap();
+  }, [flush, startGap]);
+
   const setEstimate = useCallback(async (minutes: number | null) => {
     const e = entryRef.current;
     if (!e || e.kind !== 'activity') return;
@@ -576,7 +634,8 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
     current, lastActivity, resumeLast, dayTotals, hidden, idlePrompt, leavePrompt, switchPrompt,
     startTimer, requestLeave, keepRunning, pauseAndClose, stopTimerFor,
     confirmStillWorking, rejectStillWorking, switchTo, dismissSwitch,
-    hideTimer, showTimer, setEstimate, managerAlert, dismissManagerAlert, formatHMS,
+    hideTimer, showTimer, setEstimate, managerAlert, dismissManagerAlert,
+    startBreak, endBreak, formatHMS,
   };
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

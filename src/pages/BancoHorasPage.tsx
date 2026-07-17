@@ -1,13 +1,17 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
-import { db } from '@/integrations/supabase';
+import { db, authClient } from '@/integrations/supabase';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { remapToExternal, ensureRemapCache } from '@/integrations/supabase/uuid-remap';
 import { useActivityTypes } from '@/hooks/useActivityTypes';
-import { formatHMS } from '@/contexts/ActivityTimerContext';
+import { formatHMS, BREAK_LABELS, type BreakType } from '@/contexts/ActivityTimerContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Clock, Coffee, Download, Loader2, RefreshCw, Users } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { cn } from '@/lib/utils';
+import { Check, ChevronDown, Clock, Coffee, Download, Loader2, RefreshCw, Users, X } from 'lucide-react';
 
 interface RawEntry {
   user_id: string;
@@ -16,6 +20,7 @@ interface RawEntry {
   activity_type: string | null;
   active_seconds: number;
   idle_seconds: number;
+  break_type: BreakType | null;
 }
 
 interface Agg {
@@ -46,7 +51,10 @@ export default function BancoHorasPage() {
   const typeLabel = useMemo(() => {
     const m = new Map<string, string>();
     types.forEach((t) => m.set(t.key, t.label));
-    return (k: string) => (k ? (m.get(k) || k) : 'Entre atividades (ocioso)');
+    return (k: string) => {
+      if (k.startsWith('pausa:')) return `Pausa · ${BREAK_LABELS[k.slice(6) as BreakType] || k.slice(6)}`;
+      return k ? (m.get(k) || k) : 'Entre atividades (ocioso)';
+    };
   }, [types]);
 
   const [from, setFrom] = useState<string>(firstDayOfMonthISO());
@@ -55,6 +63,41 @@ export default function BancoHorasPage() {
   const [loading, setLoading] = useState(false);
   const [memberFilter, setMemberFilter] = useState<Set<string>>(new Set());
   const [typeFilter, setTypeFilter] = useState<Set<string>>(new Set());
+  const [teamFilter, setTeamFilter] = useState<Set<string>>(new Set());
+  const [teamOptions, setTeamOptions] = useState<{ id: string; name: string; extIds: Set<string> }[]>([]);
+
+  // Times (Cloud) + membros mapeados pro Externo — habilita o filtro "por time"
+  useEffect(() => {
+    (async () => {
+      try {
+        const [{ data: teams }, { data: tms }] = await Promise.all([
+          authClient.from('teams').select('id, name').order('name'),
+          authClient.from('team_members').select('team_id, user_id'),
+        ]);
+        await ensureRemapCache().catch(() => {});
+        const byTeam = new Map<string, string[]>();
+        (tms || []).forEach((tm) => {
+          const a = byTeam.get(tm.team_id) || [];
+          a.push(tm.user_id);
+          byTeam.set(tm.team_id, a);
+        });
+        const result: { id: string; name: string; extIds: Set<string> }[] = [];
+        for (const t of (teams || [])) {
+          const exts = await Promise.all((byTeam.get(t.id) || []).map((id) => remapToExternal(id)));
+          result.push({ id: t.id, name: t.name, extIds: new Set(exts.filter(Boolean) as string[]) });
+        }
+        setTeamOptions(result);
+      } catch { /* sem times */ }
+    })();
+  }, []);
+
+  // União dos membros (ext) dos times selecionados
+  const teamAllowedExtIds = useMemo(() => {
+    if (!teamFilter.size) return null;
+    const s = new Set<string>();
+    teamOptions.filter((t) => teamFilter.has(t.id)).forEach((t) => t.extIds.forEach((id) => s.add(id)));
+    return s;
+  }, [teamFilter, teamOptions]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -65,7 +108,7 @@ export default function BancoHorasPage() {
       for (let offset = 0; ; offset += PAGE) {
         const { data, error } = await dbAny
           .from('activity_time_entries')
-          .select('user_id, user_name, activity_id, activity_type, active_seconds, idle_seconds')
+          .select('user_id, user_name, activity_id, activity_type, active_seconds, idle_seconds, break_type')
           .gte('started_at', fromTs)
           .lte('started_at', toTs)
           .order('started_at', { ascending: false })
@@ -95,7 +138,7 @@ export default function BancoHorasPage() {
 
   const typeOptions = useMemo(() => {
     const s = new Set<string>();
-    rows.forEach((r) => s.add(r.activity_type || ''));
+    rows.forEach((r) => s.add(r.break_type ? `pausa:${r.break_type}` : (r.activity_type || '')));
     return Array.from(s).sort();
   }, [rows]);
 
@@ -103,8 +146,10 @@ export default function BancoHorasPage() {
   const aggregated = useMemo(() => {
     const map = new Map<string, Agg>();
     for (const r of rows) {
+      if (teamAllowedExtIds && !teamAllowedExtIds.has(r.user_id)) continue;
       if (memberFilter.size && !memberFilter.has(r.user_id)) continue;
-      const t = r.activity_type || '';
+      // Pausas justificadas viram categoria própria (não misturam com ocioso)
+      const t = r.break_type ? `pausa:${r.break_type}` : (r.activity_type || '');
       if (typeFilter.size && !typeFilter.has(t)) continue;
       const key = `${r.user_id}|${t}`;
       let a = map.get(key);
@@ -119,7 +164,7 @@ export default function BancoHorasPage() {
     return Array.from(map.values()).sort(
       (x, y) => x.userName.localeCompare(y.userName) || y.active - x.active,
     );
-  }, [rows, memberFilter, typeFilter]);
+  }, [rows, memberFilter, typeFilter, teamAllowedExtIds]);
 
   // Subtotais por membro (para agrupar visualmente)
   const byMember = useMemo(() => {
@@ -137,7 +182,8 @@ export default function BancoHorasPage() {
 
   const totals = useMemo(() => {
     const active = aggregated.reduce((s, a) => s + a.active, 0);
-    const idle = aggregated.reduce((s, a) => s + a.idle, 0);
+    // Pausas justificadas (almoço/intervalo/compensação) não contam como ocioso
+    const idle = aggregated.reduce((s, a) => s + (a.activityType.startsWith('pausa:') ? 0 : a.idle), 0);
     const acts = new Set<string>();
     aggregated.forEach((a) => a.activities.forEach((id) => acts.add(id)));
     return { active, idle, acts: acts.size, members: byMember.length };
@@ -205,43 +251,40 @@ export default function BancoHorasPage() {
               <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-40" />
             </div>
             <Button variant="secondary" size="sm" onClick={load} disabled={loading}>Aplicar período</Button>
+
+            {/* Filtros compactos em menu suspenso */}
+            <MultiFilter
+              label="Time"
+              options={teamOptions.map((t) => ({ value: t.id, label: t.name }))}
+              selected={teamFilter}
+              onToggle={(v) => toggle(teamFilter, setTeamFilter, v)}
+              onClear={() => setTeamFilter(new Set())}
+            />
+            <MultiFilter
+              label="Assessor"
+              options={memberOptions.map((m) => ({ value: m.id, label: m.name }))}
+              selected={memberFilter}
+              onToggle={(v) => toggle(memberFilter, setMemberFilter, v)}
+              onClear={() => setMemberFilter(new Set())}
+            />
+            <MultiFilter
+              label="Tipo de atv"
+              options={typeOptions.map((t) => ({ value: t, label: typeLabel(t) }))}
+              selected={typeFilter}
+              onToggle={(v) => toggle(typeFilter, setTypeFilter, v)}
+              onClear={() => setTypeFilter(new Set())}
+            />
+
+            {(teamFilter.size > 0 || memberFilter.size > 0 || typeFilter.size > 0) && (
+              <Button
+                variant="ghost" size="sm"
+                className="h-9 text-xs text-destructive"
+                onClick={() => { setTeamFilter(new Set()); setMemberFilter(new Set()); setTypeFilter(new Set()); }}
+              >
+                <X className="h-3 w-3 mr-1" /> Limpar
+              </Button>
+            )}
           </div>
-
-          {memberOptions.length > 0 && (
-            <div>
-              <div className="text-xs text-muted-foreground mb-1">Membros</div>
-              <div className="flex flex-wrap gap-1.5">
-                {memberOptions.map((m) => (
-                  <Badge
-                    key={m.id}
-                    variant={memberFilter.has(m.id) ? 'default' : 'outline'}
-                    className="cursor-pointer"
-                    onClick={() => toggle(memberFilter, setMemberFilter, m.id)}
-                  >
-                    {m.name}
-                  </Badge>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {typeOptions.length > 0 && (
-            <div>
-              <div className="text-xs text-muted-foreground mb-1">Tipos de atividade</div>
-              <div className="flex flex-wrap gap-1.5">
-                {typeOptions.map((t) => (
-                  <Badge
-                    key={t}
-                    variant={typeFilter.has(t) ? 'default' : 'outline'}
-                    className="cursor-pointer"
-                    onClick={() => toggle(typeFilter, setTypeFilter, t)}
-                  >
-                    {typeLabel(t)}
-                  </Badge>
-                ))}
-              </div>
-            </div>
-          )}
         </CardContent>
       </Card>
 
@@ -312,6 +355,57 @@ export default function BancoHorasPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+/** Multi-seleção compacta em menu suspenso (com busca). */
+function MultiFilter({
+  label, options, selected, onToggle, onClear,
+}: {
+  label: string;
+  options: { value: string; label: string }[];
+  selected: Set<string>;
+  onToggle: (v: string) => void;
+  onClear: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button variant={selected.size ? 'default' : 'outline'} size="sm" className="h-9 gap-1">
+          {label}
+          {selected.size > 0 && (
+            <Badge variant="secondary" className="h-4 px-1 text-[10px] tabular-nums">{selected.size}</Badge>
+          )}
+          <ChevronDown className="h-3 w-3" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-72 p-0">
+        <Command>
+          <CommandInput placeholder={`Buscar ${label.toLowerCase()}...`} />
+          <CommandList>
+            <CommandEmpty>Nada encontrado.</CommandEmpty>
+            <CommandGroup>
+              {options.map((o) => (
+                <CommandItem key={o.value} value={o.label} onSelect={() => onToggle(o.value)}>
+                  <Check className={cn('mr-2 h-4 w-4', selected.has(o.value) ? 'opacity-100' : 'opacity-0')} />
+                  <span className="truncate">{o.label}</span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+        {selected.size > 0 && (
+          <button
+            type="button"
+            onClick={onClear}
+            className="w-full border-t py-1.5 text-xs text-muted-foreground hover:text-destructive"
+          >
+            Limpar seleção
+          </button>
+        )}
+      </PopoverContent>
+    </Popover>
   );
 }
 
