@@ -104,25 +104,31 @@ Deno.serve(async (req) => {
         contents: [{ role: 'user', parts: [{ text: `Manchetes:\n${list}` }] }],
         tools: [{ functionDeclarations: [{ name: 'record_enrichment', description: 'Registra o enriquecimento de cada manchete.', parameters: ENRICH_SCHEMA }] }],
         toolConfig: { functionCallingConfig: { mode: 'ANY', allowedFunctionNames: ['record_enrichment'] } },
-        generationConfig: { temperature: 0.1, maxOutputTokens: 8192 },
+        // thinkingBudget 0: tokens de raciocínio contam no maxOutputTokens e estouram o lote de 40 itens
+        generationConfig: { temperature: 0.1, maxOutputTokens: 16384, thinkingConfig: { thinkingBudget: 0 } },
       }
 
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(apiKey)}`,
-        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(geminiBody) },
-      )
-      if (!res.ok) {
-        const errText = await res.text()
-        console.error('[enrich-news-leads] Gemini error:', res.status, errText.slice(0, 300))
-        return jsonResponse({ success: false, error: `Erro na API de IA: ${res.status}`, processed, foreign_archived: foreignArchived }, 502)
+      let items: Array<{ i: number; victim_name?: string; city?: string; state?: string; is_foreign?: boolean }> = []
+      for (let attempt = 0; attempt < 2 && items.length === 0; attempt++) {
+        const res = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(apiKey)}`,
+          { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(geminiBody) },
+        )
+        if (!res.ok) {
+          const errText = await res.text()
+          console.error('[enrich-news-leads] Gemini error:', res.status, errText.slice(0, 300))
+          if (attempt === 1) return jsonResponse({ success: false, error: `Erro na API de IA: ${res.status}`, processed, foreign_archived: foreignArchived }, 502)
+          continue
+        }
+        const data = await res.json()
+        const parts = data?.candidates?.[0]?.content?.parts || []
+        const fnCall = parts.find((p: { functionCall?: { args?: unknown } }) => p.functionCall)
+        items = (fnCall?.functionCall?.args as { items?: [] })?.items || []
+        if (items.length === 0) {
+          console.error('[enrich-news-leads] resposta sem items (tentativa', attempt + 1, '). finishReason:', data?.candidates?.[0]?.finishReason)
+        }
       }
-      const data = await res.json()
-      const parts = data?.candidates?.[0]?.content?.parts || []
-      const fnCall = parts.find((p: { functionCall?: { args?: unknown } }) => p.functionCall)
-      const items: Array<{ i: number; victim_name?: string; city?: string; state?: string; is_foreign?: boolean }> =
-        (fnCall?.functionCall?.args as { items?: [] })?.items || []
       if (items.length === 0) {
-        console.error('[enrich-news-leads] resposta sem items. finishReason:', data?.candidates?.[0]?.finishReason)
         return jsonResponse({ success: false, error: 'IA não retornou dados estruturados.', processed, foreign_archived: foreignArchived }, 502)
       }
 
