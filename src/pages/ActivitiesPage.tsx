@@ -1079,6 +1079,7 @@ const ActivitiesPage = () => {
     setFormProcessId((activity as any).process_id || '');
     setFormProcessTitle((activity as any).process_title || '');
     setFormMatrixQuadrant((activity as any).matrix_quadrant || '');
+    setFormWorkflowId((activity as any).workflow_id || '');
     setFormClientNameOverride((activity as any).client_name_override || '');
     setSheetMode('edit');
 
