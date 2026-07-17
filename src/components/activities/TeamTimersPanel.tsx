@@ -3,7 +3,6 @@ import { db, authClient } from '@/integrations/supabase';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { remapToExternal, ensureRemapCache } from '@/integrations/supabase/uuid-remap';
 import { formatHMS } from '@/contexts/ActivityTimerContext';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Loader2 } from 'lucide-react';
 
 const dbAny = db as unknown as SupabaseClient;
@@ -151,7 +150,7 @@ export function TeamTimersPanel() {
         <span className="text-sm font-semibold">Time agora</span>
         <span className="text-[11px] text-muted-foreground">{workingCount} em atividade</span>
       </div>
-      <ScrollArea className="max-h-96">
+      <div className="max-h-96 overflow-y-auto overscroll-contain">
         <div className="px-3 py-2 space-y-3">
           {loading && groups.length === 0 && (
             <div className="py-6 text-center text-muted-foreground text-sm">
@@ -197,7 +196,7 @@ export function TeamTimersPanel() {
             </div>
           ))}
         </div>
-      </ScrollArea>
+      </div>
     </div>
   );
 }
