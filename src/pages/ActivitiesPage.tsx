@@ -1638,6 +1638,10 @@ const ActivitiesPage = () => {
       assigned_to_name: formAssignedToName || null, deadline: formDeadline || null,
       notification_date: formNotificationDate || null, notes: formNotes || null,
       status: formStatus, contact_id: formContactId || null, contact_name: formContactName || null,
+      case_id: formCaseId || null, case_title: formCaseTitle || null,
+      process_id: formProcessId || null, process_title: formProcessTitle || null,
+      workflow_id: formWorkflowId || null,
+      is_system: formIsSystem, is_management: formIsManagement,
       client_name_override: formClientNameOverride || null,
       ...buildAssigneesPayload(),
     } as any);
