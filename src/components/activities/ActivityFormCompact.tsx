@@ -52,6 +52,19 @@ function copyField(text: string | null | undefined) {
   });
 }
 
+function CampaignSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const { data: campaigns = [] } = useCampaigns();
+  const active = campaigns.filter(c => c.status !== 'closed');
+  return (
+    <Select value={value || 'none'} onValueChange={(v) => onChange(v === 'none' ? '' : v)}>
+      <SelectTrigger className="h-8 text-xs mt-0.5"><SelectValue placeholder="Sem campanha" /></SelectTrigger>
+      <SelectContent>
+        <SelectItem value="none" className="text-xs">Sem campanha</SelectItem>
+        {active.map(c => <SelectItem key={c.id} value={c.id} className="text-xs">{c.name}</SelectItem>)}
+      </SelectContent>
+    </Select>
+  );
+
 interface TeamMember { user_id: string; full_name: string | null; }
 interface LeadOption { id: string; lead_name: string | null; }
 
