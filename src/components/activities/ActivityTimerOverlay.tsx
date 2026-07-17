@@ -14,7 +14,7 @@ import { Input } from '@/components/ui/input';
 import { useActivityTimer, formatHMS, BREAK_LABELS, type BreakType } from '@/contexts/ActivityTimerContext';
 
 /** Menu de pausa justificada: almoço, intervalo (com justificativa) e compensação. */
-function BreakMenu({ className, onStart }: { className?: string; onStart: (t: BreakType, note?: string) => void }) {
+function BreakMenu({ className, onStart, onEndShift }: { className?: string; onStart: (t: BreakType, note?: string) => void; onEndShift?: () => void }) {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<'menu' | 'intervalo' | 'compensacao'>('menu');
   const [note, setNote] = useState('');
@@ -52,6 +52,12 @@ function BreakMenu({ className, onStart }: { className?: string; onStart: (t: Br
               className="w-full text-left text-sm px-2 py-1.5 rounded hover:bg-accent">
               🔁 Compensação de banco de horas
             </button>
+            {onEndShift && (
+              <button type="button" onClick={() => { onEndShift(); close(); }}
+                className="w-full text-left text-sm px-2 py-1.5 rounded border-t mt-1 pt-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40">
+                🏁 Encerrar expediente (saída)
+              </button>
+            )}
           </div>
         )}
         {mode !== 'menu' && (
@@ -284,6 +290,7 @@ export function ActivityTimerOverlay() {
     current, lastActivity, resumeLast, dayTotals, hidden, idlePrompt, leavePrompt, switchPrompt,
     keepRunning, pauseAndClose, hideTimer, setEstimate, managerAlert, dismissManagerAlert,
     confirmStillWorking, rejectStillWorking, switchTo, dismissSwitch, startBreak, endBreak,
+    onShift, startShift, endShift,
   } = useActivityTimer();
 
   const over = current?.kind === 'activity' && current.estimateMinutes
@@ -307,6 +314,19 @@ export function ActivityTimerOverlay() {
 
   return (
     <>
+      {/* Fora do expediente: só o botão de bater o ponto (nada conta, nada bipa) */}
+      {onShift === false && !current && (
+        <button
+          type="button"
+          onClick={startShift}
+          className="fixed bottom-4 left-4 z-[60] flex items-center gap-1.5 rounded-full border border-emerald-300/60 bg-emerald-50/95 dark:bg-emerald-950/60 px-3 py-2 shadow-lg backdrop-blur text-sm font-semibold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/60"
+          title="Registrar entrada — o cronômetro e o ocioso só contam com o expediente aberto"
+        >
+          <Play className="h-4 w-4" />
+          Iniciar expediente
+        </button>
+      )}
+
       {current && current.kind === 'activity' && !hidden && (
         <div
           ref={drag.setElRef}
@@ -352,7 +372,7 @@ export function ActivityTimerOverlay() {
           >
             <Pause className="h-3.5 w-3.5" />
           </button>
-          <BreakMenu className="rounded-full p-1 hover:bg-accent hover:text-foreground text-muted-foreground" onStart={startBreak} />
+          <BreakMenu className="rounded-full p-1 hover:bg-accent hover:text-foreground text-muted-foreground" onStart={startBreak} onEndShift={endShift} />
           <TeamPanelButton className="rounded-full p-1 hover:bg-accent hover:text-foreground text-muted-foreground" onOpenActivity={setTeamViewActivityId} />
           <button
             type="button"
@@ -420,7 +440,7 @@ export function ActivityTimerOverlay() {
               <span className="sm:hidden">Retomar</span>
             </button>
           )}
-          <BreakMenu className="ml-1 rounded-full p-1 hover:bg-amber-200/50 dark:hover:bg-amber-800/50 text-amber-700 dark:text-amber-300" onStart={startBreak} />
+          <BreakMenu className="ml-1 rounded-full p-1 hover:bg-amber-200/50 dark:hover:bg-amber-800/50 text-amber-700 dark:text-amber-300" onStart={startBreak} onEndShift={endShift} />
           <TeamPanelButton className="rounded-full p-1 hover:bg-amber-200/50 dark:hover:bg-amber-800/50 text-amber-700 dark:text-amber-300" onOpenActivity={setTeamViewActivityId} />
           <button
             type="button"

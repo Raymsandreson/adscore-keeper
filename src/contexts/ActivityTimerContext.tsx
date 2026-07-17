@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useCallback, useEffect, useRef, useState } from 'react';
+import { toast } from 'sonner';
 import { db, authClient, ensureExternalSession } from '@/integrations/supabase';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { remapToExternal, ensureRemapCache } from '@/integrations/supabase/uuid-remap';
@@ -27,6 +28,9 @@ const dbAny = db as unknown as SupabaseClient;
 const IDLE_THRESHOLD_MS = 5 * 60 * 1000; // 5 min sem interação
 const FLUSH_INTERVAL_MS = 30 * 1000;
 const GAP_TITLE = 'Ocioso (entre atividades)';
+// Coordenação entre abas: só UMA aba comanda o cronômetro por vez.
+const TAB_ID = Math.random().toString(36).slice(2);
+const OWNER_CHANNEL = 'activity-timer-owner';
 
 export interface TimerActivityRef {
   id: string;
@@ -96,6 +100,10 @@ interface ActivityTimerCtx {
   startBreak: (type: BreakType, note?: string) => Promise<void>;
   /** Retorno da pausa (ex.: retorno do almoço) → volta a contar ocioso. */
   endBreak: () => Promise<void>;
+  /** Expediente (ponto): null = carregando; false = fora do expediente (nada conta). */
+  onShift: boolean | null;
+  startShift: () => Promise<void>;
+  endShift: () => Promise<void>;
   formatHMS: (totalSeconds: number) => string;
 }
 
@@ -155,6 +163,9 @@ export function playAlarmSound() {
 }
 
 function notifyDesktop(title: string, body: string) {
+  // Sempre visível DENTRO do app (a notificação do sistema depende de permissão
+  // — sem ela o usuário ouvia o bip e não via mensagem nenhuma).
+  try { toast.warning(title, { description: body, duration: 8000 }); } catch { /* fora do Toaster */ }
   try {
     if (typeof Notification === 'undefined') return;
     if (Notification.permission === 'granted') {
@@ -183,6 +194,10 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
   const userRef = useRef<{ userId: string; userName: string } | null>(null);
   const lockedRef = useRef<boolean>(false); // tela bloqueada (IdleDetector)
   const lockDetectorRef = useRef<boolean>(false);
+  const [onShift, setOnShift] = useState<boolean | null>(null);
+  const shiftIdRef = useRef<string | null>(null);
+  const ownerChRef = useRef<BroadcastChannel | null>(null);
+  const otherOwnerRef = useRef<boolean>(false); // outra aba comanda o cronômetro
 
   // Detector de tela bloqueada (Chrome, requer permissão) — enquanto bloqueado,
   // o tempo conta como OCIOSO. Precisa ser chamado a partir de um gesto do usuário.
@@ -288,6 +303,37 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
     const id = setInterval(refreshDayBase, 60000);
     return () => clearInterval(id);
   }, [current?.entryId, refreshDayBase]);
+
+  // ---- Coordenação entre abas: só uma aba conta por vez ----
+  useEffect(() => {
+    if (typeof BroadcastChannel === 'undefined') return;
+    const ch = new BroadcastChannel(OWNER_CHANNEL);
+    ownerChRef.current = ch;
+    const onMsg = (ev: MessageEvent) => {
+      const msg = ev.data as { type?: string; tabId?: string } | null;
+      if (!msg || msg.tabId === TAB_ID) return;
+      if (msg.type === 'takeover') {
+        // Outra aba assumiu: esta solta o cronômetro em silêncio (sem prompts/bips).
+        otherOwnerRef.current = true;
+        if (entryRef.current) { flush('paused'); }
+        awaitingConfirmRef.current = false;
+        setIdlePrompt(false); setLeavePrompt(false); setSwitchPrompt(false);
+        sync(null);
+      } else if (msg.type === 'ping') {
+        if (entryRef.current) ch.postMessage({ type: 'owner-alive', tabId: TAB_ID });
+      } else if (msg.type === 'owner-alive') {
+        otherOwnerRef.current = true;
+      }
+    };
+    ch.addEventListener('message', onMsg);
+    ch.postMessage({ type: 'ping', tabId: TAB_ID });
+    return () => { ch.removeEventListener('message', onMsg); ch.close(); ownerChRef.current = null; };
+  }, [flush, sync]);
+
+  const announceTakeover = useCallback(() => {
+    otherOwnerRef.current = false;
+    try { ownerChRef.current?.postMessage({ type: 'takeover', tabId: TAB_ID }); } catch { /* sem canal */ }
+  }, []);
 
   // ---- Registro de interação (global) ----
   useEffect(() => {
@@ -432,7 +478,9 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
   }, [flush]);
 
   // Inicia (ou retoma) o rastreador de ociosidade entre atividades.
+  // Só conta ocioso DENTRO do expediente (ponto aberto).
   const startGap = useCallback(async () => {
+    if (!shiftIdRef.current) { sync(null); return; }
     const u = await getUser();
     if (!u) { sync(null); return; }
     await ensureExternalSession().catch(() => {});
@@ -468,7 +516,8 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
       leadName: null, userId: u.userId, userName: u.userName,
       activeSeconds: 0, idleSeconds, status: 'running', estimateMinutes: null,
     });
-  }, [getUser, sync]);
+    announceTakeover();
+  }, [getUser, sync, announceTakeover]);
 
   // Finaliza a atv atual (salva) e passa a contar ociosidade entre atividades.
   const finalizeToGap = useCallback(async () => {
@@ -514,6 +563,14 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
       await ensureExternalSession().catch(() => {});
       const u = await getUser();
       if (!u) { console.warn('[activity-timer] sem usuário — timer não iniciado'); sync(null); return; }
+
+      // Bater ponto automático: abrir atividade sem expediente aberto registra a entrada.
+      if (!shiftIdRef.current) {
+        const { data: ws } = await dbAny.from('work_shifts').insert({
+          user_id: u.userId, user_name: u.userName, started_at: new Date().toISOString(),
+        }).select('id').single();
+        if (ws) { shiftIdRef.current = (ws as { id: string }).id; setOnShift(true); }
+      }
 
       // Retoma a linha existente desta atv (acumula de onde parou) ou cria nova.
       // Busca TODAS as linhas dessa atv e usa a com maior active_seconds
@@ -563,6 +620,7 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
         leadName: activity.lead_name || null, userId: u.userId, userName: u.userName,
         activeSeconds, idleSeconds, status: 'running', estimateMinutes,
       });
+      announceTakeover();
 
       if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
         Notification.requestPermission().catch(() => {});
@@ -570,7 +628,7 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
     } finally {
       busyRef.current = false;
     }
-  }, [getUser, sync, flush, showTimer, rememberLast, startLockDetector]);
+  }, [getUser, sync, flush, showTimer, rememberLast, startLockDetector, announceTakeover]);
 
   const resumeLast = useCallback(async () => {
     if (lastActivityRef.current) await startTimer(lastActivityRef.current);
@@ -623,6 +681,15 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
     await ensureExternalSession().catch(() => {});
     const u = await getUser();
     if (!u) { sync(null); return; }
+
+    // Pausa também abre o expediente se ainda não bateu o ponto.
+    if (!shiftIdRef.current) {
+      const { data: ws } = await dbAny.from('work_shifts').insert({
+        user_id: u.userId, user_name: u.userName, started_at: new Date().toISOString(),
+      }).select('id').single();
+      if (ws) { shiftIdRef.current = (ws as { id: string }).id; setOnShift(true); }
+    }
+
     const { data, error } = await dbAny.from('activity_time_entries').insert({
       activity_id: null, activity_type: null,
       activity_title: BREAK_LABELS[type], lead_name: null,
@@ -639,7 +706,8 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
       activeSeconds: 0, idleSeconds: 0, status: 'running', estimateMinutes: null,
       breakType: type, breakNote: note || null,
     });
-  }, [rememberLast, flush, getUser, sync]);
+    announceTakeover();
+  }, [rememberLast, flush, getUser, sync, announceTakeover]);
 
   // Retorno da pausa → salva e volta a contar ociosidade entre atividades.
   const endBreak = useCallback(async () => {
@@ -647,6 +715,65 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
     await flush('paused');
     await startGap();
   }, [flush, startGap]);
+
+  // ---- Expediente (ponto): entrada/saída ----
+  const startShift = useCallback(async () => {
+    if (shiftIdRef.current) return;
+    await ensureExternalSession().catch(() => {});
+    const u = await getUser();
+    if (!u) { toast.error('Não foi possível registrar o ponto (sem usuário).'); return; }
+    const { data, error } = await dbAny.from('work_shifts').insert({
+      user_id: u.userId, user_name: u.userName, started_at: new Date().toISOString(),
+    }).select('id').single();
+    if (error || !data) { console.warn('[activity-timer] ponto falhou:', error); return; }
+    shiftIdRef.current = (data as { id: string }).id;
+    setOnShift(true);
+    toast.success('Expediente iniciado. Bom trabalho!');
+    await startGap();
+  }, [getUser, startGap]);
+
+  const endShift = useCallback(async () => {
+    rememberLast();
+    if (entryRef.current) await flush('paused');
+    awaitingConfirmRef.current = false;
+    setIdlePrompt(false); setLeavePrompt(false); setSwitchPrompt(false);
+    sync(null);
+    if (shiftIdRef.current) {
+      try {
+        await dbAny.from('work_shifts').update({ ended_at: new Date().toISOString() }).eq('id', shiftIdRef.current);
+      } catch { /* melhor esforço */ }
+    }
+    shiftIdRef.current = null;
+    setOnShift(false);
+    toast.success('Expediente encerrado. Até logo!');
+  }, [rememberLast, flush, sync]);
+
+  // Ao abrir o app: recupera o ponto aberto de hoje; retoma o ocioso só se
+  // nenhuma OUTRA aba estiver comandando o cronômetro (evita contagem dupla).
+  useEffect(() => {
+    (async () => {
+      const u = await getUser();
+      if (!u) { setOnShift(false); return; }
+      const startOfDay = new Date();
+      startOfDay.setHours(0, 0, 0, 0);
+      try {
+        const { data } = await dbAny.from('work_shifts').select('id')
+          .eq('user_id', u.userId).is('ended_at', null)
+          .gte('started_at', startOfDay.toISOString())
+          .order('started_at', { ascending: false }).limit(1).maybeSingle();
+        if (data) {
+          shiftIdRef.current = (data as { id: string }).id;
+          setOnShift(true);
+          setTimeout(() => {
+            if (!entryRef.current && !otherOwnerRef.current) startGap();
+          }, 1500);
+        } else {
+          setOnShift(false);
+        }
+      } catch { setOnShift(false); }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const setEstimate = useCallback(async (minutes: number | null) => {
     const e = entryRef.current;
@@ -675,7 +802,7 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
     startTimer, requestLeave, keepRunning, pauseAndClose, stopTimerFor,
     confirmStillWorking, rejectStillWorking, switchTo, dismissSwitch,
     hideTimer, showTimer, setEstimate, managerAlert, dismissManagerAlert,
-    startBreak, endBreak, formatHMS,
+    startBreak, endBreak, onShift, startShift, endShift, formatHMS,
   };
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
