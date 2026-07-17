@@ -1327,6 +1327,7 @@ ${scrapeData.content || ''}
         news_links: newsLinks.length > 0 ? newsLinks : (newsLink ? [newsLink] : []),
         legal_viability: legalViability || null,
         board_id: selectedBoardId || null,
+        crm_campaign_id: selectedCampaignId || null,
         ...(selectedBoardId && selectedBoardId !== (currentLead as any).board_id ? (() => {
           const newBoard = boards.find(b => b.id === selectedBoardId);
           const firstStage = newBoard?.stages?.[0] as any;
