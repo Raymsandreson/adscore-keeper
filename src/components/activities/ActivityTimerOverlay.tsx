@@ -156,9 +156,7 @@ function useDraggablePosition() {
 function TeamPanelButton({ className }: { className?: string }) {
   const [open, setOpen] = useState(false);
   return (
-    // modal: garante que os cliques dentro do painel funcionem mesmo com
-    // overlays invisíveis por cima (badge é z-60; conteúdo sobe pra z-70).
-    <Popover open={open} onOpenChange={setOpen} modal>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button
           type="button"
@@ -170,7 +168,19 @@ function TeamPanelButton({ className }: { className?: string }) {
           <Users className="h-3.5 w-3.5" />
         </button>
       </PopoverTrigger>
-      <PopoverContent align="end" side="top" collisionPadding={8} className="p-0 w-auto overflow-hidden z-[70]">
+      {/* stopPropagation nos pointer events: o conteúdo é um portal React DENTRO
+          do badge arrastável — sem isso, o pointerdown "sobe" até o badge, que faz
+          setPointerCapture (drag) e sequestra o clique (botões ficam mortos).
+          Mesmo padrão do popover da previsão (EstimateControl), que funciona. */}
+      <PopoverContent
+        align="end"
+        side="top"
+        collisionPadding={8}
+        className="p-0 w-auto overflow-hidden"
+        onPointerDown={(e) => e.stopPropagation()}
+        onPointerMove={(e) => e.stopPropagation()}
+        onPointerUp={(e) => e.stopPropagation()}
+      >
         {open && <TeamTimersPanel />}
       </PopoverContent>
     </Popover>
