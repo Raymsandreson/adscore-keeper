@@ -24,7 +24,7 @@ const STATUS_OPTIONS: { value: CampaignStatus; label: string }[] = [
 ];
 
 export default function CampaignForm({ open, onOpenChange, campaign, onSaved }: Props) {
-  const { user } = useAuth();
+  const { user } = useAuthContext();
   const create = useCreateCampaign();
   const update = useUpdateCampaign();
   const { boards } = useKanbanBoards();
