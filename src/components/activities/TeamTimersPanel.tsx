@@ -3,7 +3,7 @@ import { db, authClient } from '@/integrations/supabase';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { remapToExternal, ensureRemapCache } from '@/integrations/supabase/uuid-remap';
 import { formatHMS } from '@/contexts/ActivityTimerContext';
-import { ChevronDown, ChevronRight, Loader2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, ExternalLink, Loader2 } from 'lucide-react';
 
 const COLLAPSED_KEY = 'team-timers-collapsed';
 type StatusFilter = 'all' | 'working' | 'idle';
@@ -18,6 +18,7 @@ interface MemberStatus {
   name: string;
   state: 'working' | 'idle' | 'off';
   activityTitle: string | null;
+  activityId: string | null;   // permite o atalho "abrir a atividade"
   currentSecs: number;   // segundos da sessão atual (ativo se working, ocioso se idle)
   dayActive: number;     // total produtivo hoje
   dayIdle: number;       // total ocioso hoje
@@ -101,7 +102,7 @@ export function TeamTimersPanel() {
       const statusOf = (extId: string, name: string): MemberStatus => {
         const u = byUser.get(extId);
         const base: MemberStatus = {
-          extUserId: extId, name, state: 'off', activityTitle: null,
+          extUserId: extId, name, state: 'off', activityTitle: null, activityId: null,
           currentSecs: 0, dayActive: u?.dayActive || 0, dayIdle: u?.dayIdle || 0,
         };
         const latest = u?.latest;
@@ -109,7 +110,12 @@ export function TeamTimersPanel() {
         const beat = latest.ended_at ? new Date(latest.ended_at).getTime() : 0;
         if (now - beat > HEARTBEAT_MS) return base;
         if (latest.activity_id) {
-          return { ...base, state: 'working', activityTitle: latest.activity_title || 'Atividade', currentSecs: latest.active_seconds || 0 };
+          return {
+            ...base, state: 'working',
+            activityTitle: latest.activity_title || 'Atividade',
+            activityId: latest.activity_id,
+            currentSecs: latest.active_seconds || 0,
+          };
         }
         return { ...base, state: 'idle', currentSecs: latest.idle_seconds || 0 };
       };
@@ -249,7 +255,13 @@ export function TeamTimersPanel() {
               {!isCollapsed && (
               <div className="space-y-0.5">
                 {g.members.map(m => (
-                  <div key={m.extUserId} className="flex items-center gap-2 rounded px-1.5 py-1 hover:bg-accent/50">
+                  <div
+                    key={m.extUserId}
+                    className="group flex items-center gap-2 rounded px-1.5 py-1 hover:bg-accent/50"
+                    title={m.state === 'working' && m.activityTitle
+                      ? `${m.name}\n${m.activityTitle}`
+                      : undefined}
+                  >
                     {m.state === 'working' ? (
                       <span className="relative flex h-2 w-2 shrink-0">
                         <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
@@ -266,6 +278,16 @@ export function TeamTimersPanel() {
                         {m.state === 'off' && (m.dayActive > 0 ? `Hoje: ${formatHMS(m.dayActive)} produtivo` : 'Sem cronômetro hoje')}
                       </div>
                     </div>
+                    {m.activityId && (
+                      <button
+                        type="button"
+                        onClick={() => window.open(`${window.location.origin}/?openActivity=${m.activityId}`, '_blank')}
+                        className="opacity-0 group-hover:opacity-100 transition-opacity rounded p-1 hover:bg-accent text-muted-foreground hover:text-foreground shrink-0"
+                        title="Abrir esta atividade"
+                      >
+                        <ExternalLink className="h-3 w-3" />
+                      </button>
+                    )}
                     {m.state !== 'off' && (
                       <span className={`text-[11px] font-mono tabular-nums shrink-0 ${m.state === 'working' ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
                         {formatHMS(m.currentSecs)}
