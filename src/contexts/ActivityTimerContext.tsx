@@ -79,6 +79,9 @@ interface ActivityTimerCtx {
   showTimer: () => void;
   /** Define/edita a previsão de tempo (min) da atividade atual. */
   setEstimate: (minutes: number | null) => Promise<void>;
+  /** Alerta recebido da gestão ("por que está ocioso?"). */
+  managerAlert: { from: string | null; message: string | null } | null;
+  dismissManagerAlert: () => void;
   formatHMS: (totalSeconds: number) => string;
 }
 
@@ -115,6 +118,28 @@ async function resolveUser(): Promise<{ userId: string; userName: string } | nul
   return { userId: extUserId, userName: name || user.email || 'Membro' };
 }
 
+/** Alarme sonoro alto e incômodo (bipes alternados) — usado nos alertas de ociosidade. */
+export function playAlarmSound() {
+  try {
+    const Ctor = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Ctor) return;
+    const ctx = new Ctor();
+    ctx.resume().catch(() => {});
+    const beep = (t: number, freq: number) => {
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = 'square';
+      o.frequency.value = freq;
+      g.gain.setValueAtTime(0.5, ctx.currentTime + t);
+      g.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + t + 0.28);
+      o.connect(g); g.connect(ctx.destination);
+      o.start(ctx.currentTime + t); o.stop(ctx.currentTime + t + 0.3);
+    };
+    [0, 0.35, 0.7, 1.05, 1.4, 1.75].forEach((t, i) => beep(t, i % 2 ? 660 : 990));
+    setTimeout(() => { ctx.close().catch(() => {}); }, 2600);
+  } catch { /* sem suporte de áudio */ }
+}
+
 function notifyDesktop(title: string, body: string) {
   try {
     if (typeof Notification === 'undefined') return;
@@ -144,6 +169,8 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
   const userRef = useRef<{ userId: string; userName: string } | null>(null);
   const lastActivityRef = useRef<TimerActivityRef | null>(null);
   const [lastActivity, setLastActivity] = useState<TimerActivityRef | null>(null);
+  const [managerAlert, setManagerAlert] = useState<{ from: string | null; message: string | null } | null>(null);
+  const dismissManagerAlert = useCallback(() => setManagerAlert(null), []);
 
   // Guarda a atv que estava rodando como "última" (para o botão Retomar).
   const rememberLast = useCallback(() => {
@@ -250,6 +277,11 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
       if (e.kind === 'gap') {
         // Tempo entre atividades: conta ocioso enquanto não pausado (independe de foco).
         next.idleSeconds += deltaSec;
+        // Alerta automático a cada 5 min de ociosidade (som alto + notificação).
+        if (Math.floor(next.idleSeconds / 300) > Math.floor(e.idleSeconds / 300)) {
+          playAlarmSound();
+          notifyDesktop('⏰ Você está ocioso', `Ocioso há ${Math.round(next.idleSeconds / 60)} min — abra ou retome uma atividade.`);
+        }
         sync(next);
         if (now - lastFlushRef.current >= FLUSH_INTERVAL_MS) flush();
         return;
@@ -269,6 +301,7 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
       if (!awaitingConfirmRef.current && idleFor >= IDLE_THRESHOLD_MS && !withinEstimate) {
         awaitingConfirmRef.current = true;
         setIdlePrompt(true);
+        playAlarmSound();
         notifyDesktop('Cronômetro de atividade', `Ainda está fazendo "${e.activityTitle}"? Confirme para continuar contando.`);
       }
 
@@ -295,6 +328,36 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
     }, 1000);
     return () => clearInterval(id);
   }, [sync, flush]);
+
+  // ---- Alertas da gestão ("por que está ocioso?") via realtime ----
+  useEffect(() => {
+    let channel: ReturnType<typeof dbAny.channel> | null = null;
+    let cancelled = false;
+    (async () => {
+      await ensureExternalSession().catch(() => {});
+      const u = await getUser();
+      if (!u || cancelled) return;
+      channel = dbAny
+        .channel('activity-timer-alerts')
+        .on('postgres_changes', {
+          event: 'INSERT', schema: 'public', table: 'activity_timer_alerts',
+          filter: `to_user_id=eq.${u.userId}`,
+        }, (payload: { new: { id: string; from_name: string | null; message: string | null } }) => {
+          setManagerAlert({ from: payload.new.from_name, message: payload.new.message });
+          playAlarmSound();
+          notifyDesktop('🚨 Chamado da gestão', `${payload.new.from_name || 'Gestão'}: ${payload.new.message || 'Por que você está ocioso?'}`);
+          dbAny.from('activity_timer_alerts')
+            .update({ seen_at: new Date().toISOString() })
+            .eq('id', payload.new.id)
+            .then(() => {}, () => {});
+        })
+        .subscribe();
+    })();
+    return () => {
+      cancelled = true;
+      if (channel) dbAny.removeChannel(channel);
+    };
+  }, [getUser]);
 
   // ---- Flush ao esconder a aba ----
   useEffect(() => {
@@ -513,7 +576,7 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
     current, lastActivity, resumeLast, dayTotals, hidden, idlePrompt, leavePrompt, switchPrompt,
     startTimer, requestLeave, keepRunning, pauseAndClose, stopTimerFor,
     confirmStillWorking, rejectStillWorking, switchTo, dismissSwitch,
-    hideTimer, showTimer, setEstimate, formatHMS,
+    hideTimer, showTimer, setEstimate, managerAlert, dismissManagerAlert, formatHMS,
   };
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

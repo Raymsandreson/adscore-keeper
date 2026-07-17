@@ -210,7 +210,7 @@ function DayTotalsRow({ active, idle }: { active: number; idle: number }) {
 export function ActivityTimerOverlay() {
   const {
     current, lastActivity, resumeLast, dayTotals, hidden, idlePrompt, leavePrompt, switchPrompt,
-    keepRunning, pauseAndClose, hideTimer, setEstimate,
+    keepRunning, pauseAndClose, hideTimer, setEstimate, managerAlert, dismissManagerAlert,
     confirmStillWorking, rejectStillWorking, switchTo, dismissSwitch,
   } = useActivityTimer();
 
@@ -386,6 +386,23 @@ export function ActivityTimerOverlay() {
               <Pause className="h-4 w-4" /> Pausar e salvar
             </Button>
             <Button onClick={keepRunning}>Continuar contando</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Alerta da gestão: "por que está ocioso?" */}
+      <Dialog open={!!managerAlert} onOpenChange={(o) => { if (!o) dismissManagerAlert(); }}>
+        <DialogContent className="sm:max-w-md border-red-300 dark:border-red-800">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600 dark:text-red-400">
+              🚨 Chamado da gestão
+            </DialogTitle>
+            <DialogDescription>
+              <b>{managerAlert?.from || 'Gestão'}</b>: {managerAlert?.message || 'Por que você está ocioso? Retome uma atividade ou avise o que está fazendo.'}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button onClick={dismissManagerAlert}>Entendi, vou retomar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

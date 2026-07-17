@@ -259,6 +259,8 @@ const ActivitiesPage = () => {
   const [execTodayMap, setExecTodayMap] = useState<Map<string, { secs: number; userName: string }>>(new Map());
   // Busca por texto dentro das atividades já filtradas
   const [searchText, setSearchText] = usePageState<string>('activities_searchText', '');
+  // Tempo total já cronometrado na atv aberta (todas as sessões, todos os membros)
+  const [activityTotalSecs, setActivityTotalSecs] = useState<number>(0);
   const [sheetMode, setSheetMode] = usePageState<'create' | 'edit' | null>('activities_sheetMode', null);
   const [selectedActivityId, setSelectedActivityId] = usePageState<string | null>('activities_selectedId', null);
   const [selectedActivity, setSelectedActivity] = useState<LeadActivity | null>(null);
@@ -1030,6 +1032,15 @@ const ActivitiesPage = () => {
   }, [user?.id]);
 
   const handleOpenEdit = async (activity: LeadActivity) => {
+    // Tempo total já registrado nesta atv (aparece no editor e na mensagem WA)
+    setActivityTotalSecs(0);
+    (externalSupabase as unknown as import('@supabase/supabase-js').SupabaseClient)
+      .from('activity_time_entries')
+      .select('active_seconds')
+      .eq('activity_id', activity.id)
+      .then(({ data }: { data: { active_seconds: number }[] | null }) => {
+        setActivityTotalSecs((data || []).reduce((s, r) => s + (r.active_seconds || 0), 0));
+      });
     // Cronômetro / banco de horas: auto-start ao abrir a atividade (se for sua)
     if (activity.status !== 'concluida' && await isMyActivityForTimer(activity)) {
       startActivityTimer({
@@ -2315,7 +2326,10 @@ const ActivitiesPage = () => {
     const createdAtFmt = selectedActivity ? format(parseISO(selectedActivity.created_at), "dd/MM/yyyy 'às' HH:mm") : format(new Date(), "dd/MM/yyyy 'às' HH:mm");
     const updatedByName = selectedActivity ? resolveUserName((selectedActivity as any).updated_by) : null;
     const updatedAtFmt = selectedActivity?.updated_at && selectedActivity.updated_at !== selectedActivity.created_at ? format(parseISO(selectedActivity.updated_at), "dd/MM/yyyy 'às' HH:mm") : null;
-    const timeSpent = workflowMode ? getActivityTimeSpent() : 0;
+    // Tempo dedicado: usa o cronômetro ao vivo se esta atv está rodando; senão o total salvo no banco.
+    const liveSecs = runningTimer?.kind === 'activity' && runningTimer.activityId === selectedActivity?.id
+      ? runningTimer.activeSeconds : 0;
+    const timeSpent = Math.max(liveSecs, activityTotalSecs, workflowMode ? getActivityTimeSpent() : 0);
     const tempoStr = timeSpent > 0 ? `⏱️ Tempo dedicado à atividade: ${formatDuration(timeSpent)}` : '';
     const activityLink = selectedActivity ? `🔗 Ver atividade: ${window.location.origin}/?openActivity=${selectedActivity.id}` : '';
     const updatedInfo = updatedByName && updatedAtFmt ? `\n*Última atualização por:* ${updatedByName} em ${updatedAtFmt}` : '';
@@ -4312,6 +4326,22 @@ const ActivitiesPage = () => {
                         className="h-7 text-sm font-bold border-0 border-b border-transparent hover:border-border focus-visible:border-primary rounded-none px-0 bg-transparent focus-visible:ring-0 placeholder:text-muted-foreground/60 placeholder:font-normal"
                         title="Clique para editar o assunto da atividade"
                       />
+                      {/* Tempo total já cronometrado nesta atv (ao vivo quando rodando) */}
+                      {(() => {
+                        const live = runningTimer?.kind === 'activity' && runningTimer.activityId === selectedActivity?.id
+                          ? runningTimer.activeSeconds : 0;
+                        const total = Math.max(live, activityTotalSecs);
+                        if (total <= 0) return null;
+                        return (
+                          <span
+                            className="shrink-0 flex items-center gap-1 text-[11px] font-mono tabular-nums text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-900/40 rounded px-1.5 py-0.5"
+                            title="Tempo total dedicado a esta atividade (todas as sessões)"
+                          >
+                            <Timer className="h-3 w-3" />
+                            {formatDuration(total)}
+                          </span>
+                        );
+                      })()}
                     </div>
                     {formLeadName && (
                       <div className="flex items-center gap-1 text-xs text-muted-foreground">

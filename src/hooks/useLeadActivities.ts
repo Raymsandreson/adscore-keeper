@@ -57,6 +57,8 @@ export interface LeadActivity {
   is_management?: boolean | null;
   client_name_override?: string | null;
   workflow_id?: string | null;
+  cobranca_phone?: string | null;
+  cobranca_email?: string | null;
 }
 
 export function useLeadActivities() {
@@ -486,6 +488,14 @@ export function useLeadActivities() {
         .eq('id', id);
 
       if (error) throw error;
+
+      // Excluir a atividade também remove o tempo cronometrado nela
+      // (senão o banco de horas contabiliza atv que não existe mais).
+      await (externalSupabase as unknown as import('@supabase/supabase-js').SupabaseClient)
+        .from('activity_time_entries')
+        .delete()
+        .eq('activity_id', id);
+
       toast.success('Atividade arquivada!');
     } catch (error) {
       console.error('Error archiving activity:', error);

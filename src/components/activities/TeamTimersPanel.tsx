@@ -4,7 +4,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { remapToExternal, ensureRemapCache } from '@/integrations/supabase/uuid-remap';
 import { formatHMS } from '@/contexts/ActivityTimerContext';
 import { useActivityTypes } from '@/hooks/useActivityTypes';
-import { ChevronDown, ChevronRight, ExternalLink, Loader2 } from 'lucide-react';
+import { BellRing, ChevronDown, ChevronRight, ExternalLink, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 
 const COLLAPSED_KEY = 'team-timers-collapsed';
 type StatusFilter = 'all' | 'working' | 'idle';
@@ -57,6 +58,30 @@ export function TeamTimersPanel() {
     } catch { /* ignora */ }
     return new Set();
   });
+
+  // Alerta da gestão pro membro ocioso ("por que está ocioso?")
+  const sendIdleAlert = useCallback(async (m: MemberStatus) => {
+    try {
+      const { data: { user } } = await authClient.auth.getUser();
+      const fromExt = await remapToExternal(user?.id || null);
+      let fromName: string | null = null;
+      try {
+        const { data: p } = await authClient.from('profiles').select('full_name').eq('user_id', user?.id || '').maybeSingle();
+        fromName = p?.full_name || null;
+      } catch { /* segue sem nome */ }
+      const { error } = await dbAny.from('activity_timer_alerts').insert({
+        to_user_id: m.extUserId,
+        from_user_id: fromExt,
+        from_name: fromName,
+        message: 'Por que você está ocioso? Retome uma atividade ou avise o que está fazendo.',
+      });
+      if (error) throw error;
+      toast.success(`Alerta enviado para ${m.name.split(' ')[0]}`);
+    } catch (e) {
+      console.warn('[team-timers] alerta falhou', e);
+      toast.error('Não foi possível enviar o alerta.');
+    }
+  }, []);
 
   const toggleCollapsed = useCallback((teamId: string) => {
     setCollapsed(prev => {
@@ -159,7 +184,9 @@ export function TeamTimersPanel() {
         members: buildMembers(memberCloudIdsByTeam.get(t.id) || []),
       })).filter(g => g.members.length > 0);
 
-      const noTeam = buildMembers(cloudIds.filter(cid => !inSomeTeam.has(cid)));
+      // "Sem time": só quem tem cronômetro hoje (esconde inativos — contas avulsas poluem)
+      const noTeam = buildMembers(cloudIds.filter(cid => !inSomeTeam.has(cid)))
+        .filter(m => m.state !== 'off' || m.dayActive > 0 || m.dayIdle > 0);
       if (noTeam.length > 0) result.push({ id: '__none__', name: 'Sem time', color: null, members: noTeam });
 
       setGroups(result);
@@ -379,6 +406,16 @@ export function TeamTimersPanel() {
                         title="Abrir esta atividade"
                       >
                         <ExternalLink className="h-3 w-3" />
+                      </button>
+                    )}
+                    {m.state === 'idle' && (
+                      <button
+                        type="button"
+                        onClick={() => sendIdleAlert(m)}
+                        className="opacity-0 group-hover:opacity-100 transition-opacity rounded p-1 hover:bg-amber-100 dark:hover:bg-amber-900/50 text-amber-600 dark:text-amber-400 shrink-0"
+                        title={`Perguntar a ${m.name.split(' ')[0]} por que está ocioso (alerta com som)`}
+                      >
+                        <BellRing className="h-3 w-3" />
                       </button>
                     )}
                     {m.state !== 'off' && (
