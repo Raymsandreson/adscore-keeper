@@ -338,6 +338,8 @@ export function LeadEditDialog({
   const [showLinkConfirm, setShowLinkConfirm] = useState(false);
   const [tempNewsLink, setTempNewsLink] = useState('');
   const [selectedBoardId, setSelectedBoardId] = useState('');
+  const [selectedCampaignId, setSelectedCampaignId] = useState('');
+  const { data: campaignsList = [] } = useCampaigns();
 
   const currentLead = lead;
   const autoDrive = useAutoImportGroupDocs(
