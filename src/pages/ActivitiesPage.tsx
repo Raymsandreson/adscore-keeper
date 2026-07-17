@@ -740,7 +740,7 @@ const ActivitiesPage = () => {
     setCaseSearch('');
     setFormProcessId('');
     setFormProcessTitle('');
-    setFormWorkflowId(''); setFormCampaignId('');
+    setFormWorkflowId(''); setFormCampaignId(''); setFormCampaignId('');
     setLeadCases([]);
     setCaseProcesses([]);
     setFormMatrixQuadrant('');
@@ -1081,7 +1081,7 @@ const ActivitiesPage = () => {
     setFormProcessId((activity as any).process_id || '');
     setFormProcessTitle((activity as any).process_title || '');
     setFormMatrixQuadrant((activity as any).matrix_quadrant || '');
-    setFormWorkflowId((activity as any).workflow_id || '');
+    setFormWorkflowId((activity as any).workflow_id || ''); setFormCampaignId((activity as any).crm_campaign_id || '');
     setFormClientNameOverride((activity as any).client_name_override || '');
     setSheetMode('edit');
 
@@ -1711,7 +1711,7 @@ const ActivitiesPage = () => {
     setFormCaseTitle('');
     setFormProcessId('');
     setFormProcessTitle('');
-    setFormWorkflowId(''); setFormCampaignId('');
+    setFormWorkflowId(''); setFormCampaignId(''); setFormCampaignId('');
     setCaseProcesses([]);
     // Load cases for this lead
     externalSupabase.from('legal_cases').select('id, case_number, title').eq('lead_id', leadId).then(({ data }) => {
@@ -1780,7 +1780,7 @@ const ActivitiesPage = () => {
     setFormCaseTitle('');
     setFormProcessId('');
     setFormProcessTitle('');
-    setFormWorkflowId(''); setFormCampaignId('');
+    setFormWorkflowId(''); setFormCampaignId(''); setFormCampaignId('');
     setLeadCases([]);
     setCaseProcesses([]);
     // Load all contacts
