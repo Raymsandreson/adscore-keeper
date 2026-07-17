@@ -2669,6 +2669,7 @@ const ActivitiesPage = () => {
       formProcessId={formProcessId} formProcessTitle={formProcessTitle}
       formWorkflowId={formWorkflowId} setFormWorkflowId={setFormWorkflowId}
       workflowOptions={workflowOptions}
+      formCampaignId={formCampaignId} setFormCampaignId={setFormCampaignId}
       formClientNameOverride={formClientNameOverride}
       setFormClientNameOverride={setFormClientNameOverride}
       formIsSystem={formIsSystem} setFormIsSystem={setFormIsSystem}
