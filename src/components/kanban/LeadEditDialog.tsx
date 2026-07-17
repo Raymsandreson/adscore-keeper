@@ -2775,6 +2775,27 @@ ${scrapeData.content || ''}
                     </Select>
                   </div>
                 )}
+
+                <div className="col-span-2">
+                  <Label>Campanha (opcional)</Label>
+                  <Select
+                    value={selectedCampaignId || '__none__'}
+                    onValueChange={(val) => setSelectedCampaignId(val === '__none__' ? '' : val)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Sem campanha" />
+                    </SelectTrigger>
+                    <SelectContent className="pointer-events-auto z-[9999]" position="popper" sideOffset={4}>
+                      <SelectItem value="__none__">Sem campanha</SelectItem>
+                      {campaignsList.filter(c => c.status !== 'closed').map(c => (
+                        <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    Vincula o lead a uma campanha para consolidar métricas de ROI/CAC.
+                  </p>
+                </div>
               </div>
               <div className="pt-4 border-t">
                 <Suspense fallback={<div className="flex items-center justify-center p-8"><Loader2 className="h-5 w-5 animate-spin" /></div>}>
