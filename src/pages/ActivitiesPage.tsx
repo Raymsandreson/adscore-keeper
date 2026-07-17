@@ -740,7 +740,7 @@ const ActivitiesPage = () => {
     setCaseSearch('');
     setFormProcessId('');
     setFormProcessTitle('');
-    setFormWorkflowId('');
+    setFormWorkflowId(''); setFormCampaignId('');
     setLeadCases([]);
     setCaseProcesses([]);
     setFormMatrixQuadrant('');
@@ -941,6 +941,7 @@ const ActivitiesPage = () => {
       process_id: formProcessId || null,
       process_title: formProcessTitle || null,
       workflow_id: formWorkflowId || null,
+      crm_campaign_id: formCampaignId || null,
       is_system: formIsSystem,
       is_management: formIsManagement,
       client_name_override: formClientNameOverride || null,
@@ -1224,6 +1225,7 @@ const ActivitiesPage = () => {
       process_id: formProcessId || null,
       process_title: formProcessTitle || null,
       matrix_quadrant: formMatrixQuadrant || null,
+      crm_campaign_id: formCampaignId || null,
       workflow_id: formWorkflowId || null,
       is_system: formIsSystem,
       is_management: formIsManagement,
@@ -1641,6 +1643,7 @@ const ActivitiesPage = () => {
       notification_date: formNotificationDate || null, notes: formNotes || null,
       status: formStatus, contact_id: formContactId || null, contact_name: formContactName || null,
       case_id: formCaseId || null, case_title: formCaseTitle || null,
+      crm_campaign_id: formCampaignId || null,
       process_id: formProcessId || null, process_title: formProcessTitle || null,
       workflow_id: formWorkflowId || null,
       is_system: formIsSystem, is_management: formIsManagement,
@@ -1708,7 +1711,7 @@ const ActivitiesPage = () => {
     setFormCaseTitle('');
     setFormProcessId('');
     setFormProcessTitle('');
-    setFormWorkflowId('');
+    setFormWorkflowId(''); setFormCampaignId('');
     setCaseProcesses([]);
     // Load cases for this lead
     externalSupabase.from('legal_cases').select('id, case_number, title').eq('lead_id', leadId).then(({ data }) => {
@@ -1777,7 +1780,7 @@ const ActivitiesPage = () => {
     setFormCaseTitle('');
     setFormProcessId('');
     setFormProcessTitle('');
-    setFormWorkflowId('');
+    setFormWorkflowId(''); setFormCampaignId('');
     setLeadCases([]);
     setCaseProcesses([]);
     // Load all contacts
