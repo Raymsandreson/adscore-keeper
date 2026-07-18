@@ -46,6 +46,7 @@ import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { logGroupAudit } from '@/lib/groupAuditLog';
 import { normalizeWhatsAppConversationPhone } from '@/lib/whatsappPhone';
 import { AITextActions } from '@/components/ui/AITextActions';
+import { AISuggestReply } from '@/components/ui/AISuggestReply';
 import { StageLabelSelect } from '@/components/kanban/StageLabelSelect';
 import { LazyVideo } from '@/components/whatsapp/LazyVideo';
 
@@ -479,6 +480,17 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         let when = '';
         try { when = format(new Date(m.created_at), "dd/MM HH:mm", { locale: ptBR }); } catch {}
         return `[${who}${when ? ' · ' + when : ''}] ${m.message_text}`;
+      })
+      .join('\n');
+  };
+  // Contexto p/ sugestão de resposta da IA: últimas mensagens com texto, em ordem cronológica.
+  const buildReplyContext = (): string => {
+    return (messages || [])
+      .filter((m: any) => m && m.message_text && String(m.message_text).trim())
+      .slice(-20)
+      .map((m: any) => {
+        const who = m.direction === 'outbound' ? 'Eu' : (conversation.contact_name || 'Cliente');
+        return `${who}: ${String(m.message_text).trim()}`;
       })
       .join('\n');
   };
@@ -4254,6 +4266,9 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
             <input ref={mediaInputRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleMediaUpload} />
             {inputMode !== 'chat' && (
               <AITextActions value={newMessage} onChange={setNewMessage} />
+            )}
+            {inputMode === 'message' && (
+              <AISuggestReply buildContext={buildReplyContext} onApply={setNewMessage} />
             )}
             <Textarea
               ref={messageInputRef}
