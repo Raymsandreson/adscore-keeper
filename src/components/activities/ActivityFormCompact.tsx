@@ -869,6 +869,16 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
       {/* Vínculos (Lead/Caso/Processo/Contato/Sistema) ficam APENAS no cabeçalho fixo da atividade
           para evitar duplicação visual. Só mostramos os botões de seleção aqui quando NADA está vinculado,
           como atalho inicial. */}
+      {props.setFormCampaignId && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Vincular:</span>
+          <CampaignLinkerButton
+            value={props.formCampaignId || ''}
+            onChange={props.setFormCampaignId}
+            user={user}
+          />
+        </div>
+      )}
       {!props.formLeadId && !props.formCaseId && !props.formProcessId && !props.formContactId && (
         <div className="flex flex-wrap items-center gap-1.5">
           {!props.formIsSystem && !props.formIsManagement && (
