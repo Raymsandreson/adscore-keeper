@@ -712,6 +712,7 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
 }
 
 export function ActivityFormCompact(props: ActivityFormCompactProps) {
+  const { user } = useAuthContext();
   // Opções de @menção nos campos de texto (membros atribuíveis da equipe).
   const mentionOptions = useMemo(
     () => filterAssignableMembers(props.teamMembers)
