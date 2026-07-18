@@ -393,6 +393,35 @@ export const handler = async (req: Request, res: Response) => {
         .eq('doc_token', docToken);
       if (updErr) console.error('[zapsign-webhook] update error:', updErr.message);
     }
+
+    // Fix estrutural: vincular o CASO à procuração. legal_case_id nunca era setado,
+    // por isso o dado da procuração (nome/CPF) ficava solto do processo.
+    // Idempotente: só grava quando o doc já tem lead e ainda não tem caso.
+    try {
+      const { data: d } = await supabase
+        .from('zapsign_documents')
+        .select('id, lead_id, legal_case_id')
+        .eq('doc_token', docToken)
+        .maybeSingle();
+      if (d?.lead_id && !d.legal_case_id) {
+        const { data: lc } = await supabase
+          .from('legal_cases')
+          .select('id')
+          .eq('lead_id', d.lead_id)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (lc?.id) {
+          await supabase
+            .from('zapsign_documents')
+            .update({ legal_case_id: lc.id })
+            .eq('id', d.id);
+          console.log('[zapsign-webhook] legal_case_id vinculado:', lc.id, 'doc:', docToken);
+        }
+      }
+    } catch (e: any) {
+      console.error('[zapsign-webhook] legal_case_id link error:', e?.message || e);
+    }
   }
 
   return res.status(200).json({ success: true, event_type: eventType, doc_token: docToken });
