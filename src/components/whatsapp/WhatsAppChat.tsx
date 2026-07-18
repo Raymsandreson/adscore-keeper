@@ -494,6 +494,17 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
       })
       .join('\n');
   };
+  // Estado p/ a IA saber se há resposta pendente e não repetir o que já foi enviado.
+  const buildReplyState = () => {
+    const withText = (messages || []).filter((m: any) => m && m.message_text && String(m.message_text).trim());
+    const last = withText[withText.length - 1];
+    const lastOutbound = [...withText].reverse().find((m: any) => m.direction === 'outbound');
+    return {
+      // Pendente quando a última mensagem com texto NÃO é do atendente.
+      pending: !!last && last.direction !== 'outbound',
+      lastOutboundText: lastOutbound ? String(lastOutbound.message_text).trim() : '',
+    };
+  };
   const handleCreateActivityFromSelection = () => {
     if (!onCreateActivity || textSelectionOrder.length === 0) return;
     const prefill = buildTextSelectionPrefill();
@@ -4288,11 +4299,12 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
               <AITextActions value={newMessage} onChange={setNewMessage} />
             )}
             {inputMode === 'message' && (
-              <AISuggestReply buildContext={buildReplyContext} onApply={setNewMessage} />
+              <AISuggestReply buildContext={buildReplyContext} getState={buildReplyState} onApply={setNewMessage} />
             )}
             {/* Instância controlada: sugestão focada numa mensagem específica (botão por bolha). */}
             <AISuggestReply
               buildContext={buildReplyContext}
+              getState={buildReplyState}
               onApply={(t) => { setInputMode('message'); setNewMessage(t); }}
               open={replySuggestOpen}
               onOpenChange={setReplySuggestOpen}
