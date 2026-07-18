@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, lazy, Suspense } from 'react';
-import { useCampaigns } from '@/hooks/useCampaigns';
+import { useCampaigns, useCreateCampaign } from '@/hooks/useCampaigns';
+import { Megaphone } from 'lucide-react';
 
 const ProcessDetailSheet = lazy(() => import('@/components/cases/ProcessDetailSheet'));
 const AddProcessDialog = lazy(() => import('@/components/cases/AddProcessDialog'));
