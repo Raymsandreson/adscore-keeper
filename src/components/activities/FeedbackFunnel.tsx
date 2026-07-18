@@ -7,10 +7,11 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { Star, Mic, MicOff, Loader2, Check, ThumbsUp, AlertCircle, RefreshCw, ExternalLink } from 'lucide-react';
+import { Star, Mic, MicOff, Loader2, ThumbsUp, AlertCircle, RefreshCw, ExternalLink, Trophy } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { format, parseISO } from 'date-fns';
+import { useNavigate } from 'react-router-dom';
 
 // Um feedback = uma atividade com retorno preenchido. O observador avalia.
 export interface FeedbackRow {
@@ -82,6 +83,7 @@ interface Props {
 
 export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) {
   const { user } = useAuthContext();
+  const navigate = useNavigate();
   const [extId, setExtId] = useState<string | null>(null);
   const [rows, setRows] = useState<FeedbackRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -263,6 +265,9 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
               <Badge variant="outline" className="border-green-300 text-green-700 dark:text-green-400">✅ {counts.satisfeito}</Badge>
               <Badge variant="outline" className="border-amber-300 text-amber-700 dark:text-amber-400">⚠️ {counts.incompleto}</Badge>
               <Badge variant="outline" className="border-red-300 text-red-700 dark:text-red-400">❌ {counts.insatisfeito}</Badge>
+              <Button variant="outline" size="sm" className="h-7 gap-1 text-[11px]" onClick={() => navigate('/destaques')} title="Top 5 de Avaliação (modo TV)">
+                <Trophy className="h-3.5 w-3.5 text-amber-500" /> Top 5
+              </Button>
               <Button variant="ghost" size="icon" className="h-7 w-7" onClick={load} title="Recarregar">
                 <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
               </Button>

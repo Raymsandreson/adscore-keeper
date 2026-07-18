@@ -153,6 +153,7 @@ const ExpenseFormPage = lazyRetry(() => import("./pages/ExpenseFormPage"), "Expe
 const CallsPage = lazyRetry(() => import("./pages/CallsPage"), "CallsPage");
 const ServiceRatingsPage = lazyRetry(() => import("./pages/ServiceRatingsPage"), "ServiceRatingsPage");
 const BancoHorasPage = lazyRetry(() => import("./pages/BancoHorasPage"), "BancoHorasPage");
+const DestaquesPage = lazyRetry(() => import("./pages/DestaquesPage"), "DestaquesPage");
 
 const WhatsAppCloudPage = lazyRetry(() => import("./pages/WhatsAppCloudPage"), "WhatsAppCloudPage");
 const WhatsAppApiPage = lazyRetry(() => import("./pages/WhatsAppApiPage"), "WhatsAppApiPage");
@@ -328,6 +329,7 @@ function SidebarLayout() {
                 <Route path="/calls" element={<ProtectedRoute><CallsPage /></ProtectedRoute>} />
                 <Route path="/avaliacoes" element={<ProtectedRoute><ServiceRatingsPage /></ProtectedRoute>} />
                 <Route path="/banco-horas" element={<ProtectedRoute><BancoHorasPage /></ProtectedRoute>} />
+                <Route path="/destaques" element={<ProtectedRoute><DestaquesPage /></ProtectedRoute>} />
                 
                 <Route path="/whatsapp" element={<ProtectedRoute><WhatsAppPage /></ProtectedRoute>} />
                 <Route path="/whatsapp/cloud" element={<ProtectedRoute><WhatsAppCloudPage /></ProtectedRoute>} />
