@@ -11,6 +11,8 @@ const TYPE_LABELS: Record<string, string> = {
   status: '🔄 Situação da atividade alterada',
   rescheduled: '🗓️ Atividade reagendada',
   mention: '@ Você foi mencionado',
+  incompleto: '⚠️ Feedback marcado como incompleto',
+  praise: '🌟 Seu trabalho foi elogiado',
 };
 
 /**

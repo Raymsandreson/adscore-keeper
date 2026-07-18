@@ -13,6 +13,7 @@ import { useActivityStepContext } from '@/hooks/useActivityStepContext';
 import { ActivityFieldSettingsDialog } from '@/components/activities/ActivityFieldSettingsDialog';
 import { ActivityTTSButton } from '@/components/voice/ActivityTTSButton';
 import { ActivityFormCompact, SendToGroupSection } from '@/components/activities/ActivityFormCompact';
+import { FeedbackFunnel, type FeedbackFollowUp } from '@/components/activities/FeedbackFunnel';
 import { CobrarVaraSection } from '@/components/activities/CobrarVaraSection';
 import { CourtContactsSheet } from '@/components/activities/CourtContactsSheet';
 import { ActivityCallRecorder, callFieldTextToHtml, stripHtmlToText } from '@/components/activities/ActivityCallRecorder';
@@ -390,6 +391,7 @@ const ActivitiesPage = () => {
   const [notifDateCount, setNotifDateCount] = useState<number | null>(null);
   const [vincularOpen, setVincularOpen] = useState(false);
   const [preencherOpen, setPreencherOpen] = useState(false);
+  const [feedbackFunnelOpen, setFeedbackFunnelOpen] = useState(false);
   const [callRecorderOpen, setCallRecorderOpen] = useState(false);
   const [docUploadOpen, setDocUploadOpen] = useState(false);
   const [nextStepsOpen, setNextStepsOpen] = useState(false);
@@ -709,6 +711,29 @@ const ActivitiesPage = () => {
     handleNotesPendingChange([]);
     handleNotesCommitCandidatesChange([]);
     handleNotesUploadStateChange(false);
+  };
+
+  // "Insatisfeito" no funil de feedbacks → abre uma nova atividade de MELHORIA
+  // (olhando pra frente, sem reabrir a antiga), herdando os vínculos e o responsável,
+  // com o elogio (sanduíche) embutido nas observações.
+  const openFollowUpFromFeedback = async (fu: FeedbackFollowUp) => {
+    const { source, praise, reason } = fu;
+    resetForm();
+    setFeedbackFunnelOpen(false);
+    setFormTitle(`Melhorar: ${source.title}`);
+    if (source.lead_id) { setFormLeadId(source.lead_id); setFormLeadName(source.lead_name || ''); }
+    if (source.case_id) { setFormCaseId(source.case_id); setFormCaseTitle(source.case_title || ''); }
+    if (source.process_id) { setFormProcessId(source.process_id); setFormProcessTitle(source.process_title || ''); }
+    if (!source.lead_id && !source.case_id && !source.process_id) setFormIsSystem(true);
+    // Mesmo responsável da atividade original (assigned_to é UUID do Externo → Cloud).
+    const cloud = source.assigned_to ? ((await remapToCloud(source.assigned_to)) as string) : '';
+    if (cloud) { setFormAssignedTo(cloud); setFormAssignedToName(source.assigned_to_name || ''); }
+    setFormNotes(
+      `<p>Nova ação a partir do feedback de "${source.title}".</p>` +
+      `<p>👍 Ficou bom: ${praise || '—'}</p>` +
+      `<p>🔧 Precisa melhorar: ${reason || '—'}</p>`
+    );
+    setSheetMode('create');
   };
 
   // suggestActivityType moved below routineActivityTypes
@@ -2848,6 +2873,9 @@ const ActivitiesPage = () => {
               Lista
             </button>
           </div>
+          <Button variant="ghost" size="sm" className="h-8 text-primary-foreground hover:bg-primary-foreground/10 gap-1" onClick={() => setFeedbackFunnelOpen(true)} title="Feedbacks das suas atividades (você observa)">
+            💬 Feedbacks
+          </Button>
           <Button variant="ghost" size="icon" className="h-8 w-8 text-primary-foreground hover:bg-primary-foreground/10" onClick={() => setCourtContactsOpen(true)} title="Varas e Tribunais — contatos">
             <Landmark className="h-4 w-4" />
           </Button>
@@ -5043,6 +5071,11 @@ const ActivitiesPage = () => {
       )}
       <ConfirmDeleteDialog />
       <CourtContactsSheet open={courtContactsOpen} onOpenChange={setCourtContactsOpen} />
+      <FeedbackFunnel
+        open={feedbackFunnelOpen}
+        onOpenChange={setFeedbackFunnelOpen}
+        onCreateFollowUp={openFollowUpFromFeedback}
+      />
       <ActivityCreatedDialog
         open={createdDialog.open}
         onOpenChange={(open) => setCreatedDialog((prev) => ({ ...prev, open }))}
