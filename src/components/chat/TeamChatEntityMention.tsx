@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Briefcase, ClipboardList, Users, Search, Loader2 } from 'lucide-react';
@@ -38,21 +38,21 @@ export function TeamChatEntityMention({ open, onClose, onSelect }: TeamChatEntit
       let data: EntityMention[] = [];
 
       if (activeType === 'lead') {
-        const { data: leads } = await supabase
+        const { data: leads } = await externalSupabase
           .from('leads')
           .select('id, lead_name')
           .order('updated_at', { ascending: false })
           .limit(20);
         data = (leads || []).map(l => ({ type: 'lead' as const, id: l.id, name: l.lead_name || 'Sem nome' }));
       } else if (activeType === 'contact') {
-        const { data: contacts } = await supabase
+        const { data: contacts } = await externalSupabase
           .from('contacts')
           .select('id, full_name')
           .order('updated_at', { ascending: false })
           .limit(20);
         data = (contacts || []).map(c => ({ type: 'contact' as const, id: c.id, name: c.full_name || 'Sem nome' }));
       } else {
-        const { data: activities } = await supabase
+        const { data: activities } = await externalSupabase
           .from('lead_activities')
           .select('id, title')
           .order('updated_at', { ascending: false })
@@ -70,21 +70,21 @@ export function TeamChatEntityMention({ open, onClose, onSelect }: TeamChatEntit
     let data: EntityMention[] = [];
 
     if (activeType === 'lead') {
-      const { data: leads } = await supabase
+      const { data: leads } = await externalSupabase
         .from('leads')
         .select('id, lead_name')
         .ilike('lead_name', term)
         .limit(20);
       data = (leads || []).map(l => ({ type: 'lead' as const, id: l.id, name: l.lead_name || 'Sem nome' }));
     } else if (activeType === 'contact') {
-      const { data: contacts } = await supabase
+      const { data: contacts } = await externalSupabase
         .from('contacts')
         .select('id, full_name')
         .ilike('full_name', term)
         .limit(20);
       data = (contacts || []).map(c => ({ type: 'contact' as const, id: c.id, name: c.full_name || 'Sem nome' }));
     } else {
-      const { data: activities } = await supabase
+      const { data: activities } = await externalSupabase
         .from('lead_activities')
         .select('id, title')
         .ilike('title', term)

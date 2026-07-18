@@ -11,6 +11,7 @@ import {
   ArrowLeft,
   LayoutDashboard,
   AlertCircle,
+  HeartHandshake,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { useKanbanBoards } from "@/hooks/useKanbanBoards";
@@ -23,6 +24,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import GenericFunnelDashboard from "./GenericFunnelDashboard";
 
 const FunnelLeadsReport = lazy(() => import("./FunnelLeadsReport"));
+
+const AcolhimentoPage = lazy(() => import("@/pages/AcolhimentoPage"));
 
 const AcompanhamentoProcessualPage = lazy(
   () => import("@/pages/AcompanhamentoProcessualPage"),
@@ -117,6 +120,19 @@ const SELECTORS: SelectorItem[] = [
     ),
     accent: "from-slate-500/15 to-slate-500/0 text-slate-600",
   },
+  {
+    id: "gerenciamento-acolhimento",
+    label: "Gerenciamento Acolhimento",
+    description: "Painel de acolhimento do funil de Acidente de Trabalho.",
+    icon: <HeartHandshake className="h-5 w-5" />,
+    group: "process",
+    customRender: () => (
+      <Suspense fallback={<DashboardSkeleton />}>
+        <AcolhimentoPage />
+      </Suspense>
+    ),
+    accent: "from-teal-500/15 to-teal-500/0 text-teal-600",
+  },
 ];
 
 function DashboardSkeleton() {
@@ -167,7 +183,7 @@ function SelectorCard({
 }
 
 export default function VisaoGeralPortal() {
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const [activeId, setActiveId] = useState<string | null>("acidente-trabalho");
   const navigate = useNavigate();
   const { boards } = useKanbanBoards();
   const active = activeId ? SELECTORS.find((s) => s.id === activeId) : null;

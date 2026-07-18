@@ -8,6 +8,7 @@ dotenv.config();
 // REGISTRO DE HANDLERS — Adicione funções migradas aqui
 // ============================================================
 import { handler as whatsappWebhook } from './functions/whatsapp-webhook';
+import { handler as sendTeamPush } from './functions/send-team-push';
 import { handler as callQueueProcessor } from './functions/call-queue-processor';
 import { handler as repairWhatsappGroup } from './functions/repair-whatsapp-group';
 import { handler as zapsignWebhook } from './functions/zapsign-webhook';
@@ -64,6 +65,7 @@ import { handler as dailyTeamReport } from './functions/daily-team-report';
 
 const functionHandlers: Record<string, express.RequestHandler> = {
   'whatsapp-webhook': whatsappWebhook,
+  'send-team-push': sendTeamPush,
   'call-queue-processor': callQueueProcessor,
   'repair-whatsapp-group': repairWhatsappGroup,
   'zapsign-webhook': zapsignWebhook,

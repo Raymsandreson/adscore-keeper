@@ -108,6 +108,10 @@ function showNotificationToast({
   preview,
   count,
   urgent,
+  fileUrl,
+  fileName,
+  fileType,
+  messageType,
   onOpen,
   onReply,
   onClosed,
@@ -120,6 +124,10 @@ function showNotificationToast({
   preview: string;
   count?: number;
   urgent?: boolean;
+  fileUrl?: string | null;
+  fileName?: string | null;
+  fileType?: string | null;
+  messageType?: string | null;
   onOpen: () => void | Promise<void>;
   onReply?: (reply: string) => Promise<void>;
   onClosed?: () => void;
@@ -134,6 +142,10 @@ function showNotificationToast({
       preview={preview}
       count={count}
       urgent={urgent}
+      fileUrl={fileUrl}
+      fileName={fileName}
+      fileType={fileType}
+      messageType={messageType}
       onOpen={onOpen}
       onReply={onReply}
       onMuteForMinutes={muteForMinutes}
@@ -156,6 +168,10 @@ function showConversationToast({
   preview,
   urgent,
   increment,
+  fileUrl,
+  fileName,
+  fileType,
+  messageType,
   onOpen,
   onReply,
   onManualDismiss,
@@ -167,6 +183,10 @@ function showConversationToast({
   preview: string;
   urgent?: boolean;
   increment: boolean;
+  fileUrl?: string | null;
+  fileName?: string | null;
+  fileType?: string | null;
+  messageType?: string | null;
   onOpen: () => void | Promise<void>;
   onReply?: (reply: string) => Promise<void>;
   onManualDismiss?: () => void;
@@ -184,6 +204,10 @@ function showConversationToast({
     preview,
     count: state.count,
     urgent: state.urgent,
+    fileUrl,
+    fileName,
+    fileType,
+    messageType,
     onOpen: () => {
       clearConversationToastState(conversationId);
       return onOpen();
@@ -428,7 +452,7 @@ export function TeamChatNotifications() {
         if (mention.conversation_id) {
           const { data: tmsg } = await (externalSupabase
             .from('team_messages') as any)
-            .select('content, sender_name, sender_id, message_type, file_name, is_urgent')
+            .select('content, sender_name, sender_id, message_type, file_name, file_url, file_type, is_urgent')
             .eq('id', mention.message_id)
             .maybeSingle();
 
@@ -451,6 +475,10 @@ export function TeamChatNotifications() {
             preview,
             urgent: Boolean((tmsg as any).is_urgent),
             increment: false, // o canal de team_messages já conta essa mensagem
+            fileUrl: (tmsg as any).file_url,
+            fileName: (tmsg as any).file_name,
+            fileType: (tmsg as any).file_type,
+            messageType: (tmsg as any).message_type,
             onOpen: () => {
               openTeamChatConversation({
                 conversationId: mention.conversation_id,
@@ -540,6 +568,10 @@ export function TeamChatNotifications() {
           preview,
           urgent: Boolean(msg.is_urgent),
           increment: true,
+          fileUrl: msg.file_url,
+          fileName: msg.file_name,
+          fileType: msg.file_type,
+          messageType: msg.message_type,
           onOpen: () => {
             openTeamChatConversation({
               conversationId: msg.conversation_id,
@@ -587,6 +619,10 @@ export function TeamChatNotifications() {
           preview,
           urgent: true,
           increment: false,
+          fileUrl: msg.file_url,
+          fileName: msg.file_name,
+          fileType: msg.file_type,
+          messageType: msg.message_type,
           onOpen: () => {
             openTeamChatConversation({
               conversationId: msg.conversation_id,

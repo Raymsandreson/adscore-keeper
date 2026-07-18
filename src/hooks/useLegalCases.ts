@@ -83,6 +83,7 @@ export function useLegalCases(leadId?: string) {
         .from('legal_cases')
         .select('*, specialized_nuclei(name, prefix, color)')
         .eq('lead_id', targetId)
+        .is('deleted_at', null)
         .order('created_at', { ascending: false });
       if (error) throw error;
       
@@ -249,9 +250,11 @@ export function useLegalCases(leadId?: string) {
 
   const deleteCase = useCallback(async (id: string) => {
     try {
+      // Soft-delete: preserva o caso (e seus lead_processes/process_movements, que
+      // antes eram destruídos por ON DELETE CASCADE). Recuperável via deleted_at.
       const { error } = await externalSupabase
         .from('legal_cases')
-        .delete()
+        .update({ deleted_at: new Date().toISOString() } as any)
         .eq('id', id);
       if (error) throw error;
       setCases(prev => prev.filter(c => c.id !== id));

@@ -1,4 +1,6 @@
 import { useState, useEffect, useMemo, lazy, Suspense } from 'react';
+import { useCampaigns, useCreateCampaign } from '@/hooks/useCampaigns';
+import { Megaphone } from 'lucide-react';
 
 const ProcessDetailSheet = lazy(() => import('@/components/cases/ProcessDetailSheet'));
 const AddProcessDialog = lazy(() => import('@/components/cases/AddProcessDialog'));
@@ -13,7 +15,9 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { Search, X, ChevronDown, Copy, Loader2, UserPlus, Building2, Briefcase, Send, Info, Settings2, FileText, Plus, Mic, Check, Star, Eye } from 'lucide-react';
+import { Search, X, ChevronDown, Copy, Loader2, UserPlus, Building2, Briefcase, Send, Info, Settings2, FileText, Plus, Mic, Check, Star, Eye, Users, Sparkles } from 'lucide-react';
+import { TeamChatPanel } from '@/components/chat/TeamChatPanel';
+import { reviewActivityWithAI, type SuggestedActivity } from '@/lib/activityFeedbackSummary';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
@@ -49,6 +53,117 @@ function copyField(text: string | null | undefined) {
   });
 }
 
+function CampaignLinkerButton({ value, onChange, user }: { value: string; onChange: (v: string) => void; user: any }) {
+  const { data: campaigns = [], isLoading } = useCampaigns();
+  const createCampaign = useCreateCampaign();
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const [newName, setNewName] = useState('');
+  const active = campaigns.filter(c => c.status !== 'closed');
+  const filtered = active.filter(c => c.name.toLowerCase().includes(search.toLowerCase()));
+  const selected = campaigns.find(c => c.id === value);
+
+  const handleCreate = async () => {
+    const name = newName.trim();
+    if (!name) return;
+    try {
+      const created = await createCampaign.mutateAsync({
+        name,
+        status: 'active',
+        investment_total: 0,
+        created_by: user?.id,
+      } as any);
+      onChange(created.id);
+      setNewName('');
+      setOpen(false);
+    } catch (e) {
+      // toast handled in hook
+    }
+  };
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant={selected ? 'default' : 'outline'}
+          size="sm"
+          className="h-6 px-2 text-[10px] gap-1 max-w-[200px]"
+          title={selected ? `Campanha: ${selected.name}` : 'Vincular a uma campanha'}
+        >
+          <Megaphone className="h-3 w-3" />
+          <span className="truncate">{selected ? selected.name : 'Campanha'}</span>
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-72 p-2" align="start">
+        <div className="space-y-2">
+          <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Campanhas</div>
+          <Input
+            placeholder="Buscar campanha..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="h-7 text-xs"
+          />
+          <div className="max-h-40 overflow-y-auto border rounded">
+            {isLoading ? (
+              <div className="px-2 py-2 text-xs text-muted-foreground">Carregando...</div>
+            ) : filtered.length === 0 ? (
+              <div className="px-2 py-2 text-xs text-muted-foreground">
+                {active.length === 0 ? 'Nenhuma campanha ainda.' : 'Nada encontrado.'}
+              </div>
+            ) : (
+              <>
+                {value && (
+                  <button
+                    type="button"
+                    onClick={() => { onChange(''); setOpen(false); }}
+                    className="w-full text-left px-2 py-1.5 text-xs hover:bg-muted text-destructive"
+                  >
+                    ✕ Remover vínculo
+                  </button>
+                )}
+                {filtered.map(c => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => { onChange(c.id); setOpen(false); }}
+                    className={`w-full text-left px-2 py-1.5 text-xs hover:bg-muted ${c.id === value ? 'bg-muted font-medium' : ''}`}
+                  >
+                    {c.name}
+                  </button>
+                ))}
+              </>
+            )}
+          </div>
+          <div className="border-t pt-2 space-y-1">
+            <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Criar nova</div>
+            <div className="flex gap-1">
+              <Input
+                placeholder="Nome da campanha"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleCreate(); } }}
+                className="h-7 text-xs"
+              />
+              <Button
+                type="button"
+                size="sm"
+                className="h-7 px-2 text-[10px]"
+                onClick={handleCreate}
+                disabled={!newName.trim() || createCampaign.isPending}
+              >
+                {createCampaign.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+
+
 interface TeamMember { user_id: string; full_name: string | null; }
 interface LeadOption { id: string; lead_name: string | null; }
 
@@ -62,6 +177,8 @@ interface ActivityFormCompactProps {
   onToggleObserver?: (userId: string) => void;
   // Feedback do responsável + data de reagendamento (status 'reagendada').
   formFeedback?: string; setFormFeedback?: (v: string) => void;
+  // IA sugeriu uma próxima atividade a partir da revisão do feedback (abre popup no pai).
+  onSuggestNextActivity?: (s: SuggestedActivity) => void;
   formRescheduledTo?: string; setFormRescheduledTo?: (v: string) => void;
   formType: string; setFormType: (v: string) => void;
   formStatus: string; setFormStatus: (v: string) => void;
@@ -75,6 +192,7 @@ interface ActivityFormCompactProps {
   formProcessId: string; formProcessTitle: string;
   formWorkflowId: string; setFormWorkflowId: (v: string) => void;
   workflowOptions: { id: string; name: string }[];
+  formCampaignId?: string; setFormCampaignId?: (v: string) => void;
   formClientNameOverride?: string;
   setFormClientNameOverride?: (v: string) => void;
   formIsSystem?: boolean; setFormIsSystem?: (v: boolean) => void;
@@ -594,6 +712,7 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
 }
 
 export function ActivityFormCompact(props: ActivityFormCompactProps) {
+  const { user } = useAuthContext();
   // Opções de @menção nos campos de texto (membros atribuíveis da equipe).
   const mentionOptions = useMemo(
     () => filterAssignableMembers(props.teamMembers)
@@ -602,6 +721,9 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
     [props.teamMembers],
   );
   const [detailsOpen, setDetailsOpen] = useState(true);
+  // Chat interno da equipe (colapsável) + estado de "Revisar com IA" no feedback.
+  const [chatOpen, setChatOpen] = useState(false);
+  const [summarizing, setSummarizing] = useState(false);
   const [expandedFieldKey, setExpandedFieldKey] = useState<string | null>(null);
   const [linkLeadOpen, setLinkLeadOpen] = useState(false);
   const [linkContactOpen, setLinkContactOpen] = useState(false);
@@ -748,6 +870,16 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
       {/* Vínculos (Lead/Caso/Processo/Contato/Sistema) ficam APENAS no cabeçalho fixo da atividade
           para evitar duplicação visual. Só mostramos os botões de seleção aqui quando NADA está vinculado,
           como atalho inicial. */}
+      {props.setFormCampaignId && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Vincular:</span>
+          <CampaignLinkerButton
+            value={props.formCampaignId || ''}
+            onChange={props.setFormCampaignId}
+            user={user}
+          />
+        </div>
+      )}
       {!props.formLeadId && !props.formCaseId && !props.formProcessId && !props.formContactId && (
         <div className="flex flex-wrap items-center gap-1.5">
           {!props.formIsSystem && !props.formIsManagement && (
@@ -931,6 +1063,9 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
           )}
         </div>
 
+        {/* Campanha movida para o topo (em "Vincular"). */}
+
+
         {/* Observadores — acompanham a atividade e recebem os popups (feedback, mudança
             de situação, reagendamento), sem serem cobrados. Campo próprio, separado dos
             responsáveis. Quem cria a atividade entra como observador automaticamente. */}
@@ -1053,18 +1188,87 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
 
       {/* Matriz Eisenhower e Nome do cliente removidos do form — cliente vive no cabeçalho */}
 
-      {/* Feedback da atv — só em atividade INTERNA (demanda de membro para membro).
-          Retorno do responsável; observadores recebem popup ao salvar. */}
+      {/* Chat interno da equipe + Feedback — só em atividade INTERNA (demanda de
+          membro para membro). Retorno do responsável; observadores recebem popup ao salvar. */}
       {props.setFormFeedback && props.formIsSystem && (
-        <div>
-          <span className="text-[10px] text-muted-foreground uppercase tracking-wider">💬 Feedback da atv</span>
-          <Textarea
-            value={props.formFeedback || ''}
-            onChange={e => props.setFormFeedback?.(e.target.value)}
-            placeholder="Retorno do responsável: o que foi feito com esta demanda, como ficou..."
-            rows={2}
-            className="text-xs mt-0.5"
-          />
+        <div className="space-y-2">
+          {/* Chat interno da equipe embutido (colapsável). Só após a atv existir. */}
+          {props.selectedActivity?.id && (
+            <div className="rounded-lg border border-primary/20 overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setChatOpen(o => !o)}
+                className="w-full flex items-center justify-between px-2.5 py-1.5 bg-primary/5 hover:bg-primary/10 transition-colors"
+              >
+                <span className="flex items-center gap-1.5 text-[11px] font-medium text-primary">
+                  <Users className="h-3.5 w-3.5" /> Chat interno da equipe
+                </span>
+                <ChevronDown className={cn("h-3.5 w-3.5 text-primary transition-transform", chatOpen && "rotate-180")} />
+              </button>
+              {chatOpen && (
+                <div className="h-64 bg-background border-t">
+                  <TeamChatPanel
+                    entityType="activity"
+                    entityId={props.selectedActivity.id}
+                    entityName={props.formTitle}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Feedback da atv (resumo do que foi dito e feito) */}
+          <div>
+            <div className="flex items-center justify-between mb-0.5">
+              <span className="text-[10px] text-muted-foreground uppercase tracking-wider">💬 Feedback da atv</span>
+              {props.selectedActivity?.id && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={summarizing}
+                  className="h-6 px-2 text-[10px] gap-1 text-primary hover:bg-primary/10"
+                  title="Revisar com IA: gera o feedback a partir do chat, funil, movimentações e documentos, e sugere a próxima atividade"
+                  onClick={async () => {
+                    setSummarizing(true);
+                    try {
+                      const review = await reviewActivityWithAI({
+                        activityId: props.selectedActivity.id,
+                        leadId: props.formLeadId || props.selectedActivity.lead_id || null,
+                        processId: props.formProcessId || props.selectedActivity.process_id || null,
+                        whatWasDone: props.formWhatWasDone,
+                        currentStatus: props.formCurrentStatus,
+                        nextSteps: props.formNextSteps,
+                      });
+                      if (review?.feedback) {
+                        props.setFormFeedback?.(review.feedback);
+                        toast.success('Feedback gerado pela IA');
+                      } else {
+                        toast.info('Sem conversa ou dados para revisar');
+                      }
+                      if (review?.suggestion) {
+                        props.onSuggestNextActivity?.(review.suggestion);
+                      }
+                    } catch {
+                      toast.error('Erro ao revisar com IA');
+                    } finally {
+                      setSummarizing(false);
+                    }
+                  }}
+                >
+                  {summarizing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                  Revisar com IA
+                </Button>
+              )}
+            </div>
+            <Textarea
+              value={props.formFeedback || ''}
+              onChange={e => props.setFormFeedback?.(e.target.value)}
+              placeholder="Retorno do responsável: o que foi feito com esta demanda, como ficou..."
+              rows={2}
+              className="text-xs"
+            />
+          </div>
         </div>
       )}
 

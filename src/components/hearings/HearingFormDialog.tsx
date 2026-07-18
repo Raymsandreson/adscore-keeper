@@ -8,7 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useHearings, type Hearing, type HearingCategory, type HearingStatus } from '@/hooks/useHearings';
 import { CATEGORY_LABELS, HEARING_TYPES, STATUS_LABELS, TIMEZONE_OPTIONS } from './hearingStyles';
 import { HearingMemberPicker } from './HearingMemberPicker';
-import { Trash2 } from 'lucide-react';
+import { HearingActivityDialog } from './HearingActivityDialog';
+import { Trash2, CalendarPlus } from 'lucide-react';
 
 interface Props {
   open: boolean;
@@ -34,6 +35,7 @@ const empty = (defaultDate?: string) => ({
 export function HearingFormDialog({ open, onOpenChange, hearing, defaultDate }: Props) {
   const { create, update, remove } = useHearings();
   const [form, setForm] = useState(empty(defaultDate));
+  const [activityOpen, setActivityOpen] = useState(false);
 
   useEffect(() => {
     if (hearing) {
@@ -176,9 +178,14 @@ export function HearingFormDialog({ open, onOpenChange, hearing, defaultDate }: 
 
         <DialogFooter className="gap-2 sm:justify-between">
           {hearing ? (
-            <Button variant="ghost" className="text-destructive" onClick={handleDelete}>
-              <Trash2 className="h-4 w-4 mr-1" /> Excluir
-            </Button>
+            <div className="flex gap-1">
+              <Button variant="ghost" className="text-destructive" onClick={handleDelete}>
+                <Trash2 className="h-4 w-4 mr-1" /> Excluir
+              </Button>
+              <Button variant="outline" onClick={() => setActivityOpen(true)}>
+                <CalendarPlus className="h-4 w-4 mr-1" /> Criar atividade
+              </Button>
+            </div>
           ) : <div />}
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
@@ -187,6 +194,15 @@ export function HearingFormDialog({ open, onOpenChange, hearing, defaultDate }: 
             </Button>
           </div>
         </DialogFooter>
+
+        {hearing && (
+          <HearingActivityDialog
+            open={activityOpen}
+            onOpenChange={setActivityOpen}
+            hearing={hearing}
+            snapshot={form}
+          />
+        )}
       </DialogContent>
     </Dialog>
   );

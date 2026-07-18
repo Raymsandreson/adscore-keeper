@@ -49,6 +49,7 @@ import {
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { ShareMenu } from '@/components/ShareMenu';
 import { WorkflowTimer } from '@/components/instagram/WorkflowTimer';
+import { useActivityTimer } from '@/contexts/ActivityTimerContext';
 import { ActivityChatSheet } from '@/components/activities/ActivityChatSheet';
 import { ActivityDetailPanel } from '@/components/activities/ActivityDetailPanel';
 import { LeadFunnelProgressBar } from '@/components/activities/LeadFunnelProgressBar';
@@ -70,6 +71,8 @@ import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameM
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
+import { summarizeActivityConversation, type SuggestedActivity } from '@/lib/activityFeedbackSummary';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { filterAssignableMembers } from '@/lib/assigneeBlocklist';
 const ACTIVITY_TYPES = [
   { value: 'tarefa', label: 'Tarefa', bg: 'bg-blue-50 dark:bg-blue-950/20', border: 'border-blue-300 dark:border-blue-700', header: 'bg-blue-500', dot: 'bg-blue-500' },
@@ -207,6 +210,7 @@ const ActivitiesPage = () => {
   const celebrationInitRef = useRef(false);
   useEffect(() => { celebrationInitRef.current = true; }, []);
   const { activities, loading, fetchActivities: _fetchActivities, createActivity, updateActivity, completeActivity, deleteActivity } = useLeadActivities();
+  const { startTimer: startActivityTimer, pauseAndClose: pauseActivityTimer, stopTimerFor: stopActivityTimerFor, requestLeave: requestLeaveTimer, current: runningTimer } = useActivityTimer();
   const refreshCountsRef = useRef<(() => Promise<void>) | null>(null);
   const fetchActivities = useCallback(async (params?: Parameters<typeof _fetchActivities>[0]) => {
     await _fetchActivities(params);
@@ -251,6 +255,13 @@ const ActivitiesPage = () => {
   const [filterWorkflow, setFilterWorkflow] = usePageState<string[]>('activities_filterWorkflow', []);
   const [filterHasDocs, setFilterHasDocs] = usePageState<boolean>('activities_filterHasDocs', false);
   const [activityIdsWithDocs, setActivityIdsWithDocs] = useState<Set<string>>(new Set());
+  // Atividades com cronômetro ATIVO AGORA (heartbeat fresco): id -> { secs, userName }
+  const [filterInExecution, setFilterInExecution] = usePageState<boolean>('activities_filterInExecution', false);
+  const [execTodayMap, setExecTodayMap] = useState<Map<string, { secs: number; userName: string }>>(new Map());
+  // Busca por texto dentro das atividades já filtradas
+  const [searchText, setSearchText] = usePageState<string>('activities_searchText', '');
+  // Tempo total já cronometrado na atv aberta (todas as sessões, todos os membros)
+  const [activityTotalSecs, setActivityTotalSecs] = useState<number>(0);
   const [sheetMode, setSheetMode] = usePageState<'create' | 'edit' | null>('activities_sheetMode', null);
   const [selectedActivityId, setSelectedActivityId] = usePageState<string | null>('activities_selectedId', null);
   const [selectedActivity, setSelectedActivity] = useState<LeadActivity | null>(null);
@@ -318,6 +329,9 @@ const ActivitiesPage = () => {
   const [loadedHadObservers, setLoadedHadObservers] = useState(false);
   // Feedback da atv (preenchido pelo responsável) + data de reagendamento.
   const [formFeedback, setFormFeedback] = useState('');
+  // Próxima atividade sugerida pela IA na "Revisar com IA" (popup de confirmação).
+  const [suggestedActivity, setSuggestedActivity] = useState<SuggestedActivity | null>(null);
+  const [creatingSuggested, setCreatingSuggested] = useState(false);
   const [formRescheduledTo, setFormRescheduledTo] = useState('');
   const [formDeadline, setFormDeadline] = useState('');
   const [formNotificationDate, setFormNotificationDate] = useState('');
@@ -331,6 +345,7 @@ const ActivitiesPage = () => {
   const [formProcessId, setFormProcessId] = useState('');
   const [formProcessTitle, setFormProcessTitle] = useState('');
   const [formWorkflowId, setFormWorkflowId] = useState('');
+  const [formCampaignId, setFormCampaignId] = useState('');
   const [formIsSystem, setFormIsSystem] = useState(false);
   const [formIsManagement, setFormIsManagement] = useState(false);
   const [availableCases, setAvailableCases] = useState<{id: string; case_number: string; title: string; lead_id: string | null}[]>([]);
@@ -495,6 +510,31 @@ const ActivitiesPage = () => {
     };
     load();
   }, []);
+
+  // Atividades com cronômetro ATIVO AGORA: status running + heartbeat fresco
+  // (o flush atualiza ended_at a cada 30s; sem batimento em 2min = não está rodando).
+  useEffect(() => {
+    const load = async () => {
+      const heartbeat = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+      const dbTimer = externalSupabase as unknown as import('@supabase/supabase-js').SupabaseClient;
+      try {
+        const { data } = await dbTimer.from('activity_time_entries')
+          .select('activity_id, active_seconds, user_name')
+          .not('activity_id', 'is', null)
+          .eq('status', 'running')
+          .gte('ended_at', heartbeat);
+        const m = new Map<string, { secs: number; userName: string }>();
+        for (const r of ((data as { activity_id: string | null; active_seconds: number; user_name: string | null }[]) || [])) {
+          if (!r.activity_id) continue;
+          m.set(r.activity_id, { secs: r.active_seconds || 0, userName: r.user_name || 'Membro' });
+        }
+        setExecTodayMap(m);
+      } catch (e) { console.warn('[cronometro-ativo] load falhou', e); }
+    };
+    load();
+    const id = setInterval(load, 30000);
+    return () => clearInterval(id);
+  }, [runningTimer?.activityId]);
 
   const toggleHasDocs = useCallback(async (activityId: string) => {
     const has = activityIdsWithDocs.has(activityId);
@@ -702,7 +742,7 @@ const ActivitiesPage = () => {
     setCaseSearch('');
     setFormProcessId('');
     setFormProcessTitle('');
-    setFormWorkflowId('');
+    setFormWorkflowId(''); setFormCampaignId('');
     setLeadCases([]);
     setCaseProcesses([]);
     setFormMatrixQuadrant('');
@@ -926,6 +966,7 @@ const ActivitiesPage = () => {
       process_id: formProcessId || null,
       process_title: formProcessTitle || null,
       workflow_id: formWorkflowId || null,
+      crm_campaign_id: formCampaignId || null,
       is_system: formIsSystem,
       is_management: formIsManagement,
       client_name_override: formClientNameOverride || null,
@@ -1008,7 +1049,34 @@ const ActivitiesPage = () => {
     }
   };
 
+  // Cronômetro só liga em atividade SUA (principal, co-assessor ou sem responsável).
+  // Abrir atv de outro assessor é consulta — não conta tempo nem rouba o cronômetro.
+  const isMyActivityForTimer = useCallback(async (activity: LeadActivity) => {
+    const myExt = await remapToExternal(user?.id || null);
+    const ids = activity.assigned_to_ids || null;
+    const unassigned = !activity.assigned_to && !(ids && ids.length > 0);
+    return unassigned || activity.assigned_to === myExt || !!(myExt && ids?.includes(myExt));
+  }, [user?.id]);
+
   const handleOpenEdit = async (activity: LeadActivity) => {
+    // Tempo total já registrado nesta atv (aparece no editor e na mensagem WA)
+    setActivityTotalSecs(0);
+    (externalSupabase as unknown as import('@supabase/supabase-js').SupabaseClient)
+      .from('activity_time_entries')
+      .select('active_seconds')
+      .eq('activity_id', activity.id)
+      .then(({ data }: { data: { active_seconds: number }[] | null }) => {
+        setActivityTotalSecs((data || []).reduce((s, r) => s + (r.active_seconds || 0), 0));
+      });
+    // Cronômetro / banco de horas: auto-start ao abrir a atividade (se for sua)
+    if (activity.status !== 'concluida' && await isMyActivityForTimer(activity)) {
+      startActivityTimer({
+        id: activity.id,
+        activity_type: activity.activity_type,
+        title: activity.title,
+        lead_name: activity.lead_name,
+      });
+    }
     // Set all form state synchronously first (instant UI)
     setSelectedActivity(activity);
     setSelectedActivityId(activity.id);
@@ -1038,6 +1106,7 @@ const ActivitiesPage = () => {
     setFormProcessId((activity as any).process_id || '');
     setFormProcessTitle((activity as any).process_title || '');
     setFormMatrixQuadrant((activity as any).matrix_quadrant || '');
+    setFormWorkflowId((activity as any).workflow_id || ''); setFormCampaignId((activity as any).crm_campaign_id || '');
     setFormClientNameOverride((activity as any).client_name_override || '');
     setSheetMode('edit');
 
@@ -1089,6 +1158,9 @@ const ActivitiesPage = () => {
 
   // Restore selected activity after activities load (persist across browser tab switches)
   useEffect(() => {
+    // Se há um ?openActivity= na URL, ele tem precedência: não restaura o
+    // último selecionado (localStorage) por cima, senão abre a atividade errada.
+    if (searchParams.get('openActivity')) return;
     if (selectedActivityId && activities.length > 0 && !selectedActivity) {
       const activity = activities.find(a => a.id === selectedActivityId);
       if (activity) {
@@ -1178,6 +1250,10 @@ const ActivitiesPage = () => {
       process_id: formProcessId || null,
       process_title: formProcessTitle || null,
       matrix_quadrant: formMatrixQuadrant || null,
+      crm_campaign_id: formCampaignId || null,
+      workflow_id: formWorkflowId || null,
+      is_system: formIsSystem,
+      is_management: formIsManagement,
       client_name_override: formClientNameOverride || null,
       feedback: formFeedback || null,
       rescheduled_to: formRescheduledTo || null,
@@ -1231,7 +1307,30 @@ const ActivitiesPage = () => {
       toast.error('Falha ao salvar anexos. A atividade não foi concluída.');
       return;
     }
+
+    // Atividade INTERNA sem feedback preenchido → resume a conversa da equipe +
+    // o que foi feito no campo feedback e avisa os observadores. Não bloqueia a
+    // conclusão se a IA falhar.
+    if (formIsSystem && selectedActivity?.id === id && !formFeedback.trim()) {
+      try {
+        const summary = await summarizeActivityConversation({
+          activityId: id,
+          whatWasDone: formWhatWasDone,
+          currentStatus: formCurrentStatus,
+          nextSteps: formNextSteps,
+        });
+        if (summary) {
+          setFormFeedback(summary);
+          await updateActivity(id, { feedback: summary });
+          await notifyActivityChange(selectedActivity, 'feedback', `Feedback: ${summary.slice(0, 300)}`);
+        }
+      } catch {
+        // resumo é best-effort — segue concluindo
+      }
+    }
+
     await completeActivity(id);
+    await stopActivityTimerFor(id); // concluir encerra o cronômetro da atv
     fetchActivities(getFilterParams());
     toast.success('Atividade concluída! 🎉', {
       description: randomChurchillQuote(),
@@ -1313,6 +1412,7 @@ const ActivitiesPage = () => {
 
       // Conclude the current activity without overwriting its existing data
       await completeActivity(currentActivity.id);
+      await stopActivityTimerFor(currentActivity.id); // concluir encerra o cronômetro
       toast.success('Atividade concluída! 🎉', {
         description: randomChurchillQuote(),
         duration: 6000,
@@ -1438,6 +1538,9 @@ const ActivitiesPage = () => {
   };
 
   const closeSheet = () => {
+    // Sair da atividade → pergunta continuar/pausar o cronômetro (no-op se já
+    // não houver atv sendo cronometrada, ex.: após concluir/excluir).
+    requestLeaveTimer();
     setSheetMode(null);
     setSelectedActivity(null);
     setSelectedActivityId(null);
@@ -1465,6 +1568,15 @@ const ActivitiesPage = () => {
   };
 
   const loadActivityIntoForm = async (activity: LeadActivity) => {
+    // Cronômetro / banco de horas: cada atv do workflow gera sua sessão (se for sua)
+    if (await isMyActivityForTimer(activity)) {
+      startActivityTimer({
+        id: activity.id,
+        activity_type: activity.activity_type,
+        title: activity.title,
+        lead_name: activity.lead_name,
+      });
+    }
     setSelectedActivity(activity);
     setFormTitle(activity.title);
     setFormWhatWasDone(activity.what_was_done || '');
@@ -1555,6 +1667,11 @@ const ActivitiesPage = () => {
       assigned_to_name: formAssignedToName || null, deadline: formDeadline || null,
       notification_date: formNotificationDate || null, notes: formNotes || null,
       status: formStatus, contact_id: formContactId || null, contact_name: formContactName || null,
+      case_id: formCaseId || null, case_title: formCaseTitle || null,
+      crm_campaign_id: formCampaignId || null,
+      process_id: formProcessId || null, process_title: formProcessTitle || null,
+      workflow_id: formWorkflowId || null,
+      is_system: formIsSystem, is_management: formIsManagement,
       client_name_override: formClientNameOverride || null,
       ...buildAssigneesPayload(),
     } as any);
@@ -1580,6 +1697,7 @@ const ActivitiesPage = () => {
   };
 
   const exitWorkflow = () => {
+    pauseActivityTimer(); // salva o tempo da última atv do workflow
     setWorkflowMode(false);
     setWorkflowFinished(false);
     setWorkflowQueue([]);
@@ -1618,7 +1736,7 @@ const ActivitiesPage = () => {
     setFormCaseTitle('');
     setFormProcessId('');
     setFormProcessTitle('');
-    setFormWorkflowId('');
+    setFormWorkflowId(''); setFormCampaignId('');
     setCaseProcesses([]);
     // Load cases for this lead
     externalSupabase.from('legal_cases').select('id, case_number, title').eq('lead_id', leadId).then(({ data }) => {
@@ -1687,7 +1805,7 @@ const ActivitiesPage = () => {
     setFormCaseTitle('');
     setFormProcessId('');
     setFormProcessTitle('');
-    setFormWorkflowId('');
+    setFormWorkflowId(''); setFormCampaignId('');
     setLeadCases([]);
     setCaseProcesses([]);
     // Load all contacts
@@ -1874,6 +1992,9 @@ const ActivitiesPage = () => {
     if (filterHasDocs) {
       list = list.filter(a => activityIdsWithDocs.has(a.id));
     }
+    if (filterInExecution) {
+      list = list.filter(a => execTodayMap.has(a.id));
+    }
     if (filterCase.length > 0) {
       list = list.filter(a => (a as any).case_id && filterCase.includes((a as any).case_id));
     }
@@ -1883,7 +2004,7 @@ const ActivitiesPage = () => {
         const dateKey = raw ? raw.slice(0, 10) : null;
         return dateKey ? selectedCalDays.includes(dateKey) : false;
       });
-    } else if (viewMode === 'list' && !filterStatus.includes('atrasada')) {
+    } else if (viewMode === 'list' && !filterStatus.includes('atrasada') && !filterInExecution) {
       // Sem dia selecionado: a lista acompanha o mês exibido no calendário.
       // Exceção: com o filtro 'Atrasada' ativo, mostramos vencidas de qualquer mês.
       // Atividades sem nenhuma data continuam visíveis (não têm lugar no calendário).
@@ -1894,6 +2015,18 @@ const ActivitiesPage = () => {
         return !dateKey || dateKey.startsWith(monthPrefix);
       });
     }
+    // Busca por texto: aplicada por último, sobre as atividades já filtradas.
+    const term = searchText.trim().toLowerCase();
+    if (term) {
+      list = list.filter(a =>
+        (a.title || '').toLowerCase().includes(term) ||
+        (a.lead_name || '').toLowerCase().includes(term) ||
+        (a.client_name_override || '').toLowerCase().includes(term) ||
+        (a.case_title || '').toLowerCase().includes(term) ||
+        (a.process_title || '').toLowerCase().includes(term) ||
+        (a.assigned_to_name || '').toLowerCase().includes(term)
+      );
+    }
     // Ordena por prioridade: urgente > alta > normal > baixa (mantém ordem original como tiebreaker)
     const priorityRank: Record<string, number> = { urgente: 0, alta: 1, normal: 2, baixa: 3 };
     return [...list].sort((a, b) => {
@@ -1901,7 +2034,7 @@ const ActivitiesPage = () => {
       const rb = priorityRank[b.priority || 'normal'] ?? 2;
       return ra - rb;
     });
-  }, [activities, selectedCalDays, filterCase, viewMode, calendarMonth, filterStatus, filterHasDocs, activityIdsWithDocs]);
+  }, [activities, selectedCalDays, filterCase, viewMode, calendarMonth, filterStatus, filterHasDocs, activityIdsWithDocs, filterInExecution, execTodayMap, searchText]);
 
   // A busca sem teto (filtro Atrasada) pode trazer milhares de linhas; o DOM não aguenta
   // todos os cards de uma vez — renderiza em lotes e revela o resto sob demanda.
@@ -2230,7 +2363,10 @@ const ActivitiesPage = () => {
     const createdAtFmt = selectedActivity ? format(parseISO(selectedActivity.created_at), "dd/MM/yyyy 'às' HH:mm") : format(new Date(), "dd/MM/yyyy 'às' HH:mm");
     const updatedByName = selectedActivity ? resolveUserName((selectedActivity as any).updated_by) : null;
     const updatedAtFmt = selectedActivity?.updated_at && selectedActivity.updated_at !== selectedActivity.created_at ? format(parseISO(selectedActivity.updated_at), "dd/MM/yyyy 'às' HH:mm") : null;
-    const timeSpent = workflowMode ? getActivityTimeSpent() : 0;
+    // Tempo dedicado: usa o cronômetro ao vivo se esta atv está rodando; senão o total salvo no banco.
+    const liveSecs = runningTimer?.kind === 'activity' && runningTimer.activityId === selectedActivity?.id
+      ? runningTimer.activeSeconds : 0;
+    const timeSpent = Math.max(liveSecs, activityTotalSecs, workflowMode ? getActivityTimeSpent() : 0);
     const tempoStr = timeSpent > 0 ? `⏱️ Tempo dedicado à atividade: ${formatDuration(timeSpent)}` : '';
     const activityLink = selectedActivity ? `🔗 Ver atividade: ${window.location.origin}/?openActivity=${selectedActivity.id}` : '';
     const updatedInfo = updatedByName && updatedAtFmt ? `\n*Última atualização por:* ${updatedByName} em ${updatedAtFmt}` : '';
@@ -2523,6 +2659,9 @@ const ActivitiesPage = () => {
   // Note: also resolves for closed leads (CASO mode) so templates of the
   // checkpoint step where the case was created keep working.
   const activeStepBoardId = (() => {
+    // 1) Fluxo escolhido explicitamente na atividade tem prioridade — inclusive
+    //    para atividades internas/gerenciamento que o usuário plugou num board.
+    if (formWorkflowId) return formWorkflowId;
     const linkedProcess = formProcessId ? caseProcesses.find(p => p.id === formProcessId) : null;
     if (linkedProcess?.workflow_id) return linkedProcess.workflow_id;
     if (leadPreview?.board_id) return leadPreview.board_id;
@@ -2541,6 +2680,7 @@ const ActivitiesPage = () => {
       formCoAssignees={formCoAssignees}
       formObservers={formObservers} onToggleObserver={handleToggleObserver}
       formFeedback={formFeedback} setFormFeedback={setFormFeedback}
+      onSuggestNextActivity={setSuggestedActivity}
       formRescheduledTo={formRescheduledTo} setFormRescheduledTo={setFormRescheduledTo}
       formType={formType} setFormType={setFormType}
       formStatus={formStatus} setFormStatus={setFormStatus}
@@ -2554,6 +2694,7 @@ const ActivitiesPage = () => {
       formProcessId={formProcessId} formProcessTitle={formProcessTitle}
       formWorkflowId={formWorkflowId} setFormWorkflowId={setFormWorkflowId}
       workflowOptions={workflowOptions}
+      formCampaignId={formCampaignId} setFormCampaignId={setFormCampaignId}
       formClientNameOverride={formClientNameOverride}
       setFormClientNameOverride={setFormClientNameOverride}
       formIsSystem={formIsSystem} setFormIsSystem={setFormIsSystem}
@@ -3251,8 +3392,44 @@ const ActivitiesPage = () => {
           Com documentação
         </Button>
 
-        {(filterStatus.length > 0 || filterType.length > 0 || filterAssignee.length > 0 || filterLead.length > 0 || filterContact.length > 0 || filterCase.length > 0 || filterWorkflow.length > 0 || selectedCalDays.length > 0 || filterHasDocs) && (
-          <Button variant="ghost" size="sm" className="h-7 text-xs text-destructive shrink-0" onClick={() => { setFilterStatus([]); setFilterType([]); setFilterAssignee([]); setFilterLead([]); setFilterContact([]); setFilterCase([]); setFilterWorkflow([]); setSelectedCalDays([]); setFilterHasDocs(false); }}>
+        {/* Só as atividades com cronômetro rodando NESTE momento */}
+        <Button
+          variant={filterInExecution ? "default" : "outline"}
+          size="sm"
+          className="h-7 text-xs shrink-0 gap-1"
+          onClick={() => setFilterInExecution(v => !v)}
+          title="Mostrar só as atividades com cronômetro rodando agora"
+        >
+          <Play className="h-3 w-3" />
+          Cronômetro ativo
+          {execTodayMap.size > 0 && (
+            <Badge variant="secondary" className="ml-0.5 h-4 px-1 text-[10px] tabular-nums">{execTodayMap.size}</Badge>
+          )}
+        </Button>
+
+        {/* Busca por texto dentro das atividades já filtradas */}
+        <div className="relative shrink-0">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground pointer-events-none" />
+          <Input
+            value={searchText}
+            onChange={e => setSearchText(e.target.value)}
+            placeholder="Buscar nas atividades..."
+            className="h-7 w-48 pl-7 pr-6 text-xs"
+          />
+          {searchText && (
+            <button
+              type="button"
+              onClick={() => setSearchText('')}
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              title="Limpar busca"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          )}
+        </div>
+
+        {(filterStatus.length > 0 || filterType.length > 0 || filterAssignee.length > 0 || filterLead.length > 0 || filterContact.length > 0 || filterCase.length > 0 || filterWorkflow.length > 0 || selectedCalDays.length > 0 || filterHasDocs || filterInExecution || searchText) && (
+          <Button variant="ghost" size="sm" className="h-7 text-xs text-destructive shrink-0" onClick={() => { setFilterStatus([]); setFilterType([]); setFilterAssignee([]); setFilterLead([]); setFilterContact([]); setFilterCase([]); setFilterWorkflow([]); setSelectedCalDays([]); setFilterHasDocs(false); setFilterInExecution(false); setSearchText(''); }}>
             <X className="h-3 w-3 mr-1" /> Limpar
           </Button>
         )}
@@ -4020,6 +4197,27 @@ const ActivitiesPage = () => {
                             {PRIORITY_OPTIONS.find(p => p.value === activity.priority)?.label}
                           </span>
                         )}
+                        {/* Cronômetro ativo agora: mostra quem está fazendo e há quanto tempo */}
+                        {(() => {
+                          const isMine = runningTimer?.kind === 'activity' && runningTimer.activityId === activity.id;
+                          const remote = execTodayMap.get(activity.id);
+                          if (!isMine && !remote) return null;
+                          const secs = isMine ? runningTimer.activeSeconds : (remote?.secs || 0);
+                          const who = isMine ? 'você' : (remote?.userName?.split(' ')[0] || 'Membro');
+                          return (
+                            <span
+                              className="flex items-center gap-1 text-[10px] font-medium rounded px-1 py-0.5 text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-900/40"
+                              title={`Cronômetro rodando agora — ${isMine ? 'você' : remote?.userName}`}
+                            >
+                              <span className="relative flex h-1.5 w-1.5">
+                                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                              </span>
+                              <span className="tabular-nums">{formatDuration(secs)}</span>
+                              <span className="max-w-[80px] truncate">{who}</span>
+                            </span>
+                          );
+                        })()}
                       </div>
                       <div className="flex items-center gap-0.5 shrink-0">
                         {activity.status !== 'concluida' && (
@@ -4172,6 +4370,22 @@ const ActivitiesPage = () => {
                         className="h-7 text-sm font-bold border-0 border-b border-transparent hover:border-border focus-visible:border-primary rounded-none px-0 bg-transparent focus-visible:ring-0 placeholder:text-muted-foreground/60 placeholder:font-normal"
                         title="Clique para editar o assunto da atividade"
                       />
+                      {/* Tempo total já cronometrado nesta atv (ao vivo quando rodando) */}
+                      {(() => {
+                        const live = runningTimer?.kind === 'activity' && runningTimer.activityId === selectedActivity?.id
+                          ? runningTimer.activeSeconds : 0;
+                        const total = Math.max(live, activityTotalSecs);
+                        if (total <= 0) return null;
+                        return (
+                          <span
+                            className="shrink-0 flex items-center gap-1 text-[11px] font-mono tabular-nums text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-900/40 rounded px-1.5 py-0.5"
+                            title="Tempo total dedicado a esta atividade (todas as sessões)"
+                          >
+                            <Timer className="h-3 w-3" />
+                            {formatDuration(total)}
+                          </span>
+                        );
+                      })()}
                     </div>
                     {formLeadName && (
                       <div className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -4955,6 +5169,79 @@ const ActivitiesPage = () => {
           entityName={selectedActivity.title}
         />
       )}
+
+      {/* Popup: próxima atividade sugerida pela IA (Revisar com IA no feedback) */}
+      <Dialog open={!!suggestedActivity} onOpenChange={(o) => { if (!o) setSuggestedActivity(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <Sparkles className="h-4 w-4 text-primary" /> Próxima atividade sugerida
+            </DialogTitle>
+          </DialogHeader>
+          {suggestedActivity && (
+            <div className="space-y-2 text-sm">
+              <div>
+                <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Título</span>
+                <p className="font-medium">{suggestedActivity.title}</p>
+              </div>
+              <div className="flex flex-wrap gap-1.5 text-xs">
+                {suggestedActivity.activity_type && <Badge variant="outline" className="text-[10px]">{suggestedActivity.activity_type}</Badge>}
+                {suggestedActivity.priority && <Badge variant="outline" className="text-[10px]">Prioridade: {suggestedActivity.priority}</Badge>}
+                {typeof suggestedActivity.prazo_dias === 'number' && <Badge variant="outline" className="text-[10px]">Prazo: {suggestedActivity.prazo_dias} dia(s)</Badge>}
+              </div>
+              {suggestedActivity.justificativa && (
+                <div>
+                  <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Por quê</span>
+                  <p className="text-muted-foreground text-xs">{suggestedActivity.justificativa}</p>
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter className="gap-2">
+            <Button variant="outline" size="sm" onClick={() => setSuggestedActivity(null)}>Descartar</Button>
+            <Button
+              size="sm"
+              disabled={creatingSuggested}
+              onClick={async () => {
+                if (!suggestedActivity) return;
+                setCreatingSuggested(true);
+                try {
+                  const dias = typeof suggestedActivity.prazo_dias === 'number' ? suggestedActivity.prazo_dias : 3;
+                  const deadline = format(addDays(startOfDay(new Date()), dias), 'yyyy-MM-dd');
+                  await createActivity({
+                    title: suggestedActivity.title,
+                    activity_type: suggestedActivity.activity_type || 'tarefa',
+                    priority: suggestedActivity.priority || 'normal',
+                    lead_id: formLeadId || selectedActivity?.lead_id || null,
+                    lead_name: formLeadName || selectedActivity?.lead_name || null,
+                    case_id: formCaseId || null,
+                    case_title: formCaseTitle || null,
+                    process_id: formProcessId || null,
+                    process_title: formProcessTitle || null,
+                    contact_id: formContactId || null,
+                    contact_name: formContactName || null,
+                    assigned_to: formAssignedTo || null,
+                    assigned_to_name: formAssignedToName || null,
+                    deadline,
+                    notification_date: deadline,
+                    notes: suggestedActivity.justificativa || null,
+                  });
+                  toast.success('Atividade criada a partir da sugestão');
+                  setSuggestedActivity(null);
+                  fetchActivities(getFilterParams());
+                } catch {
+                  toast.error('Erro ao criar a atividade sugerida');
+                } finally {
+                  setCreatingSuggested(false);
+                }
+              }}
+            >
+              {creatingSuggested ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Plus className="h-3.5 w-3.5 mr-1" />}
+              Criar atividade
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <ActivityChatSheet
         open={chatOpen}

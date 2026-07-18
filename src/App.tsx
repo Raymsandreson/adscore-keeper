@@ -12,6 +12,7 @@ import { SessionProvider } from "@/contexts/SessionContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { TeamChatNotifications } from "@/components/chat/TeamChatNotifications";
+import { PushNotificationPrompt } from "@/components/chat/PushNotificationPrompt";
 import { ActivityNotificationsListener } from "@/components/activities/ActivityNotificationsListener";
 import { UserStatusGuard } from "@/components/auth/UserStatusGuard";
 import { PageTracker } from "@/components/PageTracker";
@@ -26,6 +27,8 @@ import { PWAInstallBanner } from "@/components/PWAInstallBanner";
 import { MobileHeader } from "@/components/MobileHeader";
 import { MobileSwipeHandler } from "@/components/MobileSwipeHandler";
 import { OrgMetaSync } from "@/components/OrgMetaSync";
+import { ActivityTimerProvider } from "@/contexts/ActivityTimerContext";
+import { ActivityTimerOverlay } from "@/components/activities/ActivityTimerOverlay";
 import WhatsAppPage from "@/pages/WhatsAppPage";
 
 // Helper: retry dynamic import once per module on failure (stale chunk after deploy)
@@ -149,6 +152,7 @@ const FinancePage = lazyRetry(() => import("./pages/FinancePage"), "FinancePage"
 const ExpenseFormPage = lazyRetry(() => import("./pages/ExpenseFormPage"), "ExpenseFormPage");
 const CallsPage = lazyRetry(() => import("./pages/CallsPage"), "CallsPage");
 const ServiceRatingsPage = lazyRetry(() => import("./pages/ServiceRatingsPage"), "ServiceRatingsPage");
+const BancoHorasPage = lazyRetry(() => import("./pages/BancoHorasPage"), "BancoHorasPage");
 
 const WhatsAppCloudPage = lazyRetry(() => import("./pages/WhatsAppCloudPage"), "WhatsAppCloudPage");
 const WhatsAppApiPage = lazyRetry(() => import("./pages/WhatsAppApiPage"), "WhatsAppApiPage");
@@ -189,6 +193,9 @@ const RecoverPhone55Page = lazyRetry(() => import("./pages/RecoverPhone55Page"),
 const DocumentReviewPage = lazyRetry(() => import("./pages/DocumentReviewPage"), "DocumentReviewPage");
 const AvaliacaoPage = lazyRetry(() => import("./pages/AvaliacaoPage"), "AvaliacaoPage");
 const LeadsMapPage = lazyRetry(() => import("./pages/LeadsMapPage"), "LeadsMapPage");
+const AcolhimentoPage = lazyRetry(() => import("./pages/AcolhimentoPage"), "AcolhimentoPage");
+const CampaignsPage = lazyRetry(() => import("./pages/CampaignsPage"), "CampaignsPage");
+const CampaignDetailPage = lazyRetry(() => import("./pages/CampaignDetailPage"), "CampaignDetailPage");
 
 
 const queryClient = new QueryClient({
@@ -234,12 +241,15 @@ const App = () => (
                 <Sonner />
                 <OfflineBanner />
                 <TeamChatNotifications />
+                <PushNotificationPrompt />
                 <ActivityNotificationsListener />
                 <UserStatusGuard />
                 <OrgMetaSync />
-                <BrowserRouter>
-                  <AppRoutes />
-                </BrowserRouter>
+                <ActivityTimerProvider>
+                  <BrowserRouter>
+                    <AppRoutes />
+                  </BrowserRouter>
+                </ActivityTimerProvider>
               </TooltipProvider>
             </SessionProvider>
           </AuthProvider>
@@ -294,12 +304,16 @@ function SidebarLayout() {
             <CallFieldSuggestionsBanner />
             <FloatingWhatsAppCall />
             <PWAInstallBanner />
+            <ActivityTimerOverlay />
             <Suspense fallback={<PageLoading />}>
               <Routes>
                 <Route path="/" element={<ProtectedRoute><ActivitiesPage /></ProtectedRoute>} />
                 <Route path="/index" element={<Navigate to="/dashboard" replace />} />
                 <Route path="/dashboard" element={<Index />} />
                 <Route path="/leads" element={<ProtectedRoute><LeadsCenter /></ProtectedRoute>} />
+                <Route path="/acolhimento" element={<ProtectedRoute><AcolhimentoPage /></ProtectedRoute>} />
+                <Route path="/campanhas" element={<ProtectedRoute><CampaignsPage /></ProtectedRoute>} />
+                <Route path="/campanhas/:id" element={<ProtectedRoute><CampaignDetailPage /></ProtectedRoute>} />
                 <Route path="/noticias" element={<ProtectedRoute><NoticiasPage /></ProtectedRoute>} />
                 <Route path="/mapa-leads" element={<ProtectedRoute><LeadsMapPage /></ProtectedRoute>} />
                 <Route path="/analytics" element={<ProtectedRoute><AnalyticsPage /></ProtectedRoute>} />
@@ -313,6 +327,7 @@ function SidebarLayout() {
                 <Route path="/finance" element={<ProtectedRoute><FinancePage /></ProtectedRoute>} />
                 <Route path="/calls" element={<ProtectedRoute><CallsPage /></ProtectedRoute>} />
                 <Route path="/avaliacoes" element={<ProtectedRoute><ServiceRatingsPage /></ProtectedRoute>} />
+                <Route path="/banco-horas" element={<ProtectedRoute><BancoHorasPage /></ProtectedRoute>} />
                 
                 <Route path="/whatsapp" element={<ProtectedRoute><WhatsAppPage /></ProtectedRoute>} />
                 <Route path="/whatsapp/cloud" element={<ProtectedRoute><WhatsAppCloudPage /></ProtectedRoute>} />

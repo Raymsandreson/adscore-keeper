@@ -5,7 +5,7 @@ import {
   MessageCircle, CreditCard, Filter, Bot, Target, Heart, Megaphone,
   Zap, Search, ClipboardList, Phone, Scale, Briefcase, AtSign, RefreshCw, FileText,
   LogOut, MessagesSquare, Settings, ChevronRight, User, Chrome, Archive, MapPin,
-  MessageSquare as MessageSquareIcon, ExternalLink, Accessibility, Newspaper,
+  MessageSquare as MessageSquareIcon, ExternalLink, Accessibility, Newspaper, Clock,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -134,6 +134,7 @@ export function AppSidebar() {
         { id: "comments", label: "Comentários", icon: <MessageCircle className="h-3.5 w-3.5" />, path: "/dashboard?tab=automation&subtab=comments", color: "text-primary" },
         { id: "manychat", label: "ManyChat", icon: <MessagesSquare className="h-3.5 w-3.5" />, path: "/dashboard?tab=automation&subtab=manychat", color: "text-blue-500" },
         { id: "funnel", label: "Funil", icon: <Filter className="h-3.5 w-3.5" />, path: "/dashboard?tab=automation&subtab=funnel", color: "text-orange-500" },
+        { id: "campaigns", label: "Campanhas", icon: <Megaphone className="h-3.5 w-3.5" />, path: "/campanhas", color: "text-fuchsia-500" },
       ],
     },
     {
@@ -168,6 +169,7 @@ export function AppSidebar() {
       id: "team", label: "Equipe", icon: <UsersRound className="h-4 w-4" />,
       items: [
         { id: "team-main", label: "Equipe", icon: <UsersRound className="h-3.5 w-3.5" />, path: "/team", color: "text-emerald-500" },
+        { id: "banco-horas", label: "Banco de Horas", icon: <Clock className="h-3.5 w-3.5" />, path: "/banco-horas", color: "text-indigo-500" },
         { id: "analytics", label: "Analytics", icon: <TrendingUp className="h-3.5 w-3.5" />, path: "/analytics" },
       ],
     },

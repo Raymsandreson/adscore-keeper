@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 export interface TeamConversation {
   id: string;
@@ -357,6 +358,22 @@ export function useTeamDirectChat() {
         .from('team_conversations')
         .update({ updated_at: new Date().toISOString() })
         .eq('id', activeConversationId);
+
+      // Web Push nativo para os membros da conversa (celular/notebook, mesmo com
+      // a aba fechada). Não bloqueia o envio.
+      if (inserted) {
+        cloudFunctions.invoke('send-team-push', {
+          body: {
+            conversation_id: activeConversationId,
+            sender_id: user.id,
+            sender_name: profile?.full_name || user.email || 'Equipe',
+            content: content.trim() || '📎 Anexo',
+            is_urgent: !!options?.is_urgent,
+            mentioned_user_ids: mentionedIds,
+            url: '/',
+          },
+        }).catch(err => console.error('Falha ao enviar Web Push (chat direto):', err));
+      }
     } catch (e) {
       console.error('Error sending team message:', e);
       toast.error('Não foi possível enviar a mensagem.');

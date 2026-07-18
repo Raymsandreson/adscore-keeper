@@ -64,6 +64,7 @@ export default function ProcessesPage() {
     const { data } = await externalSupabase
       .from("lead_processes")
       .select("*, legal_cases(case_number, title)")
+      .is('deleted_at', null)
       .order("created_at", { ascending: false });
     setProcesses(data || []);
     setLoading(false);
@@ -109,8 +110,8 @@ export default function ProcessesPage() {
   const handleDelete = async (e: React.MouseEvent, p: Process) => {
     e.stopPropagation();
     const label = p.process_number || p.title || 'este processo';
-    if (!window.confirm(`Excluir "${label}"?\n\nEsta ação remove o processo do caso. Não pode ser desfeita.`)) return;
-    const { error } = await externalSupabase.from('lead_processes').delete().eq('id', p.id);
+    if (!window.confirm(`Excluir "${label}"?\n\nEsta ação remove o processo do caso.`)) return;
+    const { error } = await externalSupabase.from('lead_processes').update({ deleted_at: new Date().toISOString() } as any).eq('id', p.id);
     if (error) {
       toast.error('Erro ao excluir: ' + error.message);
       return;

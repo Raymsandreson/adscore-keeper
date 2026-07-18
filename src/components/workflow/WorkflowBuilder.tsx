@@ -1332,7 +1332,14 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                   <span className="flex-shrink-0 h-5 w-5 rounded-full bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 text-[10px] font-bold flex items-center justify-center">
                     {idx + 1}
                   </span>
-                  <span className="text-sm flex-1">{item.label}</span>
+                  <Input
+                    value={item.label}
+                    onChange={e => setDocChecklistDialog(prev => prev ? {
+                      ...prev,
+                      items: prev.items.map(i => i.id === item.id ? { ...i, label: e.target.value } : i),
+                    } : null)}
+                    className="h-7 text-sm flex-1"
+                  />
                   <Button
                     variant="ghost"
                     size="icon"

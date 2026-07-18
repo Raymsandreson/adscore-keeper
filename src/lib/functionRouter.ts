@@ -22,6 +22,7 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
   'send-whatsapp': 'cloud',                  // TODO: migrar para 'railway'
 
   // --- Funções já portadas pro Railway ---
+  'send-team-push': 'railway',
   'onboarding-checkpoint-execute': 'railway',
   'onboarding-checkpoint-reprocess': 'railway',
   'regenerate-lead-name': 'railway',
@@ -55,6 +56,7 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
   'search-escavador': 'external',
   'analyze-news-case': 'external',
   'scrape-news': 'external', // fix anti-bot (proxy stealth + detecção de página de bloqueio); Cloud mantém versão legada como fallback
+  'enrich-news-leads': 'external', // enriquecimento de manchetes (vítima/cidade/estrangeira) — só existe no externo
   'sync-process-compromissos': 'external', // detector de compromissos + feed do sino (dados 100% no Externo)
 
   // --- Todas as demais ficam no Cloud por padrão ---

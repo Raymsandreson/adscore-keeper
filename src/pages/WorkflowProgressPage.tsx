@@ -65,8 +65,13 @@ const WorkflowProgressPage = () => {
         const lead = (leadsRes.data || []).find(l => l.id === leadIdParam);
         if (lead) {
           setSelectedLead(lead);
-          const board = parsedBoards.find(b => b.id === lead.board_id);
-          setSelectedBoard(board || parsedBoards[0] || null);
+          // Só auto-seleciona se o board do lead existir E for workflow.
+          // Evita cair no fallback boards[0] que mostrava fluxo errado
+          // (ex.: caso de Inquérito exibindo tarefas de Acidente de Trabalho).
+          const board = parsedBoards.find(
+            b => b.id === lead.board_id && (b as any).board_type === 'workflow',
+          );
+          setSelectedBoard(board || null);
         }
       }
     } catch (error) {
@@ -84,8 +89,10 @@ const WorkflowProgressPage = () => {
   const handleSelectLead = (lead: LeadBasic) => {
     setSelectedLead(lead);
     setSearchParams({ leadId: lead.id });
-    const board = boards.find(b => b.id === lead.board_id);
-    setSelectedBoard(board || boards[0] || null);
+    const board = boards.find(
+      b => b.id === lead.board_id && (b as any).board_type === 'workflow',
+    );
+    setSelectedBoard(board || null);
     setShowLeadPicker(false);
     setSearchQuery('');
   };
@@ -282,14 +289,55 @@ const WorkflowProgressPage = () => {
             );
           })()
         ) : !selectedBoard ? (
-          <div className="text-center py-20 text-muted-foreground">
-            <p>Nenhum quadro kanban encontrado para este lead</p>
+          <div className="space-y-4 py-10">
+            <p className="text-center text-sm text-muted-foreground">
+              Nenhum fluxo de trabalho está associado automaticamente a este lead.
+              Selecione um fluxo para visualizar:
+            </p>
+            <div className="flex justify-center">
+              <Select
+                onValueChange={(id) => {
+                  const b = boards.find(x => x.id === id);
+                  if (b) setSelectedBoard(b);
+                }}
+              >
+                <SelectTrigger className="w-[280px]">
+                  <SelectValue placeholder="Escolher fluxo de trabalho" />
+                </SelectTrigger>
+                <SelectContent>
+                  {boards
+                    .filter(b => (b as any).board_type === 'workflow')
+                    .map(b => (
+                      <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         ) : (
           <div className="space-y-4">
-            {/* Stage selector */}
-            <div className="flex items-center gap-3 p-3 rounded-lg border bg-card">
-              <span className="text-sm text-muted-foreground">Fase atual:</span>
+            {/* Workflow + stage selectors */}
+            <div className="flex flex-wrap items-center gap-3 p-3 rounded-lg border bg-card">
+              <span className="text-sm text-muted-foreground">Fluxo:</span>
+              <Select
+                value={selectedBoard.id}
+                onValueChange={(id) => {
+                  const b = boards.find(x => x.id === id);
+                  if (b) setSelectedBoard(b);
+                }}
+              >
+                <SelectTrigger className="w-[220px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {boards
+                    .filter(b => (b as any).board_type === 'workflow')
+                    .map(b => (
+                      <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+              <span className="text-sm text-muted-foreground ml-2">Fase atual:</span>
               <Select
                 value={selectedLead.status || selectedBoard.stages[0]?.id}
                 onValueChange={handleStageChange}
