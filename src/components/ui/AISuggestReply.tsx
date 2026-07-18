@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Loader2, Sparkles, MessageSquarePlus, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
@@ -32,16 +32,39 @@ const TONES: Record<string, { label: string; prompt: string }> = {
 };
 
 interface Props {
-  /** Transcrição da conversa (contexto). Deve ser recalculada a cada abertura pelo pai. */
+  /** Transcrição da conversa (contexto). Recalculada a cada abertura. */
   buildContext: () => string;
   /** Aplica o texto escolhido no compositor. Nada é enviado — o usuário revisa e envia. */
   onApply: (text: string) => void;
   disabled?: boolean;
   buttonClassName?: string;
+  /** Mensagem específica que o usuário quer responder. A sugestão foca nela. */
+  targetMessage?: string;
+  /** Modo controlado: quando definido, o pai controla a abertura do dialog. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /** Esconde o botão gatilho interno (usado quando o pai controla a abertura). */
+  hideTrigger?: boolean;
 }
 
-export function AISuggestReply({ buildContext, onApply, disabled, buttonClassName }: Props) {
-  const [open, setOpen] = useState(false);
+export function AISuggestReply({
+  buildContext,
+  onApply,
+  disabled,
+  buttonClassName,
+  targetMessage,
+  open: controlledOpen,
+  onOpenChange,
+  hideTrigger,
+}: Props) {
+  const isControlled = controlledOpen !== undefined;
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = isControlled ? controlledOpen : internalOpen;
+  const setOpen = (o: boolean) => {
+    if (onOpenChange) onOpenChange(o);
+    if (!isControlled) setInternalOpen(o);
+  };
+
   const [loading, setLoading] = useState(false);
   const [tone, setTone] = useState<string>('cordial');
   const [instruction, setInstruction] = useState('');
@@ -49,7 +72,7 @@ export function AISuggestReply({ buildContext, onApply, disabled, buttonClassNam
   const [draft, setDraft] = useState('');
   const [context, setContext] = useState('');
 
-  const generate = useCallback(async (ctx: string, toneKey: string, extra: string) => {
+  const generate = useCallback(async (ctx: string, toneKey: string, extra: string, target?: string) => {
     if (!ctx.trim()) {
       toast.error('Sem histórico de conversa para basear a sugestão.');
       return;
@@ -57,6 +80,9 @@ export function AISuggestReply({ buildContext, onApply, disabled, buttonClassNam
     setLoading(true);
     try {
       const tonePrompt = TONES[toneKey]?.prompt || 'tom cordial e profissional';
+      const targetLine = target?.trim()
+        ? ` O atendente quer responder ESPECIFICAMENTE a esta mensagem do cliente: "${target.trim()}". Foque a resposta nela; use o restante da conversa apenas como contexto.`
+        : '';
       const extraLine = extra.trim()
         ? ` Instrução adicional do atendente: ${extra.trim()}.`
         : '';
@@ -65,7 +91,8 @@ export function AISuggestReply({ buildContext, onApply, disabled, buttonClassNam
         `Abaixo está o histórico da conversa (Eu = atendente, Cliente = a pessoa atendida). ` +
         `Escreva APENAS a próxima mensagem que o atendente deve enviar como resposta, em ${tonePrompt}, ` +
         `em português brasileiro, natural e claro. Não escreva saudações repetidas se a conversa já começou, ` +
-        `não invente fatos jurídicos nem prometa prazos ou valores. Responda só com o texto da mensagem, sem aspas.${extraLine}`;
+        `não invente fatos jurídicos nem prometa prazos ou valores. Responda só com o texto da mensagem, sem aspas.` +
+        `${targetLine}${extraLine}`;
 
       const { data, error } = await supabase.functions.invoke('ai-text-editor', {
         body: { text: ctx, action: 'custom', custom_prompt },
@@ -86,15 +113,17 @@ export function AISuggestReply({ buildContext, onApply, disabled, buttonClassNam
     }
   }, []);
 
-  const handleOpen = () => {
+  // Ao abrir (interno ou controlado) ou mudar a mensagem-alvo, recalcula contexto e gera.
+  useEffect(() => {
+    if (!open) return;
     const ctx = buildContext();
     setContext(ctx);
     setOptions([]);
     setDraft('');
     setInstruction('');
-    setOpen(true);
-    generate(ctx, tone, '');
-  };
+    generate(ctx, tone, '', targetMessage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, targetMessage]);
 
   const handleApply = () => {
     const text = draft.trim();
@@ -109,19 +138,21 @@ export function AISuggestReply({ buildContext, onApply, disabled, buttonClassNam
 
   return (
     <>
-      <button
-        type="button"
-        disabled={disabled || loading}
-        onClick={handleOpen}
-        title="Sugerir resposta com IA (baseada na conversa)"
-        className={cn(
-          'p-1.5 rounded hover:bg-accent transition-colors flex items-center gap-0.5 text-xs',
-          (disabled || loading) && 'opacity-50',
-          buttonClassName,
-        )}
-      >
-        <MessageSquarePlus className="h-4 w-4 text-primary" />
-      </button>
+      {!hideTrigger && (
+        <button
+          type="button"
+          disabled={disabled || loading}
+          onClick={() => setOpen(true)}
+          title="Sugerir resposta com IA (baseada na conversa)"
+          className={cn(
+            'p-1.5 rounded hover:bg-accent transition-colors flex items-center gap-0.5 text-xs',
+            (disabled || loading) && 'opacity-50',
+            buttonClassName,
+          )}
+        >
+          <MessageSquarePlus className="h-4 w-4 text-primary" />
+        </button>
+      )}
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-xl">
@@ -135,6 +166,13 @@ export function AISuggestReply({ buildContext, onApply, disabled, buttonClassNam
             </DialogDescription>
           </DialogHeader>
 
+          {targetMessage?.trim() && (
+            <div className="rounded-md border-l-2 border-primary bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+              <span className="font-semibold text-foreground">Respondendo a:</span>{' '}
+              <span className="line-clamp-3 whitespace-pre-wrap">{targetMessage.trim()}</span>
+            </div>
+          )}
+
           <div className="space-y-3">
             {/* Tom */}
             <div className="flex items-center gap-2">
@@ -143,7 +181,7 @@ export function AISuggestReply({ buildContext, onApply, disabled, buttonClassNam
                 value={tone}
                 onValueChange={(v) => {
                   setTone(v);
-                  generate(context, v, instruction);
+                  generate(context, v, instruction, targetMessage);
                 }}
                 disabled={loading}
               >
@@ -202,7 +240,7 @@ export function AISuggestReply({ buildContext, onApply, disabled, buttonClassNam
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !loading) {
                     e.preventDefault();
-                    generate(context, tone, instruction);
+                    generate(context, tone, instruction, targetMessage);
                   }
                 }}
                 placeholder="Peça um ajuste: ex. 'mais curta', 'peça os documentos'..."
@@ -213,7 +251,7 @@ export function AISuggestReply({ buildContext, onApply, disabled, buttonClassNam
                 variant="outline"
                 size="sm"
                 disabled={loading}
-                onClick={() => generate(context, tone, instruction)}
+                onClick={() => generate(context, tone, instruction, targetMessage)}
               >
                 {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
                 <span className="ml-1">Reformular</span>
@@ -226,7 +264,7 @@ export function AISuggestReply({ buildContext, onApply, disabled, buttonClassNam
               variant="ghost"
               size="sm"
               disabled={loading}
-              onClick={() => generate(context, tone, '')}
+              onClick={() => generate(context, tone, '', targetMessage)}
             >
               Gerar novamente
             </Button>

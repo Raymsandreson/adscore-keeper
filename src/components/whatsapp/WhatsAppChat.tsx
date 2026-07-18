@@ -820,6 +820,9 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const [pastedImage, setPastedImage] = useState<{ file: File; previewUrl: string } | null>(null);
   const [pastedCaption, setPastedCaption] = useState('');
   const [inputMode, setInputMode] = useState<'message' | 'note' | 'chat'>('message');
+  // Sugestão de resposta da IA focada numa mensagem específica.
+  const [replySuggestOpen, setReplySuggestOpen] = useState(false);
+  const [replySuggestTarget, setReplySuggestTarget] = useState<string | undefined>(undefined);
   const [mentionUserId, setMentionUserId] = useState<string | null>(null);
   const [mentionUserName, setMentionUserName] = useState<string | null>(null);
   const [teamMembers, setTeamMembers] = useState<Array<{ user_id: string; full_name: string | null }>>([]);
@@ -3913,6 +3916,23 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                       >
                         <Copy className="h-3 w-3" /> Copiar
                       </button>
+                      {!textSelectionMode && (
+                        <button
+                          type="button"
+                          title="Sugerir resposta a esta mensagem com IA"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setReplySuggestTarget(msg.message_text || '');
+                            setReplySuggestOpen(true);
+                          }}
+                          className={cn(
+                            "inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded hover:bg-black/10 dark:hover:bg-white/10 transition-colors",
+                            msg.direction === 'outbound' ? "text-green-100" : "text-muted-foreground"
+                          )}
+                        >
+                          <Sparkles className="h-3 w-3" /> Responder c/ IA
+                        </button>
+                      )}
                       {onCreateActivity && !textSelectionMode && (
                         <button
                           type="button"
@@ -4270,6 +4290,15 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
             {inputMode === 'message' && (
               <AISuggestReply buildContext={buildReplyContext} onApply={setNewMessage} />
             )}
+            {/* Instância controlada: sugestão focada numa mensagem específica (botão por bolha). */}
+            <AISuggestReply
+              buildContext={buildReplyContext}
+              onApply={(t) => { setInputMode('message'); setNewMessage(t); }}
+              open={replySuggestOpen}
+              onOpenChange={setReplySuggestOpen}
+              targetMessage={replySuggestTarget}
+              hideTrigger
+            />
             <Textarea
               ref={messageInputRef}
               placeholder={
