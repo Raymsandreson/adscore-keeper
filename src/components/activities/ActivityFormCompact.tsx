@@ -53,17 +53,112 @@ function copyField(text: string | null | undefined) {
   });
 }
 
-function CampaignSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const { data: campaigns = [] } = useCampaigns();
+function CampaignLinkerButton({ value, onChange, user }: { value: string; onChange: (v: string) => void; user: any }) {
+  const { data: campaigns = [], isLoading } = useCampaigns();
+  const createCampaign = useCreateCampaign();
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const [newName, setNewName] = useState('');
   const active = campaigns.filter(c => c.status !== 'closed');
+  const filtered = active.filter(c => c.name.toLowerCase().includes(search.toLowerCase()));
+  const selected = campaigns.find(c => c.id === value);
+
+  const handleCreate = async () => {
+    const name = newName.trim();
+    if (!name) return;
+    try {
+      const created = await createCampaign.mutateAsync({
+        name,
+        status: 'active',
+        investment_total: 0,
+        created_by: user?.id,
+      } as any);
+      onChange(created.id);
+      setNewName('');
+      setOpen(false);
+    } catch (e) {
+      // toast handled in hook
+    }
+  };
+
   return (
-    <Select value={value || 'none'} onValueChange={(v) => onChange(v === 'none' ? '' : v)}>
-      <SelectTrigger className="h-8 text-xs mt-0.5"><SelectValue placeholder="Sem campanha" /></SelectTrigger>
-      <SelectContent>
-        <SelectItem value="none" className="text-xs">Sem campanha</SelectItem>
-        {active.map(c => <SelectItem key={c.id} value={c.id} className="text-xs">{c.name}</SelectItem>)}
-      </SelectContent>
-    </Select>
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant={selected ? 'default' : 'outline'}
+          size="sm"
+          className="h-6 px-2 text-[10px] gap-1 max-w-[200px]"
+          title={selected ? `Campanha: ${selected.name}` : 'Vincular a uma campanha'}
+        >
+          <Megaphone className="h-3 w-3" />
+          <span className="truncate">{selected ? selected.name : 'Campanha'}</span>
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-72 p-2" align="start">
+        <div className="space-y-2">
+          <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Campanhas</div>
+          <Input
+            placeholder="Buscar campanha..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="h-7 text-xs"
+          />
+          <div className="max-h-40 overflow-y-auto border rounded">
+            {isLoading ? (
+              <div className="px-2 py-2 text-xs text-muted-foreground">Carregando...</div>
+            ) : filtered.length === 0 ? (
+              <div className="px-2 py-2 text-xs text-muted-foreground">
+                {active.length === 0 ? 'Nenhuma campanha ainda.' : 'Nada encontrado.'}
+              </div>
+            ) : (
+              <>
+                {value && (
+                  <button
+                    type="button"
+                    onClick={() => { onChange(''); setOpen(false); }}
+                    className="w-full text-left px-2 py-1.5 text-xs hover:bg-muted text-destructive"
+                  >
+                    ✕ Remover vínculo
+                  </button>
+                )}
+                {filtered.map(c => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => { onChange(c.id); setOpen(false); }}
+                    className={`w-full text-left px-2 py-1.5 text-xs hover:bg-muted ${c.id === value ? 'bg-muted font-medium' : ''}`}
+                  >
+                    {c.name}
+                  </button>
+                ))}
+              </>
+            )}
+          </div>
+          <div className="border-t pt-2 space-y-1">
+            <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Criar nova</div>
+            <div className="flex gap-1">
+              <Input
+                placeholder="Nome da campanha"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleCreate(); } }}
+                className="h-7 text-xs"
+              />
+              <Button
+                type="button"
+                size="sm"
+                className="h-7 px-2 text-[10px]"
+                onClick={handleCreate}
+                disabled={!newName.trim() || createCampaign.isPending}
+              >
+                {createCampaign.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
