@@ -2978,7 +2978,7 @@ const ActivitiesPage = () => {
   return (
     <div className="h-[calc(100dvh-44px)] flex flex-col bg-background overflow-hidden">
       {/* Header */}
-      <div className="bg-primary text-primary-foreground px-4 py-2.5 flex items-center justify-between shrink-0 shadow-md z-20">
+      <div className="bg-primary text-primary-foreground px-4 py-2.5 flex flex-wrap items-center justify-between gap-y-2 shrink-0 shadow-md z-20">
         <div className="flex items-center gap-3">
           <h1 className="text-lg font-semibold tracking-tight">Atividades</h1>
           <div className="flex items-center gap-1.5 text-primary-foreground/80 text-xs">
@@ -2986,7 +2986,7 @@ const ActivitiesPage = () => {
             <span className="bg-primary-foreground/20 rounded-full px-2 py-0.5 font-medium">{stats.done} concluídas</span>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center flex-wrap justify-end gap-2 gap-y-2 w-full md:w-auto">
           {/* View mode toggle - prominent pill */}
           <div className="flex items-center bg-primary-foreground/15 rounded-full p-0.5 gap-0.5">
             <button
