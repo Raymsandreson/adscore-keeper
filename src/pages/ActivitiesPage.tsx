@@ -14,6 +14,7 @@ import { ActivityFieldSettingsDialog } from '@/components/activities/ActivityFie
 import { ActivityTTSButton } from '@/components/voice/ActivityTTSButton';
 import { ActivityFormCompact, SendToGroupSection } from '@/components/activities/ActivityFormCompact';
 import { FeedbackFunnel, type FeedbackFollowUp } from '@/components/activities/FeedbackFunnel';
+import { DailyCheckin } from '@/components/activities/DailyCheckin';
 import { CobrarVaraSection } from '@/components/activities/CobrarVaraSection';
 import { CourtContactsSheet } from '@/components/activities/CourtContactsSheet';
 import { ActivityCallRecorder, callFieldTextToHtml, stripHtmlToText } from '@/components/activities/ActivityCallRecorder';
@@ -5363,6 +5364,7 @@ const ActivitiesPage = () => {
         onOpenChange={setFeedbackFunnelOpen}
         onCreateFollowUp={openFollowUpFromFeedback}
       />
+      <DailyCheckin onEvaluate={() => setFeedbackFunnelOpen(true)} />
       <ActivityCreatedDialog
         open={createdDialog.open}
         onOpenChange={(open) => setCreatedDialog((prev) => ({ ...prev, open }))}
