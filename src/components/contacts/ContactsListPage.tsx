@@ -4,6 +4,7 @@ import { DashboardChatPreview } from '@/components/whatsapp/DashboardChatPreview
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import type { Lead } from '@/hooks/useLeads';
 import { useContacts, Contact } from '@/hooks/useContacts';
+import { isContactIncomplete, getMissingRequiredContactFields } from './contactRequiredFields';
 import { ContactDetailSheet } from './ContactDetailSheet';
 import { CreateContactDialog } from './CreateContactDialog';
 import { DuplicateContactsScanDialog } from './DuplicateContactsScanDialog';
@@ -294,6 +295,7 @@ export function ContactsListPage() {
   const [classificationFilter, setClassificationFilter] = useState('all');
   const [groupFilter, setGroupFilter] = useState<'all' | 'with_group' | 'without_group'>('all');
   const [leadLinkedFilter, setLeadLinkedFilter] = useState<'all' | 'linked' | 'not_linked'>('all');
+  const [incompleteOnly, setIncompleteOnly] = useState(false);
   const [showFilters, setShowFilters] = useState(true);
   
   // Filter options loaded from DB
@@ -985,6 +987,7 @@ export function ContactsListPage() {
   }, [contacts]);
 
   const filteredContacts = contacts.filter(c => {
+    if (incompleteOnly && !isContactIncomplete(c)) return false;
     if (!search) return true;
     const q = search.toLowerCase();
     return (
@@ -996,6 +999,9 @@ export function ContactsListPage() {
       (c.neighborhood && c.neighborhood.toLowerCase().includes(q))
     );
   });
+
+  // Contatos carregados que estão com cadastro incompleto (faltando algum campo obrigatório).
+  const incompleteLoadedCount = contacts.filter(isContactIncomplete).length;
 
   const selectableContacts = filteredContacts.filter(c => c.phone);
 
@@ -1216,6 +1222,19 @@ export function ContactsListPage() {
                 </Badge>
               )}
             </Button>
+            <Button
+              variant={incompleteOnly ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setIncompleteOnly(v => !v)}
+              className="gap-1"
+              title="Mostrar só contatos com cadastro incompleto (faltando estado, cidade, bairro, profissão, relacionamento ou rede social)"
+            >
+              <AlertTriangle className="h-3.5 w-3.5" />
+              Incompletos
+              {incompleteLoadedCount > 0 && (
+                <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{incompleteLoadedCount}</Badge>
+              )}
+            </Button>
             <Button variant="outline" size="sm" onClick={toggleAll}>
               {selectedContacts.size === selectableContacts.length && selectableContacts.length > 0 ? 'Desmarcar' : 'Selecionar'} todos
             </Button>
@@ -1340,6 +1359,16 @@ export function ContactsListPage() {
                         )}
                       </p>
             </div>
+                    {isContactIncomplete(contact) && (
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] shrink-0 border-amber-500/50 text-amber-600 dark:text-amber-400 gap-1"
+                        title={`Faltam: ${getMissingRequiredContactFields(contact).join(', ')}`}
+                      >
+                        <AlertTriangle className="h-3 w-3" />
+                        Incompleto
+                      </Badge>
+                    )}
                     {contact.classification && (
                       <Badge variant="outline" className="text-[10px] shrink-0">
                         {contact.classification}

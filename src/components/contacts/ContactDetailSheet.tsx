@@ -31,6 +31,7 @@ import {
   Phone,
   Mail,
   Instagram,
+  AlertTriangle,
   MapPin,
   Edit,
   Save,
@@ -51,6 +52,7 @@ import {
 } from 'lucide-react';
 import { WhatsAppCallRecorder } from '@/components/whatsapp/WhatsAppCallRecorder';
 import { Contact } from '@/hooks/useContacts';
+import { getMissingRequiredContactFields } from './contactRequiredFields';
 import { useContactClassifications } from '@/hooks/useContactClassifications';
 import { useContactRelationships } from '@/hooks/useContactRelationships';
 import { useContactLeads, ContactLead } from '@/hooks/useContactLeads';
@@ -272,6 +274,14 @@ export function ContactDetailSheet({
     if (!contact) return;
     if (!fullName.trim()) {
       toast.error('Nome é obrigatório');
+      return;
+    }
+
+    const missingRequired = getMissingRequiredContactFields({
+      state, city, neighborhood, profession, classifications, instagram_username: instagramUsername,
+    });
+    if (missingRequired.length > 0) {
+      toast.error(`Complete os campos obrigatórios: ${missingRequired.join(', ')}`, { duration: 6000 });
       return;
     }
 
@@ -677,6 +687,21 @@ export function ContactDetailSheet({
 
               {isEditing ? (
                 <div className="space-y-4">
+                  {(() => {
+                    const missing = getMissingRequiredContactFields({
+                      state, city, neighborhood, profession, classifications, instagram_username: instagramUsername,
+                    });
+                    if (missing.length === 0) return null;
+                    return (
+                      <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300 flex items-start gap-2">
+                        <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                        <div>
+                          <p className="font-medium">Cadastro incompleto</p>
+                          <p>Preencha para salvar: {missing.join(', ')}.</p>
+                        </div>
+                      </div>
+                    );
+                  })()}
                   {!isFieldHidden('full_name') && (
                   <div>
                     <Label className="flex items-center gap-1">
@@ -752,7 +777,7 @@ export function ContactDetailSheet({
                     <div>
                       <Label className="flex items-center gap-1">
                         <Instagram className="h-3 w-3" />
-                        Instagram
+                        Instagram <span className="text-destructive">*</span>
                       </Label>
                       <Input
                         value={instagramUsername}
@@ -784,7 +809,7 @@ export function ContactDetailSheet({
                   <div>
                     <Label className="flex items-center gap-1">
                       <Briefcase className="h-3 w-3" />
-                      Profissão (CBO)
+                      Profissão (CBO) <span className="text-destructive">*</span>
                     </Label>
                     <div className="relative">
                       <Input
@@ -832,7 +857,7 @@ export function ContactDetailSheet({
                   <div>
                     <Label className="flex items-center gap-1">
                       <Tag className="h-3 w-3" />
-                      Relacionamento Conosco
+                      Relacionamento Conosco <span className="text-destructive">*</span>
                     </Label>
                     <MultiClassificationSelect
                       values={classifications}
@@ -1017,7 +1042,7 @@ export function ContactDetailSheet({
                   <div className="grid grid-cols-2 gap-4">
                     {!isFieldHidden('state') && (
                     <div>
-                      <Label>Estado</Label>
+                      <Label>Estado <span className="text-destructive">*</span></Label>
                       <Select value={state} onValueChange={setState}>
                         <SelectTrigger>
                           <SelectValue placeholder="Selecione..." />
@@ -1035,7 +1060,7 @@ export function ContactDetailSheet({
 
                     {!isFieldHidden('city') && (
                     <div>
-                      <Label>Cidade</Label>
+                      <Label>Cidade <span className="text-destructive">*</span></Label>
                       <Select 
                         value={city} 
                         onValueChange={setCity}
@@ -1058,7 +1083,7 @@ export function ContactDetailSheet({
 
                   {!isFieldHidden('neighborhood') && (
                   <div>
-                    <Label>Bairro</Label>
+                    <Label>Bairro <span className="text-destructive">*</span></Label>
                     <Input
                       value={neighborhood}
                       onChange={(e) => setNeighborhood(e.target.value)}

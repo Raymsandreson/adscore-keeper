@@ -16,6 +16,7 @@ import { Loader2, Link2, Plus, UserPlus, UserMinus, Users2, UserCheck, Users, Ha
 import type { ContactClassification, FollowerStatus } from '@/hooks/useContacts';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { remapToExternal } from '@/integrations/supabase/uuid-remap';
+import { getMissingRequiredContactFields } from './contactRequiredFields';
 
 interface CreateContactDialogProps {
   open: boolean;
@@ -40,6 +41,7 @@ export function CreateContactDialog({ open, onOpenChange, defaultPhone, defaultN
     classification: 'prospect' as ContactClassification,
     city: '',
     state: '',
+    neighborhood: '',
     notes: '',
     follower_status: 'none' as FollowerStatus,
     professions: [] as { cbo_code: string; title: string; is_primary: boolean }[],
@@ -69,6 +71,7 @@ export function CreateContactDialog({ open, onOpenChange, defaultPhone, defaultN
         instagram_url: defaultData?.instagram_url || '',
         city: defaultData?.city || '',
         state: defaultData?.state || '',
+        neighborhood: defaultData?.neighborhood || '',
         notes: defaultData?.notes || '',
         // Keep existing classification and follower_status defaults
       }));
@@ -109,6 +112,22 @@ export function CreateContactDialog({ open, onOpenChange, defaultPhone, defaultN
 
   const handleSave = async () => {
     if (!form.full_name.trim()) { toast.error('Nome é obrigatório'); return; }
+
+    const primaryProfLabel = form.professions.find(p => p.is_primary)?.title || form.professions[0]?.title || '';
+    const igForCheck = form.instagram_url.trim();
+    const missingRequired = getMissingRequiredContactFields({
+      state: form.state,
+      city: form.city,
+      neighborhood: form.neighborhood,
+      profession: primaryProfLabel,
+      classification: form.classification,
+      instagram_username: igForCheck,
+    });
+    if (missingRequired.length > 0) {
+      toast.error(`Complete os campos obrigatórios: ${missingRequired.join(', ')}`, { duration: 6000 });
+      return;
+    }
+
     setSaving(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -161,6 +180,7 @@ export function CreateContactDialog({ open, onOpenChange, defaultPhone, defaultN
           classification: form.classification,
           city: form.city || null,
           state: form.state || null,
+          neighborhood: form.neighborhood || null,
           notes: form.notes || null,
           follower_status: form.follower_status !== 'none' ? form.follower_status : null,
           profession: primaryProf?.title || null,
@@ -240,7 +260,7 @@ export function CreateContactDialog({ open, onOpenChange, defaultPhone, defaultN
       onOpenChange(false);
 
       // Reset
-      setForm({ full_name: '', phone: '', email: '', instagram_url: '', classification: 'prospect', city: '', state: '', notes: '', follower_status: 'none', professions: [] });
+      setForm({ full_name: '', phone: '', email: '', instagram_url: '', classification: 'prospect', city: '', state: '', neighborhood: '', notes: '', follower_status: 'none', professions: [] });
       setLeadLinkMode('none');
       setSelectedLeadId('');
       setSelectedRelationship('');
@@ -279,13 +299,13 @@ export function CreateContactDialog({ open, onOpenChange, defaultPhone, defaultN
           </div>
 
           <div>
-            <Label>Instagram (URL ou @username)</Label>
+            <Label>Instagram (URL ou @username) <span className="text-destructive">*</span></Label>
             <Input value={form.instagram_url} onChange={e => setForm(f => ({ ...f, instagram_url: e.target.value }))} placeholder="@username ou instagram.com/username" />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label>Estado</Label>
+              <Label>Estado <span className="text-destructive">*</span></Label>
               <Select value={form.state || 'none'} onValueChange={v => setForm(f => ({ ...f, state: v === 'none' ? '' : v, city: '' }))}>
                 <SelectTrigger><SelectValue placeholder="Selecione o estado" /></SelectTrigger>
                 <SelectContent>
@@ -295,7 +315,7 @@ export function CreateContactDialog({ open, onOpenChange, defaultPhone, defaultN
               </Select>
             </div>
             <div>
-              <Label>Cidade</Label>
+              <Label>Cidade <span className="text-destructive">*</span></Label>
               <Select value={form.city || 'none'} onValueChange={v => setForm(f => ({ ...f, city: v === 'none' ? '' : v }))} disabled={!form.state || loadingCities}>
                 <SelectTrigger>
                   {loadingCities ? <span className="flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" />...</span> : <SelectValue placeholder={form.state ? 'Selecione a cidade' : 'Primeiro o estado'} />}
@@ -306,6 +326,11 @@ export function CreateContactDialog({ open, onOpenChange, defaultPhone, defaultN
                 </SelectContent>
               </Select>
             </div>
+          </div>
+
+          <div>
+            <Label>Bairro <span className="text-destructive">*</span></Label>
+            <Input value={form.neighborhood} onChange={e => setForm(f => ({ ...f, neighborhood: e.target.value }))} placeholder="Bairro" />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -322,7 +347,7 @@ export function CreateContactDialog({ open, onOpenChange, defaultPhone, defaultN
               </Select>
             </div>
             <div>
-              <Label>Status</Label>
+              <Label>Relacionamento <span className="text-destructive">*</span></Label>
               <Select value={form.classification || 'prospect'} onValueChange={v => setForm(f => ({ ...f, classification: v as ContactClassification }))}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -337,7 +362,7 @@ export function CreateContactDialog({ open, onOpenChange, defaultPhone, defaultN
           </div>
 
           <div>
-            <Label>Profissões</Label>
+            <Label>Profissões <span className="text-destructive">*</span></Label>
             <MultiProfessionSelector value={form.professions} onChange={professions => setForm(f => ({ ...f, professions }))} placeholder="Selecione profissões..." />
           </div>
 
