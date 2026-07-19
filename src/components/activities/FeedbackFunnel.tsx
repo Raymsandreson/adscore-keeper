@@ -113,7 +113,9 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
         .order('updated_at', { ascending: false })
         .limit(300);
       if (error) throw error;
-      setRows((data || []) as FeedbackRow[]);
+      // Não exige avaliação das atividades que o próprio observador executou (passou pra si):
+      // avaliar o próprio retorno não faz sentido. Mesmo critério usado em `notify` (assigned_to === eid).
+      setRows((data || []).filter((r: any) => r.assigned_to !== eid) as FeedbackRow[]);
     } catch (e: any) {
       console.error('[FeedbackFunnel] load error:', e);
       toast.error('Erro ao carregar feedbacks');
