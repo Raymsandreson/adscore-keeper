@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useCallback, lazy, Suspense } from 'react';
-import { Clock, Coffee, EyeOff, GripVertical, Hourglass, Pause, Play, Search, Timer as TimerIcon, Users, UtensilsCrossed } from 'lucide-react';
+import { Clock, Coffee, EyeOff, GripVertical, Hourglass, Mic, Pause, Play, Search, Timer as TimerIcon, Users, UtensilsCrossed } from 'lucide-react';
 import { TeamTimersPanel } from '@/components/activities/TeamTimersPanel';
 import { db } from '@/integrations/supabase';
 
@@ -12,6 +12,27 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useActivityTimer, formatHMS, BREAK_LABELS, QUICK_PAUSES, type BreakType } from '@/contexts/ActivityTimerContext';
+
+// Registro rápido por voz ("o que estou fazendo") — carregado sob demanda.
+const QuickVoiceActivityDialog = lazy(() =>
+  import('@/components/activities/QuickVoiceActivityDialog').then((m) => ({ default: m.QuickVoiceActivityDialog }))
+);
+
+/** Botão de microfone que abre o registro rápido de atividade por voz. */
+function VoiceActivityButton({ className, onClick, label }: { className?: string; onClick: () => void; label?: string }) {
+  return (
+    <button
+      type="button"
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => { e.stopPropagation(); onClick(); }}
+      className={className}
+      title="Dizer por voz o que você está fazendo (cria uma atividade)"
+    >
+      <Mic className="h-3.5 w-3.5" />
+      {label && <span className="text-[11px] font-medium">{label}</span>}
+    </button>
+  );
+}
 
 /** Escolha de pausa: rápidas (café/lanche/descanso com previsão) + longas. */
 function PauseChooser({
@@ -330,6 +351,7 @@ export function ActivityTimerOverlay() {
 
   const drag = useDraggablePosition();
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [voiceOpen, setVoiceOpen] = useState(false);
   // Atv de um MEMBRO aberta pelo painel Time agora — sheet fora do badge
   // (dentro dele o drag sequestraria os cliques via pointer capture).
   const [teamViewActivityId, setTeamViewActivityId] = useState<string | null>(null);
@@ -396,6 +418,7 @@ export function ActivityTimerOverlay() {
             <Pause className="h-3.5 w-3.5" />
           </button>
           <BreakMenu className="rounded-full p-1 hover:bg-accent hover:text-foreground text-muted-foreground" onStart={startBreak} onEndShift={endShift} />
+          <VoiceActivityButton className="rounded-full p-1 hover:bg-accent hover:text-foreground text-muted-foreground" onClick={() => setVoiceOpen(true)} />
           <TeamPanelButton className="rounded-full p-1 hover:bg-accent hover:text-foreground text-muted-foreground" onOpenActivity={setTeamViewActivityId} />
           <button
             type="button"
@@ -464,6 +487,11 @@ export function ActivityTimerOverlay() {
             </button>
           )}
           <BreakMenu className="ml-1 rounded-full p-1 hover:bg-amber-200/50 dark:hover:bg-amber-800/50 text-amber-700 dark:text-amber-300" onStart={startBreak} onEndShift={endShift} />
+          <VoiceActivityButton
+            className="ml-1 flex items-center gap-1 rounded-full border border-amber-300/60 bg-amber-50 dark:bg-amber-950/50 px-2 py-0.5 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/60"
+            onClick={() => setVoiceOpen(true)}
+            label="O que faço?"
+          />
           <TeamPanelButton className="rounded-full p-1 hover:bg-amber-200/50 dark:hover:bg-amber-800/50 text-amber-700 dark:text-amber-300" onOpenActivity={setTeamViewActivityId} />
           <button
             type="button"
@@ -581,7 +609,10 @@ export function ActivityTimerOverlay() {
               <b>{managerAlert?.from || 'Gestão'}</b>: {managerAlert?.message || 'Por que você está ocioso? Retome uma atividade ou avise o que está fazendo.'}
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button variant="outline" className="gap-1.5" onClick={() => { dismissManagerAlert(); setVoiceOpen(true); }}>
+              <Mic className="h-4 w-4" /> Dizer o que estou fazendo
+            </Button>
             <Button onClick={dismissManagerAlert}>Entendi, vou retomar</Button>
           </DialogFooter>
         </DialogContent>
@@ -601,7 +632,10 @@ export function ActivityTimerOverlay() {
           <div className="rounded-lg border p-2">
             <PauseChooser onStart={startBreak} onDone={dismissAwayPrompt} />
           </div>
-          <DialogFooter>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button variant="secondary" className="gap-1.5" onClick={() => { dismissAwayPrompt(); setVoiceOpen(true); }}>
+              <Mic className="h-4 w-4" /> Dizer o que estou fazendo
+            </Button>
             <Button variant="outline" onClick={dismissAwayPrompt}>Estou aqui, vou retomar</Button>
           </DialogFooter>
         </DialogContent>
@@ -629,6 +663,13 @@ export function ActivityTimerOverlay() {
 
       {/* Seletor de atividade "agora" */}
       <SwitchActivityDialog open={switchPrompt} onPick={switchTo} onClose={dismissSwitch} />
+
+      {/* Registro rápido por voz — "o que você está fazendo" (documenta o dia) */}
+      {voiceOpen && (
+        <Suspense fallback={null}>
+          <QuickVoiceActivityDialog open={voiceOpen} onOpenChange={setVoiceOpen} />
+        </Suspense>
+      )}
     </>
   );
 }
