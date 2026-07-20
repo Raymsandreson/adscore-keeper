@@ -6,6 +6,7 @@ import {
   Zap, Search, ClipboardList, Phone, Scale, Briefcase, AtSign, RefreshCw, FileText,
   LogOut, MessagesSquare, Settings, ChevronRight, User, Chrome, Archive, MapPin,
   MessageSquare as MessageSquareIcon, ExternalLink, Accessibility, Newspaper, Clock,
+  FileBarChart,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -122,6 +123,7 @@ export function AppSidebar() {
     { id: "whatsapp-api", label: "WhatsApp API", icon: <MessageSquareIcon className="h-4 w-4" />, path: "/whatsapp-api", color: "text-emerald-600" },
     
     { id: "contacts", label: "Contatos", icon: <Users className="h-4 w-4" />, path: "/contacts", color: "text-primary" },
+    { id: "relatorios", label: "Relatórios", icon: <FileBarChart className="h-4 w-4" />, path: "/relatorios", color: "text-violet-500" },
     { id: "dashboard", label: "Visão Geral", icon: <LayoutDashboard className="h-4 w-4" />, path: "/dashboard" },
   ];
 

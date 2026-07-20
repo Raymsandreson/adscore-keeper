@@ -17,7 +17,7 @@ import {
   Hash, Info, BookOpen, Landmark, Save, Loader2, Pencil, RefreshCw, ClipboardList, CheckCircle2, Clock,
   Download, Upload, File, Trash2, FolderOpen, Milestone, Newspaper
 } from 'lucide-react';
-import { ProcessMovimentacoesTab } from './ProcessMovimentacoesTab';
+import { ProcessMovimentacoesTab, type MovementForActivity } from './ProcessMovimentacoesTab';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { LeadFunnelProgressBar } from '@/components/activities/LeadFunnelProgressBar';
 import { ResponsibleUserSelect } from './ResponsibleUserSelect';
@@ -26,7 +26,8 @@ import { detectClientPolo } from '@/utils/clientPoloDetection';
 import { ProcessMovementsTimeline } from './ProcessMovementsTimeline';
 import { syncProcessMarcos, syncProcessCompromissos } from '@/utils/escavadorMovementUtils';
 import { ProcessCustomFieldsForm } from '@/components/processes/ProcessCustomFieldsForm';
-import { ActivityFullSheet } from '@/components/activities/ActivityFullSheet';
+import { ActivityFullSheet, type ActivityDraft } from '@/components/activities/ActivityFullSheet';
+import { useActivityTypes } from '@/hooks/useActivityTypes';
 
 interface ProcessDetailSheetProps {
   open: boolean;
@@ -200,6 +201,11 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
   const [generatingSummary, setGeneratingSummary] = useState(false);
   const [workflowBoards, setWorkflowBoards] = useState<{ id: string; name: string }[]>([]);
   const [openActivityId, setOpenActivityId] = useState<string | null>(null);
+  // "Criar atividade a partir da movimentação": key da mov em processamento + rascunho (IA).
+  const [creatingMovKey, setCreatingMovKey] = useState<string | null>(null);
+  const [createDraft, setCreateDraft] = useState<ActivityDraft | null>(null);
+  const [createSheetOpen, setCreateSheetOpen] = useState(false);
+  const { types: activityTypes } = useActivityTypes();
 
   useEffect(() => {
     if (!open) return;
@@ -652,6 +658,101 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
             ? raw.movimentacoes
             : (Array.isArray(raw.fontes?.[0]?.movimentacoes) ? raw.fontes[0].movimentacoes : [])));
 
+  // Gera o rascunho de uma nova atividade a partir de uma movimentação (IA),
+  // já vinculada a lead/caso/processo/fluxo, e abre o formulário único p/ revisão.
+  const handleCreateActivityFromMovement = useCallback(async (mov: MovementForActivity) => {
+    if (creatingMovKey) return;
+    setCreatingMovKey(mov.key);
+    try {
+      const [leadRes, caseRes] = await Promise.all([
+        process?.lead_id
+          ? externalSupabase.from('leads').select('lead_name').eq('id', process.lead_id).maybeSingle()
+          : Promise.resolve({ data: null }),
+        process?.case_id
+          ? externalSupabase.from('legal_cases').select('case_number, title').eq('id', process.case_id).maybeSingle()
+          : Promise.resolve({ data: null }),
+      ]);
+      const leadName = (leadRes.data as any)?.lead_name || null;
+      const c = caseRes.data as any;
+      const caseTitle = c ? `${c.case_number} - ${c.title}` : null;
+
+      let previousActivities: any[] = [];
+      if (process?.id) {
+        const { data: acts } = await externalSupabase
+          .from('lead_activities')
+          .select('title, status, activity_type, next_steps, created_at')
+          .eq('process_id', process.id)
+          .is('deleted_at', null)
+          .order('created_at', { ascending: false })
+          .limit(8);
+        previousActivities = (acts || []).map((a: any) => ({
+          title: a.title,
+          status: a.status,
+          type: a.activity_type,
+          next_steps: a.next_steps || '',
+          date: a.created_at ? String(a.created_at).slice(0, 10) : undefined,
+        }));
+      }
+
+      const recent = (Array.isArray(movimentacoesData) ? movimentacoesData : [])
+        .slice(0, 12)
+        .map((m: any) => ({
+          data: (m?.data || m?.data_hora || '').toString().slice(0, 10) || null,
+          tipo: (m?.tipo || '').toString(),
+          conteudo: (m?.conteudo || m?.titulo || m?.descricao || '').toString().replace(/\s+/g, ' ').trim(),
+        }))
+        .filter((x: any) => x.conteudo);
+
+      const processTitle = form.title || process?.title || null;
+
+      const { data, error } = await cloudFunctions.invoke('activity-from-movement', {
+        body: {
+          movement: { data: mov.data, tipo: mov.tipo, conteudo: mov.conteudo },
+          recent_movements: recent,
+          activity_context: {
+            process_title: processTitle,
+            process_number: form.process_number || process?.process_number || null,
+            lead_name: leadName,
+            case_title: caseTitle,
+            workflow: form.workflow_id ? { name: form.workflow_name || null } : undefined,
+            previous_activities: previousActivities,
+          },
+          activity_types: (activityTypes || []).map((t) => ({ key: t.key, label: t.label })),
+        },
+      });
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Falha ao gerar o rascunho da atividade');
+
+      const f = data.fields || {};
+      setCreateDraft({
+        title: f.title || '',
+        activity_type: f.activity_type || '',
+        lead_id: process?.lead_id || undefined,
+        lead_name: leadName || undefined,
+        case_id: process?.case_id || undefined,
+        case_title: caseTitle || undefined,
+        process_id: process?.id || undefined,
+        process_title: processTitle || undefined,
+        workflow_id: form.workflow_id || undefined,
+        what_was_done: f.what_was_done || '',
+        current_status_notes: f.current_status || '',
+        next_steps: f.next_steps || '',
+        solicitacao: f.solicitacao || '',
+        resposta_juizo: f.resposta_juizo || '',
+        notes: f.notes || '',
+      });
+      setCreateSheetOpen(true);
+      if (data.clarifying_question) {
+        toast.info(`A IA tem uma dúvida: ${data.clarifying_question}`, { duration: 7000 });
+      }
+    } catch (e: any) {
+      console.error('[activity-from-movement] error:', e);
+      toast.error(e?.message || 'Erro ao gerar o rascunho da atividade');
+    } finally {
+      setCreatingMovKey(null);
+    }
+  }, [creatingMovKey, process, form.title, form.process_number, form.workflow_id, form.workflow_name, movimentacoesData, activityTypes]);
+
   const innerContent = (
     <div className="flex flex-col h-full">
       {/* Header */}
@@ -1027,7 +1128,12 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
             )}
 
             {activeTab === 'movimentacoes' && process?.id && (
-              <ProcessMovimentacoesTab processId={process.id} movimentacoes={movimentacoesData} />
+              <ProcessMovimentacoesTab
+                processId={process.id}
+                movimentacoes={movimentacoesData}
+                onCreateActivity={handleCreateActivityFromMovement}
+                creatingKey={creatingMovKey}
+              />
             )}
 
             {activeTab === 'atividades' && (
@@ -1244,6 +1350,19 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
         onOpenChange={(o) => { if (!o) setOpenActivityId(null); }}
         activityId={openActivityId}
         leadId={process?.lead_id || null}
+        onUpdated={fetchActivities}
+      />
+
+      {/* Criar atividade a partir da movimentação — mesmo formulário único, modo criar,
+          pré-preenchido pela IA. O usuário revisa/edita antes de criar de fato. */}
+      <ActivityFullSheet
+        open={createSheetOpen}
+        mode="create"
+        draft={createDraft}
+        activityId={null}
+        leadId={process?.lead_id || null}
+        onOpenChange={(o) => { if (!o) { setCreateSheetOpen(false); setCreateDraft(null); } }}
+        onCreated={fetchActivities}
         onUpdated={fetchActivities}
       />
     </div>

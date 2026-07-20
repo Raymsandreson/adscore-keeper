@@ -45,9 +45,12 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
   'transcribe-activity-call': 'railway',
   'transcribe-team-audio': 'railway',
   'extract-activity-from-document': 'railway',
+  'dictate-activity': 'railway',
+  'activity-from-movement': 'railway',
   'suggest-step-actions': 'railway',
   'wipe-instance-agent-labels': 'railway',
   'bpc-sheet-sync': 'railway',
+  'report-query': 'railway', // gerador de relatórios por IA (NL→SQL read-only)
   'sync-hearings-from-sheet': 'railway', // credenciais do Google Sheets (gateway Lovable) só existem no Railway
   'nearby-establishments': 'railway', // pontes por proximidade — gateway Google Maps (LOVABLE_API_KEY no Railway)
 

@@ -59,8 +59,11 @@ import { handler as suggestStepActions } from './functions/suggest-step-actions'
 import { handler as wipeInstanceAgentLabels } from './functions/wipe-instance-agent-labels';
 import { handler as transcodeAudioOpus } from './functions/transcode-audio-opus';
 import { handler as extractActivityFromDocument } from './functions/extract-activity-from-document';
+import { handler as dictateActivity } from './functions/dictate-activity';
+import { handler as activityFromMovement } from './functions/activity-from-movement';
 import { handler as nearbyEstablishments } from './functions/nearby-establishments';
 import { handler as dailyTeamReport } from './functions/daily-team-report';
+import { handler as reportQuery } from './functions/report-query';
 
 
 
@@ -114,8 +117,11 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'sync-hearings-from-sheet': syncHearingsFromSheet,
   'transcode-audio-opus': transcodeAudioOpus,
   'extract-activity-from-document': extractActivityFromDocument,
+  'dictate-activity': dictateActivity,
+  'activity-from-movement': activityFromMovement,
   'nearby-establishments': nearbyEstablishments,
   'daily-team-report': dailyTeamReport,
+  'report-query': reportQuery,
 };
 
 const app = express();

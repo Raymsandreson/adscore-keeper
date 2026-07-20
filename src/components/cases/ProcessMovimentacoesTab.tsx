@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
+import { Loader2, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { db } from '@/integrations/supabase';
 import { CATEGORIAS } from '@/lib/processUpdateCategorias';
@@ -11,6 +12,14 @@ interface MovItem {
   data: string | null;
   tipoRaw: string;
   isExpediente: boolean;
+  conteudo: string;
+}
+
+/** Movimentação enviada ao pai para gerar o rascunho de atividade via IA. */
+export interface MovementForActivity {
+  key: string;
+  data: string | null;
+  tipo: string;
   conteudo: string;
 }
 
@@ -57,9 +66,15 @@ function fmtData(iso: string | null): string {
 export function ProcessMovimentacoesTab({
   processId,
   movimentacoes,
+  onCreateActivity,
+  creatingKey,
 }: {
   processId: string;
   movimentacoes: unknown[] | null | undefined;
+  /** Cria uma atividade a partir da movimentação (IA preenche o rascunho no pai). */
+  onCreateActivity?: (mov: MovementForActivity) => void;
+  /** Key da movimentação cujo rascunho está sendo gerado (mostra spinner no botão). */
+  creatingKey?: string | null;
 }) {
   const [filtro, setFiltro] = useState<Filtro>('todas');
   const [categoriaById, setCategoriaById] = useState<Record<string, UpdateCategoria>>({});
@@ -168,6 +183,29 @@ export function ProcessMovimentacoesTab({
                     <Icon className="h-2.5 w-2.5" />
                     {style.label}
                   </Badge>
+                )}
+                {onCreateActivity && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (creatingKey) return;
+                      onCreateActivity({ key: item.key, data: item.data, tipo: item.tipoRaw, conteudo: item.conteudo });
+                    }}
+                    disabled={!!creatingKey}
+                    title="Criar atividade a partir desta movimentação (IA preenche o rascunho)"
+                    className={cn(
+                      'ml-auto inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-medium transition-colors',
+                      'border-primary/30 text-primary hover:bg-primary/10',
+                      creatingKey && 'opacity-50 cursor-not-allowed',
+                    )}
+                  >
+                    {creatingKey === item.key ? (
+                      <><Loader2 className="h-2.5 w-2.5 animate-spin" /> Gerando…</>
+                    ) : (
+                      <><Sparkles className="h-2.5 w-2.5" /> Criar atividade</>
+                    )}
+                  </button>
                 )}
               </div>
               <p className={cn('text-[11px] mt-1 text-muted-foreground whitespace-pre-wrap', !isOpen && 'line-clamp-3')}>

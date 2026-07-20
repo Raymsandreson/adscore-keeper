@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { remapToCloud, remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { authClient } from '@/integrations/supabase';
@@ -19,6 +19,30 @@ import { useActivityStepContext } from '@/hooks/useActivityStepContext';
 import { useLeadActivities, type LeadActivity } from '@/hooks/useLeadActivities';
 import { useActivityTimer } from '@/contexts/ActivityTimerContext';
 
+/**
+ * Rascunho para abrir o formulário em modo CRIAR já pré-preenchido
+ * (ex.: "Criar atividade a partir da movimentação" preenchido por IA).
+ * O usuário revisa/edita e só então cria de fato.
+ */
+export interface ActivityDraft {
+  title?: string;
+  activity_type?: string;
+  priority?: string;
+  lead_id?: string;
+  lead_name?: string;
+  case_id?: string;
+  case_title?: string;
+  process_id?: string;
+  process_title?: string;
+  workflow_id?: string;
+  what_was_done?: string;
+  current_status_notes?: string;
+  next_steps?: string;
+  solicitacao?: string;
+  resposta_juizo?: string;
+  notes?: string;
+}
+
 interface ActivityFullSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -27,6 +51,12 @@ interface ActivityFullSheetProps {
   leadId?: string | null;
   leadName?: string | null;
   onUpdated?: () => void;
+  /** 'edit' (padrão) edita a atividade de `activityId`; 'create' cria a partir de `draft`. */
+  mode?: 'edit' | 'create';
+  /** Valores pré-preenchidos usados no modo 'create'. */
+  draft?: ActivityDraft | null;
+  /** Chamado após criar com sucesso no modo 'create'. */
+  onCreated?: () => void;
 }
 
 type CaseRow = { id: string; case_number: string; title: string };
@@ -41,7 +71,8 @@ type ProcessRow = {
  * `ActivityFormCompact` da ActivitiesPage (formulário único do sistema).
  * Substitui o antigo ActivityEditSheet reduzido dentro das abas de Lead/Caso.
  */
-export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, leadName, onUpdated }: ActivityFullSheetProps) {
+export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, leadName, onUpdated, mode = 'edit', draft, onCreated }: ActivityFullSheetProps) {
+  const isCreate = mode === 'create';
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [selectedActivity, setSelectedActivity] = useState<LeadActivity | null>(null);
@@ -92,7 +123,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
   const workflowOptions = allBoards.filter(b => b.board_type === 'workflow').map(b => ({ id: b.id, name: b.name }));
   const profiles = useProfilesList();
   const { fields: fieldSettings, updateField: updateFieldSetting, reorderFields } = useActivityFieldSettings();
-  const { updateActivity, completeActivity, deleteActivity } = useLeadActivities();
+  const { createActivity, updateActivity, completeActivity, deleteActivity } = useLeadActivities();
   const { startTimer, requestLeave, stopTimerFor, current: runningTimer } = useActivityTimer();
 
   // Board dos "Modelos do passo"/checklist: workflow do processo tem prioridade; senão funil do lead
@@ -208,10 +239,69 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     }
   }, [activityId, leadId, leadName, loadContactsForLead, loadLeadPreview]);
 
+  // Modo CRIAR: preenche o formulário a partir do rascunho (IA) em vez de buscar do banco.
+  const initFromDraft = useCallback(async (d: ActivityDraft) => {
+    setSelectedActivity(null);
+    setFormTitle(d.title || '');
+    setFormType(d.activity_type || '');
+    setFormStatus('pendente');
+    setFormPriority(d.priority || 'normal');
+    setFormDeadline('');
+    setFormNotificationDate('');
+    setFormAssignedTo('');
+    setFormAssignedToName('');
+    setFormMatrixQuadrant('');
+    setFormLeadId(d.lead_id || '');
+    setFormLeadName(d.lead_name || '');
+    setFormClientNameOverride('');
+    setFormContactId('');
+    setFormContactName('');
+    setFormCaseId(d.case_id || '');
+    setFormCaseTitle(d.case_title || '');
+    setFormProcessId(d.process_id || '');
+    setFormProcessTitle(d.process_title || '');
+    setFormWorkflowId(d.workflow_id || '');
+    setFormIsSystem(false);
+    setFormIsManagement(false);
+    setFormWhatWasDone(d.what_was_done || '');
+    setFormCurrentStatus(d.current_status_notes || '');
+    setFormNextSteps(d.next_steps || '');
+    setFormSolicitacao(d.solicitacao || '');
+    setFormRespostaJuizo(d.resposta_juizo || '');
+    setFormNotes(d.notes || '');
+
+    if (d.lead_id) {
+      externalSupabase.from('legal_cases').select('id, case_number, title').eq('lead_id', d.lead_id).then(({ data }) => setLeadCases((data as CaseRow[]) || []));
+      loadContactsForLead(d.lead_id);
+      loadLeadPreview(d.lead_id);
+    } else {
+      setLeadCases([]);
+    }
+    if (d.case_id) {
+      const { data } = await externalSupabase
+        .from('lead_processes')
+        .select('id, title, process_number, polo_passivo, tribunal, area, assuntos, workflow_id, workflow_name, envolvidos')
+        .eq('case_id', d.case_id);
+      setCaseProcesses((data as ProcessRow[]) || []);
+    } else {
+      setCaseProcesses([]);
+    }
+  }, [loadContactsForLead, loadLeadPreview]);
+
+  // Evita reinicializar o rascunho a cada render enquanto o sheet fica aberto.
+  const draftInitedRef = useRef(false);
+
   useEffect(() => {
-    if (open && activityId) fetchActivity();
-    if (!open) { setSelectedActivity(null); setCaseProcesses([]); setLeadPreview(null); }
-  }, [open, activityId, fetchActivity]);
+    if (open && !isCreate && activityId) fetchActivity();
+    if (open && isCreate && draft && !draftInitedRef.current) {
+      draftInitedRef.current = true;
+      initFromDraft(draft);
+    }
+    if (!open) {
+      draftInitedRef.current = false;
+      setSelectedActivity(null); setCaseProcesses([]); setLeadPreview(null);
+    }
+  }, [open, activityId, fetchActivity, isCreate, draft, initFromDraft]);
 
   // Cronômetro: auto-start ao abrir a atividade (banco de horas).
   // Só se a atv for SUA (principal, co-assessor ou sem responsável) —
@@ -316,11 +406,25 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
   });
 
   const handleSave = async () => {
-    if (!activityId) return;
     if (!formTitle.trim()) { toast.error('Informe o assunto'); return; }
     if (!formAssignedTo) { toast.error('Selecione o assessor'); return; }
     if (!formDeadline) { toast.error('Informe o prazo'); return; }
     if (!formNotificationDate) { toast.error('Informe a data de notificação'); return; }
+
+    if (isCreate) {
+      setSaving(true);
+      const created = await createActivity(buildPayload() as Partial<LeadActivity>);
+      setSaving(false);
+      if (created) {
+        toast.success('Atividade criada.');
+        onUpdated?.();
+        onCreated?.();
+        onOpenChange(false);
+      }
+      return;
+    }
+
+    if (!activityId) return;
     setSaving(true);
     await updateActivity(activityId, buildPayload() as Partial<LeadActivity>);
     setSaving(false);
@@ -353,11 +457,13 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
       <SheetContent className="w-full sm:max-w-2xl flex flex-col p-0">
         <SheetHeader className="px-4 pt-4 pb-2 shrink-0 border-b">
           <div className="flex items-center justify-between gap-2">
-            <SheetTitle className="text-base truncate">{formTitle || 'Atividade'}</SheetTitle>
+            <SheetTitle className="text-base truncate">{formTitle || (isCreate ? 'Nova atividade' : 'Atividade')}</SheetTitle>
             <div className="flex items-center gap-1">
-              <Button variant="ghost" size="sm" onClick={handleOpenInPage} className="gap-1 text-xs shrink-0" title="Abrir na tela de Atividades">
-                <ExternalLink className="h-3 w-3" /> Tela cheia
-              </Button>
+              {!isCreate && (
+                <Button variant="ghost" size="sm" onClick={handleOpenInPage} className="gap-1 text-xs shrink-0" title="Abrir na tela de Atividades">
+                  <ExternalLink className="h-3 w-3" /> Tela cheia
+                </Button>
+              )}
               <Button
                 variant="ghost"
                 size="icon"
@@ -515,24 +621,26 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
         {/* Footer actions */}
         <div className="shrink-0 border-t">
           <div className="flex items-center justify-between p-3 gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleDelete}
-              className="gap-1 text-xs border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-            >
-              <Trash2 className="h-3 w-3" /> Excluir
-            </Button>
+            {!isCreate && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleDelete}
+                className="gap-1 text-xs border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+              >
+                <Trash2 className="h-3 w-3" /> Excluir
+              </Button>
+            )}
             <div className="flex gap-2 ml-auto">
               <Button variant="outline" size="sm" onClick={handleClose}>Cancelar</Button>
-              {selectedActivity?.status !== 'concluida' && (
+              {!isCreate && selectedActivity?.status !== 'concluida' && (
                 <Button variant="outline" size="sm" onClick={handleComplete} className="gap-1 text-xs bg-success hover:bg-success/90 text-success-foreground border-0">
                   <CheckCircle2 className="h-3 w-3" /> Concluir
                 </Button>
               )}
               <Button size="sm" onClick={handleSave} disabled={saving} className="gap-1">
                 {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-                Salvar
+                {isCreate ? 'Criar atividade' : 'Salvar'}
               </Button>
             </div>
           </div>
