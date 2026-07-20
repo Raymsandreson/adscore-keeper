@@ -291,9 +291,10 @@ const ActivitiesPage = () => {
   const [leadSearch, setLeadSearch] = useState('');
   const [searchedLeads, setSearchedLeads] = useState<LeadOption[]>([]);
 
-  // Pinned UI prefs (per-user, localStorage). Default = unpinned (hidden até passar mouse).
+  // Pinned UI prefs (per-user, localStorage).
+  // Cabeçalho (detalhamento): fixado por padrão. Só fica oculto se o usuário desafixar (=== '0').
   const [headerPinned, setHeaderPinned] = useState<boolean>(() => {
-    try { return localStorage.getItem('activities_headerPinned') === '1'; } catch { return false; }
+    try { return localStorage.getItem('activities_headerPinned') !== '0'; } catch { return true; }
   });
   const [actionsPinned, setActionsPinned] = useState<boolean>(() => {
     try { return localStorage.getItem('activities_actionsPinned') === '1'; } catch { return false; }
@@ -351,7 +352,7 @@ const ActivitiesPage = () => {
   const [availableCases, setAvailableCases] = useState<{id: string; case_number: string; title: string; lead_id: string | null}[]>([]);
   const [caseSearch, setCaseSearch] = useState('');
   const [leadCases, setLeadCases] = useState<{id: string; case_number: string; title: string}[]>([]);
-  const [caseProcesses, setCaseProcesses] = useState<{id: string; title: string; process_number: string | null; polo_ativo?: string | null; polo_passivo: string | null; cliente_polo?: string | null; tribunal: string | null; area: string | null; assuntos: string[] | null; workflow_id: string | null; envolvidos: any[] | null}[]>([]);
+  const [caseProcesses, setCaseProcesses] = useState<{id: string; title: string; process_number: string | null; polo_ativo?: string | null; polo_passivo: string | null; cliente_polo?: string | null; tribunal: string | null; area: string | null; assuntos: string[] | null; workflow_id: string | null; envolvidos: any[] | null; data_ultima_movimentacao?: string | null}[]>([]);
   // OABs dos usuários do escritório — para auto-detectar o polo do cliente.
   const systemOabs = useSystemOabs();
   const applyUpdatedCaseProcess = useCallback((updatedProcess?: any) => {
@@ -1147,8 +1148,8 @@ const ActivitiesPage = () => {
 
     if ((activity as any).case_id) {
       promises.push(
-        Promise.resolve(externalSupabase.from('lead_processes').select('id, title, process_number, polo_ativo, polo_passivo, cliente_polo, tribunal, area, assuntos, workflow_id, workflow_name, envolvidos').eq('case_id', (activity as any).case_id)).then(({ data }) => {
-          setCaseProcesses((data || []).map((p: any) => ({ id: p.id, title: p.title, process_number: p.process_number, polo_ativo: p.polo_ativo, polo_passivo: p.polo_passivo, cliente_polo: p.cliente_polo, tribunal: p.tribunal, area: p.area, assuntos: p.assuntos, workflow_id: p.workflow_id, workflow_name: p.workflow_name, envolvidos: p.envolvidos })));
+        Promise.resolve(externalSupabase.from('lead_processes').select('id, title, process_number, polo_ativo, polo_passivo, cliente_polo, tribunal, area, assuntos, workflow_id, workflow_name, envolvidos, data_ultima_movimentacao').eq('case_id', (activity as any).case_id)).then(({ data }) => {
+          setCaseProcesses((data || []).map((p: any) => ({ id: p.id, title: p.title, process_number: p.process_number, polo_ativo: p.polo_ativo, polo_passivo: p.polo_passivo, cliente_polo: p.cliente_polo, tribunal: p.tribunal, area: p.area, assuntos: p.assuntos, workflow_id: p.workflow_id, workflow_name: p.workflow_name, envolvidos: p.envolvidos, data_ultima_movimentacao: p.data_ultima_movimentacao })));
         })
       );
     }
@@ -4748,7 +4749,26 @@ const ActivitiesPage = () => {
                   {formProcessTitle && (() => {
                     const proc = formProcessId ? caseProcesses.find(p => p.id === formProcessId) : null;
                     const procNumber = proc?.process_number || formProcessTitle;
+                    // Tempo sem andamento efetivo: dias desde a última movimentação (fonte Escavador),
+                    // mesma métrica do relatório "Processos sem movimentação" (faixas 30/60/90).
+                    const ultMov = proc?.data_ultima_movimentacao ? new Date(proc.data_ultima_movimentacao) : null;
+                    const diasSemMov = ultMov && !isNaN(ultMov.getTime())
+                      ? differenceInCalendarDays(new Date(), ultMov)
+                      : null;
+                    const humanizeDias = (d: number): string => {
+                      if (d < 1) return 'hoje';
+                      if (d < 30) return `${d} dia${d > 1 ? 's' : ''}`;
+                      if (d < 365) { const m = Math.floor(d / 30); return `${m} ${m > 1 ? 'meses' : 'mês'}`; }
+                      const anos = Math.floor(d / 365); const mesesResto = Math.floor((d % 365) / 30);
+                      return `${anos} ano${anos > 1 ? 's' : ''}${mesesResto > 0 ? ` e ${mesesResto} ${mesesResto > 1 ? 'meses' : 'mês'}` : ''}`;
+                    };
+                    const semMovClass = diasSemMov == null ? '' :
+                      diasSemMov >= 90 ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300' :
+                      diasSemMov >= 60 ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300' :
+                      diasSemMov >= 30 ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300' :
+                      'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300';
                     return (
+                      <>
                       <span className="flex items-center gap-1 min-w-0 max-w-full" title={procNumber}>
                         <FileText className="h-3 w-3 shrink-0" />
                         <button
@@ -4774,6 +4794,21 @@ const ActivitiesPage = () => {
                           </button>
                         )}
                       </span>
+                      {diasSemMov != null && (
+                        <button
+                          type="button"
+                          onClick={() => formProcessId && setShowProcessSheetId(formProcessId)}
+                          className={cn(
+                            'shrink-0 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium leading-none',
+                            semMovClass,
+                          )}
+                          title={`Última movimentação: ${ultMov ? ultMov.toLocaleDateString('pt-BR') : '—'} · ${diasSemMov} dia(s) sem andamento efetivo (fonte: Escavador). Clique para ver as movimentações.`}
+                        >
+                          <Clock className="h-3 w-3" />
+                          {diasSemMov < 1 ? 'movimentado hoje' : `há ${humanizeDias(diasSemMov)} sem andamento efetivo`}
+                        </button>
+                      )}
+                      </>
                     );
                   })()}
                 </div>
