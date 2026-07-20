@@ -1573,9 +1573,18 @@ const ActivitiesPage = () => {
   };
 
   const closeSheet = () => {
-    // Sair da atividade → pergunta continuar/pausar o cronômetro (no-op se já
-    // não houver atv sendo cronometrada, ex.: após concluir/excluir).
-    requestLeaveTimer();
+    // Só pergunta continuar/pausar se o sheet que está fechando é o da atv
+    // cronometrada. Fechar o sheet de CRIAÇÃO (ou uma consulta a atv de outro)
+    // não deve mexer no cronômetro da atv atualmente rodando — antes, criar uma
+    // nova atv desvinculava a atv em andamento e gerava falsa ociosidade.
+    if (
+      sheetMode === 'edit' &&
+      runningTimer?.kind === 'activity' &&
+      selectedActivity?.id &&
+      runningTimer.activityId === selectedActivity.id
+    ) {
+      requestLeaveTimer();
+    }
     setSheetMode(null);
     setSelectedActivity(null);
     setSelectedActivityId(null);
