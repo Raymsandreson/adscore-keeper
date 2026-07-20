@@ -523,6 +523,10 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
       toast.error('Fluxo de trabalho é obrigatório');
       return;
     }
+    if (!form.responsible_user_id) {
+      toast.error('Designe um responsável pelo processo antes de salvar');
+      return;
+    }
     setSaving(true);
     try {
       const payload: Record<string, any> = {};
@@ -708,14 +712,19 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
 
           <div className="pt-2 space-y-1">
             <Label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-              Responsável pelo processo
+              Responsável pelo processo *
             </Label>
             <ResponsibleUserSelect
               value={form.responsible_user_id || null}
               onChange={(v) => set('responsible_user_id', v)}
               className="h-8 text-xs bg-background"
-              placeholder="Sem responsável (usa acolhedor/dono do lead)"
+              placeholder="Selecione o responsável"
             />
+            {!form.responsible_user_id && (
+              <p className="text-[10px] text-destructive">
+                Obrigatório: designe um responsável para salvar o processo.
+              </p>
+            )}
           </div>
         </div>
       </div>
