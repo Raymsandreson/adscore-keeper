@@ -239,6 +239,8 @@ const NoticiasPage = () => {
 
   const discardMany = async (ids: string[]) => {
     if (ids.length === 0) return;
+    // Guarda contra "selecionar todos" acidental (incidente 17/07: 269 viáveis descartados num clique)
+    if (ids.length >= 20 && !confirm(`Descartar ${ids.length} leads de uma vez? Eles vão para Arquivados.`)) return;
     setBulkDeleting(true);
     const nowIso = new Date().toISOString();
     try {
