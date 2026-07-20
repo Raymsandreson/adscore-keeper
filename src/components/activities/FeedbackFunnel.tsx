@@ -143,6 +143,7 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
   // Visão (funil kanban ou calendário) + filtros de assessor e período.
   const [view, setView] = useState<'funil' | 'calendario'>('funil');
   const [calMonth, setCalMonth] = useState(() => new Date());
+  const [selectedCalDay, setSelectedCalDay] = useState<string | null>(null);
   const [filterAssessor, setFilterAssessor] = useState('all');
   const [filterFrom, setFilterFrom] = useState('');
   const [filterTo, setFilterTo] = useState('');
@@ -362,6 +363,128 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
   const linkFor = (row: FeedbackRow) =>
     row.lead_name || row.case_title || row.process_title || row.title;
 
+  // Card de leitura (atrasada/reagendada — ainda sem retorno pra avaliar).
+  const renderLateCard = (row: LateRow) => {
+    const reag = row.status === 'reagendada';
+    const dias = row.deadline
+      ? differenceInCalendarDays(startOfDay(new Date()), startOfDay(parseISO(row.deadline)))
+      : 0;
+    return (
+      <div key={row.id} className="rounded-md border bg-card p-2.5 space-y-1 shadow-sm">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-xs font-medium truncate" title={row.title}>{row.title}</p>
+            <p className="text-[10px] text-muted-foreground truncate">{row.lead_name || row.case_title || row.process_title || ''}</p>
+          </div>
+          <a href={`/?openActivity=${row.id}`} className="shrink-0 text-muted-foreground hover:text-foreground" title="Abrir atividade">
+            <ExternalLink className="h-3.5 w-3.5" />
+          </a>
+        </div>
+        <p className="text-[10px] text-muted-foreground">
+          Responsável: <strong>{row.assigned_to_name || '—'}</strong>
+        </p>
+        {reag ? (
+          <p className="text-[10px] text-blue-700 dark:text-blue-400 font-medium">
+            🔁 Reagendada{row.rescheduled_to ? ` p/ ${format(parseISO(row.rescheduled_to), 'dd/MM')}` : ''}
+          </p>
+        ) : (
+          <p className="text-[10px] text-red-700 dark:text-red-400 font-medium">
+            ⚠ Venceu {row.deadline ? format(parseISO(row.deadline), 'dd/MM') : ''}{dias > 0 ? ` · há ${dias === 1 ? '1 dia' : `${dias} dias`}` : ''}
+          </p>
+        )}
+      </div>
+    );
+  };
+
+  // Card completo do feedback, com o formulário de avaliação (usado no funil e na lista do dia).
+  const renderFeedbackCard = (row: FeedbackRow) => {
+    const d = getDraft(row.id, row);
+    const evaluated = !!row.feedback_outcome;
+    const situacao = situacaoBadge(row);
+    return (
+      <div key={row.id} className="rounded-md border bg-card p-2.5 space-y-2 shadow-sm">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-xs font-medium truncate" title={row.title}>{row.title}</p>
+            <p className="text-[10px] text-muted-foreground truncate">{linkFor(row)}</p>
+            {situacao && (
+              <span className={cn('inline-block mt-1 rounded border px-1.5 py-0.5 text-[9px] font-medium', situacao.className)}>
+                {situacao.label}
+              </span>
+            )}
+          </div>
+          <a
+            href={`/?openActivity=${row.id}`}
+            className="shrink-0 text-muted-foreground hover:text-foreground"
+            title="Abrir atividade"
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+          </a>
+        </div>
+
+        <div className="rounded bg-muted/50 p-1.5 text-[11px] max-h-24 overflow-auto whitespace-pre-wrap">
+          {stripHtml(row.feedback || '')}
+        </div>
+        <p className="text-[10px] text-muted-foreground">
+          Retorno de <strong>{row.assigned_to_name || '—'}</strong>
+        </p>
+
+        {evaluated ? (
+          <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+            <span className="flex items-center gap-0.5">
+              {[1, 2, 3, 4, 5].map(n => (
+                <Star key={n} className={cn('h-3 w-3', (row.feedback_rating || 0) >= n ? 'fill-amber-400 text-amber-400' : 'text-muted-foreground/30')} />
+              ))}
+            </span>
+            <span>avaliado{row.feedback_rated_at ? ` ${format(parseISO(row.feedback_rated_at), 'dd/MM')}` : ''}</span>
+          </div>
+        ) : (
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <StarPicker value={d.rating} onChange={n => setDraftField(row.id, row, { rating: n })} />
+              <span className="text-[10px] text-muted-foreground">{d.rating || '—'}/5</span>
+            </div>
+            <div className="relative">
+              <Textarea
+                value={d.justification}
+                onChange={e => setDraftField(row.id, row, { justification: e.target.value })}
+                placeholder={d.rating === 5 ? 'O que mereceu 5⭐? (obrigatório)' : d.rating > 0 && d.rating <= 2 ? 'O que faltou? (obrigatório, construtivo)' : 'Justificativa (opcional)'}
+                rows={2}
+                className="text-[11px] pr-7"
+              />
+              <button
+                type="button"
+                onClick={() => toggleDictation(row.id, row)}
+                className={cn('absolute right-1 top-1 p-1 rounded', listeningId === row.id ? 'text-red-500' : 'text-muted-foreground hover:text-foreground')}
+                title="Ditar por voz"
+              >
+                {listeningId === row.id ? <MicOff className="h-3.5 w-3.5" /> : <Mic className="h-3.5 w-3.5" />}
+              </button>
+            </div>
+            <Textarea
+              value={d.praise}
+              onChange={e => setDraftField(row.id, row, { praise: e.target.value })}
+              placeholder="1 coisa que ficou boa (obrigatório só p/ Insatisfeito)"
+              rows={1}
+              className="text-[11px]"
+            />
+            <div className="grid grid-cols-3 gap-1">
+              <Button size="sm" variant="outline" className="h-7 text-[10px] gap-0.5 border-green-300 text-green-700 dark:text-green-400" disabled={savingId === row.id} onClick={() => evaluate(row, 'satisfeito')}>
+                <ThumbsUp className="h-3 w-3" /> Satisf.
+              </Button>
+              <Button size="sm" variant="outline" className="h-7 text-[10px] gap-0.5 border-amber-300 text-amber-700 dark:text-amber-400" disabled={savingId === row.id} onClick={() => evaluate(row, 'incompleto')}>
+                <AlertCircle className="h-3 w-3" /> Incomp.
+              </Button>
+              <Button size="sm" variant="outline" className="h-7 text-[10px] gap-0.5 border-red-300 text-red-700 dark:text-red-400" disabled={savingId === row.id} onClick={() => evaluate(row, 'insatisfeito')}>
+                <RefreshCw className="h-3 w-3" /> Insatisf.
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full sm:max-w-[95vw] p-0 flex flex-col">
@@ -468,12 +591,17 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
                   const dateKey = format(day, 'yyyy-MM-dd');
                   const dayItems = itemsByDay[dateKey] || [];
                   const MAX = 4;
+                  const isSelected = selectedCalDay === dateKey;
                   return (
                     <div
                       key={dateKey}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setSelectedCalDay(prev => (prev === dateKey ? null : dateKey))}
                       className={cn(
-                        'min-h-[92px] rounded-md border bg-card p-1 flex flex-col gap-0.5',
+                        'min-h-[92px] rounded-md border bg-card p-1 flex flex-col gap-0.5 text-left cursor-pointer hover:border-primary/50',
                         isToday(day) && 'ring-1 ring-primary',
+                        isSelected && 'border-primary ring-2 ring-primary',
                         dayItems.length === 0 && 'opacity-60'
                       )}
                     >
@@ -481,14 +609,13 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
                         {format(day, 'd')}
                       </span>
                       {dayItems.slice(0, MAX).map(it => (
-                        <a
+                        <span
                           key={it.id}
-                          href={`/?openActivity=${it.id}`}
                           title={`${CAT_STYLE[it.cat]?.label || it.cat} — ${it.title}${it.name ? ` · ${it.name}` : ''}`}
-                          className={cn('block rounded border px-1 py-0.5 text-[9px] leading-tight truncate hover:opacity-80', CAT_STYLE[it.cat]?.chip)}
+                          className={cn('block rounded border px-1 py-0.5 text-[9px] leading-tight truncate', CAT_STYLE[it.cat]?.chip)}
                         >
                           {it.title}
-                        </a>
+                        </span>
                       ))}
                       {dayItems.length > MAX && (
                         <span className="text-[9px] text-muted-foreground px-0.5">+{dayItems.length - MAX} mais</span>
@@ -497,6 +624,32 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
                   );
                 })}
               </div>
+
+              {/* Relação do dia clicado — avaliação direto aqui, sem abrir a ficha. */}
+              {selectedCalDay && (() => {
+                const dayFeedback = filteredRows.filter(r => (refDate(r) || '').slice(0, 10) === selectedCalDay);
+                const dayLate = filteredLate.filter(r => (refDate(r) || '').slice(0, 10) === selectedCalDay);
+                return (
+                  <div className="mt-4 border-t pt-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs font-semibold">
+                        📅 Atividades de {format(parseISO(selectedCalDay), 'dd/MM/yyyy')} — {dayFeedback.length + dayLate.length}
+                      </p>
+                      <Button variant="ghost" size="sm" className="h-7 text-[11px]" onClick={() => setSelectedCalDay(null)}>
+                        Fechar
+                      </Button>
+                    </div>
+                    {dayFeedback.length + dayLate.length === 0 ? (
+                      <p className="text-[11px] text-muted-foreground text-center py-6">Nenhuma atividade neste dia.</p>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                        {dayFeedback.map(renderFeedbackCard)}
+                        {dayLate.map(renderLateCard)}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-6 gap-3 min-h-full">
@@ -506,126 +659,11 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
                     <span>{col.icon} {col.label}</span>
                     <span className="text-muted-foreground">{counts[col.key as keyof typeof counts]}</span>
                   </div>
-                  {(col.key === 'atrasada' || col.key === 'reagendada') && lateColumnRows(col.key).map(row => {
-                    const dias = row.deadline
-                      ? differenceInCalendarDays(startOfDay(new Date()), startOfDay(parseISO(row.deadline)))
-                      : 0;
-                    return (
-                      <div key={row.id} className="rounded-md border bg-card p-2.5 space-y-1 shadow-sm">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <p className="text-xs font-medium truncate" title={row.title}>{row.title}</p>
-                            <p className="text-[10px] text-muted-foreground truncate">{row.lead_name || row.case_title || row.process_title || ''}</p>
-                          </div>
-                          <a href={`/?openActivity=${row.id}`} className="shrink-0 text-muted-foreground hover:text-foreground" title="Abrir atividade">
-                            <ExternalLink className="h-3.5 w-3.5" />
-                          </a>
-                        </div>
-                        <p className="text-[10px] text-muted-foreground">
-                          Responsável: <strong>{row.assigned_to_name || '—'}</strong>
-                        </p>
-                        {col.key === 'reagendada' ? (
-                          <p className="text-[10px] text-blue-700 dark:text-blue-400 font-medium">
-                            🔁 Reagendada{row.rescheduled_to ? ` p/ ${format(parseISO(row.rescheduled_to), 'dd/MM')}` : ''}
-                          </p>
-                        ) : (
-                          <p className="text-[10px] text-red-700 dark:text-red-400 font-medium">
-                            ⚠ Venceu {row.deadline ? format(parseISO(row.deadline), 'dd/MM') : ''}{dias > 0 ? ` · há ${dias === 1 ? '1 dia' : `${dias} dias`}` : ''}
-                          </p>
-                        )}
-                      </div>
-                    );
-                  })}
+                  {(col.key === 'atrasada' || col.key === 'reagendada') && lateColumnRows(col.key).map(renderLateCard)}
                   {(col.key === 'atrasada' || col.key === 'reagendada') && lateColumnRows(col.key).length === 0 && (
                     <p className="text-[10px] text-muted-foreground/60 text-center py-4">—</p>
                   )}
-                  {col.key !== 'atrasada' && col.key !== 'reagendada' && columnRows(col.key).map(row => {
-                    const d = getDraft(row.id, row);
-                    const evaluated = !!row.feedback_outcome;
-                    const situacao = situacaoBadge(row);
-                    return (
-                      <div key={row.id} className="rounded-md border bg-card p-2.5 space-y-2 shadow-sm">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <p className="text-xs font-medium truncate" title={row.title}>{row.title}</p>
-                            <p className="text-[10px] text-muted-foreground truncate">{linkFor(row)}</p>
-                            {situacao && (
-                              <span className={cn('inline-block mt-1 rounded border px-1.5 py-0.5 text-[9px] font-medium', situacao.className)}>
-                                {situacao.label}
-                              </span>
-                            )}
-                          </div>
-                          <a
-                            href={`/?openActivity=${row.id}`}
-                            className="shrink-0 text-muted-foreground hover:text-foreground"
-                            title="Abrir atividade"
-                          >
-                            <ExternalLink className="h-3.5 w-3.5" />
-                          </a>
-                        </div>
-
-                        <div className="rounded bg-muted/50 p-1.5 text-[11px] max-h-24 overflow-auto whitespace-pre-wrap">
-                          {stripHtml(row.feedback || '')}
-                        </div>
-                        <p className="text-[10px] text-muted-foreground">
-                          Retorno de <strong>{row.assigned_to_name || '—'}</strong>
-                        </p>
-
-                        {evaluated ? (
-                          <div className="flex items-center justify-between text-[10px] text-muted-foreground">
-                            <span className="flex items-center gap-0.5">
-                              {[1, 2, 3, 4, 5].map(n => (
-                                <Star key={n} className={cn('h-3 w-3', (row.feedback_rating || 0) >= n ? 'fill-amber-400 text-amber-400' : 'text-muted-foreground/30')} />
-                              ))}
-                            </span>
-                            <span>avaliado{row.feedback_rated_at ? ` ${format(parseISO(row.feedback_rated_at), 'dd/MM')}` : ''}</span>
-                          </div>
-                        ) : (
-                          <div className="space-y-1.5">
-                            <div className="flex items-center justify-between">
-                              <StarPicker value={d.rating} onChange={n => setDraftField(row.id, row, { rating: n })} />
-                              <span className="text-[10px] text-muted-foreground">{d.rating || '—'}/5</span>
-                            </div>
-                            <div className="relative">
-                              <Textarea
-                                value={d.justification}
-                                onChange={e => setDraftField(row.id, row, { justification: e.target.value })}
-                                placeholder={d.rating === 5 ? 'O que mereceu 5⭐? (obrigatório)' : d.rating > 0 && d.rating <= 2 ? 'O que faltou? (obrigatório, construtivo)' : 'Justificativa (opcional)'}
-                                rows={2}
-                                className="text-[11px] pr-7"
-                              />
-                              <button
-                                type="button"
-                                onClick={() => toggleDictation(row.id, row)}
-                                className={cn('absolute right-1 top-1 p-1 rounded', listeningId === row.id ? 'text-red-500' : 'text-muted-foreground hover:text-foreground')}
-                                title="Ditar por voz"
-                              >
-                                {listeningId === row.id ? <MicOff className="h-3.5 w-3.5" /> : <Mic className="h-3.5 w-3.5" />}
-                              </button>
-                            </div>
-                            <Textarea
-                              value={d.praise}
-                              onChange={e => setDraftField(row.id, row, { praise: e.target.value })}
-                              placeholder="1 coisa que ficou boa (obrigatório só p/ Insatisfeito)"
-                              rows={1}
-                              className="text-[11px]"
-                            />
-                            <div className="grid grid-cols-3 gap-1">
-                              <Button size="sm" variant="outline" className="h-7 text-[10px] gap-0.5 border-green-300 text-green-700 dark:text-green-400" disabled={savingId === row.id} onClick={() => evaluate(row, 'satisfeito')}>
-                                <ThumbsUp className="h-3 w-3" /> Satisf.
-                              </Button>
-                              <Button size="sm" variant="outline" className="h-7 text-[10px] gap-0.5 border-amber-300 text-amber-700 dark:text-amber-400" disabled={savingId === row.id} onClick={() => evaluate(row, 'incompleto')}>
-                                <AlertCircle className="h-3 w-3" /> Incomp.
-                              </Button>
-                              <Button size="sm" variant="outline" className="h-7 text-[10px] gap-0.5 border-red-300 text-red-700 dark:text-red-400" disabled={savingId === row.id} onClick={() => evaluate(row, 'insatisfeito')}>
-                                <RefreshCw className="h-3 w-3" /> Insatisf.
-                              </Button>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
+                  {col.key !== 'atrasada' && col.key !== 'reagendada' && columnRows(col.key).map(renderFeedbackCard)}
                   {col.key !== 'atrasada' && col.key !== 'reagendada' && columnRows(col.key).length === 0 && (
                     <p className="text-[10px] text-muted-foreground/60 text-center py-4">—</p>
                   )}
