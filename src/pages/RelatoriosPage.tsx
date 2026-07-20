@@ -21,6 +21,16 @@ interface ReportResult {
   rows: Record<string, unknown>[];
   count: number;
   truncated: boolean;
+  engine?: string;
+}
+
+function engineLabel(engine?: string): string {
+  if (!engine) return '';
+  if (engine.includes('gemini')) return 'Gemini';
+  if (engine.includes('sonnet')) return 'Sonnet';
+  if (engine.includes('opus')) return 'Opus';
+  if (engine.includes('haiku')) return 'Haiku';
+  return engine;
 }
 
 interface Turn {
@@ -126,6 +136,11 @@ function TurnCard({ turn }: { turn: Turn }) {
                 Mostrando os primeiros 1000 — refine o pedido para ver menos
               </Badge>
             )}
+            {turn.result.engine && (
+              <Badge variant="outline" className="text-muted-foreground text-[10px]">
+                via {engineLabel(turn.result.engine)}
+              </Badge>
+            )}
           </div>
 
           {turn.result.explanation && (
@@ -206,6 +221,7 @@ export default function RelatoriosPage() {
             title: data.title, explanation: data.explanation, sql: data.sql,
             columns: data.columns || [], rows: data.rows || [],
             count: data.count || 0, truncated: !!data.truncated,
+            engine: data.engine,
           },
         };
       }));

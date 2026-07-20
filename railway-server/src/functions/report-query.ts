@@ -17,29 +17,31 @@
  */
 import { Request, Response } from 'express';
 import { supabase } from '../lib/supabase';
-import { callAnthropic, parseAnthropicResponse } from '../lib/anthropic';
+import { aiChat } from '../lib/gemini';
 
 /**
- * Chama o Anthropic e devolve o objeto no formato OpenAI.
- * Diferente de anthropicChat: SURFACE o corpo real do erro (o helper padrão
- * só faz console.error e joga fora), pra diagnóstico do lado do cliente.
+ * Gera a SQL via IA. Tenta o modelo primário (Sonnet, se o Anthropic estiver
+ * conectado no Railway) e, em qualquer falha, cai no Gemini — o provedor padrão
+ * comprovado da base (GOOGLE_AI_API_KEY, usado por todas as funções de IA que
+ * já rodam). aiChat roteia por prefixo do modelo e propaga o erro real.
+ * Devolve { completion, engine } pra deixar visível qual motor respondeu.
  */
-async function callLLM(messages: any[]): Promise<any> {
-  const resp = await callAnthropic({
-    model: REPORT_MODEL,
-    max_tokens: 1200,
-    temperature: 0,
-    stream: false,
-    messages,
-    tools: [emitSqlTool],
-    tool_choice: { function: { name: 'emit_sql' } },
-  });
-  if (!resp.ok) {
-    const body = await resp.text().catch(() => '');
-    throw new Error(`Anthropic ${resp.status}: ${body.slice(0, 400)}`);
+async function callLLM(messages: any[]): Promise<{ completion: any; engine: string }> {
+  try {
+    const completion = await aiChat({
+      model: PRIMARY_MODEL, max_tokens: 1200, temperature: 0, messages,
+      tools: [emitSqlTool], tool_choice: { function: { name: 'emit_sql' } },
+    });
+    return { completion, engine: PRIMARY_MODEL };
+  } catch (primaryErr) {
+    console.warn(`[report-query] primário (${PRIMARY_MODEL}) falhou, tentando fallback ${FALLBACK_MODEL}:`,
+      primaryErr instanceof Error ? primaryErr.message : primaryErr);
+    const completion = await aiChat({
+      model: FALLBACK_MODEL, max_tokens: 1200, temperature: 0, messages,
+      tools: [emitSqlTool], tool_choice: { function: { name: 'emit_sql' } },
+    });
+    return { completion, engine: FALLBACK_MODEL };
   }
-  const data = await resp.json();
-  return parseAnthropicResponse(data);
 }
 
 const CLOUD_FUNCTIONS_URL =
@@ -48,7 +50,10 @@ const CLOUD_FUNCTIONS_URL =
   'https://gliigkupoebmlbwyvijp.supabase.co';
 const CLOUD_ANON_KEY = process.env.CLOUD_ANON_KEY || process.env.SUPABASE_ANON_KEY || '';
 
-const REPORT_MODEL = process.env.REPORT_QUERY_MODEL || 'claude-sonnet-4-6';
+// Primário = Sonnet (escolha do dono). Fallback = Gemini (provedor comprovado
+// da base). Se o Anthropic não estiver conectado no Railway, o fallback assume.
+const PRIMARY_MODEL = process.env.REPORT_QUERY_MODEL || 'claude-sonnet-4-6';
+const FALLBACK_MODEL = process.env.REPORT_QUERY_FALLBACK_MODEL || 'google/gemini-2.5-flash';
 // Bootstrap: e-mails que sempre têm acesso (dono/diretoria), separados por vírgula.
 const ADMIN_EMAILS = (process.env.REPORT_ADMIN_EMAILS || 'processual@rprudencioadv.com')
   .split(',').map((e) => e.trim().toLowerCase()).filter(Boolean);
@@ -319,8 +324,9 @@ export const handler = async (req: Request, res: Response) => {
       ...priorMessages,
       { role: 'user', content: question },
     ]);
+    let engineUsed = gen.engine;
 
-    const rawArgs = gen?.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments;
+    const rawArgs = gen.completion?.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments;
     if (!rawArgs) throw new Error('IA não retornou uma consulta.');
     let parsed: { title?: string; sql?: string; explanation?: string };
     try { parsed = JSON.parse(rawArgs); } catch { throw new Error('IA retornou consulta em formato inválido.'); }
@@ -340,7 +346,8 @@ export const handler = async (req: Request, res: Response) => {
         { role: 'assistant', content: `SQL gerada:\n${sql}` },
         { role: 'user', content: `Essa SQL falhou com o erro: "${errMsg}". Corrija e chame emit_sql de novo com uma SQL válida.` },
       ]);
-      const retryArgs = retry?.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments;
+      engineUsed = retry.engine;
+      const retryArgs = retry.completion?.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments;
       if (retryArgs) {
         try {
           const rp = JSON.parse(retryArgs);
@@ -359,7 +366,7 @@ export const handler = async (req: Request, res: Response) => {
     if (result?.error) {
       await logQuery({
         user_id: user.id, user_email: user.email, channel: 'reports', question,
-        answer: null, tool_calls: { sql }, model: REPORT_MODEL,
+        answer: null, tool_calls: { sql }, model: engineUsed,
         duration_ms: Date.now() - started, status: 'sql_error', error_message: result.message || result.error,
       });
       return res.status(200).json({
@@ -378,7 +385,7 @@ export const handler = async (req: Request, res: Response) => {
     await logQuery({
       user_id: user.id, user_email: user.email, channel: 'reports', question,
       answer: parsed.explanation || null, tool_calls: { sql, title: parsed.title, count },
-      model: REPORT_MODEL, duration_ms: Date.now() - started, status: 'ok',
+      model: engineUsed, duration_ms: Date.now() - started, status: 'ok',
     });
 
     return res.status(200).json({
@@ -390,13 +397,14 @@ export const handler = async (req: Request, res: Response) => {
       rows,
       count,
       truncated,
+      engine: engineUsed,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Erro desconhecido';
     console.error('[report-query] erro:', message);
     await logQuery({
       user_id: user.id, user_email: user.email, channel: 'reports', question,
-      answer: null, model: REPORT_MODEL, duration_ms: Date.now() - started,
+      answer: null, model: PRIMARY_MODEL, duration_ms: Date.now() - started,
       status: 'error', error_message: message,
     });
     return res.status(200).json({ success: false, error: 'internal', message });
