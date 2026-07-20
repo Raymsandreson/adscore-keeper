@@ -43,6 +43,7 @@ import { getMyAllowedInstanceIds } from '@/integrations/supabase/permissions';
 import { useUserRole } from '@/hooks/useUserRole';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { useKanbanBoards } from '@/hooks/useKanbanBoards';
+import { useWhatsAppTimeTracker } from '@/hooks/useWhatsAppTimeTracker';
 import { logGroupAudit } from '@/lib/groupAuditLog';
 import { normalizeWhatsAppConversationPhone } from '@/lib/whatsappPhone';
 import { AITextActions } from '@/components/ui/AITextActions';
@@ -137,6 +138,8 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const { profile, user } = useAuthContext();
   const { isAdmin } = useUserRole();
   const { boards: kanbanBoards } = useKanbanBoards();
+  // Conta o tempo de atendimento no cronômetro (atividade guarda-chuva do dia).
+  const { trackClientReply } = useWhatsAppTimeTracker();
   const [newMessage, setNewMessage] = useState('');
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
@@ -2134,7 +2137,11 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         nameFormat === 'nickname' ? (selectedNickname || null) : null,
         mentions.length ? mentions : undefined
       );
-      if (success) { setNewMessage(''); setMentionedParticipants([]); setGroupMentionQuery(null); }
+      if (success) {
+        setNewMessage(''); setMentionedParticipants([]); setGroupMentionQuery(null);
+        // Atendimento a cliente conta como tempo produtivo (guarda-chuva do dia).
+        trackClientReply();
+      }
     } catch (err) {
       console.error('handleSend error:', err);
     } finally {
