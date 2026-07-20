@@ -2046,13 +2046,21 @@ const ActivitiesPage = () => {
     // Busca por texto: aplicada por último, sobre as atividades já filtradas.
     const term = searchText.trim().toLowerCase();
     if (term) {
+      // Match por número do caso: se o termo bater com algum case_number
+      // (ex.: "342"), inclui as atividades vinculadas àqueles casos.
+      const matchingCaseIds = new Set(
+        availableCases
+          .filter(c => (c.case_number || '').toLowerCase().includes(term))
+          .map(c => c.id)
+      );
       list = list.filter(a =>
         (a.title || '').toLowerCase().includes(term) ||
         (a.lead_name || '').toLowerCase().includes(term) ||
         (a.client_name_override || '').toLowerCase().includes(term) ||
         (a.case_title || '').toLowerCase().includes(term) ||
         (a.process_title || '').toLowerCase().includes(term) ||
-        (a.assigned_to_name || '').toLowerCase().includes(term)
+        (a.assigned_to_name || '').toLowerCase().includes(term) ||
+        ((a as any).case_id && matchingCaseIds.has((a as any).case_id))
       );
     }
     // Ordena por prioridade: urgente > alta > normal > baixa (mantém ordem original como tiebreaker)
