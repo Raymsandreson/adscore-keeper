@@ -17,7 +17,30 @@
  */
 import { Request, Response } from 'express';
 import { supabase } from '../lib/supabase';
-import { anthropicChat } from '../lib/anthropic';
+import { callAnthropic, parseAnthropicResponse } from '../lib/anthropic';
+
+/**
+ * Chama o Anthropic e devolve o objeto no formato OpenAI.
+ * Diferente de anthropicChat: SURFACE o corpo real do erro (o helper padrão
+ * só faz console.error e joga fora), pra diagnóstico do lado do cliente.
+ */
+async function callLLM(messages: any[]): Promise<any> {
+  const resp = await callAnthropic({
+    model: REPORT_MODEL,
+    max_tokens: 1200,
+    temperature: 0,
+    stream: false,
+    messages,
+    tools: [emitSqlTool],
+    tool_choice: { function: { name: 'emit_sql' } },
+  });
+  if (!resp.ok) {
+    const body = await resp.text().catch(() => '');
+    throw new Error(`Anthropic ${resp.status}: ${body.slice(0, 400)}`);
+  }
+  const data = await resp.json();
+  return parseAnthropicResponse(data);
+}
 
 const CLOUD_FUNCTIONS_URL =
   process.env.CLOUD_FUNCTIONS_URL ||
@@ -291,18 +314,11 @@ export const handler = async (req: Request, res: Response) => {
     }));
 
     // 1) Gera a SQL
-    const gen = await anthropicChat({
-      model: REPORT_MODEL,
-      max_tokens: 1200,
-      temperature: 0,
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        ...priorMessages,
-        { role: 'user', content: question },
-      ],
-      tools: [emitSqlTool],
-      tool_choice: { function: { name: 'emit_sql' } },
-    });
+    const gen = await callLLM([
+      { role: 'system', content: SYSTEM_PROMPT },
+      ...priorMessages,
+      { role: 'user', content: question },
+    ]);
 
     const rawArgs = gen?.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments;
     if (!rawArgs) throw new Error('IA não retornou uma consulta.');
@@ -318,19 +334,12 @@ export const handler = async (req: Request, res: Response) => {
     const needsRetry = exec.error || (result && result.error);
     if (needsRetry) {
       const errMsg = exec.error?.message || result?.message || 'erro desconhecido';
-      const retry = await anthropicChat({
-        model: REPORT_MODEL,
-        max_tokens: 1200,
-        temperature: 0,
-        messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: question },
-          { role: 'assistant', content: `SQL gerada:\n${sql}` },
-          { role: 'user', content: `Essa SQL falhou com o erro: "${errMsg}". Corrija e chame emit_sql de novo com uma SQL válida.` },
-        ],
-        tools: [emitSqlTool],
-        tool_choice: { function: { name: 'emit_sql' } },
-      });
+      const retry = await callLLM([
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user', content: question },
+        { role: 'assistant', content: `SQL gerada:\n${sql}` },
+        { role: 'user', content: `Essa SQL falhou com o erro: "${errMsg}". Corrija e chame emit_sql de novo com uma SQL válida.` },
+      ]);
       const retryArgs = retry?.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments;
       if (retryArgs) {
         try {
