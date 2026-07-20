@@ -97,16 +97,17 @@ function buildContextSections(ctx: ActivityContext, recent: MovementItem[]): str
   }
 
   if (Array.isArray(ctx.previous_activities) && ctx.previous_activities.length > 0) {
+    const clip = (s?: string, n = 400) => (s ? s.toString().replace(/\s+/g, ' ').trim().slice(0, n) : '');
     const lines = ctx.previous_activities.slice(0, 8).map((a) => {
-      const parts = [
-        a.date ? `[${a.date}]` : null,
-        a.title || '(sem título)',
-        a.status ? `(${a.status})` : null,
-        a.next_steps ? `próximo: ${a.next_steps}` : null,
-      ].filter(Boolean);
-      return `- ${parts.join(' · ')}`;
+      const head = [a.date ? `[${a.date}]` : null, a.title || '(sem título)', a.status ? `(${a.status})` : null].filter(Boolean).join(' · ');
+      const detail = [
+        clip(a.what_was_done) ? `  · feito: ${clip(a.what_was_done)}` : null,
+        clip(a.current_status) ? `  · como está: ${clip(a.current_status)}` : null,
+        clip(a.next_steps) ? `  · próximo: ${clip(a.next_steps)}` : null,
+      ].filter(Boolean).join('\n');
+      return `- ${head}${detail ? '\n' + detail : ''}`;
     });
-    sections.push(`Atividades anteriores deste processo (mais recentes primeiro — use só como contexto, NÃO copie):\n${lines.join('\n')}`);
+    sections.push(`Atividades anteriores deste processo (mais recentes primeiro — servem de MODELO de tom/andamento; NÃO copie literalmente, escreva coerente com elas):\n${lines.join('\n')}`);
   }
 
   return sections.length > 0 ? '\n\n' + sections.join('\n\n') : '';
@@ -147,18 +148,19 @@ ${typesList}`;
 
     const system = `Você é um assistente jurídico de um escritório de advocacia previdenciário/trabalhista. A partir de uma MOVIMENTAÇÃO PROCESSUAL (publicação, intimação, despacho, decisão, andamento) e do contexto do processo (fluxo de trabalho, movimentações recentes e atividades anteriores), crie o RASCUNHO de uma NOVA atividade de acompanhamento.
 
-Sua tarefa: preencher os campos abaixo de forma FIEL ao teor da movimentação. Regras:
+Sua tarefa: preencher os campos abaixo de forma FIEL ao teor da movimentação, escrevendo no mesmo tom das atividades anteriores do processo. Regras:
 - TÍTULO: curto e objetivo, dizendo o que precisa ser feito em resposta à movimentação (ex.: "Recolher custas iniciais", "Cumprir intimação sobre AR não cumprido", "Providenciar depósito da consignação"). Não repita o número do processo no título.
 - TIPO: escolha uma das chaves disponíveis que melhor represente a ação. Se nenhuma se encaixar bem, use a mais genérica de acompanhamento.
-- "O que foi feito": o que a movimentação informa que ocorreu no processo (a publicação/decisão em si). É o fato gerador desta atividade.
-- "Como está": a situação atual do processo à luz da movimentação.
-- "Próximo passo": a ação concreta a ser tomada em resposta, com prazo/data se a movimentação mencionar. Considere o próximo passo do fluxo de trabalho quando fizer sentido.
-- "Solicitação": o que foi pedido/determinado pela vara/juízo na movimentação, se houver.
-- "Resposta do juízo": decisão/despacho/posição do juízo, se a movimentação trouxer.
+- OS TRÊS CAMPOS CENTRAIS SÃO OBRIGATÓRIOS — preencha SEMPRE, são o núcleo do rascunho. Não os deixe vazios por excesso de cautela; use a movimentação e o contexto (fluxo + atividades anteriores) como base:
+  · "O que foi feito": descreva o que a movimentação informa que ocorreu no processo (a publicação/intimação/decisão em si). É o fato gerador desta atividade. Escreva pelo menos uma frase.
+  · "Como está": explique a situação atual do processo à luz da movimentação, de forma coerente com o andamento das atividades anteriores. Escreva pelo menos uma frase.
+  · "Próximo passo": a ação concreta a ser tomada em resposta, com prazo/data se a movimentação mencionar. Considere o próximo passo do fluxo de trabalho e o padrão das atividades anteriores. Escreva pelo menos uma frase.
+- "Solicitação": o que foi pedido/determinado pela vara/juízo na movimentação — só se houver.
+- "Resposta do juízo": decisão/despacho/posição do juízo — só se a movimentação trouxer.
 - "Observações": só se houver algo relevante que não caiba nos demais campos.
-- Seja fiel e objetivo. NÃO invente fatos, nomes, datas ou prazos que não estejam na movimentação ou no contexto. Campo sem informação → string vazia.
-- NÃO SEJA REDUNDANTE: cada campo tem função distinta; não repita o mesmo conteúdo em campos diferentes só para não deixá-los vazios. Deixar vazio é PREFERÍVEL a repetir.
-- Se a movimentação for ambígua ou insuficiente para um rascunho seguro, preencha o que der e retorne uma pergunta objetiva em "clarifying_question". Se estiver claro, OMITA clarifying_question.
+- Seja fiel: NÃO invente fatos, nomes, datas ou prazos que não estejam na movimentação ou no contexto. Mas INFERIR o encaminhamento natural (o que fazer em seguida) a partir do teor da movimentação e do histórico é esperado e desejado — isso não é "inventar".
+- NÃO SEJA REDUNDANTE: cada um dos três campos centrais tem função distinta (fato ocorrido ≠ situação atual ≠ ação seguinte); não repita a mesma frase nos três. Para solicitação/resposta do juízo/observações, deixar vazio é preferível a repetir.
+- Se a movimentação for realmente ambígua/insuficiente, preencha o que der (ainda assim os três campos centrais) e retorne "clarifying_question". Se estiver claro, OMITA clarifying_question.
 - Escreva em português do Brasil, linguagem simples e direta.`;
 
     let fields = { ...EMPTY_FIELDS };

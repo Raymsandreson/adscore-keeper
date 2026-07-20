@@ -680,16 +680,19 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
       if (process?.id) {
         const { data: acts } = await externalSupabase
           .from('lead_activities')
-          .select('title, status, activity_type, next_steps, created_at')
+          .select('title, status, activity_type, what_was_done, current_status_notes, next_steps, created_at')
           .eq('process_id', process.id)
           .is('deleted_at', null)
           .order('created_at', { ascending: false })
           .limit(8);
+        const stripHtml = (s: string) => s.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
         previousActivities = (acts || []).map((a: any) => ({
           title: a.title,
           status: a.status,
           type: a.activity_type,
-          next_steps: a.next_steps || '',
+          what_was_done: stripHtml(a.what_was_done || ''),
+          current_status: stripHtml(a.current_status_notes || ''),
+          next_steps: stripHtml(a.next_steps || ''),
           date: a.created_at ? String(a.created_at).slice(0, 10) : undefined,
         }));
       }
