@@ -133,10 +133,56 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
     const { data: { user } } = await supabase.auth.getUser();
     const titulo = caseTitle?.trim() || editingCase?.title || '';
     const extCreatedBy = await remapToExternal(user?.id);
-    let okProc = 0, failProc = 0, okAct = 0, failAct = 0;
+
+    // Herda o fluxo de trabalho do caso, para o processo automático nascer com
+    // os mesmos campos do cadastrado à mão (antes: workflow sempre null).
+    let inheritedWorkflowId: string | null = null;
+    let inheritedWorkflowName: string | null = null;
+    try {
+      const { data: caseWf } = await externalSupabase
+        .from('legal_cases')
+        .select('workflow_board_id')
+        .eq('id', caseId)
+        .maybeSingle();
+      if ((caseWf as any)?.workflow_board_id) {
+        inheritedWorkflowId = (caseWf as any).workflow_board_id;
+        const { data: board } = await externalSupabase
+          .from('kanban_boards')
+          .select('name')
+          .eq('id', inheritedWorkflowId)
+          .maybeSingle();
+        inheritedWorkflowName = (board as any)?.name || null;
+      }
+    } catch (wfErr) {
+      console.warn('[autoCreateProcesses] failed to inherit workflow from case:', wfErr);
+    }
+
+    // Evita duplicar quando o dialog é salvo duas vezes (duplo clique).
+    const { data: alreadyThere } = await externalSupabase
+      .from('lead_processes')
+      .select('title')
+      .eq('case_id', caseId)
+      .is('deleted_at', null);
+    const existingTitles = new Set(
+      (alreadyThere || []).map((p: any) => String(p.title || '').trim().toLowerCase()),
+    );
+
+    let okProc = 0, failProc = 0, okAct = 0, failAct = 0, skipped = 0;
     for (const title of selectedProcesses) {
       let savedProcessId: string | null = null;
+      let extAssignedTo: string | null = null;
+      let assignedName: string | null = null;
       try {
+        if (existingTitles.has(title.trim().toLowerCase())) {
+          skipped++;
+          continue;
+        }
+        existingTitles.add(title.trim().toLowerCase());
+
+        // Resolvido antes do insert para gravar o responsável no processo, e
+        // não só na atividade "Dar andamento".
+        ({ extAssignedTo, assignedName } = await resolveProcessAssignment(title, titulo, user?.id, caseNumber));
+
         const { data: savedProcess, error: procErr } = await externalSupabase.from('lead_processes').insert({
           lead_id: caseLeadId,
           case_id: caseId,
@@ -145,6 +191,9 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
           status: 'em_andamento',
           started_at: new Date().toISOString().slice(0, 10),
           created_by: extCreatedBy,
+          workflow_id: inheritedWorkflowId,
+          workflow_name: inheritedWorkflowName,
+          responsible_user_id: extAssignedTo,
         } as any).select('id').single();
         if (procErr) throw procErr;
         savedProcessId = savedProcess?.id || null;
@@ -157,7 +206,6 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
       }
 
       try {
-        const { extAssignedTo, assignedName } = await resolveProcessAssignment(title, titulo, user?.id, caseNumber);
         const result = await createOrAttachAndamentoActivity({
           leadId: caseLeadId,
           caseId,
@@ -177,6 +225,7 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
       }
     }
     toast.success(`${okProc} processo(s) criado(s) | ${okAct} atividade(s) atribuída(s)`);
+    if (skipped) toast.info(`${skipped} já existia(m) neste caso — não duplicado(s)`);
     if (failProc || failAct) toast.warning(`${failProc} processo(s) e ${failAct} atividade(s) com erro — veja toasts vermelhos`);
   };
 

@@ -362,6 +362,7 @@ const ActivitiesPage = () => {
         ? { ...proc, ...updatedProcess }
         : proc
     )));
+    setProcessSheetData(prev => (prev?.id === updatedProcess.id ? { ...prev, ...updatedProcess } : prev));
   }, []);
   const [availableContacts, setAvailableContacts] = useState<{id: string; full_name: string}[]>([]);
   const [contactSearch, setContactSearch] = useState('');
@@ -393,6 +394,32 @@ const ActivitiesPage = () => {
   const [pendingAudio, setPendingAudio] = useState<{ url: string; seconds: number } | null>(null);
   const [sendingPendingAudio, setSendingPendingAudio] = useState(false);
   const [showProcessSheetId, setShowProcessSheetId] = useState<string | null>(null);
+  // Linha completa do processo aberto no sheet. Buscamos do banco em vez de
+  // reusar `caseProcesses` porque (a) ele só é carregado quando a atividade tem
+  // case_id — sem isso o lápis virava no-op silencioso — e (b) o select de lá é
+  // parcial (sem status/process_type/notes), o que quebrava o sheet.
+  const [processSheetData, setProcessSheetData] = useState<any>(null);
+
+  useEffect(() => {
+    if (!showProcessSheetId) { setProcessSheetData(null); return; }
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await externalSupabase
+        .from('lead_processes')
+        .select('*')
+        .eq('id', showProcessSheetId)
+        .is('deleted_at', null)
+        .maybeSingle();
+      if (cancelled) return;
+      if (error || !data) {
+        toast.error('Não foi possível abrir o processo');
+        setShowProcessSheetId(null);
+        return;
+      }
+      setProcessSheetData(data);
+    })();
+    return () => { cancelled = true; };
+  }, [showProcessSheetId]);
   const [viewModeRaw, setViewMode] = usePageState<'list' | 'blocks'>('activities_viewMode', 'blocks');
   const viewMode = (viewModeRaw === 'list' ? 'list' : 'blocks') as 'list' | 'blocks';
   const [formMatrixQuadrant, setFormMatrixQuadrant] = useState<string>('');
@@ -5433,16 +5460,14 @@ const ActivitiesPage = () => {
       )}
 
       {/* Process Detail Sheet — Últimas movimentações */}
-      {showProcessSheetId && (() => {
-        const proc = caseProcesses.find(p => p.id === showProcessSheetId);
-        if (!proc) return null;
+      {showProcessSheetId && processSheetData && (() => {
         const ProcessDetailSheet = lazy(() => import('@/components/cases/ProcessDetailSheet'));
         return (
           <Suspense fallback={null}>
             <ProcessDetailSheet
               open={!!showProcessSheetId}
               onOpenChange={(o) => { if (!o) setShowProcessSheetId(null); }}
-              process={proc}
+              process={processSheetData}
               onUpdated={applyUpdatedCaseProcess}
               defaultTab="atividades"
             />

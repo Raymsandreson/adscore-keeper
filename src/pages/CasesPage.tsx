@@ -577,8 +577,53 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
       // Auto-create selected processes
       if (selectedProcesses.size > 0 && legalCase.lead_id) {
         const { data: { user } } = await supabase.auth.getUser();
+        const extCreatedByForProcess = await remapToExternal(user?.id);
+
+        // Herda o fluxo de trabalho do caso, para o processo automático nascer
+        // com os mesmos campos do cadastrado à mão (antes: workflow sempre null).
+        let inheritedWorkflowId: string | null = null;
+        let inheritedWorkflowName: string | null = null;
+        try {
+          const { data: caseWf } = await externalSupabase
+            .from('legal_cases')
+            .select('workflow_board_id')
+            .eq('id', legalCase.id)
+            .maybeSingle();
+          if ((caseWf as any)?.workflow_board_id) {
+            inheritedWorkflowId = (caseWf as any).workflow_board_id;
+            const { data: board } = await externalSupabase
+              .from('kanban_boards')
+              .select('name')
+              .eq('id', inheritedWorkflowId)
+              .maybeSingle();
+            inheritedWorkflowName = (board as any)?.name || null;
+          }
+        } catch (wfErr) {
+          console.warn('[CasesPage] failed to inherit workflow from case:', wfErr);
+        }
+
+        // Evita duplicar quando o dialog é salvo duas vezes (duplo clique).
+        const { data: alreadyThere } = await externalSupabase
+          .from('lead_processes')
+          .select('title')
+          .eq('case_id', legalCase.id)
+          .is('deleted_at', null);
+        const existingTitles = new Set(
+          (alreadyThere || []).map((p: any) => String(p.title || '').trim().toLowerCase()),
+        );
+
         for (const title of selectedProcesses) {
           try {
+            if (existingTitles.has(title.trim().toLowerCase())) {
+              toast.info(`"${title}" já existe neste caso — não duplicado`);
+              continue;
+            }
+            existingTitles.add(title.trim().toLowerCase());
+
+            // Resolvido antes do insert para gravar o responsável no processo,
+            // e não só na atividade "Dar andamento".
+            const { extAssignedTo, assignedName } = await resolveProcessAssignment(title, editTitle || legalCase.title, user?.id, legalCase.case_number);
+
             const { data: savedProcess } = await externalSupabase.from('lead_processes').insert({
               lead_id: legalCase.lead_id,
               case_id: legalCase.id,
@@ -586,7 +631,10 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
               title,
               status: 'em_andamento',
               started_at: new Date().toISOString().slice(0, 10),
-              created_by: user?.id,
+              created_by: extCreatedByForProcess,
+              workflow_id: inheritedWorkflowId,
+              workflow_name: inheritedWorkflowName,
+              responsible_user_id: extAssignedTo,
             } as any).select('id').single();
 
             // Adota atividades-fantasma cujo process_title bate com este título (case-insensitive)
@@ -603,9 +651,10 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
             }
 
             // Auto-create/attach activity via helper central (lida com índice único).
+            // Reusa o responsável já resolvido acima — antes era resolvido duas
+            // vezes, reabrindo o prompt de escolha do Benefício INSS.
             try {
-              const { extAssignedTo, assignedName } = await resolveProcessAssignment(title, editTitle || legalCase.title, user?.id, legalCase.case_number);
-              const extCreatedBy = await remapToExternal(user?.id);
+              const extCreatedBy = extCreatedByForProcess;
               const result = await createOrAttachAndamentoActivity({
                 leadId: legalCase.lead_id,
                 caseId: legalCase.id,

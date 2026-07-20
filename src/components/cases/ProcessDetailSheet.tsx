@@ -217,7 +217,9 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
         ...process,
         fee_percentage: process.fee_percentage ?? 30,
       });
-      setDirty(process.fee_percentage == null); // marca dirty se aplicou default
+      // Abrir já "sujo" só porque aplicamos o default de 30% fazia o botão
+      // Salvar aparecer sem o usuário ter editado nada.
+      setDirty(false);
       setActiveTab(defaultTab ?? 'partes');
       setActivities([]);
       setDocuments([]);
@@ -515,12 +517,15 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
 
   const handleSave = async () => {
     if (!process?.id) return;
-    if (!form.process_number || !String(form.process_number).trim()) {
-      toast.error('Nº do Processo é obrigatório');
+    // Nº CNJ e fluxo só fazem sentido em processo judicial. Administrativo
+    // (INSS, MP, inquérito) não tem CNJ — exigir travava 55% da base.
+    const isJudicial = (form.process_type || 'judicial') === 'judicial';
+    if (isJudicial && (!form.process_number || !String(form.process_number).trim())) {
+      toast.error('Nº do Processo é obrigatório para processo judicial');
       return;
     }
-    if (!form.workflow_id) {
-      toast.error('Fluxo de trabalho é obrigatório');
+    if (isJudicial && !form.workflow_id) {
+      toast.error('Fluxo de trabalho é obrigatório para processo judicial');
       return;
     }
     if (!form.responsible_user_id) {
