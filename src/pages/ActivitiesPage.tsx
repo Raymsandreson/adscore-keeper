@@ -2070,7 +2070,7 @@ const ActivitiesPage = () => {
       const rb = priorityRank[b.priority || 'normal'] ?? 2;
       return ra - rb;
     });
-  }, [activities, selectedCalDays, filterCase, viewMode, calendarMonth, filterStatus, filterHasDocs, activityIdsWithDocs, filterInExecution, execTodayMap, searchText]);
+  }, [activities, selectedCalDays, filterCase, viewMode, calendarMonth, filterStatus, filterHasDocs, activityIdsWithDocs, filterInExecution, execTodayMap, searchText, availableCases]);
 
   // A busca sem teto (filtro Atrasada) pode trazer milhares de linhas; o DOM não aguenta
   // todos os cards de uma vez — renderiza em lotes e revela o resto sob demanda.
