@@ -334,7 +334,7 @@ export function ActivityTimerOverlay() {
     keepRunning, pauseAndClose, hideTimer, showTimer, setEstimate, managerAlert, dismissManagerAlert,
     confirmStillWorking, rejectStillWorking, switchTo, dismissSwitch, startBreak, endBreak,
     extendBreak, awayPrompt, dismissAwayPrompt, breakOverdue,
-    onShift, startShift, endShift,
+    onShift, startShift, endShift, startTimer,
   } = useActivityTimer();
 
   const over = current?.kind === 'activity' && current.estimateMinutes
@@ -702,10 +702,18 @@ export function ActivityTimerOverlay() {
       {/* Seletor de atividade "agora" */}
       <SwitchActivityDialog open={switchPrompt} onPick={switchTo} onClose={dismissSwitch} />
 
-      {/* Registro rápido por voz — "o que você está fazendo" (documenta o dia) */}
+      {/* Registro rápido por voz — "o que você está fazendo" (documenta o dia).
+          Ao criar, inicia o cronômetro na atividade nova e abre a ficha dela. */}
       {voiceOpen && (
         <Suspense fallback={null}>
-          <QuickVoiceActivityDialog open={voiceOpen} onOpenChange={setVoiceOpen} />
+          <QuickVoiceActivityDialog
+            open={voiceOpen}
+            onOpenChange={setVoiceOpen}
+            onCreated={async (a) => {
+              await startTimer({ id: a.id, title: a.title, activity_type: a.activity_type, lead_name: a.lead_name });
+              setSheetOpen(true);
+            }}
+          />
         </Suspense>
       )}
     </>

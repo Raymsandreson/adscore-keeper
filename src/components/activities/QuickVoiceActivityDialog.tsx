@@ -41,11 +41,19 @@ const PRIORITIES = [
   { value: 'urgente', label: 'Urgente' },
 ];
 
+/** Dados mínimos da atividade criada — bastam para iniciar o cronômetro e abrir a ficha. */
+export interface CreatedActivityRef {
+  id: string;
+  title: string;
+  activity_type: string;
+  lead_name: string | null;
+}
+
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Chamado após criar a atividade com sucesso (ex.: fechar prompt de ociosidade). */
-  onCreated?: (activityId: string) => void;
+  /** Chamado após criar a atividade — o pai inicia o cronômetro e abre a ficha. */
+  onCreated?: (activity: CreatedActivityRef) => void;
 }
 
 /**
@@ -214,8 +222,13 @@ export function QuickVoiceActivityDialog({ open, onOpenChange, onCreated }: Prop
       } as any);
 
       if (!created?.id) throw new Error('Atividade não foi criada');
-      toast.success('Atividade registrada!');
-      onCreated?.(created.id);
+      toast.success('Atividade registrada! Cronômetro iniciado.');
+      onCreated?.({
+        id: created.id,
+        title: fields.title.trim(),
+        activity_type: fields.activity_type || 'tarefa',
+        lead_name: leadName || null,
+      });
       onOpenChange(false);
     } catch (e: any) {
       console.error('[QuickVoiceActivity] save error', e);
