@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { db as supabase } from '@/integrations/supabase';
 import { toast } from 'sonner';
+import { useAuthContext } from '@/contexts/AuthContext';
 
 export type ChecklistType = 'documentos' | 'requisitos' | 'perguntas' | 'verificacao' | 'outro';
 
@@ -123,6 +124,7 @@ export interface LeadChecklistInstance {
 }
 
 export const useChecklists = () => {
+  const { user } = useAuthContext();
   const [templates, setTemplates] = useState<ChecklistTemplate[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -350,6 +352,18 @@ export const useChecklists = () => {
 
   const updateInstanceItem = async (instanceId: string, items: ChecklistItem[]) => {
     const allChecked = items.every(i => i.checked);
+
+    // Captura o estado anterior para logar SÓ os passos recém-marcados (progresso por pessoa).
+    let prevItems: ChecklistItem[] = [];
+    try {
+      const { data: prev } = await supabase
+        .from('lead_checklist_instances')
+        .select('items')
+        .eq('id', instanceId)
+        .maybeSingle();
+      prevItems = ((prev?.items as unknown as ChecklistItem[]) || []);
+    } catch { /* segue sem log se não conseguir ler o anterior */ }
+
     const { error } = await supabase
       .from('lead_checklist_instances')
       .update({
@@ -362,6 +376,24 @@ export const useChecklists = () => {
     if (error) {
       console.error('Error updating checklist instance:', error);
       toast.error('Erro ao atualizar checklist');
+      return;
+    }
+
+    // #8: registra os passos recém-marcados via RPC (grava em user_activity_log no Externo).
+    // Fire-and-forget: não bloqueia a UI e não quebra o fluxo se falhar.
+    if (user?.id) {
+      const prevById = new Map(prevItems.map(p => [p.id, !!p.checked]));
+      const newlyChecked = items.filter(it => it.checked && !prevById.get(it.id));
+      for (const it of newlyChecked) {
+        // RPC nova (não está nos tipos gerados) → cast local.
+        (supabase as any).rpc('log_checklist_step', {
+          p_user_id: user.id,
+          p_instance_id: instanceId,
+          p_item_label: it.label,
+        }).then((res: { error?: { message?: string } | null }) => {
+          if (res?.error) console.warn('[useChecklists] log de passo falhou:', res.error.message);
+        });
+      }
     }
   };
 
