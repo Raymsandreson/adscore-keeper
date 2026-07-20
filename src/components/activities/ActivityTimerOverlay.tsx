@@ -12,6 +12,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useActivityTimer, formatHMS, BREAK_LABELS, QUICK_PAUSES, type BreakType } from '@/contexts/ActivityTimerContext';
+import { useWhatsAppUmbrellaWatchdog } from '@/hooks/useWhatsAppTimeTracker';
 
 // Registro rápido por voz ("o que estou fazendo") — carregado sob demanda.
 const QuickVoiceActivityDialog = lazy(() =>
@@ -336,6 +337,10 @@ export function ActivityTimerOverlay() {
     extendBreak, awayPrompt, dismissAwayPrompt, breakOverdue,
     onShift, startShift, endShift, startTimer,
   } = useActivityTimer();
+
+  // Pausa a guarda-chuva "Atendimento WhatsApp" após 5 min sem enviar mensagem
+  // (mesmo com o usuário mexendo no sistema) — volta ao estado ocioso.
+  useWhatsAppUmbrellaWatchdog();
 
   const over = current?.kind === 'activity' && current.estimateMinutes
     ? current.activeSeconds - current.estimateMinutes * 60
