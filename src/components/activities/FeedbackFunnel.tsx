@@ -103,7 +103,7 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
       setExtId(eid);
       if (!eid) { setRows([]); return; }
       // Feedbacks onde sou observador OU criador.
-      const { data, error } = await externalSupabase
+      const { data, error } = await (externalSupabase as any)
         .from('lead_activities')
         .select('id, title, feedback, feedback_rating, feedback_outcome, feedback_rated_by_name, feedback_rated_at, assigned_to, assigned_to_name, created_by, observer_ids, lead_id, lead_name, case_id, case_title, process_id, process_title, activity_type, updated_at')
         .not('feedback', 'is', null)
