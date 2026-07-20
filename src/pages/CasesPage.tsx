@@ -889,11 +889,18 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
                       <SelectContent>
                         <SelectItem value="all">Todos os processos</SelectItem>
                         <SelectItem value="none">Sem processo</SelectItem>
-                        {processes.map(p => (
-                          <SelectItem key={p.id} value={p.id}>
-                            {p.process_number || p.title || 'Processo'}
-                          </SelectItem>
-                        ))}
+                        {processes.map(p => {
+                          const assunto = (p.assunto_principal || p.classe || p.title || '').replace(/^[\s\-–—]+/, '').trim();
+                          const numero = p.process_number || p.title || 'Processo';
+                          return (
+                            <SelectItem key={p.id} value={p.id}>
+                              {numero}
+                              {assunto && assunto !== numero && (
+                                <span className="text-muted-foreground"> — {assunto}</span>
+                              )}
+                            </SelectItem>
+                          );
+                        })}
                       </SelectContent>
                     </Select>
                   </div>
