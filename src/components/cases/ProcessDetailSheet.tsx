@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
@@ -753,8 +752,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
 
       {/* Tab navigation */}
       <div className="shrink-0 border-b">
-        <ScrollArea className="w-full">
-          <div className="flex gap-0.5 px-2 py-1.5 overflow-x-auto">
+        <div className="flex flex-wrap gap-0.5 px-2 py-1.5">
             {TABS.map(tab => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
@@ -774,8 +772,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
                 </button>
               );
             })}
-          </div>
-        </ScrollArea>
+        </div>
       </div>
 
         {/* Tab content */}
