@@ -380,6 +380,9 @@ export function ActivityTimerOverlay() {
           : current.kind === 'gap'
             ? 'border border-amber-300/50 bg-amber-50/95 dark:bg-amber-950/60 text-amber-800 dark:text-amber-200'
             : 'border border-sky-300/60 bg-sky-50/95 dark:bg-sky-950/60 text-sky-800 dark:text-sky-200';
+        // Clique fica no contêiner (não num botão interno): o drag faz
+        // setPointerCapture no pointerdown e o click é reentregue ao próprio
+        // contêiner — botão interno nunca receberia o clique.
         return (
           <div
             ref={drag.setElRef}
@@ -387,8 +390,9 @@ export function ActivityTimerOverlay() {
             onPointerDown={drag.onPointerDown}
             onPointerMove={drag.onPointerMove}
             onPointerUp={drag.onPointerUp}
-            className={`fixed z-[60] flex items-center gap-1.5 rounded-full px-2.5 py-1 shadow-lg backdrop-blur touch-none select-none cursor-grab active:cursor-grabbing ${palette}`}
-            title="Cronômetro minimizado · clique para expandir"
+            onClick={() => { if (!drag.wasDragged()) showTimer(); }}
+            className={`fixed z-[60] flex items-center gap-1.5 rounded-full px-2.5 py-1 shadow-lg backdrop-blur touch-none select-none cursor-pointer hover:opacity-90 ${palette}`}
+            title="Cronômetro minimizado · clique para expandir · arraste para mover"
           >
             {current.kind === 'activity' && (
               <span className="relative flex h-2 w-2">
@@ -398,15 +402,10 @@ export function ActivityTimerOverlay() {
             )}
             {current.kind === 'gap' && <Coffee className="h-3 w-3" />}
             {current.kind === 'break' && <UtensilsCrossed className="h-3 w-3" />}
-            <button
-              type="button"
-              onClick={(e) => { if (drag.wasDragged()) { e.preventDefault(); e.stopPropagation(); return; } showTimer(); }}
-              className="flex items-center gap-1.5 font-mono text-sm tabular-nums font-semibold hover:opacity-80"
-              title="Expandir cronômetro"
-            >
+            <span className="flex items-center gap-1.5 font-mono text-sm tabular-nums font-semibold">
               {formatHMS(seconds)}
               <Maximize2 className="h-3 w-3 opacity-60" />
-            </button>
+            </span>
           </div>
         );
       })()}
