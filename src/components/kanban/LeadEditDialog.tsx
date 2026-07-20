@@ -751,7 +751,7 @@ export function LeadEditDialog({
     // Accident
     if (u.victim_name) setVictimName(u.victim_name);
     if (u.victim_age) setVictimAge(u.victim_age.toString());
-    if (u.accident_date) setAccidentDate(normalizeDateInput(u.accident_date) || u.accident_date);
+    if (u.accident_date) { const nd = normalizeDateInput(u.accident_date); if (nd) setAccidentDate(nd); }
     if (u.case_type) setCaseType(u.case_type);
     if (u.accident_address) setAccidentAddress(u.accident_address);
     if (u.damage_description) setDamageDescription(u.damage_description);
@@ -797,7 +797,7 @@ export function LeadEditDialog({
     // Update state with extracted data, filling in visit_region automatically
     if (data.victim_name) setVictimName(data.victim_name);
     if (data.victim_age) setVictimAge(data.victim_age.toString());
-    if (data.accident_date) setAccidentDate(normalizeDateInput(data.accident_date) || data.accident_date);
+    if (data.accident_date) { const nd = normalizeDateInput(data.accident_date); if (nd) setAccidentDate(nd); }
     if (data.case_type) setCaseType(data.case_type);
     if (data.accident_address) setAccidentAddress(data.accident_address);
     if (data.damage_description) setDamageDescription(data.damage_description);
@@ -2718,7 +2718,7 @@ ${scrapeData.content || ''}
                       const u = updates as any;
                       if (u.victim_name) setVictimName(u.victim_name);
                       if (u.victim_age) setVictimAge(u.victim_age);
-                      if (u.accident_date) setAccidentDate(u.accident_date);
+                      if (u.accident_date) { const nd = normalizeDateInput(u.accident_date); if (nd) setAccidentDate(nd); }
                       if (u.accident_address) setAccidentAddress(u.accident_address);
                       if (u.damage_description) setDamageDescription(u.damage_description);
                       if (u.case_type) setCaseType(u.case_type);
