@@ -358,6 +358,9 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
 
   const handleReExtract = async (rawOverride?: any) => {
     const raw = rawOverride ?? form.escavador_raw;
+    // rawOverride só chega numa busca fresca (handleFetchFromApi). Sem ele é
+    // re-parse offline do dado já salvo — não conta como "nova busca".
+    const isFreshFetch = !!rawOverride;
     if (!raw) {
       toast.error('Dados brutos do Escavador não encontrados');
       setSaving(false);
@@ -421,7 +424,11 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
         return movs.length ? movs : null;
       })(),
       quantidade_movimentacoes: raw.quantidade_movimentacoes || null,
-      data_ultima_verificacao: raw.data_ultima_verificacao || null,
+      // Busca fresca carimba HOJE (é quando de fato consultamos o Escavador).
+      // Re-parse offline preserva a data da última busca real.
+      data_ultima_verificacao: isFreshFetch
+        ? new Date().toISOString().slice(0, 10)
+        : (raw.data_ultima_verificacao || null),
       audiencias: fonte?.audiencias || null,
       envolvidos: fonte?.envolvidos || null,
       fonte_nome: fonte?.nome || fonte?.descricao || null,
@@ -451,7 +458,9 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
       const { error } = await externalSupabase.from('lead_processes').update(updates).eq('id', process.id);
       if (error) throw error;
       setForm(prev => ({ ...prev, ...updates, ...(rawOverride ? { escavador_raw: rawOverride } : {}) }));
-      toast.success(`${count} campos atualizados a partir dos dados do Escavador`);
+      toast.success(isFreshFetch
+        ? `${count} campos atualizados da busca no Escavador`
+        : `${count} campos reprocessados do dado salvo (sem nova busca)`);
       onUpdated?.();
 
       // Sincroniza marcos processuais (histórico append-only). Cobre processos
@@ -627,10 +636,18 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
         </div>
         <div className="flex items-center gap-2">
           <div className="flex flex-col items-end">
-            <Button size="sm" variant="outline" onClick={() => form.escavador_raw ? handleReExtract() : handleFetchFromApi()} disabled={saving} className="h-7 text-xs gap-1">
-              <RefreshCw className="h-3 w-3" />
-              {form.escavador_raw ? 'Re-extrair' : 'Buscar no Escavador'}
-            </Button>
+            <div className="flex items-center gap-1">
+              {form.escavador_raw && (
+                <Button size="sm" variant="ghost" onClick={() => handleReExtract()} disabled={saving} className="h-7 text-xs gap-1" title="Reprocessa o dado já salvo, sem consultar o Escavador (sem custo)">
+                  <RefreshCw className="h-3 w-3" />
+                  Re-extrair
+                </Button>
+              )}
+              <Button size="sm" variant="outline" onClick={() => handleFetchFromApi()} disabled={saving} className="h-7 text-xs gap-1" title="Consulta o Escavador agora (consome 1 crédito) e traz movimentações novas">
+                <RefreshCw className="h-3 w-3" />
+                {form.escavador_raw ? 'Atualizar (Escavador)' : 'Buscar no Escavador'}
+              </Button>
+            </div>
             <span className="text-[9px] text-muted-foreground mt-0.5">
               {form.data_ultima_verificacao
                 ? `Última busca: ${new Date(form.data_ultima_verificacao + (form.data_ultima_verificacao.length === 10 ? 'T00:00:00' : '')).toLocaleDateString('pt-BR')}`
