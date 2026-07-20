@@ -187,6 +187,9 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
   const [form, setForm] = useState<Record<string, any>>({});
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+  // Nº CNJ, fluxo e responsável só são obrigatórios em processo judicial.
+  // Administrativo (INSS, MP, inquérito, itens de checklist) salva sem eles.
+  const isJudicial = (form.process_type || 'judicial') === 'judicial';
   const systemOabs = useSystemOabs();
   const [activeTab, setActiveTab] = useState<TabId>(defaultTab ?? 'partes');
   const [marcosRefreshKey, setMarcosRefreshKey] = useState(0);
@@ -526,9 +529,6 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
 
   const handleSave = async () => {
     if (!process?.id) return;
-    // Nº CNJ e fluxo só fazem sentido em processo judicial. Administrativo
-    // (INSS, MP, inquérito) não tem CNJ — exigir travava 55% da base.
-    const isJudicial = (form.process_type || 'judicial') === 'judicial';
     if (isJudicial && (!form.process_number || !String(form.process_number).trim())) {
       toast.error('Nº do Processo é obrigatório para processo judicial');
       return;
@@ -537,7 +537,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
       toast.error('Fluxo de trabalho é obrigatório para processo judicial');
       return;
     }
-    if (!form.responsible_user_id) {
+    if (isJudicial && !form.responsible_user_id) {
       toast.error('Designe um responsável pelo processo antes de salvar');
       return;
     }
@@ -734,7 +734,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
 
           <div className="pt-2 space-y-1">
             <Label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-              Responsável pelo processo *
+              Responsável pelo processo {isJudicial && '*'}
             </Label>
             <ResponsibleUserSelect
               value={form.responsible_user_id || null}
@@ -742,7 +742,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
               className="h-8 text-xs bg-background"
               placeholder="Selecione o responsável"
             />
-            {!form.responsible_user_id && (
+            {isJudicial && !form.responsible_user_id && (
               <p className="text-[10px] text-destructive">
                 Obrigatório: designe um responsável para salvar o processo.
               </p>

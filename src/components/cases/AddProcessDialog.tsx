@@ -242,7 +242,7 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
 
   const saveSelectedFromEscavador = async () => {
     if (selectedResults.size === 0) return;
-    if (!responsibleExtId) {
+    if (processType === 'judicial' && !responsibleExtId) {
       toast.error('Designe um responsável pelo processo antes de vincular');
       return;
     }
@@ -461,7 +461,7 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
       toast.error('Informe o título do processo');
       return;
     }
-    if (!responsibleExtId) {
+    if (processType === 'judicial' && !responsibleExtId) {
       toast.error('Designe um responsável pelo processo antes de salvar');
       return;
     }
@@ -622,14 +622,16 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
             </div>
           </div>
           <div>
-            <Label className="text-xs font-semibold">Responsável pelo processo *</Label>
+            <Label className="text-xs font-semibold">
+              Responsável pelo processo {processType === 'judicial' && '*'}
+            </Label>
             <ResponsibleUserSelect
               value={responsibleExtId}
               onChange={setResponsibleExtId}
               className="h-9 text-xs"
               placeholder="Selecione o responsável"
             />
-            {!responsibleExtId && (
+            {processType === 'judicial' && !responsibleExtId && (
               <p className="text-[10px] text-destructive mt-0.5">
                 Obrigatório: designe um responsável antes de cadastrar o processo.
               </p>
@@ -738,7 +740,7 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
             {selectedResults.size > 0 && (
               <Button
                 onClick={saveSelectedFromEscavador}
-                disabled={saving || !responsibleExtId}
+                disabled={saving || (processType === 'judicial' && !responsibleExtId)}
                 className="w-full"
               >
                 {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}
@@ -838,7 +840,7 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
               />
             </div>
 
-            <Button onClick={saveManual} disabled={saving || !responsibleExtId} className="w-full">
+            <Button onClick={saveManual} disabled={saving || (processType === 'judicial' && !responsibleExtId)} className="w-full">
               {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Gavel className="h-4 w-4 mr-2" />}
               Cadastrar Processo
             </Button>
