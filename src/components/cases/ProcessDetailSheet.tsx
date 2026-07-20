@@ -248,6 +248,42 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
     }
   }, [activeTab, fetchActivities]);
 
+  // Auto-preenche "Responsável pelo processo" quando estiver vazio, usando o
+  // último assessor com atividade ABERTA no processo (fallback: última CONCLUÍDA).
+  // Só sugere quando "Sem responsável" — nunca sobrescreve escolha manual — e
+  // grava só quando o usuário clicar em Salvar (set() marca dirty).
+  // assigned_to e responsible_user_id são ambos UUID do Externo → sem remap.
+  useEffect(() => {
+    if (!open || !process?.id) return;
+    if (process.responsible_user_id) return; // já tem responsável: não mexe
+
+    let cancelled = false;
+    (async () => {
+      const { data } = await externalSupabase
+        .from('lead_activities')
+        .select('assigned_to, status, created_at')
+        .eq('process_id', process.id)
+        .is('deleted_at', null)
+        .not('assigned_to', 'is', null)
+        .order('created_at', { ascending: false });
+      if (cancelled || !data || data.length === 0) return;
+
+      const CLOSED = new Set(['concluida', 'cancelada']);
+      const lastOpen = (data as any[]).find(a => !CLOSED.has(a.status));
+      const derived = (lastOpen || (data as any[])[0])?.assigned_to as string | undefined;
+      if (!derived) return;
+
+      // Guarda: se o usuário já designou algo nesta sessão, não sobrescreve.
+      setForm(prev => {
+        if (prev.responsible_user_id) return prev;
+        return { ...prev, responsible_user_id: derived };
+      });
+      setDirty(true);
+    })();
+
+    return () => { cancelled = true; };
+  }, [open, process?.id, process?.responsible_user_id]);
+
   // case_type do lead vinculado — refina as estações previstas na aba Marcos.
   const [leadCaseType, setLeadCaseType] = useState<string | null>(null);
   useEffect(() => {
