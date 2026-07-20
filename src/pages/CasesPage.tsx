@@ -181,7 +181,35 @@ export default function CasesPage() {
         }));
         const seen = new Set(mapped.map((c: any) => c.id));
         for (const c of extra) if (!seen.has(c.id)) { mapped.push(c); seen.add(c.id); }
+
+        // Casos encontrados pelo número/título do processo (lead_processes).
+        // O nº CNJ mora aqui, não em legal_cases — sem isso, buscar por CNJ não acha nada.
+        const { data: procMatches } = await externalSupabase
+          .from('lead_processes')
+          .select('case_id, legal_cases!inner(*, specialized_nuclei(name, prefix, color), leads(lead_name))')
+          .or(`process_number.ilike.%${safeFilter(q)}%,title.ilike.%${safeFilter(q)}%`)
+          .is('deleted_at', null)
+          .not('case_id', 'is', null)
+          .limit(500);
+        const procCaseIds = new Set<string>();
+        for (const pm of (procMatches || []) as any[]) {
+          const c = pm.legal_cases;
+          if (!c || c.deleted_at) continue;
+          procCaseIds.add(c.id);
+          if (!seen.has(c.id)) {
+            mapped.push({
+              ...c,
+              nucleus_name: c.specialized_nuclei?.name,
+              nucleus_prefix: c.specialized_nuclei?.prefix,
+              nucleus_color: c.specialized_nuclei?.color,
+              lead_name: c.leads?.lead_name || null,
+            });
+            seen.add(c.id);
+          }
+        }
+
         mapped = mapped.filter((c: any) =>
+          procCaseIds.has(c.id) ||
           c.title?.toLowerCase().includes(lower) ||
           c.case_number?.toLowerCase().includes(lower) ||
           c.description?.toLowerCase().includes(lower) ||

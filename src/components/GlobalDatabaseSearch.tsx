@@ -15,7 +15,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Users, MessageCircle, Contact, Send, Search, Loader2, User, Phone, Mail, MapPin, Calendar, FileText, Building, ExternalLink,
-  ClipboardList, Workflow, LayoutDashboard,
+  ClipboardList, Workflow, LayoutDashboard, Scale,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
@@ -29,7 +29,7 @@ import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 
 interface SearchResult {
   id: string;
-  type: 'lead' | 'contact' | 'comment' | 'dm' | 'activity' | 'workflow' | 'case';
+  type: 'lead' | 'contact' | 'comment' | 'dm' | 'activity' | 'workflow' | 'case' | 'process';
   title: string;
   subtitle: string;
   extra?: string;
@@ -117,7 +117,7 @@ export function GlobalDatabaseSearch() {
       const numericMatch = term.trim().match(/^(?:caso[\s-]*)?(\d{1,8})$/i);
       const caseNumberTerm = numericMatch ? `%${numericMatch[1]}%` : `%${term}%`;
 
-      const [leadsRes, contactsRes, commentsRes, dmsRes, activitiesRes, workflowsRes, casesRes] = await Promise.all([
+      const [leadsRes, contactsRes, commentsRes, dmsRes, activitiesRes, workflowsRes, casesRes, processesRes] = await Promise.all([
         dual('leads',
           `lead_name.ilike.${searchTerm},victim_name.ilike.${searchTerm},lead_phone.ilike.${searchTerm},lead_email.ilike.${searchTerm},notes.ilike.${searchTerm},instagram_username.ilike.${searchTerm},city.ilike.${searchTerm},cpf.ilike.${searchTerm},state.ilike.${searchTerm},source.ilike.${searchTerm}`,
           'updated_at', 15),
@@ -138,6 +138,11 @@ export function GlobalDatabaseSearch() {
           'updated_at', 10),
         externalOnly('legal_cases',
           `case_number.ilike.${caseNumberTerm},title.ilike.${searchTerm},description.ilike.${searchTerm}`,
+          'updated_at', 30),
+        // Processos (lead_processes) — número CNJ mora aqui, não em legal_cases.
+        // Só no Externo. Abre o caso-pai ao selecionar.
+        externalOnly('lead_processes',
+          `process_number.ilike.${searchTerm},title.ilike.${searchTerm}`,
           'updated_at', 30),
       ]);
 
@@ -234,6 +239,20 @@ export function GlobalDatabaseSearch() {
         });
       });
 
+      // Processos (lead_processes) — pula excluídos; abre o caso-pai ao selecionar
+      (processesRes.data || []).forEach((p: any) => {
+        if (p.deleted_at) return;
+        mapped.push({
+          id: p.id,
+          type: 'process',
+          title: p.process_number || p.title || 'Processo',
+          subtitle: p.process_number ? (p.title || '') : '',
+          extra: p.status === 'em_andamento' ? 'Em Andamento' : (p.status || ''),
+          date: p.updated_at,
+          raw: p,
+        });
+      });
+
       setResults(mapped);
     } catch (err) {
       console.error('Search error:', err);
@@ -280,6 +299,11 @@ export function GlobalDatabaseSearch() {
       case 'case':
         navigate(`/cases/${result.id}`);
         break;
+      case 'process':
+        // Abre o caso-pai; se o processo não tiver caso vinculado, cai no lead
+        if (result.raw?.case_id) navigate(`/cases/${result.raw.case_id}`);
+        else if (result.raw?.lead_id) navigate(`/leads?openLead=${result.raw.lead_id}`);
+        break;
     }
   };
 
@@ -289,6 +313,7 @@ export function GlobalDatabaseSearch() {
     activity: { icon: ClipboardList, label: 'Atividade', color: 'bg-amber-500/10 text-amber-700 border-amber-200' },
     workflow: { icon: Workflow, label: 'Fluxo', color: 'bg-violet-500/10 text-violet-700 border-violet-200' },
     case: { icon: FileText, label: 'Caso', color: 'bg-rose-500/10 text-rose-700 border-rose-200' },
+    process: { icon: Scale, label: 'Processo', color: 'bg-teal-500/10 text-teal-700 border-teal-200' },
     comment: { icon: MessageCircle, label: 'Comentário', color: 'bg-orange-500/10 text-orange-700 border-orange-200' },
     dm: { icon: Send, label: 'DM', color: 'bg-purple-500/10 text-purple-700 border-purple-200' },
   };
@@ -299,7 +324,7 @@ export function GlobalDatabaseSearch() {
     return acc;
   }, {} as Record<string, SearchResult[]>);
 
-  const groupOrder: Array<SearchResult['type']> = ['case', 'lead', 'contact', 'activity', 'workflow', 'comment', 'dm'];
+  const groupOrder: Array<SearchResult['type']> = ['process', 'case', 'lead', 'contact', 'activity', 'workflow', 'comment', 'dm'];
 
   return (
     <>
