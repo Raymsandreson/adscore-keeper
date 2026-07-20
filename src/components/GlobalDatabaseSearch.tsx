@@ -1,5 +1,5 @@
 // v3 - cache bust
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   CommandDialog,
@@ -26,6 +26,10 @@ import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
 import { useLeads, Lead } from '@/hooks/useLeads';
 import { Contact as ContactType } from '@/hooks/useContacts';
 import { useKanbanBoards } from '@/hooks/useKanbanBoards';
+import { detectDuplicates, DuplicateGroup } from '@/lib/duplicateDetection';
+import { DuplicateMergeDialog, MergeType } from '@/components/search/DuplicateMergeDialog';
+import { Copy } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 interface SearchResult {
   id: string;
@@ -54,6 +58,10 @@ export function GlobalDatabaseSearch() {
   const [commentSheetOpen, setCommentSheetOpen] = useState(false);
   const [selectedDm, setSelectedDm] = useState<any | null>(null);
   const [dmSheetOpen, setDmSheetOpen] = useState(false);
+
+  // Fusão de duplicados
+  const [mergeType, setMergeType] = useState<MergeType | null>(null);
+  const [mergeOpen, setMergeOpen] = useState(false);
 
   const navigate = useNavigate();
   const { updateLead } = useLeads();
@@ -326,6 +334,27 @@ export function GlobalDatabaseSearch() {
 
   const groupOrder: Array<SearchResult['type']> = ['process', 'case', 'lead', 'contact', 'activity', 'workflow', 'comment', 'dm'];
 
+  // Detecção de duplicados nos grupos que sabemos fundir (lead, contato).
+  // Retorna, por tipo: os grupos duplicados e o conjunto de ids "suspeitos" (pra badge).
+  const dupByType = useMemo(() => {
+    const out: Record<string, { groups: DuplicateGroup<SearchResult>[]; suspectIds: Set<string> }> = {};
+    (['lead', 'contact'] as const).forEach((t) => {
+      const items = grouped[t] || [];
+      const groups = detectDuplicates<SearchResult>(
+        items,
+        (r) => (t === 'lead' ? r.raw.lead_name || r.raw.victim_name : r.raw.full_name),
+        (r) => (t === 'lead' ? r.raw.lead_phone : r.raw.phone),
+        (r) => r.raw.updated_at,
+      );
+      const suspectIds = new Set<string>();
+      groups.forEach((g) => g.members.forEach((m) => suspectIds.add(m.id)));
+      out[t] = { groups, suspectIds };
+    });
+    return out;
+  }, [grouped]);
+
+  const openMerge = (type: MergeType) => { setMergeType(type); setMergeOpen(true); };
+
   return (
     <>
       <CommandDialog open={open} onOpenChange={setOpen}>
@@ -355,10 +384,28 @@ export function GlobalDatabaseSearch() {
               const items = grouped[type];
               if (!items || items.length === 0) return null;
               const config = typeConfig[type];
+              const dup = dupByType[type];
+              const dupCount = dup ? dup.groups.reduce((n, g) => n + g.members.length, 0) : 0;
               return (
                 <div key={type}>
                   {idx > 0 && grouped[groupOrder[idx - 1]] && <CommandSeparator />}
                   <CommandGroup heading={`${config.label}s (${items.length})`}>
+                    {dup && dup.groups.length > 0 && (
+                      <div className="flex items-center justify-between gap-2 px-2 py-1.5 mb-1 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900">
+                        <span className="text-xs text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
+                          <Copy className="h-3.5 w-3.5" />
+                          {dupCount} possíveis duplicados em {dup.groups.length} grupo(s)
+                        </span>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-6 text-[11px] border-amber-300 text-amber-800 dark:text-amber-300"
+                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); openMerge(type as MergeType); }}
+                        >
+                          Fundir
+                        </Button>
+                      </div>
+                    )}
                     {items.map(item => (
                       <CommandItem
                         key={`${item.type}-${item.id}`}
@@ -375,6 +422,11 @@ export function GlobalDatabaseSearch() {
                             <Badge variant="outline" className={`text-[10px] shrink-0 ${config.color}`}>
                               {config.label}
                             </Badge>
+                            {dup?.suspectIds.has(item.id) && (
+                              <Badge variant="outline" className="text-[10px] shrink-0 border-amber-400 text-amber-700 dark:text-amber-400 gap-1">
+                                <Copy className="h-2.5 w-2.5" /> duplicado?
+                              </Badge>
+                            )}
                           </div>
                           <p className="text-xs text-muted-foreground truncate">{item.subtitle}</p>
                         </div>
@@ -407,6 +459,17 @@ export function GlobalDatabaseSearch() {
           onSave={async (id, updates) => { await updateLead(id, updates); }}
           boards={boards}
           mode="sheet"
+        />
+      )}
+
+      {/* Fusão de duplicados */}
+      {mergeType && (
+        <DuplicateMergeDialog
+          open={mergeOpen}
+          onOpenChange={(v) => { setMergeOpen(v); if (!v) setMergeType(null); }}
+          type={mergeType}
+          groups={dupByType[mergeType]?.groups || []}
+          onMerged={() => { if (query) searchDatabase(query); }}
         />
       )}
 
