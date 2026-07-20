@@ -35,9 +35,16 @@ export function normalizeDateInput(value?: string | null) {
       : null;
   }
 
+  // Só aceita fallback via Date() quando a string tem AO MENOS ano-mês-dia completos.
+  // Sem esse guard, entradas como "2024" (só o ano) viram Date válido → slice(0,10) devolve
+  // "2024" e o Postgres explode com "invalid input syntax for type date: 2024".
+  if (!/\d{4}.*\d{1,2}.*\d{1,2}/.test(trimmed)) return null;
+
   const isoDateTime = new Date(trimmed);
   if (!Number.isNaN(isoDateTime.getTime())) {
-    return trimmed.slice(0, 10);
+    const iso = isoDateTime.toISOString().slice(0, 10);
+    const [y, m, d] = iso.split('-').map(Number);
+    return isValidDateParts(y, m, d) ? iso : null;
   }
 
   return null;
