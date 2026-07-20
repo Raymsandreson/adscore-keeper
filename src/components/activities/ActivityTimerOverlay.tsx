@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useCallback, lazy, Suspense } from 'react';
-import { Clock, Coffee, EyeOff, GripVertical, Hourglass, Mic, Pause, Play, Search, Timer as TimerIcon, Users, UtensilsCrossed } from 'lucide-react';
+import { Clock, Coffee, GripVertical, Hourglass, Mic, Minimize2, Pause, Play, Search, Timer as TimerIcon, Users, UtensilsCrossed } from 'lucide-react';
 import { TeamTimersPanel } from '@/components/activities/TeamTimersPanel';
 import { db } from '@/integrations/supabase';
 
@@ -331,7 +331,7 @@ function DayTotalsRow({ active, idle }: { active: number; idle: number }) {
 export function ActivityTimerOverlay() {
   const {
     current, lastActivity, resumeLast, dayTotals, hidden, idlePrompt, leavePrompt, switchPrompt,
-    keepRunning, pauseAndClose, hideTimer, setEstimate, managerAlert, dismissManagerAlert,
+    keepRunning, pauseAndClose, hideTimer, showTimer, setEstimate, managerAlert, dismissManagerAlert,
     confirmStillWorking, rejectStillWorking, switchTo, dismissSwitch, startBreak, endBreak,
     extendBreak, awayPrompt, dismissAwayPrompt, breakOverdue,
     onShift, startShift, endShift,
@@ -371,6 +371,44 @@ export function ActivityTimerOverlay() {
           Iniciar expediente
         </button>
       )}
+
+      {/* Minimizado: o cronômetro nunca some — fica só o relógio; clique expande */}
+      {current && hidden && (() => {
+        const seconds = current.kind === 'activity' ? current.activeSeconds : current.idleSeconds;
+        const palette = current.kind === 'activity'
+          ? `border bg-background/95 ${isOver ? 'text-red-600 dark:text-red-400' : ''}`
+          : current.kind === 'gap'
+            ? 'border border-amber-300/50 bg-amber-50/95 dark:bg-amber-950/60 text-amber-800 dark:text-amber-200'
+            : 'border border-sky-300/60 bg-sky-50/95 dark:bg-sky-950/60 text-sky-800 dark:text-sky-200';
+        return (
+          <div
+            ref={drag.setElRef}
+            style={drag.style}
+            onPointerDown={drag.onPointerDown}
+            onPointerMove={drag.onPointerMove}
+            onPointerUp={drag.onPointerUp}
+            className={`fixed z-[60] flex items-center gap-1.5 rounded-full px-2.5 py-1 shadow-lg backdrop-blur touch-none select-none cursor-grab active:cursor-grabbing ${palette}`}
+            title="Cronômetro minimizado · clique para expandir"
+          >
+            {current.kind === 'activity' && (
+              <span className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+              </span>
+            )}
+            {current.kind === 'gap' && <Coffee className="h-3 w-3" />}
+            {current.kind === 'break' && <UtensilsCrossed className="h-3 w-3" />}
+            <button
+              type="button"
+              onClick={(e) => { if (drag.wasDragged()) { e.preventDefault(); e.stopPropagation(); return; } showTimer(); }}
+              className="font-mono text-sm tabular-nums font-semibold hover:opacity-80"
+              title="Expandir cronômetro"
+            >
+              {formatHMS(seconds)}
+            </button>
+          </div>
+        );
+      })()}
 
       {current && current.kind === 'activity' && !hidden && (
         <div
@@ -425,9 +463,9 @@ export function ActivityTimerOverlay() {
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => { e.stopPropagation(); hideTimer(); }}
             className="rounded-full p-1 hover:bg-accent hover:text-foreground text-muted-foreground"
-            title="Ocultar cronômetro (ele reaparece ao abrir/trocar de atividade)"
+            title="Minimizar cronômetro (deixa só o relógio)"
           >
-            <EyeOff className="h-3.5 w-3.5" />
+            <Minimize2 className="h-3.5 w-3.5" />
           </button>
           </div>
         </div>
@@ -498,9 +536,9 @@ export function ActivityTimerOverlay() {
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => { e.stopPropagation(); hideTimer(); }}
             className="rounded-full p-1 hover:bg-amber-200/50 dark:hover:bg-amber-800/50 text-amber-700 dark:text-amber-300"
-            title="Ocultar cronômetro (ele reaparece ao abrir/trocar de atividade)"
+            title="Minimizar cronômetro (deixa só o relógio)"
           >
-            <EyeOff className="h-3.5 w-3.5" />
+            <Minimize2 className="h-3.5 w-3.5" />
           </button>
           </div>
         </div>
@@ -548,9 +586,9 @@ export function ActivityTimerOverlay() {
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => { e.stopPropagation(); hideTimer(); }}
             className="rounded-full p-1 hover:bg-sky-200/50 dark:hover:bg-sky-800/50 text-sky-700 dark:text-sky-300"
-            title="Ocultar cronômetro"
+            title="Minimizar cronômetro (deixa só o relógio)"
           >
-            <EyeOff className="h-3.5 w-3.5" />
+            <Minimize2 className="h-3.5 w-3.5" />
           </button>
           </div>
         </div>
