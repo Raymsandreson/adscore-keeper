@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { resolveProcessAssignment, createOrAttachAndamentoActivity } from '@/lib/processAssignment';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { remapToExternal } from '@/integrations/supabase/uuid-remap';
@@ -35,6 +35,7 @@ import { useSpecializedNuclei } from '@/hooks/useSpecializedNuclei';
 import { toast } from 'sonner';
 import AddProcessDialog from '@/components/cases/AddProcessDialog';
 import ProcessDetailSheet from '@/components/cases/ProcessDetailSheet';
+import { ActivityFullSheet } from '@/components/activities/ActivityFullSheet';
 import { CaseWorkflowBoard } from '@/components/cases/CaseWorkflowBoard';
 import {
   Dialog,
@@ -70,6 +71,7 @@ export default function CasesPage() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [nucleusFilter, setNucleusFilter] = useState('all');
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const { caseId: routeCaseId } = useParams<{ caseId?: string }>();
   const { nuclei } = useSpecializedNuclei();
   const navigate = useNavigate();
 
@@ -200,9 +202,41 @@ export default function CasesPage() {
     return s.replace(/[,()%]/g, ' ');
   }
 
+  // Rota /cases/:caseId → carrega e expande só esse caso (substitui a antiga
+  // página de detalhe; busca global e página de atividades apontam pra cá).
   useEffect(() => {
+    if (!routeCaseId) return;
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      const { data } = await externalSupabase
+        .from('legal_cases')
+        .select('*, specialized_nuclei(name, prefix, color), leads(lead_name)')
+        .eq('id', routeCaseId)
+        .is('deleted_at', null)
+        .maybeSingle();
+      if (cancelled) return;
+      if (data) {
+        setCases([{
+          ...data,
+          nucleus_name: (data as any).specialized_nuclei?.name,
+          nucleus_prefix: (data as any).specialized_nuclei?.prefix,
+          nucleus_color: (data as any).specialized_nuclei?.color,
+          lead_name: (data as any).leads?.lead_name || null,
+        }]);
+        setExpandedId(routeCaseId);
+      } else {
+        setCases([]);
+      }
+      setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [routeCaseId]);
+
+  useEffect(() => {
+    if (routeCaseId) return; // rota de caso único cuida do fetch
     fetchCases();
-  }, [fetchCases]);
+  }, [fetchCases, routeCaseId]);
 
   return (
     <div className="min-h-screen bg-background pb-24">
@@ -334,7 +368,6 @@ export default function CasesPage() {
 function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead }: { 
   legalCase: any; expanded: boolean; onToggle: () => void; onCaseUpdated: () => void; onOpenLead: (leadId: string) => void;
 }) {
-  const navigate = useNavigate();
   const [processes, setProcesses] = useState<any[]>([]);
   const [activities, setActivities] = useState<any[]>([]);
   const [actStatusFilter, setActStatusFilter] = useState('all');
@@ -347,6 +380,7 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
   const [showAddProcess, setShowAddProcess] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [selectedProcess, setSelectedProcess] = useState<any>(null);
+  const [selectedActivityId, setSelectedActivityId] = useState<string | null>(null);
   const [editCaseNumber, setEditCaseNumber] = useState(legalCase.case_number || '');
   const [editTitle, setEditTitle] = useState(legalCase.title || '');
   const [editDescription, setEditDescription] = useState(legalCase.description || '');
@@ -657,14 +691,6 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
                 <div className="min-w-0">
                   <p className="text-sm font-medium truncate flex items-center gap-1.5">
                     <CopyableText copyValue={legalCase.case_number} label="Número do caso" showIcon={false}>{legalCase.case_number}</CopyableText>
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); navigate(`/cases/${legalCase.id}`); }}
-                      className="text-[10px] text-primary hover:underline"
-                      title="Abrir página do caso"
-                    >
-                      abrir →
-                    </button>
                     <span>{' — '}</span>
                     <CopyableText copyValue={legalCase.title} label="Título" showIcon={false}>{legalCase.title}</CopyableText>
                   </p>
@@ -915,7 +941,7 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
                         <div
                           key={a.id}
                           className="border rounded-lg p-2 bg-card space-y-0.5 cursor-pointer hover:bg-muted/50 transition-colors"
-                          onClick={(e) => { e.stopPropagation(); navigate(`/?openActivity=${a.id}`); }}
+                          onClick={(e) => { e.stopPropagation(); setSelectedActivityId(a.id); }}
                         >
                           <div className="flex items-center gap-2">
                             <p className="text-xs font-medium truncate flex-1 min-w-0">{a.title}</p>
@@ -1010,6 +1036,14 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
         onUpdated={onCaseUpdated}
         mode="dialog"
         defaultTab="atividades"
+      />
+
+      {/* Detalhe da atividade em aba lateral com formulário completo */}
+      <ActivityFullSheet
+        open={!!selectedActivityId}
+        onOpenChange={(open) => { if (!open) setSelectedActivityId(null); }}
+        activityId={selectedActivityId}
+        onUpdated={loadDetails}
       />
     </>
   );
