@@ -742,17 +742,41 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
     [activities],
   );
 
+  // Data de hoje (YYYY-MM-DD local) para comparar com o prazo (DATE).
+  const todayStr = useMemo(() => {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }, []);
+
+  // Atrasada = mesma regra de OverdueActivitiesToday: não concluída + prazo vencido.
+  const isOverdue = useCallback((a: any) => {
+    if (!a?.deadline || a.status === 'concluida') return false;
+    return String(a.deadline).slice(0, 10) < todayStr;
+  }, [todayStr]);
+
+  const overdueCount = useMemo(
+    () => activities.filter(isOverdue).length,
+    [activities, isOverdue],
+  );
+
   // Atividades após aplicar filtros de status e processo
   const filteredActivities = useMemo(() => {
     return activities.filter(a => {
-      if (actStatusFilter !== 'all' && a.status !== actStatusFilter) return false;
+      if (actStatusFilter === 'overdue') {
+        if (!isOverdue(a)) return false;
+      } else if (actStatusFilter !== 'all' && a.status !== actStatusFilter) {
+        return false;
+      }
       if (actProcessFilter !== 'all') {
         if (actProcessFilter === 'none') return !a.process_id && !a.process_title;
         return a.process_id === actProcessFilter;
       }
       return true;
     });
-  }, [activities, actStatusFilter, actProcessFilter]);
+  }, [activities, actStatusFilter, actProcessFilter, isOverdue]);
 
   return (
     <>
@@ -982,6 +1006,9 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
                       <SelectTrigger className="h-7 text-xs w-[140px]"><SelectValue placeholder="Status" /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">Todos os status</SelectItem>
+                        <SelectItem value="overdue">
+                          ⚠ Atrasadas{overdueCount ? ` (${overdueCount})` : ''}
+                        </SelectItem>
                         {activityStatuses.map(s => (
                           <SelectItem key={s} value={s}>{s}</SelectItem>
                         ))}
@@ -1014,20 +1041,33 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
                     <p className="text-xs text-muted-foreground text-center py-2">Nenhuma atividade com esses filtros.</p>
                   ) : (
                     <div className="space-y-1.5">
-                      {filteredActivities.map(a => (
+                      {filteredActivities.map(a => {
+                        const overdue = isOverdue(a);
+                        return (
                         <div
                           key={a.id}
-                          className="border rounded-lg p-2 bg-card space-y-0.5 cursor-pointer hover:bg-muted/50 transition-colors"
+                          className={
+                            'border rounded-lg p-2 space-y-0.5 cursor-pointer transition-colors ' +
+                            (overdue
+                              ? 'border-l-2 border-l-red-500 bg-red-500/5 hover:bg-red-500/10'
+                              : 'bg-card hover:bg-muted/50')
+                          }
                           onClick={(e) => { e.stopPropagation(); setSelectedActivityId(a.id); }}
                         >
                           <div className="flex items-center gap-2">
                             <p className="text-xs font-medium truncate flex-1 min-w-0">{a.title}</p>
+                            {overdue && (
+                              <Badge className="text-[9px] shrink-0 gap-1 bg-red-500/15 text-red-700 hover:bg-red-500/20 dark:text-red-400">
+                                ⚠ Atrasada
+                              </Badge>
+                            )}
                             {a.status && (
                               <Badge variant="outline" className="text-[9px] shrink-0">{a.status}</Badge>
                             )}
                           </div>
                           <p className="text-[10px] text-muted-foreground truncate">
                             {[
+                              a.deadline ? `Prazo ${new Date(String(a.deadline).slice(0, 10) + 'T00:00:00').toLocaleDateString('pt-BR')}` : null,
                               a.created_at ? new Date(a.created_at).toLocaleDateString('pt-BR') : null,
                               a.activity_type,
                               a.assigned_to_name,
@@ -1035,7 +1075,8 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
                             ].filter(Boolean).join(' • ')}
                           </p>
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                   <p className="text-[10px] text-muted-foreground text-right">
