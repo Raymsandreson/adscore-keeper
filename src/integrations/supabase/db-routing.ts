@@ -20,6 +20,8 @@ export const BUSINESS_TABLES: readonly string[] = [
   'lead_followups',
   'lead_custom_fields',
   'lead_custom_field_values',
+  'process_custom_fields',
+  'process_custom_field_values',
   'lead_field_layouts',
   'lead_tab_layouts',
   'lead_stage_history',

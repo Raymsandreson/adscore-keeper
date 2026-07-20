@@ -55,6 +55,7 @@ import { format, differenceInDays, getDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useLeadCustomFields, FieldType } from '@/hooks/useLeadCustomFields';
 import { CustomFieldsManager } from './leads/CustomFieldsManager';
+import { ProcessCustomFieldsManager } from './processes/ProcessCustomFieldsManager';
 import { CustomFieldsForm } from './leads/CustomFieldsForm';
 import { CardFieldsSettings } from './leads/CardFieldsSettings';
 import { useBrazilianLocations } from '@/hooks/useBrazilianLocations';
@@ -1176,6 +1177,7 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
             onReset={resetCardFields} 
           />
           <CustomFieldsManager adAccountId={adAccountId} />
+          <ProcessCustomFieldsManager adAccountId={adAccountId} />
         </TabsContent>
       </Tabs>
       <LeadEditDialog
