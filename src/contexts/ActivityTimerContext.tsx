@@ -865,8 +865,9 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
     toast.success('Expediente encerrado. Até logo!');
   }, [rememberLast, flush, sync]);
 
-  // Ao abrir o app: recupera o ponto aberto de hoje; retoma o ocioso só se
-  // nenhuma OUTRA aba estiver comandando o cronômetro (evita contagem dupla).
+  // Ao abrir o app: recupera o ponto aberto de hoje e REIDRATA qualquer
+  // sessão com status='running' no banco (atividade/pausa/gap). Antes um F5
+  // resetava para "ocioso" e gerava falsa ociosidade.
   useEffect(() => {
     (async () => {
       const u = await getUser();
@@ -881,13 +882,63 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
         if (data) {
           shiftIdRef.current = (data as { id: string }).id;
           setOnShift(true);
-          setTimeout(() => {
-            if (!entryRef.current && !otherOwnerRef.current) startGap();
-          }, 1500);
         } else {
           setOnShift(false);
         }
       } catch { setOnShift(false); }
+
+      // Reidrata a sessão running (activity > break > gap) para não parar no reload.
+      try {
+        const { data: running } = await dbAny.from('activity_time_entries')
+          .select('id, activity_id, activity_type, activity_title, lead_name, active_seconds, idle_seconds, estimated_minutes, break_type, break_note, started_at')
+          .eq('user_id', u.userId).eq('status', 'running')
+          .order('started_at', { ascending: false }).limit(1).maybeSingle();
+        type R = { id: string; activity_id: string | null; activity_type: string | null; activity_title: string | null; lead_name: string | null; active_seconds: number | null; idle_seconds: number | null; estimated_minutes: number | null; break_type: BreakType | null; break_note: string | null };
+        const row = running as R | null;
+        if (row && !entryRef.current && !otherOwnerRef.current) {
+          const kind: TimerEntry['kind'] = row.activity_id ? 'activity' : (row.break_type ? 'break' : 'gap');
+          lastFlushRef.current = Date.now();
+          lastInteractionRef.current = Date.now();
+          lastGapNudgeRef.current = row.idle_seconds || 0;
+          const ref: TimerEntry = {
+            kind,
+            entryId: row.id,
+            activityId: row.activity_id,
+            activityType: row.activity_type || '',
+            activityTitle: row.activity_title || (kind === 'gap' ? GAP_TITLE : 'Atividade'),
+            leadName: row.lead_name,
+            userId: u.userId,
+            userName: u.userName,
+            activeSeconds: row.active_seconds || 0,
+            idleSeconds: row.idle_seconds || 0,
+            status: 'running',
+            estimateMinutes: row.estimated_minutes,
+            breakType: row.break_type,
+            breakNote: row.break_note,
+          };
+          sync(ref);
+          if (kind === 'activity' && row.activity_id) {
+            const la: TimerActivityRef = {
+              id: row.activity_id,
+              activity_type: row.activity_type,
+              title: row.activity_title,
+              lead_name: row.lead_name,
+              estimated_minutes: row.estimated_minutes,
+            };
+            lastActivityRef.current = la;
+            setLastActivity(la);
+          }
+          announceTakeover();
+          return;
+        }
+      } catch { /* segue para gap */ }
+
+      // Sem sessão rodando prévia: se em expediente, começa o gap.
+      if (shiftIdRef.current) {
+        setTimeout(() => {
+          if (!entryRef.current && !otherOwnerRef.current) startGap();
+        }, 1500);
+      }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
