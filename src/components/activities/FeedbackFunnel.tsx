@@ -45,7 +45,22 @@ export interface FeedbackFollowUp {
   reason: string;
 }
 
+// Atividade observada sem retorno ainda — atrasada ou reagendada (card só de leitura).
+interface LateRow {
+  id: string;
+  title: string;
+  status: string | null;
+  deadline: string | null;
+  rescheduled_to: string | null;
+  assigned_to_name: string | null;
+  lead_name: string | null;
+  case_title: string | null;
+  process_title: string | null;
+}
+
 const COLUMNS: { key: string; label: string; icon: string; className: string }[] = [
+  { key: 'atrasada',    label: 'Atrasadas',    icon: '⏰', className: 'border-red-400 dark:border-red-700 bg-red-50/40 dark:bg-red-950/20' },
+  { key: 'reagendada',  label: 'Reagendadas',  icon: '🔁', className: 'border-blue-300 dark:border-blue-800' },
   { key: 'a_avaliar',   label: 'A avaliar',    icon: '📥', className: 'border-slate-300 dark:border-slate-700' },
   { key: 'satisfeito',  label: 'Satisfeito',   icon: '✅', className: 'border-green-300 dark:border-green-800' },
   { key: 'incompleto',  label: 'Incompleto',   icon: '⚠️', className: 'border-amber-300 dark:border-amber-800' },
@@ -109,6 +124,7 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
   const navigate = useNavigate();
   const [extId, setExtId] = useState<string | null>(null);
   const [rows, setRows] = useState<FeedbackRow[]>([]);
+  const [lateRows, setLateRows] = useState<LateRow[]>([]);
   const [loading, setLoading] = useState(false);
   // Estado por cartão (avaliação em andamento)
   const [draft, setDraft] = useState<Record<string, { rating: number; justification: string; praise: string }>>({});
@@ -137,6 +153,20 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
         .limit(300);
       if (error) throw error;
       setRows((data || []) as FeedbackRow[]);
+
+      // Atrasadas/reagendadas que você observa — ainda sem retorno, por isso não entram no funil normal.
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      const { data: late, error: lateErr } = await (externalSupabase as any)
+        .from('lead_activities')
+        .select('id, title, status, deadline, rescheduled_to, assigned_to_name, lead_name, case_title, process_title')
+        .is('deleted_at', null)
+        .or(`observer_ids.cs.{${eid}},created_by.eq.${eid}`)
+        .or(`status.eq.reagendada,and(status.neq.concluida,deadline.lt.${todayStart.toISOString()})`)
+        .order('deadline', { ascending: true })
+        .limit(300);
+      if (lateErr) throw lateErr;
+      setLateRows((late || []) as LateRow[]);
     } catch (e: any) {
       console.error('[FeedbackFunnel] load error:', e);
       toast.error('Erro ao carregar feedbacks');
@@ -264,7 +294,12 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
   const columnRows = (key: string) =>
     rows.filter(r => (key === 'a_avaliar' ? !r.feedback_outcome : r.feedback_outcome === key));
 
+  const lateColumnRows = (key: string) =>
+    lateRows.filter(r => (key === 'reagendada' ? r.status === 'reagendada' : r.status !== 'reagendada'));
+
   const counts = {
+    atrasada: lateColumnRows('atrasada').length,
+    reagendada: lateColumnRows('reagendada').length,
     a_avaliar: columnRows('a_avaliar').length,
     satisfeito: columnRows('satisfeito').length,
     incompleto: columnRows('incompleto').length,
@@ -284,6 +319,8 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
               <span className="text-xs font-normal text-muted-foreground">retornos das suas atividades (você observa)</span>
             </SheetTitle>
             <div className="flex items-center gap-2 text-[11px]">
+              <Badge variant="outline" className="border-red-400 text-red-700 dark:text-red-400 font-semibold">⏰ {counts.atrasada} atrasadas</Badge>
+              <Badge variant="outline" className="border-blue-300 text-blue-700 dark:text-blue-400">🔁 {counts.reagendada} reagendadas</Badge>
               <Badge variant="outline" className="border-slate-300">📥 {counts.a_avaliar} a avaliar</Badge>
               <Badge variant="outline" className="border-green-300 text-green-700 dark:text-green-400">✅ {counts.satisfeito}</Badge>
               <Badge variant="outline" className="border-amber-300 text-amber-700 dark:text-amber-400">⚠️ {counts.incompleto}</Badge>
@@ -303,20 +340,53 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
             <div className="flex items-center justify-center py-16 text-muted-foreground gap-2">
               <Loader2 className="h-5 w-5 animate-spin" /> Carregando feedbacks…
             </div>
-          ) : rows.length === 0 ? (
+          ) : rows.length === 0 && lateRows.length === 0 ? (
             <div className="text-center py-16 text-sm text-muted-foreground">
               Nenhum feedback para você ainda. Quando você for observador de uma atividade e o responsável
               preencher o feedback, ele aparece aqui — nunca no seu calendário de tarefas.
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-3 min-h-full">
+            <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-6 gap-3 min-h-full">
               {COLUMNS.map(col => (
                 <div key={col.key} className={cn('rounded-lg border-2 bg-muted/20 p-2 flex flex-col gap-2', col.className)}>
                   <div className="text-xs font-semibold px-1 flex items-center justify-between">
                     <span>{col.icon} {col.label}</span>
                     <span className="text-muted-foreground">{counts[col.key as keyof typeof counts]}</span>
                   </div>
-                  {columnRows(col.key).map(row => {
+                  {(col.key === 'atrasada' || col.key === 'reagendada') && lateColumnRows(col.key).map(row => {
+                    const dias = row.deadline
+                      ? differenceInCalendarDays(startOfDay(new Date()), startOfDay(parseISO(row.deadline)))
+                      : 0;
+                    return (
+                      <div key={row.id} className="rounded-md border bg-card p-2.5 space-y-1 shadow-sm">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="text-xs font-medium truncate" title={row.title}>{row.title}</p>
+                            <p className="text-[10px] text-muted-foreground truncate">{row.lead_name || row.case_title || row.process_title || ''}</p>
+                          </div>
+                          <a href={`/?openActivity=${row.id}`} className="shrink-0 text-muted-foreground hover:text-foreground" title="Abrir atividade">
+                            <ExternalLink className="h-3.5 w-3.5" />
+                          </a>
+                        </div>
+                        <p className="text-[10px] text-muted-foreground">
+                          Responsável: <strong>{row.assigned_to_name || '—'}</strong>
+                        </p>
+                        {col.key === 'reagendada' ? (
+                          <p className="text-[10px] text-blue-700 dark:text-blue-400 font-medium">
+                            🔁 Reagendada{row.rescheduled_to ? ` p/ ${format(parseISO(row.rescheduled_to), 'dd/MM')}` : ''}
+                          </p>
+                        ) : (
+                          <p className="text-[10px] text-red-700 dark:text-red-400 font-medium">
+                            ⚠ Venceu {row.deadline ? format(parseISO(row.deadline), 'dd/MM') : ''}{dias > 0 ? ` · há ${dias === 1 ? '1 dia' : `${dias} dias`}` : ''}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {(col.key === 'atrasada' || col.key === 'reagendada') && lateColumnRows(col.key).length === 0 && (
+                    <p className="text-[10px] text-muted-foreground/60 text-center py-4">—</p>
+                  )}
+                  {col.key !== 'atrasada' && col.key !== 'reagendada' && columnRows(col.key).map(row => {
                     const d = getDraft(row.id, row);
                     const evaluated = !!row.feedback_outcome;
                     const situacao = situacaoBadge(row);
@@ -403,7 +473,7 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
                       </div>
                     );
                   })}
-                  {columnRows(col.key).length === 0 && (
+                  {col.key !== 'atrasada' && col.key !== 'reagendada' && columnRows(col.key).length === 0 && (
                     <p className="text-[10px] text-muted-foreground/60 text-center py-4">—</p>
                   )}
                 </div>
