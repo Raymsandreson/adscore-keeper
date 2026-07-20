@@ -11,7 +11,7 @@ import { db, ensureExternalSession } from '@/integrations/supabase';
 import { toast } from 'sonner';
 import { DuplicateGroup, MERGE_FIELDS, buildMergePatch } from '@/lib/duplicateDetection';
 
-export type MergeType = 'lead' | 'contact' | 'case' | 'process';
+export type MergeType = 'lead' | 'contact' | 'case' | 'process' | 'campaign';
 
 interface Props {
   open: boolean;
@@ -21,21 +21,23 @@ interface Props {
   onMerged?: () => void; // recarregar a busca
 }
 
-const TYPE_LABEL: Record<MergeType, string> = { lead: 'leads', contact: 'contatos', case: 'casos', process: 'processos' };
-const TYPE_TABLE: Record<MergeType, string> = { lead: 'leads', contact: 'contacts', case: 'legal_cases', process: 'lead_processes' };
+const TYPE_LABEL: Record<MergeType, string> = { lead: 'leads', contact: 'contatos', case: 'casos', process: 'processos', campaign: 'campanhas' };
+const TYPE_TABLE: Record<MergeType, string> = { lead: 'leads', contact: 'contacts', case: 'legal_cases', process: 'lead_processes', campaign: 'campaigns' };
 // Caso mexe em lead_financials (honorário/fundo): não auto-seleciona, exige revisão manual.
-const REQUIRE_MANUAL: Record<MergeType, boolean> = { lead: false, contact: false, case: true, process: false };
+const REQUIRE_MANUAL: Record<MergeType, boolean> = { lead: false, contact: false, case: true, process: false, campaign: false };
 
 function displayName(type: MergeType, raw: any): string {
   if (type === 'lead') return raw.lead_name || raw.victim_name || '(sem nome)';
   if (type === 'contact') return raw.full_name || '(sem nome)';
   if (type === 'case') return raw.case_number || raw.title || '(caso)';
+  if (type === 'campaign') return raw.name || '(campanha)';
   return raw.process_number || raw.title || '(processo)';
 }
 function displaySub(type: MergeType, raw: any): string {
   if (type === 'lead') return [raw.lead_phone, [raw.city, raw.state].filter(Boolean).join('/')].filter(Boolean).join(' · ');
   if (type === 'contact') return [raw.phone, raw.email, raw.instagram_username && `@${raw.instagram_username}`].filter(Boolean).join(' · ');
   if (type === 'case') return [raw.title, raw.status].filter(Boolean).join(' · ');
+  if (type === 'campaign') return [raw.status, raw.meta_campaign_id].filter(Boolean).join(' · ');
   return [raw.title, raw.status, raw.tribunal].filter(Boolean).join(' · ');
 }
 

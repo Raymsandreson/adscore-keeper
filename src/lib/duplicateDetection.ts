@@ -41,6 +41,7 @@ export const MERGE_FIELDS: Record<string, string[]> = {
   contact: ['full_name', 'phone', 'email', 'instagram_username', 'cpf', 'city', 'state', 'profession', 'neighborhood'],
   case: ['case_number', 'title', 'description', 'benefit_type', 'status'],
   process: ['process_number', 'title', 'description', 'tribunal', 'classe', 'area', 'polo_ativo', 'polo_passivo', 'valor_causa'],
+  campaign: ['name', 'status', 'meta_campaign_id'],
 };
 
 interface HasId {

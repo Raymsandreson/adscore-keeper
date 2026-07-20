@@ -204,30 +204,15 @@ export function DuplicateContactsScanDialog({ open, onOpenChange, onFinished }: 
       if (error) throw new Error(`update winner: ${error.message}`);
     }
 
-    // re-vincula contact_leads
-    for (const l of losers) {
-      const { error: relErr } = await db
-        .from('contact_leads')
-        .update({ contact_id: winner.id })
-        .eq('contact_id', l.id);
-      if (relErr && !/duplicate|unique/i.test(relErr.message)) {
-        // se duplicar, ignora — vamos remover os duplicatas do lado original
-        throw new Error(`relink ${l.id}: ${relErr.message}`);
-      }
-    }
-
-    // soft-delete dos perdedores com snapshot
-    for (const l of losers) {
-      const snapshot = JSON.stringify({ merged_into: winner.id, contact: l, at: new Date().toISOString() });
-      const { error } = await db
-        .from('contacts')
-        .update({
-          deleted_at: new Date().toISOString(),
-          notes: `[merged_into:${winner.id}] ${snapshot}`,
-        })
-        .eq('id', l.id);
-      if (error) throw new Error(`soft-delete ${l.id}: ${error.message}`);
-    }
+    // re-vincula TODAS as FKs (14 tabelas, não só contact_leads) + soft-delete, numa transação.
+    // Antes daqui só re-vinculava contact_leads e deixava órfãos call_records, zapsign_documents,
+    // process_parties, contact_relationships, etc.
+    const { error } = await (db as any).rpc('merge_relink_and_softdelete', {
+      p_table: 'contacts',
+      p_winner: winner.id,
+      p_losers: losers.map((l) => l.id),
+    });
+    if (error) throw new Error(error.message);
   };
 
   const mergeSelected = async () => {

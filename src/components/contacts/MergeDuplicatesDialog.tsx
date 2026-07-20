@@ -36,7 +36,6 @@ import {
   X,
   ChevronRight,
 } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { toast } from 'sonner';
 import { Contact, ContactClassification, FollowerStatus } from '@/hooks/useContacts';
@@ -309,31 +308,16 @@ export const MergeDuplicatesDialog: React.FC<MergeDuplicatesDialogProps> = ({
             .eq('id', primary.id);
         }
 
-        // Move contact_leads from duplicates to primary
+        // Re-vincula TODAS as FKs (14 tabelas) + soft-delete via RPC, numa transação.
+        // Antes: relink manual só de contact_leads/contact_relationships (este último no Cloud,
+        // errado pela db-routing) e DELETE físico dos duplicados (irreversível).
         const duplicateIds = duplicatesToMerge.map(d => d.id);
-        await externalSupabase
-          .from('contact_leads')
-          .update({ contact_id: primary.id })
-          .in('contact_id', duplicateIds);
-
-        // Move contact_relationships from duplicates to primary
-        await supabase
-          .from('contact_relationships')
-          .update({ contact_id: primary.id })
-          .in('contact_id', duplicateIds);
-        
-        await supabase
-          .from('contact_relationships')
-          .update({ related_contact_id: primary.id })
-          .in('related_contact_id', duplicateIds);
-
-        // Delete duplicate contacts
-        const { error: deleteError } = await externalSupabase
-          .from('contacts')
-          .delete()
-          .in('id', duplicateIds);
-
-        if (deleteError) throw deleteError;
+        const { error: mergeError } = await (externalSupabase as any).rpc('merge_relink_and_softdelete', {
+          p_table: 'contacts',
+          p_winner: primary.id,
+          p_losers: duplicateIds,
+        });
+        if (mergeError) throw mergeError;
 
         merged++;
       } catch (err) {

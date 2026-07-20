@@ -15,7 +15,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Users, MessageCircle, Contact, Send, Search, Loader2, User, Phone, Mail, MapPin, Calendar, FileText, Building, ExternalLink,
-  ClipboardList, Workflow, LayoutDashboard, Scale,
+  ClipboardList, Workflow, LayoutDashboard, Scale, Megaphone,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
@@ -33,7 +33,7 @@ import { Button } from '@/components/ui/button';
 
 interface SearchResult {
   id: string;
-  type: 'lead' | 'contact' | 'comment' | 'dm' | 'activity' | 'workflow' | 'case' | 'process';
+  type: 'lead' | 'contact' | 'comment' | 'dm' | 'activity' | 'workflow' | 'case' | 'process' | 'campaign';
   title: string;
   subtitle: string;
   extra?: string;
@@ -125,7 +125,7 @@ export function GlobalDatabaseSearch() {
       const numericMatch = term.trim().match(/^(?:caso[\s-]*)?(\d{1,8})$/i);
       const caseNumberTerm = numericMatch ? `%${numericMatch[1]}%` : `%${term}%`;
 
-      const [leadsRes, contactsRes, commentsRes, dmsRes, activitiesRes, workflowsRes, casesRes, processesRes] = await Promise.all([
+      const [leadsRes, contactsRes, commentsRes, dmsRes, activitiesRes, workflowsRes, casesRes, processesRes, campaignsRes] = await Promise.all([
         dual('leads',
           `lead_name.ilike.${searchTerm},victim_name.ilike.${searchTerm},lead_phone.ilike.${searchTerm},lead_email.ilike.${searchTerm},notes.ilike.${searchTerm},instagram_username.ilike.${searchTerm},city.ilike.${searchTerm},cpf.ilike.${searchTerm},state.ilike.${searchTerm},source.ilike.${searchTerm}`,
           'updated_at', 15),
@@ -152,6 +152,10 @@ export function GlobalDatabaseSearch() {
         externalOnly('lead_processes',
           `process_number.ilike.${searchTerm},title.ilike.${searchTerm}`,
           'updated_at', 30),
+        // Campanhas (só no Externo). Busca por nome.
+        externalOnly('campaigns',
+          `name.ilike.${searchTerm}`,
+          'updated_at', 15),
       ]);
 
       const mapped: SearchResult[] = [];
@@ -264,6 +268,20 @@ export function GlobalDatabaseSearch() {
         });
       });
 
+      // Campanhas — pula excluídas
+      (campaignsRes.data || []).forEach((c: any) => {
+        if (c.deleted_at) return;
+        mapped.push({
+          id: c.id,
+          type: 'campaign',
+          title: c.name || 'Campanha',
+          subtitle: c.meta_campaign_id ? `Meta: ${c.meta_campaign_id}` : '',
+          extra: c.status || '',
+          date: c.updated_at,
+          raw: c,
+        });
+      });
+
       setResults(mapped);
     } catch (err) {
       console.error('Search error:', err);
@@ -315,6 +333,9 @@ export function GlobalDatabaseSearch() {
         if (result.raw?.case_id) navigate(`/cases/${result.raw.case_id}`);
         else if (result.raw?.lead_id) navigate(`/leads?openLead=${result.raw.lead_id}`);
         break;
+      case 'campaign':
+        // Sem tela dedicada de detalhe; apenas fecha (o valor aqui é a detecção de duplicado)
+        break;
     }
   };
 
@@ -327,6 +348,7 @@ export function GlobalDatabaseSearch() {
     process: { icon: Scale, label: 'Processo', color: 'bg-teal-500/10 text-teal-700 border-teal-200' },
     comment: { icon: MessageCircle, label: 'Comentário', color: 'bg-orange-500/10 text-orange-700 border-orange-200' },
     dm: { icon: Send, label: 'DM', color: 'bg-purple-500/10 text-purple-700 border-purple-200' },
+    campaign: { icon: Megaphone, label: 'Campanha', color: 'bg-pink-500/10 text-pink-700 border-pink-200' },
   };
 
   const grouped = results.reduce((acc, r) => {
@@ -335,7 +357,7 @@ export function GlobalDatabaseSearch() {
     return acc;
   }, {} as Record<string, SearchResult[]>);
 
-  const groupOrder: Array<SearchResult['type']> = ['process', 'case', 'lead', 'contact', 'activity', 'workflow', 'comment', 'dm'];
+  const groupOrder: Array<SearchResult['type']> = ['process', 'case', 'lead', 'contact', 'campaign', 'activity', 'workflow', 'comment', 'dm'];
 
   // Detecção de duplicados nos tipos que sabemos fundir.
   // Chaves por tipo: lead/contato = nome+telefone+CPF; processo = nº CNJ; caso = mesmo cliente (lead_id).
@@ -357,9 +379,12 @@ export function GlobalDatabaseSearch() {
       case: [
         { label: 'mesmo cliente', fn: (r) => (r.raw.lead_id ? `lead:${r.raw.lead_id}` : null) },
       ],
+      campaign: [
+        { label: 'mesmo nome', fn: (r) => normalizeName(r.raw.name) },
+      ],
     };
     const out: Record<string, { groups: DuplicateGroup<SearchResult>[]; suspectIds: Set<string> }> = {};
-    (['lead', 'contact', 'process', 'case'] as const).forEach((t) => {
+    (['lead', 'contact', 'process', 'case', 'campaign'] as const).forEach((t) => {
       const items = grouped[t] || [];
       const groups = detectDuplicates<SearchResult>(items, keysByType[t], (r) => r.raw.updated_at);
       const suspectIds = new Set<string>();
