@@ -31,6 +31,7 @@ export interface TeamMessage {
   file_size?: number | null;
   file_type?: string | null;
   audio_duration?: number | null;
+  transcription?: string | null;
   reply_to_id?: string | null;
   is_urgent?: boolean | null;
   urgent_alert_at?: string | null;
@@ -297,6 +298,7 @@ export function useTeamDirectChat() {
       file_size?: number;
       file_type?: string;
       audio_duration?: number;
+      transcription?: string;
       mentionedUserIds?: string[];
       reply_to_id?: string | null;
       is_urgent?: boolean;
@@ -327,6 +329,7 @@ export function useTeamDirectChat() {
         file_size: options?.file_size || null,
         file_type: options?.file_type || null,
         audio_duration: options?.audio_duration || null,
+        transcription: options?.transcription || null,
         reply_to_id: options?.reply_to_id || null,
         // Só envia a coluna quando true, pra não quebrar caso a migration ainda não tenha sido aplicada
         ...(options?.is_urgent ? { is_urgent: true } : {}),

@@ -43,6 +43,7 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
   'scan-duplicate-contacts': 'railway',
   'recover-leads-phone-55': 'railway',
   'transcribe-activity-call': 'railway',
+  'transcribe-team-audio': 'railway',
   'extract-activity-from-document': 'railway',
   'suggest-step-actions': 'railway',
   'wipe-instance-agent-labels': 'railway',

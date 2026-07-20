@@ -14,6 +14,7 @@ import {
   Play, Pause, Check, CheckCheck, Reply, X, AlertTriangle, Search,
 } from 'lucide-react';
 import { setActiveTeamChatConversation } from '@/lib/teamChatActiveConversation';
+import { cloudFunctions } from '@/lib/functionRouter';
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import {
   Select,
@@ -279,6 +280,21 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
 
         const { data: urlData } = supabase.storage.from('team-chat-media').getPublicUrl(path);
 
+        // Transcrição automática (best-effort): ElevenLabs Scribe v2 → fallback Gemini,
+        // via Railway. Se falhar/demorar, envia o áudio mesmo assim sem transcrição.
+        let transcription: string | undefined;
+        try {
+          const { data } = await cloudFunctions.invoke<{ success: boolean; transcription?: string }>(
+            'transcribe-team-audio',
+            { body: { audio_url: urlData.publicUrl, audio_mime: 'audio/webm' } },
+          );
+          if (data?.success && data.transcription?.trim()) {
+            transcription = data.transcription.trim();
+          }
+        } catch (e) {
+          console.error('[TeamDirectChatPanel] Falha ao transcrever áudio:', e);
+        }
+
         await sendMessage('🎤 Áudio', {
           message_type: 'audio',
           file_url: urlData.publicUrl,
@@ -286,6 +302,7 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
           file_size: blob.size,
           file_type: 'audio/webm',
           audio_duration: duration,
+          ...(transcription ? { transcription } : {}),
         });
         setUploading(false);
       };
@@ -436,22 +453,29 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
   const renderMsgContent = (msg: TeamMessage, isMe: boolean) => {
     if (msg.message_type === 'audio' && msg.file_url) {
       return (
-        <button
-          onClick={() => toggleAudio(msg.id, msg.file_url!)}
-          className="flex items-center gap-2 py-1"
-        >
-          {playingAudioId === msg.id ? (
-            <Pause className="h-4 w-4 shrink-0" />
-          ) : (
-            <Play className="h-4 w-4 shrink-0" />
+        <div>
+          <button
+            onClick={() => toggleAudio(msg.id, msg.file_url!)}
+            className="flex items-center gap-2 py-1 w-full"
+          >
+            {playingAudioId === msg.id ? (
+              <Pause className="h-4 w-4 shrink-0" />
+            ) : (
+              <Play className="h-4 w-4 shrink-0" />
+            )}
+            <div className="flex-1 h-1.5 rounded-full bg-current/20 min-w-[80px]">
+              <div className={cn('h-full rounded-full', isMe ? 'bg-primary-foreground/60' : 'bg-foreground/40')} style={{ width: playingAudioId === msg.id ? '100%' : '0%', transition: 'width linear' }} />
+            </div>
+            <span className="text-[10px] opacity-70">
+              {msg.audio_duration ? formatDuration(msg.audio_duration) : '0:00'}
+            </span>
+          </button>
+          {msg.transcription && (
+            <p className="text-xs mt-1 pt-1 border-t border-current/15 whitespace-pre-wrap break-words opacity-80 italic">
+              {msg.transcription}
+            </p>
           )}
-          <div className="flex-1 h-1.5 rounded-full bg-current/20 min-w-[80px]">
-            <div className={cn('h-full rounded-full', isMe ? 'bg-primary-foreground/60' : 'bg-foreground/40')} style={{ width: playingAudioId === msg.id ? '100%' : '0%', transition: 'width linear' }} />
-          </div>
-          <span className="text-[10px] opacity-70">
-            {msg.audio_duration ? formatDuration(msg.audio_duration) : '0:00'}
-          </span>
-        </button>
+        </div>
       );
     }
 
