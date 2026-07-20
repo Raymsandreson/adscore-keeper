@@ -26,7 +26,7 @@ import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
 import { useLeads, Lead } from '@/hooks/useLeads';
 import { Contact as ContactType } from '@/hooks/useContacts';
 import { useKanbanBoards } from '@/hooks/useKanbanBoards';
-import { detectDuplicates, DuplicateGroup } from '@/lib/duplicateDetection';
+import { detectDuplicates, DuplicateGroup, KeyFn, normalizeName, normalizePhone, digitsExact } from '@/lib/duplicateDetection';
 import { DuplicateMergeDialog, MergeType } from '@/components/search/DuplicateMergeDialog';
 import { Copy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -238,6 +238,7 @@ export function GlobalDatabaseSearch() {
 
       // Legal cases
       (casesRes.data || []).forEach((c: any) => {
+        if (c.deleted_at) return; // não mostrar casos mesclados/excluídos
         mapped.push({
           id: c.id,
           type: 'case',
@@ -336,18 +337,31 @@ export function GlobalDatabaseSearch() {
 
   const groupOrder: Array<SearchResult['type']> = ['process', 'case', 'lead', 'contact', 'activity', 'workflow', 'comment', 'dm'];
 
-  // Detecção de duplicados nos grupos que sabemos fundir (lead, contato).
-  // Retorna, por tipo: os grupos duplicados e o conjunto de ids "suspeitos" (pra badge).
+  // Detecção de duplicados nos tipos que sabemos fundir.
+  // Chaves por tipo: lead/contato = nome+telefone+CPF; processo = nº CNJ; caso = mesmo cliente (lead_id).
   const dupByType = useMemo(() => {
+    const keysByType: Record<string, KeyFn<SearchResult>[]> = {
+      lead: [
+        { label: 'mesmo nome', fn: (r) => normalizeName(r.raw.lead_name || r.raw.victim_name) },
+        { label: 'mesmo telefone', fn: (r) => normalizePhone(r.raw.lead_phone) },
+        { label: 'mesmo CPF', fn: (r) => digitsExact(r.raw.cpf, 11) },
+      ],
+      contact: [
+        { label: 'mesmo nome', fn: (r) => normalizeName(r.raw.full_name) },
+        { label: 'mesmo telefone', fn: (r) => normalizePhone(r.raw.phone) },
+        { label: 'mesmo CPF', fn: (r) => digitsExact(r.raw.cpf, 11) },
+      ],
+      process: [
+        { label: 'mesmo nº CNJ', fn: (r) => digitsExact(r.raw.process_number, 14) },
+      ],
+      case: [
+        { label: 'mesmo cliente', fn: (r) => (r.raw.lead_id ? `lead:${r.raw.lead_id}` : null) },
+      ],
+    };
     const out: Record<string, { groups: DuplicateGroup<SearchResult>[]; suspectIds: Set<string> }> = {};
-    (['lead', 'contact'] as const).forEach((t) => {
+    (['lead', 'contact', 'process', 'case'] as const).forEach((t) => {
       const items = grouped[t] || [];
-      const groups = detectDuplicates<SearchResult>(
-        items,
-        (r) => (t === 'lead' ? r.raw.lead_name || r.raw.victim_name : r.raw.full_name),
-        (r) => (t === 'lead' ? r.raw.lead_phone : r.raw.phone),
-        (r) => r.raw.updated_at,
-      );
+      const groups = detectDuplicates<SearchResult>(items, keysByType[t], (r) => r.raw.updated_at);
       const suspectIds = new Set<string>();
       groups.forEach((g) => g.members.forEach((m) => suspectIds.add(m.id)));
       out[t] = { groups, suspectIds };

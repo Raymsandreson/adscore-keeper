@@ -6,12 +6,12 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Loader2, Merge, CheckCircle2, AlertTriangle, Crown } from 'lucide-react';
+import { Loader2, Merge, CheckCircle2, AlertTriangle, Crown, ShieldAlert } from 'lucide-react';
 import { db, ensureExternalSession } from '@/integrations/supabase';
 import { toast } from 'sonner';
 import { DuplicateGroup, MERGE_FIELDS, buildMergePatch } from '@/lib/duplicateDetection';
 
-export type MergeType = 'lead' | 'contact';
+export type MergeType = 'lead' | 'contact' | 'case' | 'process';
 
 interface Props {
   open: boolean;
@@ -21,26 +21,36 @@ interface Props {
   onMerged?: () => void; // recarregar a busca
 }
 
-const TYPE_LABEL: Record<MergeType, string> = { lead: 'leads', contact: 'contatos' };
+const TYPE_LABEL: Record<MergeType, string> = { lead: 'leads', contact: 'contatos', case: 'casos', process: 'processos' };
+const TYPE_TABLE: Record<MergeType, string> = { lead: 'leads', contact: 'contacts', case: 'legal_cases', process: 'lead_processes' };
+// Caso mexe em lead_financials (honorário/fundo): não auto-seleciona, exige revisão manual.
+const REQUIRE_MANUAL: Record<MergeType, boolean> = { lead: false, contact: false, case: true, process: false };
 
 function displayName(type: MergeType, raw: any): string {
   if (type === 'lead') return raw.lead_name || raw.victim_name || '(sem nome)';
-  return raw.full_name || '(sem nome)';
+  if (type === 'contact') return raw.full_name || '(sem nome)';
+  if (type === 'case') return raw.case_number || raw.title || '(caso)';
+  return raw.process_number || raw.title || '(processo)';
 }
 function displaySub(type: MergeType, raw: any): string {
   if (type === 'lead') return [raw.lead_phone, [raw.city, raw.state].filter(Boolean).join('/')].filter(Boolean).join(' · ');
-  return [raw.phone, raw.email, raw.instagram_username && `@${raw.instagram_username}`].filter(Boolean).join(' · ');
+  if (type === 'contact') return [raw.phone, raw.email, raw.instagram_username && `@${raw.instagram_username}`].filter(Boolean).join(' · ');
+  if (type === 'case') return [raw.title, raw.status].filter(Boolean).join(' · ');
+  return [raw.title, raw.status, raw.tribunal].filter(Boolean).join(' · ');
 }
 
 export function DuplicateMergeDialog({ open, onOpenChange, type, groups, onMerged }: Props) {
-  const [selected, setSelected] = useState<Set<string>>(() => new Set(groups.map((g) => g.key)));
+  const manual = REQUIRE_MANUAL[type];
+  const [selected, setSelected] = useState<Set<string>>(
+    () => new Set(manual ? [] : groups.map((g) => g.key)),
+  );
   const [merging, setMerging] = useState(false);
   const [result, setResult] = useState<{ merged: number; errors: string[] } | null>(null);
 
   // reinicia seleção quando a lista de grupos muda (nova busca)
   const groupsKey = groups.map((g) => g.key).join('|');
   useEffect(() => {
-    setSelected(new Set(groups.map((g) => g.key)));
+    setSelected(new Set(manual ? [] : groups.map((g) => g.key)));
     setResult(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupsKey]);
@@ -60,7 +70,7 @@ export function DuplicateMergeDialog({ open, onOpenChange, type, groups, onMerge
     const losers = members.slice(1);
     const patch = buildMergePatch(members, fields);
 
-    const table = type === 'lead' ? 'leads' : 'contacts';
+    const table = TYPE_TABLE[type];
     if (Object.keys(patch).length > 0) {
       const { error } = await (db as any).from(table).update(patch).eq('id', winner.id);
       if (error) throw new Error(`patch vencedor: ${error.message}`);
@@ -111,6 +121,16 @@ export function DuplicateMergeDialog({ open, onOpenChange, type, groups, onMerge
             preenchidos com os dados dos outros. Reversível (soft-delete com snapshot).
           </DialogDescription>
         </DialogHeader>
+
+        {type === 'case' && (
+          <div className="flex items-start gap-2 rounded-md border border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/30 p-2.5 text-xs text-rose-800 dark:text-rose-300">
+            <ShieldAlert className="h-4 w-4 shrink-0 mt-0.5" />
+            <span>
+              Fundir casos move <strong>honorários e financeiro</strong> (dado do fundo) do perdedor pro vencedor.
+              Confira que são o <strong>mesmo processo do mesmo cliente</strong> antes de marcar. Nada vem marcado por padrão.
+            </span>
+          </div>
+        )}
 
         {!result && (
           <ScrollArea className="flex-1 min-h-[200px]">

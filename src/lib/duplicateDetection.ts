@@ -1,7 +1,12 @@
-// Detecção de duplicados por nome/telefone e cálculo do patch de fusão.
+// Detecção de duplicados e cálculo do patch de fusão.
 // Usado pela busca global (GlobalDatabaseSearch) e pelo DuplicateMergeDialog.
 // Regra de fusão (definida com o usuário): vencedor = updated_at mais novo;
 // campos vazios do vencedor são preenchidos pelo perdedor mais recente que os tiver.
+//
+// Chaves de duplicidade por tipo:
+//   lead/contato -> nome normalizado, telefone, CPF
+//   processo     -> número CNJ (dígitos)  [nunca o "PREV nnn"]
+//   caso         -> mesmo cliente (lead_id)  [nunca o "PREV nnn"]
 
 export function normalizeName(n?: string | null): string | null {
   if (!n) return null;
@@ -23,19 +28,33 @@ export function normalizePhone(p?: string | null): string | null {
   return digits.slice(-10).padStart(10, '0');
 }
 
+// só dígitos, com comprimento mínimo (CPF=11, CNJ=20) — casamento EXATO, sem fuzzy
+export function digitsExact(v?: string | null, min = 11): string | null {
+  if (!v) return null;
+  const d = String(v).replace(/\D/g, '');
+  return d.length >= min ? d : null;
+}
+
 // campos escalares seguros para preencher no vencedor, por tipo
 export const MERGE_FIELDS: Record<string, string[]> = {
   lead: ['lead_name', 'victim_name', 'lead_phone', 'lead_email', 'cpf', 'city', 'state', 'instagram_username', 'source'],
   contact: ['full_name', 'phone', 'email', 'instagram_username', 'cpf', 'city', 'state', 'profession', 'neighborhood'],
+  case: ['case_number', 'title', 'description', 'benefit_type', 'status'],
+  process: ['process_number', 'title', 'description', 'tribunal', 'classe', 'area', 'polo_ativo', 'polo_passivo', 'valor_causa'],
 };
 
 interface HasId {
   id: string;
 }
 
+export interface KeyFn<T> {
+  label: string; // aparece no badge/dialog ("mesmo nome", "mesmo nº CNJ"…)
+  fn: (t: T) => string | null | undefined; // valor JÁ normalizado, ou null pra ignorar
+}
+
 export interface DuplicateGroup<T extends HasId> {
   key: string;
-  reasons: string[]; // ex.: ["mesmo nome", "mesmo telefone"]
+  reasons: string[];
   members: T[]; // ordenados: vencedor primeiro (updated_at desc)
 }
 
@@ -59,36 +78,18 @@ class UnionFind {
 }
 
 /**
- * Agrupa itens que provavelmente são o mesmo registro (mesmo nome normalizado
- * OU mesmo telefone normalizado). Só retorna grupos com 2+ membros.
+ * Agrupa itens que compartilham QUALQUER uma das chaves fornecidas.
+ * Só retorna grupos com 2+ membros. Cada chave contribui um "reason".
  */
 export function detectDuplicates<T extends HasId>(
   items: T[],
-  getName: (t: T) => string | null | undefined,
-  getPhone?: (t: T) => string | null | undefined,
-  getUpdatedAt?: (t: T) => string | null | undefined,
+  keys: KeyFn<T>[],
+  getUpdatedAt: (t: T) => string | null | undefined,
 ): DuplicateGroup<T>[] {
   if (items.length < 2) return [];
 
   const uf = new UnionFind();
-  const byName = new Map<string, T[]>();
-  const byPhone = new Map<string, T[]>();
-
-  for (const it of items) {
-    uf.find(it.id); // registra
-    const n = normalizeName(getName(it));
-    if (n) {
-      if (!byName.has(n)) byName.set(n, []);
-      byName.get(n)!.push(it);
-    }
-    if (getPhone) {
-      const p = normalizePhone(getPhone(it));
-      if (p) {
-        if (!byPhone.has(p)) byPhone.set(p, []);
-        byPhone.get(p)!.push(it);
-      }
-    }
-  }
+  items.forEach((it) => uf.find(it.id));
 
   const reasonFor = new Map<string, Set<string>>(); // root -> reasons
   const addReason = (id: string, reason: string) => {
@@ -97,18 +98,21 @@ export function detectDuplicates<T extends HasId>(
     reasonFor.get(root)!.add(reason);
   };
 
-  for (const list of byName.values()) {
-    if (list.length < 2) continue;
-    for (let i = 1; i < list.length; i++) uf.union(list[0].id, list[i].id);
-    list.forEach((it) => addReason(it.id, 'mesmo nome'));
-  }
-  for (const list of byPhone.values()) {
-    if (list.length < 2) continue;
-    for (let i = 1; i < list.length; i++) uf.union(list[0].id, list[i].id);
-    list.forEach((it) => addReason(it.id, 'mesmo telefone'));
+  for (const key of keys) {
+    const buckets = new Map<string, T[]>();
+    for (const it of items) {
+      const v = key.fn(it);
+      if (!v) continue;
+      if (!buckets.has(v)) buckets.set(v, []);
+      buckets.get(v)!.push(it);
+    }
+    for (const list of buckets.values()) {
+      if (list.length < 2) continue;
+      for (let i = 1; i < list.length; i++) uf.union(list[0].id, list[i].id);
+      list.forEach((it) => addReason(it.id, key.label));
+    }
   }
 
-  // coleta componentes
   const comps = new Map<string, T[]>();
   for (const it of items) {
     const root = uf.find(it.id);
@@ -116,15 +120,12 @@ export function detectDuplicates<T extends HasId>(
     comps.get(root)!.push(it);
   }
 
-  const ts = (t: T) => (getUpdatedAt ? getUpdatedAt(t) : (t as any).updated_at) || '';
+  const ts = (t: T) => getUpdatedAt(t) || '';
   const groups: DuplicateGroup<T>[] = [];
   for (const [root, members] of comps.entries()) {
-    if (members.length < 2) continue;
-    // dedup por id (segurança) e ordena vencedor primeiro (updated_at desc)
     const uniq = Array.from(new Map(members.map((m) => [m.id, m])).values());
     if (uniq.length < 2) continue;
     uniq.sort((a, b) => String(ts(b)).localeCompare(String(ts(a))));
-    // reunião de reasons; se caíram juntos só por transitividade sem reason, marca genérico
     const reasons = Array.from(reasonFor.get(root) || new Set(['possível duplicado']));
     groups.push({ key: `${root}:${uniq.map((u) => u.id).join(',')}`, reasons, members: uniq });
   }
@@ -132,8 +133,8 @@ export function detectDuplicates<T extends HasId>(
 }
 
 /**
- * Monta o patch a aplicar no vencedor: só preenche campos VAZIOS, usando o
- * perdedor mais recente que tiver valor. Nunca sobrescreve valor já presente.
+ * Patch a aplicar no vencedor: só preenche campos VAZIOS, usando o perdedor
+ * mais recente que tiver valor. Nunca sobrescreve valor já presente.
  * (members já vem ordenado vencedor-primeiro por updated_at desc.)
  */
 export function buildMergePatch<T extends HasId>(members: T[], fields: string[]): Record<string, any> {
