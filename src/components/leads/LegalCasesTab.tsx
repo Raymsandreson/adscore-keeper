@@ -486,97 +486,12 @@ interface CaseCardProps {
 }
 
 function CaseCard({ legalCase, boards, expanded, onToggle, onEdit, onStatusChange, onDelete, statusColors, statusLabels, onViewContact, refreshKey }: CaseCardProps) {
-  const { processes, loading: procLoading, fetchProcesses, addProcess, updateProcess, deleteProcess } = useLeadProcesses(legalCase.id);
+  const { processes, loading: procLoading, fetchProcesses, updateProcess, deleteProcess } = useLeadProcesses(legalCase.id);
   const [showProcessDialog, setShowProcessDialog] = useState(false);
-  const [editingProcess, setEditingProcess] = useState<LeadProcess | null>(null);
-
-  // Process form
-  const [processType, setProcessType] = useState<'judicial' | 'administrativo'>('judicial');
-  const [processNumber, setProcessNumber] = useState('');
-  const [processTitle, setProcessTitle] = useState('');
-  const [processDescription, setProcessDescription] = useState('');
-  const [workflowId, setWorkflowId] = useState('');
-  const [startedAt, setStartedAt] = useState(new Date().toISOString().slice(0, 10));
-  const [processNotes, setProcessNotes] = useState('');
-  const [processFeePercentage, setProcessFeePercentage] = useState('');
 
   useEffect(() => {
     if (expanded) fetchProcesses();
   }, [expanded, refreshKey]);
-
-  const resetProcessForm = () => {
-    setProcessType('judicial');
-    setProcessNumber('');
-    setProcessTitle('');
-    setProcessDescription('');
-    setWorkflowId('');
-    setStartedAt(new Date().toISOString().slice(0, 10));
-    setProcessNotes('');
-    setProcessFeePercentage('');
-    setEditingProcess(null);
-  };
-
-  const openEditProcess = (p: LeadProcess) => {
-    setEditingProcess(p);
-    setProcessType(p.process_type);
-    setProcessNumber(p.process_number || '');
-    setProcessTitle(p.title);
-    setProcessDescription(p.description || '');
-    setWorkflowId(p.workflow_id || '');
-    setStartedAt(p.started_at || '');
-    setProcessNotes(p.notes || '');
-    setProcessFeePercentage(p.fee_percentage != null ? String(p.fee_percentage) : '');
-    setShowProcessDialog(true);
-  };
-
-  const handleSaveProcess = async () => {
-    if (!processTitle.trim()) return;
-    const selectedBoard = boards.find(b => b.id === workflowId);
-    const payload: Partial<LeadProcess> = {
-      lead_id: legalCase.lead_id!,
-      case_id: legalCase.id,
-      process_type: processType,
-      process_number: processNumber || null,
-      title: processTitle.trim(),
-      description: processDescription || null,
-      workflow_id: workflowId || null,
-      workflow_name: selectedBoard?.name || null,
-      started_at: startedAt || null,
-      notes: processNotes || null,
-      fee_percentage: processFeePercentage ? parseFloat(processFeePercentage) : null,
-    };
-    let savedProcess: LeadProcess | undefined;
-    if (editingProcess) {
-      await updateProcess(editingProcess.id, payload);
-    } else {
-      savedProcess = await addProcess(payload);
-      
-      // Auto-create "Dar andamento" activity for the new process
-      if (savedProcess) {
-        try {
-          const { data: { user } } = await supabase.auth.getUser();
-          const extUserId = await remapToExternal(user?.id);
-          await externalSupabase.from('lead_activities').insert({
-            lead_id: legalCase.lead_id,
-            lead_name: processTitle.trim(),
-            title: 'Dar andamento',
-            description: `Atividade criada automaticamente para o processo: ${processTitle.trim()}${processNumber ? ` (Nº ${processNumber})` : ''}`,
-            activity_type: 'tarefa',
-            status: 'pendente',
-            priority: 'normal',
-            assigned_to: extUserId,
-            created_by: extUserId,
-            deadline: new Date().toISOString().slice(0, 10),
-          } as any);
-          toast.success('Atividade "Dar andamento" criada automaticamente');
-        } catch (actErr) {
-          console.error('Error auto-creating activity for process:', actErr);
-        }
-      }
-    }
-    setShowProcessDialog(false);
-    resetProcessForm();
-  };
 
   const handleProcessStatusChange = async (p: LeadProcess, status: LeadProcess['status']) => {
     const updates: Partial<LeadProcess> = { status };
@@ -665,7 +580,7 @@ function CaseCard({ legalCase, boards, expanded, onToggle, onEdit, onStatusChang
                   Processos ({processes.length})
                 </h4>
                 <Button size="sm" variant="outline" className="h-7 text-xs"
-                  onClick={() => { resetProcessForm(); setShowProcessDialog(true); }}>
+                  onClick={() => setShowProcessDialog(true)}>
                   <Plus className="h-3 w-3 mr-1" /> Processo
                 </Button>
               </div>
@@ -688,7 +603,6 @@ function CaseCard({ legalCase, boards, expanded, onToggle, onEdit, onStatusChang
                     caseTitle={legalCase.title}
                     statusColors={processStatusColors}
                     statusLabels={processStatusLabels}
-                    onEdit={() => openEditProcess(p)}
                     onStatusChange={handleProcessStatusChange}
                     onDelete={() => deleteProcess(p.id)}
                     onUpdate={updateProcess}
@@ -702,84 +616,15 @@ function CaseCard({ legalCase, boards, expanded, onToggle, onEdit, onStatusChang
         </CollapsibleContent>
       </Collapsible>
 
-      {/* Process Dialog - Edit mode (inline) */}
-      {editingProcess && (
-        <Dialog open={showProcessDialog} onOpenChange={setShowProcessDialog}>
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle>Editar Processo</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div>
-                <Label>Tipo *</Label>
-                <Select value={processType} onValueChange={(v) => setProcessType(v as any)}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="judicial"><span className="flex items-center gap-2"><Gavel className="h-3 w-3" /> Judicial</span></SelectItem>
-                    <SelectItem value="administrativo"><span className="flex items-center gap-2"><FileText className="h-3 w-3" /> Administrativo</span></SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label>Título *</Label>
-                <Input value={processTitle} onChange={e => setProcessTitle(e.target.value)} placeholder="Ex: Reclamatória trabalhista" />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>Nº do Processo</Label>
-                  <Input value={processNumber} onChange={e => setProcessNumber(e.target.value)} placeholder="0000000-00.0000.0.00.0000" />
-                </div>
-                <div>
-                  <Label>Honorários (%)</Label>
-                  <Input type="number" min="0" max="100" step="0.1" value={processFeePercentage} onChange={e => setProcessFeePercentage(e.target.value)} placeholder="Ex: 30" />
-                </div>
-              </div>
-              <div>
-                <Label>Fluxo de Trabalho</Label>
-                <Select value={workflowId} onValueChange={setWorkflowId}>
-                  <SelectTrigger><SelectValue placeholder="Selecione um fluxo..." /></SelectTrigger>
-                  <SelectContent>
-                    {boards.filter(b => b.board_type === 'workflow').map(b => (
-                      <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label>Data de Início</Label>
-                <Input type="date" value={startedAt} onChange={e => setStartedAt(e.target.value)} />
-              </div>
-              <div>
-                <Label>Descrição</Label>
-                <Textarea value={processDescription} onChange={e => setProcessDescription(e.target.value)} rows={3} />
-              </div>
-              <div>
-                <Label>Observações</Label>
-                <Textarea value={processNotes} onChange={e => setProcessNotes(e.target.value)} rows={2} />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => { setShowProcessDialog(false); resetProcessForm(); }}>Cancelar</Button>
-              <Button onClick={handleSaveProcess} disabled={!processTitle.trim()}>Salvar</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      )}
-
-      {/* Process Dialog - New mode (with Escavador) */}
-      {!editingProcess && (
-        <AddProcessDialog
-          open={showProcessDialog}
-          onOpenChange={(open) => {
-            setShowProcessDialog(open);
-            if (!open) resetProcessForm();
-          }}
-          caseId={legalCase.id}
-          leadId={legalCase.lead_id!}
-          onProcessAdded={fetchProcesses}
-          boards={boards}
-        />
-      )}
+      {/* Novo processo (com Escavador). Edição usa a ficha completa (ProcessDetailSheet) no ProcessCard. */}
+      <AddProcessDialog
+        open={showProcessDialog}
+        onOpenChange={setShowProcessDialog}
+        caseId={legalCase.id}
+        leadId={legalCase.lead_id!}
+        onProcessAdded={fetchProcesses}
+        boards={boards}
+      />
     </Card>
   );
 }
@@ -791,7 +636,6 @@ interface ProcessCardProps {
   caseTitle: string;
   statusColors: Record<string, string>;
   statusLabels: Record<string, string>;
-  onEdit: () => void;
   onStatusChange: (p: LeadProcess, status: LeadProcess['status']) => void;
   onDelete: () => void;
   onUpdate: (id: string, updates: Partial<LeadProcess>) => Promise<LeadProcess | undefined>;
@@ -799,7 +643,7 @@ interface ProcessCardProps {
   onViewContact?: (contactId: string) => void;
 }
 
-function ProcessCard({ process, caseTitle, statusColors, statusLabels, onEdit, onStatusChange, onDelete, onUpdate, onRefresh, onViewContact }: ProcessCardProps) {
+function ProcessCard({ process, caseTitle, statusColors, statusLabels, onStatusChange, onDelete, onUpdate, onRefresh, onViewContact }: ProcessCardProps) {
   const [showParties, setShowParties] = useState(false);
   const { parties, loading: partiesLoading, fetchParties, addParty, removeParty } = useProcessParties(process.id);
   const [showAddParty, setShowAddParty] = useState(false);
@@ -1080,7 +924,7 @@ function ProcessCard({ process, caseTitle, statusColors, statusLabels, onEdit, o
       )}
 
       <div className="flex items-center gap-1 flex-wrap">
-        <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2" onClick={onEdit}>
+        <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2" onClick={() => setShowDetailSheet(true)}>
           <Edit3 className="h-2.5 w-2.5 mr-0.5" /> Editar
         </Button>
         <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2"
@@ -1090,10 +934,6 @@ function ProcessCard({ process, caseTitle, statusColors, statusLabels, onEdit, o
         <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2 text-primary"
           onClick={openCreateActivity}>
           <ClipboardList className="h-2.5 w-2.5 mr-0.5" /> Atividade
-        </Button>
-        <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2"
-          onClick={() => setShowDetailSheet(true)}>
-          <FolderOpen className="h-2.5 w-2.5 mr-0.5" /> Ficha completa
         </Button>
         {process.status === 'em_andamento' && (
           <>
