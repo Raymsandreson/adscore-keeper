@@ -74,6 +74,13 @@ import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { summarizeActivityConversation, type SuggestedActivity } from '@/lib/activityFeedbackSummary';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { filterAssignableMembers } from '@/lib/assigneeBlocklist';
+
+// IMPORTANTE: lazy() precisa ficar no escopo do módulo. Se ficar dentro do
+// render, cada re-render (ex.: tick do cronômetro ativo) cria um componente
+// novo e o React remonta o sheet do zero — a aba volta pro default, as
+// atividades zeram e refazem o fetch. Era a causa do "pisca de 2 em 2s".
+const ProcessDetailSheet = lazy(() => import('@/components/cases/ProcessDetailSheet'));
+
 const ACTIVITY_TYPES = [
   { value: 'tarefa', label: 'Tarefa', bg: 'bg-blue-50 dark:bg-blue-950/20', border: 'border-blue-300 dark:border-blue-700', header: 'bg-blue-500', dot: 'bg-blue-500' },
   { value: 'audiencia', label: 'Audiência', bg: 'bg-green-50 dark:bg-green-950/20', border: 'border-green-300 dark:border-green-700', header: 'bg-green-500', dot: 'bg-green-500' },
@@ -5468,20 +5475,17 @@ const ActivitiesPage = () => {
       )}
 
       {/* Process Detail Sheet — Últimas movimentações */}
-      {showProcessSheetId && processSheetData && (() => {
-        const ProcessDetailSheet = lazy(() => import('@/components/cases/ProcessDetailSheet'));
-        return (
-          <Suspense fallback={null}>
-            <ProcessDetailSheet
-              open={!!showProcessSheetId}
-              onOpenChange={(o) => { if (!o) setShowProcessSheetId(null); }}
-              process={processSheetData}
-              onUpdated={applyUpdatedCaseProcess}
-              defaultTab="atividades"
-            />
-          </Suspense>
-        );
-      })()}
+      {showProcessSheetId && processSheetData && (
+        <Suspense fallback={null}>
+          <ProcessDetailSheet
+            open={!!showProcessSheetId}
+            onOpenChange={(o) => { if (!o) setShowProcessSheetId(null); }}
+            process={processSheetData}
+            onUpdated={applyUpdatedCaseProcess}
+            defaultTab="atividades"
+          />
+        </Suspense>
+      )}
 
       <CompleteAndNotifyDialog
         open={completeNotifyOpen}
