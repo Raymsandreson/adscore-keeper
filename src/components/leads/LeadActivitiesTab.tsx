@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { remapToExternal } from '@/integrations/supabase/uuid-remap';
@@ -10,7 +10,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { toast } from 'sonner';
 import { format, parseISO, startOfDay, differenceInCalendarDays } from 'date-fns';
-import { Plus, CheckCircle2, Calendar, Loader2, ListTodo, Sparkles, ChevronDown, ChevronRight } from 'lucide-react';
+import { Plus, CheckCircle2, Calendar, Loader2, ListTodo, Sparkles, ChevronDown, ChevronRight, MoreVertical, Trash2, Link2, MessageCircle } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { copyTextToClipboard } from '@/lib/clipboard';
+import { useLeadActivities } from '@/hooks/useLeadActivities';
 import { cn } from '@/lib/utils';
 import { useActivityTypes } from '@/hooks/useActivityTypes';
 import { useProfilesList } from '@/hooks/useProfilesList';
@@ -59,6 +63,7 @@ const loadLeadActivities = async (leadId: string, force = false): Promise<LeadAc
         .from('lead_activities')
         .select('id, title, description, activity_type, status, priority, deadline, assigned_to, assigned_to_name, created_at, completed_at, what_was_done, current_status_notes, next_steps, notes, matrix_quadrant')
         .eq('lead_id', leadId)
+        .is('deleted_at', null)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -127,7 +132,11 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
   const [loading, setLoading] = useState(() => !activitiesCache.has(leadId));
   const [showChatSheet, setShowChatSheet] = useState(false);
   const [editActivityId, setEditActivityId] = useState<string | null>(null);
-  const [collapsed, setCollapsed] = useState(true);
+  const [collapsed, setCollapsed] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<'todas' | 'pendente' | 'em_andamento' | 'concluida'>('todas');
+  const [deleteTarget, setDeleteTarget] = useState<LeadActivity | null>(null);
+
+  const { deleteActivity } = useLeadActivities();
 
   // New activity creation state
   const [showNewSheet, setShowNewSheet] = useState(false);
@@ -286,6 +295,38 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
     }
   };
 
+  const activityLink = (id: string) => `${window.location.origin}/?openActivity=${id}`;
+
+  const handleCopyLink = async (a: LeadActivity) => {
+    const ok = await copyTextToClipboard(activityLink(a.id));
+    if (ok) toast.success('Link copiado!');
+    else toast.error('Não foi possível copiar o link.');
+  };
+
+  const handleShareWhatsApp = (a: LeadActivity) => {
+    const text = `Atividade: *${a.title}*\n${activityLink(a.id)}`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return;
+    await deleteActivity(deleteTarget.id);
+    setDeleteTarget(null);
+    await fetchActivities();
+  };
+
+  const visibleActivities = useMemo(
+    () => (statusFilter === 'todas' ? activities : activities.filter(a => (a.status || 'pendente') === statusFilter)),
+    [activities, statusFilter],
+  );
+
+  const statusFilterOptions: { key: typeof statusFilter; label: string }[] = [
+    { key: 'todas', label: 'Todas' },
+    { key: 'pendente', label: 'Pendente' },
+    { key: 'em_andamento', label: 'Em andamento' },
+    { key: 'concluida', label: 'Concluída' },
+  ];
+
   const getTypeLabel = (key: string) => {
     const found = activityTypes.find(t => t.key === key);
     return found?.label || key;
@@ -355,7 +396,35 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
           </div>
         ) : (
           <div className="space-y-2">
-            {activities.map(a => {
+            {/* Filtro por status */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {statusFilterOptions.map(opt => {
+                const count = opt.key === 'todas'
+                  ? activities.length
+                  : activities.filter(a => (a.status || 'pendente') === opt.key).length;
+                return (
+                  <button
+                    key={opt.key}
+                    type="button"
+                    onClick={() => setStatusFilter(opt.key)}
+                    className={cn(
+                      "text-[11px] px-2 py-0.5 rounded-full border transition-colors",
+                      statusFilter === opt.key
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "bg-muted/40 text-muted-foreground border-border/50 hover:bg-muted",
+                    )}
+                  >
+                    {opt.label} <span className="opacity-70">({count})</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {visibleActivities.length === 0 ? (
+              <div className="text-center py-6 text-sm text-muted-foreground">
+                Nenhuma atividade com este status.
+              </div>
+            ) : visibleActivities.map(a => {
               const ribbon = getTemporalRibbon(a);
               const prio = priorityStyle(a.priority);
               return (
@@ -391,17 +460,56 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
                         </span>
                       )}
                     </div>
-                    {a.status !== 'concluida' && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6 text-green-600 hover:text-green-700 hover:bg-green-50 shrink-0"
-                        onClick={e => { e.stopPropagation(); handleComplete(a.id); }}
-                        title="Concluir"
-                      >
-                        <CheckCircle2 className="h-3.5 w-3.5" />
-                      </Button>
-                    )}
+                    <div className="flex items-center gap-0.5 shrink-0">
+                      {a.status !== 'concluida' && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 text-green-600 hover:text-green-700 hover:bg-green-50 shrink-0"
+                          onClick={e => { e.stopPropagation(); handleComplete(a.id); }}
+                          title="Concluir"
+                        >
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 text-muted-foreground shrink-0"
+                            onClick={e => e.stopPropagation()}
+                            title="Ações"
+                          >
+                            <MoreVertical className="h-3.5 w-3.5" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" onClick={e => e.stopPropagation()}>
+                          {a.status !== 'concluida' && (
+                            <DropdownMenuItem onClick={() => handleComplete(a.id)}>
+                              <CheckCircle2 className="h-3.5 w-3.5 mr-2 text-green-600" />
+                              Concluir
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuItem onClick={() => handleCopyLink(a)}>
+                            <Link2 className="h-3.5 w-3.5 mr-2" />
+                            Copiar link
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleShareWhatsApp(a)}>
+                            <MessageCircle className="h-3.5 w-3.5 mr-2" />
+                            Enviar via WhatsApp
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            className="text-red-600 focus:text-red-600"
+                            onClick={() => setDeleteTarget(a)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5 mr-2" />
+                            Excluir
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </div>
 
                   {/* Título */}
@@ -543,6 +651,27 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
         leadName={leadName}
         onUpdated={fetchActivities}
       />
+
+      {/* Confirmação de exclusão (soft-delete/arquivamento) */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir atividade?</AlertDialogTitle>
+            <AlertDialogDescription>
+              "{deleteTarget?.title}" será arquivada e sairá da lista. Esta ação registra auditoria.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmDelete}
+              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
