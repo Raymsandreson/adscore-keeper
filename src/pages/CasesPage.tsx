@@ -335,6 +335,7 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
 }) {
   const navigate = useNavigate();
   const [processes, setProcesses] = useState<any[]>([]);
+  const [activities, setActivities] = useState<any[]>([]);
   const [mentionedProcesses, setMentionedProcesses] = useState<string[]>([]);
   const [registeringTitle, setRegisteringTitle] = useState<string | null>(null);
   const [registeringAll, setRegisteringAll] = useState(false);
@@ -381,7 +382,17 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
         .is('deleted_at', null)
         .not('process_title', 'is', null)
         .limit(500),
-    ]).then(([procRes, leadRes, actRes]: any) => {
+      externalSupabase.from('lead_activities')
+        .select('id, title, status, activity_type, deadline, assigned_to_name, process_title, created_at, completed_at')
+        .eq('case_id', legalCase.id)
+        .is('deleted_at', null)
+        .order('created_at', { ascending: false })
+        .limit(30),
+    ]).then(([procRes, leadRes, actRes, histRes]: any) => {
+      if (histRes?.error) {
+        console.error('[CasesPage] case activities load failed', { caseId: legalCase.id, error: histRes.error });
+      }
+      setActivities(histRes?.data || []);
       if (procRes?.error) {
         console.error('[CasesPage] lead_processes load failed', { caseId: legalCase.id, error: procRes.error });
         toast.error(`Erro ao carregar processos: ${procRes.error.message}`);
@@ -812,6 +823,41 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
                 )}
               </div>
 
+
+              {/* Atividades / Histórico do caso */}
+              <div>
+                <h4 className="text-xs font-semibold flex items-center gap-1.5 mb-2">
+                  <FileText className="h-3.5 w-3.5" /> Atividades / Histórico ({activities.length})
+                </h4>
+                {activities.length === 0 ? (
+                  <p className="text-xs text-muted-foreground text-center py-2">Nenhuma atividade neste caso.</p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {activities.map(a => (
+                      <div
+                        key={a.id}
+                        className="border rounded-lg p-2 bg-card space-y-0.5 cursor-pointer hover:bg-muted/50 transition-colors"
+                        onClick={(e) => { e.stopPropagation(); navigate(`/?openActivity=${a.id}`); }}
+                      >
+                        <div className="flex items-center gap-2">
+                          <p className="text-xs font-medium truncate flex-1 min-w-0">{a.title}</p>
+                          {a.status && (
+                            <Badge variant="outline" className="text-[9px] shrink-0">{a.status}</Badge>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-muted-foreground truncate">
+                          {[
+                            a.created_at ? new Date(a.created_at).toLocaleDateString('pt-BR') : null,
+                            a.activity_type,
+                            a.assigned_to_name,
+                            a.process_title,
+                          ].filter(Boolean).join(' • ')}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
 
               {/* Workflow Board */}
               <CaseWorkflowBoard
