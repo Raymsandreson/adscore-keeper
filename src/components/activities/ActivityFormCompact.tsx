@@ -440,7 +440,8 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
   };
 
   // Envia o texto (já editado) a TODOS os assessores da atividade (principal +
-  // co-assessores): WhatsApp privado (se tiver) + Chat da Equipe para cada um.
+  // co-assessores) via WhatsApp privado (se tiver). Não registra mais no Chat da
+  // Equipe: estava poluindo o chat com uma mensagem por atividade criada.
   const sendToAssessorNow = async (text: string): Promise<void> => {
     const assessorIds = [...new Set([formAssignedTo, ...(formCoAssignees || []).map(c => c.user_id)].filter(Boolean))] as string[];
     if (assessorIds.length === 0) { toast.error('Sem assessor responsável'); return; }
@@ -476,40 +477,6 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
       }
     }
     if (waSent.length > 0) toast.success(`WhatsApp enviado para ${waSent.join(', ')}!`);
-
-    // Chat da Equipe (sempre, para deixar registro interno) — um a um
-    try {
-      await ensureExternalSession();
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      const { data: senderProfile } = authUser
-        ? await supabase.from('profiles').select('full_name').eq('user_id', authUser.id).maybeSingle()
-        : { data: null };
-
-      const chatSent: string[] = [];
-      for (const assessorId of assessorIds) {
-        const profile = profileByUser.get(assessorId);
-        const { data: convId, error: convError } = await (externalSupabase.rpc as any)('start_team_direct_conversation', {
-          _other_user_id: assessorId,
-          _self_user_id: authUser?.id,
-        });
-        if (convError || !convId) {
-          toast.error(`Erro ao abrir conversa no Chat da Equipe com ${profile?.full_name || 'assessor'}`);
-          continue;
-        }
-        const { error: msgError } = await externalSupabase.from('team_messages').insert({
-          conversation_id: convId,
-          sender_id: authUser?.id,
-          sender_name: (senderProfile as any)?.full_name || null,
-          content: text,
-          message_type: 'text',
-        });
-        if (msgError) toast.error(`Erro ao enviar no Chat da Equipe para ${profile?.full_name || 'assessor'}`);
-        else chatSent.push(profile?.full_name || 'assessor');
-      }
-      if (chatSent.length > 0) toast.success(`Enviado no Chat da Equipe para ${chatSent.join(', ')}!`);
-    } catch (e: any) {
-      toast.error(e.message || 'Erro no Chat da Equipe');
-    }
   };
 
   // Abre o preview com a mensagem montada e destinos padrão.
@@ -660,8 +627,8 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
                   <div>
                     <div>
                       {(formCoAssignees?.length || 0) > 0
-                        ? `Assessores (${1 + (formCoAssignees?.length || 0)}) — WhatsApp privado + Chat da Equipe`
-                        : 'Assessor (WhatsApp privado + Chat da Equipe)'}
+                        ? `Assessores (${1 + (formCoAssignees?.length || 0)}) — WhatsApp privado`
+                        : 'Assessor (WhatsApp privado)'}
                     </div>
                     {!formAssignedTo && <div className="text-[11px] text-muted-foreground">Nenhum assessor responsável selecionado</div>}
                   </div>
