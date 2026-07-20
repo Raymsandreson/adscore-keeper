@@ -5,11 +5,14 @@ import { authClient } from '@/integrations/supabase';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
-import { Save, Loader2, CheckCircle2, Trash2, ExternalLink, X, Plus, Building2, Briefcase, UserPlus, FileText } from 'lucide-react';
+import { Save, Loader2, CheckCircle2, Trash2, ExternalLink, X, Plus, Building2, Briefcase, UserPlus, FileText, Sparkles, ChevronDown, Mic } from 'lucide-react';
 import { ActivityFormCompact } from '@/components/activities/ActivityFormCompact';
+import { ActivityCallRecorder, callFieldTextToHtml, stripHtmlToText } from '@/components/activities/ActivityCallRecorder';
+import { ActivityDocumentUpload } from '@/components/activities/ActivityDocumentUpload';
 import { LeadFunnelProgressBar } from '@/components/activities/LeadFunnelProgressBar';
 import { useActivityTypes } from '@/hooks/useActivityTypes';
 import { useKanbanBoards } from '@/hooks/useKanbanBoards';
@@ -121,7 +124,11 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
   const [caseProcesses, setCaseProcesses] = useState<ProcessRow[]>([]);
   const [availableContacts, setAvailableContacts] = useState<{ id: string; full_name: string }[]>([]);
   const [availableCases, setAvailableCases] = useState<{ id: string; case_number: string; title: string; lead_id: string | null }[]>([]);
-  const [leadPreview, setLeadPreview] = useState<{ board_id: string | null; lead_status: string | null } | null>(null);
+  const [leadPreview, setLeadPreview] = useState<{ board_id: string | null; lead_status: string | null; whatsapp_group_id?: string | null; lead_phone?: string | null } | null>(null);
+  // "Preencher com" (paridade com a ActivitiesPage): áudio e documento preenchem o form via IA.
+  const [preencherOpen, setPreencherOpen] = useState(false);
+  const [callRecorderOpen, setCallRecorderOpen] = useState(false);
+  const [docUploadOpen, setDocUploadOpen] = useState(false);
   const [searchedLeads, setSearchedLeads] = useState<{ id: string; lead_name: string | null }[]>([]);
   const [leadSearch, setLeadSearch] = useState('');
   const [contactSearch, setContactSearch] = useState('');
@@ -158,8 +165,8 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
   }, []);
 
   const loadLeadPreview = useCallback(async (lid: string) => {
-    const { data } = await externalSupabase.from('leads').select('board_id, lead_status').eq('id', lid).maybeSingle();
-    setLeadPreview(data ? { board_id: data.board_id, lead_status: data.lead_status } : null);
+    const { data } = await externalSupabase.from('leads').select('board_id, lead_status, whatsapp_group_id, lead_phone').eq('id', lid).maybeSingle();
+    setLeadPreview(data ? { board_id: data.board_id, lead_status: data.lead_status, whatsapp_group_id: (data as any).whatsapp_group_id, lead_phone: (data as any).lead_phone } : null);
   }, []);
 
   // Busca de leads para o sheet "Vincular Lead" (mesma lógica da ActivitiesPage)
@@ -563,6 +570,172 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
           <div className="flex items-center justify-between gap-2">
             <SheetTitle className="text-base truncate">{formTitle || (isCreate ? 'Nova atividade' : 'Atividade')}</SheetTitle>
             <div className="flex items-center gap-1">
+              {/* Preencher com IA (áudio/documento) — mesma função da ActivitiesPage */}
+              <Popover open={preencherOpen} onOpenChange={setPreencherOpen}>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-7 text-xs gap-1 shrink-0">
+                    <Sparkles className="h-3 w-3" />
+                    Preencher com <ChevronDown className="h-3 w-3" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-56 p-1.5 space-y-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-full justify-start h-8 text-xs gap-2 text-green-700 dark:text-green-400"
+                    onClick={() => { setPreencherOpen(false); setCallRecorderOpen(true); }}
+                  >
+                    <Mic className="h-3.5 w-3.5" /> Preenchimento por Áudio
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-full justify-start h-8 text-xs gap-2 text-blue-700 dark:text-blue-400"
+                    onClick={() => { setPreencherOpen(false); setDocUploadOpen(true); }}
+                  >
+                    <FileText className="h-3.5 w-3.5" /> Preenchimento por Documento
+                  </Button>
+                </PopoverContent>
+              </Popover>
+
+              {/* Painéis controlados pelo menu acima (gatilho sr-only sempre montado,
+                  como na ActivitiesPage, pra não perder a âncora ao fechar o dropdown) */}
+              <ActivityCallRecorder
+                triggerClassName="sr-only"
+                open={callRecorderOpen}
+                onOpenChange={setCallRecorderOpen}
+                activityId={selectedActivity?.id}
+                leadId={formLeadId}
+                caseId={formCaseId}
+                processId={formProcessId}
+                groupJid={leadPreview?.whatsapp_group_id}
+                leadPhone={leadPreview?.lead_phone}
+                context={{
+                  title: formTitle,
+                  type: formType,
+                  lead_name: formLeadName,
+                  contact_name: formContactName,
+                  process_title: formProcessTitle,
+                  current_status: stripHtmlToText(formCurrentStatus),
+                  what_was_done: stripHtmlToText(formWhatWasDone),
+                  next_steps: stripHtmlToText(formNextSteps),
+                  solicitacao: stripHtmlToText(formSolicitacao),
+                  resposta_juizo: stripHtmlToText(formRespostaJuizo),
+                  notes: stripHtmlToText(formNotes),
+                  deadline: formDeadline || undefined,
+                  notification_date: formNotificationDate || undefined,
+                  priority: formPriority || undefined,
+                  status: formStatus || undefined,
+                  assessor_name: formAssignedToName || undefined,
+                  co_assessor_names: formCoAssignees.map((c) => c.full_name).filter(Boolean),
+                  team_members: teamMembers.map((m) => m.full_name).filter(Boolean) as string[],
+                  activity_types: routineActivityTypes.map((t) => ({ key: t.value, label: t.label })),
+                  workflow: stepContext ? {
+                    step_label: stepContext.stepLabel,
+                    phase_label: stepContext.phaseLabel || undefined,
+                    objective_label: stepContext.objectiveLabel || undefined,
+                    next_step: (() => {
+                      const steps = stepContext.allSteps || [];
+                      const idx = steps.findIndex((s) => s.stepId === stepContext.stepId);
+                      const after = idx >= 0 ? steps.slice(idx + 1) : steps;
+                      return (after.find((s) => !s.checked) || after[0])?.stepLabel;
+                    })(),
+                  } : undefined,
+                }}
+                onFields={(f) => {
+                  // Campos de texto: '' significa "o áudio mandou apagar" — limpa o campo.
+                  if (f.what_was_done !== undefined) setFormWhatWasDone(f.what_was_done ? callFieldTextToHtml(f.what_was_done) : '');
+                  if (f.current_status !== undefined) setFormCurrentStatus(f.current_status ? callFieldTextToHtml(f.current_status) : '');
+                  if (f.next_steps !== undefined) setFormNextSteps(f.next_steps ? callFieldTextToHtml(f.next_steps) : '');
+                  if (f.solicitacao !== undefined) setFormSolicitacao(f.solicitacao ? callFieldTextToHtml(f.solicitacao) : '');
+                  if (f.resposta_juizo !== undefined) setFormRespostaJuizo(f.resposta_juizo ? callFieldTextToHtml(f.resposta_juizo) : '');
+                  if (f.notes !== undefined) setFormNotes(f.notes ? callFieldTextToHtml(f.notes) : '');
+                  // Metadados ditados no áudio (prazo, prioridade, situação, título, tipo).
+                  if (f.title) setFormTitle(f.title);
+                  if (f.deadline && /^\d{4}-\d{2}-\d{2}$/.test(f.deadline)) handleDeadlineChange(f.deadline);
+                  if (f.notification_date && /^\d{4}-\d{2}-\d{2}$/.test(f.notification_date)) setFormNotificationDate(f.notification_date);
+                  if (f.priority && ['baixa', 'normal', 'alta', 'urgente'].includes(f.priority)) setFormPriority(f.priority);
+                  if (f.status && ['pendente', 'em_andamento', 'concluida'].includes(f.status)) setFormStatus(f.status);
+                  if (f.activity_type) {
+                    const t = routineActivityTypes.find((x) => x.value === f.activity_type);
+                    if (t && t.value !== formType) {
+                      setFormType(t.value);
+                      toast.info(`Tipo ajustado pela IA para ${t.label}.`, { duration: 2500 });
+                    }
+                  }
+                  // Assessores ditados no áudio: o primeiro vira o principal, os demais co-assessores.
+                  const spokenNames = (f.assessor_names && f.assessor_names.length > 0)
+                    ? f.assessor_names
+                    : (f.assessor_name ? [f.assessor_name] : []);
+                  if (spokenNames.length > 0) {
+                    const norm = (s: string) => s.normalize('NFD').replace(new RegExp('[\\u0300-\\u036f]', 'g'), '').toLowerCase().trim();
+                    const matched: { user_id: string; full_name: string }[] = [];
+                    const notFound: string[] = [];
+                    for (const name of spokenNames) {
+                      const spoken = norm(name);
+                      const member = teamMembers.find((m) => {
+                        const full = norm(m.full_name || '');
+                        return full && (full.includes(spoken) || spoken.includes(full) || full.split(' ')[0] === spoken.split(' ')[0]);
+                      });
+                      if (member && !matched.some((x) => x.user_id === member.user_id)) {
+                        matched.push({ user_id: member.user_id, full_name: member.full_name || '' });
+                      } else if (!member) {
+                        notFound.push(name);
+                      }
+                    }
+                    if (matched.length > 0) {
+                      setFormAssignedTo(matched[0].user_id);
+                      setFormAssignedToName(matched[0].full_name);
+                      setFormCoAssignees(matched.slice(1));
+                    }
+                    if (notFound.length > 0) {
+                      toast.error(`Assessor(es) citado(s) no áudio não encontrado(s) na equipe: ${notFound.join(', ')}.`);
+                    }
+                  }
+                }}
+              />
+              <ActivityDocumentUpload
+                triggerClassName="sr-only"
+                open={docUploadOpen}
+                onOpenChange={setDocUploadOpen}
+                activityId={selectedActivity?.id}
+                leadId={formLeadId}
+                caseId={formCaseId}
+                processId={formProcessId}
+                context={{
+                  title: formTitle,
+                  type: formType,
+                  lead_name: formLeadName,
+                  contact_name: formContactName,
+                  process_title: formProcessTitle,
+                  current_status: stripHtmlToText(formCurrentStatus),
+                  what_was_done: stripHtmlToText(formWhatWasDone),
+                  next_steps: stripHtmlToText(formNextSteps),
+                  solicitacao: stripHtmlToText(formSolicitacao),
+                  resposta_juizo: stripHtmlToText(formRespostaJuizo),
+                  notes: stripHtmlToText(formNotes),
+                  workflow: stepContext ? {
+                    step_label: stepContext.stepLabel,
+                    phase_label: stepContext.phaseLabel || undefined,
+                    objective_label: stepContext.objectiveLabel || undefined,
+                    next_step: (() => {
+                      const steps = stepContext.allSteps || [];
+                      const idx = steps.findIndex((s) => s.stepId === stepContext.stepId);
+                      const after = idx >= 0 ? steps.slice(idx + 1) : steps;
+                      return (after.find((s) => !s.checked) || after[0])?.stepLabel;
+                    })(),
+                  } : undefined,
+                }}
+                onFields={(f) => {
+                  if (f.what_was_done) setFormWhatWasDone(callFieldTextToHtml(f.what_was_done));
+                  if (f.current_status) setFormCurrentStatus(callFieldTextToHtml(f.current_status));
+                  if (f.next_steps) setFormNextSteps(callFieldTextToHtml(f.next_steps));
+                  if (f.solicitacao) setFormSolicitacao(callFieldTextToHtml(f.solicitacao));
+                  if (f.resposta_juizo) setFormRespostaJuizo(callFieldTextToHtml(f.resposta_juizo));
+                  if (f.notes) setFormNotes(callFieldTextToHtml(f.notes));
+                }}
+              />
+
               {!isCreate && (
                 <Button variant="ghost" size="sm" onClick={handleOpenInPage} className="gap-1 text-xs shrink-0" title="Abrir na tela de Atividades">
                   <ExternalLink className="h-3 w-3" /> Tela cheia
