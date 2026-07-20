@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { resolveProcessAssignment, createOrAttachAndamentoActivity } from '@/lib/processAssignment';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -38,13 +38,16 @@ import { externalSupabase } from '@/integrations/supabase/external-client';
 import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import {
   Plus, Scale, Gavel, FileText, Trash2, Edit3, Archive, CheckCircle,
-  ChevronDown, ChevronRight, FolderOpen, Users, Briefcase, XCircle, RefreshCw, Loader2, ScrollText, Upload, Sparkles, Bell, BellOff, BellRing,
+  ChevronDown, ChevronRight, FolderOpen, Users, Briefcase, XCircle, RefreshCw, Loader2, ScrollText, Upload, Sparkles, Bell, BellOff, BellRing, ClipboardList,
 } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { ProcessMonitorDialog } from '@/components/cases/ProcessMonitorDialog';
 import { toast } from 'sonner';
 import AddProcessDialog from '@/components/cases/AddProcessDialog';
+import { ActivityFullSheet, type ActivityDraft } from '@/components/activities/ActivityFullSheet';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
+
+const ProcessDetailSheet = lazy(() => import('@/components/cases/ProcessDetailSheet'));
 
 interface LegalCasesTabProps {
   leadId: string;
@@ -682,12 +685,14 @@ function CaseCard({ legalCase, boards, expanded, onToggle, onEdit, onStatusChang
                   <ProcessCard
                     key={p.id}
                     process={p}
+                    caseTitle={legalCase.title}
                     statusColors={processStatusColors}
                     statusLabels={processStatusLabels}
                     onEdit={() => openEditProcess(p)}
                     onStatusChange={handleProcessStatusChange}
                     onDelete={() => deleteProcess(p.id)}
                     onUpdate={updateProcess}
+                    onRefresh={fetchProcesses}
                     onViewContact={onViewContact}
                   />
                 ))}
@@ -783,16 +788,18 @@ function CaseCard({ legalCase, boards, expanded, onToggle, onEdit, onStatusChang
 
 interface ProcessCardProps {
   process: LeadProcess;
+  caseTitle: string;
   statusColors: Record<string, string>;
   statusLabels: Record<string, string>;
   onEdit: () => void;
   onStatusChange: (p: LeadProcess, status: LeadProcess['status']) => void;
   onDelete: () => void;
   onUpdate: (id: string, updates: Partial<LeadProcess>) => Promise<LeadProcess | undefined>;
+  onRefresh?: () => void;
   onViewContact?: (contactId: string) => void;
 }
 
-function ProcessCard({ process, statusColors, statusLabels, onEdit, onStatusChange, onDelete, onUpdate, onViewContact }: ProcessCardProps) {
+function ProcessCard({ process, caseTitle, statusColors, statusLabels, onEdit, onStatusChange, onDelete, onUpdate, onRefresh, onViewContact }: ProcessCardProps) {
   const [showParties, setShowParties] = useState(false);
   const { parties, loading: partiesLoading, fetchParties, addParty, removeParty } = useProcessParties(process.id);
   const [showAddParty, setShowAddParty] = useState(false);
@@ -805,6 +812,32 @@ function ProcessCard({ process, statusColors, statusLabels, onEdit, onStatusChan
   const [petitionText, setPetitionText] = useState('');
   const [analyzingPetition, setAnalyzingPetition] = useState(false);
   const [showMonitorDialog, setShowMonitorDialog] = useState(false);
+  const [showDetailSheet, setShowDetailSheet] = useState(false);
+  const [activityDraft, setActivityDraft] = useState<ActivityDraft | null>(null);
+  const [showActivitySheet, setShowActivitySheet] = useState(false);
+
+  // Abre o formulário único de atividade (ActivityFullSheet) já vinculado a lead/caso/processo.
+  const openCreateActivity = async () => {
+    let leadName = '';
+    if (process.lead_id) {
+      const { data } = await externalSupabase
+        .from('leads')
+        .select('lead_name')
+        .eq('id', process.lead_id)
+        .maybeSingle();
+      leadName = (data as any)?.lead_name || '';
+    }
+    setActivityDraft({
+      lead_id: process.lead_id || undefined,
+      lead_name: leadName || undefined,
+      case_id: process.case_id || undefined,
+      case_title: caseTitle || undefined,
+      process_id: process.id,
+      process_title: process.title,
+      workflow_id: process.workflow_id || undefined,
+    });
+    setShowActivitySheet(true);
+  };
 
   useEffect(() => {
     fetchParties();
@@ -1054,6 +1087,14 @@ function ProcessCard({ process, statusColors, statusLabels, onEdit, onStatusChan
           onClick={() => setShowParties(!showParties)}>
           <Users className="h-2.5 w-2.5 mr-0.5" /> Partes ({parties.length})
         </Button>
+        <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2 text-primary"
+          onClick={openCreateActivity}>
+          <ClipboardList className="h-2.5 w-2.5 mr-0.5" /> Atividade
+        </Button>
+        <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2"
+          onClick={() => setShowDetailSheet(true)}>
+          <FolderOpen className="h-2.5 w-2.5 mr-0.5" /> Ficha completa
+        </Button>
         {process.status === 'em_andamento' && (
           <>
             <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2 text-green-600"
@@ -1211,6 +1252,28 @@ function ProcessCard({ process, statusColors, statusLabels, onEdit, onStatusChan
         processId={process.id}
         processNumber={process.process_number || ''}
         processTitle={process.title}
+      />
+
+      {/* Ficha completa do processo (formulário único do sistema) */}
+      <Suspense fallback={null}>
+        {showDetailSheet && (
+          <ProcessDetailSheet
+            open={showDetailSheet}
+            onOpenChange={(o: boolean) => { if (!o) setShowDetailSheet(false); }}
+            process={process}
+            onUpdated={() => onRefresh?.()}
+          />
+        )}
+      </Suspense>
+
+      {/* Nova atividade vinculada ao processo — formulário único (ActivityFullSheet) */}
+      <ActivityFullSheet
+        open={showActivitySheet}
+        mode="create"
+        draft={activityDraft}
+        activityId={null}
+        leadId={process.lead_id || null}
+        onOpenChange={(o) => { if (!o) { setShowActivitySheet(false); setActivityDraft(null); } }}
       />
 
       {/* Petition Analysis Dialog */}
