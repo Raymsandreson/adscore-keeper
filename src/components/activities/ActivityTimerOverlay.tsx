@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useCallback, lazy, Suspense } from 'react';
-import { Clock, Coffee, GripVertical, Hourglass, Mic, Minimize2, Pause, Play, Search, Timer as TimerIcon, Users, UtensilsCrossed } from 'lucide-react';
+import { Clock, Coffee, GripVertical, Hourglass, Maximize2, Mic, Minimize2, Pause, Play, Search, Timer as TimerIcon, Users, UtensilsCrossed } from 'lucide-react';
 import { TeamTimersPanel } from '@/components/activities/TeamTimersPanel';
 import { db } from '@/integrations/supabase';
 
@@ -401,10 +401,11 @@ export function ActivityTimerOverlay() {
             <button
               type="button"
               onClick={(e) => { if (drag.wasDragged()) { e.preventDefault(); e.stopPropagation(); return; } showTimer(); }}
-              className="font-mono text-sm tabular-nums font-semibold hover:opacity-80"
+              className="flex items-center gap-1.5 font-mono text-sm tabular-nums font-semibold hover:opacity-80"
               title="Expandir cronômetro"
             >
               {formatHMS(seconds)}
+              <Maximize2 className="h-3 w-3 opacity-60" />
             </button>
           </div>
         );
