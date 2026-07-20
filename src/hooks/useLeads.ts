@@ -81,15 +81,26 @@ const LEAD_DELETED_EVENT = 'adscore:lead-deleted';
 const isAlreadyMissingLeadError = (error?: string) =>
   String(error || '').toLowerCase().includes('lead não encontrado no banco externo');
 
-const sanitizeLeadDateFields = (lead: Partial<Lead>): Partial<Lead> => {
-  const sanitized = { ...lead };
-  if ('accident_date' in sanitized) {
-    sanitized.accident_date = normalizeDateInput(sanitized.accident_date);
+const DATE_ONLY_FIELDS = [
+  'accident_date',
+  'expected_birth_date',
+  'ad_start_date',
+  'classification_date',
+  'became_client_date',
+  'in_progress_date',
+  'inviavel_date',
+  'cancelled_date',
+] as const;
+
+const sanitizeLeadDateFields = <T extends Record<string, any>>(lead: T): T => {
+  const sanitized: Record<string, any> = { ...lead };
+  for (const field of DATE_ONLY_FIELDS) {
+    if (field in sanitized && sanitized[field] !== null && sanitized[field] !== undefined) {
+      const normalized = normalizeDateInput(String(sanitized[field]));
+      sanitized[field] = normalized;
+    }
   }
-  if ('expected_birth_date' in sanitized) {
-    sanitized.expected_birth_date = normalizeDateInput(sanitized.expected_birth_date);
-  }
-  return sanitized;
+  return sanitized as T;
 };
 
 // ──────────────────────────────────────────────────────────────────────────
