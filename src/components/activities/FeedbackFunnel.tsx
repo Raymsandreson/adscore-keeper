@@ -7,10 +7,12 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { Star, Mic, MicOff, Loader2, ThumbsUp, AlertCircle, RefreshCw, ExternalLink, Trophy } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Star, Mic, MicOff, Loader2, ThumbsUp, AlertCircle, RefreshCw, ExternalLink, Trophy, ChevronLeft, ChevronRight, CalendarDays, Columns3 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { format, parseISO, startOfDay, differenceInCalendarDays } from 'date-fns';
+import { format, parseISO, startOfDay, differenceInCalendarDays, startOfMonth, endOfMonth, eachDayOfInterval, addMonths, subMonths, isToday } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 import { useNavigate } from 'react-router-dom';
 
 // Um feedback = uma atividade com retorno preenchido. O observador avalia.
@@ -66,6 +68,18 @@ const COLUMNS: { key: string; label: string; icon: string; className: string }[]
   { key: 'incompleto',  label: 'Incompleto',   icon: '⚠️', className: 'border-amber-300 dark:border-amber-800' },
   { key: 'insatisfeito',label: 'Insatisfeito', icon: '❌', className: 'border-red-300 dark:border-red-800' },
 ];
+
+// Estilo dos chips no calendário, por categoria.
+const CAT_STYLE: Record<string, { chip: string; label: string }> = {
+  atrasada:     { chip: 'bg-red-100 border-red-300 text-red-800 dark:bg-red-950 dark:border-red-800 dark:text-red-300', label: '⏰ Atrasada' },
+  reagendada:   { chip: 'bg-blue-100 border-blue-300 text-blue-800 dark:bg-blue-950 dark:border-blue-800 dark:text-blue-300', label: '🔁 Reagendada' },
+  a_avaliar:    { chip: 'bg-slate-100 border-slate-300 text-slate-800 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-300', label: '📥 A avaliar' },
+  satisfeito:   { chip: 'bg-green-100 border-green-300 text-green-800 dark:bg-green-950 dark:border-green-800 dark:text-green-300', label: '✅ Satisfeito' },
+  incompleto:   { chip: 'bg-amber-100 border-amber-300 text-amber-800 dark:bg-amber-950 dark:border-amber-800 dark:text-amber-300', label: '⚠️ Incompleto' },
+  insatisfeito: { chip: 'bg-red-50 border-red-200 text-red-700 dark:bg-red-950/50 dark:border-red-900 dark:text-red-400', label: '❌ Insatisfeito' },
+};
+
+const WEEK_DAYS = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
 
 function StarPicker({ value, onChange }: { value: number; onChange: (n: number) => void }) {
   const [hover, setHover] = useState(0);
@@ -126,6 +140,12 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
   const [rows, setRows] = useState<FeedbackRow[]>([]);
   const [lateRows, setLateRows] = useState<LateRow[]>([]);
   const [loading, setLoading] = useState(false);
+  // Visão (funil kanban ou calendário) + filtros de assessor e período.
+  const [view, setView] = useState<'funil' | 'calendario'>('funil');
+  const [calMonth, setCalMonth] = useState(() => new Date());
+  const [filterAssessor, setFilterAssessor] = useState('all');
+  const [filterFrom, setFilterFrom] = useState('');
+  const [filterTo, setFilterTo] = useState('');
   // Estado por cartão (avaliação em andamento)
   const [draft, setDraft] = useState<Record<string, { rating: number; justification: string; praise: string }>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
@@ -291,11 +311,44 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
     }
   };
 
+  // Data de referência (calendário e filtro de período): reagendada usa a nova data; senão o prazo.
+  const refDate = (r: { deadline?: string | null; rescheduled_to?: string | null; status?: string | null; updated_at?: string }) =>
+    (r.status === 'reagendada' && r.rescheduled_to) ? r.rescheduled_to : (r.deadline || r.updated_at || null);
+
+  const passesFilters = (name: string | null, dateStr: string | null) => {
+    if (filterAssessor !== 'all' && (name || '—') !== filterAssessor) return false;
+    if (filterFrom || filterTo) {
+      if (!dateStr) return false;
+      const d = dateStr.slice(0, 10);
+      if (filterFrom && d < filterFrom) return false;
+      if (filterTo && d > filterTo) return false;
+    }
+    return true;
+  };
+
+  const filteredRows = rows.filter(r => passesFilters(r.assigned_to_name, refDate(r)));
+  const filteredLate = lateRows.filter(r => passesFilters(r.assigned_to_name, refDate(r)));
+
+  const assessores = Array.from(new Set([...rows, ...lateRows].map(r => r.assigned_to_name || '—'))).sort((a, b) => a.localeCompare(b));
+
   const columnRows = (key: string) =>
-    rows.filter(r => (key === 'a_avaliar' ? !r.feedback_outcome : r.feedback_outcome === key));
+    filteredRows.filter(r => (key === 'a_avaliar' ? !r.feedback_outcome : r.feedback_outcome === key));
 
   const lateColumnRows = (key: string) =>
-    lateRows.filter(r => (key === 'reagendada' ? r.status === 'reagendada' : r.status !== 'reagendada'));
+    filteredLate.filter(r => (key === 'reagendada' ? r.status === 'reagendada' : r.status !== 'reagendada'));
+
+  // Itens unificados do calendário: só as atividades deste painel de feedbacks.
+  const calItems: { id: string; title: string; name: string | null; cat: string; date: string | null }[] = [
+    ...filteredLate.map(r => ({ id: r.id, title: r.title, name: r.assigned_to_name, cat: r.status === 'reagendada' ? 'reagendada' : 'atrasada', date: refDate(r) })),
+    ...filteredRows.map(r => ({ id: r.id, title: r.title, name: r.assigned_to_name, cat: r.feedback_outcome || 'a_avaliar', date: refDate(r) })),
+  ];
+  const itemsByDay: Record<string, typeof calItems> = {};
+  for (const it of calItems) {
+    if (!it.date) continue;
+    const k = it.date.slice(0, 10);
+    (itemsByDay[k] ||= []).push(it);
+  }
+  const calDays = eachDayOfInterval({ start: startOfMonth(calMonth), end: endOfMonth(calMonth) });
 
   const counts = {
     atrasada: lateColumnRows('atrasada').length,
@@ -333,6 +386,47 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
               </Button>
             </div>
           </div>
+          {/* Filtros + alternância funil/calendário */}
+          <div className="flex items-center gap-2 flex-wrap pt-1">
+            <div className="flex rounded-md border overflow-hidden text-[11px]">
+              <button
+                type="button"
+                onClick={() => setView('funil')}
+                className={cn('px-2 py-1 flex items-center gap-1', view === 'funil' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted')}
+              >
+                <Columns3 className="h-3 w-3" /> Funil
+              </button>
+              <button
+                type="button"
+                onClick={() => setView('calendario')}
+                className={cn('px-2 py-1 flex items-center gap-1 border-l', view === 'calendario' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted')}
+              >
+                <CalendarDays className="h-3 w-3" /> Calendário
+              </button>
+            </div>
+            <Select value={filterAssessor} onValueChange={setFilterAssessor}>
+              <SelectTrigger className="h-7 w-[180px] text-[11px]">
+                <SelectValue placeholder="Assessor" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all" className="text-xs">Todos os assessores</SelectItem>
+                {assessores.map(a => (
+                  <SelectItem key={a} value={a} className="text-xs">{a}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
+              <span>De</span>
+              <input type="date" value={filterFrom} onChange={e => setFilterFrom(e.target.value)} className="h-7 rounded border bg-background px-1.5 text-[11px]" />
+              <span>até</span>
+              <input type="date" value={filterTo} onChange={e => setFilterTo(e.target.value)} className="h-7 rounded border bg-background px-1.5 text-[11px]" />
+            </div>
+            {(filterAssessor !== 'all' || filterFrom || filterTo) && (
+              <Button variant="ghost" size="sm" className="h-7 text-[11px]" onClick={() => { setFilterAssessor('all'); setFilterFrom(''); setFilterTo(''); }}>
+                Limpar filtros
+              </Button>
+            )}
+          </div>
         </SheetHeader>
 
         <div className="flex-1 overflow-auto p-3">
@@ -344,6 +438,65 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
             <div className="text-center py-16 text-sm text-muted-foreground">
               Nenhum feedback para você ainda. Quando você for observador de uma atividade e o responsável
               preencher o feedback, ele aparece aqui — nunca no seu calendário de tarefas.
+            </div>
+          ) : view === 'calendario' ? (
+            <div className="max-w-6xl mx-auto">
+              <div className="flex items-center justify-center gap-2 mb-1">
+                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setCalMonth(m => subMonths(m, 1))}>
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <span className="text-sm font-medium capitalize w-40 text-center">
+                  {format(calMonth, 'MMMM yyyy', { locale: ptBR })}
+                </span>
+                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setCalMonth(m => addMonths(m, 1))}>
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+              <div className="flex items-center justify-center gap-2 mb-2 flex-wrap">
+                {Object.entries(CAT_STYLE).map(([k, s]) => (
+                  <span key={k} className={cn('rounded border px-1.5 py-0.5 text-[9px]', s.chip)}>{s.label}</span>
+                ))}
+              </div>
+              <div className="grid grid-cols-7 gap-1">
+                {WEEK_DAYS.map(d => (
+                  <div key={d} className="text-[10px] font-medium text-muted-foreground text-center py-1">{d}</div>
+                ))}
+                {Array.from({ length: (calDays[0]?.getDay() || 7) - 1 }).map((_, i) => (
+                  <div key={`pad-${i}`} />
+                ))}
+                {calDays.map(day => {
+                  const dateKey = format(day, 'yyyy-MM-dd');
+                  const dayItems = itemsByDay[dateKey] || [];
+                  const MAX = 4;
+                  return (
+                    <div
+                      key={dateKey}
+                      className={cn(
+                        'min-h-[92px] rounded-md border bg-card p-1 flex flex-col gap-0.5',
+                        isToday(day) && 'ring-1 ring-primary',
+                        dayItems.length === 0 && 'opacity-60'
+                      )}
+                    >
+                      <span className={cn('text-[10px] leading-none px-0.5', isToday(day) ? 'font-bold text-primary' : 'text-muted-foreground')}>
+                        {format(day, 'd')}
+                      </span>
+                      {dayItems.slice(0, MAX).map(it => (
+                        <a
+                          key={it.id}
+                          href={`/?openActivity=${it.id}`}
+                          title={`${CAT_STYLE[it.cat]?.label || it.cat} — ${it.title}${it.name ? ` · ${it.name}` : ''}`}
+                          className={cn('block rounded border px-1 py-0.5 text-[9px] leading-tight truncate hover:opacity-80', CAT_STYLE[it.cat]?.chip)}
+                        >
+                          {it.title}
+                        </a>
+                      ))}
+                      {dayItems.length > MAX && (
+                        <span className="text-[9px] text-muted-foreground px-0.5">+{dayItems.length - MAX} mais</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-6 gap-3 min-h-full">
