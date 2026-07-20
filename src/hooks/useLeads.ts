@@ -83,6 +83,7 @@ const isAlreadyMissingLeadError = (error?: string) =>
 
 const DATE_ONLY_FIELDS = [
   'accident_date',
+  'birth_date',
   'expected_birth_date',
   'ad_start_date',
   'classification_date',
